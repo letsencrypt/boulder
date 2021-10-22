@@ -5,8 +5,8 @@ pkcs11:
     signing-key-slot: {{ .SlotID}}
     signing-key-label: root signing key (ecdsa)
 inputs:
-    public-key-path: /tmp/intermediate-signing-pub-ecdsa.pem
-    issuer-certificate-path: /tmp/root-cert-ecdsa.pem
+    public-key-path: /hierarchy/intermediate-signing-pub-ecdsa.pem
+    issuer-certificate-path: /hierarchy/root-cert-ecdsa.pem
 outputs:
     certificate-path: {{ .CertPath }}
 certificate-profile:

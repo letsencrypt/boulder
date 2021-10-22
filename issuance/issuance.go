@@ -331,8 +331,11 @@ func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 		return errors.New("NotBefore is in the future")
 	}
 
-	if len(req.Serial) > 20 || len(req.Serial) < 8 {
-		return errors.New("serial must be between 8 and 20 bytes")
+	// We use 19 here because a 20-byte serial could produce >20 octets when
+	// encoded in ASN.1. That happens when the first byte is >0x80. See
+	// https://letsencrypt.org/docs/a-warm-welcome-to-asn1-and-der/#integer-encoding
+	if len(req.Serial) > 19 || len(req.Serial) < 9 {
+		return errors.New("serial must be between 9 and 19 bytes")
 	}
 
 	return nil

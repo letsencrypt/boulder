@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"encoding/json"
@@ -199,4 +199,8 @@ func main() {
 			t.Cleanup()
 		}
 	})
+}
+
+func init() {
+	cmd.RegisterCommand("log-validator", main)
 }

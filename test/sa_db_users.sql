@@ -83,3 +83,9 @@ GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
+
+-- Temporary fqdnSets_old permissions
+-- TODO(#5670): Remove these when partitioning is fixed.
+GRANT SELECT,INSERT on fqdnSets_old TO 'sa'@'localhost';
+GRANT SELECT on fqdnSets_old TO 'sa_ro'@'localhost';
+GRANT SELECT ON fqdnSets_old TO 'mailer'@'localhost';

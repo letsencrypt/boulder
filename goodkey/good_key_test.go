@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
+	"google.golang.org/grpc"
 )
 
 var testingPolicy = &KeyPolicy{
@@ -259,7 +260,7 @@ func TestNonRefKey(t *testing.T) {
 }
 
 func TestDBBlocklistAccept(t *testing.T) {
-	testCheck := func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+	testCheck := func(context.Context, *sapb.KeyBlockedRequest, ...grpc.CallOption) (*sapb.Exists, error) {
 		return &sapb.Exists{Exists: false}, nil
 	}
 
@@ -273,7 +274,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 }
 
 func TestDBBlocklistReject(t *testing.T) {
-	testCheck := func(context.Context, *sapb.KeyBlockedRequest) (*sapb.Exists, error) {
+	testCheck := func(context.Context, *sapb.KeyBlockedRequest, ...grpc.CallOption) (*sapb.Exists, error) {
 		return &sapb.Exists{Exists: true}, nil
 	}
 

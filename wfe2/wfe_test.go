@@ -26,6 +26,8 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -209,69 +211,69 @@ type MockRegistrationAuthority struct {
 	lastRevocationReason revocation.Reason
 }
 
-func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, acct *corepb.Registration) (*corepb.Registration, error) {
-	acct.Id = 1
-	acct.CreatedAt = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
-	return acct, nil
+func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	in.Id = 1
+	in.CreatedAt = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	return in, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, request *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	request.Authz.RegistrationID = request.RegID
-	request.Authz.Id = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
-	return request.Authz, nil
+func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, in *rapb.NewAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	in.Authz.RegistrationID = in.RegID
+	in.Authz.Id = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
+	return in.Authz, nil
 }
 
-func (ra *MockRegistrationAuthority) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
+func (ra *MockRegistrationAuthority) NewCertificate(context.Context, *rapb.NewCertificateRequest, ...grpc.CallOption) (*corepb.Certificate, error) {
 	return &corepb.Certificate{}, nil
 }
 
-func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, req *rapb.UpdateRegistrationRequest) (*corepb.Registration, error) {
-	if !bytes.Equal(req.Base.Key, req.Update.Key) {
-		req.Base.Key = req.Update.Key
+func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, in *rapb.UpdateRegistrationRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	if !bytes.Equal(in.Base.Key, in.Update.Key) {
+		in.Base.Key = in.Update.Key
 	}
-	return req.Base, nil
+	return in.Base, nil
 }
 
-func (ra *MockRegistrationAuthority) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
-	return nil, nil
+func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
+	return &corepb.Authorization{}, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
-	ra.lastRevocationReason = revocation.Reason(req.Code)
+func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, in *rapb.RevokeCertificateWithRegRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	ra.lastRevocationReason = revocation.Reason(in.Code)
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(context.Context, *rapb.AdministrativelyRevokeCertificateRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) OnValidationUpdate(ctx context.Context, authz core.Authorization) error {
+func (ra *MockRegistrationAuthority) OnValidationUpdate(context.Context, core.Authorization, ...grpc.CallOption) error {
 	return nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateAuthorization(ctx context.Context, authz *corepb.Authorization) (*emptypb.Empty, error) {
+func (ra *MockRegistrationAuthority) DeactivateAuthorization(context.Context, *corepb.Authorization, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) DeactivateRegistration(ctx context.Context, _ *corepb.Registration) (*emptypb.Empty, error) {
+func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *corepb.Registration, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
 
-func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
+func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	return &corepb.Order{
 		Id:               1,
-		RegistrationID:   req.RegistrationID,
+		RegistrationID:   in.RegistrationID,
 		Created:          time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
 		Expires:          time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
-		Names:            req.Names,
+		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
 	}, nil
 }
 
-func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
-	req.Order.Status = string(core.StatusProcessing)
-	return req.Order, nil
+func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, in *rapb.FinalizeOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	in.Order.Status = string(core.StatusProcessing)
+	return in.Order, nil
 }
 
 func makeBody(s string) io.ReadCloser {
@@ -1114,8 +1116,6 @@ func TestChallenge(t *testing.T) {
 		return makePostRequestWithPath(path, jwsBody)
 	}
 
-	// See mocks/mocks.go StorageAuthority.GetAuthorization for the "expired/"
-	// "error_result/" path handling.
 	testCases := []struct {
 		Name            string
 		Request         *http.Request
@@ -1187,7 +1187,7 @@ type MockRAPerformValidationError struct {
 	MockRegistrationAuthority
 }
 
-func (ra *MockRAPerformValidationError) PerformValidation(_ context.Context, _ *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
+func (ra *MockRAPerformValidationError) PerformValidation(context.Context, *rapb.PerformValidationRequest, ...grpc.CallOption) (*corepb.Authorization, error) {
 	return nil, errors.New("broken on purpose")
 }
 
@@ -1756,12 +1756,12 @@ func TestAccount(t *testing.T) {
 }
 
 type mockSAWithCert struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 	cert   *x509.Certificate
 	status core.OCSPStatus
 }
 
-func newMockSAWithCert(t *testing.T, sa core.StorageGetter, status core.OCSPStatus) *mockSAWithCert {
+func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, status core.OCSPStatus) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test cert")
 	return &mockSAWithCert{sa, cert, status}
@@ -1769,7 +1769,7 @@ func newMockSAWithCert(t *testing.T, sa core.StorageGetter, status core.OCSPStat
 
 // GetCertificate returns the mock SA's hard-coded certificate, issued by the
 // account with regID 1, if the given serial matches. Otherwise, returns not found.
-func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
 		return nil, berrors.NotFoundError("Certificate with serial %q not found", req.Serial)
 	}
@@ -1786,14 +1786,14 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial) (*
 
 // GetCertificateStatus returns the mock SA's status, if the given serial matches.
 // Otherwise, returns not found.
-func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, serial string) (core.CertificateStatus, error) {
-	if serial != core.SerialToString(sa.cert.SerialNumber) {
-		return core.CertificateStatus{}, berrors.NotFoundError("Status for certificate with serial %q not found", serial)
+func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
+		return nil, berrors.NotFoundError("Status for certificate with serial %q not found", req.Serial)
 	}
 
-	return core.CertificateStatus{
+	return &corepb.CertificateStatus{
 		Serial: core.SerialToString(sa.cert.SerialNumber),
-		Status: sa.status,
+		Status: string(sa.status),
 	}, nil
 }
 
@@ -1999,11 +1999,11 @@ func TestGetCertificate(t *testing.T) {
 }
 
 type mockSAWithNewCert struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 	clk clock.Clock
 }
 
-func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	issuer, err := core.LoadCert("../test/hierarchy/int-e1.cert.pem")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load test issuer cert: %w", err)
@@ -2185,10 +2185,10 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 }
 
 type mockSAWithError struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAWithError) GetCertificate(_ context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
+func (sa *mockSAWithError) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return nil, errors.New("Oops")
 }
 
@@ -2935,6 +2935,56 @@ func TestRevokeCertificateValid(t *testing.T) {
 	test.AssertEquals(t, responseWriter.Body.String(), "")
 }
 
+// A revocation request with reason == keyCompromise should only succeed
+// if it was signed by the private key.
+func TestRevokeCertificateKeyCompromiseValid(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+
+	mockLog := wfe.log.(*blog.Mock)
+	mockLog.Clear()
+
+	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
+	test.AssertNotError(t, err, "Failed to load key")
+	key := loadKey(t, keyPemBytes)
+
+	revocationReason := revocation.Reason(ocsp.KeyCompromise)
+	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+	_, _, jwsBody := signRequestEmbed(t,
+		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+	test.AssertEquals(t, responseWriter.Code, 200)
+	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authorizing revocation"), []string{
+		`INFO: [AUDIT] Authorizing revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":1,"RegID":0,"Method":"privkey"}`,
+	})
+}
+
+func TestRevokeCertificateKeyCompromiseInvalid(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+
+	revocationReason := revocation.Reason(ocsp.KeyCompromise)
+	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
+	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
+	// NOTE: this account doesn't have any authorizations for the
+	// names in the cert, but it is the account that issued it
+	// originally
+	_, _, jwsBody := signRequestKeyID(
+		t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+
+	responseWriter := httptest.NewRecorder()
+	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
+		makePostRequestWithPath("revoke-cert", jwsBody))
+
+	test.AssertEquals(t, responseWriter.Code, 403)
+	test.AssertEquals(t, responseWriter.Body.String(), "{\n  \"type\": \"urn:ietf:params:acme:error:unauthorized\",\n  \"detail\": \"Revocation with reason keyCompromise is only supported by signing with the certificate private key\",\n  \"status\": 403\n}")
+}
+
 // Invalid revocation request: although signed with the cert key, the cert
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
@@ -3049,6 +3099,9 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
 
+	mockLog := wfe.log.(*blog.Mock)
+	mockLog.Clear()
+
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 	// NOTE: this account doesn't have any authorizations for the
@@ -3063,15 +3116,18 @@ func TestRevokeCertificateIssuingAccount(t *testing.T) {
 
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authorizing revocation"), []string{
+		`INFO: [AUDIT] Authorizing revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"RegID":1,"Method":"owner"}`,
+	})
 }
 
 type mockSAWithValidAuthz struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
 // GetValidAuthorizations says that all accounts have a valid authorization to
 // issue for the DNS name contained in ee-r3.cert.pem
-func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
 	res := sapb.Authorizations{}
 	res.Authz = append(res.Authz, &sapb.Authorizations_MapElement{
 		Domain: "ee.int-r3.boulder.test",
@@ -3085,6 +3141,9 @@ func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sap
 func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.SA = mockSAWithValidAuthz{newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)}
+
+	mockLog := wfe.log.(*blog.Mock)
+	mockLog.Clear()
 
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
@@ -3100,6 +3159,9 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	test.AssertEquals(t, responseWriter.Code, 200)
 	test.AssertEquals(t, responseWriter.Body.String(), "")
+	test.AssertDeepEquals(t, mockLog.GetAllMatching("Authorizing revocation"), []string{
+		`INFO: [AUDIT] Authorizing revocation JSON={"Serial":"000000000000000000001d72443db5189821","Reason":0,"RegID":5,"Method":"authorizations"}`,
+	})
 }
 
 // A revocation request signed by an unauthorized key.
@@ -3172,10 +3234,10 @@ func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 }
 
 type mockSAGetRegByKeyFails struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, fmt.Errorf("whoops")
 }
 
@@ -3203,10 +3265,10 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 }
 
 type mockSAGetRegByKeyNotFound struct {
-	core.StorageGetter
+	sapb.StorageAuthorityGetterClient
 }
 
-func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey) (*corepb.Registration, error) {
+func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, berrors.NotFoundError("not found")
 }
 
@@ -3290,7 +3352,7 @@ type noSCTMockRA struct {
 	MockRegistrationAuthority
 }
 
-func (ra *noSCTMockRA) FinalizeOrder(ctx context.Context, req *rapb.FinalizeOrderRequest) (*corepb.Order, error) {
+func (ra *noSCTMockRA) FinalizeOrder(context.Context, *rapb.FinalizeOrderRequest, ...grpc.CallOption) (*corepb.Order, error) {
 	return nil, berrors.MissingSCTsError("noSCTMockRA missing scts error")
 }
 

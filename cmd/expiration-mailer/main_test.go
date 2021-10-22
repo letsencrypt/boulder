@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -27,9 +27,11 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"github.com/prometheus/client_golang/prometheus"
 	io_prometheus_client "github.com/prometheus/client_model/go"
+	"google.golang.org/grpc"
 )
 
 func bigIntFromB64(b64 string) *big.Int {
@@ -47,7 +49,7 @@ type fakeRegStore struct {
 	RegByID map[int64]*corepb.Registration
 }
 
-func (f fakeRegStore) GetRegistration(ctx context.Context, req *sapb.RegistrationID) (*corepb.Registration, error) {
+func (f fakeRegStore) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	r, ok := f.RegByID[req.Id]
 	if !ok {
 		return r, berrors.NotFoundError("no registration found for %q", req.Id)
@@ -118,6 +120,7 @@ func TestSendNags(t *testing.T) {
 	}
 
 	cert := &x509.Certificate{
+		SerialNumber: big.NewInt(0x0304),
 		Subject: pkix.Name{
 			CommonName: "happy",
 		},
@@ -154,12 +157,21 @@ func TestSendNags(t *testing.T) {
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
-	templates, err := template.ParseGlob("../../data/*.template")
-	test.AssertNotError(t, err, "Failed to parse templates")
-	for _, template := range templates.Templates() {
-		m.emailTemplate = template
-		err = m.sendNags(nil, []*x509.Certificate{cert})
-		test.AssertNotError(t, err, "failed to send nag")
+	sendLogs := log.GetAllMatching("INFO: attempting send JSON=.*")
+	if len(sendLogs) != 2 {
+		t.Errorf("expected 2 'attempting send' log line, got %d: %s", len(sendLogs), strings.Join(sendLogs, "\n"))
+	}
+	if !strings.Contains(sendLogs[0], `"Rcpt":["rolandshoemaker@gmail.com"]`) {
+		t.Errorf("expected first 'attempting send' log line to have one address, got %q", sendLogs[0])
+	}
+	if !strings.Contains(sendLogs[0], `"Serials":["000000000000000000000000000000000304"]`) {
+		t.Errorf("expected first 'attempting send' log line to have one serial, got %q", sendLogs[0])
+	}
+	if !strings.Contains(sendLogs[0], `"DaysToExpiration":2`) {
+		t.Errorf("expected first 'attempting send' log line to have 2 days to expiration, got %q", sendLogs[0])
+	}
+	if !strings.Contains(sendLogs[0], `"DNSNames":["example.com"]`) {
+		t.Errorf("expected first 'attempting send' log line to have 1 domain, 'example.com', got %q", sendLogs[0])
 	}
 }
 
@@ -181,6 +193,8 @@ var serial5 = big.NewInt(0x1340)
 var serial5String = core.SerialToString(serial5)
 var serial6 = big.NewInt(0x1341)
 var serial7 = big.NewInt(0x1342)
+var serial8 = big.NewInt(0x1343)
+var serial9 = big.NewInt(0x1344)
 
 var testKey = rsa.PrivateKey{
 	PublicKey: rsa.PublicKey{N: n, E: e},
@@ -343,13 +357,13 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DER:            certDerD,
 	}
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: []byte("hash of D"),
+		SetHash: sa.HashNames(rawCertD.DNSNames),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: []byte("hash of D"),
+		SetHash: sa.HashNames(rawCertD.DNSNames),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -429,8 +443,7 @@ func TestCertIsRenewed(t *testing.T) {
 	testCerts := []*struct {
 		Serial       *big.Int
 		stringSerial string
-		FQDNHash     []byte
-		DNS          string
+		DNS          []string
 		NotBefore    time.Time
 		NotAfter     time.Time
 		// this field is the test assertion
@@ -438,58 +451,65 @@ func TestCertIsRenewed(t *testing.T) {
 	}{
 		{
 			Serial:    serial1,
-			FQDNHash:  []byte("hash of A"),
-			DNS:       "a.example.com",
+			DNS:       []string{"a.example.com", "a2.example.com"},
 			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((89 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial2,
-			FQDNHash:  []byte("hash of A"),
-			DNS:       "a.example.com",
+			DNS:       []string{"a.example.com", "a2.example.com"},
 			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((90 * 24) * time.Hour),
 			IsRenewed: false,
 		},
 		{
 			Serial:    serial3,
-			FQDNHash:  []byte("hash of B"),
-			DNS:       "b.example.net",
+			DNS:       []string{"b.example.net"},
 			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((90 * 24) * time.Hour),
 			IsRenewed: false,
 		},
 		{
 			Serial:    serial4,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-100 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((-10 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial5,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-80 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((10 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial6,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-75 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((15 * 24) * time.Hour),
 			IsRenewed: true,
 		},
 		{
 			Serial:    serial7,
-			FQDNHash:  []byte("hash of C"),
-			DNS:       "c.example.org",
+			DNS:       []string{"c.example.org"},
 			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
 			NotAfter:  testCtx.fc.Now().Add((89 * 24) * time.Hour),
+			IsRenewed: false,
+		},
+		{
+			Serial:    serial8,
+			DNS:       []string{"d.example.com", "d2.example.com"},
+			NotBefore: testCtx.fc.Now().Add((-1 * 24) * time.Hour),
+			NotAfter:  testCtx.fc.Now().Add((89 * 24) * time.Hour),
+			IsRenewed: false,
+		},
+		{
+			Serial:    serial9,
+			DNS:       []string{"d.example.com", "d2.example.com", "d3.example.com"},
+			NotBefore: testCtx.fc.Now().Add((0 * 24) * time.Hour),
+			NotAfter:  testCtx.fc.Now().Add((90 * 24) * time.Hour),
 			IsRenewed: false,
 		},
 	}
@@ -504,11 +524,11 @@ func TestCertIsRenewed(t *testing.T) {
 
 		rawCert := x509.Certificate{
 			Subject: pkix.Name{
-				CommonName: testData.DNS,
+				CommonName: testData.DNS[0],
 			},
 			NotBefore:    testData.NotBefore,
 			NotAfter:     testData.NotAfter,
-			DNSNames:     []string{testData.DNS},
+			DNSNames:     testData.DNS,
 			SerialNumber: testData.Serial,
 		}
 		certDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, &testKey)
@@ -523,7 +543,7 @@ func TestCertIsRenewed(t *testing.T) {
 			DER:            certDer,
 		}
 		fqdnStatus := &core.FQDNSet{
-			SetHash: testData.FQDNHash,
+			SetHash: sa.HashNames(testData.DNS),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,
@@ -538,7 +558,7 @@ func TestCertIsRenewed(t *testing.T) {
 	}
 
 	for _, testData := range testCerts {
-		renewed, err := testCtx.m.certIsRenewed(testData.stringSerial)
+		renewed, err := testCtx.m.certIsRenewed(testData.DNS, testData.NotBefore)
 		if err != nil {
 			t.Errorf("error checking renewal state for %s: %v", testData.stringSerial, err)
 			continue
@@ -762,7 +782,7 @@ func TestDedupOnRegistration(t *testing.T) {
 
 type testCtx struct {
 	dbMap   *db.WrappedMap
-	ssa     core.StorageAdder
+	ssa     sapb.StorageAuthorityClient
 	mc      *mocks.Mailer
 	fc      clock.FakeClock
 	m       *mailer
@@ -797,7 +817,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		emailTemplate:   tmpl,
 		subjectTemplate: subjTmpl,
 		dbMap:           dbMap,
-		rs:              ssa,
+		rs:              isa.SA{Impl: ssa},
 		nagTimes:        offsetNags,
 		limit:           100,
 		clk:             fc,
@@ -805,7 +825,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 	return &testCtx{
 		dbMap:   dbMap,
-		ssa:     ssa,
+		ssa:     isa.SA{Impl: ssa},
 		mc:      mc,
 		fc:      fc,
 		m:       m,

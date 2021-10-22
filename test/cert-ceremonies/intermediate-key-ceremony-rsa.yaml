@@ -8,4 +8,4 @@ key:
     type: rsa
     rsa-mod-length: 2048
 outputs:
-    public-key-path: /tmp/intermediate-signing-pub-rsa.pem
+    public-key-path: /hierarchy/intermediate-signing-pub-rsa.pem

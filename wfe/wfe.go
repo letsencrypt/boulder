@@ -65,13 +65,15 @@ const (
 	maxRequestSize = 50000
 )
 
+var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+
 // WebFrontEndImpl provides all the logic for Boulder's web-facing interface,
 // i.e., ACME.  Its members configure the paths for various ACME functions,
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	RA  core.RegistrationAuthority
-	SA  core.StorageGetter
+	RA  rapb.RegistrationAuthorityClient
+	SA  sapb.StorageAuthorityGetterClient
 	log blog.Logger
 	clk clock.Clock
 
@@ -801,9 +803,9 @@ func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
 		return
 	}
+	// Ensure gRPC response is complete.
 	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		err = errors.New("Incomplete gRPC response message")
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), errIncompleteGRPCResponse)
 		return
 	}
 
@@ -911,15 +913,15 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 	logEvent.Extra["RetrievedCertificateEmailAddresses"] = parsedCertificate.EmailAddresses
 	logEvent.Extra["RetrievedCertificateIPAddresses"] = parsedCertificate.IPAddresses
 
-	certStatus, err := wfe.SA.GetCertificateStatus(ctx, serial)
-	if err != nil {
+	certStatus, err := wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil || certStatus.Status == "" {
 		// TODO(#991): handle db errors
 		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to get certificate status"), err)
 		return
 	}
 	logEvent.Extra["CertificateStatus"] = certStatus.Status
 
-	if certStatus.Status == core.OCSPStatusRevoked {
+	if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 		wfe.sendError(response, logEvent, probs.Conflict("Certificate already revoked"), nil)
 		return
 	}
@@ -968,12 +970,12 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 			// performing the revocation, a parallel request happened and revoked the
 			// cert. In this case, just retrieve the certificate status again and
 			// return 409 Conflict.
-			certStatus, err = wfe.SA.GetCertificateStatus(ctx, serial)
-			if err != nil {
+			certStatus, err = wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+			if err != nil || certStatus.Status == "" {
 				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to get certificate status"), err)
 				return
 			}
-			if certStatus.Status == core.OCSPStatusRevoked {
+			if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
 				wfe.sendError(response, logEvent, probs.Conflict("Certificate already revoked"), nil)
 				return
 			}
@@ -1139,6 +1141,13 @@ func (wfe *WebFrontEndImpl) Challenge(
 		}
 		return
 	}
+
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -1480,13 +1489,19 @@ func (wfe *WebFrontEndImpl) Authorization(ctx context.Context, logEvent *web.Req
 		return
 	}
 
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
 	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
 		logEvent.DNSName = authzPB.Identifier
 	}
 	logEvent.Status = string(authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
-	if authzPB.Expires == 0 || time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
+	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}

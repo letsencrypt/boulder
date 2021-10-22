@@ -1,19 +1,23 @@
 {
   "ocspResponder": {
-    "source": "file:///tmp/intermediate-ocsp-rsa.b64",
+    "source": "file:///hierarchy/intermediate-ocsp-rsa.b64",
     "path": "/",
     "listenAddress": "0.0.0.0:4003",
+    "issuerCerts": [
+      "/hierarchy/intermediate-cert-rsa-a.pem"
+    ],
+    "maxAge": "10s",
+    "timeout": "4.9s",
     "shutdownStopTimeout": "10s",
-    "shutdownKillTimeout": "1m",
     "debugAddr": "localhost:8010"
   },
-  "common": {
-    "issuerCert": "/tmp/intermediate-cert-rsa-a.pem"
-  },
-  "sql": {
-    "sqlDebug": true
-  },
+
   "syslog": {
-    "stdoutlevel": 6
-  }
+   "stdoutlevel": 6,
+   "sysloglevel": 6
+ },
+  "beeline": {
+      "mute": true,
+      "dataset": "Test"
+ }
 }

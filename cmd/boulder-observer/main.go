@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"flag"
@@ -32,4 +32,8 @@ func main() {
 
 	// Start the `Observer` daemon.
 	observer.Start()
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-observer", main)
 }

@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -9,7 +9,6 @@ import (
 	"os"
 	"reflect"
 	"regexp"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -113,13 +112,6 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	if unexpiredOnly {
 		args["now"] = c.clock.Now()
 	}
-	count, err := c.dbMap.SelectInt(
-		"SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now",
-		args,
-	)
-	if err != nil {
-		return err
-	}
 
 	initialID, err := c.dbMap.SelectInt(
 		"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
@@ -138,7 +130,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	// packet limit.
 	args["limit"] = batchSize
 	args["id"] = initialID
-	for offset := 0; offset < int(count); {
+	for {
 		certs, err := sa.SelectCertificates(
 			c.dbMap,
 			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
@@ -153,8 +145,11 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		if len(certs) == 0 {
 			break
 		}
-		args["id"] = certs[len(certs)-1].ID
-		offset += len(certs)
+		lastCert := certs[len(certs)-1]
+		args["id"] = lastCert.ID
+		if lastCert.Issued.After(c.issuedReport.end) {
+			break
+		}
 	}
 
 	// Close channel so range operations won't block once the channel empties out
@@ -314,15 +309,8 @@ type config struct {
 		BadResultsOnly      bool
 		CheckPeriod         cmd.ConfigDuration
 
-		// TODO(#5581): This field is deprecated and can be removed once staging
-		// and production configs use `acceptableValidityDurations`.
-		//
-		// AcceptableValidityPeriods is a list of lengths (in seconds) which are
-		// acceptable Validity Periods for certificates we issue.
-		AcceptableValidityPeriods []uint
-
-		// AcceptableValidityDurations is a list of durations (in seconds) which are
-		// acceptable Validity durations for certificates we issue.
+		// AcceptableValidityDurations is a list of durations which are
+		// acceptable for certificates we issue.
 		AcceptableValidityDurations []cmd.ConfigDuration
 
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
@@ -336,14 +324,6 @@ type config struct {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-
-	// TODO(#5489): Remove these deprecated flags.
-	_ = flag.Int("workers", runtime.NumCPU(), "The number of concurrent workers used to process certificates")
-	_ = flag.Bool("bad-results-only", false, "Only collect and display bad results")
-	_ = flag.String("db-connect", "", "SQL URI if not provided in the configuration file")
-	_ = flag.Duration("check-period", time.Hour*2160, "How far back to check")
-	_ = flag.Bool("unexpired-only", false, "Only check currently unexpired certificates")
-
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -366,35 +346,16 @@ func main() {
 	err = blog.Set(logger)
 	cmd.FailOnError(err, "Failed to set audit logger")
 
-	// TODO(#5581): This check can be removed once staging and production configs
-	// use `acceptableValidityDurations`.
-	if len(config.CertChecker.AcceptableValidityDurations) > 0 && len(config.CertChecker.AcceptableValidityPeriods) > 0 {
-		cmd.Fail("Config specifies both 'acceptableValidityDurations' and 'acceptableValidityPeriods'")
-	}
-
 	acceptableValidityDurations := make(map[time.Duration]bool)
-	if len(config.CertChecker.AcceptableValidityDurations) == 0 && len(config.CertChecker.AcceptableValidityPeriods) == 0 {
+	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
+		for _, entry := range config.CertChecker.AcceptableValidityDurations {
+			acceptableValidityDurations[entry.Duration] = true
+		}
+	} else {
 		// For backwards compatibility, assume only a single valid validity
 		// period of exactly 90 days if none is configured.
 		ninetyDays := (time.Hour * 24) * 90
 		acceptableValidityDurations[ninetyDays] = true
-	} else {
-		if len(config.CertChecker.AcceptableValidityDurations) > 0 {
-			for _, duration := range config.CertChecker.AcceptableValidityDurations {
-				acceptableValidityDurations[duration.Duration] = true
-			}
-		}
-		if len(config.CertChecker.AcceptableValidityPeriods) > 0 {
-			// TODO(#5581): This conditional is deprecated and can be removed once
-			// staging and production configs use `acceptableValidityDurations`.
-			for _, period := range config.CertChecker.AcceptableValidityPeriods {
-				duration, err := time.ParseDuration(fmt.Sprintf("%ds", period))
-				if err != nil {
-					cmd.FailOnError(err, "Failed to marshal period to time.Duration")
-				}
-				acceptableValidityDurations[duration] = true
-			}
-		}
 	}
 
 	// Validate PA config and set defaults if needed.
@@ -426,7 +387,7 @@ func main() {
 	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
-	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(saDbMap.Db, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
@@ -481,4 +442,8 @@ func main() {
 	)
 	err = checker.issuedReport.dump()
 	cmd.FailOnError(err, "Failed to dump results: %s\n")
+}
+
+func init() {
+	cmd.RegisterCommand("cert-checker", main)
 }

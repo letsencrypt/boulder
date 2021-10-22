@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -96,4 +96,8 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
 	cmd.FailOnError(err, "Nonce service gRPC server failed")
+}
+
+func init() {
+	cmd.RegisterCommand("nonce-service", main)
 }

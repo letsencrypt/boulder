@@ -13,6 +13,7 @@ import (
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
+	_ "github.com/letsencrypt/boulder/linter/lints/all"
 	_ "github.com/letsencrypt/boulder/linter/lints/intermediate"
 	_ "github.com/letsencrypt/boulder/linter/lints/root"
 	_ "github.com/letsencrypt/boulder/linter/lints/subscriber"

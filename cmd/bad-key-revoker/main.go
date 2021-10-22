@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -424,7 +424,7 @@ func main() {
 	dbAddr, dbUser, err := config.BadKeyRevoker.DB.DSNAddressAndUser()
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
-	sa.InitDBMetrics(dbMap, scope, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -538,4 +538,8 @@ func (bkr *badKeyRevoker) backoff() {
 // reset sets the backoff ticker and duration to zero.
 func (bkr *badKeyRevoker) backoffReset() {
 	bkr.backoffTicker = 0
+}
+
+func init() {
+	cmd.RegisterCommand("bad-key-revoker", main)
 }

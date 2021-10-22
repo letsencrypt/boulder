@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -25,6 +25,8 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
+	ira "github.com/letsencrypt/boulder/test/inmem/ra"
+	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -58,7 +60,7 @@ func TestRevokeBatch(t *testing.T) {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 	defer test.ResetSATestDatabase(t)
-	reg := satest.CreateWorkingRegistration(t, ssa)
+	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: ssa})
 
 	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")
@@ -81,8 +83,9 @@ func TestRevokeBatch(t *testing.T) {
 		&mockPurger{},
 		[]*issuance.Certificate{issuer},
 	)
-	ra.SA = ssa
+	ra.SA = isa.SA{Impl: ssa}
 	ra.CA = &mockCA{}
+	rac := ira.RA{Impl: ra}
 
 	serialFile, err := ioutil.TempFile("", "serials")
 	test.AssertNotError(t, err, "failed to open temp file")
@@ -113,12 +116,12 @@ func TestRevokeBatch(t *testing.T) {
 		test.AssertNotError(t, err, "failed to write serial to temp file")
 	}
 
-	err = revokeBatch(ra, log, dbMap, serialFile.Name(), 0, 2)
+	err = revokeBatch(rac, log, dbMap, serialFile.Name(), 0, 2)
 	test.AssertNotError(t, err, "revokeBatch failed")
 
 	for _, serial := range serials {
-		status, err := ssa.GetCertificateStatus(context.Background(), core.SerialToString(serial))
+		status, err := ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(serial)})
 		test.AssertNotError(t, err, "failed to retrieve certificate status")
-		test.AssertEquals(t, status.Status, core.OCSPStatusRevoked)
+		test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	}
 }

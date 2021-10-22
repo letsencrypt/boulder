@@ -320,8 +320,9 @@ func TestRequestValid(t *testing.T) {
 				PublicKey: &ecdsa.PublicKey{},
 				NotBefore: fc.Now(),
 				NotAfter:  fc.Now().Add(time.Hour),
+				Serial:    []byte{0, 1, 2, 3, 4, 5, 6, 7},
 			},
-			expectedError: "serial must be between 8 and 20 bytes",
+			expectedError: "serial must be between 9 and 19 bytes",
 		},
 		{
 			name: "serial too long",
@@ -333,9 +334,9 @@ func TestRequestValid(t *testing.T) {
 				PublicKey: &ecdsa.PublicKey{},
 				NotBefore: fc.Now(),
 				NotAfter:  fc.Now().Add(time.Hour),
-				Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 1, 2, 3, 4, 5, 6, 7, 8, 8, 9, 0},
+				Serial:    []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
 			},
-			expectedError: "serial must be between 8 and 20 bytes",
+			expectedError: "serial must be between 9 and 19 bytes",
 		},
 		{
 			name: "good",
@@ -347,7 +348,7 @@ func TestRequestValid(t *testing.T) {
 				PublicKey: &ecdsa.PublicKey{},
 				NotBefore: fc.Now(),
 				NotAfter:  fc.Now().Add(time.Hour),
-				Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8},
+				Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 			},
 		},
 	}
@@ -545,7 +546,7 @@ func TestIssue(t *testing.T) {
 			test.AssertNotError(t, err, "failed to generate test key")
 			certBytes, err := signer.Issue(&IssuanceRequest{
 				PublicKey:  pk.Public(),
-				Serial:     []byte{1, 2, 3, 4, 5, 6, 7, 8},
+				Serial:     []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 				CommonName: "example.com",
 				DNSNames:   []string{"example.com"},
 				NotBefore:  fc.Now(),
@@ -558,7 +559,7 @@ func TestIssue(t *testing.T) {
 			test.AssertNotError(t, err, "signature validation failed")
 			test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com"})
 			test.AssertEquals(t, cert.Subject.CommonName, "example.com")
-			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
+			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 			test.AssertEquals(t, len(cert.Extensions), 8) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
@@ -581,7 +582,7 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
 		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
@@ -591,7 +592,7 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse certificate")
 	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
+	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 8) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment)
@@ -612,7 +613,7 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
 		PublicKey:       pk.Public(),
-		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:        []string{"example.com"},
 		IncludeCTPoison: true,
 		NotBefore:       fc.Now(),
@@ -623,7 +624,7 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse certificate")
 	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
+	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, CT Poison
 	test.AssertDeepEquals(t, cert.Extensions[8], ctPoisonExt)
@@ -644,7 +645,7 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
 		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:  []string{"example.com"},
 		SCTList: []ct.SignedCertificateTimestamp{
 			{},
@@ -657,7 +658,7 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse certificate")
 	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
+	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, SCT list
 	test.AssertDeepEquals(t, cert.Extensions[8], pkix.Extension{
@@ -681,7 +682,7 @@ func TestIssueMustStaple(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	certBytes, err := signer.Issue(&IssuanceRequest{
 		PublicKey:         pk.Public(),
-		Serial:            []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Serial:            []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:          []string{"example.com"},
 		IncludeMustStaple: true,
 		NotBefore:         fc.Now(),
@@ -692,7 +693,7 @@ func TestIssueMustStaple(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse certificate")
 	err = cert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8})
+	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Must-Staple
 	test.AssertDeepEquals(t, cert.Extensions[8], mustStapleExt)
@@ -709,7 +710,7 @@ func TestIssueBadLint(t *testing.T) {
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, err = signer.Issue(&IssuanceRequest{
 		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),

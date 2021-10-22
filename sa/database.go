@@ -8,6 +8,7 @@ import (
 	"github.com/go-gorp/gorp/v3"
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	boulderDB "github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
@@ -41,6 +42,17 @@ type DbSettings struct {
 	// If d < 0, connections are not closed due to a connection's idle
 	// time.
 	ConnMaxIdleTime time.Duration
+}
+
+// NewDbSettingsFromDBConfig returns a `DbSettings` object for the provided
+// `cmd.DBConfig`.
+func NewDbSettingsFromDBConfig(dbconfig cmd.DBConfig) DbSettings {
+	return DbSettings{
+		MaxOpenConns:    dbconfig.MaxOpenConns,
+		MaxIdleConns:    dbconfig.MaxIdleConns,
+		ConnMaxLifetime: dbconfig.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: dbconfig.ConnMaxIdleTime.Duration,
+	}
 }
 
 // NewDbMap creates a wrapped root gorp mapping object. Create one of these for
