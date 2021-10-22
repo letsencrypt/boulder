@@ -113,15 +113,18 @@ github.com/vmihailenco/tagparser/internal
 github.com/vmihailenco/tagparser/internal/parser
 # github.com/weppos/publicsuffix-go v0.15.1-0.20210823091527-b19572c4b3c2
 github.com/weppos/publicsuffix-go/publicsuffix
-# github.com/zmap/zcrypto v0.0.0-20210513123304-ea3fdbd5ea27
+# github.com/zmap/zcrypto v0.0.0-20210811211718-6f9bc4aff20f
+github.com/zmap/zcrypto/cryptobyte
+github.com/zmap/zcrypto/cryptobyte/asn1
 github.com/zmap/zcrypto/dsa
+github.com/zmap/zcrypto/encoding/asn1
 github.com/zmap/zcrypto/internal/randutil
 github.com/zmap/zcrypto/json
 github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint/v3 v3.2.0
+# github.com/zmap/zlint/v3 v3.3.1-0.20211019173530-cb17369b4628
 github.com/zmap/zlint/v3
 github.com/zmap/zlint/v3/lint
 github.com/zmap/zlint/v3/lints/apple

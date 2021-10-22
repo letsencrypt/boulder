@@ -15,11 +15,11 @@
 package rfc
 
 import (
-	"encoding/asn1"
 	"errors"
 	"fmt"
 	"regexp"
 
+	"github.com/zmap/zcrypto/encoding/asn1"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
@@ -32,8 +32,12 @@ func init() {
 		Citation:      "RFC 5280: Appendix B. ASN.1 Notes",
 		Source:        lint.RFC5280,
 		EffectiveDate: util.RFC2459Date,
-		Lint:          &subjectPrintableStringBadAlpha{},
+		Lint:          NewSubjectPrintableStringBadAlpha,
 	})
+}
+
+func NewSubjectPrintableStringBadAlpha() lint.LintInterface {
+	return &subjectPrintableStringBadAlpha{}
 }
 
 var (
@@ -55,10 +59,6 @@ func validatePrintableString(rawPS []byte) error {
 }
 
 type subjectPrintableStringBadAlpha struct {
-}
-
-func (l *subjectPrintableStringBadAlpha) Initialize() error {
-	return nil
 }
 
 // CheckApplies returns true for any certificate with a non-empty RawSubject.

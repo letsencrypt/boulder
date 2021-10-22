@@ -43,12 +43,12 @@ func init() {
 		Citation:      "Mozilla Root Store Policy / Section 5.3",
 		Source:        lint.MozillaRootStorePolicy,
 		EffectiveDate: time.Date(2019, time.January, 1, 0, 0, 0, 0, time.UTC),
-		Lint:          &allowedEKU{},
+		Lint:          NewAllowedEKU,
 	})
 }
 
-func (l *allowedEKU) Initialize() error {
-	return nil
+func NewAllowedEKU() lint.LintInterface {
+	return &allowedEKU{}
 }
 
 func (l *allowedEKU) CheckApplies(c *x509.Certificate) bool {

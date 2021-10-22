@@ -32,12 +32,12 @@ func init() {
 		// Refer to BRs: 6.1.5, taking the statement "Before 31 Dec 2010" literally
 		Source:        lint.CABFBaselineRequirements,
 		EffectiveDate: util.ZeroDate,
-		Lint:          &dsaTooShort{},
+		Lint:          NewDsaTooShort,
 	})
 }
 
-func (l *dsaTooShort) Initialize() error {
-	return nil
+func NewDsaTooShort() lint.LintInterface {
+	return &dsaTooShort{}
 }
 
 func (l *dsaTooShort) CheckApplies(c *x509.Certificate) bool {

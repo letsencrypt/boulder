@@ -7,17 +7,15 @@ package x509
 import (
 	"crypto/ecdsa"
 	"crypto/rsa"
-	"encoding/asn1"
 	"encoding/json"
 	"errors"
 	"net"
 	"sort"
-
-	"github.com/zmap/zcrypto/dsa"
-
 	"strings"
 	"time"
 
+	"github.com/zmap/zcrypto/dsa"
+	"github.com/zmap/zcrypto/encoding/asn1"
 	jsonKeys "github.com/zmap/zcrypto/json"
 	"github.com/zmap/zcrypto/util"
 	"github.com/zmap/zcrypto/x509/pkix"

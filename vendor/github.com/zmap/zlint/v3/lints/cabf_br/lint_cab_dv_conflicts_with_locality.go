@@ -30,15 +30,15 @@ func init() {
 		Citation:      "BRs: 7.1.6.1",
 		Source:        lint.CABFBaselineRequirements,
 		EffectiveDate: util.CABEffectiveDate,
-		Lint:          &certPolicyConflictsWithLocality{},
+		Lint:          NewCertPolicyConflictsWithLocality,
 	})
 }
 
-type certPolicyConflictsWithLocality struct{}
-
-func (l *certPolicyConflictsWithLocality) Initialize() error {
-	return nil
+func NewCertPolicyConflictsWithLocality() lint.LintInterface {
+	return &certPolicyConflictsWithLocality{}
 }
+
+type certPolicyConflictsWithLocality struct{}
 
 func (l *certPolicyConflictsWithLocality) CheckApplies(cert *x509.Certificate) bool {
 	return util.SliceContainsOID(cert.PolicyIdentifiers, util.BRDomainValidatedOID) && !util.IsCACert(cert)

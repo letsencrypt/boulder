@@ -31,12 +31,12 @@ func init() {
 		Citation:      "BRs: 6.1.5",
 		Source:        lint.CABFBaselineRequirements,
 		EffectiveDate: util.ZeroDate,
-		Lint:          &rsaParsedTestsKeySize{},
+		Lint:          NewRsaParsedTestsKeySize,
 	})
 }
 
-func (l *rsaParsedTestsKeySize) Initialize() error {
-	return nil
+func NewRsaParsedTestsKeySize() lint.LintInterface {
+	return &rsaParsedTestsKeySize{}
 }
 
 func (l *rsaParsedTestsKeySize) CheckApplies(c *x509.Certificate) bool {

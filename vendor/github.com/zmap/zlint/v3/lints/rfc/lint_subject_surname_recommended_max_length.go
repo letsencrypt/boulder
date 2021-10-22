@@ -37,15 +37,15 @@ func init() {
 		Citation:      "ITU-T Rec. X.411 (11/1988), Annex B Reference Definition of MTS Parameter Upper Bounds",
 		Source:        lint.RFC5280,
 		EffectiveDate: util.RFC2459Date,
-		Lint:          &SubjectSurnameRecommendedMaxLength{},
+		Lint:          NewSubjectSurnameRecommendedMaxLength,
 	})
 }
 
-type SubjectSurnameRecommendedMaxLength struct{}
-
-func (l *SubjectSurnameRecommendedMaxLength) Initialize() error {
-	return nil
+func NewSubjectSurnameRecommendedMaxLength() lint.LintInterface {
+	return &SubjectSurnameRecommendedMaxLength{}
 }
+
+type SubjectSurnameRecommendedMaxLength struct{}
 
 func (l *SubjectSurnameRecommendedMaxLength) CheckApplies(c *x509.Certificate) bool {
 	return true

@@ -46,12 +46,12 @@ func init() {
 		Citation:      "RFC 5280: 4.1.2.2",
 		Source:        lint.RFC5280,
 		EffectiveDate: util.RFC3280Date,
-		Lint:          &SerialNumberNotPositive{},
+		Lint:          NewSerialNumberNotPositive,
 	})
 }
 
-func (l *SerialNumberNotPositive) Initialize() error {
-	return nil
+func NewSerialNumberNotPositive() lint.LintInterface {
+	return &SerialNumberNotPositive{}
 }
 
 func (l *SerialNumberNotPositive) CheckApplies(cert *x509.Certificate) bool {

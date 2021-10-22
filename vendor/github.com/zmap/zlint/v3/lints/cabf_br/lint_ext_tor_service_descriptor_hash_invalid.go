@@ -33,8 +33,12 @@ func init() {
 		Citation:      "BRs: Ballot 201, Ballot SC27",
 		Source:        lint.CABFBaselineRequirements,
 		EffectiveDate: util.CABV201Date,
-		Lint:          &torServiceDescHashInvalid{},
+		Lint:          NewTorServiceDescHashInvalid,
 	})
+}
+
+func NewTorServiceDescHashInvalid() lint.LintInterface {
+	return &torServiceDescHashInvalid{}
 }
 
 func (l *torServiceDescHashInvalid) Initialize() error {

@@ -5341,7 +5341,7 @@ var tldMap = map[string]GTLDPeriod{
 	"rmit": {
 		GTLD:           "rmit",
 		DelegationDate: "2016-11-24",
-		RemovalDate:    "",
+		RemovalDate:    "2021-09-27",
 	},
 	"ro": {
 		GTLD:           "ro",
@@ -6076,7 +6076,7 @@ var tldMap = map[string]GTLDPeriod{
 	"swiftcover": {
 		GTLD:           "swiftcover",
 		DelegationDate: "2016-07-21",
-		RemovalDate:    "",
+		RemovalDate:    "2021-10-05",
 	},
 	"swiss": {
 		GTLD:           "swiss",
