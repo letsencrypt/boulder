@@ -156,9 +156,9 @@ func TestTimeouts(t *testing.T) {
 	test_proto.RegisterChillerServer(s, &testServer{})
 	go func() {
 		start := time.Now()
-		if err := s.Serve(lis); err != nil &&
-			!strings.HasSuffix(err.Error(), "use of closed network connection") {
-			t.Fatalf("s.Serve: %v after %s", err, time.Since(start))
+		err := s.Serve(lis)
+		if err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
+			t.Logf("s.Serve: %v after %s", err, time.Since(start))
 		}
 	}()
 	defer s.Stop()
@@ -218,9 +218,9 @@ func TestRequestTimeTagging(t *testing.T) {
 	// Chill until ill
 	go func() {
 		start := time.Now()
-		if err := s.Serve(lis); err != nil &&
-			!strings.HasSuffix(err.Error(), "use of closed network connection") {
-			t.Fatalf("s.Serve: %v after %s", err, time.Since(start))
+		err := s.Serve(lis)
+		if err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
+			t.Logf("s.Serve: %v after %s", err, time.Since(start))
 		}
 	}()
 	defer s.Stop()
@@ -303,9 +303,9 @@ func TestInFlightRPCStat(t *testing.T) {
 	// Chill until ill
 	go func() {
 		start := time.Now()
-		if err := s.Serve(lis); err != nil &&
-			!strings.HasSuffix(err.Error(), "use of closed network connection") {
-			t.Fatalf("s.Serve: %v after %s", err, time.Since(start))
+		err := s.Serve(lis)
+		if err != nil && !strings.HasSuffix(err.Error(), "use of closed network connection") {
+			t.Logf("s.Serve: %v after %s", err, time.Since(start))
 		}
 	}()
 	defer s.Stop()
