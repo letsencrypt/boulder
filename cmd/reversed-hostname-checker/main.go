@@ -23,7 +23,7 @@ func init() {
 
 func main() {
 	inputFilename := flag.String("input", "", "File containing a list of reversed hostnames to check, newline separated. Defaults to stdin")
-	policyFile := flag.String("policy", "../../test/hostname-policy.yaml", "File containing a hostname policy in yaml.")
+	policyFile := flag.String("policy", "test/hostname-policy.yaml", "File containing a hostname policy in yaml.")
 	flag.Parse()
 
 	var input io.Reader
@@ -46,11 +46,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("reading %s: %s", *policyFile, err)
 	}
+	var errors bool
 	for scanner.Scan() {
 		n := sa.ReverseName(scanner.Text())
 		err := pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{identifier.DNSIdentifier(n)})
 		if err != nil {
+			errors = true
 			fmt.Printf("%s: %s\n", n, err)
 		}
+	}
+	if errors {
+		os.Exit(1)
 	}
 }
