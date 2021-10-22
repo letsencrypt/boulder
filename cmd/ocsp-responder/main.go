@@ -173,7 +173,10 @@ func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 
 	var header http.Header = make(map[string][]string)
 	if len(serialString) > 2 {
-		header.Add("Edge-Cache-Tag", serialString[:2])
+		// Set a cache tag that is equal to the last two bytes of the serial.
+		// We expect that to be randomly distributed, so each tag should map to
+		// about 1/256 of our responses.
+		header.Add("Edge-Cache-Tag", serialString[len(serialString)-2:])
 	}
 
 	var certStatus core.CertificateStatus

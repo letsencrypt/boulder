@@ -175,7 +175,7 @@ func TestDBHandler(t *testing.T) {
 		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
 	}
 	cacheTag := w.Result().Header["Edge-Cache-Tag"]
-	expectedCacheTag := []string{"00"}
+	expectedCacheTag := []string{"08"}
 	if !reflect.DeepEqual(cacheTag, expectedCacheTag) {
 		t.Errorf("Edge-Cache-Tag: expected %q, got %q", expectedCacheTag, cacheTag)
 	}
