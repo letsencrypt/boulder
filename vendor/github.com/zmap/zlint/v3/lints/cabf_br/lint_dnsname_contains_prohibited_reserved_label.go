@@ -1,5 +1,3 @@
-package rfc
-
 /*
  * ZLint Copyright 2021 Regents of the University of Michigan
  *
@@ -14,50 +12,47 @@ package rfc
  * permissions and limitations under the License.
  */
 
+package cabf_br
+
 import (
 	"strings"
 
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
-	"golang.org/x/text/unicode/norm"
 )
-
-type IDNNotNFC struct{}
 
 func init() {
 	lint.RegisterLint(&lint.Lint{
-		Name:          "e_international_dns_name_not_nfc",
-		Description:   "Internationalized DNSNames must be normalized by Unicode normalization form C",
-		Citation:      "RFC 8399",
-		Source:        lint.RFC5891,
-		EffectiveDate: util.RFC8399Date,
-		Lint:          NewIDNNotNFC,
+		Name:          "e_dnsname_contains_prohibited_reserved_label",
+		Description:   "FQDNs MUST consist solely of Domain Labels that are P‐Labels or Non‐Reserved LDH Labels",
+		Citation:      "BRs: 7.1.4.2.1",
+		Source:        lint.CABFBaselineRequirements,
+		EffectiveDate: util.NoReservedDomainLabelsDate,
+		Lint:          NewDNSNameContainsProhibitedReservedLabel,
 	})
 }
 
-func NewIDNNotNFC() lint.LintInterface {
-	return &IDNNotNFC{}
+type DNSNameContainsProhibitedReservedLabel struct{}
+
+func NewDNSNameContainsProhibitedReservedLabel() lint.LintInterface {
+	return &DNSNameContainsProhibitedReservedLabel{}
 }
 
-func (l *IDNNotNFC) CheckApplies(c *x509.Certificate) bool {
-	return util.IsExtInCert(c, util.SubjectAlternateNameOID)
+func (l *DNSNameContainsProhibitedReservedLabel) CheckApplies(c *x509.Certificate) bool {
+	return util.IsSubscriberCert(c) && util.DNSNamesExist(c)
 }
 
-func (l *IDNNotNFC) Execute(c *x509.Certificate) *lint.LintResult {
+func (l *DNSNameContainsProhibitedReservedLabel) Execute(c *x509.Certificate) *lint.LintResult {
 	for _, dns := range c.DNSNames {
 		labels := strings.Split(dns, ".")
+
 		for _, label := range labels {
-			if util.HasXNLabelPrefix(label) {
-				unicodeLabel, err := util.IdnaToUnicode(label)
-				if err != nil {
-					return &lint.LintResult{Status: lint.NA}
-				}
-				if !norm.NFC.IsNormalString(unicodeLabel) {
-					return &lint.LintResult{Status: lint.Error}
-				}
+			if util.HasReservedLabelPrefix(label) && !util.HasXNLabelPrefix(label) {
+				return &lint.LintResult{Status: lint.Error}
 			}
 		}
 	}
+
 	return &lint.LintResult{Status: lint.Pass}
 }
