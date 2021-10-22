@@ -115,16 +115,20 @@ func main() {
 	var manualMode bool
 	if os.Args[1] == "manual" {
 		manualMode = true
-		manualFlags.Parse(os.Args[2:])
-		*configFile = *manualConfigFile
+		_ = manualFlags.Parse(os.Args[2:])
+		if *configFile == "" {
+			manualFlags.Usage()
+			os.Exit(1)
+		}
+		configFile = manualConfigFile
 	} else {
-		daemonFlags.Parse(os.Args[2:])
+		_ = daemonFlags.Parse(os.Args[2:])
+		if *configFile == "" {
+			daemonFlags.Usage()
+			os.Exit(1)
+		}
 	}
 
-	if *configFile == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
 
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
