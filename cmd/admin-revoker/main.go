@@ -1,16 +1,15 @@
 package notmain
 
 import (
+	"bufio"
 	"context"
 	"crypto/x509"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -141,10 +140,16 @@ func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason,
 }
 
 func revokeBatch(rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap *db.WrappedMap, serialPath string, reasonCode revocation.Reason, parallelism int) error {
-	serials, err := ioutil.ReadFile(serialPath)
+	file, err := os.Open(serialPath)
 	if err != nil {
 		return err
 	}
+
+	scanner := bufio.NewScanner(file)
+	if err != nil {
+		return err
+	}
+
 	wg := new(sync.WaitGroup)
 	work := make(chan string, parallelism)
 	for i := 0; i < parallelism; i++ {
@@ -163,7 +168,9 @@ func revokeBatch(rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap
 			}
 		}()
 	}
-	for _, serial := range strings.Split(string(serials), "\n") {
+
+	for scanner.Scan() {
+		serial := scanner.Text()
 		if serial == "" {
 			continue
 		}
