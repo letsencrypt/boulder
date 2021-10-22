@@ -120,6 +120,12 @@ func main() {
 			manualFlags.Usage()
 			os.Exit(1)
 		}
+		if *tag == "" && *tagFile == "" {
+			cmd.Fail("Must specify one of --tag or --tag-file for manual purge")
+		} else if *tag != "" && *tagFile != "" {
+			cmd.Fail("Cannot specify both of --tag and --tag-file for manual purge")
+		}
+
 		configFile = manualConfigFile
 	} else {
 		_ = daemonFlags.Parse(os.Args[2:])
@@ -188,12 +194,6 @@ func main() {
 }
 
 func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string, logger blog.Logger) {
-	if tag == "" && tagFile == "" {
-		cmd.Fail("Must specify one of --tag or --tag-file for manual purge")
-	} else if tag != "" && tagFile != "" {
-		cmd.Fail("Cannot specify both of --tag and --tag-file for manual purge")
-	}
-
 	var tags []string
 	if tag != "" {
 		tags = []string{tag}
