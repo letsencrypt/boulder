@@ -41,12 +41,12 @@ func init() {
 		Citation:      "Mozilla Root Store Policy / Section 5.1",
 		Source:        lint.MozillaRootStorePolicy,
 		EffectiveDate: util.MozillaPolicy241Date,
-		Lint:          &prohibitDSAUsage{},
+		Lint:          NewProhibitDSAUsage,
 	})
 }
 
-func (l *prohibitDSAUsage) Initialize() error {
-	return nil
+func NewProhibitDSAUsage() lint.LintInterface {
+	return &prohibitDSAUsage{}
 }
 
 func (l *prohibitDSAUsage) CheckApplies(c *x509.Certificate) bool {

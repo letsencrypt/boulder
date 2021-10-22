@@ -32,12 +32,12 @@ func init() {
 		Source:          lint.CABFBaselineRequirements,
 		EffectiveDate:   util.CABEffectiveDate,
 		IneffectiveDate: util.CABFBRs_1_7_1_Date,
-		Lint:            &dsaParamsMissing{},
+		Lint:            NewDsaParamsMissing,
 	})
 }
 
-func (l *dsaParamsMissing) Initialize() error {
-	return nil
+func NewDsaParamsMissing() lint.LintInterface {
+	return &dsaParamsMissing{}
 }
 
 func (l *dsaParamsMissing) CheckApplies(c *x509.Certificate) bool {

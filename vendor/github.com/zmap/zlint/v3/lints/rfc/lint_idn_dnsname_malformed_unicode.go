@@ -32,12 +32,12 @@ func init() {
 		Citation:      "RFC 3490",
 		EffectiveDate: util.RFC3490Date,
 		Source:        lint.RFC5280,
-		Lint:          &IDNMalformedUnicode{},
+		Lint:          NewIDNMalformedUnicode,
 	})
 }
 
-func (l *IDNMalformedUnicode) Initialize() error {
-	return nil
+func NewIDNMalformedUnicode() lint.LintInterface {
+	return &IDNMalformedUnicode{}
 }
 
 func (l *IDNMalformedUnicode) CheckApplies(c *x509.Certificate) bool {

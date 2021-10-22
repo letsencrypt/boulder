@@ -26,14 +26,14 @@ func init() {
 		Citation:      "Fill this in...",
 		Source:        UnknownLintSource,
 		EffectiveDate: "Change this...",
-		Lint:          &SUBST{},
+		Lint:          func() lint.LintInterface { return &SUBST{} },
 	})
 }
 
 type SUBST struct{}
 
-func (l *SUBST) Initialize() error {
-	return nil
+func NewPASCAL_CASE_SUBST() lint.LintInterface {
+    return &SUBST{}
 }
 
 func (l *SUBST) CheckApplies(c *x509.Certificate) bool {

@@ -41,12 +41,12 @@ func init() {
 		Citation:      "RFC 5280: 4.2.1.10",
 		Source:        lint.RFC5280,
 		EffectiveDate: util.RFC2459Date,
-		Lint:          &nameConstraintCrit{},
+		Lint:          NewNameConstraintCrit,
 	})
 }
 
-func (l *nameConstraintCrit) Initialize() error {
-	return nil
+func NewNameConstraintCrit() lint.LintInterface {
+	return &nameConstraintCrit{}
 }
 
 func (l *nameConstraintCrit) CheckApplies(c *x509.Certificate) bool {

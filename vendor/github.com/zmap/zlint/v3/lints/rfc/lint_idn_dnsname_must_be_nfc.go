@@ -33,12 +33,12 @@ func init() {
 		Citation:      "RFC 8399",
 		Source:        lint.RFC5891,
 		EffectiveDate: util.RFC8399Date,
-		Lint:          &IDNNotNFC{},
+		Lint:          NewIDNNotNFC,
 	})
 }
 
-func (l *IDNNotNFC) Initialize() error {
-	return nil
+func NewIDNNotNFC() lint.LintInterface {
+	return &IDNNotNFC{}
 }
 
 func (l *IDNNotNFC) CheckApplies(c *x509.Certificate) bool {
