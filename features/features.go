@@ -16,6 +16,7 @@ const (
 	StripDefaultSchemePort
 	NonCFSSLSigner
 	StoreIssuerInfo
+	StreamlineOrderAndAuthzs
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -48,9 +49,6 @@ const (
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
-	// StreamlineOrderAndAuthzs enables the use of a new SA gRPC method that
-	// combines creating new Authzs and the new Order into a single operations.
-	StreamlineOrderAndAuthzs
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo

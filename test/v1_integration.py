@@ -345,7 +345,7 @@ def test_issuer():
     parsed_chain = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, chain)
     parsed_cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
     parsed_root = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM,
-        open("/tmp/root-cert-rsa.pem").read())
+        open("/hierarchy/root-cert-rsa.pem").read())
 
     store = OpenSSL.crypto.X509Store()
     store.add_cert(parsed_root)
@@ -365,7 +365,7 @@ def test_ocsp():
 
     # As OCSP-Updater is generating responses independently of the CA we sit in a loop
     # checking OCSP until we either see a good response or we timeout (5s).
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
 def test_ct_submission():
     hostname = random_domain()
@@ -418,7 +418,7 @@ def test_revoke_by_account():
     reset_akamai_purges()
     client.revoke(cert.body, 0)
 
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
 
     verify_akamai_purge()
 
@@ -580,7 +580,7 @@ def test_admin_revoker_cert():
         serial, '1'])
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_admin_revoker_batched():
@@ -601,7 +601,7 @@ def test_admin_revoker_batched():
         serialFile.name, '0', '2'])
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/tmp/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
 
 def test_sct_embedding():
     certr, authzs = auth_and_issue([random_domain()])

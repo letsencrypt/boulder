@@ -38,7 +38,7 @@ $(CMD_BINS): build_cmds
 build_cmds: | $(OBJDIR)
 	echo $(OBJECTS)
 	GOBIN=$(OBJDIR) GO111MODULE=on go install -mod=vendor $(GO_BUILD_FLAGS) ./...
-	cp $(OBJDIR)/boulder-va $(OBJDIR)/boulder-remoteva
+	./link.sh
 
 # Building an RPM requires `fpm` from https://github.com/jordansissel/fpm
 # which you can install with `gem install fpm`.

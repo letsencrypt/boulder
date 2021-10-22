@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	mrand "math/rand"
 	"net"
 	"os"
 	"regexp"
@@ -2121,68 +2122,64 @@ func TestRecheckCAAInternalServerError(t *testing.T) {
 }
 
 func TestNewOrder(t *testing.T) {
-	for _, enabled := range []bool{false, true} {
-		_, _, ra, fc, cleanUp := initAuthorities(t)
-		defer cleanUp()
-		_ = features.Set(map[string]bool{features.StreamlineOrderAndAuthzs.String(): enabled})
-		defer features.Reset()
-		ra.orderLifetime = time.Hour
+	_, _, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	ra.orderLifetime = time.Hour
 
-		orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-			RegistrationID: Registration.Id,
-			Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
-		})
-		test.AssertNotError(t, err, "ra.NewOrder failed")
-		test.AssertEquals(t, orderA.RegistrationID, int64(1))
-		test.AssertEquals(t, orderA.Expires, fc.Now().Add(time.Hour).UnixNano())
-		test.AssertEquals(t, len(orderA.Names), 3)
-		// We expect the order names to have been sorted, deduped, and lowercased
-		test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
-		test.AssertEquals(t, orderA.Id, int64(1))
-		test.AssertEquals(t, numAuthorizations(orderA), 3)
+	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, orderA.RegistrationID, int64(1))
+	test.AssertEquals(t, orderA.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, len(orderA.Names), 3)
+	// We expect the order names to have been sorted, deduped, and lowercased
+	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
+	test.AssertEquals(t, orderA.Id, int64(1))
+	test.AssertEquals(t, numAuthorizations(orderA), 3)
 
-		// Reuse all existing authorizations
-		orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-			RegistrationID: Registration.Id,
-			Names:          []string{"b.com", "a.com", "C.COM"},
-		})
-		test.AssertNotError(t, err, "ra.NewOrder failed")
-		test.AssertEquals(t, orderB.RegistrationID, int64(1))
-		test.AssertEquals(t, orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
-		// We expect orderB's ID to match orderA's because of pending order reuse
-		test.AssertEquals(t, orderB.Id, orderA.Id)
-		test.AssertEquals(t, len(orderB.Names), 3)
-		test.AssertDeepEquals(t, orderB.Names, []string{"a.com", "b.com", "c.com"})
-		test.AssertEquals(t, numAuthorizations(orderB), 3)
-		test.AssertDeepEquals(t, orderB.V2Authorizations, orderA.V2Authorizations)
+	// Reuse all existing authorizations
+	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"b.com", "a.com", "C.COM"},
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, orderB.RegistrationID, int64(1))
+	test.AssertEquals(t, orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
+	// We expect orderB's ID to match orderA's because of pending order reuse
+	test.AssertEquals(t, orderB.Id, orderA.Id)
+	test.AssertEquals(t, len(orderB.Names), 3)
+	test.AssertDeepEquals(t, orderB.Names, []string{"a.com", "b.com", "c.com"})
+	test.AssertEquals(t, numAuthorizations(orderB), 3)
+	test.AssertDeepEquals(t, orderB.V2Authorizations, orderA.V2Authorizations)
 
-		// Reuse all of the existing authorizations from the previous order and
-		// add a new one
-		orderA.Names = append(orderA.Names, "d.com")
-		orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-			RegistrationID: Registration.Id,
-			Names:          orderA.Names,
-		})
-		test.AssertNotError(t, err, "ra.NewOrder failed")
-		test.AssertEquals(t, orderC.RegistrationID, int64(1))
-		test.AssertEquals(t, orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
-		test.AssertEquals(t, len(orderC.Names), 4)
-		test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
-		// We expect orderC's ID to not match orderA/orderB's because it is for
-		// a different set of names
-		test.AssertNotEquals(t, orderC.Id, orderA.Id)
-		test.AssertEquals(t, numAuthorizations(orderC), 4)
-		// Abuse the order of the queries used to extract the reused authorizations
-		existing := orderC.V2Authorizations[:3]
-		test.AssertDeepEquals(t, existing, orderA.V2Authorizations)
+	// Reuse all of the existing authorizations from the previous order and
+	// add a new one
+	orderA.Names = append(orderA.Names, "d.com")
+	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          orderA.Names,
+	})
+	test.AssertNotError(t, err, "ra.NewOrder failed")
+	test.AssertEquals(t, orderC.RegistrationID, int64(1))
+	test.AssertEquals(t, orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, len(orderC.Names), 4)
+	test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
+	// We expect orderC's ID to not match orderA/orderB's because it is for
+	// a different set of names
+	test.AssertNotEquals(t, orderC.Id, orderA.Id)
+	test.AssertEquals(t, numAuthorizations(orderC), 4)
+	// Abuse the order of the queries used to extract the reused authorizations
+	existing := orderC.V2Authorizations[:3]
+	test.AssertDeepEquals(t, existing, orderA.V2Authorizations)
 
-		_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-			RegistrationID: Registration.Id,
-			Names:          []string{"a"},
-		})
-		test.AssertError(t, err, "NewOrder with invalid names did not error")
-		test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": Domain name needs at least one dot")
-	}
+	_, err = ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"a"},
+	})
+	test.AssertError(t, err, "NewOrder with invalid names did not error")
+	test.AssertEquals(t, err.Error(), "Cannot issue for \"a\": Domain name needs at least one dot")
 }
 
 // TestNewOrderLegacyAuthzReuse tests that a legacy acme v1 authorization from
@@ -2444,6 +2441,14 @@ func (sa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.
 	return &sapb.Authorization2IDs{
 		Ids: []int64{5},
 	}, nil
+}
+
+func (sa *mockSAUnsafeAuthzReuse) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	r := req.NewOrder
+	for range req.NewAuthzs {
+		r.V2Authorizations = append(r.V2Authorizations, mrand.Int63())
+	}
+	return sa.NewOrder(ctx, r)
 }
 
 // TestNewOrderAuthzReuseSafety checks that the RA's safety check for reusing an

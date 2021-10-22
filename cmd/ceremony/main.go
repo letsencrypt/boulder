@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"golang.org/x/crypto/ocsp"
@@ -789,4 +790,8 @@ func main() {
 	default:
 		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, crl-signer, key, ocsp-response")
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("ceremony", main)
 }

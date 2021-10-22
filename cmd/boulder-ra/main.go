@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"flag"
@@ -268,4 +268,8 @@ func main() {
 
 	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
 	cmd.FailOnError(err, "RA gRPC service failed")
+}
+
+func init() {
+	cmd.RegisterCommand("boulder-ra", main)
 }

@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"bytes"
@@ -112,13 +112,6 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	if unexpiredOnly {
 		args["now"] = c.clock.Now()
 	}
-	count, err := c.dbMap.SelectInt(
-		"SELECT count(*) FROM certificates WHERE issued >= :issued AND expires >= :now",
-		args,
-	)
-	if err != nil {
-		return err
-	}
 
 	initialID, err := c.dbMap.SelectInt(
 		"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
@@ -137,7 +130,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	// packet limit.
 	args["limit"] = batchSize
 	args["id"] = initialID
-	for offset := 0; offset < int(count); {
+	for {
 		certs, err := sa.SelectCertificates(
 			c.dbMap,
 			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
@@ -152,8 +145,11 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		if len(certs) == 0 {
 			break
 		}
-		args["id"] = certs[len(certs)-1].ID
-		offset += len(certs)
+		lastCert := certs[len(certs)-1]
+		args["id"] = lastCert.ID
+		if lastCert.Issued.After(c.issuedReport.end) {
+			break
+		}
 	}
 
 	// Close channel so range operations won't block once the channel empties out
@@ -391,7 +387,7 @@ func main() {
 	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
 	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
 
-	sa.InitDBMetrics(saDbMap, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
+	sa.InitDBMetrics(saDbMap.Db, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",
@@ -446,4 +442,8 @@ func main() {
 	)
 	err = checker.issuedReport.dump()
 	cmd.FailOnError(err, "Failed to dump results: %s\n")
+}
+
+func init() {
+	cmd.RegisterCommand("cert-checker", main)
 }

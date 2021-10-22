@@ -60,7 +60,7 @@
           "crlURL": "http://example.com/crl",
           "location": {
             "configFile": "test/test-ca.key-pkcs11.json",
-            "certFile": "/tmp/intermediate-cert-rsa-a.pem",
+            "certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
             "numSessions": 2
           }
         },
@@ -72,7 +72,7 @@
           "crlURL": "http://example.com/crl",
           "location": {
             "configFile": "test/test-ca.key-pkcs11.json",
-            "certFile": "/tmp/intermediate-cert-rsa-b.pem",
+            "certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
             "numSessions": 2
           }
         }

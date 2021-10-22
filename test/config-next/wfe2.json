@@ -41,20 +41,20 @@
     },
     "chains": [
       [
-        "/tmp/intermediate-cert-rsa-a.pem",
-        "/tmp/root-cert-rsa.pem"
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "/hierarchy/root-cert-rsa.pem"
       ],
       [
-        "/tmp/intermediate-cert-rsa-b.pem",
-        "/tmp/root-cert-rsa.pem"
+        "/hierarchy/intermediate-cert-rsa-b.pem",
+        "/hierarchy/root-cert-rsa.pem"
       ],
       [
-        "/tmp/intermediate-cert-ecdsa-a.pem",
-        "/tmp/root-cert-ecdsa.pem"
+        "/hierarchy/intermediate-cert-ecdsa-a.pem",
+        "/hierarchy/root-cert-ecdsa.pem"
       ],
       [
-        "/tmp/intermediate-cert-ecdsa-b.pem",
-        "/tmp/root-cert-ecdsa.pem"
+        "/hierarchy/intermediate-cert-ecdsa-b.pem",
+        "/hierarchy/root-cert-ecdsa.pem"
       ]
     ],
     "staleTimeout": "5m",

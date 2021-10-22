@@ -75,7 +75,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	pubKeyBytes, err := ioutil.ReadFile("/tmp/intermediate-signing-pub-rsa.pem")
+	pubKeyBytes, err := ioutil.ReadFile("/hierarchy/intermediate-signing-pub-rsa.pem")
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +100,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	issuer, err := issuance.LoadCertificate("/tmp/intermediate-cert-rsa-a.pem")
+	issuer, err := issuance.LoadCertificate("/hierarchy/intermediate-cert-rsa-a.pem")
 	if err != nil {
 		return nil, err
 	}
