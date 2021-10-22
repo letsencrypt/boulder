@@ -128,7 +128,7 @@ func main() {
 
 		configFile = manualConfigFile
 	} else {
-		_ = daemonFlags.Parse(os.Args[2:])
+		_ = daemonFlags.Parse(os.Args[1:])
 		if *configFile == "" {
 			daemonFlags.Usage()
 			os.Exit(1)
