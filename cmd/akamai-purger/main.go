@@ -135,7 +135,6 @@ func main() {
 		}
 	}
 
-
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
