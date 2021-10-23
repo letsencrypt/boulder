@@ -111,6 +111,15 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
+// SelectPrecertificates selects all fields of multiple precertificate objects.
+func SelectPrecertificates(s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
+	var models []CertWithID
+	_, err := s.Select(
+		&models,
+		"SELECT id, "+precertFields+" FROM precertificates "+q, args)
+	return models, err
+}
+
 // CertStatusMetadataFields returns a slice of column names for rows in the
 // certificateStatus table. Changes to the ordering of this list returned by
 // this function should also be made in `ScanCertStatusRow()`.
