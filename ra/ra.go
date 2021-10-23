@@ -812,15 +812,16 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	var badNames []string
 	// recheckAuthzs is a list of authorizations that must have their CAA records rechecked
 	var recheckAuthzs []*core.Authorization
-	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
-	// CAA is checked when an authorization is validated, so as long as that was
-	// less than 8 hours ago, we're fine. We recheck if that was more than 7 hours
-	// ago, to be on the safe side. Since we don't record the validation time for
-	// authorizations, we instead look at the expiration time and subtract out the
-	// expected authorization lifetime. Note: If we adjust the authorization
-	// lifetime in the future we will need to tweak this correspondingly so it
-	// works correctly during the switchover.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
+
+	// Per Baseline Requirements, CAA must be checked within 8 hours of
+	// issuance. CAA is checked when an authorization is validated, so as
+	// long as that was less than 8 hours ago, we're fine. We recheck if
+	// that was more than 7 hours ago, to be on the safe side. We can
+	// check to see if the authorized challenge `AttemptedAt`
+	// (`Validated`) value from the database is before our caaRecheckTime.
+	// Set the recheck time to 7 hours ago.
+	caaRecheckTime := now.Add(-7 * time.Hour)
+
 	for _, name := range names {
 		authz := authzs[name]
 		if authz == nil {
@@ -829,9 +830,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			return berrors.InternalServerError("found an authorization with a nil Expires field: id %s", authz.ID)
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
-		} else if authz.Expires.Before(caaRecheckTime) {
-			// Ensure that CAA is rechecked for this name
-			recheckAuthzs = append(recheckAuthzs, authz)
+		} else if authz.Challenges[0].Validated == nil {
+			return berrors.InternalServerError("found an authorization with a nil Validated field: id %s", authz.ID)
+		} else if authz.Challenges[0].Validated != nil {
+			if authz.Challenges[0].Validated.Before(caaRecheckTime) {
+				// Ensure that CAA is rechecked for this name
+				recheckAuthzs = append(recheckAuthzs, authz)
+			}
 		}
 	}
 

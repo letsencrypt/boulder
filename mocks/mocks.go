@@ -436,9 +436,10 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 				},
 				Challenges: []core.Challenge{
 					{
-						Status: core.StatusValid,
-						Type:   core.ChallengeTypeDNS01,
-						Token:  "exampleToken",
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeDNS01,
+						Token:     "exampleToken",
+						Validated: &now,
 					},
 				},
 			})
