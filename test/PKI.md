@@ -1,7 +1,8 @@
-Boulder's test environment contains three separate PKIs: one for WFE (simulating
-the public WebPKI), one for gRPC (simulating an internal PKI), and one for
-issuance. In live deployment, the issuance PKI is a member of the global WebPKI,
-but we simulate them as separate PKIs here.
+Boulder's test environment contains four separate PKIs: one for WFE (simulating
+the public WebPKI), one for gRPC (simulating an internal PKI), one for Redis
+(simulating another internal PKI), and one for issuance. In live deployment,
+the issuance PKI is a member of the global WebPKI, but we simulate them as
+separate PKIs here.
 
 The PKI used by WFE is under test/wfe-tls/, with test/wfe-tls/minica.pem serving
 as the root. There are no intermediates. Setting test/wfe-tls/minica.pem as
