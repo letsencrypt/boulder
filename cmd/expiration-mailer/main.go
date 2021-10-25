@@ -344,7 +344,7 @@ func (m *mailer) findExpiringCertificates() error {
 		serialRegexp := regexp.MustCompile("^[0-9a-f]+$")
 		for i, s := range serials {
 			if !serialRegexp.MatchString(s) {
-				return fmt.Errorf("Encountered malformed serial %q", s)
+				return fmt.Errorf("encountered malformed serial %q", s)
 			}
 			quotedSerials[i] = fmt.Sprintf("'%s'", s)
 		}
