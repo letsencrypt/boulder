@@ -13,6 +13,7 @@ import (
 	netmail "net/mail"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"text/template"
@@ -339,14 +340,19 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 
 		// Wrap every serial in quotes so they can be interpolated into the query.
+		quotedSerials := make([]string, len(serials))
+		serialRegexp := regexp.MustCompile("^[0-9a-f]+$")
 		for i, s := range serials {
-			serials[i] = fmt.Sprintf("'%s'", s)
+			if !serialRegexp.MatchString(s) {
+				return fmt.Errorf("Encountered malformed serial %q", s)
+			}
+			quotedSerials[i] = fmt.Sprintf("'%s'", s)
 		}
 
 		// Now we can retrieve the certificate details for all of the status rows.
 		certWithIDs, err := sa.SelectCertificates(
 			m.dbMap,
-			fmt.Sprintf("WHERE serial IN (%s)", strings.Join(serials, ",")),
+			fmt.Sprintf("WHERE serial IN (%s)", strings.Join(quotedSerials, ",")),
 			nil,
 		)
 		if err != nil {
