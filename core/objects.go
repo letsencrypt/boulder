@@ -511,3 +511,15 @@ type SCTDERs [][]byte
 // CertDER is a convenience type that helps differentiate what the
 // underlying byte slice contains
 type CertDER []byte
+
+// SuggestedWindow is a type exposed inside the RenewalInfo resource.
+type SuggestedWindow struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+// RenewalInfo is a type which is exposed to clients which query the renewalInfo
+// endpoint specified in draft-aaron-ari.
+type RenewalInfo struct {
+	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
+}

@@ -49,6 +49,9 @@ const (
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
+	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
+	// GET requests. WARNING: This feature is a draft and highly unstable.
+	ServeRenewalInfo
 )
 
 // List of features and their default value, protected by fMu
@@ -70,6 +73,7 @@ var features = map[FeatureFlag]bool{
 	NonCFSSLSigner:           false,
 	ECDSAForAll:              false,
 	StreamlineOrderAndAuthzs: false,
+	ServeRenewalInfo:         false,
 }
 
 var fMu = new(sync.RWMutex)
