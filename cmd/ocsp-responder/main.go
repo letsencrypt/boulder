@@ -171,6 +171,14 @@ func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	serialString := core.SerialToString(req.SerialNumber)
 	src.log.Debugf("Searching for OCSP issued by us for serial %s", serialString)
 
+	var header http.Header = make(map[string][]string)
+	if len(serialString) > 2 {
+		// Set a cache tag that is equal to the last two bytes of the serial.
+		// We expect that to be randomly distributed, so each tag should map to
+		// about 1/256 of our responses.
+		header.Add("Edge-Cache-Tag", serialString[len(serialString)-2:])
+	}
+
 	var certStatus core.CertificateStatus
 	defer func() {
 		if len(certStatus.OCSPResponse) != 0 {
@@ -201,7 +209,7 @@ func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 		src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		return nil, nil, bocsp.ErrNotFound
 	}
-	return certStatus.OCSPResponse, nil, nil
+	return certStatus.OCSPResponse, header, nil
 }
 
 type config struct {
