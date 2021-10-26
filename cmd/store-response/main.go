@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -12,9 +12,21 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"golang.org/x/crypto/ocsp"
 )
+
+type config struct {
+	OCSPTool struct {
+		TLS   TLSConfig
+		Redis struct {
+			Username string
+			Password string
+			Addr     string
+		}
+	}
+}
 
 func main() {
 	if err := main2(); err != nil {
@@ -23,30 +35,29 @@ func main() {
 }
 
 func main2() error {
-	cert, err := tls.LoadX509KeyPair("test/redis-tls/boulder/cert.pem", "test/redis-tls/boulder/key.pem")
-	if err != nil {
-		return fmt.Errorf("loading cert and key: %w", err)
+	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	flag.Parse()
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	rootBytes, err := ioutil.ReadFile("test/redis-tls/minica.pem")
+	var c config
+	err := cmd.ReadConfigFile(*configFile, &c)
+	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	tlsConfig, err := c.Load()
 	if err != nil {
-		return fmt.Errorf("loading root: %w", err)
-	}
-	roots := x509.NewCertPool()
-	if ok := roots.AppendCertsFromPEM(rootBytes); !ok {
-		return fmt.Errorf("failed to load roots")
+		return err
 	}
 
+	tlsConfig.MinVersion = tls.VersionTLS13
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "boulder-redis:4218",
-		Username: "ocsp-updater",
-		Password: "e4e9ce7845cb6adbbc44fb1d9deb05e6b4dc1386",
-		DB:       0, // use default DB
-		TLSConfig: &tls.Config{
-			MinVersion:   tls.VersionTLS13,
-			Certificates: []tls.Certificate{cert},
-			RootCAs:      roots,
-		},
+		Addr:      c.Addr,
+		Username:  c.Username,
+		Password:  c.Password,
+		DB:        0, // use default DB
+		TLSConfig: tlsConfig,
 	})
 
 	for _, respFile := range os.Args[1:] {
@@ -76,21 +87,31 @@ func storeResponse(rdb *redis.Client, respBytes []byte) error {
 	var metadataValue [8]byte
 	binary.LittleEndian.PutUint64(metadataValue[:], epochSeconds)
 
-	log.Printf("storing response for %s, generated %s, epoch-seconds %d",
-		core.SerialToString(resp.SerialNumber),
-		resp.ThisUpdate,
-		epochSeconds)
+	ttl := time.Now().Sub(resp.ThisUpdate)
 
-	err = rdb.Set(ctx, responseKey, respBytes, 0).Err()
+	err = rdb.Watch(ctx, func(tx *redis.Tx) error {
+		log.Printf("storing response for %s, generated %s (epoch-seconds %d), ttl %g hours",
+			core.SerialToString(resp.SerialNumber),
+			resp.ThisUpdate,
+			epochSeconds,
+			ttl.Hours())
+
+		err = tx.Set(ctx, responseKey, respBytes, ttl).Err()
+		if err != nil {
+			return fmt.Errorf("setting response: %w", err)
+		}
+
+		err = tx.Set(ctx, metadataKey, respBytes, ttl).Err()
+		if err != nil {
+			return fmt.Errorf("setting metadata: %w", err)
+		}
+
+		log.Printf("stored %s", core.SerialToString(resp.SerialNumber))
+		return nil
+	}, "...")
+
 	if err != nil {
-		return fmt.Errorf("setting response: %w", err)
+		return fmt.Errorf("transaction failed: %w", err)
 	}
-
-	err = rdb.Set(ctx, metadataKey, respBytes, 0).Err()
-	if err != nil {
-		return fmt.Errorf("setting metadata: %w", err)
-	}
-
-	log.Printf("stored %s", core.SerialToString(resp.SerialNumber))
 	return nil
 }
