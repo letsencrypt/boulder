@@ -63,16 +63,7 @@ func (as *akamaiServer) sendResponse(w http.ResponseWriter, resp purgeResponse) 
 	w.Write(respBytes)
 }
 
-func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
-	if !strings.HasPrefix(r.URL.Path, v3PurgePath) {
-		resp := purgeResponse{
-			HTTPStatus: http.StatusNotFound,
-			Detail:     fmt.Sprintf("Invalid path: %q", r.URL.Path),
-		}
-		as.sendResponse(w, resp)
-		return
-	}
-
+func (as *akamaiServer) purgeHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Objects []string
 	}
@@ -104,10 +95,13 @@ func (as *akamaiServer) akamaiHandler(w http.ResponseWriter, r *http.Request) {
 		PurgeID:          "?",
 	}
 
-	for _, testURL := range req.Objects {
-		if !strings.HasPrefix(testURL, "http://") {
-			resp.HTTPStatus = http.StatusForbidden
-			break
+	fmt.Println(r.URL.Path, v3PurgePath)
+	if strings.HasPrefix(r.URL.Path, v3PurgePath) {
+		for _, testURL := range req.Objects {
+			if !strings.HasPrefix(testURL, "http://") {
+				resp.HTTPStatus = http.StatusForbidden
+				break
+			}
 		}
 	}
 	as.sendResponse(w, resp)
@@ -118,7 +112,8 @@ func newAkamaiServer(code int) *akamaiServer {
 		responseCode: code,
 		Server:       httptest.NewServer(m),
 	}
-	m.HandleFunc("/", as.akamaiHandler)
+	m.HandleFunc(v3PurgePath, as.purgeHandler)
+	m.HandleFunc(v3PurgeTagPath, as.purgeHandler)
 	return &as
 }
 
@@ -144,19 +139,47 @@ func TestV3Purge(t *testing.T) {
 	client.clk = fc
 
 	err = client.Purge([]string{"http://test.com"})
-	test.AssertNotError(t, err, "Purge failed with 201 response")
+	test.AssertNotError(t, err, "Purge failed; expected 201 response")
 
 	started := client.clk.Now()
 	as.responseCode = http.StatusInternalServerError
 	err = client.Purge([]string{"http://test.com"})
-	test.AssertError(t, err, "Purge didn't fail with 400 response")
+	test.AssertError(t, err, "Purge succeeded; expected 500 response")
 	test.Assert(t, client.clk.Since(started) > (time.Second*4), "Retries should've taken at least 4.4 seconds")
 
 	started = client.clk.Now()
 	as.responseCode = http.StatusCreated
 	err = client.Purge([]string{"http:/test.com"})
-	test.AssertError(t, err, "Purge didn't fail with 403 response from malformed URL")
+	test.AssertError(t, err, "Purge succeeded; expected a 403 response from malformed URL")
 	test.Assert(t, client.clk.Since(started) < time.Second, "Purge should've failed out immediately")
+}
+
+func TestPurgeTags(t *testing.T) {
+	as := newAkamaiServer(http.StatusCreated)
+	defer as.Close()
+
+	// Client is a purge client with a "production" v3Network parameter
+	client, err := NewCachePurgeClient(
+		as.URL,
+		"token",
+		"secret",
+		"accessToken",
+		"production",
+		3,
+		time.Second,
+		blog.NewMock(),
+		metrics.NoopRegisterer,
+	)
+	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
+	fc := clock.NewFake()
+	client.clk = fc
+
+	err = client.PurgeTags([]string{"ff"})
+	test.AssertNotError(t, err, "Purge failed; expected response 201")
+
+	as.responseCode = http.StatusForbidden
+	err = client.PurgeTags([]string{"http://test.com"})
+	test.AssertError(t, err, "Purge succeeded; expected Forbidden response")
 }
 
 func TestNewCachePurgeClient(t *testing.T) {
@@ -206,13 +229,7 @@ func TestNewCachePurgeClient(t *testing.T) {
 func TestBigBatchPurge(t *testing.T) {
 	log := blog.NewMock()
 
-	m := http.NewServeMux()
-	as := akamaiServer{
-		responseCode: http.StatusCreated,
-		Server:       httptest.NewUnstartedServer(m),
-	}
-	m.HandleFunc("/", as.akamaiHandler)
-	as.Start()
+	as := newAkamaiServer(http.StatusCreated)
 
 	client, err := NewCachePurgeClient(
 		as.URL,
