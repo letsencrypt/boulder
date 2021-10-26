@@ -91,7 +91,7 @@ func (template Config) WithOutput(w io.Writer) Config {
 	return ret
 }
 
-func getIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
+func GetIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 	if cert == nil {
 		return nil, fmt.Errorf("nil certificate")
 	}
@@ -189,7 +189,7 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 // Req makes an OCSP request using the given config for the given in-memory
 // certificate, and returns the response.
 func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
-	issuer, err := getIssuer(cert)
+	issuer, err := GetIssuer(cert)
 	if err != nil {
 		return nil, fmt.Errorf("getting issuer: %s", err)
 	}
