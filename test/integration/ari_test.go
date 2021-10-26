@@ -56,8 +56,9 @@ func TestARI(t *testing.T) {
 		hex.EncodeToString(ocspReq.IssuerNameHash),
 		core.SerialToString(cert.SerialNumber),
 	)
-	_, err = http.Get(url)
+	resp, err := http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
+	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 
 	// Try to make a new cert for a new domain, but have it fail so only
 	// a precert gets created.
@@ -84,6 +85,7 @@ func TestARI(t *testing.T) {
 		hex.EncodeToString(ocspReq.IssuerNameHash),
 		core.SerialToString(cert.SerialNumber),
 	)
-	_, err = http.Get(url)
-	test.AssertError(t, err, "ARI request should have failed")
+	resp, err = http.Get(url)
+	test.AssertNotError(t, err, "ARI request should have succeeded")
+	test.AssertEquals(t, resp.StatusCode, http.StatusNotFound)
 }
