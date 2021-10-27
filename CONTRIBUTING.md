@@ -72,6 +72,17 @@ generated, or by explicitly ignoring it and assigning to `_`. We use the
 addressed. Note that ignoring errors, even in tests, should be rare, since
 they may generate hard-to-debug problems.
 
+When handling errors, always do the operation which creates the error (usually
+a function call) and the error checking on separate lines:
+```
+err := someOperation(args)
+if err != nil {
+  return nil, fmt.Errorf("some operation failed: %w", err)
+}
+```
+We avoid the `if err := someOperation(args); err != nil {...}` style as we find
+it to be less readable and it can give rise to surprising scoping behavior.
+
 We define two special types of error. `BoulderError`, defined in
 errors/errors.go, is used specifically when an typed error needs to be passed
 across an RPC boundary. For instance, if the SA returns "not found", callers
