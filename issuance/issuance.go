@@ -414,7 +414,7 @@ func truncatedHash(name []byte) IssuerNameID {
 	h := crypto.SHA1.New()
 	h.Write(name)
 	s := h.Sum(nil)
-	return IssuerNameID(big.NewInt(0).SetBytes(s[:7]).Int64())
+	return IssuerNameID(big.NewInt(0).SetBytes(s[:4]).Int64())
 }
 
 // Issuer is capable of issuing new certificates

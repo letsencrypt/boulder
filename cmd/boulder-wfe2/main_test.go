@@ -190,7 +190,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://single-cert-chain.com": {"../../test/test-ca.pem"},
 			},
 			ExpectedMap: map[issuance.IssuerNameID][]byte{
-				issuance.IssuerNameID(37287262753088952): []byte(fmt.Sprintf("\n%s", string(certBytesA))),
+				issuance.IssuerNameID(2222494051): []byte(fmt.Sprintf("\n%s", string(certBytesA))),
 			},
 		},
 		{
@@ -199,7 +199,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://two-cert-chain.com": {"../../test/test-ca.pem", "../../test/test-ca2.pem"},
 			},
 			ExpectedMap: map[issuance.IssuerNameID][]byte{
-				issuance.IssuerNameID(37287262753088952): []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
+				issuance.IssuerNameID(2222494051): []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
 			},
 		},
 		{
@@ -210,7 +210,7 @@ func TestLoadCertificateChains(t *testing.T) {
 			ExpectedMap: map[issuance.IssuerNameID][]byte{
 				// NOTE(@cpu): There should be a trailing \n added by the WFE that we
 				// expect in the format specifier below.
-				issuance.IssuerNameID(37287262753088952): []byte(fmt.Sprintf("\n%s\n", string(abruptPEMBytes))),
+				issuance.IssuerNameID(2222494051): []byte(fmt.Sprintf("\n%s\n", string(abruptPEMBytes))),
 			},
 		},
 		{
@@ -220,7 +220,7 @@ func TestLoadCertificateChains(t *testing.T) {
 				"http://two-cert-chain.com": {"../../test/test-ca.pem", "../../test/test-ca2.pem"},
 			},
 			ExpectedMap: map[issuance.IssuerNameID][]byte{
-				issuance.IssuerNameID(37287262753088952): []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
+				issuance.IssuerNameID(2222494051): []byte(fmt.Sprintf("\n%s\n%s", string(certBytesA), string(certBytesB))),
 			},
 		},
 		{
