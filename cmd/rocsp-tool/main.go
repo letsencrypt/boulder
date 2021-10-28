@@ -66,12 +66,12 @@ func main2() error {
 	tlsConfig.MinVersion = tls.VersionTLS13
 	tlsConfig.MaxVersion = tls.VersionTLS13
 	rdb := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs:      conf.Redis.Addrs,
+		Addrs:     conf.Redis.Addrs,
 		Username:  conf.Redis.Username,
 		Password:  password,
 		TLSConfig: tlsConfig,
 	})
-	
+
 	val, err := rdb.Ping(context.TODO()).Result()
 	if err != nil {
 		return err
@@ -87,20 +87,54 @@ func main2() error {
 		if err != nil {
 			return fmt.Errorf("storing response: %w", err)
 		}
+
+		resp, err := ocsp.ParseResponse(respBytes, nil)
+		if err != nil {
+			return fmt.Errorf("parsing response: %w", err)
+		}
+		retrievedResponse, err := getResponse(rdb, core.SerialToString(resp.SerialNumber), timeout)
+		if err != nil {
+			return fmt.Errorf("getting response: %w", err)
+		}
+		log.Printf("retrieved %s", helper.PrettyResponse(retrievedResponse))
 	}
 	return nil
 }
 
-func marshalMetadata(updated time.Time) []byte {
-	var epochSeconds uint64 = uint64(updated.Unix())
-	var metadataValue []byte = make([]byte, 8, 8)
-	binary.LittleEndian.PutUint64(metadataValue, epochSeconds)
-	return metadataValue
+type metadata struct {
+	shortIssuerID byte
+	updated       time.Time
 }
 
-func unmarshalMetadata(input []byte) time.Time {
-	epochSeconds := binary.LittleEndian.Uint64(input)
-	return time.Unix(int64(epochSeconds), 0)
+func (m metadata) String() string {
+	return fmt.Sprintf("shortIssuerID: 0x%x, updated at: %s", m.shortIssuerID, m.updated)
+}
+
+func (m metadata) marshal() []byte {
+	var output [9]byte
+	output[0] = m.shortIssuerID
+	var epochSeconds uint64 = uint64(m.updated.Unix())
+	binary.LittleEndian.PutUint64(output[1:], epochSeconds)
+	return output[:]
+}
+
+func unmarshalMetadata(input []byte) (metadata, error) {
+	if len(input) != 9 {
+		return metadata{}, fmt.Errorf("invalid metadata length %d", len(input))
+	}
+	var output metadata
+	output.shortIssuerID = input[0]
+	epochSeconds := binary.LittleEndian.Uint64(input[1:])
+	output.updated = time.Unix(int64(epochSeconds), 0).UTC()
+	return output, nil
+}
+
+func makeResponseKey(serial string) string {
+	return fmt.Sprintf("r{%s}", serial)
+}
+
+func makeMetadataKey(serial string) string {
+	return fmt.Sprintf("m{%s}", serial)
 }
 
 func storeResponse(rdb *redis.ClusterClient, respBytes []byte, timeout time.Duration) error {
@@ -115,13 +149,14 @@ func storeResponse(rdb *redis.ClusterClient, respBytes []byte, timeout time.Dura
 
 	serial := core.SerialToString(resp.SerialNumber)
 
-	issuerID := "TODO"
-	// TODO: replace any `{` in SerialNumber
-	// TODO: add assertion about length of SerialNumber.Bytes()
-	responseKey := "r{" + issuerID + serial + "}"
-	metadataKey := "m{" + issuerID + serial + "}"
+	responseKey := makeResponseKey(serial)
+	metadataKey := makeMetadataKey(serial)
 
-	metadataValue := marshalMetadata(resp.ThisUpdate)
+	metadataStruct := metadata{
+		updated:       resp.ThisUpdate,
+		shortIssuerID: 0x99, /// XXX
+	}
+	metadataValue := metadataStruct.marshal()
 
 	// Note: Here we set the TTL to slightly more than the lifetime of the
 	// OCSP response. In ocsp-updater we'll want to set it to the lifetime
@@ -153,22 +188,34 @@ func storeResponse(rdb *redis.ClusterClient, respBytes []byte, timeout time.Dura
 		return fmt.Errorf("transaction failed: %w", err)
 	}
 
+	return nil
+}
+
+func getResponse(rdb *redis.ClusterClient, serial string, timeout time.Duration) (*ocsp.Response, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	responseKey := makeResponseKey(serial)
+	metadataKey := makeMetadataKey(serial)
+
 	val, err := rdb.Get(ctx, metadataKey).Result()
 	if err != nil {
-		return fmt.Errorf("getting metadata: %w", err)
+		return nil, fmt.Errorf("getting metadata: %w", err)
 	}
-	epochSeconds := unmarshalMetadata([]byte(val))
-	log.Printf("retrieved metadata: updated at %s", epochSeconds)
+	epochSeconds, err := unmarshalMetadata([]byte(val))
+	if err != nil {
+		return nil, fmt.Errorf("unmarshaling metadata: %w", err)
+	}
+	log.Printf("retrieved metadata: %s", epochSeconds)
 
 	val, err = rdb.Get(ctx, responseKey).Result()
 	if err != nil {
-		return fmt.Errorf("getting response: %w", err)
+		return nil, fmt.Errorf("getting response: %w", err)
 	}
 	parsedResponse, err := ocsp.ParseResponse([]byte(val), nil)
 	if err != nil {
-		return fmt.Errorf("parsing response: %w", err)
+		return nil, fmt.Errorf("parsing response: %w", err)
 	}
-	log.Printf("retrieved %s", helper.PrettyResponse(parsedResponse))
 
-	return nil
+	return parsedResponse, nil
 }
