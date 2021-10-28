@@ -13,48 +13,64 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
+// Metadata represents information stored with the 'm' prefix in the Redis DB:
+// information required to maintain or serve the response, but not the response
+// itself.
 type Metadata struct {
-	shortIssuerID byte
-	updated       time.Time
+	ShortIssuerID byte
+	// ThisUpdate contains the ThisUpdate time of the stored OCSP response.
+	ThisUpdate       time.Time
 }
 
+// String implements pretty-printing of Metadata
 func (m Metadata) String() string {
-	return fmt.Sprintf("shortIssuerID: 0x%x, updated at: %s", m.shortIssuerID, m.updated)
+	return fmt.Sprintf("shortIssuerID: 0x%x, updated at: %s", m.ShortIssuerID, m.ThisUpdate)
 }
 
+// Marshal turns a metadata into a slice of 9 bytes for writing into Redis.
+// Storing these always as 9 bytes gives us some potential to change the
+// storage format non-disruptively in the future, so long as we can distinguish
+// on the length of the stored value.
 func (m Metadata) Marshal() []byte {
 	var output [9]byte
-	output[0] = m.shortIssuerID
-	var epochSeconds uint64 = uint64(m.updated.Unix())
+	output[0] = m.ShortIssuerID
+	var epochSeconds uint64 = uint64(m.ThisUpdate.Unix())
 	binary.LittleEndian.PutUint64(output[1:], epochSeconds)
 	return output[:]
 }
 
+// UnmarshalMetadata takes data from Redis and turns it into a Metadata object.
 func UnmarshalMetadata(input []byte) (Metadata, error) {
 	if len(input) != 9 {
 		return Metadata{}, fmt.Errorf("invalid metadata length %d", len(input))
 	}
 	var output Metadata
-	output.shortIssuerID = input[0]
+	output.ShortIssuerID = input[0]
 	epochSeconds := binary.LittleEndian.Uint64(input[1:])
-	output.updated = time.Unix(int64(epochSeconds), 0).UTC()
+	output.ThisUpdate = time.Unix(int64(epochSeconds), 0).UTC()
 	return output, nil
 }
 
+// MakeResponseKey generates a Redis key string under which a response with the
+// given serial should be stored.
 func MakeResponseKey(serial string) string {
 	return fmt.Sprintf("r{%s}", serial)
 }
 
+// MakeMetadataKey generates a Redis key string under which metadata for the
+// response with the given serial should be stored.
 func MakeMetadataKey(serial string) string {
 	return fmt.Sprintf("m{%s}", serial)
 }
 
+// Client represents a read-only Redis client.
 type Client struct {
 	rdb *redis.ClusterClient
 	timeout time.Duration
 	clk clock.Clock
 }
 
+// NewClient creates a Client.
 func NewClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *Client {
 	return &Client {
 		rdb: rdb,
@@ -63,10 +79,12 @@ func NewClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock)
 	}
 }
 
+// WritingClient represents a Redis client that can both read and write.
 type WritingClient struct {
 	Client
 }
 
+// NewWritingClient creates a WritingClient.
 func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *WritingClient {
 	return &WritingClient {
 		Client {
@@ -77,8 +95,11 @@ func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock
 	}
 }
 
-func (c *WritingClient) StoreResponse(respBytes []byte, ttl time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+// StoreResponse parses the given bytes as an OCSP response, and stores it into
+// Redis, updating both the metadata and response keys. Returns error if the
+// OCSP response fails to parse.
+func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, ttl time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	// TODO: load issuers and pass something appropriate here instead of nil
@@ -93,8 +114,8 @@ func (c *WritingClient) StoreResponse(respBytes []byte, ttl time.Duration) error
 	metadataKey := MakeMetadataKey(serial)
 
 	metadataStruct := Metadata{
-		updated:       resp.ThisUpdate,
-		shortIssuerID: 0x99, /// XXX
+		ThisUpdate:       resp.ThisUpdate,
+		ShortIssuerID:    0x99, /// XXX
 	}
 	metadataValue := metadataStruct.Marshal()
 
@@ -119,24 +140,16 @@ func (c *WritingClient) StoreResponse(respBytes []byte, ttl time.Duration) error
 	return nil
 }
 
-func (c *Client) GetResponse(serial string) (*ocsp.Response, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+// GetResponse fetches a response for the given serial number.
+// Returns error if the OCSP response fails to parse.
+// Does not check the metadata field.
+func (c *Client) GetResponse(ctx context.Context, serial string) (*ocsp.Response, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	responseKey := MakeResponseKey(serial)
-	metadataKey := MakeMetadataKey(serial)
 
-	val, err := c.rdb.Get(ctx, metadataKey).Result()
-	if err != nil {
-		return nil, fmt.Errorf("getting metadata: %w", err)
-	}
-	epochSeconds, err := UnmarshalMetadata([]byte(val))
-	if err != nil {
-		return nil, fmt.Errorf("unmarshaling metadata: %w", err)
-	}
-	log.Printf("retrieved metadata: %s", epochSeconds)
-
-	val, err = c.rdb.Get(ctx, responseKey).Result()
+	val, err := c.rdb.Get(ctx, responseKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("getting response: %w", err)
 	}
@@ -146,4 +159,22 @@ func (c *Client) GetResponse(serial string) (*ocsp.Response, error) {
 	}
 
 	return parsedResponse, nil
+}
+
+// GetMetadata fetches the metadata for the given serial number.
+func (c *Client) GetMetadata(ctx context.Context, serial string) (*Metadata, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	metadataKey := MakeMetadataKey(serial)
+
+	val, err := c.rdb.Get(ctx, metadataKey).Result()
+	if err != nil {
+		return nil, fmt.Errorf("getting metadata: %w", err)
+	}
+	metadata, err := UnmarshalMetadata([]byte(val))
+	if err != nil {
+		return nil, fmt.Errorf("unmarshaling metadata: %w", err)
+	}
+	return &metadata, nil
 }

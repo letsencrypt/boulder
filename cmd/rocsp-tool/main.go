@@ -71,7 +71,8 @@ func main2() error {
 	})
 	client := rocsp.NewWritingClient(rdb, timeout, clk)
 
-	val, err := rdb.Ping(context.TODO()).Result()
+	ctx := context.Background()
+	val, err := rdb.Ping(ctx).Result()
 	if err != nil {
 		return err
 	}
@@ -86,6 +87,14 @@ func main2() error {
 		if err != nil {
 			return fmt.Errorf("parsing response: %w", err)
 		}
+
+		serial := core.SerialToString(resp.SerialNumber)
+
+		if resp.NextUpdate.Before(clk.Now()) {
+			return fmt.Errorf("response for %s expired %s ago", serial,
+				clk.Now().Sub(resp.NextUpdate))
+		}
+
 		// Note: Here we set the TTL to slightly more than the lifetime of the
 		// OCSP response. In ocsp-updater we'll want to set it to the lifetime
 		// of the certificate, so that the metadata field doesn't fall out of
@@ -94,16 +103,16 @@ func main2() error {
 		ttl := resp.NextUpdate.Sub(clk.Now()) + time.Hour
 
 		log.Printf("storing response for %s, generated %s, ttl %g hours",
-			core.SerialToString(resp.SerialNumber),
+			serial,
 			resp.ThisUpdate,
 			ttl.Hours())
 
-		err = client.StoreResponse(respBytes, ttl)
+		err = client.StoreResponse(ctx, respBytes, ttl)
 		if err != nil {
 			return fmt.Errorf("storing response: %w", err)
 		}
 
-		retrievedResponse, err := client.GetResponse(core.SerialToString(resp.SerialNumber))
+		retrievedResponse, err := client.GetResponse(ctx, core.SerialToString(resp.SerialNumber))
 		if err != nil {
 			return fmt.Errorf("getting response: %w", err)
 		}
