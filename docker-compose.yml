@@ -53,6 +53,17 @@ services:
     logging:
         driver: none
 
+  bredis:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    deploy:
+      mode: replicated
+      replicas: 6
+    networks:
+      redisnet:
+
   netaccess:
     image: *boulder_image
     environment:
@@ -81,3 +92,10 @@ networks:
       driver: default
       config:
         - subnet: 10.88.88.0/24
+
+  redisnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.33.33.0/24
