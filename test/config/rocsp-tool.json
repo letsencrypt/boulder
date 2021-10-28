@@ -4,11 +4,6 @@
       "username": "ocsp-updater",
       "passwordFile": "test/secrets/rocsp_tool_password",
       "addrs": [
-        "10.33.33.2:4218",
-        "10.33.33.3:4218",
-        "10.33.33.4:4218",
-        "10.33.33.5:4218",
-        "10.33.33.6:4218",
         "10.33.33.7:4218"
       ],
       "timeout": "5s",
@@ -17,6 +12,12 @@
         "certFile": "test/redis-tls/boulder/cert.pem",
         "keyFile": "test/redis-tls/boulder/key.pem"
       }
+    },
+    "issuers": {
+      ".hierarchy/intermediate-cert-ecdsa-a.pem": 1,
+      ".hierarchy/intermediate-cert-ecdsa-b.pem": 2,
+      ".hierarchy/intermediate-cert-rsa-a.pem": 3,
+      ".hierarchy/intermediate-cert-rsa-b.pem": 4
     }
   }
 }

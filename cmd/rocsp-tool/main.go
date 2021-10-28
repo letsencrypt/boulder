@@ -1,32 +1,40 @@
 package notmain
 
 import (
+	"bytes"
 	"context"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
 )
 
+type RedisConfig struct {
+	cmd.PasswordConfig
+	TLS      cmd.TLSConfig
+	Username string
+	Addrs    []string
+	Timeout  cmd.ConfigDuration
+}
+
 type config struct {
 	ROCSPTool struct {
-		Redis struct {
-			cmd.PasswordConfig
-			TLS      cmd.TLSConfig
-			Username string
-			Addrs    []string
-			Timeout  cmd.ConfigDuration
-		}
-		Issuers []string
+		Redis RedisConfig
+		Issuers map[string]int
 	}
 }
 
@@ -40,6 +48,76 @@ func main() {
 	}
 }
 
+func makeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
+	password, err := c.PasswordConfig.Pass()
+	if err != nil {
+		return nil, fmt.Errorf("loading password: %w", err)
+	}
+
+	tlsConfig, err := c.TLS.Load()
+	if err != nil {
+		return nil, fmt.Errorf("loading TLS config: %w", err)
+	}
+
+	timeout := c.Timeout.Duration
+
+	rdb := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:     c.Addrs,
+		Username:  c.Username,
+		Password:  password,
+		TLSConfig: tlsConfig,
+	})
+	return rocsp.NewWritingClient(rdb, timeout, clk), nil
+}
+
+type ShortIDIssuer struct {
+	*issuance.Certificate
+	subject pkix.RDNSequence
+	shortID byte
+}
+
+func findIssuer(resp *ocsp.Response, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
+	var responder pkix.RDNSequence
+	_, err := asn1.Unmarshal(resp.RawResponderName, &responder)
+	if err != nil {
+		return nil, fmt.Errorf("parsing resp.RawResponderName: %w", err)
+	}
+	var responders strings.Builder
+	for _, issuer := range issuers {
+		fmt.Fprintf(&responders, "%s\n", issuer.subject)
+		if bytes.Equal(issuer.RawSubject, resp.RawResponderName) {
+			return &issuer, nil
+		}
+	}
+	return nil, fmt.Errorf("no issuer found matching OCSP response for %s. Available issuers:\n%s\n", responder, responders.String())
+}
+
+func loadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
+	var issuers []ShortIDIssuer
+	for issuerFile, shortID := range input {
+		if shortID > 255 || shortID < 0 {
+			return nil, fmt.Errorf("invalid shortID %d (must be byte)", shortID)
+		}
+		cert, err := issuance.LoadCertificate(issuerFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading issuer: %w", err)
+		}
+		var subject pkix.RDNSequence
+		_, err = asn1.Unmarshal(cert.Certificate.RawSubject, &subject)
+		if err != nil {
+			return nil, fmt.Errorf("parsing issuer.RawSubject: %w", err)
+		}
+		var shortID byte = byte(shortID)
+		for _, issuer := range issuers {
+			if issuer.shortID == shortID {
+				return nil, fmt.Errorf("duplicate shortID in config file: %d (for %q and %q)", shortID, issuer.subject, subject)
+			}
+		}
+		issuers = append(issuers, ShortIDIssuer{cert, subject, shortID})
+	}
+	return issuers, nil
+}
+
 func main2() error {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -50,36 +128,18 @@ func main2() error {
 
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
-	cmd.FailOnError(err, "Reading JSON config file into config structure")
-
-	conf := c.ROCSPTool
-
-	password, err := conf.Redis.PasswordConfig.Pass()
 	if err != nil {
-		return fmt.Errorf("loading password: %w", err)
+		return fmt.Errorf("reading JSON config file: %w", err)
 	}
 
-	tlsConfig, err := conf.Redis.TLS.Load()
+	issuers, err := loadIssuers(c.ROCSPTool.Issuers)
 	if err != nil {
-		return err
+		return fmt.Errorf("loading issuers: %w", err)
 	}
-
 	clk := cmd.Clock()
-	timeout := conf.Redis.Timeout.Duration
-
-	rdb := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs:     conf.Redis.Addrs,
-		Username:  conf.Redis.Username,
-		Password:  password,
-		TLSConfig: tlsConfig,
-	})
-	client := rocsp.NewWritingClient(rdb, timeout, clk)
+	client, err := makeClient(&c.ROCSPTool.Redis, clk)
 
 	ctx := context.Background()
-	_, err = rdb.Ping(ctx).Result()
-	if err != nil {
-		return err
-	}
 
 	for _, respFile := range flag.Args() {
 		respBytes, err := ioutil.ReadFile(respFile)
@@ -87,6 +147,16 @@ func main2() error {
 			return fmt.Errorf("reading response file %q: %w", respFile, err)
 		}
 		resp, err := ocsp.ParseResponse(respBytes, nil)
+		if err != nil {
+			return fmt.Errorf("parsing response: %w", err)
+		}
+		issuer, err := findIssuer(resp, issuers)
+		if err != nil {
+			return fmt.Errorf("finding issuer for response: %w", err)
+		}
+
+		// Re-parse the response, this time verifying with the appropriate issuer
+		resp, err = ocsp.ParseResponse(respBytes, issuer.Certificate.Certificate)
 		if err != nil {
 			return fmt.Errorf("parsing response: %w", err)
 		}
@@ -115,7 +185,7 @@ func main2() error {
 			return fmt.Errorf("storing response: %w", err)
 		}
 
-		retrievedResponse, err := client.GetResponse(ctx, core.SerialToString(resp.SerialNumber))
+		retrievedResponse, err := client.GetResponse(ctx, serial)
 		if err != nil {
 			return fmt.Errorf("getting response: %w", err)
 		}
