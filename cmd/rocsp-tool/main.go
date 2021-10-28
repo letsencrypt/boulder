@@ -1,4 +1,4 @@
-package main
+package notmain
 
 import (
 	"context"
@@ -28,6 +28,10 @@ type config struct {
 		}
 		Issuers []string
 	}
+}
+
+func init() {
+	cmd.RegisterCommand("rocsp-tool", main)
 }
 
 func main() {
@@ -72,12 +76,11 @@ func main2() error {
 	client := rocsp.NewWritingClient(rdb, timeout, clk)
 
 	ctx := context.Background()
-	val, err := rdb.Ping(ctx).Result()
+	_, err = rdb.Ping(ctx).Result()
 	if err != nil {
 		return err
 	}
 
-	log.Printf("ping: %s\n", val)
 	for _, respFile := range flag.Args() {
 		respBytes, err := ioutil.ReadFile(respFile)
 		if err != nil {

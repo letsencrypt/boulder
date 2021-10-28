@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -130,7 +129,6 @@ func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, ttl
 			return fmt.Errorf("setting metadata: %w", err)
 		}
 
-		log.Printf("stored %s", core.SerialToString(resp.SerialNumber))
 		return nil
 	}, metadataKey, responseKey)
 	if err != nil {
