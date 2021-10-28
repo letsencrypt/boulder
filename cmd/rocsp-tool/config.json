@@ -3,7 +3,7 @@
     "redis": {
       "username": "ocsp-updater",
       "passwordFile": "test/secrets/rocsp_tool_password",
-      "addr": "boulder-redis:4218",
+      "addrs": ["10.33.33.2:4218"],
       "timeout": "5s",
       "tls": {
         "caCertFile": "test/redis-tls/minica.pem",
