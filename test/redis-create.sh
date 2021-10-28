@@ -1,6 +1,10 @@
-redis-cli --cluster create \
-  10.33.33.2:4218 10.33.33.3:4218 10.33.33.4:4218 \
-  10.33.33.5:4218 10.33.33.6:4218 10.33.33.7:4218 \
+#!/bin/bash
+
+redis-cli \
+  --cluster-yes \
+  --cluster create \
+    10.33.33.2:4218 10.33.33.3:4218 10.33.33.4:4218 \
+    10.33.33.5:4218 10.33.33.6:4218 10.33.33.7:4218 \
   --cluster-replicas 1 \
   --tls \
   --cert /test/redis-tls/redis/cert.pem \
