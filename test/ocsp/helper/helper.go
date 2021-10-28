@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -333,8 +334,26 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 		errs = append(errs, fmt.Errorf("checking signature on delegated signer: %s", err))
 	}
 
+	fmt.Fprint(config.output, PrettyResponse(resp))
+
+	if len(errs) > 0 {
+		fmt.Print("Errors:\n")
+		err := errs[0]
+		fmt.Printf("  %v\n", err.Error())
+		for _, e := range errs[1:] {
+			err = fmt.Errorf("%w; %v", err, e)
+			fmt.Printf("  %v\n", e.Error())
+		}
+		return nil, err
+	}
+	fmt.Print("No errors found.\n")
+	return resp, nil
+}
+
+func PrettyResponse(resp *ocsp.Response) string {
+	var builder strings.Builder
 	pr := func(s string, v ...interface{}) {
-		fmt.Fprintf(config.output, s, v...)
+		fmt.Fprintf(&builder, s, v...)
 	}
 
 	pr("\n")
@@ -357,17 +376,5 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 		pr("    NotBefore: %s\n", resp.Certificate.NotBefore)
 		pr("    NotAfter: %s\n", resp.Certificate.NotAfter)
 	}
-
-	if len(errs) > 0 {
-		fmt.Print("Errors:\n")
-		err := errs[0]
-		fmt.Printf("  %v\n", err.Error())
-		for _, e := range errs[1:] {
-			err = fmt.Errorf("%w; %v", err, e)
-			fmt.Printf("  %v\n", e.Error())
-		}
-		return nil, err
-	}
-	fmt.Print("No errors found.\n")
-	return resp, nil
+	return builder.String()
 }
