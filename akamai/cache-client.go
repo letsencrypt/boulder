@@ -26,6 +26,7 @@ import (
 
 const (
 	v3PurgePath     = "/ccu/v3/delete/url/"
+	v3PurgeTagPath  = "/ccu/v3/delete/tag/"
 	timestampFormat = "20060102T15:04:05-0700"
 )
 
@@ -173,6 +174,14 @@ func signingKey(clientSecret string, timestamp string) []byte {
 	return key
 }
 
+func (cpc *CachePurgeClient) PurgeTags(tags []string) error {
+	purgeReq := v3PurgeRequest{
+		Objects: tags,
+	}
+	endpoint := fmt.Sprintf("%s%s%s", cpc.apiEndpoint, v3PurgeTagPath, cpc.v3Network)
+	return cpc.authedRequest(endpoint, purgeReq)
+}
+
 // purge actually sends the individual requests to the Akamai endpoint and checks
 // if they are successful
 func (cpc *CachePurgeClient) purge(urls []string) error {
@@ -180,24 +189,34 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 		Objects: urls,
 	}
 	endpoint := fmt.Sprintf("%s%s%s", cpc.apiEndpoint, v3PurgePath, cpc.v3Network)
+	return cpc.authedRequest(endpoint, purgeReq)
+}
 
-	reqJSON, err := json.Marshal(purgeReq)
+// POST to the given URL with the body that results from json.Marshal'ing `body`,
+// using the Akamai authentication mechanism.
+func (cpc *CachePurgeClient) authedRequest(target string, requestBody interface{}) error {
+	reqJSON, err := json.Marshal(requestBody)
 	if err != nil {
 		return errFatal(err.Error())
 	}
 	req, err := http.NewRequest(
 		"POST",
-		endpoint,
+		target,
 		bytes.NewBuffer(reqJSON),
 	)
 	if err != nil {
 		return errFatal(err.Error())
 	}
 
+	parsedTarget, err := url.Parse(target)
+	if err != nil {
+		return errFatal(fmt.Sprintf("parsing url %q: %s", target, err))
+	}
+
 	// Create authorization header for request
 	authHeader, err := cpc.constructAuthHeader(
 		reqJSON,
-		v3PurgePath+cpc.v3Network,
+		parsedTarget.Path,
 		core.RandomString(16),
 	)
 	if err != nil {
@@ -207,7 +226,7 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	req.Header.Set("Content-Type", "application/json")
 
 	cpc.log.Debugf("POSTing to %s with Authorization %s: %s",
-		endpoint, authHeader, reqJSON)
+		target, authHeader, reqJSON)
 
 	s := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
@@ -232,17 +251,17 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	var purgeInfo purgeResponse
 	err = json.Unmarshal(body, &purgeInfo)
 	if err != nil {
-		return fmt.Errorf("%s. Body was: %s", err, body)
+		return fmt.Errorf("response to %s: json.Unmarshal(%q): %w", target, body, err)
 	}
 	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
-			return errFatal(fmt.Sprintf("Unauthorized to purge URLs %q", urls))
+			return errFatal("Unauthorized to purge URLs")
 		}
 		return fmt.Errorf("Unexpected HTTP status code '%d': %s", resp.StatusCode, string(body))
 	}
 
-	cpc.log.AuditInfof("Sent successful purge request purgeID: %s, purge expected in: %ds, for URLs: %s",
-		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, urls)
+	cpc.log.AuditInfof("Sent successful purge request purgeID: %s, purge expected in: %ds, for request body: %s",
+		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, reqJSON)
 
 	return nil
 }

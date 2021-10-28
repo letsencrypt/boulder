@@ -9,12 +9,14 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -3618,4 +3620,54 @@ func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	resp := httptest.NewRecorder()
 	wfe.Certificate(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 200)
+}
+
+// TestARI tests that requests for real certs result in renewal info, while
+// requests for certs that don't exist result in errors.
+func TestARI(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+	}
+	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
+	defer features.Reset()
+
+	// Load the certificate and its issuer.
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test certificate")
+	issuer, err := core.LoadCert("../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test issuer")
+
+	// Take advantage of OCSP to build the issuer hashes.
+	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, nil)
+	test.AssertNotError(t, err, "failed to create ocsp request")
+	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
+	test.AssertNotError(t, err, "failed to parse ocsp request")
+
+	// Ensure that a correct query results in a 200.
+	path := fmt.Sprintf(
+		"%s/%s/%s",
+		hex.EncodeToString(ocspReq.IssuerKeyHash),
+		hex.EncodeToString(ocspReq.IssuerNameHash),
+		core.SerialToString(cert.SerialNumber),
+	)
+	req, event := makeGet(path, renewalInfoPath)
+	resp := httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 200)
+
+	// Ensure that a mangled query (wrong serial) results in a 404.
+	path = fmt.Sprintf(
+		"%s/%s/%s",
+		hex.EncodeToString(ocspReq.IssuerKeyHash),
+		hex.EncodeToString(ocspReq.IssuerNameHash),
+		core.SerialToString(big.NewInt(0).Add(cert.SerialNumber, big.NewInt(1))),
+	)
+	req, event = makeGet(path, renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 404)
 }

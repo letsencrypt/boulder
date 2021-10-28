@@ -28,6 +28,7 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/ocsp-responder"
 	_ "github.com/letsencrypt/boulder/cmd/ocsp-updater"
 	_ "github.com/letsencrypt/boulder/cmd/orphan-finder"
+	_ "github.com/letsencrypt/boulder/cmd/reversed-hostname-checker"
 
 	"github.com/letsencrypt/boulder/cmd"
 )

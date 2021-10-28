@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -172,6 +173,11 @@ func TestDBHandler(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK {
 		t.Errorf("Code: want %d, got %d", http.StatusOK, w.Code)
+	}
+	cacheTag := w.Result().Header["Edge-Cache-Tag"]
+	expectedCacheTag := []string{"08"}
+	if !reflect.DeepEqual(cacheTag, expectedCacheTag) {
+		t.Errorf("Edge-Cache-Tag: expected %q, got %q", expectedCacheTag, cacheTag)
 	}
 	if !bytes.Equal(w.Body.Bytes(), resp.OCSPResponse) {
 		t.Errorf("Mismatched body: want %#v, got %#v", resp, w.Body.Bytes())

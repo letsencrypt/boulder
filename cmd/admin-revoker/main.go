@@ -115,10 +115,10 @@ func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode
 }
 
 func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap db.Executor) error {
-	certObj, err := sa.SelectCertificate(dbMap, serial)
+	certObj, err := sa.SelectPrecertificate(dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return berrors.NotFoundError("certificate with serial %q not found", serial)
+			return berrors.NotFoundError("precertificate with serial %q not found", serial)
 		}
 		return err
 	}
@@ -126,7 +126,7 @@ func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Re
 }
 
 func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap db.Executor) error {
-	certObjs, err := sa.SelectCertificates(dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
+	certObjs, err := sa.SelectPrecertificates(dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
 		return err
 	}

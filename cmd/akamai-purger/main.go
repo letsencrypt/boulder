@@ -5,7 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,13 +93,46 @@ func (ap *akamaiPurger) Purge(ctx context.Context, req *akamaipb.PurgeRequest) (
 }
 
 func main() {
-	grpcAddr := flag.String("addr", "", "gRPC listen address override")
-	debugAddr := flag.String("debug-addr", "", "Debug server address override")
-	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	flag.Parse()
-	if *configFile == "" {
-		flag.Usage()
+	daemonFlags := flag.NewFlagSet("daemon", flag.ExitOnError)
+	grpcAddr := daemonFlags.String("addr", "", "gRPC listen address override")
+	debugAddr := daemonFlags.String("debug-addr", "", "Debug server address override")
+	configFile := daemonFlags.String("config", "", "File path to the configuration file for this service")
+
+	manualFlags := flag.NewFlagSet("manual", flag.ExitOnError)
+	manualConfigFile := manualFlags.String("config", "", "File path to the configuration file for this service")
+	tag := manualFlags.String("tag", "", "Single cache tag to purge")
+	tagFile := manualFlags.String("tag-file", "", "File containing cache tags to purge, one per line")
+
+	if len(os.Args) < 2 {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		daemonFlags.PrintDefaults()
+		fmt.Fprintln(os.Stderr, "OR:")
+		fmt.Fprintf(os.Stderr, "%s manual <flags>\n", os.Args[0])
+		manualFlags.PrintDefaults()
 		os.Exit(1)
+	}
+
+	var manualMode bool
+	if os.Args[1] == "manual" {
+		manualMode = true
+		_ = manualFlags.Parse(os.Args[2:])
+		if *configFile == "" {
+			manualFlags.Usage()
+			os.Exit(1)
+		}
+		if *tag == "" && *tagFile == "" {
+			cmd.Fail("Must specify one of --tag or --tag-file for manual purge")
+		} else if *tag != "" && *tagFile != "" {
+			cmd.Fail("Cannot specify both of --tag and --tag-file for manual purge")
+		}
+
+		configFile = manualConfigFile
+	} else {
+		_ = daemonFlags.Parse(os.Args[1:])
+		if *configFile == "" {
+			daemonFlags.Usage()
+			os.Exit(1)
+		}
 	}
 
 	var c config
@@ -119,12 +154,6 @@ func main() {
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.AkamaiPurger.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
-
-	clk := cmd.Clock()
-
-	tlsConfig, err := c.AkamaiPurger.TLS.Load()
-	cmd.FailOnError(err, "tlsConfig config")
-
 	if c.AkamaiPurger.PurgeInterval.Duration == 0 {
 		cmd.Fail("PurgeInterval must be > 0")
 	}
@@ -142,7 +171,7 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to setup Akamai CCU client")
 
-	ap := akamaiPurger{
+	ap := &akamaiPurger{
 		client: ccu,
 		log:    logger,
 	}
@@ -155,6 +184,33 @@ func main() {
 		func() float64 { return float64(ap.len()) },
 	)
 	scope.MustRegister(gaugePurgeQueueLength)
+
+	if manualMode {
+		manualPurge(ccu, *tag, *tagFile, logger)
+	} else {
+		daemon(c, ap, logger, scope)
+	}
+}
+
+func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string, logger blog.Logger) {
+	var tags []string
+	if tag != "" {
+		tags = []string{tag}
+	} else {
+		contents, err := ioutil.ReadFile(tagFile)
+		cmd.FailOnError(err, "Reading --tag-file")
+		tags = strings.Split(string(contents), "\n")
+	}
+
+	err := purgeClient.PurgeTags(tags)
+	cmd.FailOnError(err, "Purging tags")
+}
+
+func daemon(c config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
+	clk := cmd.Clock()
+
+	tlsConfig, err := c.AkamaiPurger.TLS.Load()
+	cmd.FailOnError(err, "tlsConfig config")
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)
 	ticker := time.NewTicker(c.AkamaiPurger.PurgeInterval.Duration)
@@ -188,7 +244,7 @@ func main() {
 	serverMetrics := bgrpc.NewServerMetrics(scope)
 	grpcSrv, l, err := bgrpc.NewServer(c.AkamaiPurger.GRPC, tlsConfig, serverMetrics, clk)
 	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
-	akamaipb.RegisterAkamaiPurgerServer(grpcSrv, &ap)
+	akamaipb.RegisterAkamaiPurgerServer(grpcSrv, ap)
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(grpcSrv, hs)
 

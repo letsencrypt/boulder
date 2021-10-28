@@ -64,6 +64,7 @@ GRANT SELECT ON precertificates TO 'ocsp_update_ro'@'localhost';
 -- Revoker Tool
 GRANT SELECT ON registrations TO 'revoker'@'localhost';
 GRANT SELECT ON certificates TO 'revoker'@'localhost';
+GRANT SELECT ON precertificates TO 'revoker'@'localhost';
 
 -- Expiration mailer
 GRANT SELECT ON certificates TO 'mailer'@'localhost';
