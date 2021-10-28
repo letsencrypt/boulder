@@ -10,5 +10,5 @@ redis-cli \
   --cert /test/redis-tls/redis/cert.pem \
   --key /test/redis-tls/redis/key.pem \
   --cacert /test/redis-tls/minica.pem \
-  --user ocsp-updater \
-  --pass e4e9ce7845cb6adbbc44fb1d9deb05e6b4dc1386
+  --user replication-user \
+  --pass 435e9c4225f08813ef3af7c725f0d30d263b9cd3
