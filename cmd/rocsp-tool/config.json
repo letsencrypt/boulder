@@ -1,0 +1,15 @@
+{
+  "rocspTool": {
+    "redis": {
+      "username": "ocsp-updater",
+      "passwordFile": "test/secrets/rocsp_tool_password",
+      "addr": "boulder-redis:4218",
+      "timeout": "5s",
+      "tls": {
+        "caCertFile": "test/redis-tls/minica.pem",
+        "certFile": "test/redis-tls/boulder/cert.pem",
+        "keyFile": "test/redis-tls/boulder/key.pem"
+      }
+    }
+  }
+}
