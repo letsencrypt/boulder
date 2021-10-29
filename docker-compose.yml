@@ -16,6 +16,8 @@ services:
         ipv4_address: 10.77.77.77
       rednet:
         ipv4_address: 10.88.88.88
+      redisnet:
+        ipv4_address: 10.33.33.33
     # Use sd-test-srv as a backup to Docker's embedded DNS server
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
     # If there's a name Docker's DNS server doesn't know about, it will
@@ -63,6 +65,15 @@ services:
       replicas: 6
     networks:
       redisnet:
+
+  bredis_clusterer:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: /test/wait-for-it.sh 10.33.33.2 4218 /test/redis-create.sh
+    networks:
+        redisnet:
+          ipv4_address: 10.33.33.10
 
   netaccess:
     image: *boulder_image
