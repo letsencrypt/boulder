@@ -1913,7 +1913,7 @@ type mockSAWithRecentAndOlder struct {
 	mocks.StorageAuthority
 }
 
-func newMockSAWithRecentAndOlder(pastExpired, beforeExpired, recentValidated, olderValidated time.Time) *mockSAWithRecentAndOlder {
+func newMockSAWithRecentAndOlder(recentExpired, olderExpired, recentValidated, olderValidated time.Time) *mockSAWithRecentAndOlder {
 	makeIdentifier := func(name string) identifier.ACMEIdentifier {
 		return identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
@@ -1925,7 +1925,7 @@ func newMockSAWithRecentAndOlder(pastExpired, beforeExpired, recentValidated, ol
 		authzMap: map[string]*core.Authorization{
 			"recent.com": {
 				Identifier: makeIdentifier("recent.com"),
-				Expires:    &beforeExpired,
+				Expires:    &recentExpired,
 				Challenges: []core.Challenge{
 					{
 						Status:    core.StatusValid,
@@ -1937,7 +1937,7 @@ func newMockSAWithRecentAndOlder(pastExpired, beforeExpired, recentValidated, ol
 			},
 			"older.com": {
 				Identifier: makeIdentifier("older.com"),
-				Expires:    &beforeExpired,
+				Expires:    &olderExpired,
 				Challenges: []core.Challenge{
 					{
 						Status:    core.StatusValid,
@@ -1949,7 +1949,7 @@ func newMockSAWithRecentAndOlder(pastExpired, beforeExpired, recentValidated, ol
 			},
 			"older2.com": {
 				Identifier: makeIdentifier("older2.com"),
-				Expires:    &pastExpired,
+				Expires:    &olderExpired,
 				Challenges: []core.Challenge{
 					{
 						Status:    core.StatusValid,
@@ -1961,7 +1961,7 @@ func newMockSAWithRecentAndOlder(pastExpired, beforeExpired, recentValidated, ol
 			},
 			"wildcard.com": {
 				Identifier: makeIdentifier("wildcard.com"),
-				Expires:    &beforeExpired,
+				Expires:    &olderExpired,
 				Challenges: []core.Challenge{
 					{
 						Status:    core.StatusValid,
@@ -1973,13 +1973,51 @@ func newMockSAWithRecentAndOlder(pastExpired, beforeExpired, recentValidated, ol
 			},
 			"*.wildcard.com": {
 				Identifier: makeIdentifier("*.wildcard.com"),
-				Expires:    &beforeExpired,
+				Expires:    &olderExpired,
 				Challenges: []core.Challenge{
 					{
 						Status:    core.StatusValid,
 						Type:      core.ChallengeTypeHTTP01,
 						Token:     "exampleToken",
 						Validated: &olderValidated,
+					},
+				},
+			},
+			"twochallenges.com": {
+				ID:         "twochal",
+				Identifier: makeIdentifier("twochallenges.com"),
+				Expires:    &recentExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeDNS01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+				},
+			},
+			"nochallenges.com": {
+				ID:         "nochal",
+				Identifier: makeIdentifier("nochallenges.com"),
+				Expires:    &recentExpired,
+				Challenges: []core.Challenge{},
+			},
+			"novalidationtime.com": {
+				ID:         "noval",
+				Identifier: makeIdentifier("novalidationtime.com"),
+				Expires:    &recentExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: nil,
 					},
 				},
 			},
@@ -2000,10 +2038,10 @@ func TestRecheckCAADates(t *testing.T) {
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
 	ra.SA = newMockSAWithRecentAndOlder(
-		fc.Now().Add(15*time.Hour),
-		fc.Now().Add(5*time.Hour),
-		fc.Now().Add(-1*time.Hour),
-		fc.Now().Add(-8*time.Hour),
+		fc.Now().Add(15*time.Hour), // recently created authz
+		fc.Now().Add(5*time.Hour),  // older authz
+		fc.Now().Add(-1*time.Hour), // validated 1h ago
+		fc.Now().Add(-8*time.Hour), // validated 8h ago
 	)
 
 	// NOTE: The names provided here correspond to authorizations in the
@@ -2014,6 +2052,22 @@ func TestRecheckCAADates(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
+
+	// Should error if a authorization has `!= 1` challenge
+	_, err = ra.checkAuthorizations(context.Background(), []string{"twochallenges.com"}, 999)
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
+
+	// Should error if a authorization has `!= 1` challenge
+	_, err = ra.checkAuthorizations(context.Background(), []string{"nochallenges.com"}, 999)
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
+
+	// Should error if authorization's challenge has no validated timestamp
+	_, err = ra.checkAuthorizations(context.Background(), []string{"novalidationtime.com"}, 999)
+	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
+
+	// Test to make sure the authorization lifetime codepath was not used
+	// to determin if CAA needed recheck.
+	test.AssertMetricWithLabelsEquals(t, ra.recheckCAAUsedAuthzLifetime, prometheus.Labels{}, 0)
 
 	// We expect that "recent.com" is not checked because its mock authorization
 	// isn't expired
