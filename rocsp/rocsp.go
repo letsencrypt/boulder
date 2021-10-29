@@ -18,7 +18,7 @@ import (
 type Metadata struct {
 	ShortIssuerID byte
 	// ThisUpdate contains the ThisUpdate time of the stored OCSP response.
-	ThisUpdate       time.Time
+	ThisUpdate time.Time
 }
 
 // String implements pretty-printing of Metadata
@@ -64,17 +64,17 @@ func MakeMetadataKey(serial string) string {
 
 // Client represents a read-only Redis client.
 type Client struct {
-	rdb *redis.ClusterClient
+	rdb     *redis.ClusterClient
 	timeout time.Duration
-	clk clock.Clock
+	clk     clock.Clock
 }
 
 // NewClient creates a Client.
 func NewClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *Client {
-	return &Client {
-		rdb: rdb,
+	return &Client{
+		rdb:     rdb,
 		timeout: timeout,
-		clk: clk,
+		clk:     clk,
 	}
 }
 
@@ -85,11 +85,11 @@ type WritingClient struct {
 
 // NewWritingClient creates a WritingClient.
 func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *WritingClient {
-	return &WritingClient {
-		Client {
-			rdb: rdb,
+	return &WritingClient{
+		Client{
+			rdb:     rdb,
 			timeout: timeout,
-			clk: clk,
+			clk:     clk,
 		},
 	}
 }
@@ -113,8 +113,8 @@ func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, ttl
 	metadataKey := MakeMetadataKey(serial)
 
 	metadataStruct := Metadata{
-		ThisUpdate:       resp.ThisUpdate,
-		ShortIssuerID:    0x99, /// XXX
+		ThisUpdate:    resp.ThisUpdate,
+		ShortIssuerID: 0x99, /// XXX
 	}
 	metadataValue := metadataStruct.Marshal()
 

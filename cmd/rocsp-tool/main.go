@@ -45,7 +45,6 @@ func main() {
 	}
 }
 
-
 type ShortIDIssuer struct {
 	*issuance.Certificate
 	subject pkix.RDNSequence
