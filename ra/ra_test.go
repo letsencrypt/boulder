@@ -2066,7 +2066,7 @@ func TestRecheckCAADates(t *testing.T) {
 	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
 
 	// Test to make sure the authorization lifetime codepath was not used
-	// to determin if CAA needed recheck.
+	// to determine if CAA needed recheck.
 	test.AssertMetricWithLabelsEquals(t, ra.recheckCAAUsedAuthzLifetime, prometheus.Labels{}, 0)
 
 	// We expect that "recent.com" is not checked because its mock authorization
