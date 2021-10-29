@@ -35,6 +35,8 @@ services:
       - 8055:8055 # dns-test-srv updates
     depends_on:
       - bmysql
+      - bredis
+      - bredis_clusterer
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
 
@@ -70,10 +72,15 @@ services:
     image: redis:latest
     volumes:
       - ./test/:/test/:cached
+      - ./cluster/:/cluster/:cached
     command: /test/wait-for-it.sh 10.33.33.2 4218 /test/redis-create.sh
+    depends_on:
+      - bredis
     networks:
         redisnet:
           ipv4_address: 10.33.33.10
+          aliases:
+            - boulder-redis-clusterer
 
   netaccess:
     image: *boulder_image
