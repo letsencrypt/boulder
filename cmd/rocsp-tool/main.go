@@ -166,7 +166,7 @@ func storeResponse(respFile string, issuers []ShortIDIssuer, client *rocsp.Writi
 		resp.ThisUpdate,
 		ttl.Hours())
 
-	err = client.StoreResponse(ctx, respBytes, ttl)
+	err = client.StoreResponse(ctx, respBytes, issuer.shortID, ttl)
 	if err != nil {
 		return fmt.Errorf("storing response: %w", err)
 	}
