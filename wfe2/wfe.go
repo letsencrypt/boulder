@@ -2415,6 +2415,10 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
 	}
+
+	pollPeriod := int(6 * time.Hour / time.Second)
+	response.Header().Set("Retry-After", fmt.Sprintf("%d", pollPeriod))
+	response.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d, public, no-transform, must-revalidate", pollPeriod))
 }
 
 func extractRequesterIP(req *http.Request) (net.IP, error) {

@@ -3658,6 +3658,7 @@ func TestARI(t *testing.T) {
 	resp := httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 200)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
 
 	// Ensure that a mangled query (wrong serial) results in a 404.
 	path = fmt.Sprintf(
@@ -3670,4 +3671,5 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 404)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
 }
