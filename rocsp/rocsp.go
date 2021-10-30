@@ -142,7 +142,7 @@ func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, sho
 // GetResponse fetches a response for the given serial number.
 // Returns error if the OCSP response fails to parse.
 // Does not check the metadata field.
-func (c *Client) GetResponse(ctx context.Context, serial string) (*ocsp.Response, error) {
+func (c *Client) GetResponse(ctx context.Context, serial string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -152,12 +152,8 @@ func (c *Client) GetResponse(ctx context.Context, serial string) (*ocsp.Response
 	if err != nil {
 		return nil, fmt.Errorf("getting response: %w", err)
 	}
-	parsedResponse, err := ocsp.ParseResponse([]byte(val), nil)
-	if err != nil {
-		return nil, fmt.Errorf("parsing response: %w", err)
-	}
 
-	return parsedResponse, nil
+	return []byte(val), nil
 }
 
 // GetMetadata fetches the metadata for the given serial number.

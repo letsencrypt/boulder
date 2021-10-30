@@ -175,6 +175,11 @@ func storeResponse(respFile string, issuers []ShortIDIssuer, client *rocsp.Writi
 	if err != nil {
 		return fmt.Errorf("getting response: %w", err)
 	}
-	log.Printf("retrieved %s", helper.PrettyResponse(retrievedResponse))
+
+	parsedRetrievedResponse, err := ocsp.ParseResponse(retrievedResponse, issuer.Certificate.Certificate)
+	if err != nil {
+		return fmt.Errorf("parsing retrieved response: %w", err)
+	}
+	log.Printf("retrieved %s", helper.PrettyResponse(parsedRetrievedResponse))
 	return nil
 }
