@@ -116,6 +116,9 @@ func main2() error {
 	}
 	clk := cmd.Clock()
 	client, err := rocsp_config.MakeClient(&c.ROCSPTool.Redis, clk)
+	if err != nil {
+		return fmt.Errorf("making client: %w", err)
+	}
 
 	for _, respFile := range flag.Args() {
 		err := storeResponse(respFile, issuers, client, clk)

@@ -14,12 +14,12 @@ import (
 
 func makeClient() (*WritingClient, clock.Clock) {
 	CACertFile := "../test/redis-tls/minica.pem"
-        CertFile:= "../test/redis-tls/boulder/cert.pem"
-        KeyFile:= "../test/redis-tls/boulder/key.pem"
-	tlsConfig := cmd.TLSConfig {
-        CACertFile: &CACertFile,
-        CertFile: &CertFile,
-        KeyFile: &KeyFile,
+	CertFile := "../test/redis-tls/boulder/cert.pem"
+	KeyFile := "../test/redis-tls/boulder/key.pem"
+	tlsConfig := cmd.TLSConfig{
+		CACertFile: &CACertFile,
+		CertFile:   &CertFile,
+		KeyFile:    &KeyFile,
 	}
 	tlsConfig2, err := tlsConfig.Load()
 	if err != nil {
@@ -33,12 +33,12 @@ func makeClient() (*WritingClient, clock.Clock) {
 		TLSConfig: tlsConfig2,
 	})
 	clk := clock.NewFake()
-	return NewWritingClient(rdb, 5 * time.Second, clk), clk
+	return NewWritingClient(rdb, 5*time.Second, clk), clk
 }
 
 func TestSetAndGet(t *testing.T) {
 	client, _ := makeClient()
-	
+
 	response, err := ioutil.ReadFile("testdata/ocsp.response")
 	if err != nil {
 		t.Fatal(err)
