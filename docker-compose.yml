@@ -94,8 +94,6 @@ services:
       - .:/go/src/github.com/letsencrypt/boulder
     working_dir: *boulder_working_dir
     entrypoint: test/entrypoint-netaccess.sh
-    depends_on:
-      - bmysql
 
 networks:
   bluenet:
