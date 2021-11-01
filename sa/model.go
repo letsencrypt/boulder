@@ -120,11 +120,17 @@ func SelectPrecertificates(s db.Selector, q string, args map[string]interface{})
 	return models, err
 }
 
+type CertStatusMetadata struct {
+	ID int64
+	core.CertificateStatus
+}
+
 // CertStatusMetadataFields returns a slice of column names for rows in the
 // certificateStatus table. Changes to the ordering of this list returned by
 // this function should also be made in `ScanCertStatusRow()`.
 func CertStatusMetadataFields() []string {
 	return []string{
+		"id",
 		"serial",
 		"status",
 		"ocspLastUpdated",
@@ -141,8 +147,9 @@ func CertStatusMetadataFields() []string {
 // check that there's a 1:1 correspondence between the column name in the DB,
 // `CertStatusMetadataFields()`, and the `*core.CerticateStatus` field name
 // being copied to.
-func ScanCertStatusRow(rows *sql.Rows, status *core.CertificateStatus) error {
+func ScanCertStatusMetadataRow(rows *sql.Rows, status *CertStatusMetadata) error {
 	err := rows.Scan(
+		&status.ID,
 		&status.Serial,
 		&status.Status,
 		&status.OCSPLastUpdated,
@@ -159,28 +166,9 @@ func ScanCertStatusRow(rows *sql.Rows, status *core.CertificateStatus) error {
 	return nil
 }
 
-// TODO(#5655) Remove once #5642 has been deployed to staging and production.
-func certStatusMetadataFieldsSelect(restOfQuery string) string {
-	fields := strings.Join(CertStatusMetadataFields(), ",")
-	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
-}
-
-// SelectCertificateStatusMetadata selects all non-OCSPResponse fields of
-// multiple certificate status objects.
-//
-// TODO(#5655) Remove once #5642 has been deployed to staging and production.
-func SelectCertificateStatusMetadata(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
-	var models []core.CertificateStatus
-	_, err := s.Select(
-		&models,
-		certStatusMetadataFieldsSelect(q),
-		args...,
-	)
-	return models, err
-}
-
 func certStatusFields() []string {
-	return append(CertStatusMetadataFields(), "ocspResponse")
+	// Remove "id", add the full response bytes.
+	return append(CertStatusMetadataFields()[1:], "ocspResponse")
 }
 
 func certStatusFieldsSelect(restOfQuery string) string {

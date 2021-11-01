@@ -98,13 +98,13 @@ func nowNano(fc clock.Clock) int64 {
 }
 
 func TestStalenessHistogram(t *testing.T) {
-	updater, sa, _, fc, cleanUp := setup(t)
+	updater, sac, _, fc, cleanUp := setup(t)
 	defer cleanUp()
 
-	reg := satest.CreateWorkingRegistration(t, sa)
+	reg := satest.CreateWorkingRegistration(t, sac)
 	parsedCertA, err := core.LoadCert("test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+	_, err = sac.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertA.Raw,
 		RegID:    reg.Id,
 		Ocsp:     nil,
@@ -114,7 +114,7 @@ func TestStalenessHistogram(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 	parsedCertB, err := core.LoadCert("test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+	_, err = sac.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertB.Raw,
 		RegID:    reg.Id,
 		Ocsp:     nil,
@@ -130,7 +130,7 @@ func TestStalenessHistogram(t *testing.T) {
 
 	// We should have 2 stale responses now.
 	statuses := updater.findStaleOCSPResponses(ctx, earliest, 10)
-	var statusSlice []core.CertificateStatus
+	var statusSlice []sa.CertStatusMetadata
 	for status := range statuses {
 		statusSlice = append(statusSlice, status)
 	}
@@ -156,10 +156,12 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	statusPB, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
-	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
-	status, err := bgrpc.PBToCertStatus(statusPB)
-	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
+	fc.Set(fc.Now().Add(2 * time.Hour))
+	earliest := fc.Now().Add(-time.Hour)
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	test.AssertEquals(t, updater.readFailures.Value(), 0)
+	test.AssertEquals(t, len(statuses), 1)
+	status := <-statuses
 
 	meta, err := updater.generateResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
@@ -170,8 +172,8 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 // findStaleOCSPResponsesBuffered runs findStaleOCSPResponses and returns
 // it as a buffered channel. This is helpful for tests that want to test
 // the length of the channel.
-func findStaleOCSPResponsesBuffered(ctx context.Context, updater *OCSPUpdater, earliest time.Time, batchSize int) <-chan core.CertificateStatus {
-	statuses := make(chan core.CertificateStatus, batchSize)
+func findStaleOCSPResponsesBuffered(ctx context.Context, updater *OCSPUpdater, earliest time.Time, batchSize int) <-chan sa.CertStatusMetadata {
+	statuses := make(chan sa.CertStatusMetadata, batchSize)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -274,11 +276,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 1)
-
-	statusPB, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
-	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
-	status, err := bgrpc.PBToCertStatus(statusPB)
-	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
+	status := <-statuses
 
 	// Generate and store an updated response, which will update the
 	// ocspLastUpdate field for this cert.
@@ -431,10 +429,12 @@ func TestStoreResponseGuard(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
 
-	statusPB, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(parsedCert.SerialNumber)})
-	test.AssertNotError(t, err, "Couldn't get the certificateStatus from the database")
-	status, err := bgrpc.PBToCertStatus(statusPB)
-	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
+	fc.Set(fc.Now().Add(2 * time.Hour))
+	earliest := fc.Now().Add(-time.Hour)
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	test.AssertEquals(t, updater.readFailures.Value(), 0)
+	test.AssertEquals(t, len(statuses), 1)
+	status := <-statuses
 
 	serialStr := core.SerialToString(parsedCert.SerialNumber)
 	reason := int64(0)

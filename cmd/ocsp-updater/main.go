@@ -208,10 +208,10 @@ func getQuestionsForShardList(count int) string {
 
 // findStaleOCSPResponses sends a goroutine to fetch rows of stale OCSP
 // responses from the database and returns results on a channel.
-func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLastUpdatedTime time.Time, batchSize int) <-chan core.CertificateStatus {
+func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLastUpdatedTime time.Time, batchSize int) <-chan sa.CertStatusMetadata {
 	// staleStatusesOut channel contains all stale ocsp responses that need
 	// updating.
-	staleStatusesOut := make(chan core.CertificateStatus)
+	staleStatusesOut := make(chan sa.CertStatusMetadata)
 
 	args := make([]interface{}, 0)
 	args = append(args, oldestLastUpdatedTime)
@@ -244,8 +244,8 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 		}
 
 		for rows.Next() {
-			var status core.CertificateStatus
-			err := sa.ScanCertStatusRow(rows, &status)
+			var status sa.CertStatusMetadata
+			err := sa.ScanCertStatusMetadataRow(rows, &status)
 			if err != nil {
 				rows.Close()
 				updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
@@ -277,9 +277,9 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 	return staleStatusesOut
 }
 
-// generateResponse signs an new OCSP response for a given
-// `core.CertificateStatus` entry.
-func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.CertificateStatus) (*core.CertificateStatus, error) {
+// generateResponse signs an new OCSP response for a given certStatus row.
+// Takes its argument by value to force a copy, then returns a reference to that copy.
+func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.CertStatusMetadata) (*sa.CertStatusMetadata, error) {
 	if status.IssuerID == 0 {
 		return nil, errors.New("cert status has 0 IssuerID")
 	}
@@ -303,39 +303,39 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status core.Ce
 }
 
 // storeResponse stores a given CertificateStatus in the database.
-func (updater *OCSPUpdater) storeResponse(status *core.CertificateStatus) error {
+func (updater *OCSPUpdater) storeResponse(status *sa.CertStatusMetadata) error {
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
 	_, err := updater.db.Exec(
 		`UPDATE certificateStatus
 		 SET ocspResponse=?,ocspLastUpdated=?
-		 WHERE serial=?
+		 WHERE id=?
 		 AND status=?`,
 		status.OCSPResponse,
 		status.OCSPLastUpdated,
-		status.Serial,
+		status.ID,
 		string(status.Status),
 	)
 	return err
 }
 
 // markExpired updates a given CertificateStatus to have `isExpired` set.
-func (updater *OCSPUpdater) markExpired(status core.CertificateStatus) error {
+func (updater *OCSPUpdater) markExpired(status sa.CertStatusMetadata) error {
 	_, err := updater.db.Exec(
 		`UPDATE certificateStatus
  		SET isExpired = TRUE
- 		WHERE serial = ?`,
-		status.Serial,
+ 		WHERE id = ?`,
+		status.ID,
 	)
 	return err
 }
 
 // processExpired is a pipeline step to process a channel of
 // `core.CertificateStatus` and set `isExpired` in the database.
-func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn <-chan core.CertificateStatus) <-chan core.CertificateStatus {
+func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn <-chan sa.CertStatusMetadata) <-chan sa.CertStatusMetadata {
 	tickStart := updater.clk.Now()
-	staleStatusesOut := make(chan core.CertificateStatus)
+	staleStatusesOut := make(chan sa.CertStatusMetadata)
 	go func() {
 		defer close(staleStatusesOut)
 		for status := range staleStatusesIn {
@@ -363,7 +363,7 @@ func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn 
 // generateOCSPResponses is the final stage of a pipeline. It takes a
 // channel of `core.CertificateStatus` and sends a goroutine for each to
 // obtain a new OCSP response and update the status in the database.
-func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStatusesIn <-chan core.CertificateStatus) {
+func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStatusesIn <-chan sa.CertStatusMetadata) {
 	// Use the semaphore pattern from
 	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
 	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
@@ -380,7 +380,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStat
 
 	// Work runs as a goroutine per ocsp response to obtain a new ocsp
 	// response and store it in the database.
-	work := func(status core.CertificateStatus) {
+	work := func(status sa.CertStatusMetadata) {
 		defer done(updater.clk.Now())
 
 		meta, err := updater.generateResponse(ctx, status)
