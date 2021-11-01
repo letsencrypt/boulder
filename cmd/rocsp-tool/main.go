@@ -71,6 +71,9 @@ func loadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 			if issuer.shortID == shortID {
 				return nil, fmt.Errorf("duplicate shortID in config file: %d (for %q and %q)", shortID, issuer.subject, subject)
 			}
+			if !issuer.IsCA {
+				return nil, fmt.Errorf("certificate for %q is not a CA certificate", subject)
+			}
 		}
 		issuers = append(issuers, ShortIDIssuer{cert, subject, shortID})
 	}
@@ -167,7 +170,8 @@ func storeResponse(respFile string, issuers []ShortIDIssuer, client *rocsp.Writi
 	log.Printf("storing response for %s, generated %s, ttl %g hours",
 		serial,
 		resp.ThisUpdate,
-		ttl.Hours())
+		ttl.Hours(),
+	)
 
 	err = client.StoreResponse(ctx, respBytes, issuer.shortID, ttl)
 	if err != nil {
