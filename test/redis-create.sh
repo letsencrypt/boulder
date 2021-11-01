@@ -12,7 +12,7 @@ ARGS="--tls \
 if ! redis-cli \
     --cluster check \
       10.33.33.2:4218 \
-    "${ARGS}" ; then
+    $ARGS ; then
   echo "Cluster needs creation!"
   redis-cli \
     --cluster-yes \
@@ -20,7 +20,7 @@ if ! redis-cli \
       10.33.33.2:4218 10.33.33.3:4218 10.33.33.4:4218 \
       10.33.33.5:4218 10.33.33.6:4218 10.33.33.7:4218 \
     --cluster-replicas 1 \
-    "${ARGS}"
+    $ARGS
 fi
 
 # Hack: run redis-server so we have something listening on a port.
