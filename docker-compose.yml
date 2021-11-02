@@ -16,6 +16,8 @@ services:
         ipv4_address: 10.77.77.77
       rednet:
         ipv4_address: 10.88.88.88
+      redisnet:
+        ipv4_address: 10.33.33.33
     # Use sd-test-srv as a backup to Docker's embedded DNS server
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
     # If there's a name Docker's DNS server doesn't know about, it will
@@ -33,6 +35,8 @@ services:
       - 8055:8055 # dns-test-srv updates
     depends_on:
       - bmysql
+      - bredis
+      - bredis_clusterer
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
 
@@ -64,6 +68,20 @@ services:
     networks:
       redisnet:
 
+  bredis_clusterer:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+      - ./cluster/:/cluster/:cached
+    command: /test/wait-for-it.sh 10.33.33.2 4218 /test/redis-create.sh
+    depends_on:
+      - bredis
+    networks:
+        redisnet:
+          ipv4_address: 10.33.33.10
+          aliases:
+            - boulder-redis-clusterer
+
   netaccess:
     image: *boulder_image
     environment:
@@ -76,8 +94,6 @@ services:
       - .:/go/src/github.com/letsencrypt/boulder
     working_dir: *boulder_working_dir
     entrypoint: test/entrypoint-netaccess.sh
-    depends_on:
-      - bmysql
 
 networks:
   bluenet:

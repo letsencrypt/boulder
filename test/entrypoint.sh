@@ -30,8 +30,9 @@ wait_tcp_port() {
     exec 6>&-
     echo "Connected to $host:$port"
 }
-# make sure we can reach the mysqldb
+# make sure we can reach the mysqldb and Redis cluster is done being created.
 wait_tcp_port boulder-mysql 3306
+wait_tcp_port 10.33.33.10 4218
 
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh

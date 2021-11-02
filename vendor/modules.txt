@@ -2,8 +2,10 @@
 github.com/beeker1121/goque
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
-# github.com/cespare/xxhash/v2 v2.1.1
+# github.com/cespare/xxhash/v2 v2.1.2
 github.com/cespare/xxhash/v2
+# github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
+github.com/dgryski/go-rendezvous
 # github.com/eggsampler/acme/v3 v3.0.0
 github.com/eggsampler/acme/v3
 # github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a
@@ -16,9 +18,18 @@ github.com/facebookgo/muster
 github.com/felixge/httpsnoop
 # github.com/go-gorp/gorp/v3 v3.0.2
 github.com/go-gorp/gorp/v3
+# github.com/go-redis/redis/v8 v8.11.4
+github.com/go-redis/redis/v8
+github.com/go-redis/redis/v8/internal
+github.com/go-redis/redis/v8/internal/hashtag
+github.com/go-redis/redis/v8/internal/hscan
+github.com/go-redis/redis/v8/internal/pool
+github.com/go-redis/redis/v8/internal/proto
+github.com/go-redis/redis/v8/internal/rand
+github.com/go-redis/redis/v8/internal/util
 # github.com/go-sql-driver/mysql v1.5.0
 github.com/go-sql-driver/mysql
-# github.com/golang/protobuf v1.5.0
+# github.com/golang/protobuf v1.5.2
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any

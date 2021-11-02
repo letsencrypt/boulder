@@ -10,4 +10,4 @@ if [[ "$@" = "" ]]; then
   echo "Not needed as part of 'docker-compose up'. Exiting normally."
   exit 0
 fi
-$(dirname "${BASH_SOURCE[0]}")/entrypoint.sh "$@"
+"$@"

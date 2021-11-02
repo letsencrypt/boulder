@@ -6,6 +6,8 @@ require (
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
 	github.com/eggsampler/acme/v3 v3.0.0
 	github.com/go-gorp/gorp/v3 v3.0.2
+	github.com/go-redis/redis v6.15.9+incompatible // indirect
+	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0

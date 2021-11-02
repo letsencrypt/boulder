@@ -3,6 +3,7 @@ package helper
 import (
 	"bytes"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
@@ -358,23 +359,33 @@ func PrettyResponse(resp *ocsp.Response) string {
 
 	pr("\n")
 	pr("Response:\n")
-	pr("  CertStatus %d\n", resp.Status)
 	pr("  SerialNumber %036x\n", resp.SerialNumber)
+	pr("  CertStatus %d\n", resp.Status)
+	pr("  RevocationReason %d\n", resp.RevocationReason)
+	pr("  RevokedAt %s\n", resp.RevokedAt)
 	pr("  ProducedAt %s\n", resp.ProducedAt)
 	pr("  ThisUpdate %s\n", resp.ThisUpdate)
 	pr("  NextUpdate %s\n", resp.NextUpdate)
-	pr("  RevokedAt %s\n", resp.RevokedAt)
-	pr("  RevocationReason %d\n", resp.RevocationReason)
 	pr("  SignatureAlgorithm %s\n", resp.SignatureAlgorithm)
-	pr("  Extensions %#v\n", resp.Extensions)
-	if resp.Certificate == nil {
-		pr("  Certificate: nil\n")
-	} else {
+	pr("  IssuerHash %s\n", resp.IssuerHash)
+	if resp.Extensions != nil {
+		pr("  Extensions %#v\n", resp.Extensions)
+	}
+	if resp.Certificate != nil {
 		pr("  Certificate:\n")
 		pr("    Subject: %s\n", resp.Certificate.Subject)
 		pr("    Issuer: %s\n", resp.Certificate.Issuer)
 		pr("    NotBefore: %s\n", resp.Certificate.NotBefore)
 		pr("    NotAfter: %s\n", resp.Certificate.NotAfter)
 	}
+
+	var responder pkix.RDNSequence
+	_, err := asn1.Unmarshal(resp.RawResponderName, &responder)
+	if err != nil {
+		pr("  Responder: error (%s)\n", err)
+	} else {
+		pr("  Responder: %s\n", responder)
+	}
+
 	return builder.String()
 }
