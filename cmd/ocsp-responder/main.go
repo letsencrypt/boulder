@@ -161,7 +161,7 @@ type dbSelector interface {
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
-func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
+func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, http.Header, error) {
 	err := src.filter.checkRequest(req)
 	if err != nil {
 		src.log.Debugf("Not responding to filtered OCSP request: %s", err.Error())
@@ -185,7 +185,6 @@ func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 			src.log.Debugf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		}
 	}()
-	ctx := context.Background()
 	if src.timeout != 0 {
 		var cancel func()
 		ctx, cancel = context.WithTimeout(ctx, src.timeout)

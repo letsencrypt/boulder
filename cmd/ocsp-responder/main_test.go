@@ -295,7 +295,7 @@ func TestErrorLog(t *testing.T) {
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
-	_, _, err = src.Response(ocspReq)
+	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertEquals(t, err.Error(), "Failure!")
 
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Looking up OCSP response")), 1)
@@ -311,7 +311,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
-	_, _, err = src.Response(ocspReq)
+	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
 
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
@@ -321,7 +321,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 		t.Fatalf("newFilter: %s", err)
 	}
 	src = &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
-	_, _, err = src.Response(ocspReq)
+	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
 }
 
@@ -352,6 +352,6 @@ func TestExpiredUnauthorized(t *testing.T) {
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
-	_, _, err = src.Response(ocspReq)
+	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
 }

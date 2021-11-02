@@ -31,6 +31,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package ocsp
 
 import (
+	"context"
 	"crypto"
 	"crypto/sha256"
 	"encoding/base64"
@@ -68,7 +69,7 @@ var ErrNotFound = errors.New("Request OCSP Response not found")
 // with the headers you wish to set. If you don't want to set any
 // extra headers you may return nil instead.
 type Source interface {
-	Response(*ocsp.Request) ([]byte, http.Header, error)
+	Response(context.Context, *ocsp.Request) ([]byte, http.Header, error)
 }
 
 // An InMemorySource is a map from serialNumber -> der(response)
@@ -88,7 +89,7 @@ func NewMemorySource(responses map[string][]byte, logger blog.Logger) Source {
 // Response looks up an OCSP response to provide for a given request.
 // InMemorySource looks up a response purely based on serial number,
 // without regard to what issuer the request is asking for.
-func (src InMemorySource) Response(request *ocsp.Request) ([]byte, http.Header, error) {
+func (src InMemorySource) Response(_ context.Context, request *ocsp.Request) ([]byte, http.Header, error) {
 	response, present := src.responses[request.SerialNumber.String()]
 	if !present {
 		return nil, nil, ErrNotFound
@@ -355,7 +356,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	beeline.AddFieldToTrace(ctx, "ocsp.hash_alg", hashToString[ocspRequest.HashAlgorithm])
 
 	// Look up OCSP response from source
-	ocspResponse, headers, err := rs.Source.Response(ocspRequest)
+	ocspResponse, headers, err := rs.Source.Response(ctx, ocspRequest)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			rs.log.Infof("No response found for request: serial %x, request body %s",
