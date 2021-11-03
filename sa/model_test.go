@@ -236,9 +236,9 @@ func TestScanCertStatusMetadataRow(t *testing.T) {
 		Status: "good",
 	}
 	err := sa.dbMap.Insert(&inputStatus)
-	test.AssertNotError(t, err, "couldn't insert certificateStatus")	
+	test.AssertNotError(t, err, "couldn't insert certificateStatus")
 
-	rows, err := sa.dbMap.Query("SELECT serial, status, ocspLastUpdated FROM certificateStatus");
+	rows, err := sa.dbMap.Query("SELECT serial, status, ocspLastUpdated FROM certificateStatus")
 	test.AssertNotError(t, err, "selecting")
 
 	if !rows.Next() {
@@ -255,7 +255,7 @@ func TestScanCertStatusMetadataRow(t *testing.T) {
 		t.Errorf("wrong error: got %q, expected %q", err, expected)
 	}
 
-	rows, err = sa.dbMap.Query("SELECT id, status, serial, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, notAfter, isExpired, issuerID FROM certificateStatus");
+	rows, err = sa.dbMap.Query("SELECT id, status, serial, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, notAfter, isExpired, issuerID FROM certificateStatus")
 	test.AssertNotError(t, err, "selecting")
 
 	if !rows.Next() {
