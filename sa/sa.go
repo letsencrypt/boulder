@@ -920,6 +920,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					am.Expires,
 					am.Challenges,
 					am.Attempted,
+					am.AttemptedAt,
 					am.Token,
 					am.ValidationError,
 					am.ValidationRecord,
@@ -1486,10 +1487,9 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 
 		// Each authz needs a (?,?...), in the VALUES block. We need one
 		// for each element in the authzFields string.
-		fmt.Fprint(&questionsBuf, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),")
+		fmt.Fprint(&questionsBuf, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),")
 
 		// The query arguments must follow the order of the authzFields string.
-		// Note that the AttemptedAt field is not included in the authzFields.
 		queryArgs = append(queryArgs,
 			am.ID,
 			am.IdentifierType,
@@ -1499,6 +1499,7 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 			am.Expires,
 			am.Challenges,
 			am.Attempted,
+			am.AttemptedAt,
 			am.Token,
 			am.ValidationError,
 			am.ValidationRecord,

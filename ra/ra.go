@@ -92,14 +92,15 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicy *ctpolicy.CTPolicy
 
-	ctpolicyResults         *prometheus.HistogramVec
-	rateLimitCounter        *prometheus.CounterVec
-	revocationReasonCounter *prometheus.CounterVec
-	namesPerCert            *prometheus.HistogramVec
-	newRegCounter           prometheus.Counter
-	reusedValidAuthzCounter prometheus.Counter
-	recheckCAACounter       prometheus.Counter
-	newCertCounter          prometheus.Counter
+	ctpolicyResults             *prometheus.HistogramVec
+	rateLimitCounter            *prometheus.CounterVec
+	revocationReasonCounter     *prometheus.CounterVec
+	namesPerCert                *prometheus.HistogramVec
+	newRegCounter               prometheus.Counter
+	reusedValidAuthzCounter     prometheus.Counter
+	recheckCAACounter           prometheus.Counter
+	newCertCounter              prometheus.Counter
+	recheckCAAUsedAuthzLifetime prometheus.Counter
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -167,6 +168,12 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(recheckCAACounter)
 
+	recheckCAAUsedAuthzLifetime := prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "recheck_caa_used_authz_lifetime",
+		Help: "A counter times the old codepath was used for CAA recheck time",
+	})
+	stats.MustRegister(recheckCAAUsedAuthzLifetime)
+
 	newCertCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "new_certificates",
 		Help: "A counter of new certificates",
@@ -208,6 +215,7 @@ func NewRegistrationAuthorityImpl(
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
 		revocationReasonCounter:      revocationReasonCounter,
+		recheckCAAUsedAuthzLifetime:  recheckCAAUsedAuthzLifetime,
 	}
 	return ra
 }
@@ -797,6 +805,19 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, na
 	return auths, nil
 }
 
+// validatedBefore checks if a given authorization's challenge was
+// validated before a given time. Returns a bool.
+func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool, error) {
+	numChallenges := len(authz.Challenges)
+	if numChallenges != 1 {
+		return false, fmt.Errorf("authorization has incorrect number of challenges. 1 expected, %d found for: id %s", numChallenges, authz.ID)
+	}
+	if authz.Challenges[0].Validated == nil {
+		return false, fmt.Errorf("authorization's challenge has no validated timestamp for: id %s", authz.ID)
+	}
+	return authz.Challenges[0].Validated.Before(caaRecheckTime), nil
+}
+
 // checkAuthorizationsCAA implements the common logic of validating a set of
 // authorizations against a set of names that is used by both
 // `checkAuthorizations` and `checkOrderAuthorizations`. If required CAA will be
@@ -812,15 +833,23 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	var badNames []string
 	// recheckAuthzs is a list of authorizations that must have their CAA records rechecked
 	var recheckAuthzs []*core.Authorization
-	// Per Baseline Requirements, CAA must be checked within 8 hours of issuance.
-	// CAA is checked when an authorization is validated, so as long as that was
-	// less than 8 hours ago, we're fine. We recheck if that was more than 7 hours
-	// ago, to be on the safe side. Since we don't record the validation time for
-	// authorizations, we instead look at the expiration time and subtract out the
-	// expected authorization lifetime. Note: If we adjust the authorization
-	// lifetime in the future we will need to tweak this correspondingly so it
-	// works correctly during the switchover.
+
+	// Per Baseline Requirements, CAA must be checked within 8 hours of
+	// issuance. CAA is checked when an authorization is validated, so as
+	// long as that was less than 8 hours ago, we're fine. We recheck if
+	// that was more than 7 hours ago, to be on the safe side. We can
+	// check to see if the authorized challenge `AttemptedAt`
+	// (`Validated`) value from the database is before our caaRecheckTime.
+	// Set the recheck time to 7 hours ago.
+	caaRecheckAfter := now.Add(-7 * time.Hour)
+
+	// Set a CAA recheck time based on the assumption of a 30 day authz
+	// lifetime. This has been deprecated in favor of a new check based
+	// off the Validated time stored in the database, but we want to check
+	// both for a time and increment a stat if this code path is hit for
+	// compliance safety.
 	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
+
 	for _, name := range names {
 		authz := authzs[name]
 		if authz == nil {
@@ -829,9 +858,18 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			return berrors.InternalServerError("found an authorization with a nil Expires field: id %s", authz.ID)
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
+		} else if staleCAA, err := validatedBefore(authz, caaRecheckAfter); err != nil {
+			return berrors.InternalServerError(err.Error())
+		} else if staleCAA {
+			// Ensure that CAA is rechecked for this name
+			recheckAuthzs = append(recheckAuthzs, authz)
 		} else if authz.Expires.Before(caaRecheckTime) {
 			// Ensure that CAA is rechecked for this name
 			recheckAuthzs = append(recheckAuthzs, authz)
+			// This codepath should not be used, but is here as a safety
+			// net until the new codepath is proven. Increment metric if
+			// it is used.
+			ra.recheckCAAUsedAuthzLifetime.Add(1)
 		}
 	}
 

@@ -88,14 +88,15 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 	return ids.Ids[0]
 }
 
-func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, status string) int64 {
+func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, status string, attemptedAt time.Time) int64 {
 	t.Helper()
 	pendingID := createPendingAuthorization(t, sa, domain, exp)
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:        pendingID,
-		Status:    status,
-		Expires:   exp.UnixNano(),
-		Attempted: string(core.ChallengeTypeHTTP01),
+		Id:          pendingID,
+		Status:      status,
+		Expires:     exp.UnixNano(),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: attemptedAt.UnixNano(),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
@@ -760,7 +761,7 @@ func TestReuseValidAuthorization(t *testing.T) {
 
 	// Create one finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest)
@@ -875,7 +876,7 @@ func TestReuseAuthorizationDisabled(t *testing.T) {
 
 	// Create one finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest)
@@ -900,7 +901,7 @@ func TestReuseExpiringAuthorization(t *testing.T) {
 
 	// Create one finalized authorization that expires in 12 hours from now
 	exp := ra.clk.Now().Add(12 * time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "not-example", exp, "valid")
+	authzID := createFinalizedAuthorization(t, sa, "not-example", exp, "valid", ra.clk.Now())
 
 	// Now create another authorization for the same Reg.ID/domain
 	secondAuthz, err := ra.NewAuthorization(ctx, AuthzRequest)
@@ -1123,7 +1124,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	_ = createFinalizedAuthorization(t, sa, "www.example.com", exp, "valid")
+	_ = createFinalizedAuthorization(t, sa, "www.example.com", exp, "valid", ra.clk.Now())
 	csr := x509.CertificateRequest{
 		SignatureAlgorithm: x509.SHA256WithRSA,
 		PublicKey:          AccountKeyA.Key,
@@ -1147,7 +1148,7 @@ func TestAuthorizationRequired(t *testing.T) {
 	_, sa, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	_ = createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	_ = createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
 
 	_, err := ra.NewCertificate(ctx,
 		&rapb.NewCertificateRequest{
@@ -1163,8 +1164,8 @@ func TestNewCertificate(t *testing.T) {
 	defer cleanUp()
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	// Create valid authorizations for not-example.com and www.not-example.com
-	_ = createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
-	_ = createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
+	_ = createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
+	_ = createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid", ra.clk.Now())
 
 	// Check that we fail if the CSR signature is invalid
 	ExampleCSR.Raw[len(ExampleCSR.Raw)-1]++
@@ -1843,7 +1844,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
 	dbAuthzPB := getAuthorization(t, fmt.Sprint(authzID), sa)
 	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
@@ -1912,40 +1913,113 @@ type mockSAWithRecentAndOlder struct {
 	mocks.StorageAuthority
 }
 
-func newMockSAWithRecentAndOlder(recent, older time.Time) *mockSAWithRecentAndOlder {
+func newMockSAWithRecentAndOlder(recentExpired, olderExpired, recentValidated, olderValidated time.Time) *mockSAWithRecentAndOlder {
 	makeIdentifier := func(name string) identifier.ACMEIdentifier {
 		return identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: name,
 		}
 	}
-	basicChallenge := core.Challenge{Status: core.StatusValid, Type: core.ChallengeTypeHTTP01, Token: "exampleToken"}
+
 	return &mockSAWithRecentAndOlder{
 		authzMap: map[string]*core.Authorization{
 			"recent.com": {
 				Identifier: makeIdentifier("recent.com"),
-				Expires:    &recent,
-				Challenges: []core.Challenge{basicChallenge},
+				Expires:    &recentExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: &recentValidated,
+					},
+				},
 			},
 			"older.com": {
 				Identifier: makeIdentifier("older.com"),
-				Expires:    &older,
-				Challenges: []core.Challenge{basicChallenge},
+				Expires:    &olderExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+				},
 			},
 			"older2.com": {
 				Identifier: makeIdentifier("older2.com"),
-				Expires:    &older,
-				Challenges: []core.Challenge{basicChallenge},
+				Expires:    &olderExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+				},
 			},
 			"wildcard.com": {
 				Identifier: makeIdentifier("wildcard.com"),
-				Expires:    &older,
-				Challenges: []core.Challenge{basicChallenge},
+				Expires:    &olderExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+				},
 			},
 			"*.wildcard.com": {
 				Identifier: makeIdentifier("*.wildcard.com"),
-				Expires:    &older,
-				Challenges: []core.Challenge{basicChallenge},
+				Expires:    &olderExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+				},
+			},
+			"twochallenges.com": {
+				ID:         "twochal",
+				Identifier: makeIdentifier("twochallenges.com"),
+				Expires:    &recentExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeDNS01,
+						Token:     "exampleToken",
+						Validated: &olderValidated,
+					},
+				},
+			},
+			"nochallenges.com": {
+				ID:         "nochal",
+				Identifier: makeIdentifier("nochallenges.com"),
+				Expires:    &recentExpired,
+				Challenges: []core.Challenge{},
+			},
+			"novalidationtime.com": {
+				ID:         "noval",
+				Identifier: makeIdentifier("novalidationtime.com"),
+				Expires:    &recentExpired,
+				Challenges: []core.Challenge{
+					{
+						Status:    core.StatusValid,
+						Type:      core.ChallengeTypeHTTP01,
+						Token:     "exampleToken",
+						Validated: nil,
+					},
+				},
 			},
 		},
 	}
@@ -1956,7 +2030,7 @@ func (m *mockSAWithRecentAndOlder) GetValidAuthorizations2(_ context.Context, _ 
 }
 
 // Test that the right set of domain names have their CAA rechecked, based on
-// expiration time.
+// their `Validated` (attemptedAt in the database) timestamp.
 func TestRecheckCAADates(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -1964,8 +2038,10 @@ func TestRecheckCAADates(t *testing.T) {
 	ra.caa = recorder
 	ra.authorizationLifetime = 15 * time.Hour
 	ra.SA = newMockSAWithRecentAndOlder(
-		fc.Now().Add(15*time.Hour),
-		fc.Now().Add(5*time.Hour),
+		fc.Now().Add(15*time.Hour), // recently created authz
+		fc.Now().Add(5*time.Hour),  // older authz
+		fc.Now().Add(-1*time.Hour), // validated 1h ago
+		fc.Now().Add(-8*time.Hour), // validated 8h ago
 	)
 
 	// NOTE: The names provided here correspond to authorizations in the
@@ -1976,6 +2052,22 @@ func TestRecheckCAADates(t *testing.T) {
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
+
+	// Should error if a authorization has `!= 1` challenge
+	_, err = ra.checkAuthorizations(context.Background(), []string{"twochallenges.com"}, 999)
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
+
+	// Should error if a authorization has `!= 1` challenge
+	_, err = ra.checkAuthorizations(context.Background(), []string{"nochallenges.com"}, 999)
+	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
+
+	// Should error if authorization's challenge has no validated timestamp
+	_, err = ra.checkAuthorizations(context.Background(), []string{"novalidationtime.com"}, 999)
+	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
+
+	// Test to make sure the authorization lifetime codepath was not used
+	// to determine if CAA needed recheck.
+	test.AssertMetricWithLabelsEquals(t, ra.recheckCAAUsedAuthzLifetime, prometheus.Labels{}, 0)
 
 	// We expect that "recent.com" is not checked because its mock authorization
 	// isn't expired
@@ -2192,7 +2284,7 @@ func TestNewOrderLegacyAuthzReuse(t *testing.T) {
 
 	// Create a legacy pending authz, not associated with an order
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
 
 	// Create an order request for the same name as the legacy authz
 	order, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
@@ -2352,10 +2444,11 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        order.V2Authorizations[0],
-		Status:    string(core.StatusInvalid),
-		Expires:   order.Expires,
-		Attempted: string(core.ChallengeTypeDNS01),
+		Id:          order.V2Authorizations[0],
+		Status:      string(core.StatusInvalid),
+		Expires:     order.Expires,
+		Attempted:   string(core.ChallengeTypeDNS01),
+		AttemptedAt: ra.clk.Now().UnixNano(),
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
@@ -2800,8 +2893,8 @@ func TestFinalizeOrder(t *testing.T) {
 	// Create one finalized authorization for not-example.com and one finalized
 	// authorization for www.not-example.org
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid", ra.clk.Now())
 
 	// Create an order with valid authzs, it should end up status ready in the
 	// resulting returned order
@@ -3026,8 +3119,8 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 
 	// Create one finalized authorization for Registration.Id for not-example.com and
 	// one finalized authorization for Registration.Id for www.not-example.org
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid")
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid")
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid", ra.clk.Now())
 
 	// Create a new order to finalize with names in SAN and CN
 	mixedOrder, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
@@ -3126,7 +3219,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 
 	// Create one standard finalized authorization for Registration.Id for zombo.com
-	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, "valid")
+	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, "valid", ra.clk.Now())
 
 	// Finalizing the order should *not* work since the existing validated authz
 	// is not a special DNS-01-Wildcard challenge authz, so the order will be
@@ -3151,10 +3244,11 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 
 	// Finalize the authorization with the challenge validated
 	_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:        validOrder.V2Authorizations[0],
-		Status:    string(core.StatusValid),
-		Expires:   ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano(),
-		Attempted: string(core.ChallengeTypeDNS01),
+		Id:          validOrder.V2Authorizations[0],
+		Status:      string(core.StatusValid),
+		Expires:     ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano(),
+		Attempted:   string(core.ChallengeTypeDNS01),
+		AttemptedAt: ra.clk.Now().UnixNano(),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -3217,10 +3311,11 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		test.AssertNotError(t, err, "sa.NewAuthorzations2 failed")
 		// Finalize the authz
 		_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-			Id:        ids.Ids[0],
-			Status:    "valid",
-			Expires:   exp.UnixNano(),
-			Attempted: chalType,
+			Id:          ids.Ids[0],
+			Status:      "valid",
+			Expires:     exp.UnixNano(),
+			Attempted:   chalType,
+			AttemptedAt: ra.clk.Now().UnixNano(),
 		})
 		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 		return ids.Ids[0]
@@ -3441,8 +3536,8 @@ func TestCTPolicyMeasurements(t *testing.T) {
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 	// Create valid authorizatiosn for not-example.com and www.not-example.com
-	_ = createFinalizedAuthorization(t, ssa, "not-example.com", exp, "valid")
-	_ = createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, "valid")
+	_ = createFinalizedAuthorization(t, ssa, "not-example.com", exp, "valid", ra.clk.Now())
+	_ = createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, "valid", ra.clk.Now())
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -3572,10 +3667,11 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		// Finalize the authz
 		attempted := string(httpChal.Type)
 		_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-			Id:        ids.Ids[0],
-			Status:    "valid",
-			Expires:   exp.UnixNano(),
-			Attempted: attempted,
+			Id:          ids.Ids[0],
+			Status:      "valid",
+			Expires:     exp.UnixNano(),
+			Attempted:   attempted,
+			AttemptedAt: ra.clk.Now().UnixNano(),
 		})
 		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 		return ids.Ids[0]

@@ -465,7 +465,7 @@ func statusUint(status core.AcmeStatus) uint8 {
 
 // authzFields is used in a variety of places in sa.go, and modifications to
 // it must be carried through to every use in sa.go
-const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
+const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, attemptedAt, token, validationError, validationRecord"
 
 type authzModel struct {
 	ID               int64      `db:"id"`
