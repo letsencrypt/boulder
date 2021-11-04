@@ -35,7 +35,6 @@ services:
       - 8055:8055 # dns-test-srv updates
     depends_on:
       - bmysql
-      - bredis
       - bredis_clusterer
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
@@ -57,16 +56,59 @@ services:
     logging:
         driver: none
 
-  bredis:
+  bredis_1:
     image: redis:latest
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
-    deploy:
-      mode: replicated
-      replicas: 6
     networks:
       redisnet:
+          ipv4_address: 10.33.33.2
+
+  bredis_2:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.3
+
+  bredis_3:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.4
+
+  bredis_4:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.5
+
+  bredis_5:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.6
+
+  bredis_6:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.7
 
   bredis_clusterer:
     image: redis:latest
@@ -75,7 +117,12 @@ services:
       - ./cluster/:/cluster/:cached
     command: /test/wait-for-it.sh 10.33.33.2 4218 /test/redis-create.sh
     depends_on:
-      - bredis
+      - bredis_1
+      - bredis_2
+      - bredis_3
+      - bredis_4
+      - bredis_5
+      - bredis_6
     networks:
         redisnet:
           ipv4_address: 10.33.33.10
