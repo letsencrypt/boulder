@@ -162,9 +162,7 @@ const (
 	maxDNSIdentifierLength = 253
 )
 
-var dnsLabelRegexp = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,62}$")
-var punycodeRegexp = regexp.MustCompile("^xn--")
-var idnReservedRegexp = regexp.MustCompile("^[a-z0-9-]{2}--")
+var dnsLabelCharacterRegexp = regexp.MustCompile("^[a-z0-9-]+$")
 
 func isDNSCharacter(ch byte) bool {
 	return ('a' <= ch && ch <= 'z') ||
@@ -250,26 +248,37 @@ func ValidDomain(domain string) error {
 		return errTooFewLabels
 	}
 	for _, label := range labels {
+		// Check that this is a valid LDH Label: "A string consisting of ASCII
+		// letters, digits, and the hyphen with the further restriction that the
+		// hyphen cannot appear at the beginning or end of the string. Like all DNS
+		// labels, its total length must not exceed 63 octets." (RFC 5890, 2.3.1)
 		if len(label) < 1 {
 			return errLabelTooShort
 		}
 		if len(label) > maxLabelLength {
 			return errLabelTooLong
 		}
-
-		if !dnsLabelRegexp.MatchString(label) {
+		if !dnsLabelCharacterRegexp.MatchString(label) {
+			return errInvalidDNSCharacter
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
 			return errInvalidDNSCharacter
 		}
 
-		if label[len(label)-1] == '-' {
-			return errInvalidDNSCharacter
-		}
+		// Check if this is a Reserved LDH Label: "[has] the property that they
+		// contain "--" in the third and fourth characters but which otherwise
+		// conform to LDH label rules." (RFC 5890, 2.3.1)
+		if len(label) >= 4 && label[2:4] == "--" {
+			// Check if this is an XN-Label: "labels that begin with the prefix "xn--"
+			// (case independent), but otherwise conform to the rules for LDH labels."
+			// (RFC 5890, 2.3.1)
+			if label[0:2] != "xn" {
+				return errInvalidRLDH
+			}
 
-		if punycodeRegexp.MatchString(label) {
-			// We don't care about script usage, if a name is resolvable it was
-			// registered with a higher power and they should be enforcing their
-			// own policy. As long as it was properly encoded that is enough
-			// for us.
+			// Check if this is a P-Label: "A XN-Label that contains valid output of
+			// the Punycode algorithm (as defined in RFC 3492, Section 6.3) from the
+			// fifth and subsequent positions." (Baseline Requirements, 1.6.1)
 			ulabel, err := idna.ToUnicode(label)
 			if err != nil {
 				return errMalformedIDN
@@ -277,8 +286,6 @@ func ValidDomain(domain string) error {
 			if !norm.NFC.IsNormalString(ulabel) {
 				return errMalformedIDN
 			}
-		} else if idnReservedRegexp.MatchString(label) {
-			return errInvalidRLDH
 		}
 	}
 
