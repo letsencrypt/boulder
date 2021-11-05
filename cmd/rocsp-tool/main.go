@@ -310,8 +310,8 @@ func (i *inflight) remove(n uint64) {
 }
 
 func (i *inflight) len() int {
-	i.Lock()
-	defer i.Unlock()
+	i.RLock()
+	defer i.RUnlock()
 	return len(i.items)
 }
 
@@ -403,6 +403,9 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		}
 		scanned++
 		inflightIDs.add(uint64(status.ID))
+		// Emit a log line every 100000 rows. For our current ~215M rows, that
+		// will emit about 2150 log lines. This probably strikes a good balance
+		// between too spammy and having a reasonably frequent checkpoint.
 		if scanned%100000 == 0 {
 			log.Printf("scanned %d certificateStatus rows. minimum inflight ID %d", scanned, inflightIDs.min())
 		}
