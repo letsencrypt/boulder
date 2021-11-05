@@ -400,7 +400,6 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 			select {
 			case doneID := <-successes:
 				inflightIDs.remove(doneID)
-				fmt.Println("removed ", doneID)
 				successCount++
 			case err := <-errChan:
 				errorCount++
