@@ -272,20 +272,19 @@ func ValidDomain(domain string) error {
 			// Check if this is an XN-Label: "labels that begin with the prefix "xn--"
 			// (case independent), but otherwise conform to the rules for LDH labels."
 			// (RFC 5890, 2.3.1)
-			if label[0:2] == "xn" {
-				// Check if this is a P-Label: "A XN-Label that contains valid output of
-				// the Punycode algorithm (as defined in RFC 3492, Section 6.3) from the
-				// fifth and subsequent positions." (Baseline Requirements, 1.6.1)
-				ulabel, err := idna.ToUnicode(label)
-				if err != nil {
-					return errMalformedIDN
-				}
-				if !norm.NFC.IsNormalString(ulabel) {
-					return errMalformedIDN
-				}
-			} else {
-				// This is a Reserved LDH label, but not an XN-Label.
+			if label[0:2] != "xn" {
 				return errInvalidRLDH
+			}
+
+			// Check if this is a P-Label: "A XN-Label that contains valid output of
+			// the Punycode algorithm (as defined in RFC 3492, Section 6.3) from the
+			// fifth and subsequent positions." (Baseline Requirements, 1.6.1)
+			ulabel, err := idna.ToUnicode(label)
+			if err != nil {
+				return errMalformedIDN
+			}
+			if !norm.NFC.IsNormalString(ulabel) {
+				return errMalformedIDN
 			}
 		}
 	}
