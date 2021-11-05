@@ -148,7 +148,20 @@ func CertStatusMetadataFields() []string {
 // `CertStatusMetadataFields()`, and the `*core.CerticateStatus` field name
 // being copied to.
 func ScanCertStatusMetadataRow(rows *sql.Rows, status *CertStatusMetadata) error {
-	err := rows.Scan(
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	expectedColumns := CertStatusMetadataFields()
+	if len(columns) != len(expectedColumns) {
+		return fmt.Errorf("incorrect number of columns in scanned rows: got %d, expected %d", len(columns), len(expectedColumns))
+	}
+	for i, v := range columns {
+		if v != expectedColumns[i] {
+			return fmt.Errorf("incorrect column %d in scanned rows: got %q, expected %q", i, v, expectedColumns[i])
+		}
+	}
+	err = rows.Scan(
 		&status.ID,
 		&status.Serial,
 		&status.Status,
