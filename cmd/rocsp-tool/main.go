@@ -140,6 +140,8 @@ func main2() error {
 		os.Exit(1)
 	}
 
+	rand.Seed(time.Now().UnixNano())
+
 	var c config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	if err != nil {
@@ -162,16 +164,19 @@ func main2() error {
 	var db *sql.DB
 	var ocspGenerator capb.OCSPGeneratorClient
 	if c.ROCSPTool.LoadFromDB != nil {
-		db, err = configureDb(&c.ROCSPTool.LoadFromDB.DB)
+		lfd := c.ROCSPTool.LoadFromDB
+		db, err = configureDb(&lfd.DB)
 		if err != nil {
 			return fmt.Errorf("connecting to DB: %w", err)
 		}
 
-		ocspGenerator, err = configureOCSPGenerator(c.ROCSPTool.LoadFromDB.GRPCTLS,
+		ocspGenerator, err = configureOCSPGenerator(lfd.GRPCTLS,
 			c.ROCSPTool.LoadFromDB.OCSPGeneratorService, clk, metrics.NoopRegisterer)
 		if err != nil {
 			return fmt.Errorf("configuring gRPC to CA: %w", err)
 		}
+		setDefault(&lfd.Speed.RowsPerSecond, 2000)
+		setDefault(&lfd.Speed.ParallelSigns, 100)
 	}
 
 	if len(flag.Args()) < 1 {
@@ -298,9 +303,6 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		return fmt.Errorf("selecting minID: %w", err)
 	}
 
-	setDefault(&speed.RowsPerSecond, 2000)
-	setDefault(&speed.ParallelSigns, 100)
-
 	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id > ?",
 		strings.Join(sa.CertStatusMetadataFields(), ", "))
 	rows, err := cl.db.QueryContext(ctx, query, minID)
@@ -323,14 +325,28 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		signersWg.Add(1)
 		go cl.signAndStoreResponses(statusesToSign, errChan, successes, &signersWg)
 	}
-	var n, errorCount int
-	// Consume all available successes and errors from the output channels.
-	// If none are immediately available, return.
-	consume := func() {
+	var successCount, errorCount int
+	var scanned int
+	for rows.Next() {
+		<-rowTicker.C
+
+		status := new(sa.CertStatusMetadata)
+		if err := sa.ScanCertStatusMetadataRow(rows, status); err != nil {
+			return fmt.Errorf("scanning row %d: %w", successCount, err)
+		}
+		scanned++
+		if scanned%100000 == 0 {
+			log.Printf("scanned %d certificateStatus rows. current ID %d (note: subtract a safety margin from this if restarting)", scanned, status.ID)
+		}
+		statusesToSign <- status
+
+		// Consume all available successes and errors from the output channels.
+		// If none are immediately available, return.
+		consume:
 		for {
 			select {
 			case <-successes:
-				n++
+				successCount++
 			case err := <-errChan:
 				errorCount++
 				if errorCount < 10 {
@@ -342,29 +358,15 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 				} else if rand.Intn(1000) < 1 {
 					log.Print(err)
 				}
+			case <-ctx.Done():
+				break consume
 			default:
-				return
+				break consume
 			}
-			if (n+errorCount)%10 == 0 {
-				log.Printf("stored %d response, %d errors", n, errorCount)
+			if (successCount+errorCount)%10 == 0 {
+				log.Printf("stored %d responses, %d errors", successCount, errorCount)
 			}
 		}
-	}
-	var scanned int
-	for rows.Next() {
-		<-rowTicker.C
-
-		status := new(sa.CertStatusMetadata)
-		if err := sa.ScanCertStatusMetadataRow(rows, status); err != nil {
-			return fmt.Errorf("scanning row %d: %w", n, err)
-		}
-		scanned++
-		if scanned%100000 == 0 {
-			log.Printf("scanned %d certificateStatus rows. current ID %d (note: subtract a safety margin from this if restarting)", scanned, status.ID)
-		}
-		statusesToSign <- status
-
-		consume()
 	}
 	rerr := rows.Close()
 	if rerr != nil {
@@ -373,16 +375,16 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 
 	close(statusesToSign)
 
-	for n+errorCount < scanned {
+	for successCount+errorCount < scanned {
 		select {
 		case <-successes:
-			n++
+			successCount++
 		case <-errChan:
 			errorCount++
 		}
 	}
 	signersWg.Wait()
-	log.Printf("done. processed %d successes and %d errors\n", n, errorCount)
+	log.Printf("done. processed %d successes and %d errors\n", successCount, errorCount)
 
 	return nil
 }
