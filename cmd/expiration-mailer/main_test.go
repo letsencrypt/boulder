@@ -724,12 +724,12 @@ func TestDedupOnRegistration(t *testing.T) {
 	}
 	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
 	test.AssertNotError(t, err, "Couldn't store regA")
-
 	rawCertA := newX509Cert("happy A",
 		testCtx.fc.Now().Add(72*time.Hour),
 		[]string{"example-a.com", "shared-example.com"},
 		serial1,
 	)
+
 	certDerA, _ := x509.CreateCertificate(rand.Reader, rawCertA, rawCertA, &testKey.PublicKey, &testKey)
 	certA := &core.Certificate{
 		RegistrationID: regA.Id,
@@ -764,8 +764,11 @@ func TestDedupOnRegistration(t *testing.T) {
 
 	err = testCtx.m.findExpiringCertificates()
 	test.AssertNotError(t, err, "error calling findExpiringCertificates")
-	if len(testCtx.mc.Messages) != 1 {
-		t.Fatalf("wrong num of messages, want 1, got %d", len(testCtx.mc.Messages))
+	if len(testCtx.mc.Messages) > 1 {
+		t.Errorf("num of messages, want %d, got %d", 1, len(testCtx.mc.Messages))
+	}
+	if len(testCtx.mc.Messages) == 0 {
+		t.Fatalf("no messages sent")
 	}
 	domains := "example-a.com\nexample-b.com\nshared-example.com"
 	expected := mocks.MailerMessage{
