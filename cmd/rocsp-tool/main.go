@@ -356,7 +356,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	defer func() {
 		rerr := rows.Close()
 		if rerr != nil {
-			log.Printf("closing rows: %w", rerr)
+			log.Printf("closing rows: %s", rerr)
 		}
 	}()
 
