@@ -16,7 +16,7 @@
       },
       "ocspGeneratorService": {
         "serverAddress": "ca.boulder:9096",
-        "timeout": "0.1s"
+        "timeout": "0.5s"
       }
     },
     "redis": {

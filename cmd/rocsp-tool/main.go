@@ -286,6 +286,50 @@ type client struct {
 	clk           clock.Clock
 }
 
+type inflight struct {
+	sync.RWMutex
+	items map[uint64]struct{}
+}
+
+func newInflight() *inflight {
+	return &inflight{
+		items: make(map[uint64]struct{}),
+	}
+}
+
+func (i *inflight) add(n uint64) {
+	i.Lock()
+	defer i.Unlock()
+	i.items[n] = struct{}{}
+}
+
+func (i *inflight) remove(n uint64) {
+	i.Lock()
+	defer i.Unlock()
+	delete(i.items, n)
+}
+
+// min returns the numerically smallest key inflight. If nothing is inflight,
+// it returns 0. Note: this takes O(n) time in the number of keys and should
+// be called rarely.
+func (i *inflight) min() uint64 {
+	i.RLock()
+	defer i.RUnlock()
+	if len(i.items) == 0 {
+		return 0
+	}
+	var min uint64
+	for k := range i.items {
+		if min == 0 {
+			min = k
+		}
+		if k < min {
+			min = k
+		}
+	}
+	return min
+}
+
 func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	// To scan the DB efficiently, we want to select only currently-valid certificates. There's a
 	// handy expires index, but for selecting a large set of rows, using the primary key will be
@@ -303,7 +347,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		return fmt.Errorf("selecting minID: %w", err)
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id > ?",
+	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id >= ?",
 		strings.Join(sa.CertStatusMetadataFields(), ", "))
 	rows, err := cl.db.QueryContext(ctx, query, minID)
 	if err != nil {
@@ -316,8 +360,11 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	rowTicker := time.NewTicker(frequency)
 
 	statusesToSign := make(chan *sa.CertStatusMetadata)
-	successes := make(chan struct{}, speed.ParallelSigns)
+	successes := make(chan uint64, speed.ParallelSigns)
 	errChan := make(chan error, speed.ParallelSigns)
+
+	// a set of all inflight certificate statuses, indexed by their `ID`.
+	inflightIDs := newInflight()
 
 	var signersWg sync.WaitGroup
 
@@ -335,8 +382,9 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 			return fmt.Errorf("scanning row %d: %w", successCount, err)
 		}
 		scanned++
+		inflightIDs.add(uint64(status.ID))
 		if scanned%100000 == 0 {
-			log.Printf("scanned %d certificateStatus rows. current ID %d (note: subtract a safety margin from this if restarting)", scanned, status.ID)
+			log.Printf("scanned %d certificateStatus rows. minimum inflight ID %d", scanned, inflightIDs.min())
 		}
 		statusesToSign <- status
 
@@ -345,7 +393,9 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		consume:
 		for {
 			select {
-			case <-successes:
+			case doneID :=<-successes:
+				inflightIDs.remove(doneID)
+				fmt.Println("removed ", doneID)
 				successCount++
 			case err := <-errChan:
 				errorCount++
@@ -394,7 +444,7 @@ type signedResponse struct {
 	ttl time.Duration
 }
 
-func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, errors chan error, success chan struct{}, wg *sync.WaitGroup) {
+func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, errors chan error, success chan uint64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for status := range input {
 		ocspReq := &capb.GenerateOCSPRequest{
@@ -415,7 +465,7 @@ func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, err
 		if err != nil {
 			errors <- err
 		} else {
-			success <- struct{}{}
+			success <- uint64(status.ID)
 		}
 	}
 }
