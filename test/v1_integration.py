@@ -402,13 +402,9 @@ def test_expiration_mailer():
 
     requests.post("http://localhost:9381/clear", data='')
     for time in (no_reminder, first_reminder, last_reminder):
-        try:
-            print(get_future_output(
-                ["./bin/expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
-                time))
-        except subprocess.CalledProcessError as e:
-            print(e.output.decode("unicode-escape"))
-            raise
+        print(get_future_output(
+            ["./bin/expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
+            time))
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)
     if mailcount != 2:

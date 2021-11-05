@@ -13,7 +13,6 @@ import (
 	netmail "net/mail"
 	"net/url"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 	"text/template"
@@ -335,34 +334,24 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
 
-		if len(serials) == 0 {
-			continue // nothing to do
-		}
-
-		// Wrap every serial in quotes so they can be interpolated into the query.
-		quotedSerials := make([]string, len(serials))
-		serialRegexp := regexp.MustCompile("^[0-9a-f]+$")
-		for i, s := range serials {
-			if !serialRegexp.MatchString(s) {
-				return fmt.Errorf("encountered malformed serial %q", s)
+		// Now we can sequentially retrieve the certificate details for each of the
+		// certificate status rows
+		var certs []core.Certificate
+		for _, serial := range serials {
+			var cert core.Certificate
+			cert, err := sa.SelectCertificate(m.dbMap, serial)
+			if err != nil {
+				// We can get a NoRowsErr when processing a serial number corresponding
+				// to a precertificate with no final certificate. Since this certificate
+				// is not being used by a subscriber, we don't send expiration email about
+				// it.
+				if db.IsNoRows(err) {
+					continue
+				}
+				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
+				return err
 			}
-			quotedSerials[i] = fmt.Sprintf("'%s'", s)
-		}
-
-		// Now we can retrieve the certificate details for all of the status rows.
-		certWithIDs, err := sa.SelectCertificates(
-			m.dbMap,
-			fmt.Sprintf("WHERE serial IN (%s)", strings.Join(quotedSerials, ",")),
-			nil,
-		)
-		if err != nil {
-			m.log.AuditErrf("expiration-mailer: error retrieving certs: %s", err)
-			return err
-		}
-
-		certs := make([]core.Certificate, len(certWithIDs))
-		for i, c := range certWithIDs {
-			certs[i] = c.Certificate
+			certs = append(certs, cert)
 		}
 
 		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
