@@ -353,7 +353,12 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	if err != nil {
 		return fmt.Errorf("scanning certificateStatus: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		rerr := rows.Close()
+		if rerr != nil {
+			log.Printf("closing rows: %w", rerr)
+		}
+	}()
 
 	// Limit the rate of reading rows.
 	frequency := time.Duration(float64(time.Second) / float64(time.Duration(speed.RowsPerSecond)))
@@ -390,10 +395,10 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 
 		// Consume all available successes and errors from the output channels.
 		// If none are immediately available, return.
-		consume:
+	consume:
 		for {
 			select {
-			case doneID :=<-successes:
+			case doneID := <-successes:
 				inflightIDs.remove(doneID)
 				fmt.Println("removed ", doneID)
 				successCount++
@@ -417,10 +422,6 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 				log.Printf("stored %d responses, %d errors", successCount, errorCount)
 			}
 		}
-	}
-	rerr := rows.Close()
-	if rerr != nil {
-		return fmt.Errorf("closing rows: %w", rerr)
 	}
 
 	close(statusesToSign)
