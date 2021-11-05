@@ -309,6 +309,12 @@ func (i *inflight) remove(n uint64) {
 	delete(i.items, n)
 }
 
+func (i *inflight) len() int {
+	i.Lock()
+	defer i.Unlock()
+	return len(i.items)
+}
+
 // min returns the numerically smallest key inflight. If nothing is inflight,
 // it returns 0. Note: this takes O(n) time in the number of keys and should
 // be called rarely.
@@ -328,6 +334,15 @@ func (i *inflight) min() uint64 {
 		}
 	}
 	return min
+}
+
+type idError struct {
+	id  uint64
+	err error
+}
+
+func (ie idError) Error() string {
+	return fmt.Sprintf("%d: %s", ie.id, ie.err)
 }
 
 func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
@@ -366,7 +381,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 
 	statusesToSign := make(chan *sa.CertStatusMetadata)
 	successes := make(chan uint64, speed.ParallelSigns)
-	errChan := make(chan error, speed.ParallelSigns)
+	errChan := make(chan idError, speed.ParallelSigns)
 
 	// a set of all inflight certificate statuses, indexed by their `ID`.
 	inflightIDs := newInflight()
@@ -401,16 +416,18 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 			case doneID := <-successes:
 				inflightIDs.remove(doneID)
 				successCount++
-			case err := <-errChan:
+			case idErr := <-errChan:
 				errorCount++
+				inflightIDs.remove(idErr.id)
+				fmt.Println("what")
 				if errorCount < 10 {
-					log.Print(err)
+					log.Print(idErr)
 				} else if errorCount < 1000 && rand.Intn(1000) < 100 {
-					log.Print(err)
+					log.Print(idErr)
 				} else if errorCount < 100000 && rand.Intn(1000) < 10 {
-					log.Print(err)
+					log.Print(idErr)
 				} else if rand.Intn(1000) < 1 {
-					log.Print(err)
+					log.Print(idErr)
 				}
 			case <-ctx.Done():
 				break consume
@@ -427,14 +444,20 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 
 	for successCount+errorCount < scanned {
 		select {
-		case <-successes:
+		case id := <-successes:
 			successCount++
-		case <-errChan:
+			inflightIDs.remove(id)
+		case idErr := <-errChan:
 			errorCount++
+			log.Print(idErr)
+			inflightIDs.remove(idErr.id)
 		}
 	}
 	signersWg.Wait()
 	log.Printf("done. processed %d successes and %d errors\n", successCount, errorCount)
+	if inflightIDs.len() != 0 {
+		return fmt.Errorf("inflightIDs non-empty! has %d items", inflightIDs.len())
+	}
 
 	return nil
 }
@@ -444,7 +467,7 @@ type signedResponse struct {
 	ttl time.Duration
 }
 
-func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, errors chan error, success chan uint64, wg *sync.WaitGroup) {
+func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, errors chan idError, success chan uint64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for status := range input {
 		ocspReq := &capb.GenerateOCSPRequest{
@@ -456,14 +479,14 @@ func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, err
 		}
 		result, err := cl.ocspGenerator.GenerateOCSP(context.Background(), ocspReq)
 		if err != nil {
-			errors <- err
+			errors <- idError{id: uint64(status.ID), err: err}
 			continue
 		}
 		// ttl is the lifetime of the certificate
 		ttl := cl.clk.Now().Sub(status.NotAfter)
 		err = cl.storeResponse(context.Background(), result.Response, &ttl)
 		if err != nil {
-			errors <- err
+			errors <- idError{id: uint64(status.ID), err: err}
 		} else {
 			success <- uint64(status.ID)
 		}
