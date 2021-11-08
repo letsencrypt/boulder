@@ -367,10 +367,9 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 
 	// Limit the rate of reading rows.
 	frequency := time.Duration(float64(time.Second) / float64(time.Duration(speed.RowsPerSecond)))
-	statusesToSign := make(chan *sa.CertStatusMetadata)
 	// a set of all inflight certificate statuses, indexed by their `ID`.
 	inflightIDs := newInflight()
-	go cl.scanFromDB(ctx, *minID, frequency, statusesToSign, inflightIDs)
+	statusesToSign := cl.scanFromDB(ctx, *minID, frequency, inflightIDs)
 
 	results := make(chan processResult, speed.ParallelSigns)
 	var runningSigners int32
@@ -412,11 +411,15 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 // its output channel at a maximum frequency of `frequency`. When it's read all available rows, it
 // closes its output channel and exits.
 // If there is an error, it logs the error, closes its output channel, and exits.
-func (cl *client) scanFromDB(ctx context.Context, minID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) {
-	err := cl.scanFromDBInner(ctx, minID, frequency, output, inflightIDs)
-	if err != nil {
-		log.Printf("error scanning rows: %s", err)
-	}
+func (cl *client) scanFromDB(ctx context.Context, minID int64, frequency time.Duration, inflightIDs *inflight) (<-chan *sa.CertStatusMetadata) {
+	statusesToSign := make(chan *sa.CertStatusMetadata)
+	go func() {
+		err := cl.scanFromDBInner(ctx, minID, frequency, statusesToSign, inflightIDs)
+		if err != nil {
+			log.Printf("error scanning rows: %s", err)
+		}
+	}()
+	return statusesToSign
 }
 
 func (cl *client) scanFromDBInner(ctx context.Context, minID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) error {
