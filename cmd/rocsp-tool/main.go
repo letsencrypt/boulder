@@ -414,6 +414,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 func (cl *client) scanFromDB(ctx context.Context, minID int64, frequency time.Duration, inflightIDs *inflight) <-chan *sa.CertStatusMetadata {
 	statusesToSign := make(chan *sa.CertStatusMetadata)
 	go func() {
+		defer close(statusesToSign)
 		err := cl.scanFromDBInner(ctx, minID, frequency, statusesToSign, inflightIDs)
 		if err != nil {
 			log.Printf("error scanning rows: %s", err)
@@ -436,8 +437,6 @@ func (cl *client) scanFromDBInner(ctx context.Context, minID int64, frequency ti
 		if rerr != nil {
 			log.Printf("closing rows: %s", rerr)
 		}
-
-		close(output)
 	}()
 
 	var scanned int
