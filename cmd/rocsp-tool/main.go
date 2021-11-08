@@ -172,7 +172,7 @@ func main2() error {
 		}
 
 		ocspGenerator, err = configureOCSPGenerator(lfd.GRPCTLS,
-			c.ROCSPTool.LoadFromDB.OCSPGeneratorService, clk, metrics.NoopRegisterer)
+			lfd.OCSPGeneratorService, clk, metrics.NoopRegisterer)
 		if err != nil {
 			return fmt.Errorf("configuring gRPC to CA: %w", err)
 		}
@@ -192,17 +192,11 @@ func main2() error {
 		ocspGenerator: ocspGenerator,
 		clk:           clk,
 	}
-	switch flag.Args()[0] {
+	switch flag.Arg(0) {
 	case "store":
-		for _, respFile := range flag.Args() {
-			respBytes, err := ioutil.ReadFile(respFile)
-			if err != nil {
-				return fmt.Errorf("reading response file %q: %w", respFile, err)
-			}
-			err = cl.storeResponse(ctx, respBytes, nil)
-			if err != nil {
-				return err
-			}
+		err := cl.storeResponsesFromFiles(ctx, flag.Args()[1:])
+		if err != nil {
+			return err
 		}
 	case "load-from-db":
 		if c.ROCSPTool.LoadFromDB == nil {
@@ -213,7 +207,7 @@ func main2() error {
 			return fmt.Errorf("loading OCSP responses from DB: %w", err)
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "unrecognized subcommand %q\n", flag.Args()[0])
+		fmt.Fprintf(os.Stderr, "unrecognized subcommand %q\n", flag.Arg(0))
 		helpExit()
 	}
 	return nil
@@ -351,6 +345,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	// more efficient. So first we find a good id to start with, then scan from there. Note: since
 	// AUTO_INCREMENT can skip around a bit, we add padding to ensure we get all currently-valid
 	// certificates.
+	// TODO(#5783): Allow starting from a specific ID.
 	startTime := cl.clk.Now().Add(-24 * time.Hour)
 	var minID *int64
 	err := cl.db.QueryRowContext(
@@ -401,7 +396,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 
 	log.Printf("done. processed %d successes and %d errors\n", successCount, errorCount)
 	if inflightIDs.len() != 0 {
-		return fmt.Errorf("inflightIDs non-empty! has %d items", inflightIDs.len())
+		return fmt.Errorf("inflightIDs non-empty! has %d items, lowest %d", inflightIDs.len(), inflightIDs.min())
 	}
 
 	return nil
@@ -507,6 +502,20 @@ type expiredError struct {
 
 func (e expiredError) Error() string {
 	return fmt.Sprintf("response for %s expired %s ago", e.serial, e.ago)
+}
+
+func (cl *client) storeResponsesFromFiles(ctx context.Context, files []string) error {
+	for _, respFile := range files {
+		respBytes, err := ioutil.ReadFile(respFile)
+		if err != nil {
+			return fmt.Errorf("reading response file %q: %w", respFile, err)
+		}
+		err = cl.storeResponse(ctx, respBytes, nil)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time.Duration) error {
