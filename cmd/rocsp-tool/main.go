@@ -370,7 +370,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	statusesToSign := make(chan *sa.CertStatusMetadata)
 	// a set of all inflight certificate statuses, indexed by their `ID`.
 	inflightIDs := newInflight()
-	go cl.scanFromDB(ctx,  *minID, frequency, statusesToSign, inflightIDs)
+	go cl.scanFromDB(ctx, *minID, frequency, statusesToSign, inflightIDs)
 
 	results := make(chan processResult, speed.ParallelSigns)
 	var runningSigners int32
@@ -386,9 +386,9 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		if result.err != nil {
 			errorCount++
 			if errorCount < 10 ||
-			  (errorCount < 1000 && rand.Intn(1000) < 100) ||
-			  (errorCount < 100000 && rand.Intn(1000) < 10) ||
-			  (rand.Intn(1000) < 1) {
+				(errorCount < 1000 && rand.Intn(1000) < 100) ||
+				(errorCount < 100000 && rand.Intn(1000) < 10) ||
+				(rand.Intn(1000) < 1) {
 				log.Printf("error: %s", result.err)
 			}
 		} else {
@@ -459,7 +459,6 @@ func (cl *client) scanFromDBInner(ctx context.Context, minID int64, frequency ti
 	}
 	return nil
 }
-
 
 type signedResponse struct {
 	der []byte
