@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -336,13 +337,12 @@ func (i *inflight) min() uint64 {
 	return min
 }
 
-type idError struct {
+// processResult represents the result of attempting to sign and store status
+// for a single certificateStatus ID. If `err` is non-nil, it indicates the
+// attempt failed.
+type processResult struct {
 	id  uint64
 	err error
-}
-
-func (ie idError) Error() string {
-	return fmt.Sprintf("%d: %s", ie.id, ie.err)
 }
 
 func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
@@ -352,7 +352,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	// AUTO_INCREMENT can skip around a bit, we add padding to ensure we get all currently-valid
 	// certificates.
 	startTime := cl.clk.Now().Add(-24 * time.Hour)
-	var minID int64
+	var minID *int64
 	err := cl.db.QueryRowContext(
 		ctx,
 		"SELECT MIN(id) FROM certificateStatus WHERE notAfter >= ?",
@@ -361,6 +361,66 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	if err != nil {
 		return fmt.Errorf("selecting minID: %w", err)
 	}
+	if minID == nil {
+		return fmt.Errorf("no entries in certificateStatus (where notAfter >= %s)", startTime)
+	}
+
+	// Limit the rate of reading rows.
+	frequency := time.Duration(float64(time.Second) / float64(time.Duration(speed.RowsPerSecond)))
+	statusesToSign := make(chan *sa.CertStatusMetadata)
+	// a set of all inflight certificate statuses, indexed by their `ID`.
+	inflightIDs := newInflight()
+	go cl.scanFromDB(ctx,  *minID, frequency, statusesToSign, inflightIDs)
+
+	results := make(chan processResult, speed.ParallelSigns)
+	var runningSigners int32
+	for i := 0; i < speed.ParallelSigns; i++ {
+		atomic.AddInt32(&runningSigners, 1)
+		go cl.signAndStoreResponses(ctx, statusesToSign, results, &runningSigners)
+	}
+
+	var successCount, errorCount int64
+
+	for result := range results {
+		inflightIDs.remove(result.id)
+		if result.err != nil {
+			errorCount++
+			if errorCount < 10 ||
+			  (errorCount < 1000 && rand.Intn(1000) < 100) ||
+			  (errorCount < 100000 && rand.Intn(1000) < 10) ||
+			  (rand.Intn(1000) < 1) {
+				log.Printf("error: %s", result.err)
+			}
+		} else {
+			successCount++
+		}
+
+		if (successCount+errorCount)%10 == 0 {
+			log.Printf("stored %d responses, %d errors", successCount, errorCount)
+		}
+	}
+
+	log.Printf("done. processed %d successes and %d errors\n", successCount, errorCount)
+	if inflightIDs.len() != 0 {
+		return fmt.Errorf("inflightIDs non-empty! has %d items", inflightIDs.len())
+	}
+
+	return nil
+}
+
+// scanFromDB scans certificateStatus rows from the DB, starting with `minID`, and writes them to
+// its output channel at a maximum frequency of `frequency`. When it's read all available rows, it
+// closes its output channel and exits.
+// If there is an error, it logs the error, closes its output channel, and exits.
+func (cl *client) scanFromDB(ctx context.Context, minID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) {
+	err := cl.scanFromDBInner(ctx, minID, frequency, output, inflightIDs)
+	if err != nil {
+		log.Printf("error scanning rows: %s", err)
+	}
+}
+
+func (cl *client) scanFromDBInner(ctx context.Context, minID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) error {
+	rowTicker := time.NewTicker(frequency)
 
 	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id >= ?",
 		strings.Join(sa.CertStatusMetadataFields(), ", "))
@@ -373,33 +433,18 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		if rerr != nil {
 			log.Printf("closing rows: %s", rerr)
 		}
+
+		close(output)
 	}()
 
-	// Limit the rate of reading rows.
-	frequency := time.Duration(float64(time.Second) / float64(time.Duration(speed.RowsPerSecond)))
-	rowTicker := time.NewTicker(frequency)
-
-	statusesToSign := make(chan *sa.CertStatusMetadata)
-	successes := make(chan uint64, speed.ParallelSigns)
-	errChan := make(chan idError, speed.ParallelSigns)
-
-	// a set of all inflight certificate statuses, indexed by their `ID`.
-	inflightIDs := newInflight()
-
-	var signersWg sync.WaitGroup
-
-	for i := 0; i < speed.ParallelSigns; i++ {
-		signersWg.Add(1)
-		go cl.signAndStoreResponses(statusesToSign, errChan, successes, &signersWg)
-	}
-	var successCount, errorCount int
 	var scanned int
+	var previousID int64
 	for rows.Next() {
 		<-rowTicker.C
 
 		status := new(sa.CertStatusMetadata)
 		if err := sa.ScanCertStatusMetadataRow(rows, status); err != nil {
-			return fmt.Errorf("scanning row %d: %w", successCount, err)
+			return fmt.Errorf("scanning row %d (previous ID %d): %w", scanned, previousID, err)
 		}
 		scanned++
 		inflightIDs.add(uint64(status.ID))
@@ -409,69 +454,27 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		if scanned%100000 == 0 {
 			log.Printf("scanned %d certificateStatus rows. minimum inflight ID %d", scanned, inflightIDs.min())
 		}
-		statusesToSign <- status
-
-		// Consume all available successes and errors from the output channels.
-		// If none are immediately available, return.
-	consume:
-		for {
-			select {
-			case doneID := <-successes:
-				inflightIDs.remove(doneID)
-				successCount++
-			case idErr := <-errChan:
-				errorCount++
-				inflightIDs.remove(idErr.id)
-				fmt.Println("what")
-				if errorCount < 10 {
-					log.Print(idErr)
-				} else if errorCount < 1000 && rand.Intn(1000) < 100 {
-					log.Print(idErr)
-				} else if errorCount < 100000 && rand.Intn(1000) < 10 {
-					log.Print(idErr)
-				} else if rand.Intn(1000) < 1 {
-					log.Print(idErr)
-				}
-			case <-ctx.Done():
-				break consume
-			default:
-				break consume
-			}
-			if (successCount+errorCount)%10 == 0 {
-				log.Printf("stored %d responses, %d errors", successCount, errorCount)
-			}
-		}
+		output <- status
+		previousID = status.ID
 	}
-
-	close(statusesToSign)
-
-	for successCount+errorCount < scanned {
-		select {
-		case id := <-successes:
-			successCount++
-			inflightIDs.remove(id)
-		case idErr := <-errChan:
-			errorCount++
-			log.Print(idErr)
-			inflightIDs.remove(idErr.id)
-		}
-	}
-	signersWg.Wait()
-	log.Printf("done. processed %d successes and %d errors\n", successCount, errorCount)
-	if inflightIDs.len() != 0 {
-		return fmt.Errorf("inflightIDs non-empty! has %d items", inflightIDs.len())
-	}
-
 	return nil
 }
+
 
 type signedResponse struct {
 	der []byte
 	ttl time.Duration
 }
 
-func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, errors chan idError, success chan uint64, wg *sync.WaitGroup) {
-	defer wg.Done()
+// signAndStoreResponses consumes cert statuses on its input channel and writes them to its output
+// channel. Before returning, it atomically decrements the provided runningSigners int. If the
+// result is 0, indicating this was the last running signer, it closes its output channel.
+func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.CertStatusMetadata, output chan processResult, runningSigners *int32) {
+	defer func() {
+		if atomic.AddInt32(runningSigners, -1) <= 0 {
+			close(output)
+		}
+	}()
 	for status := range input {
 		ocspReq := &capb.GenerateOCSPRequest{
 			Serial:    status.Serial,
@@ -480,18 +483,18 @@ func (cl *client) signAndStoreResponses(input <-chan *sa.CertStatusMetadata, err
 			Reason:    int32(status.RevokedReason),
 			RevokedAt: status.RevokedDate.UnixNano(),
 		}
-		result, err := cl.ocspGenerator.GenerateOCSP(context.Background(), ocspReq)
+		result, err := cl.ocspGenerator.GenerateOCSP(ctx, ocspReq)
 		if err != nil {
-			errors <- idError{id: uint64(status.ID), err: err}
+			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
 		// ttl is the lifetime of the certificate
 		ttl := cl.clk.Now().Sub(status.NotAfter)
-		err = cl.storeResponse(context.Background(), result.Response, &ttl)
+		err = cl.storeResponse(ctx, result.Response, &ttl)
 		if err != nil {
-			errors <- idError{id: uint64(status.ID), err: err}
+			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
-			success <- uint64(status.ID)
+			output <- processResult{id: uint64(status.ID), err: nil}
 		}
 	}
 }
