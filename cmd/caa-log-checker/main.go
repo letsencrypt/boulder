@@ -248,7 +248,7 @@ func main() {
 		cmd.FailOnError(err, "failed to process CAA checking logs")
 	}
 
-	err = formatErrors(logger, issuanceMap)
+	err = emitErrors(logger, issuanceMap)
 	if err != nil {
 		logger.AuditErrf("%s", err)
 		os.Exit(1)
