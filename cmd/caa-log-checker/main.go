@@ -194,10 +194,10 @@ func removeCoveredTimestamps(timestamps []time.Time, cover time.Time, tolerance 
 	return r
 }
 
-// formatErrors returns nil if the input map is empty. Otherwise, it logs
+// emitErrors returns nil if the input map is empty. Otherwise, it logs
 // a line for each name and issuance time that was not covered by a CAA
 // check, and return an error.
-func formatErrors(log blog.Logger, remaining map[string][]time.Time) error {
+func emitErrors(log blog.Logger, remaining map[string][]time.Time) error {
 	if len(remaining) == 0 {
 		return nil
 	}
