@@ -411,7 +411,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 // its output channel at a maximum frequency of `frequency`. When it's read all available rows, it
 // closes its output channel and exits.
 // If there is an error, it logs the error, closes its output channel, and exits.
-func (cl *client) scanFromDB(ctx context.Context, minID int64, frequency time.Duration, inflightIDs *inflight) (<-chan *sa.CertStatusMetadata) {
+func (cl *client) scanFromDB(ctx context.Context, minID int64, frequency time.Duration, inflightIDs *inflight) <-chan *sa.CertStatusMetadata {
 	statusesToSign := make(chan *sa.CertStatusMetadata)
 	go func() {
 		err := cl.scanFromDBInner(ctx, minID, frequency, statusesToSign, inflightIDs)
