@@ -134,7 +134,6 @@ func findIssuerByID(longID int64, issuers []ShortIDIssuer) (*ShortIDIssuer, erro
 	return nil, fmt.Errorf("no issuer found for an ID in certificateStatus: %d", longID)
 }
 
-
 func findIssuerByName(resp *ocsp.Response, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
 	var responder pkix.RDNSequence
 	_, err := asn1.Unmarshal(resp.RawResponderName, &responder)
