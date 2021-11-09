@@ -47,9 +47,14 @@ func lineValid(text string) error {
 		return fmt.Errorf("%s line doesn't match expected format", errorPrefix)
 	}
 	checksum := fields[5]
-	_, err := base64.RawURLEncoding.DecodeString(fields[5])
+	_, err := base64.RawURLEncoding.DecodeString(checksum)
 	if err != nil || len(checksum) != 7 {
-		return fmt.Errorf("%s expected a 7 character base64 raw URL decodable string, got %q) %w", errorPrefix, checksum, invalidChecksumErr)
+		return fmt.Errorf(
+			"%s expected a 7 character base64 raw URL decodable string, got %q: %w",
+			errorPrefix,
+			checksum,
+			invalidChecksumErr,
+		)
 	}
 
 	// Reconstruct just the message portion of the line
