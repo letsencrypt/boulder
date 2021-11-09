@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -17,6 +18,8 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 )
+
+var invalidChecksumErr = errors.New("invalid checksum length")
 
 func lineValid(text string) error {
 	// Line format should match the following rsyslog omfile template:
@@ -38,12 +41,22 @@ func lineValid(text string) error {
 	//   timestamp hostname datacenter syslogseverity binary-name[pid]: checksum msg
 
 	fields := strings.Split(text, " ")
-	const errorPrefix = "log-validator: "
+	const errorPrefix = "log-validator:"
 	// Extract checksum from line
 	if len(fields) < 6 {
-		return fmt.Errorf("%sline doesn't match expected format", errorPrefix)
+		return fmt.Errorf("%s line doesn't match expected format", errorPrefix)
 	}
 	checksum := fields[5]
+	_, err := base64.RawURLEncoding.DecodeString(checksum)
+	if err != nil || len(checksum) != 7 {
+		return fmt.Errorf(
+			"%s expected a 7 character base64 raw URL decodable string, got %q: %w",
+			errorPrefix,
+			checksum,
+			invalidChecksumErr,
+		)
+	}
+
 	// Reconstruct just the message portion of the line
 	line := strings.Join(fields[6:], " ")
 
@@ -171,7 +184,11 @@ func main() {
 					continue
 				}
 				if err := lineValid(line.Text); err != nil {
-					lineCounter.WithLabelValues(t.Filename, "bad").Inc()
+					if errors.Is(err, invalidChecksumErr) {
+						lineCounter.WithLabelValues(t.Filename, "invalid checksum length").Inc()
+					} else {
+						lineCounter.WithLabelValues(t.Filename, "bad").Inc()
+					}
 					select {
 					case <-outputLimiter.C:
 						logger.Errf("%s: %s %q", t.Filename, err, line.Text)
