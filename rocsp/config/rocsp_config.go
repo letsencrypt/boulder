@@ -41,6 +41,7 @@ func MakeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
 		Username:  c.Username,
 		Password:  password,
 		TLSConfig: tlsConfig,
+		PoolSize:  100, // TODO(#5781): Make this configurable
 	})
 	return rocsp.NewWritingClient(rdb, timeout, clk), nil
 }
