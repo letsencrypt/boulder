@@ -84,8 +84,10 @@ func main() {
 
 type ShortIDIssuer struct {
 	*issuance.Certificate
-	subject pkix.RDNSequence
-	shortID byte
+	subject      pkix.RDNSequence
+	shortID      byte
+	issuerID     issuance.IssuerID
+	issuerNameID issuance.IssuerNameID
 }
 
 func loadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
@@ -112,7 +114,13 @@ func loadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 				return nil, fmt.Errorf("certificate for %q is not a CA certificate", subject)
 			}
 		}
-		issuers = append(issuers, ShortIDIssuer{cert, subject, shortID})
+		issuers = append(issuers, ShortIDIssuer{
+			Certificate:  cert,
+			subject:      subject,
+			shortID:      shortID,
+			issuerID:     cert.ID(),
+			issuerNameID: cert.NameID(),
+		})
 	}
 	return issuers, nil
 }
@@ -486,13 +494,28 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 		}
 		// ttl is the lifetime of the certificate
 		ttl := cl.clk.Now().Sub(status.NotAfter)
-		err = cl.storeResponse(ctx, result.Response, &ttl)
+		shortID, err := cl.findIssuerShortID(status.IssuerID)
+		if err != nil {
+			output <- processResult{id: uint64(status.ID), err: err}
+			continue
+		}
+
+		err = cl.redis.StoreResponse(ctx, result.Response, shortID, ttl)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
 			output <- processResult{id: uint64(status.ID), err: nil}
 		}
 	}
+}
+
+func (cl *client) findIssuerShortID(longID int64) (byte, error) {
+	for _, iss := range cl.issuers {
+		if iss.issuerID == issuance.IssuerID(longID) || iss.issuerNameID == issuance.IssuerNameID(longID) {
+			return iss.shortID, nil
+		}
+	}
+	return 0, fmt.Errorf("no issuer found for an ID in certificateStatus: %d", longID)
 }
 
 type expiredError struct {
