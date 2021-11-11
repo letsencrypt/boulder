@@ -26,13 +26,15 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	bocsp "github.com/letsencrypt/boulder/ocsp"
+	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/test/ocsp/helper"
 )
 
 // ocspFilter stores information needed to filter OCSP requests (to ensure we
@@ -147,10 +149,11 @@ func (f *ocspFilter) responseMatchesIssuer(req *ocsp.Request, status core.Certif
 // serial number in hex. You must have an index on the serialNumber field,
 // since we will always query on it.
 type dbSource struct {
-	dbMap   dbSelector
-	filter  *ocspFilter
-	timeout time.Duration
-	log     blog.Logger
+	dbMap       dbSelector
+	rocspReader *rocsp.WritingClient
+	filter      *ocspFilter
+	timeout     time.Duration
+	log         blog.Logger
 }
 
 // Define an interface with the needed methods from gorp.
@@ -158,6 +161,12 @@ type dbSource struct {
 type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
 	WithContext(ctx context.Context) gorp.SqlExecutor
+}
+
+type sourceResponse struct {
+	name  string
+	bytes []byte
+	err   error
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
@@ -190,25 +199,59 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		ctx, cancel = context.WithTimeout(ctx, src.timeout)
 		defer cancel()
 	}
-	certStatus, err = sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return nil, nil, bocsp.ErrNotFound
+
+	responseChan := make(chan sourceResponse, 2)
+
+	go src.getMysqlResponse(ctx, serialString, responseChan)
+	go src.getRedisResponse(ctx, serialString, responseChan)
+
+	// var responses []sourceResponse
+	responseMap := make(map[string]sourceResponse)
+	errorMap := make(map[string]error)
+	for i := 0; i < 2; i++ {
+		r := <-responseChan
+		responseMap[r.name] = r
+		if r.err != nil {
+			errorMap[r.name] = r.err
+			break
 		}
-		src.log.AuditErrf("Looking up OCSP response: %s", err)
-		return nil, nil, err
+		parsedResponse, _ := ocsp.ParseResponse(r.bytes, nil)
+		src.log.Infof("retrieved %s", helper.PrettyResponse(parsedResponse))
 	}
-	if certStatus.IsExpired {
-		src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-		return nil, nil, bocsp.ErrNotFound
-	} else if certStatus.OCSPLastUpdated.IsZero() {
-		src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-		return nil, nil, bocsp.ErrNotFound
-	} else if !src.filter.responseMatchesIssuer(req, certStatus) {
-		src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+
+	if errorMap["redis"] != nil {
 		return nil, nil, bocsp.ErrNotFound
 	}
-	return certStatus.OCSPResponse, header, nil
+	return responseMap["redis"].bytes, header, nil
+	// return certStatus.OCSPResponse, header, nil
+}
+
+func (src *dbSource) getMysqlResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
+	certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
+	responseChan <- sourceResponse{"mysql", certStatus.OCSPResponse, err}
+
+	// if err != nil {
+	// 	if db.IsNoRows(err) {
+	// 		return nil, nil, bocsp.ErrNotFound
+	// 	}
+	// 	src.log.AuditErrf("Looking up OCSP response: %s", err)
+	// 	return nil, nil, err
+	// }
+	// if certStatus.IsExpired {
+	// 	src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+	// 	return nil, nil, bocsp.ErrNotFound
+	// } else if certStatus.OCSPLastUpdated.IsZero() {
+	// 	src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+	// 	return nil, nil, bocsp.ErrNotFound
+	// } else if !src.filter.responseMatchesIssuer(req, certStatus) {
+	// 	src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+	// 	return nil, nil, bocsp.ErrNotFound
+	// }
+}
+
+func (src *dbSource) getRedisResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
+	respBytes, err := src.rocspReader.GetResponse(ctx, serialString)
+	responseChan <- sourceResponse{"redis", respBytes, err}
 }
 
 type config struct {
@@ -241,6 +284,8 @@ type config struct {
 		RequiredSerialPrefixes []string
 
 		Features map[string]bool
+
+		Redis rocsp_config.RedisConfig
 	}
 
 	Syslog  cmd.SyslogConfig
@@ -266,6 +311,8 @@ as generated by Boulder's ceremony command.
 	err = features.Set(c.OCSPResponder.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
+	clk := cmd.Clock()
+
 	bc, err := c.Beeline.Load()
 	cmd.FailOnError(err, "Failed to load Beeline config")
 	beeline.Init(bc)
@@ -290,6 +337,13 @@ as generated by Boulder's ceremony command.
 		source, err = bocsp.NewMemorySourceFromFile(filename, logger)
 		cmd.FailOnError(err, fmt.Sprintf("Couldn't read file: %s", url.Path))
 	} else {
+
+		// Set up the redis source
+		rocspReader, err := rocsp_config.MakeClient(&c.OCSPResponder.Redis, clk)
+		if err != nil {
+			cmd.FailOnError(err, "could not make redis client")
+		}
+
 		// For databases, DBConfig takes precedence over Source, if present.
 		dbConnect, err := config.DB.URL()
 		cmd.FailOnError(err, "Reading DB config")
@@ -316,7 +370,7 @@ as generated by Boulder's ceremony command.
 		filter, err := newFilter(issuerCerts, c.OCSPResponder.RequiredSerialPrefixes)
 		cmd.FailOnError(err, "Couldn't create OCSP filter")
 
-		source = &dbSource{dbMap, filter, c.OCSPResponder.Timeout.Duration, logger}
+		source = &dbSource{dbMap, rocspReader, filter, c.OCSPResponder.Timeout.Duration, logger}
 
 		// Export the value for dbSettings.MaxOpenConns
 		dbConnStat := prometheus.NewGauge(prometheus.GaugeOpts{
