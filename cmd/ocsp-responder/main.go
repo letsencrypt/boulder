@@ -202,8 +202,11 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 
 	responseChan := make(chan sourceResponse, 2)
 
-	go src.getMysqlResponse(ctx, serialString, responseChan)
-	go src.getRedisResponse(ctx, serialString, responseChan)
+	rc := redisReceiver{src.rocspReader}
+	db := dbReceiver{src.dbMap}
+
+	go db.getResponse(ctx, serialString, responseChan)
+	go rc.getResponse(ctx, serialString, responseChan)
 
 	// var responses []sourceResponse
 	responseMap := make(map[string]sourceResponse)
@@ -226,7 +229,18 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	// return certStatus.OCSPResponse, header, nil
 }
 
-func (src *dbSource) getMysqlResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
+type ocspLookup interface {
+	getResponse(context.Context, string, chan sourceResponse)
+}
+
+type redisReceiver struct {
+	rocspReader *rocsp.WritingClient
+}
+type dbReceiver struct {
+	dbMap dbSelector
+}
+
+func (src *dbReceiver) getResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
 	certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
 	responseChan <- sourceResponse{"mysql", certStatus.OCSPResponse, err}
 
@@ -249,7 +263,7 @@ func (src *dbSource) getMysqlResponse(ctx context.Context, serialString string, 
 	// }
 }
 
-func (src *dbSource) getRedisResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
+func (src *redisReceiver) getResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
 	respBytes, err := src.rocspReader.GetResponse(ctx, serialString)
 	responseChan <- sourceResponse{"redis", respBytes, err}
 }
