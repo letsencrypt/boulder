@@ -69,6 +69,7 @@ func (r *report) dump() error {
 
 type reportEntry struct {
 	Valid    bool     `json:"valid"`
+	DNSNames []string `json:"dnsNames"`
 	Problems []string `json:"problems,omitempty"`
 }
 
@@ -159,12 +160,13 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 
 func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool, ignoredLints map[string]bool) {
 	for cert := range c.certs {
-		problems := c.checkCert(cert, ignoredLints)
+		dnsNames, problems := c.checkCert(cert, ignoredLints)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
 			c.issuedReport.Entries[cert.Serial] = reportEntry{
 				Valid:    valid,
+				DNSNames: dnsNames,
 				Problems: problems,
 			}
 		}
@@ -198,7 +200,10 @@ var expectedExtensionContent = map[string][]byte{
 	"1.3.6.1.5.5.7.1.24": {0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
 }
 
-func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) (problems []string) {
+// checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
+func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) ([]string, []string) {
+	var dnsNames []string
+	var problems []string
 	// Check that the digests match.
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
@@ -208,6 +213,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
+		dnsNames = parsedCert.DNSNames
 		// Run zlint checks.
 		results := zlint.LintCertificate(parsedCert)
 		for name, res := range results.Results {
@@ -295,7 +301,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 			}
 		}
 	}
-	return problems
+	return dnsNames, problems
 }
 
 type config struct {
