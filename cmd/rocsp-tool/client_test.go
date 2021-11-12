@@ -60,7 +60,7 @@ func TestFindIssuer(t *testing.T) {
 		RawResponderName: elephant,
 	}
 
-	issuer, err := findIssuer(ocspResp, issuers)
+	issuer, err := findIssuerByName(ocspResp, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
@@ -71,7 +71,7 @@ func TestFindIssuer(t *testing.T) {
 		RawResponderName: rhino,
 	}
 
-	issuer, err = findIssuer(ocspResp, issuers)
+	issuer, err = findIssuerByName(ocspResp, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
