@@ -26,6 +26,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -149,11 +150,11 @@ func (f *ocspFilter) responseMatchesIssuer(req *ocsp.Request, status core.Certif
 // serial number in hex. You must have an index on the serialNumber field,
 // since we will always query on it.
 type dbSource struct {
-	dbMap       dbReceiver
-	rocspReader redisReceiver
-	filter      *ocspFilter
-	timeout     time.Duration
-	log         blog.Logger
+	primaryLookup   ocspLookup
+	secondaryLookup ocspLookup
+	filter          *ocspFilter
+	timeout         time.Duration
+	log             blog.Logger
 }
 
 // Define an interface with the needed methods from gorp.
@@ -161,12 +162,6 @@ type dbSource struct {
 type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
 	WithContext(ctx context.Context) gorp.SqlExecutor
-}
-
-type sourceResponse struct {
-	name  string
-	bytes []byte
-	err   error
 }
 
 // Response is called by the HTTP server to handle a new OCSP request.
@@ -200,34 +195,51 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		defer cancel()
 	}
 
-	responseChan := make(chan sourceResponse, 2)
+	// The primary and secondary lookups send goroutines to get an OCSP
+	// status given a serial and return a channel of the output.
+	primaryChan := src.primaryLookup.getResponse(ctx, serialString)
+	secondaryChan := src.secondaryLookup.getResponse(ctx, serialString)
 
-	go src.dbMap.getResponse(ctx, serialString, responseChan)
-	go src.rocspReader.getResponse(ctx, serialString, responseChan)
-
-	// var responses []sourceResponse
-	responseMap := make(map[string]sourceResponse)
-	errorMap := make(map[string]error)
-	for i := 0; i < 2; i++ {
-		r := <-responseChan
-		responseMap[r.name] = r
-		if r.err != nil {
-			errorMap[r.name] = r.err
-			break
-		}
-		parsedResponse, _ := ocsp.ParseResponse(r.bytes, nil)
-		src.log.Infof("retrieved %s", helper.PrettyResponse(parsedResponse))
-	}
-
-	if errorMap["redis"] != nil {
+	// Block on the primary source to return a result.
+	primaryResult := <-primaryChan
+	if primaryResult.err != nil {
 		return nil, nil, bocsp.ErrNotFound
 	}
-	return responseMap["redis"].bytes, header, nil
-	// return certStatus.OCSPResponse, header, nil
+
+	// Parse the OCSP bytes returned from the primary source to check
+	// status, expiration and other fields.
+	primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// If the secondary source has returned a response parse it now and
+	// compare it to the primary source. It is important that we never
+	// return a response from the redis source that is good if mysql has a
+	// revoked status. If the secondary source passes these checks, return
+	// it's response instead. If it hasn't yet returned a response or it
+	// differs from the primary, then return the primary response instead.
+	select {
+	case secondaryResult := <-secondaryChan:
+		secondaryParsed, err := ocsp.ParseResponse(secondaryResult.bytes, nil)
+		if err != nil {
+			src.log.Errf("secondary source response error: %v", err)
+			return primaryResult.bytes, header, nil
+		}
+		if primaryParsed.Status != secondaryParsed.Status {
+			src.log.Err("primary ocsp source doesn't match secondary source")
+			return primaryResult.bytes, header, nil
+		}
+		src.log.Debugf("returning ocsp from secondary source: %v", helper.PrettyResponse(secondaryParsed))
+		return secondaryResult.bytes, header, nil
+	case <-time.After(src.timeout):
+		src.log.Debugf("returning ocsp from primary source: %v", helper.PrettyResponse(primaryParsed))
+		return primaryResult.bytes, header, nil
+	}
 }
 
 type ocspLookup interface {
-	getResponse(context.Context, string, chan sourceResponse)
+	getResponse(context.Context, string) chan responseMeta
 }
 
 type redisReceiver struct {
@@ -237,14 +249,25 @@ type dbReceiver struct {
 	dbMap dbSelector
 }
 
-func (src *dbReceiver) getResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
-	certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
-	responseChan <- sourceResponse{"mysql", certStatus.OCSPResponse, err}
+type responseMeta struct {
+	bytes []byte
+	err   error
+}
 
-	// if err != nil {
-	// 	if db.IsNoRows(err) {
-	// 		return nil, nil, bocsp.ErrNotFound
-	// 	}
+func (src dbReceiver) getResponse(ctx context.Context, serialString string) chan responseMeta {
+	responseChan := make(chan responseMeta)
+	go func() {
+		defer close(responseChan)
+		certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
+		responseChan <- responseMeta{certStatus.OCSPResponse, err}
+		if err != nil {
+			if db.IsNoRows(err) {
+				responseChan <- responseMeta{nil, bocsp.ErrNotFound} // figure out what to return here
+				return
+			}
+			responseChan <- responseMeta{nil, err}
+		}
+	}()
 	// 	src.log.AuditErrf("Looking up OCSP response: %s", err)
 	// 	return nil, nil, err
 	// }
@@ -258,11 +281,18 @@ func (src *dbReceiver) getResponse(ctx context.Context, serialString string, res
 	// 	src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 	// 	return nil, nil, bocsp.ErrNotFound
 	// }
+	return responseChan
 }
 
-func (src *redisReceiver) getResponse(ctx context.Context, serialString string, responseChan chan sourceResponse) {
-	respBytes, err := src.rocspReader.GetResponse(ctx, serialString)
-	responseChan <- sourceResponse{"redis", respBytes, err}
+func (src redisReceiver) getResponse(ctx context.Context, serialString string) chan responseMeta {
+	responseChan := make(chan responseMeta)
+	go func() {
+		defer close(responseChan)
+		respBytes, err := src.rocspReader.GetResponse(ctx, serialString)
+		responseChan <- responseMeta{respBytes, err}
+	}()
+
+	return responseChan
 }
 
 type config struct {
