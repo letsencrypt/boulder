@@ -2,21 +2,23 @@ package notmain
 
 import (
 	"context"
-	"io/ioutil"
+	"math/big"
 	"testing"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/test"
+	"golang.org/x/crypto/ocsp"
 )
 
 func makeClient() (*rocsp.WritingClient, clock.Clock) {
-	CACertFile := "../test/redis-tls/minica.pem"
-	CertFile := "../test/redis-tls/boulder/cert.pem"
-	KeyFile := "../test/redis-tls/boulder/key.pem"
+	CACertFile := "../../test/redis-tls/minica.pem"
+	CertFile := "../../test/redis-tls/boulder/cert.pem"
+	KeyFile := "../../test/redis-tls/boulder/key.pem"
 	tlsConfig := cmd.TLSConfig{
 		CACertFile: &CACertFile,
 		CertFile:   &CertFile,
@@ -40,13 +42,21 @@ func makeClient() (*rocsp.WritingClient, clock.Clock) {
 func TestStoreResponse(t *testing.T) {
 	redisClient, clk := makeClient()
 
-	response, err := ioutil.ReadFile("testdata/ocsp.response")
-	if err != nil {
-		t.Fatal(err)
-	}
+	issuer, err := core.LoadCert("../../test/hierarchy/int-e1.cert.pem")
+	test.AssertNotError(t, err, "loading int-e1")
+
+	issuerKey, err := test.LoadSigner("../../test/hierarchy/int-e1.key.pem")
+	test.AssertNotError(t, err, "loading int-e1 key ")
+	response, err := ocsp.CreateResponse(issuer, issuer, ocsp.Response{
+		SerialNumber: big.NewInt(1337),
+		Status:       0,
+		ThisUpdate:   clk.Now(),
+		NextUpdate:   clk.Now().Add(time.Hour),
+	}, issuerKey)
+	test.AssertNotError(t, err, "creating OCSP response")
 
 	issuers, err := loadIssuers(map[string]int{
-		"../../test/hierarchy/int-r3.cert.pem": 99,
+		"../../test/hierarchy/int-e1.cert.pem": 23,
 	})
 	if err != nil {
 		t.Fatal(err)
