@@ -84,8 +84,10 @@ func main() {
 
 type ShortIDIssuer struct {
 	*issuance.Certificate
-	subject pkix.RDNSequence
-	shortID byte
+	subject      pkix.RDNSequence
+	shortID      byte
+	issuerID     issuance.IssuerID
+	issuerNameID issuance.IssuerNameID
 }
 
 func loadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
@@ -112,12 +114,27 @@ func loadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 				return nil, fmt.Errorf("certificate for %q is not a CA certificate", subject)
 			}
 		}
-		issuers = append(issuers, ShortIDIssuer{cert, subject, shortID})
+		issuers = append(issuers, ShortIDIssuer{
+			Certificate:  cert,
+			subject:      subject,
+			shortID:      shortID,
+			issuerID:     cert.ID(),
+			issuerNameID: cert.NameID(),
+		})
 	}
 	return issuers, nil
 }
 
-func findIssuer(resp *ocsp.Response, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
+func findIssuerByID(longID int64, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
+	for _, iss := range issuers {
+		if iss.issuerNameID == issuance.IssuerNameID(longID) || iss.issuerID == issuance.IssuerID(longID) {
+			return &iss, nil
+		}
+	}
+	return nil, fmt.Errorf("no issuer found for an ID in certificateStatus: %d", longID)
+}
+
+func findIssuerByName(resp *ocsp.Response, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
 	var responder pkix.RDNSequence
 	_, err := asn1.Unmarshal(resp.RawResponderName, &responder)
 	if err != nil {
@@ -486,7 +503,13 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 		}
 		// ttl is the lifetime of the certificate
 		ttl := cl.clk.Now().Sub(status.NotAfter)
-		err = cl.storeResponse(ctx, result.Response, &ttl)
+		issuer, err := findIssuerByID(status.IssuerID, cl.issuers)
+		if err != nil {
+			output <- processResult{id: uint64(status.ID), err: err}
+			continue
+		}
+
+		err = cl.redis.StoreResponse(ctx, result.Response, issuer.shortID, ttl)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
@@ -523,7 +546,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 	if err != nil {
 		return fmt.Errorf("parsing response: %w", err)
 	}
-	issuer, err := findIssuer(resp, cl.issuers)
+	issuer, err := findIssuerByName(resp, cl.issuers)
 	if err != nil {
 		return fmt.Errorf("finding issuer for response: %w", err)
 	}
