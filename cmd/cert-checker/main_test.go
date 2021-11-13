@@ -7,12 +7,15 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/pem"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/big"
 	mrand "math/rand"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -125,9 +128,42 @@ func TestCheckWildcardCert(t *testing.T) {
 		Issued:  parsed.NotBefore,
 		DER:     wildcardCertDer,
 	}
-	problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(cert, nil)
 	for _, p := range problems {
 		t.Errorf(p)
+	}
+}
+
+func TestCheckCertReturnsDNSNames(t *testing.T) {
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	test.AssertNotError(t, err, "Couldn't connect to database")
+	saCleanup := test.ResetSATestDatabase(t)
+	defer func() {
+		saCleanup()
+	}()
+	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+
+	certPEM, err := ioutil.ReadFile("testdata/quite_invalid.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		t.Fatal("failed to parse cert PEM")
+	}
+
+	cert := core.Certificate{
+		Serial:  "00000000000",
+		Digest:  core.Fingerprint256(block.Bytes),
+		Expires: time.Now().Add(time.Hour),
+		Issued:  time.Now(),
+		DER:     block.Bytes,
+	}
+
+	names, problems := checker.checkCert(cert, nil)
+	if !reflect.DeepEqual(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
+		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
 }
 
@@ -199,7 +235,7 @@ func TestCheckCert(t *testing.T) {
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
 
-	problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(cert, nil)
 
 	problemsMap := map[string]int{
 		"Stored digest doesn't match certificate digest":                            1,
@@ -225,7 +261,7 @@ func TestCheckCert(t *testing.T) {
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
-	problems = checker.checkCert(cert, nil)
+	_, problems = checker.checkCert(cert, nil)
 	foundInvalidSerialProblem := false
 	for _, p := range problems {
 		if p == "Stored serial is invalid" {
@@ -250,7 +286,7 @@ func TestCheckCert(t *testing.T) {
 	cert.DER = goodCertDer
 	cert.Expires = parsed.NotAfter
 	cert.Issued = parsed.NotBefore
-	problems = checker.checkCert(cert, nil)
+	_, problems = checker.checkCert(cert, nil)
 	test.AssertEquals(t, len(problems), 0)
 }
 
@@ -487,13 +523,13 @@ func TestIgnoredLint(t *testing.T) {
 
 	// Check the certificate with a nil ignore map. This should return the
 	// expected zlint problems.
-	problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(cert, nil)
 	sort.Strings(problems)
 	test.Assert(t, reflect.DeepEqual(problems, expectedProblems), "problems did not match expected")
 
 	// Check the certificate again with an ignore map that excludes the affected
 	// lints. This should return no problems.
-	problems = checker.checkCert(cert, map[string]bool{
+	_, problems = checker.checkCert(cert, map[string]bool{
 		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
 		"n_subject_common_name_included":           true,
 		"w_ct_sct_policy_count_unsatisfied":        true,
