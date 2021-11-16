@@ -357,6 +357,11 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			m.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
+		} else if errors.Is(err, syscall.EPIPE) {
+			// EPIPE also seems to be a common way to signal TCP RST.
+			m.sendMailAttempts.WithLabelValues("failure", "EPIPE").Inc()
+			m.reconnect()
+			continue
 		} else if errors.As(err, &protoErr) && protoErr.Code == 421 {
 			m.sendMailAttempts.WithLabelValues("failure", "SMTP 421").Inc()
 			/*
