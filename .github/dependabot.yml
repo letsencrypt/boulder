@@ -1,0 +1,9 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-name: "github.com/zmap/zlint/v3"
+      - dependency-name: "github.com/weppos/publicsuffix-go"
