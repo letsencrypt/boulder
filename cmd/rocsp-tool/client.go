@@ -36,32 +36,44 @@ type processResult struct {
 	err error
 }
 
-func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
+func getStartingID(ctx context.Context, clk clock.Clock, db *sql.DB) (int64, error) {
 	// To scan the DB efficiently, we want to select only currently-valid certificates. There's a
 	// handy expires index, but for selecting a large set of rows, using the primary key will be
 	// more efficient. So first we find a good id to start with, then scan from there. Note: since
 	// AUTO_INCREMENT can skip around a bit, we add padding to ensure we get all currently-valid
 	// certificates.
-	// TODO(#5783): Allow starting from a specific ID.
-	startTime := cl.clk.Now().Add(-24 * time.Hour)
+	startTime := clk.Now().Add(-24 * time.Hour)
 	var minID *int64
-	err := cl.db.QueryRowContext(
+	fmt.Println("startTime", startTime)
+	err := db.QueryRowContext(
 		ctx,
 		"SELECT MIN(id) FROM certificateStatus WHERE notAfter >= ?",
 		startTime,
 	).Scan(&minID)
 	if err != nil {
-		return fmt.Errorf("selecting minID: %w", err)
+		return 0, fmt.Errorf("selecting minID: %w", err)
 	}
 	if minID == nil {
-		return fmt.Errorf("no entries in certificateStatus (where notAfter >= %s)", startTime)
+		return 0, fmt.Errorf("no entries in certificateStatus (where notAfter >= %s)", startTime)
+	}
+	return *minID, nil
+}
+
+func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFromID int64) error {
+	minID := startFromID
+	var err error
+	if minID == 0 {
+		minID, err = getStartingID(ctx, cl.clk, cl.db)
+		if err != nil {
+			return fmt.Errorf("getting starting ID: %w", err)
+		}
 	}
 
 	// Limit the rate of reading rows.
 	frequency := time.Duration(float64(time.Second) / float64(time.Duration(speed.RowsPerSecond)))
 	// a set of all inflight certificate statuses, indexed by their `ID`.
 	inflightIDs := newInflight()
-	statusesToSign := cl.scanFromDB(ctx, *minID, frequency, inflightIDs)
+	statusesToSign := cl.scanFromDB(ctx, minID, frequency, inflightIDs)
 
 	results := make(chan processResult, speed.ParallelSigns)
 	var runningSigners int32

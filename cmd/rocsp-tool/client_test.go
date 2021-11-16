@@ -10,8 +10,11 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rocsp"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/letsencrypt/boulder/test/vars"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -37,6 +40,38 @@ func makeClient() (*rocsp.WritingClient, clock.Clock) {
 	})
 	clk := clock.NewFake()
 	return rocsp.NewWritingClient(rdb, 500*time.Millisecond, clk), clk
+}
+
+func TestGetStartingID(t *testing.T) {
+	clk := clock.NewFake()
+	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	test.AssertNotError(t, err, "failed setting up db client")
+	defer test.ResetSATestDatabase(t)()
+	sa.SetSQLDebug(dbMap, log.Get())
+
+	cs := core.CertificateStatus{
+		Serial:   "1337",
+		NotAfter: clk.Now().Add(12 * time.Hour),
+	}
+	err = dbMap.Insert(&cs)
+	test.AssertNotError(t, err, "inserting certificate status")
+	firstID := cs.ID
+
+	cs = core.CertificateStatus{
+		Serial:   "1338",
+		NotAfter: clk.Now().Add(36 * time.Hour),
+	}
+	err = dbMap.Insert(&cs)
+	test.AssertNotError(t, err, "inserting certificate status")
+	secondID := cs.ID
+	t.Logf("first ID %d, second ID %d", firstID, secondID)
+
+	clk.Sleep(48 * time.Hour)
+
+	startingID, err := getStartingID(context.Background(), clk, dbMap.Db)
+	test.AssertNotError(t, err, "getting starting ID")
+
+	test.AssertEquals(t, startingID, secondID)
 }
 
 func TestStoreResponse(t *testing.T) {

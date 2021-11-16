@@ -451,6 +451,9 @@ type Certificate struct {
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
+	// The auto increment primary key
+	ID int64 `db:"id"`
+
 	Serial string `db:"serial"`
 
 	// status: 'good' or 'revoked'. Note that good, expired certificates remain
