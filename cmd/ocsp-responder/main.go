@@ -197,12 +197,12 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 
 	// The primary and secondary lookups send goroutines to get an OCSP
 	// status given a serial and return a channel of the output.
-	primaryChan := src.primaryLookup.getResponse(ctx, serialString)
+	primaryChan := src.primaryLookup.getResponse(ctx, req)
 
 	// If the redis source is nil, don't try to get a response.
 	var secondaryChan chan lookupResponse
 	if src.secondaryLookup != nil {
-		secondaryChan = src.secondaryLookup.getResponse(ctx, serialString)
+		secondaryChan = src.secondaryLookup.getResponse(ctx, req)
 	}
 
 	// If the primary source returns first, check the output and return
@@ -214,12 +214,14 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	select {
 	case primaryResult := <-primaryChan:
 		if primaryResult.err != nil {
+			src.log.AuditErrf("Looking up OCSP response: %s", err)
 			return nil, nil, err
 		}
 		// Parse the OCSP bytes returned from the primary source to check
 		// status, expiration and other fields.
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
+			src.log.AuditErrf("parsing OCSP response: %s", err)
 			return nil, nil, err
 		}
 		src.log.Debugf("returning ocsp from primary source: %v", helper.PrettyResponse(primaryParsed))
@@ -229,12 +231,14 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		// comparison.
 		primaryResult := <-primaryChan
 		if primaryResult.err != nil {
+			src.log.AuditErrf("Looking up OCSP response: %s", err)
 			return nil, nil, err
 		}
 		// Parse the OCSP bytes returned from the primary source to check
 		// status, expiration and other fields.
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
+			src.log.AuditErrf("parsing OCSP response: %s", err)
 			return nil, nil, err
 		}
 
@@ -257,14 +261,16 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 }
 
 type ocspLookup interface {
-	getResponse(context.Context, string) chan lookupResponse
+	getResponse(context.Context, *ocsp.Request) chan lookupResponse
 }
 
 type redisReceiver struct {
 	rocspReader *rocsp.WritingClient
 }
 type dbReceiver struct {
-	dbMap dbSelector
+	dbMap  dbSelector
+	filter *ocspFilter
+	log    blog.Logger
 }
 
 type lookupResponse struct {
@@ -272,12 +278,13 @@ type lookupResponse struct {
 	err   error
 }
 
-func (src dbReceiver) getResponse(ctx context.Context, serialString string) chan lookupResponse {
+func (src dbReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan lookupResponse {
 	responseChan := make(chan lookupResponse)
+	serialString := core.SerialToString(req.SerialNumber)
+
 	go func() {
 		defer close(responseChan)
 		certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
-		responseChan <- lookupResponse{certStatus.OCSPResponse, err}
 		if err != nil {
 			if db.IsNoRows(err) {
 				responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
@@ -285,25 +292,31 @@ func (src dbReceiver) getResponse(ctx context.Context, serialString string) chan
 			}
 			responseChan <- lookupResponse{nil, err}
 		}
+
+		if certStatus.IsExpired {
+			src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		} else if certStatus.OCSPLastUpdated.IsZero() {
+			src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		} else if !src.filter.responseMatchesIssuer(req, certStatus) {
+			src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		}
+		responseChan <- lookupResponse{certStatus.OCSPResponse, err}
+
 	}()
-	// 	src.log.AuditErrf("Looking up OCSP response: %s", err)
-	// 	return nil, nil, err
-	// }
-	// if certStatus.IsExpired {
-	// 	src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-	// 	return nil, nil, bocsp.ErrNotFound
-	// } else if certStatus.OCSPLastUpdated.IsZero() {
-	// 	src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-	// 	return nil, nil, bocsp.ErrNotFound
-	// } else if !src.filter.responseMatchesIssuer(req, certStatus) {
-	// 	src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-	// 	return nil, nil, bocsp.ErrNotFound
-	// }
+
 	return responseChan
 }
 
-func (src redisReceiver) getResponse(ctx context.Context, serialString string) chan lookupResponse {
+func (src redisReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan lookupResponse {
 	responseChan := make(chan lookupResponse)
+	serialString := core.SerialToString(req.SerialNumber)
+
 	go func() {
 		defer close(responseChan)
 		respBytes, err := src.rocspReader.GetResponse(ctx, serialString)
@@ -422,7 +435,10 @@ as generated by Boulder's ceremony command.
 		filter, err := newFilter(issuerCerts, c.OCSPResponder.RequiredSerialPrefixes)
 		cmd.FailOnError(err, "Couldn't create OCSP filter")
 
-		// Set up the redis source if there is a config
+		pLookup := dbReceiver{dbMap, filter, logger}
+
+		// Set up the redis source if there is a config. Otherwise just
+		// set up a mysql source.
 		if c.OCSPResponder.Redis.Addrs != nil {
 			logger.Info("redis config found, configuring redis reader")
 			rocspReader, err := rocsp_config.MakeClient(&c.OCSPResponder.Redis, clk)
@@ -430,7 +446,7 @@ as generated by Boulder's ceremony command.
 				cmd.FailOnError(err, "could not make redis client")
 			}
 			source = &dbSource{
-				primaryLookup:   dbReceiver{dbMap},
+				primaryLookup:   pLookup,
 				secondaryLookup: redisReceiver{rocspReader},
 				filter:          filter,
 				timeout:         c.OCSPResponder.Timeout.Duration,
@@ -439,7 +455,7 @@ as generated by Boulder's ceremony command.
 		} else {
 			logger.Info("no redis config found, using mysql as only ocsp source")
 			source = &dbSource{
-				primaryLookup:   dbReceiver{dbMap},
+				primaryLookup:   pLookup,
 				secondaryLookup: nil,
 				filter:          filter,
 				timeout:         c.OCSPResponder.Timeout.Duration,
