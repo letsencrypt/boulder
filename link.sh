@@ -2,7 +2,10 @@
 #
 # Symlink the various boulder subcommands into place.
 #
-BINDIR="$PWD/bin"
-for n in `"${BINDIR}/boulder" --list` ; do
-  ln -sf boulder "${BINDIR}/$n"
+BIN="${1}"
+BINDIR="$(dirname $BIN)"
+echo $BINDIR
+mkdir -p $BINDIR/symlinks
+for n in `"${BIN}" --list` ; do
+  ln -sf boulder "$BINDIR"/symlinks/"$n"
 done
