@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -63,8 +64,9 @@ type OCSPUpdater struct {
 	log blog.Logger
 	clk clock.Clock
 
-	db         ocspDb
-	readOnlyDb ocspReadOnlyDb
+	db          ocspDb
+	readOnlyDb  ocspReadOnlyDb
+	rocspClient *rocsp.WritingClient
 
 	ogc capb.OCSPGeneratorClient
 
@@ -98,6 +100,7 @@ func New(
 	clk clock.Clock,
 	db ocspDb,
 	readOnlyDb ocspReadOnlyDb,
+	rocspClient *rocsp.WritingClient,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config ocsp_updater_config.Config,
@@ -174,6 +177,7 @@ func New(
 		clk:                          clk,
 		db:                           db,
 		readOnlyDb:                   readOnlyDb,
+		rocspClient:                  rocspClient,
 		ogc:                          ogc,
 		log:                          log,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
