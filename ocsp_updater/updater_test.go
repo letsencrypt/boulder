@@ -1,4 +1,4 @@
-package notmain
+package ocsp_updater
 
 import (
 	"context"
@@ -21,6 +21,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -47,6 +48,9 @@ var log = blog.UseMock()
 func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.WrappedMap, clock.FakeClock, func()) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Failed to create dbMap")
+	readOnlyDb, err := sa.NewDbMap(vars.DBConnSAOcspUpdateRO, sa.DbSettings{})
+	test.AssertNotError(t, err, "Failed to create dbMap")
+	cleanUp := test.ResetSATestDatabase(t)
 	sa.SetSQLDebug(dbMap, log)
 
 	fc := clock.NewFake()
@@ -55,30 +59,14 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 	sa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Failed to create SA")
 
-	cleanUp := test.ResetSATestDatabase(t)
-
-	db, err := configureDb(
-		cmd.DBConfig{
-			DBConnect: vars.DBConnSAOcspUpdate,
-		},
-	)
-	test.AssertNotError(t, err, "Failed to create database client")
-
-	readOnlyDb, err := configureDb(
-		cmd.DBConfig{
-			DBConnect: vars.DBConnSAOcspUpdateRO,
-		},
-	)
-	test.AssertNotError(t, err, "Failed to create read-only database client")
-
-	updater, err := newUpdater(
+	updater, err := New(
 		metrics.NoopRegisterer,
 		fc,
-		db,
+		dbMap,
 		readOnlyDb,
 		strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"),
 		&mockOCSP{},
-		OCSPUpdaterConfig{
+		ocsp_updater_config.Config{
 			OldOCSPBatchSize:         1,
 			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
 			SignFailureBackoffFactor: 1.5,
@@ -102,7 +90,7 @@ func TestStalenessHistogram(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sac)
-	parsedCertA, err := core.LoadCert("test-cert.pem")
+	parsedCertA, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sac.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertA.Raw,
@@ -112,7 +100,7 @@ func TestStalenessHistogram(t *testing.T) {
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-	parsedCertB, err := core.LoadCert("test-cert-b.pem")
+	parsedCertB, err := core.LoadCert("testdata/test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sac.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertB.Raw,
@@ -145,7 +133,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
+	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
@@ -193,7 +181,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCertA, err := core.LoadCert("test-cert.pem")
+	parsedCertA, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertA.Raw,
@@ -203,7 +191,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 		IssuerID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-	parsedCertB, err := core.LoadCert("test-cert-b.pem")
+	parsedCertB, err := core.LoadCert("testdata/test-cert-b.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCertB.Raw,
@@ -256,7 +244,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	test.AssertEquals(t, len(statuses), 0)
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
+	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
@@ -296,7 +284,7 @@ func TestFindStaleOCSPResponsesRevokedReason(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
+	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
@@ -330,7 +318,7 @@ func TestPipelineTick(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
+	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
@@ -361,7 +349,7 @@ func TestProcessExpired(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
+	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	serial := core.SerialToString(parsedCert.SerialNumber)
 
@@ -418,7 +406,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	defer cleanUp()
 
 	reg := satest.CreateWorkingRegistration(t, sa)
-	parsedCert, err := core.LoadCert("test-cert.pem")
+	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
 	test.AssertNotError(t, err, "Couldn't read test certificate")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      parsedCert.Raw,
@@ -580,7 +568,7 @@ func TestTickSleep(t *testing.T) {
 	// updater.tickWindow
 	updater.readFailures.Add(2)
 	before := fc.Now()
-	updater.tick()
+	updater.Tick()
 	test.AssertEquals(t, updater.readFailures.Value(), 3)
 	took := fc.Since(before)
 	test.Assert(t, took > updater.tickWindow, "Clock didn't move forward enough")
@@ -589,7 +577,7 @@ func TestTickSleep(t *testing.T) {
 	// zero and the clock only moves by updater.tickWindow
 	updater.readOnlyDb = dbMap
 	before = fc.Now()
-	updater.tick()
+	updater.Tick()
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	took = fc.Since(before)
 	test.AssertEquals(t, took, updater.tickWindow)
@@ -606,7 +594,7 @@ func TestFindOCSPResponsesSleep(t *testing.T) {
 	// and the clock moved forward by more than updater.tickWindow
 	updater.readFailures.Add(2)
 	before := fc.Now()
-	updater.tick()
+	updater.Tick()
 	test.AssertEquals(t, updater.readFailures.Value(), 3)
 	took := fc.Since(before)
 	test.Assert(t, took > updater.tickWindow, "Clock didn't move forward enough")
@@ -615,7 +603,7 @@ func TestFindOCSPResponsesSleep(t *testing.T) {
 	// and the clock only moves by updater.tickWindow
 	updater.readOnlyDb = dbMap
 	before = fc.Now()
-	updater.tick()
+	updater.Tick()
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	took = fc.Since(before)
 	test.AssertEquals(t, took, updater.tickWindow)
@@ -629,14 +617,14 @@ func mkNewUpdaterWithStrings(t *testing.T, shards []string) (*OCSPUpdater, error
 
 	fc := clock.NewFake()
 
-	updater, err := newUpdater(
+	updater, err := New(
 		metrics.NoopRegisterer,
 		fc,
 		dbMap,
 		dbMap,
 		shards,
 		&mockOCSP{},
-		OCSPUpdaterConfig{
+		ocsp_updater_config.Config{
 			OldOCSPBatchSize:         1,
 			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
 			SignFailureBackoffFactor: 1.5,
