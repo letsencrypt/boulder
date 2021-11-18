@@ -316,5 +316,3 @@ This project is licensed under the Mozilla Public License 2.0, the full text
 of which can be found in the
 [LICENSE.txt](https://github.com/letsencrypt/boulder/blob/main/LICENSE.txt)
 file.
-
-Hi! This is just an empty change :)
