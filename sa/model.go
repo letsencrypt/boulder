@@ -121,7 +121,6 @@ func SelectPrecertificates(s db.Selector, q string, args map[string]interface{})
 }
 
 type CertStatusMetadata struct {
-	ID int64
 	core.CertificateStatus
 }
 
@@ -180,8 +179,8 @@ func ScanCertStatusMetadataRow(rows *sql.Rows, status *CertStatusMetadata) error
 }
 
 func certStatusFields() []string {
-	// Remove "id", add the full response bytes.
-	return append(CertStatusMetadataFields()[1:], "ocspResponse")
+	// Add the full response bytes.
+	return append(CertStatusMetadataFields(), "ocspResponse")
 }
 
 func certStatusFieldsSelect(restOfQuery string) string {
