@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
-	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -33,6 +32,10 @@ type ocspReadOnlyDb interface {
 type ocspDb interface {
 	ocspReadOnlyDb
 	Exec(query string, args ...interface{}) (sql.Result, error)
+}
+
+type rocspClient interface {
+	StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error
 }
 
 // failCounter provides a concurrent safe counter.
@@ -66,7 +69,7 @@ type OCSPUpdater struct {
 
 	db          ocspDb
 	readOnlyDb  ocspReadOnlyDb
-	rocspClient *rocsp.WritingClient
+	rocspClient rocspClient
 
 	ogc capb.OCSPGeneratorClient
 
@@ -100,7 +103,7 @@ func New(
 	clk clock.Clock,
 	db ocspDb,
 	readOnlyDb ocspReadOnlyDb,
-	rocspClient *rocsp.WritingClient,
+	rocspClient rocspClient,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config ocsp_updater_config.Config,

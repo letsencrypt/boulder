@@ -43,6 +43,13 @@ func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPReques
 	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
+type noopROCSP struct {
+}
+
+func (_ noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte, _ time.Duration) error {
+	return nil
+}
+
 var log = blog.UseMock()
 
 func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.WrappedMap, clock.FakeClock, func()) {
@@ -64,6 +71,7 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 		fc,
 		dbMap,
 		readOnlyDb,
+		noopROCSP{},
 		strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"),
 		&mockOCSP{},
 		ocsp_updater_config.Config{
@@ -622,6 +630,7 @@ func mkNewUpdaterWithStrings(t *testing.T, shards []string) (*OCSPUpdater, error
 		fc,
 		dbMap,
 		dbMap,
+		noopROCSP{},
 		shards,
 		&mockOCSP{},
 		ocsp_updater_config.Config{
