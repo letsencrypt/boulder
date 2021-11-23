@@ -212,10 +212,14 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	// has a revoked status. If the secondary source wins the race and
 	// passes these checks, return it's response instead.
 	select {
+	case <-ctx.Done():
+		err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
+		src.log.Debugf(err.Error())
+		return nil, nil, err
 	case primaryResult := <-primaryChan:
 		if primaryResult.err != nil {
 			src.log.AuditErrf("Looking up OCSP response: %s", err)
-			return nil, nil, err
+			return nil, nil, primaryResult.err
 		}
 		// Parse the OCSP bytes returned from the primary source to check
 		// status, expiration and other fields.
@@ -229,10 +233,17 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	case secondaryResult := <-secondaryChan:
 		// If secondary returns first, wait for primary to return for
 		// comparison.
-		primaryResult := <-primaryChan
+		var primaryResult lookupResponse
+		select {
+		case <-ctx.Done():
+			err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
+			src.log.Debugf(err.Error())
+			return nil, nil, err
+		case primaryResult = <-primaryChan:
+		}
 		if primaryResult.err != nil {
 			src.log.AuditErrf("Looking up OCSP response: %s", err)
-			return nil, nil, err
+			return nil, nil, primaryResult.err
 		}
 		// Parse the OCSP bytes returned from the primary source to check
 		// status, expiration and other fields.
@@ -253,10 +264,6 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		}
 		src.log.Debugf("returning ocsp from secondary source: %v", helper.PrettyResponse(secondaryParsed))
 		return secondaryResult.bytes, header, nil
-	case <-time.After(src.timeout):
-		errorMsg := fmt.Errorf("timeout looking up OCSP response for serial: %s ", serialString)
-		src.log.AuditErrf(errorMsg.Error())
-		return nil, nil, errorMsg
 	}
 }
 
