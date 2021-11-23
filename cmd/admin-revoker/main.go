@@ -34,10 +34,10 @@ admin-revoker reg-revoke --config <path> <registration-id> <reason-code>
 admin-revoker list-reasons --config <path>
 
 command descriptions:
-  serial-revoke       Revoke a single certificate by the hex serial number
+  serial-revoke         Revoke a single certificate by the hex serial number
   batched-serial-revoke Revokes all certificates contained in a file of hex serial numbers
-  reg-revoke          Revoke all certificates associated with a registration ID
-  list-reasons        List all revocation reason codes
+  reg-revoke            Revoke all certificates associated with a registration ID
+  list-reasons          List all revocation reason codes
 
 args:
   config    File path to the configuration file for this service
@@ -59,7 +59,14 @@ type config struct {
 	Syslog cmd.SyslogConfig
 }
 
-func setupContext(c config) (rapb.RegistrationAuthorityClient, blog.Logger, *db.WrappedMap, sapb.StorageAuthorityClient) {
+type revoker struct {
+	rac   rapb.RegistrationAuthorityClient
+	sac   sapb.StorageAuthorityClient
+	dbMap *db.WrappedMap
+	log   blog.Logger
+}
+
+func newRevoker(c config) *revoker {
 	logger := cmd.NewLogger(c.Syslog)
 
 	tlsConfig, err := c.Revoker.TLS.Load()
@@ -87,10 +94,15 @@ func setupContext(c config) (rapb.RegistrationAuthorityClient, blog.Logger, *db.
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	return rac, logger, dbMap, sac
+	return &revoker{
+		rac:   rac,
+		sac:   sac,
+		dbMap: dbMap,
+		log:   logger,
+	}
 }
 
-func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger) error {
+func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode revocation.Reason) error {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -102,7 +114,7 @@ func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode
 	if err != nil {
 		return err
 	}
-	_, err = rac.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
+	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
 		Code:      int64(reasonCode),
 		AdminName: u.Username,
@@ -110,36 +122,22 @@ func revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode
 	if err != nil {
 		return err
 	}
-	logger.Infof("Revoked certificate %s with reason '%s'", certObj.Serial, revocation.ReasonToString[reasonCode])
+	r.log.Infof("Revoked certificate %s with reason '%s'", certObj.Serial, revocation.ReasonToString[reasonCode])
 	return nil
 }
 
-func revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap db.Executor) error {
-	certObj, err := sa.SelectPrecertificate(dbMap, serial)
+func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason) error {
+	certObj, err := sa.SelectPrecertificate(r.dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return berrors.NotFoundError("precertificate with serial %q not found", serial)
 		}
 		return err
 	}
-	return revokeCertificate(ctx, certObj, reasonCode, rac, logger)
+	return r.revokeCertificate(ctx, certObj, reasonCode)
 }
 
-func revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason, rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap db.Executor) error {
-	certObjs, err := sa.SelectPrecertificates(dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
-	if err != nil {
-		return err
-	}
-	for _, certObj := range certObjs {
-		err = revokeCertificate(ctx, certObj.Certificate, reasonCode, rac, logger)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func revokeBatch(rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap *db.WrappedMap, serialPath string, reasonCode revocation.Reason, parallelism int) error {
+func (r *revoker) revokeBySerialBatch(ctx context.Context, serialPath string, reasonCode revocation.Reason, parallelism int) error {
 	file, err := os.Open(serialPath)
 	if err != nil {
 		return err
@@ -161,9 +159,9 @@ func revokeBatch(rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap
 				if serial == "" {
 					continue
 				}
-				err := revokeBySerial(context.Background(), serial, reasonCode, rac, logger, dbMap)
+				err := r.revokeBySerial(ctx, serial, reasonCode)
 				if err != nil {
-					logger.Errf("failed to revoke %q: %s", serial, err)
+					r.log.Errf("failed to revoke %q: %s", serial, err)
 				}
 			}
 		}()
@@ -179,6 +177,25 @@ func revokeBatch(rac rapb.RegistrationAuthorityClient, logger blog.Logger, dbMap
 	close(work)
 	wg.Wait()
 
+	return nil
+}
+
+func (r *revoker) revokeByReg(ctx context.Context, regID int64, reasonCode revocation.Reason) error {
+	_, err := r.sac.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
+	if err != nil {
+		return fmt.Errorf("couldn't fetch registration: %w", err)
+	}
+
+	certObjs, err := sa.SelectPrecertificates(r.dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
+	if err != nil {
+		return err
+	}
+	for _, certObj := range certObjs {
+		err = r.revokeCertificate(ctx, certObj.Certificate, reasonCode)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -215,8 +232,20 @@ func main() {
 	cmd.FailOnError(err, "Failed to set feature flags")
 
 	ctx := context.Background()
+	r := newRevoker(c)
+	defer r.log.AuditPanic()
+
 	args := flagSet.Args()
 	switch {
+	case command == "serial-revoke" && len(args) == 2:
+		// 1: serial,  2: reasonCode
+		serial := args[0]
+		reasonCode, err := strconv.Atoi(args[1])
+		cmd.FailOnError(err, "Reason code argument must be an integer")
+
+		err = r.revokeBySerial(ctx, serial, revocation.Reason(reasonCode))
+		cmd.FailOnError(err, "Couldn't revoke certificate by serial")
+
 	case command == "batched-serial-revoke" && len(args) == 3:
 		// 1: serial file path,  2: reasonCode, 3: parallelism
 		serialPath := args[0]
@@ -228,22 +257,8 @@ func main() {
 			cmd.Fail("parallelism argument must be >= 1")
 		}
 
-		rac, logger, dbMap, _ := setupContext(c)
-		err = revokeBatch(rac, logger, dbMap, serialPath, revocation.Reason(reasonCode), parallelism)
+		err = r.revokeBySerialBatch(ctx, serialPath, revocation.Reason(reasonCode), parallelism)
 		cmd.FailOnError(err, "Batch revocation failed")
-	case command == "serial-revoke" && len(args) == 2:
-		// 1: serial,  2: reasonCode
-		serial := args[0]
-		reasonCode, err := strconv.Atoi(args[1])
-		cmd.FailOnError(err, "Reason code argument must be an integer")
-
-		rac, logger, dbMap, _ := setupContext(c)
-
-		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-			err := revokeBySerial(ctx, serial, revocation.Reason(reasonCode), rac, logger, txWithCtx)
-			return nil, err
-		})
-		cmd.FailOnError(err, "Couldn't revoke certificate by serial")
 
 	case command == "reg-revoke" && len(args) == 2:
 		// 1: registration ID,  2: reasonCode
@@ -252,18 +267,7 @@ func main() {
 		reasonCode, err := strconv.Atoi(args[1])
 		cmd.FailOnError(err, "Reason code argument must be an integer")
 
-		rac, logger, dbMap, sac := setupContext(c)
-		defer logger.AuditPanic()
-
-		_, err = sac.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
-		if err != nil {
-			cmd.FailOnError(err, "Couldn't fetch registration")
-		}
-
-		_, err = db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-			err := revokeByReg(ctx, regID, revocation.Reason(reasonCode), rac, logger, txWithCtx)
-			return nil, err
-		})
+		err = r.revokeByReg(ctx, regID, revocation.Reason(reasonCode))
 		cmd.FailOnError(err, "Couldn't revoke certificate by registration")
 
 	case command == "list-reasons":
