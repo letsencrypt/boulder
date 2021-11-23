@@ -814,8 +814,8 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Compute and record the serial number of the provided certificate
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
-	logEvent.Extra["ProvidedCertificateSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "request.serial", serial)
+	logEvent.Extra["CertificateSerial"] = serial
+	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
@@ -828,10 +828,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	if err != nil {
 		return probs.NotFound("No such certificate")
 	}
-
-	logEvent.Extra["RetrievedCertificateSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
-	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+	logEvent.Extra["CertificateDNSNames"] = parsedCertificate.DNSNames
 	beeline.AddFieldToTrace(ctx, "cert.dnsnames", parsedCertificate.DNSNames)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
