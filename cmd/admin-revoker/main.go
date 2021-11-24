@@ -106,19 +106,30 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
-	cert, err := x509.ParseCertificate(certObj.DER)
-	if err != nil {
-		return err
-	}
 	u, err := user.Current()
 	if err != nil {
 		return err
 	}
-	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      cert.Raw,
-		Code:      int64(reasonCode),
-		AdminName: u.Username,
-	})
+
+	var req *rapb.AdministrativelyRevokeCertificateRequest
+	if certObj.DER != nil {
+		cert, err := x509.ParseCertificate(certObj.DER)
+		if err != nil {
+			return err
+		}
+		req = &rapb.AdministrativelyRevokeCertificateRequest{
+			Cert:      cert.Raw,
+			Code:      int64(reasonCode),
+			AdminName: u.Username,
+		}
+	} else {
+		req = &rapb.AdministrativelyRevokeCertificateRequest{
+			Serial:    certObj.Serial,
+			Code:      int64(reasonCode),
+			AdminName: u.Username,
+		}
+	}
+	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, req)
 	if err != nil {
 		return err
 	}
@@ -199,6 +210,10 @@ func (r *revoker) revokeByReg(ctx context.Context, regID int64, reasonCode revoc
 	return nil
 }
 
+func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, reasonCode revocation.Reason) error {
+	return r.revokeCertificate(ctx, core.Certificate{Serial: serial}, reasonCode)
+}
+
 // This abstraction is needed so that we can use sort.Sort below
 type revocationCodes []revocation.Reason
 
@@ -269,6 +284,15 @@ func main() {
 
 		err = r.revokeByReg(ctx, regID, revocation.Reason(reasonCode))
 		cmd.FailOnError(err, "Couldn't revoke certificate by registration")
+
+	case command == "malformed-revoke" && len(args) == 3:
+		// 1: serial, 2: reasonCode
+		serial := args[0]
+		reasonCode, err := strconv.Atoi(args[1])
+		cmd.FailOnError(err, "Reason code argument must be an integer")
+
+		err = r.revokeMalformedBySerial(ctx, serial, revocation.Reason(reasonCode))
+		cmd.FailOnError(err, "Couldn't revoke certificate by serial")
 
 	case command == "list-reasons":
 		var codes revocationCodes
