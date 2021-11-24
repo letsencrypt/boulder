@@ -1878,7 +1878,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	if cert.Raw == nil {
 		// We've been given a synthetic cert containing just a serial number,
 		// presumably because the cert we're revoking is so badly malformed that
-		// it is unparseable. We need to gather the relevant info using only the
+		// it is unparsable. We need to gather the relevant info using only the
 		// serial number.
 		if reason == ocsp.KeyCompromise {
 			return fmt.Errorf("cannot revoke for KeyCompromise without full cert")
