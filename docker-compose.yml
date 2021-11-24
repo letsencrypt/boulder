@@ -4,7 +4,7 @@ services:
     image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.17_2021-10-22}
     environment:
       FAKE_DNS: 10.77.77.77
-      BOULDER_CONFIG_DIR: test/config
+      BOULDER_CONFIG_DIR: test/config-next
       GOFLAGS: -mod=vendor
     volumes:
       - .:/go/src/github.com/letsencrypt/boulder:cached

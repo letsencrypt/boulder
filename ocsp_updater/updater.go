@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -32,9 +33,10 @@ type ocspReadOnlyDb interface {
 type ocspDb interface {
 	ocspReadOnlyDb
 	Exec(query string, args ...interface{}) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 }
 
-type rocspClient interface {
+type rocspClientInterface interface {
 	StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error
 }
 
@@ -69,7 +71,7 @@ type OCSPUpdater struct {
 
 	db          ocspDb
 	readOnlyDb  ocspReadOnlyDb
-	rocspClient rocspClient
+	rocspClient rocspClientInterface
 
 	ogc capb.OCSPGeneratorClient
 
@@ -94,6 +96,7 @@ type OCSPUpdater struct {
 	genStoreHistogram    prometheus.Histogram
 	generatedCounter     *prometheus.CounterVec
 	storedCounter        *prometheus.CounterVec
+	storedRedisCounter   *prometheus.CounterVec
 	markExpiredCounter   *prometheus.CounterVec
 	findStaleOCSPCounter *prometheus.CounterVec
 }
@@ -103,7 +106,7 @@ func New(
 	clk clock.Clock,
 	db ocspDb,
 	readOnlyDb ocspReadOnlyDb,
-	rocspClient rocspClient,
+	rocspClient *rocsp.WritingClient,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config ocsp_updater_config.Config,
@@ -148,6 +151,10 @@ func New(
 		Help: "A counter of OCSP response generation calls labeled by result",
 	}, []string{"result"})
 	stats.MustRegister(generatedCounter)
+	storedRedisCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_updater_stored_redis",
+		Help: "A counter of OCSP response storage calls labeled by result",
+	}, []string{"result"})
 	storedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_updater_stored",
 		Help: "A counter of OCSP response storage calls labeled by result",
@@ -176,11 +183,15 @@ func New(
 	}, []string{"result"})
 	stats.MustRegister(findStaleOCSPCounter)
 
+	var rocspClientInterface rocspClientInterface
+	if rocspClient != nil {
+		rocspClientInterface = rocspClient
+	}
 	updater := OCSPUpdater{
 		clk:                          clk,
 		db:                           db,
 		readOnlyDb:                   readOnlyDb,
-		rocspClient:                  rocspClient,
+		rocspClient:                  rocspClientInterface,
 		ogc:                          ogc,
 		log:                          log,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
@@ -188,6 +199,7 @@ func New(
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
+		storedRedisCounter:           storedRedisCounter,
 		markExpiredCounter:           markExpiredCounter,
 		findStaleOCSPCounter:         findStaleOCSPCounter,
 		stalenessHistogram:           stalenessHistogram,
@@ -304,11 +316,25 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.Cert
 }
 
 // storeResponse stores a given CertificateStatus in the database.
-func (updater *OCSPUpdater) storeResponse(status *sa.CertStatusMetadata) error {
+func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertStatusMetadata) error {
+	if updater.rocspClient != nil {
+		go func() {
+			ttl := status.NotAfter.Sub(updater.clk.Now())
+			err := updater.rocspClient.StoreResponse(ctx, status.OCSPResponse, 127 /*TODO*/, ttl)
+			if err != nil {
+				updater.log.Debugf("failed to store response in Redis: %s", err)
+				updater.storedRedisCounter.WithLabelValues("failed").Inc()
+			} else {
+				updater.log.Debugf("successfully stored a response in Redis")
+				updater.storedRedisCounter.WithLabelValues("success").Inc()
+			}
+		}()
+	}
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
-	_, err := updater.db.Exec(
+	_, err := updater.db.ExecContext(
+		ctx,
 		`UPDATE certificateStatus
 		 SET ocspResponse=?,ocspLastUpdated=?
 		 WHERE id=?
@@ -318,6 +344,12 @@ func (updater *OCSPUpdater) storeResponse(status *sa.CertStatusMetadata) error {
 		status.ID,
 		string(status.Status),
 	)
+	if err != nil {
+		updater.log.Debugf("failed to store response in DB: %s", err)
+		updater.storedCounter.WithLabelValues("failed").Inc()
+	} else {
+		updater.storedCounter.WithLabelValues("success").Inc()
+	}
 	return err
 }
 
@@ -386,19 +418,15 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStat
 
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
-			updater.log.AuditErrf("Failed to generate OCSP response: %s", err)
 			updater.generatedCounter.WithLabelValues("failed").Inc()
 			return
 		}
 		updater.generatedCounter.WithLabelValues("success").Inc()
 
-		err = updater.storeResponse(meta)
+		err = updater.storeResponse(ctx, meta)
 		if err != nil {
-			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
-			updater.storedCounter.WithLabelValues("failed").Inc()
 			return
 		}
-		updater.storedCounter.WithLabelValues("success").Inc()
 	}
 
 	// Consume the stale statuses channel and send off a sign/store request
