@@ -186,7 +186,14 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certi
 	if pemBytes[len(pemBytes)-1] != '\n' {
 		pemBytes = append(pemBytes, '\n')
 	}
-	return pemBytes, &issuance.Certificate{Certificate: cert}, nil
+	ic, err := issuance.NewCertificate(cert)
+	if err != nil {
+		return nil, nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - unable to compute hashes over issuer cert",
+			aiaIssuerURL, certFile)
+	}
+	return pemBytes, ic, nil
 }
 
 // loadCertificateChains processes the provided chainConfig of AIA Issuer URLs

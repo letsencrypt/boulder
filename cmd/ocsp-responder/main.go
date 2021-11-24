@@ -59,11 +59,11 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 		if err != nil {
 			return nil, fmt.Errorf("Could not load issuer cert %s: %w", issuerCert, err)
 		}
-		caCert := &issuance.Certificate{Certificate: cert}
-		_, keyHash, err := caCert.NameAndKeyHashes()
+		caCert, err := issuance.NewCertificate(cert)
 		if err != nil {
 			return nil, err
 		}
+		keyHash := caCert.KeyHash()
 		issuerKeyHashes[caCert.ID()] = keyHash[:]
 		issuerNameKeyHashes[caCert.NameID()] = keyHash[:]
 	}
