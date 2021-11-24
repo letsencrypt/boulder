@@ -74,7 +74,7 @@ type Client struct {
 // applied on a per-request basis using context.Context.
 // The prefix is used to simulate different Redis clusters for different purposes - for instance
 // integration testing and unittesting.
-func NewClient(rdb *redis.ClusterClient, prefix string, timeout time.Duration, clk clock.Clock) *Client {
+func NewClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *Client {
 	return &Client{
 		rdb:     rdb,
 		timeout: timeout,
