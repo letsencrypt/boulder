@@ -1597,7 +1597,13 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		authzFields,
 		strings.Join(qmarks, ","),
 	)
-	_, err := ssa.dbMap.Select(
+	var dbMap *db.WrappedMap
+	if features.Enabled(features.GetAuthzReadOnly) {
+		dbMap = ssa.dbReadOnlyMap
+	} else {
+		dbMap = ssa.dbMap
+	}
+	_, err := dbMap.Select(
 		&authzModels,
 		query,
 		params...,
@@ -1610,48 +1616,12 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		return &sapb.Authorizations{}, nil
 	}
 
-	// Previously we used a JOIN on the orderToAuthz2 table in order to make sure
-	// we only returned authorizations created using the ACME v2 API. Each time an
-	// order is created a pivot row (order ID + authz ID) is added to the
-	// orderToAuthz2 table. If a large number of orders are created that all contain
-	// the same authorization, due to reuse, then the JOINd query would return a full
-	// authorization row for each entry in the orderToAuthz2 table with the authorization
-	// ID.
-	//
-	// Instead we now filter out these authorizations by doing a second query against
-	// the orderToAuthz2 table. Using this query still requires examining a large number
-	// of rows, but because we don't need to construct a temporary table for the JOIN
-	// and fill it with all the full authorization rows we should save resources.
-	var ids []interface{}
-	qmarks = make([]string, len(authzModels))
-	for i, am := range authzModels {
-		ids = append(ids, am.ID)
-		qmarks[i] = "?"
-	}
-	var authzIDs []int64
-	_, err = ssa.dbMap.Select(
-		&authzIDs,
-		fmt.Sprintf(`SELECT DISTINCT(authzID) FROM orderToAuthz2 WHERE authzID IN (%s)`, strings.Join(qmarks, ",")),
-		ids...,
-	)
-	if err != nil {
-		return nil, err
-	}
-	authzIDMap := map[int64]bool{}
-	for _, id := range authzIDs {
-		authzIDMap[id] = true
-	}
-
 	authzModelMap := make(map[string]authzModel)
 	for _, am := range authzModels {
-		// Anything not found in the ID map wasn't in the pivot table, meaning it
-		// didn't correspond to an order, meaning it wasn't created with ACMEv2.
-		// Don't return it for ACMEv2 requests.
-		if _, present := authzIDMap[am.ID]; !present {
-			continue
-		}
-		if existing, present := authzModelMap[am.IdentifierValue]; !present ||
-			uintToStatus[existing.Status] == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
+		// Add this model to the map if there isn't a model for this identifier yet,
+		// or if there is one but it is pending while this new one is valid.
+		existing, present := authzModelMap[am.IdentifierValue]
+		if !present || uintToStatus[existing.Status] == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
 			authzModelMap[am.IdentifierValue] = am
 		}
 	}
