@@ -109,7 +109,7 @@ func LoadCertificate(path string) (*Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Certificate{cert}, nil
+	return &Certificate{Certificate: cert}, nil
 }
 
 func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
@@ -366,11 +366,15 @@ func (p *Profile) generateTemplate(clk clock.Clock) *x509.Certificate {
 	return template
 }
 
-// Certificate embeds an *x509.Certificate and represent the added semantics
+// Certificate embeds an *x509.Certificate and represents the added semantics
 // that this certificate can be used for issuance. It also provides the .ID()
-// method, which returns an internal issuer ID for this certificate.
+// and .NameID() methods, which return internal issuer IDs for this certificate.
 type Certificate struct {
 	*x509.Certificate
+	id       IssuerID
+	nameID   IssuerNameID
+	nameHash [20]byte
+	keyHash  [20]byte
 }
 
 type IssuerID int64
@@ -380,8 +384,11 @@ type IssuerID int64
 // This value is computed as a truncated hash over the whole certificate,
 // meaning it is highly unique but not computable from end-entity certs.
 func (ic *Certificate) ID() IssuerID {
-	h := sha256.Sum256(ic.Raw)
-	return IssuerID(big.NewInt(0).SetBytes(h[:4]).Int64())
+	if ic.id == 0 {
+		h := sha256.Sum256(ic.Raw)
+		ic.id = IssuerID(big.NewInt(0).SetBytes(h[:4]).Int64())
+	}
+	return ic.id
 }
 
 // IssuerNameID is a statistically-unique small ID which can be computed from
@@ -396,7 +403,10 @@ type IssuerNameID int64
 // computes a truncated hash over the issuer's Subject Name raw bytes. Useful
 // for storing as a lookup key in contexts that don't expect hash collisions.
 func (ic *Certificate) NameID() IssuerNameID {
-	return truncatedHash(ic.RawSubject)
+	if ic.nameID == 0 {
+		ic.nameID = truncatedHash(ic.RawSubject)
+	}
+	return ic.nameID
 }
 
 // GetIssuerNameID computes the IssuerNameID from an end-entity certificate,
@@ -415,6 +425,33 @@ func truncatedHash(name []byte) IssuerNameID {
 	h.Write(name)
 	s := h.Sum(nil)
 	return IssuerNameID(big.NewInt(0).SetBytes(s[:7]).Int64())
+}
+
+// NameAndKeyHashes provides the SHA1 hashes of the Subject Distinguished Name
+// and the Subject Public Key Info, as used by RFC6960+RFC5019 OCSP to identify
+// the issuer of a cert.
+func (ic *Certificate) NameAndKeyHashes() ([20]byte, [20]byte, error) {
+	if ic.nameHash == [20]byte{} {
+		ic.nameHash = sha1.Sum(ic.RawSubject)
+	}
+	if ic.keyHash == [20]byte{} {
+		// The issuerKeyHash in OCSP requests is constructed over the DER
+		// encoding of the public key per RFC 6960 (defined in RFC 4055 for
+		// RSA and RFC 5480 for ECDSA). We can't use MarshalPKIXPublicKey
+		// for this since it encodes keys using the SPKI structure itself,
+		// and we just want the contents of the subjectPublicKey for the
+		// hash, so we need to extract it ourselves.
+		var spki struct {
+			Algorithm pkix.AlgorithmIdentifier
+			PublicKey asn1.BitString
+		}
+		_, err := asn1.Unmarshal(ic.RawSubjectPublicKeyInfo, &spki)
+		if err != nil {
+			return [20]byte{}, [20]byte{}, err
+		}
+		ic.keyHash = sha1.Sum(spki.PublicKey.RightAlign())
+	}
+	return ic.nameHash, ic.keyHash, nil
 }
 
 // Issuer is capable of issuing new certificates
@@ -692,7 +729,7 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 			return nil, fmt.Errorf("failed to verify chain: %w", err)
 		}
 		// Add each cert to the chain.
-		chain[i] = &Certificate{certs[i]}
+		chain[i] = &Certificate{Certificate: certs[i]}
 	}
 
 	err = certs[len(certs)-1].CheckSignatureFrom(certs[len(certs)-1])
