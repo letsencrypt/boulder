@@ -70,18 +70,19 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		err = ssa.dbMap.WithContext(ctx).Insert(&core.CertificateStatus{
-			Serial:                serialHex,
-			Status:                core.OCSPStatusGood,
-			OCSPLastUpdated:       ssa.clk.Now(),
-			RevokedDate:           time.Time{},
-			RevokedReason:         0,
-			LastExpirationNagSent: time.Time{},
-			OCSPResponse:          req.Ocsp,
-			NotAfter:              parsed.NotAfter,
-			IsExpired:             false,
-			IssuerID:              req.IssuerID,
-		})
+		err = ssa.dbMap.WithContext(ctx).Insert(
+			&core.CertificateStatus{
+				Serial:                serialHex,
+				Status:                core.OCSPStatusGood,
+				OCSPLastUpdated:       ssa.clk.Now(),
+				RevokedDate:           time.Time{},
+				RevokedReason:         0,
+				LastExpirationNagSent: time.Time{},
+				OCSPResponse:          req.Ocsp,
+				NotAfter:              parsed.NotAfter,
+				IsExpired:             false,
+				IssuerID:              req.IssuerID,
+			})
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
 		// that it is a renewal) we use just the DNSNames from the certificate and
