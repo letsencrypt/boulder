@@ -103,3 +103,38 @@ func MakeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
 	})
 	return rocsp.NewWritingClient(rdb, timeout, clk), nil
 }
+
+func MakeReadClient(c *RedisConfig, clk clock.Clock) (*rocsp.Client, error) {
+	password, err := c.PasswordConfig.Pass()
+	if err != nil {
+		return nil, fmt.Errorf("loading password: %w", err)
+	}
+
+	tlsConfig, err := c.TLS.Load()
+	if err != nil {
+		return nil, fmt.Errorf("loading TLS config: %w", err)
+	}
+
+	timeout := c.Timeout.Duration
+
+	rdb := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:     c.Addrs,
+		Username:  c.Username,
+		Password:  password,
+		TLSConfig: tlsConfig,
+
+		MaxRetries:      c.MaxRetries,
+		MinRetryBackoff: c.MinRetryBackoff.Duration,
+		MaxRetryBackoff: c.MaxRetryBackoff.Duration,
+		DialTimeout:     c.DialTimeout.Duration,
+		ReadTimeout:     c.ReadTimeout.Duration,
+
+		PoolSize:           c.PoolSize,
+		MinIdleConns:       c.MinIdleConns,
+		MaxConnAge:         c.MaxConnAge.Duration,
+		PoolTimeout:        c.PoolTimeout.Duration,
+		IdleTimeout:        c.IdleTimeout.Duration,
+		IdleCheckFrequency: c.IdleCheckFrequency.Duration,
+	})
+	return rocsp.NewClient(rdb, timeout, clk), nil
+}
