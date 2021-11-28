@@ -97,7 +97,7 @@ echo "- Open https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci
 echo "- Click the 'Run Workflow' button on the right-hand-side of the page"
 echo "- Under 'Use workflow' click 'from Branch: main'"
 echo "- Under 'select branch' paste: ${new_tag_name} and click 'Run'"
-ech0 "- Diff: https://github.com/letsencrypt/boulder/compare/${latest_tag_name}...${new_tag_name}"
+echo "- Diff: https://github.com/letsencrypt/boulder/compare/${latest_tag_name}...${new_tag_name}"
 echo "- Once the CI pass has succeeded, run: git push origin --tags"
 
 # Because set -e stops execution in the instance of a command or pipeline error;
