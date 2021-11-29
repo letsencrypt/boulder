@@ -87,8 +87,9 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 
-	issuers map[issuance.IssuerNameID]*issuance.Certificate
-	purger  akamaipb.AkamaiPurgerClient
+	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
+	issuersByID     map[issuance.IssuerID]*issuance.Certificate
+	purger          akamaipb.AkamaiPurgerClient
 
 	ctpolicy *ctpolicy.CTPolicy
 
@@ -186,9 +187,11 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"reason"})
 	stats.MustRegister(revocationReasonCounter)
 
-	issuersByID := make(map[issuance.IssuerNameID]*issuance.Certificate)
+	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
+	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
 	for _, issuer := range issuers {
-		issuersByID[issuer.NameID()] = issuer
+		issuersByNameID[issuer.NameID()] = issuer
+		issuersByID[issuer.ID()] = issuer
 	}
 
 	ra := &RegistrationAuthorityImpl{
@@ -207,7 +210,8 @@ func NewRegistrationAuthorityImpl(
 		ctpolicy:                     ctp,
 		ctpolicyResults:              ctpolicyResults,
 		purger:                       purger,
-		issuers:                      issuersByID,
+		issuersByNameID:              issuersByNameID,
+		issuersByID:                  issuersByID,
 		namesPerCert:                 namesPerCert,
 		rateLimitCounter:             rateLimitCounter,
 		newRegCounter:                newRegCounter,
@@ -1865,20 +1869,49 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert x509.Certificate, code revocation.Reason, revokedBy int64, source string, comment string) error {
-	issuer, ok := ra.issuers[issuance.GetIssuerNameID(&cert)]
-	if !ok {
-		return fmt.Errorf("unable to identify issuer of certificate to revoke: %v", cert)
-	}
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string) error {
 	serial := core.SerialToString(cert.SerialNumber)
-	reason := int32(code)
-	revokedAt := ra.clk.Now().UnixNano()
 
+	var issuerID int64
+	var issuer *issuance.Certificate
+	var ok bool
+	if cert.Raw == nil {
+		// We've been given a synthetic cert containing just a serial number,
+		// presumably because the cert we're revoking is so badly malformed that
+		// it is unparsable. We need to gather the relevant info using only the
+		// serial number.
+		if reason == ocsp.KeyCompromise {
+			return fmt.Errorf("cannot revoke for KeyCompromise without full cert")
+		}
+
+		status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+		if err != nil {
+			return fmt.Errorf("unable to confirm that serial %q was ever issued: %w", serial, err)
+		}
+
+		issuerID = status.IssuerID
+		issuer, ok = ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
+		if !ok {
+			// TODO(#5152): Remove this fallback to old-style IssuerIDs.
+			issuer, ok = ra.issuersByID[issuance.IssuerID(issuerID)]
+			if !ok {
+				return fmt.Errorf("unable to identify issuer of serial %q", serial)
+			}
+		}
+	} else {
+		issuerID = int64(issuance.GetIssuerNameID(cert))
+		issuer, ok = ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
+		if !ok {
+			return fmt.Errorf("unable to identify issuer of serial %q", serial)
+		}
+	}
+
+	revokedAt := ra.clk.Now().UnixNano()
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    serial,
-		IssuerID:  int64(issuer.NameID()),
+		IssuerID:  issuerID,
 		Status:    string(core.OCSPStatusRevoked),
-		Reason:    reason,
+		Reason:    int32(reason),
 		RevokedAt: revokedAt,
 	})
 	if err != nil {
@@ -1887,7 +1920,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 
 	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		Reason:   int64(code),
+		Reason:   int64(reason),
 		Date:     revokedAt,
 		Response: ocspResponse.Response,
 	})
@@ -1916,7 +1949,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		}
 	}
 
-	purgeURLs, err := akamai.GeneratePurgeURLs(&cert, issuer.Certificate)
+	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
 	if err != nil {
 		return err
 	}
@@ -1942,7 +1975,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	serialString := core.SerialToString(cert.SerialNumber)
 	revocationCode := revocation.Reason(req.Code)
 
-	err = ra.revokeCertificate(ctx, *cert, revocationCode, req.RegID, "API", "")
+	err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "")
 
 	state := "Failure"
 	defer func() {
@@ -1972,17 +2005,37 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req == nil || req.Cert == nil || req.AdminName == "" {
+	if req == nil || req.AdminName == "" {
+		return nil, errIncompleteGRPCRequest
+	}
+	if req.Cert == nil && req.Serial == "" {
 		return nil, errIncompleteGRPCRequest
 	}
 
-	cert, err := x509.ParseCertificate(req.Cert)
-	if err != nil {
-		return nil, err
+	revocationCode := revocation.Reason(req.Code)
+	if revocationCode == ocsp.KeyCompromise && req.Cert == nil {
+		return nil, fmt.Errorf("cannot revoke for KeyCompromise by serial alone")
 	}
 
-	revocationCode := revocation.Reason(req.Code)
-	serialString := core.SerialToString(cert.SerialNumber)
+	var cert *x509.Certificate
+	var serialString string
+	var err error
+	if req.Cert != nil {
+		cert, err = x509.ParseCertificate(req.Cert)
+		if err != nil {
+			return nil, err
+		}
+		serialString = core.SerialToString(cert.SerialNumber)
+	} else {
+		serialNum, err := core.StringToSerial(req.Serial)
+		if err != nil {
+			return nil, err
+		}
+		cert = &x509.Certificate{
+			SerialNumber: serialNum,
+		}
+		serialString = req.Serial
+	}
 
 	state := "Failure"
 	defer func() {
@@ -1999,7 +2052,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			req.AdminName)
 	}()
 
-	err = ra.revokeCertificate(ctx, *cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
+	err = ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 	if err != nil {
 		state = fmt.Sprintf("Failure -- %s", err)
 		return nil, err

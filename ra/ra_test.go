@@ -3902,15 +3902,23 @@ rA==
 -----END CERTIFICATE-----
 `)
 
-type mockSABlockedKey struct {
+type mockSARevocation struct {
 	mocks.StorageAuthority
 
+	known *corepb.CertificateStatus
 	added *sapb.AddBlockedKeyRequest
 }
 
-func (msabk *mockSABlockedKey) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	msabk.added = req
+func (msar *mockSARevocation) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	msar.added = req
 	return &emptypb.Empty{}, nil
+}
+
+func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	if req.Serial == msar.known.Serial {
+		return msar.known, nil
+	}
+	return nil, fmt.Errorf("unknown certificate status")
 }
 
 type mockCAOCSP struct {
@@ -3927,11 +3935,11 @@ func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.Cal
 	return &emptypb.Empty{}, nil
 }
 
-func TestRevocationAddBlockedKey(t *testing.T) {
+func TestRevokerCertificateWithReg(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	mockSA := mockSABlockedKey{}
+	mockSA := mockSARevocation{}
 	ra.SA = &mockSA
 	ra.CA = &mockCAOCSP{}
 	ra.purger = &mockPurger{}
@@ -3947,10 +3955,14 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	cert, err := x509.ParseCertificate(der)
 	test.AssertNotError(t, err, "x509.ParseCertificate failed")
 	ic := issuance.Certificate{Certificate: cert}
-	ra.issuers = map[issuance.IssuerNameID]*issuance.Certificate{
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
 		ic.NameID(): &ic,
 	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): &ic,
+	}
 
+	// Revoking for an unspecified reason should work but not block the key.
 	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.Unspecified,
@@ -3961,6 +3973,7 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
+	// Revoking for key comprommise should work and block the key.
 	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.KeyCompromise,
@@ -3973,8 +3986,89 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.Assert(t, mockSA.added.Comment == "", "Comment is not empty")
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
+}
 
-	mockSA.added = nil
+func TestAdministrativelyRevokeCertificate(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	mockSA := mockSARevocation{}
+	ra.SA = &mockSA
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+	digest, err := core.KeyDigest(k.Public())
+	test.AssertNotError(t, err, "core.KeyDigest failed")
+
+	template := x509.Certificate{SerialNumber: big.NewInt(257)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+	cert, err := x509.ParseCertificate(der)
+	test.AssertNotError(t, err, "x509.ParseCertificate failed")
+	ic := issuance.Certificate{Certificate: cert}
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): &ic,
+	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): &ic,
+	}
+	mockSA.known = &corepb.CertificateStatus{
+		Serial:   core.SerialToString(cert.SerialNumber),
+		IssuerID: int64(ic.NameID()),
+	}
+
+	// Revoking with an empty request should fail immediately.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil request object")
+
+	// Revoking with neither a cert nor a serial should fail immediately.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Code:      ocsp.Unspecified,
+		AdminName: "root",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with no cert or serial")
+
+	// Revoking with a nil cert and no serial should fail immediately.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      []byte{},
+		Code:      ocsp.KeyCompromise,
+		AdminName: "",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil `Cert`")
+
+	// Revoking without an admin name should fail immediately.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      ocsp.KeyCompromise,
+		AdminName: "",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with empty string for `AdminName`")
+
+	// Revoking a cert for an unspecified reason should work but not block the key.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      ocsp.Unspecified,
+		AdminName: "root",
+	})
+	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
+	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
+
+	// Revoking a serial for an unspecified reason should work but not block the key.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Serial:    core.SerialToString(cert.SerialNumber),
+		Code:      ocsp.Unspecified,
+		AdminName: "root",
+	})
+	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
+	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
+
+	// Revoking a cert for key compromise should work and block the key.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
 		Code:      ocsp.KeyCompromise,
@@ -3987,19 +4081,13 @@ func TestRevocationAddBlockedKey(t *testing.T) {
 	test.Assert(t, mockSA.added.Comment != "", "Comment is nil")
 	test.AssertEquals(t, mockSA.added.Comment, "revoked by root")
 	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 2)
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
+
+	// Revoking a serial for key compromise should fail because we don't have the pubkey to block.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      cert.Raw,
+		Serial:    core.SerialToString(cert.SerialNumber),
 		Code:      ocsp.KeyCompromise,
-		AdminName: "",
+		AdminName: "root",
 	})
-	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with empty string for `AdminName`")
-	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{})
-	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil request object")
-	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
-		Cert:      []byte{},
-		Code:      ocsp.KeyCompromise,
-		AdminName: "",
-	})
-	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil `Cert`")
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
 }
