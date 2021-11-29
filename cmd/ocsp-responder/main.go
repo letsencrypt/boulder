@@ -257,7 +257,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		// If secondary returns first, wait for primary to return for
 		// comparison.
 		var primaryResult lookupResponse
-		// Listen for cancelation or timeout waiting for primary result.
+		// Listen for cancellation or timeout waiting for primary result.
 		select {
 		case <-ctx.Done():
 			err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
