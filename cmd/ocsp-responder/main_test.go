@@ -165,7 +165,7 @@ func TestDBHandler(t *testing.T) {
 
 	mockLog := blog.NewMock()
 	db := dbReceiver{mockSelector{}, f, mockLog}
-	src := &dbSource{db, nil, f, time.Second, mockLog}
+	src := &dbSource{db, nil, f, time.Second, mockLog, stats}
 
 	h := bocsp.NewResponder(src, stats, blog.NewMock())
 	w := httptest.NewRecorder()
@@ -295,7 +295,7 @@ func TestErrorLog(t *testing.T) {
 	}
 
 	db := dbReceiver{brokenSelector{}, f, mockLog}
-	src := &dbSource{db, nil, f, time.Second, mockLog}
+	src := &dbSource{db, nil, f, time.Second, mockLog, stats}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
@@ -315,7 +315,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 
 	mockLog := blog.NewMock()
 	db := dbReceiver{mockSelector{}, f, mockLog}
-	src := &dbSource{db, nil, f, time.Second, mockLog}
+	src := &dbSource{db, nil, f, time.Second, mockLog, stats}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
@@ -330,7 +330,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 		t.Fatalf("newFilter: %s", err)
 	}
 
-	src = &dbSource{db, nil, f, time.Second, mockLog}
+	src = &dbSource{db, nil, f, time.Second, mockLog, stats}
 
 	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
@@ -361,7 +361,7 @@ func TestExpiredUnauthorized(t *testing.T) {
 
 	mockLog := blog.NewMock()
 	db := dbReceiver{expiredSelector{}, f, mockLog}
-	src := &dbSource{db, nil, f, time.Second, mockLog}
+	src := &dbSource{db, nil, f, time.Second, mockLog, stats}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
@@ -414,7 +414,7 @@ func TestGetResponsePrimaryGoodSecondaryErr(t *testing.T) {
 
 	mockLog := blog.NewMock()
 
-	src := &dbSource{&alwaysSucceedLookup{}, &alwaysErrLookup{}, f, time.Second, mockLog}
+	src := &dbSource{&alwaysSucceedLookup{}, &alwaysErrLookup{}, f, time.Second, mockLog, stats}
 	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertNotError(t, err, "unexpected error")
 
@@ -431,7 +431,7 @@ func TestGetResponsePrimaryErrSecondaryGood(t *testing.T) {
 
 	mockLog := blog.NewMock()
 
-	src := &dbSource{&alwaysErrLookup{}, &alwaysSucceedLookup{}, f, time.Second, mockLog}
+	src := &dbSource{&alwaysErrLookup{}, &alwaysSucceedLookup{}, f, time.Second, mockLog, stats}
 	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertError(t, err, "expected error")
 }
@@ -447,7 +447,7 @@ func TestGetResponsePrimaryTimeoutSecondaryGood(t *testing.T) {
 
 	mockLog := blog.NewMock()
 
-	src := &dbSource{&alwaysBlockLookup{}, &alwaysSucceedLookup{}, f, time.Second, mockLog}
+	src := &dbSource{&alwaysBlockLookup{}, &alwaysSucceedLookup{}, f, time.Second, mockLog, stats}
 	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertError(t, err, "expected error")
 }
@@ -463,7 +463,7 @@ func TestGetResponsePrimaryGoodSecondaryTimeout(t *testing.T) {
 
 	mockLog := blog.NewMock()
 
-	src := &dbSource{&alwaysSucceedLookup{}, &alwaysBlockLookup{}, f, time.Second, mockLog}
+	src := &dbSource{&alwaysSucceedLookup{}, &alwaysBlockLookup{}, f, time.Second, mockLog, stats}
 	_, _, err = src.Response(context.Background(), ocspReq)
 
 	test.AssertNotError(t, err, "unexpected error")
