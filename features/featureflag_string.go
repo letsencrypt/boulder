@@ -14,13 +14,13 @@ func _() {
 	_ = x[NonCFSSLSigner-3]
 	_ = x[StoreIssuerInfo-4]
 	_ = x[StreamlineOrderAndAuthzs-5]
-	_ = x[CAAValidationMethods-6]
-	_ = x[CAAAccountURI-7]
-	_ = x[EnforceMultiVA-8]
-	_ = x[MultiVAFullResults-9]
-	_ = x[MandatoryPOSTAsGET-10]
-	_ = x[AllowV1Registration-11]
-	_ = x[V1DisableNewValidations-12]
+	_ = x[V1DisableNewValidations-6]
+	_ = x[CAAValidationMethods-7]
+	_ = x[CAAAccountURI-8]
+	_ = x[EnforceMultiVA-9]
+	_ = x[MultiVAFullResults-10]
+	_ = x[MandatoryPOSTAsGET-11]
+	_ = x[AllowV1Registration-12]
 	_ = x[StoreRevokerInfo-13]
 	_ = x[RestrictRSAKeySizes-14]
 	_ = x[FasterNewOrdersRateLimit-15]
@@ -31,9 +31,9 @@ func _() {
 	_ = x[CheckFailedAuthorizationsFirst-20]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirst"
+const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirst"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 125, 138, 152, 170, 188, 207, 230, 246, 265, 289, 300, 316, 332, 348, 378}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 148, 161, 175, 193, 211, 230, 246, 265, 289, 300, 316, 332, 348, 378}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

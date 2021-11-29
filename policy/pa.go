@@ -359,6 +359,9 @@ func ValidEmail(address string) error {
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
+//
+// TODO(#5816): Consider making this method private, as it has no callers
+// outside of this package.
 func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 	if id.Type != identifier.DNS {
 		return errInvalidIdentifier
