@@ -442,9 +442,9 @@ func (ic *Certificate) NameID() IssuerNameID {
 	return ic.nameID
 }
 
-// NameHash computes the SHA1 hash over the issuer certificate's Distinguished
-// Name. This is one of the values used to uniquely identify the issuer cert
-// in an RFC6960 + RFC5019 OCSP request.
+// NameHash computes the SHA1 hash over the issuer certificate's Subject
+// Distinguished Name. This is one of the values used to uniquely identify the
+// issuer cert in an RFC6960 + RFC5019 OCSP request.
 func (ic *Certificate) NameHash() [20]byte {
 	return ic.nameHash
 }
@@ -731,12 +731,12 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 	}
 
 	// Pre-load all the certificates to make validation easier.
-	certs := make([]*x509.Certificate, len(certFiles))
+	certs := make([]*Certificate, len(certFiles))
 	var err error
 	for i := 0; i < len(certFiles); i++ {
-		certs[i], err = core.LoadCert(certFiles[i])
+		certs[i], err = LoadCertificate(certFiles[i])
 		if err != nil {
-			return nil, fmt.Errorf("failed to load certificate: %w", err)
+			return nil, fmt.Errorf("failed to load certificate %q: %w", certFiles[i], err)
 		}
 	}
 
@@ -744,20 +744,15 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 	// comes from the next cert in the list.
 	chain := make([]*Certificate, len(certFiles)-1)
 	for i := 0; i < len(certs)-1; i++ {
-		err = certs[i].CheckSignatureFrom(certs[i+1])
+		err = certs[i].CheckSignatureFrom(certs[i+1].Certificate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to verify chain: %w", err)
 		}
-		// Add each cert to the chain.
-		ic, err := NewCertificate(certs[i])
-		if err != nil {
-			return nil, fmt.Errorf("failed to compute hashes for certificate: %w", err)
-		}
-		chain[i] = ic
+		chain[i] = certs[i]
 	}
 
 	// Verify that the last cert is self-signed.
-	err = certs[len(certs)-1].CheckSignatureFrom(certs[len(certs)-1])
+	err = certs[len(certs)-1].CheckSignatureFrom(certs[len(certs)-1].Certificate)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"final cert in chain must be a self-signed (used only for validation): %w", err)
