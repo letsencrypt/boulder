@@ -20,6 +20,7 @@ import (
 	"github.com/go-gorp/gorp/v3"
 	"github.com/honeycombio/beeline-go"
 	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
+	"github.com/jmhodges/clock"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -84,6 +85,43 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 		issuerNameKeyHashes[caCert.NameID()] = keyHash[:]
 	}
 	return &ocspFilter{crypto.SHA1, issuerKeyHashes, issuerNameKeyHashes, serialPrefixes}, nil
+}
+
+type Responder struct {
+	clk         clock.Clock
+	log         blog.Logger
+	timeout     time.Duration
+	ocspLookups *prometheus.CounterVec
+	sourceUsed  *prometheus.CounterVec
+}
+
+func New(
+	stats prometheus.Registerer,
+	clk clock.Clock,
+	log blog.Logger,
+	c config,
+) (*Responder, error) {
+	// Metrics for response lookups
+	ocspLookups := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_lookups",
+		Help: "A counter of ocsp lookups labeled by source_result",
+	}, []string{"result"})
+	stats.MustRegister(ocspLookups)
+
+	sourceUsed := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "lookup_source_used",
+		Help: "A counter of lookups returned labeled by source used",
+	}, []string{"source"})
+	stats.MustRegister(sourceUsed)
+
+	responder := Responder{
+		clk:         clk,
+		log:         log,
+		timeout:     c.OCSPResponder.Timeout.Duration,
+		ocspLookups: ocspLookups,
+		sourceUsed:  sourceUsed,
+	}
+	return &responder, nil
 }
 
 // checkRequest returns a descriptive error if the request does not satisfy any of
@@ -153,9 +191,7 @@ type dbSource struct {
 	primaryLookup   ocspLookup
 	secondaryLookup ocspLookup
 	filter          *ocspFilter
-	timeout         time.Duration
-	log             blog.Logger
-	metrics         prometheus.Registerer
+	*Responder
 }
 
 // Define an interface with the needed methods from gorp.
@@ -167,21 +203,6 @@ type dbSelector interface {
 
 // Response is called by the HTTP server to handle a new OCSP request.
 func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, http.Header, error) {
-	// Metrics for response lookups
-	ocspLookups := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "ocsp_lookups",
-		Help: "A counter of ocsp lookups labeled by source_result",
-	}, []string{"result"})
-	src.metrics.MustRegister(ocspLookups)
-
-	sourceUsed := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "lookup_source_used",
-		Help: "A counter of lookups returned labeled by source used",
-	}, []string{"source"})
-	src.metrics.MustRegister(sourceUsed)
-
-	// TODO: Add latency histograms
-
 	err := src.filter.checkRequest(req)
 	if err != nil {
 		src.log.Debugf("Not responding to filtered OCSP request: %s", err.Error())
@@ -231,13 +252,13 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	case <-ctx.Done():
 		err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 		src.log.Debugf(err.Error())
-		ocspLookups.WithLabelValues("canceled").Inc()
+		src.ocspLookups.WithLabelValues("canceled").Inc()
 		return nil, nil, err
 	case primaryResult := <-primaryChan:
 		if primaryResult.err != nil {
 			src.log.AuditErrf("Looking up OCSP response: %s", err)
-			ocspLookups.WithLabelValues("mysql_failed").Inc()
-			sourceUsed.WithLabelValues("error_returned").Inc()
+			src.ocspLookups.WithLabelValues("mysql_failed").Inc()
+			src.sourceUsed.WithLabelValues("error_returned").Inc()
 			return nil, nil, primaryResult.err
 		}
 		// Parse the OCSP bytes returned from the primary source to check
@@ -245,13 +266,13 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing OCSP response: %s", err)
-			ocspLookups.WithLabelValues("mysql_failed").Inc()
-			sourceUsed.WithLabelValues("error_returned").Inc()
+			src.ocspLookups.WithLabelValues("mysql_failed").Inc()
+			src.sourceUsed.WithLabelValues("error_returned").Inc()
 			return nil, nil, err
 		}
 		src.log.Debugf("returning ocsp from primary source: %v", helper.PrettyResponse(primaryParsed))
-		ocspLookups.WithLabelValues("mysql_success").Inc()
-		sourceUsed.WithLabelValues("mysql").Inc()
+		src.ocspLookups.WithLabelValues("mysql_success").Inc()
+		src.sourceUsed.WithLabelValues("mysql").Inc()
 		return primaryResult.bytes, header, nil
 	case secondaryResult := <-secondaryChan:
 		// If secondary returns first, wait for primary to return for
@@ -262,15 +283,15 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		case <-ctx.Done():
 			err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 			src.log.Debugf(err.Error())
-			ocspLookups.WithLabelValues("canceled").Inc()
+			src.ocspLookups.WithLabelValues("canceled").Inc()
 			return nil, nil, err
 		case primaryResult = <-primaryChan:
 		}
 
 		if primaryResult.err != nil {
 			src.log.AuditErrf("Looking up OCSP response: %s", err)
-			ocspLookups.WithLabelValues("mysql_failed").Inc()
-			sourceUsed.WithLabelValues("error_returned").Inc()
+			src.ocspLookups.WithLabelValues("mysql_failed").Inc()
+			src.sourceUsed.WithLabelValues("error_returned").Inc()
 			return nil, nil, primaryResult.err
 		}
 		// Parse the OCSP bytes returned from the primary source to check
@@ -278,27 +299,27 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing OCSP response: %s", err)
-			ocspLookups.WithLabelValues("mysql_failed").Inc()
-			sourceUsed.WithLabelValues("error_returned").Inc()
+			src.ocspLookups.WithLabelValues("mysql_failed").Inc()
+			src.sourceUsed.WithLabelValues("error_returned").Inc()
 			return nil, nil, err
 		}
 
 		secondaryParsed, err := ocsp.ParseResponse(secondaryResult.bytes, nil)
 		if err != nil {
 			src.log.Debugf("secondary OCSP lookup response error: %v", err)
-			ocspLookups.WithLabelValues("redis_failed").Inc()
-			sourceUsed.WithLabelValues("mysql").Inc()
+			src.ocspLookups.WithLabelValues("redis_failed").Inc()
+			src.sourceUsed.WithLabelValues("mysql").Inc()
 			return primaryResult.bytes, header, nil
 		}
 		if primaryParsed.Status != secondaryParsed.Status {
 			src.log.Err("primary ocsp source doesn't match secondary source, returning primary response")
-			ocspLookups.WithLabelValues("redis_mismatch").Inc()
-			sourceUsed.WithLabelValues("mysql").Inc()
+			src.ocspLookups.WithLabelValues("redis_mismatch").Inc()
+			src.sourceUsed.WithLabelValues("mysql").Inc()
 			return primaryResult.bytes, header, nil
 		}
 		src.log.Debugf("returning ocsp from secondary source: %v", helper.PrettyResponse(secondaryParsed))
-		ocspLookups.WithLabelValues("redis_success").Inc()
-		sourceUsed.WithLabelValues("redis").Inc()
+		src.ocspLookups.WithLabelValues("redis_success").Inc()
+		src.sourceUsed.WithLabelValues("redis").Inc()
 		return secondaryResult.bytes, header, nil
 	}
 }
@@ -313,7 +334,7 @@ type redisReceiver struct {
 type dbReceiver struct {
 	dbMap  dbSelector
 	filter *ocspFilter
-	log    blog.Logger
+	*Responder
 }
 
 type lookupResponse struct {
@@ -437,6 +458,11 @@ as generated by Boulder's ceremony command.
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	responder, err := New(stats, clk, logger, c)
+	if err != nil {
+		cmd.FailOnError(err, "Could not create OCSPResponder object")
+	}
+
 	config := c.OCSPResponder
 	var source bocsp.Source
 
@@ -478,7 +504,7 @@ as generated by Boulder's ceremony command.
 		filter, err := newFilter(issuerCerts, c.OCSPResponder.RequiredSerialPrefixes)
 		cmd.FailOnError(err, "Couldn't create OCSP filter")
 
-		pLookup := dbReceiver{dbMap, filter, logger}
+		pLookup := dbReceiver{dbMap, filter, responder}
 
 		// Set up the redis source if there is a config. Otherwise just
 		// set up a mysql source.
@@ -492,9 +518,7 @@ as generated by Boulder's ceremony command.
 				primaryLookup:   pLookup,
 				secondaryLookup: redisReceiver{rocspReader},
 				filter:          filter,
-				timeout:         c.OCSPResponder.Timeout.Duration,
-				log:             logger,
-				metrics:         stats,
+				Responder:       responder,
 			}
 		} else {
 			logger.Info("no redis config found, using mysql as only ocsp source")
@@ -502,9 +526,7 @@ as generated by Boulder's ceremony command.
 				primaryLookup:   pLookup,
 				secondaryLookup: nil,
 				filter:          filter,
-				timeout:         c.OCSPResponder.Timeout.Duration,
-				log:             logger,
-				metrics:         stats,
+				Responder:       responder,
 			}
 
 		}
