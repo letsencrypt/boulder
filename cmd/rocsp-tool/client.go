@@ -44,7 +44,6 @@ func getStartingID(ctx context.Context, clk clock.Clock, db *sql.DB) (int64, err
 	// certificates.
 	startTime := clk.Now().Add(-24 * time.Hour)
 	var minID *int64
-	fmt.Println("startTime", startTime)
 	err := db.QueryRowContext(
 		ctx,
 		"SELECT MIN(id) FROM certificateStatus WHERE notAfter >= ?",
