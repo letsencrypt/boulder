@@ -201,7 +201,8 @@ type dbSelector interface {
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
-// Response is called by the HTTP server to handle a new OCSP request.
+// Response implements the `responder.Source` interface and is called by
+// the HTTP server to handle a new OCSP request.
 func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, http.Header, error) {
 	err := src.filter.checkRequest(req)
 	if err != nil {
@@ -341,24 +342,35 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	}
 }
 
+// ocspLookup has a getResponse method that knows how to retrieve and OCSP
+// response from a datastore and return it or an error in a lookupResponse
+// object channel
 type ocspLookup interface {
 	getResponse(context.Context, *ocsp.Request) chan lookupResponse
 }
 
-type redisReceiver struct {
-	rocspReader *rocsp.Client
-}
+// dbReceiver can get an OCSP response from a mysql database.
 type dbReceiver struct {
 	dbMap  dbSelector
 	filter *ocspFilter
 	*Responder
 }
 
+// redisReciever can get an OCSP response from a redis datastore.
+type redisReceiver struct {
+	rocspReader *rocsp.Client
+}
+
+// lookupResponse contains an OCSP response in bytes or error.
 type lookupResponse struct {
 	bytes []byte
 	err   error
 }
 
+// getResponse implements the ocspLookup interface. Given a context and
+// `*ocsp.Request`, getResponse will retrieve the appropriate OCSP
+// response from a mysql database and return it or an error in a
+// lookupResponse object channel
 func (src dbReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan lookupResponse {
 	responseChan := make(chan lookupResponse)
 	serialString := core.SerialToString(req.SerialNumber)
@@ -394,6 +406,10 @@ func (src dbReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan l
 	return responseChan
 }
 
+// getResponse implements the ocspLookup interface. Given a context and
+// `*ocsp.Request`, getResponse will retrieve the appropriate OCSP
+// response from a redis datastore and return it or an error in a
+// lookupResponse object channel.
 func (src redisReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan lookupResponse {
 	responseChan := make(chan lookupResponse)
 	serialString := core.SerialToString(req.SerialNumber)
@@ -406,6 +422,11 @@ func (src redisReceiver) getResponse(ctx context.Context, req *ocsp.Request) cha
 
 	return responseChan
 }
+
+// Make sure that dbReceiver and redisReceiver implements ocspLookup if it
+// does not it will error at compile time.
+var _ ocspLookup = (*dbReceiver)(nil)
+var _ ocspLookup = (*redisReceiver)(nil)
 
 type config struct {
 	OCSPResponder struct {
