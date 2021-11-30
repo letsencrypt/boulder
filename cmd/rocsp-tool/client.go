@@ -26,6 +26,7 @@ type client struct {
 	db            *sql.DB // optional
 	ocspGenerator capb.OCSPGeneratorClient
 	clk           clock.Clock
+	scanBatchSize int
 }
 
 // processResult represents the result of attempting to sign and store status
@@ -57,11 +58,25 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 		return fmt.Errorf("no entries in certificateStatus (where notAfter >= %s)", startTime)
 	}
 
+	// Find the current maximum id in certificateStatus. We do this because the table is always
+	// growing. If we scanned until we saw a batch with no rows, we would scan forever.
+	var maxID *int64
+	err = cl.db.QueryRowContext(
+		ctx,
+		"SELECT MAX(id) FROM certificateStatus",
+	).Scan(&maxID)
+	if err != nil {
+		return fmt.Errorf("selecting maxID: %w", err)
+	}
+	if minID == nil {
+		return fmt.Errorf("no entries in certificateStatus")
+	}
+
 	// Limit the rate of reading rows.
 	frequency := time.Duration(float64(time.Second) / float64(time.Duration(speed.RowsPerSecond)))
 	// a set of all inflight certificate statuses, indexed by their `ID`.
 	inflightIDs := newInflight()
-	statusesToSign := cl.scanFromDB(ctx, *minID, frequency, inflightIDs)
+	statusesToSign := cl.scanFromDB(ctx, *minID, *maxID, frequency, inflightIDs)
 
 	results := make(chan processResult, speed.ParallelSigns)
 	var runningSigners int32
@@ -103,26 +118,35 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 // its output channel at a maximum frequency of `frequency`. When it's read all available rows, it
 // closes its output channel and exits.
 // If there is an error, it logs the error, closes its output channel, and exits.
-func (cl *client) scanFromDB(ctx context.Context, minID int64, frequency time.Duration, inflightIDs *inflight) <-chan *sa.CertStatusMetadata {
+func (cl *client) scanFromDB(ctx context.Context, minID int64, maxID int64, frequency time.Duration, inflightIDs *inflight) <-chan *sa.CertStatusMetadata {
 	statusesToSign := make(chan *sa.CertStatusMetadata)
 	go func() {
 		defer close(statusesToSign)
-		err := cl.scanFromDBInner(ctx, minID, frequency, statusesToSign, inflightIDs)
-		if err != nil {
-			log.Printf("error scanning rows: %s", err)
+
+		var err error
+		currentMin := minID
+		for currentMin < maxID {
+			currentMin, err = cl.scanFromDBOneBatch(ctx, minID, frequency, statusesToSign, inflightIDs)
+			if err != nil {
+				log.Printf("error scanning rows: %s", err)
+			}
 		}
 	}()
 	return statusesToSign
 }
 
-func (cl *client) scanFromDBInner(ctx context.Context, minID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) error {
+// scanFromDBOneBatch scans up to `cl.scanBatchSize` rows from certificateStatus, in order, and
+// writes them to `output`. When done, it returns the highest `id` it saw during the scan.
+// We do this in batches because if we tried to scan the whole table in a single query, MariaDB
+// would terminate the query after a certain amount of data transferred.
+func (cl *client) scanFromDBOneBatch(ctx context.Context, minID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) (int64, error) {
 	rowTicker := time.NewTicker(frequency)
 
-	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id >= ?",
+	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id > ? ORDER BY id LIMIT ?",
 		strings.Join(sa.CertStatusMetadataFields(), ", "))
-	rows, err := cl.db.QueryContext(ctx, query, minID)
+	rows, err := cl.db.QueryContext(ctx, query, minID, cl.scanBatchSize)
 	if err != nil {
-		return fmt.Errorf("scanning certificateStatus: %w", err)
+		return -1, fmt.Errorf("scanning certificateStatus: %w", err)
 	}
 	defer func() {
 		rerr := rows.Close()
@@ -138,7 +162,7 @@ func (cl *client) scanFromDBInner(ctx context.Context, minID int64, frequency ti
 
 		status := new(sa.CertStatusMetadata)
 		if err := sa.ScanCertStatusMetadataRow(rows, status); err != nil {
-			return fmt.Errorf("scanning row %d (previous ID %d): %w", scanned, previousID, err)
+			return -1, fmt.Errorf("scanning row %d (previous ID %d): %w", scanned, previousID, err)
 		}
 		scanned++
 		inflightIDs.add(uint64(status.ID))
@@ -151,7 +175,7 @@ func (cl *client) scanFromDBInner(ctx context.Context, minID int64, frequency ti
 		output <- status
 		previousID = status.ID
 	}
-	return nil
+	return previousID, nil
 }
 
 type signedResponse struct {
