@@ -52,6 +52,10 @@ const (
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo
+	// GetAuthzReadOnly causes the SA to use its read-only database connection
+	// (which is generally pointed at a replica rather than the primary db) when
+	// querying the authz2 table.
+	GetAuthzReadOnly
 )
 
 // List of features and their default value, protected by fMu
@@ -74,6 +78,7 @@ var features = map[FeatureFlag]bool{
 	ECDSAForAll:              false,
 	StreamlineOrderAndAuthzs: false,
 	ServeRenewalInfo:         false,
+	GetAuthzReadOnly:         false,
 }
 
 var fMu = new(sync.RWMutex)

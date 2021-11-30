@@ -438,6 +438,7 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
+	ID             int64 `db:"id"`
 	RegistrationID int64 `db:"registrationID"`
 
 	Serial  string    `db:"serial"`
@@ -451,7 +452,6 @@ type Certificate struct {
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
-	// The auto increment primary key
 	ID int64 `db:"id"`
 
 	Serial string `db:"serial"`
