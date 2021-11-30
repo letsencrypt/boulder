@@ -165,9 +165,8 @@ func main() {
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 
-	issuerCert, err := issuance.LoadCertificate(c.Common.IssuerCert)
+	wfe.IssuerCert, err = issuance.LoadCertificate(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't load issuer cert [%s]", c.Common.IssuerCert))
-	wfe.IssuerCert = issuerCert
 
 	logger.Infof("WFE using key policy: %#v", kp)
 
