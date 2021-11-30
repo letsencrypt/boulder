@@ -244,10 +244,10 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 
 	// If the primary source returns first, check the output and return
 	// it. If the secondary source wins, then wait for the primary so the
-	// results from the seconary can be verified. It is important that we
+	// results from the secondary can be verified. It is important that we
 	// never return a response from the redis source that is good if mysql
 	// has a revoked status. If the secondary source wins the race and
-	// passes these checks, return it's response instead.
+	// passes these checks, return its response instead.
 	select {
 	case <-ctx.Done():
 		err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
