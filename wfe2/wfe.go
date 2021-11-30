@@ -807,38 +807,28 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	}
 
 	// Parse the provided certificate
-	providedCert, err := x509.ParseCertificate(revokeRequest.CertificateDER)
+	parsedCertificate, err := x509.ParseCertificate(revokeRequest.CertificateDER)
 	if err != nil {
 		return probs.Malformed("Unable to parse certificate DER")
 	}
 
 	// Compute and record the serial number of the provided certificate
-	serial := core.SerialToString(providedCert.SerialNumber)
-	logEvent.Extra["ProvidedCertificateSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "request.serial", serial)
+	serial := core.SerialToString(parsedCertificate.SerialNumber)
+	logEvent.Extra["CertificateSerial"] = serial
+	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
-	issuerNameID := issuance.GetIssuerNameID(providedCert)
+	issuerNameID := issuance.GetIssuerNameID(parsedCertificate)
 	issuerCert, ok := wfe.issuerCertificates[issuerNameID]
 	if !ok || issuerCert == nil {
 		return probs.NotFound("Certificate from unrecognized issuer")
 	}
-	err = providedCert.CheckSignatureFrom(issuerCert.Certificate)
+	err = parsedCertificate.CheckSignatureFrom(issuerCert.Certificate)
 	if err != nil {
 		return probs.NotFound("No such certificate")
 	}
-
-	// Now that we're sure we issued it, parse the certificate into memory.
-	parsedCertificate, err := x509.ParseCertificate(providedCert.Raw)
-	if err != nil {
-		// InternalServerError because certDER came from our own DB, or was
-		// confirmed issued by one of our own issuers.
-		return probs.ServerInternal("invalid parse of stored certificate")
-	}
-	logEvent.Extra["RetrievedCertificateSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
-	logEvent.Extra["RetrievedCertificateDNSNames"] = parsedCertificate.DNSNames
+	logEvent.Extra["CertificateDNSNames"] = parsedCertificate.DNSNames
 	beeline.AddFieldToTrace(ctx, "cert.dnsnames", parsedCertificate.DNSNames)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {

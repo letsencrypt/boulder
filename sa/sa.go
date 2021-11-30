@@ -1597,7 +1597,13 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		authzFields,
 		strings.Join(qmarks, ","),
 	)
-	_, err := ssa.dbMap.Select(
+	var dbMap *db.WrappedMap
+	if features.Enabled(features.GetAuthzReadOnly) {
+		dbMap = ssa.dbReadOnlyMap
+	} else {
+		dbMap = ssa.dbMap
+	}
+	_, err := dbMap.Select(
 		&authzModels,
 		query,
 		params...,

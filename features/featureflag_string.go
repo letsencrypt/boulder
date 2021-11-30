@@ -26,11 +26,12 @@ func _() {
 	_ = x[FasterNewOrdersRateLimit-15]
 	_ = x[ECDSAForAll-16]
 	_ = x[ServeRenewalInfo-17]
+	_ = x[GetAuthzReadOnly-18]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfo"
+const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationV1DisableNewValidationsStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnly"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 125, 138, 152, 170, 188, 207, 230, 246, 265, 289, 300, 316}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 125, 138, 152, 170, 188, 207, 230, 246, 265, 289, 300, 316, 332}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
