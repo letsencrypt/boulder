@@ -251,13 +251,10 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	// passes these checks, return its response instead.
 	select {
 	case <-ctx.Done():
-		err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
-		src.log.Debugf("%s", err)
 		src.ocspLookups.WithLabelValues("canceled").Inc()
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 	case primaryResult := <-primaryChan:
 		if primaryResult.err != nil {
-			src.log.AuditErrf("Looking up OCSP response in DB: %s", err)
 			src.ocspLookups.WithLabelValues("mysql_failed").Inc()
 			src.sourceUsed.WithLabelValues("error_returned").Inc()
 			return nil, nil, primaryResult.err
@@ -283,16 +280,13 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		// Listen for cancellation or timeout waiting for primary result.
 		select {
 		case <-ctx.Done():
-			err := fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
-			src.log.Debugf("%s", err)
 			src.ocspLookups.WithLabelValues("canceled").Inc()
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 		case primaryResult = <-primaryChan:
 		}
 
 		// Check for error returned from the mysql lookup, return on error.
 		if primaryResult.err != nil {
-			src.log.AuditErrf("Looking up OCSP response in DB: %s", err)
 			src.ocspLookups.WithLabelValues("mysql_failed").Inc()
 			src.sourceUsed.WithLabelValues("error_returned").Inc()
 			return nil, nil, primaryResult.err
@@ -311,7 +305,6 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		// Check for error returned from the redis lookup. If error return
 		// primary lookup result.
 		if secondaryResult.err != nil {
-			src.log.AuditErrf("Looking up OCSP response in redis: %s", err)
 			src.ocspLookups.WithLabelValues("redis_failed").Inc()
 			src.sourceUsed.WithLabelValues("mysql").Inc()
 			return primaryResult.bytes, header, nil
@@ -321,7 +314,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		// compare to primary result.
 		secondaryParsed, err := ocsp.ParseResponse(secondaryResult.bytes, nil)
 		if err != nil {
-			src.log.Debugf("secondary OCSP lookup response error: %v", err)
+			src.log.AuditErrf("parsing secondary OCSP response: %s", err)
 			src.ocspLookups.WithLabelValues("redis_parse_error").Inc()
 			src.sourceUsed.WithLabelValues("mysql").Inc()
 			return primaryResult.bytes, header, nil
@@ -383,7 +376,10 @@ func (src dbReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan l
 				responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
 				return
 			}
+			src.log.AuditErrf("Looking up OCSP response in DB: %s", err)
+
 			responseChan <- lookupResponse{nil, err}
+			return
 		}
 
 		if certStatus.IsExpired {
