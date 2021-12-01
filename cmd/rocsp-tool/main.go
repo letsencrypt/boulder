@@ -57,6 +57,10 @@ type ProcessingSpeed struct {
 	// If using load-from-db, this controls how many parallel requests to
 	// boulder-ca for OCSP signing we can make. Defaults to 100.
 	ParallelSigns int
+	// If using load-from-db, the LIMIT on our scanning queries. We have to
+	// apply a limit because MariaDB will cut off our response at some
+	// threshold of total bytes transferred (1 GB by default). Defaults to 10000.
+	ScanBatchSize int
 }
 
 func init() {
@@ -100,6 +104,7 @@ func main2() error {
 
 	var db *sql.DB
 	var ocspGenerator capb.OCSPGeneratorClient
+	var scanBatchSize int
 	if c.ROCSPTool.LoadFromDB != nil {
 		lfd := c.ROCSPTool.LoadFromDB
 		db, err = configureDb(&lfd.DB)
@@ -114,6 +119,8 @@ func main2() error {
 		}
 		setDefault(&lfd.Speed.RowsPerSecond, 2000)
 		setDefault(&lfd.Speed.ParallelSigns, 100)
+		setDefault(&lfd.Speed.ScanBatchSize, 10000)
+		scanBatchSize = lfd.Speed.ScanBatchSize
 	}
 
 	if len(flag.Args()) < 1 {
@@ -127,6 +134,7 @@ func main2() error {
 		db:            db,
 		ocspGenerator: ocspGenerator,
 		clk:           clk,
+		scanBatchSize: scanBatchSize,
 	}
 	switch flag.Arg(0) {
 	case "store":
