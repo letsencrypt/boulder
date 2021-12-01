@@ -382,8 +382,7 @@ type IssuerID int64
 type IssuerNameID int64
 
 // Certificate embeds an *x509.Certificate and represents the added semantics
-// that this certificate can be used for issuance. It also provides the .ID()
-// and .NameID() methods, which return internal issuer IDs for this certificate.
+// that this certificate can be used for issuance.
 type Certificate struct {
 	*x509.Certificate
 	id       IssuerID
@@ -393,8 +392,8 @@ type Certificate struct {
 }
 
 // NewCertificate wraps an in-memory cert in an issuance.Certificate, marking it
-// as an issuer cert. It also precomputes various hashes over the cert (exposed
-// by methods on this type), which may fail.
+// as an issuer cert. It may fail if the certificate does not contain the
+// attributes expected of an issuer certificate.
 func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 	res := Certificate{Certificate: ic}
 
@@ -427,37 +426,36 @@ func NewCertificate(ic *x509.Certificate) (*Certificate, error) {
 	return &res, nil
 }
 
-// ID provides a stable ID for an issuer's certificate. This is used for
-// identifying which issuer issued a certificate in the certificateStatus table.
-// This value is computed as a truncated hash over the whole certificate,
-// meaning it is highly unique but not computable from end-entity certs.
+// ID returns the IssuerID (a truncated hash over the raw bytes of the whole
+// cert) of this issuer certificate.
+// DEPRECATED: Use .NameID() instead.
 func (ic *Certificate) ID() IssuerID {
 	return ic.id
 }
 
-// NameID computes the IssuerNameID from an issuer certificate, i.e. it
-// computes a truncated hash over the issuer's Subject Name raw bytes. Useful
-// for storing as a lookup key in contexts that don't expect hash collisions.
+// NameID returns the IssuerNameID (a truncated hash over the raw bytes of the
+// Subject Distinguished Name) of this issuer certificate. Useful for storing as
+// a lookup key in contexts that don't expect hash collisions.
 func (ic *Certificate) NameID() IssuerNameID {
 	return ic.nameID
 }
 
-// NameHash computes the SHA1 hash over the issuer certificate's Subject
+// NameHash returns the SHA1 hash over the issuer certificate's Subject
 // Distinguished Name. This is one of the values used to uniquely identify the
 // issuer cert in an RFC6960 + RFC5019 OCSP request.
 func (ic *Certificate) NameHash() [20]byte {
 	return ic.nameHash
 }
 
-// KeyHash computes the SHA1 hash over the issuer certificate's Subject Public
+// KeyHash returns the SHA1 hash over the issuer certificate's Subject Public
 // Key Info. This is one of the values used to uniquely identify the issuer cert
 // in an RFC6960 + RFC5019 OCSP request.
 func (ic *Certificate) KeyHash() [20]byte {
 	return ic.keyHash
 }
 
-// GetIssuerNameID computes the IssuerNameID from an end-entity certificate,
-// i.e. it computes a truncated hash over its Issuer Name raw bytes.
+// GetIssuerNameID returns the IssuerNameID (a truncated hash over the raw bytes
+// of the Issuer Distinguished Name) of the given end-entity certificate.
 // Useful for performing lookups in contexts that don't expect hash collisions.
 func GetIssuerNameID(ee *x509.Certificate) IssuerNameID {
 	return truncatedHash(ee.RawIssuer)
