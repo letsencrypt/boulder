@@ -27,7 +27,8 @@
     },
     "features": {
       "FasterNewOrdersRateLimit": true,
-      "StoreRevokerInfo": true
+      "StoreRevokerInfo": true,
+      "GetAuthzReadOnly": true
     }
   },
 
