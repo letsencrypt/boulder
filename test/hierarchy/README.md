@@ -22,7 +22,6 @@ look like:
 
 ```go
 ee, _ := CA.IssuePrecertificate(...)
-cert, _ := core.LoadCert("test/hierarchy/int-e1.cert.pem")
-id := issuance.Certificate{Certificate: cert}.NameID()
-test.AssertEqual(t, issuance.GetIssuerNameID(ee), id)
+cert, _ := issuance.LoadCertificate("test/hierarchy/int-e1.cert.pem")
+test.AssertEqual(t, issuance.GetIssuerNameID(ee), issuer.NameID())
 ```

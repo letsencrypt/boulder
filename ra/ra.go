@@ -1902,7 +1902,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		issuerID = int64(issuance.GetIssuerNameID(cert))
 		issuer, ok = ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
 		if !ok {
-			return fmt.Errorf("unable to identify issuer of serial %q", serial)
+			return fmt.Errorf("unable to identify issuer of cert with serial %q", serial)
 		}
 	}
 

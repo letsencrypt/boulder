@@ -3954,12 +3954,13 @@ func TestRevokerCertificateWithReg(t *testing.T) {
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	cert, err := x509.ParseCertificate(der)
 	test.AssertNotError(t, err, "x509.ParseCertificate failed")
-	ic := issuance.Certificate{Certificate: cert}
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
-		ic.NameID(): &ic,
+		ic.NameID(): ic,
 	}
 	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): &ic,
+		ic.ID(): ic,
 	}
 
 	// Revoking for an unspecified reason should work but not block the key.
@@ -4007,12 +4008,13 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	cert, err := x509.ParseCertificate(der)
 	test.AssertNotError(t, err, "x509.ParseCertificate failed")
-	ic := issuance.Certificate{Certificate: cert}
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
-		ic.NameID(): &ic,
+		ic.NameID(): ic,
 	}
 	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): &ic,
+		ic.ID(): ic,
 	}
 	mockSA.known = &corepb.CertificateStatus{
 		Serial:   core.SerialToString(cert.SerialNumber),
