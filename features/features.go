@@ -56,6 +56,9 @@ const (
 	// (which is generally pointed at a replica rather than the primary db) when
 	// querying the authz2 table.
 	GetAuthzReadOnly
+	// GetAuthzUseIndex causes the SA to use to add a USE INDEX hint when it
+	// queries the authz2 table.
+	GetAuthzUseIndex
 )
 
 // List of features and their default value, protected by fMu
@@ -79,6 +82,7 @@ var features = map[FeatureFlag]bool{
 	StreamlineOrderAndAuthzs: false,
 	ServeRenewalInfo:         false,
 	GetAuthzReadOnly:         false,
+	GetAuthzUseIndex:         false,
 }
 
 var fMu = new(sync.RWMutex)
