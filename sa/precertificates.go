@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/x509"
 	"fmt"
-	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -71,35 +70,19 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		certStatusFields := certStatusFields()
-		fieldNames := []string{}
-		for _, fieldName := range certStatusFields {
-			fieldNames = append(fieldNames, ":"+fieldName)
-		}
-		args := map[string]interface{}{
-			"serial":                serialHex,
-			"status":                string(core.OCSPStatusGood),
-			"ocspLastUpdated":       ssa.clk.Now(),
-			"revokedDate":           time.Time{},
-			"revokedReason":         0,
-			"lastExpirationNagSent": time.Time{},
-			"ocspResponse":          req.Ocsp,
-			"notAfter":              parsed.NotAfter,
-			"isExpired":             false,
-			"issuerID":              req.IssuerID,
-		}
-		if len(args) > len(certStatusFields) {
-			return nil, fmt.Errorf("too many arguments inserting row into certificateStatus")
-		}
-
-		_, err = txWithCtx.Exec(fmt.Sprintf(
-			"INSERT INTO certificateStatus (%s) VALUES (%s)",
-			strings.Join(certStatusFields, ","),
-			strings.Join(fieldNames, ","),
-		), args)
-		if err != nil {
-			return nil, err
-		}
+		err = ssa.dbMap.WithContext(ctx).Insert(
+			&core.CertificateStatus{
+				Serial:                serialHex,
+				Status:                core.OCSPStatusGood,
+				OCSPLastUpdated:       ssa.clk.Now(),
+				RevokedDate:           time.Time{},
+				RevokedReason:         0,
+				LastExpirationNagSent: time.Time{},
+				OCSPResponse:          req.Ocsp,
+				NotAfter:              parsed.NotAfter,
+				IsExpired:             false,
+				IssuerID:              req.IssuerID,
+			})
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
 		// that it is a renewal) we use just the DNSNames from the certificate and

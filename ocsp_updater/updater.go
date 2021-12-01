@@ -316,6 +316,7 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.Cert
 }
 
 // storeResponse stores a given CertificateStatus in the database.
+
 func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertStatusMetadata) error {
 	if updater.rocspClient != nil {
 		go func() {
@@ -344,6 +345,7 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 		status.ID,
 		string(status.Status),
 	)
+
 	if err != nil {
 		updater.log.Debugf("failed to store response in DB: %s", err)
 		updater.storedCounter.WithLabelValues("failed").Inc()
@@ -418,6 +420,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStat
 
 		meta, err := updater.generateResponse(ctx, status)
 		if err != nil {
+			updater.log.AuditErrf("Failed to generate OCSP response: %s", err)
 			updater.generatedCounter.WithLabelValues("failed").Inc()
 			return
 		}
@@ -425,8 +428,11 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStat
 
 		err = updater.storeResponse(ctx, meta)
 		if err != nil {
+			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
+			updater.storedCounter.WithLabelValues("failed").Inc()
 			return
 		}
+		updater.storedCounter.WithLabelValues("success").Inc()
 	}
 
 	// Consume the stale statuses channel and send off a sign/store request

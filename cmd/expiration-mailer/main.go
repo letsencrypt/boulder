@@ -447,15 +447,16 @@ func initStats(stats prometheus.Registerer) mailerStats {
 	sendLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "send_latency",
-			Help:    "Time the mailer takes sending messages",
+			Help:    "Time the mailer takes sending messages in seconds",
 			Buckets: metrics.InternetFacingBuckets,
 		})
 	stats.MustRegister(sendLatency)
 
 	processingLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "processing_latency",
-			Help: "Time the mailer takes processing certificates",
+			Name:    "processing_latency",
+			Help:    "Time the mailer takes processing certificates in seconds",
+			Buckets: []float64{1, 15, 30, 60, 75, 90, 120},
 		})
 	stats.MustRegister(processingLatency)
 

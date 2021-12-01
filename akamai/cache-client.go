@@ -392,8 +392,7 @@ func GeneratePurgeURLs(cert, issuer *x509.Certificate) ([]string, error) {
 		if !strings.HasSuffix(ocspServer, "/") {
 			ocspServer += "/"
 		}
-		// Generate GET url
-		urls = generateOCSPCacheKeys(req, ocspServer)
+		urls = append(urls, generateOCSPCacheKeys(req, ocspServer)...)
 	}
 	return urls, nil
 }

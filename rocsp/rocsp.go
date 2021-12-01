@@ -64,7 +64,6 @@ func MakeMetadataKey(serial string) string {
 
 // Client represents a read-only Redis client.
 type Client struct {
-	prefix  string
 	rdb     *redis.ClusterClient
 	timeout time.Duration
 	clk     clock.Clock
@@ -72,9 +71,7 @@ type Client struct {
 
 // NewClient creates a Client. The timeout applies to all requests, though a shorter timeout can be
 // applied on a per-request basis using context.Context.
-// The prefix is used to simulate different Redis clusters for different purposes - for instance
-// integration testing and unittesting.
-func NewClient(rdb *redis.ClusterClient, prefix string, timeout time.Duration, clk clock.Clock) *Client {
+func NewClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *Client {
 	return &Client{
 		rdb:     rdb,
 		timeout: timeout,

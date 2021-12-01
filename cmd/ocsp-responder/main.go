@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/sha1"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -62,21 +59,11 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 		if err != nil {
 			return nil, fmt.Errorf("Could not load issuer cert %s: %w", issuerCert, err)
 		}
-		caCert := &issuance.Certificate{Certificate: cert}
-		// The issuerKeyHash in OCSP requests is constructed over the DER
-		// encoding of the public key per RFC 6960 (defined in RFC 4055 for
-		// RSA and RFC 5480 for ECDSA). We can't use MarshalPKIXPublicKey
-		// for this since it encodes keys using the SPKI structure itself,
-		// and we just want the contents of the subjectPublicKey for the
-		// hash, so we need to extract it ourselves.
-		var spki struct {
-			Algo      pkix.AlgorithmIdentifier
-			BitString asn1.BitString
-		}
-		if _, err := asn1.Unmarshal(caCert.RawSubjectPublicKeyInfo, &spki); err != nil {
+		caCert, err := issuance.NewCertificate(cert)
+		if err != nil {
 			return nil, err
 		}
-		keyHash := sha1.Sum(spki.BitString.Bytes)
+		keyHash := caCert.KeyHash()
 		issuerKeyHashes[caCert.ID()] = keyHash[:]
 		issuerNameKeyHashes[caCert.NameID()] = keyHash[:]
 	}

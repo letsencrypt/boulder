@@ -140,7 +140,7 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certi
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
-				"invalid chain file: %q - error reading contents: %s",
+				"invalid chain file: %q - error reading contents: %w",
 			aiaIssuerURL, certFile, err)
 	}
 	if bytes.Contains(pemBytes, []byte("\r\n")) {
@@ -166,11 +166,11 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certi
 			aiaIssuerURL, certFile, certBlock.Type)
 	}
 	// The PEM Certificate must successfully parse
-	var cert *x509.Certificate
-	if cert, err = x509.ParseCertificate(certBlock.Bytes); err != nil {
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
-				"invalid chain file: %q - certificate bytes failed to parse: %s",
+				"invalid chain file: %q - certificate bytes failed to parse: %w",
 			aiaIssuerURL, certFile, err)
 	}
 	// If there are bytes leftover we must reject the file otherwise these
@@ -186,7 +186,14 @@ func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certi
 	if pemBytes[len(pemBytes)-1] != '\n' {
 		pemBytes = append(pemBytes, '\n')
 	}
-	return pemBytes, &issuance.Certificate{Certificate: cert}, nil
+	ic, err := issuance.NewCertificate(cert)
+	if err != nil {
+		return nil, nil, fmt.Errorf(
+			"CertificateChain entry for AIA issuer url %q has an "+
+				"invalid chain file: %q - unable to load issuer certificate: %w",
+			aiaIssuerURL, certFile, err)
+	}
+	return pemBytes, ic, nil
 }
 
 // loadCertificateChains processes the provided chainConfig of AIA Issuer URLs
