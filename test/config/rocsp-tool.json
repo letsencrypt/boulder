@@ -7,7 +7,8 @@
       },
       "speed": {
         "rowsPerSecond": 2000,
-        "parallelSigns": 100
+        "parallelSigns": 100,
+        "scanBatchSize": 10000
       },
       "gRPCTLS": {
         "caCertFile": "test/grpc-creds/minica.pem",

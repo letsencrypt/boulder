@@ -13,7 +13,6 @@ import (
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
@@ -166,9 +165,8 @@ func main() {
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 
-	issuerCert, err := core.LoadCert(c.Common.IssuerCert)
+	wfe.IssuerCert, err = issuance.LoadCertificate(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't load issuer cert [%s]", c.Common.IssuerCert))
-	wfe.IssuerCert = &issuance.Certificate{Certificate: issuerCert}
 
 	logger.Infof("WFE using key policy: %#v", kp)
 

@@ -2141,9 +2141,6 @@ func TestTermsRedirect(t *testing.T) {
 
 func TestIssuer(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.IssuerCert = &issuance.Certificate{Certificate: &x509.Certificate{}}
-	wfe.IssuerCert.Raw = []byte{0, 0, 1}
-
 	responseWriter := httptest.NewRecorder()
 
 	wfe.Issuer(ctx, newRequestEvent(), responseWriter, &http.Request{

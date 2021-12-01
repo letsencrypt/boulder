@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 	cmd.FailOnError(err, "failed to generate test issuer")
 	cert, err := x509.ParseCertificate(issuer)
 	cmd.FailOnError(err, "failed to parse test issuer")
-	issuerCert = &Certificate{cert}
+	issuerCert = &Certificate{Certificate: cert}
 	os.Exit(m.Run())
 }
 
@@ -438,7 +438,7 @@ func TestNewIssuer(t *testing.T) {
 func TestNewIssuerUnsupportedKeyType(t *testing.T) {
 	_, err := NewIssuer(
 		&Certificate{
-			&x509.Certificate{
+			Certificate: &x509.Certificate{
 				PublicKey: &ed25519.PublicKey{},
 			},
 		},
@@ -454,7 +454,7 @@ func TestNewIssuerUnsupportedKeyType(t *testing.T) {
 func TestNewIssuerNoCertSign(t *testing.T) {
 	_, err := NewIssuer(
 		&Certificate{
-			&x509.Certificate{
+			Certificate: &x509.Certificate{
 				PublicKey: &ecdsa.PublicKey{
 					Curve: elliptic.P256(),
 				},
@@ -473,7 +473,7 @@ func TestNewIssuerNoCertSign(t *testing.T) {
 func TestNewIssuerNoDigitalSignature(t *testing.T) {
 	_, err := NewIssuer(
 		&Certificate{
-			&x509.Certificate{
+			Certificate: &x509.Certificate{
 				PublicKey: &ecdsa.PublicKey{
 					Curve: elliptic.P256(),
 				},
@@ -495,7 +495,7 @@ func TestNewIssuerOCSPOnly(t *testing.T) {
 	p.useForECDSALeaves = false
 	_, err := NewIssuer(
 		&Certificate{
-			&x509.Certificate{
+			Certificate: &x509.Certificate{
 				PublicKey: &ecdsa.PublicKey{
 					Curve: elliptic.P256(),
 				},
