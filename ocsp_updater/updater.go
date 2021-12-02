@@ -17,6 +17,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
 	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -73,6 +74,8 @@ type OCSPUpdater struct {
 	readOnlyDb  ocspReadOnlyDb
 	rocspClient rocspClientInterface
 
+	issuers []rocsp_config.ShortIDIssuer
+
 	ogc capb.OCSPGeneratorClient
 
 	tickWindow    time.Duration
@@ -107,6 +110,7 @@ func New(
 	db ocspDb,
 	readOnlyDb ocspReadOnlyDb,
 	rocspClient *rocsp.WritingClient,
+	issuers []rocsp_config.ShortIDIssuer,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config ocsp_updater_config.Config,
@@ -192,6 +196,7 @@ func New(
 		db:                           db,
 		readOnlyDb:                   readOnlyDb,
 		rocspClient:                  rocspClientInterface,
+		issuers:                      issuers,
 		ogc:                          ogc,
 		log:                          log,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
@@ -321,7 +326,8 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 	if updater.rocspClient != nil {
 		go func() {
 			ttl := status.NotAfter.Sub(updater.clk.Now())
-			err := updater.rocspClient.StoreResponse(ctx, status.OCSPResponse, 127 /*TODO*/, ttl)
+			shortIssuerID, err := rocsp_config.FindIssuerByID(status.IssuerID, updater.issuers)
+			err = updater.rocspClient.StoreResponse(ctx, status.OCSPResponse, shortIssuerID.ShortID(), ttl)
 			if err != nil {
 				updater.log.Debugf("failed to store response in Redis: %s", err)
 				updater.storedRedisCounter.WithLabelValues("failed").Inc()

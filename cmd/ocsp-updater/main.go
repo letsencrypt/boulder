@@ -120,6 +120,7 @@ func main() {
 		rocspClient, err = rocsp_config.MakeClient(redisConf, clk)
 		cmd.FailOnError(err, "Making Redis client")
 	}
+	issuers, err := rocsp_config.LoadIssuers(c.OCSPUpdater.Issuers)
 
 	tlsConfig, err := c.OCSPUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
@@ -139,6 +140,7 @@ func main() {
 		db,
 		readOnlyDb,
 		rocspClient,
+		issuers,
 		serialSuffixes,
 		ogc,
 		// Necessary evil for now

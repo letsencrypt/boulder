@@ -21,6 +21,12 @@
         "keyFile": "test/redis-tls/boulder/key.pem"
       }
     },
+    "issuers": {
+      ".hierarchy/intermediate-cert-ecdsa-a.pem": 1,
+      ".hierarchy/intermediate-cert-ecdsa-b.pem": 2,
+      ".hierarchy/intermediate-cert-rsa-a.pem": 3,
+      ".hierarchy/intermediate-cert-rsa-b.pem": 4
+    },
     "oldOCSPWindow": "2s",
     "oldOCSPBatchSize": 5000,
     "parallelGenerateOCSPRequests": 10,
