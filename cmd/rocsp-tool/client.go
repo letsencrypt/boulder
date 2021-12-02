@@ -15,13 +15,14 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
 )
 
 type client struct {
-	issuers       []shortIDIssuer
+	issuers       []rocsp_config.ShortIDIssuer
 	redis         *rocsp.WritingClient
 	db            *sql.DB // optional
 	ocspGenerator capb.OCSPGeneratorClient
@@ -207,13 +208,13 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 		}
 		// ttl is the lifetime of the certificate
 		ttl := cl.clk.Now().Sub(status.NotAfter)
-		issuer, err := findIssuerByID(status.IssuerID, cl.issuers)
+		issuer, err := rocsp_config.FindIssuerByID(status.IssuerID, cl.issuers)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
 
-		err = cl.redis.StoreResponse(ctx, result.Response, issuer.shortID, ttl)
+		err = cl.redis.StoreResponse(ctx, result.Response, issuer.ShortID(), ttl)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
@@ -250,7 +251,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 	if err != nil {
 		return fmt.Errorf("parsing response: %w", err)
 	}
-	issuer, err := findIssuerByName(resp, cl.issuers)
+	issuer, err := rocsp_config.FindIssuerByName(resp, cl.issuers)
 	if err != nil {
 		return fmt.Errorf("finding issuer for response: %w", err)
 	}
@@ -286,7 +287,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 		ttl.Hours(),
 	)
 
-	err = cl.redis.StoreResponse(ctx, respBytes, issuer.shortID, *ttl)
+	err = cl.redis.StoreResponse(ctx, respBytes, issuer.ShortID(), *ttl)
 	if err != nil {
 		return fmt.Errorf("storing response: %w", err)
 	}

@@ -74,6 +74,7 @@ type RedisConfig struct {
 	IdleCheckFrequency cmd.ConfigDuration
 }
 
+// MakeClient produces a *rocsp.WritingClient from a config.
 func MakeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
@@ -110,6 +111,7 @@ func MakeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
 	return rocsp.NewWritingClient(rdb, timeout, clk), nil
 }
 
+// MakeClient produces a *rocsp.Client from a config.
 func MakeReadClient(c *RedisConfig, clk clock.Clock) (*rocsp.Client, error) {
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
@@ -145,14 +147,17 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock) (*rocsp.Client, error) {
 	return rocsp.NewClient(rdb, timeout, clk), nil
 }
 
+// A ShortIDIssuer combines an issuance.Certificate with some fields necessary
+// to process OCSP responses: the subject name and the shortID.
 type ShortIDIssuer struct {
 	*issuance.Certificate
-	subject      pkix.RDNSequence
-	shortID      byte
-	issuerID     issuance.IssuerID
-	issuerNameID issuance.IssuerNameID
+	subject pkix.RDNSequence
+	shortID byte
 }
 
+// LoadIssuers take a map where the keys are filenames and the values are the
+// corresponding short issuer ID. It loads issuer certificates from the given
+// files and produces a []ShortIDIssuer.
 func LoadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 	var issuers []ShortIDIssuer
 	for issuerFile, shortID := range input {
@@ -178,29 +183,31 @@ func LoadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 			}
 		}
 		issuers = append(issuers, ShortIDIssuer{
-			Certificate:  cert,
-			subject:      subject,
-			shortID:      shortID,
-			issuerID:     cert.ID(),
-			issuerNameID: cert.NameID(),
+			Certificate: cert,
+			subject:     subject,
+			shortID:     shortID,
 		})
 	}
 	return issuers, nil
 }
 
+// ShortID returns the short id of an issuer. The short ID is a single byte that
+// is unique for that issuer.
 func (si *ShortIDIssuer) ShortID() byte {
 	return si.shortID
 }
 
+// FindIssuerByID returns the issuer that matches the given IssuerID or IssuerNameID.
 func FindIssuerByID(longID int64, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
 	for _, iss := range issuers {
-		if iss.issuerNameID == issuance.IssuerNameID(longID) || iss.issuerID == issuance.IssuerID(longID) {
+		if iss.NameID() == issuance.IssuerNameID(longID) || iss.ID() == issuance.IssuerID(longID) {
 			return &iss, nil
 		}
 	}
 	return nil, fmt.Errorf("no issuer found for an ID in certificateStatus: %d", longID)
 }
 
+// FindIssuerByID returns the issuer with a Subject matching the *ocsp.Response.
 func FindIssuerByName(resp *ocsp.Response, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
 	var responder pkix.RDNSequence
 	_, err := asn1.Unmarshal(resp.RawResponderName, &responder)
