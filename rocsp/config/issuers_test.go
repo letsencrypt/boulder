@@ -1,4 +1,4 @@
-package notmain
+package rocsp_config
 
 import (
 	"encoding/hex"
@@ -14,13 +14,13 @@ func TestLoadIssuers(t *testing.T) {
 		"../../test/hierarchy/int-e1.cert.pem": 23,
 		"../../test/hierarchy/int-r3.cert.pem": 99,
 	}
-	output, err := loadIssuers(input)
+	output, err := LoadIssuers(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var e1 *shortIDIssuer
-	var r3 *shortIDIssuer
+	var e1 *ShortIDIssuer
+	var r3 *ShortIDIssuer
 
 	for i, v := range output {
 		if strings.Contains(v.Certificate.Subject.String(), "E1") {
@@ -42,7 +42,7 @@ func TestFindIssuerByName(t *testing.T) {
 		"../../test/hierarchy/int-e1.cert.pem": 23,
 		"../../test/hierarchy/int-r3.cert.pem": 99,
 	}
-	issuers, err := loadIssuers(input)
+	issuers, err := LoadIssuers(input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestFindIssuerByName(t *testing.T) {
 		RawResponderName: elephant,
 	}
 
-	issuer, err := findIssuerByName(ocspResp, issuers)
+	issuer, err := FindIssuerByName(ocspResp, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
@@ -71,7 +71,7 @@ func TestFindIssuerByName(t *testing.T) {
 		RawResponderName: rhino,
 	}
 
-	issuer, err = findIssuerByName(ocspResp, issuers)
+	issuer, err = FindIssuerByName(ocspResp, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
@@ -84,34 +84,34 @@ func TestFindIssuerByID(t *testing.T) {
 		"../../test/hierarchy/int-e1.cert.pem": 23,
 		"../../test/hierarchy/int-r3.cert.pem": 99,
 	}
-	issuers, err := loadIssuers(input)
+	issuers, err := LoadIssuers(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// an IssuerNameID
-	issuer, err := findIssuerByID(66283756913588288, issuers)
+	issuer, err := FindIssuerByID(66283756913588288, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
 	test.AssertEquals(t, issuer.shortID, uint8(23))
 
 	// an IssuerID
-	issuer, err = findIssuerByID(2823400738, issuers)
+	issuer, err = FindIssuerByID(2823400738, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
 	test.AssertEquals(t, issuer.shortID, uint8(23))
 
 	// an IssuerNameID
-	issuer, err = findIssuerByID(58923463773186183, issuers)
+	issuer, err = FindIssuerByID(58923463773186183, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
 	test.AssertEquals(t, issuer.shortID, uint8(99))
 
 	// an IssuerID
-	issuer, err = findIssuerByID(2890189813, issuers)
+	issuer, err = FindIssuerByID(2890189813, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}

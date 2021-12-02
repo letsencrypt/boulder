@@ -72,6 +72,7 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 		dbMap,
 		readOnlyDb,
 		noopROCSP{},
+		nil,
 		strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"),
 		&mockOCSP{},
 		ocsp_updater_config.Config{
@@ -161,7 +162,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 
 	meta, err := updater.generateResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	err = updater.storeResponse(meta)
+	err = updater.storeResponse(context.Background(), meta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 }
 
@@ -278,7 +279,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	// ocspLastUpdate field for this cert.
 	meta, err := updater.generateResponse(ctx, status)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	err = updater.storeResponse(meta)
+	err = updater.storeResponse(context.Background(), meta)
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
 
 	// We should have 0 stale responses now.
@@ -446,7 +447,7 @@ func TestStoreResponseGuard(t *testing.T) {
 	// Attempt to update OCSP response where status.Status is good but stored status
 	// is revoked, this should fail silently
 	status.OCSPResponse = []byte("newfakeocspbytes")
-	err = updater.storeResponse(&status)
+	err = updater.storeResponse(context.Background(), &status)
 	test.AssertNotError(t, err, "Failed to update certificate status")
 
 	// Make sure the OCSP response hasn't actually changed
@@ -456,7 +457,7 @@ func TestStoreResponseGuard(t *testing.T) {
 
 	// Changing the status to the stored status should allow the update to occur
 	status.Status = core.OCSPStatusRevoked
-	err = updater.storeResponse(&status)
+	err = updater.storeResponse(context.Background(), &status)
 	test.AssertNotError(t, err, "Failed to updated certificate status")
 
 	// Make sure the OCSP response has been updated
@@ -631,6 +632,7 @@ func mkNewUpdaterWithStrings(t *testing.T, shards []string) (*OCSPUpdater, error
 		dbMap,
 		dbMap,
 		noopROCSP{},
+		nil,
 		shards,
 		&mockOCSP{},
 		ocsp_updater_config.Config{

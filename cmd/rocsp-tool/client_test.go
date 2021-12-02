@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/test"
 	"golang.org/x/crypto/ocsp"
 )
@@ -55,7 +56,7 @@ func TestStoreResponse(t *testing.T) {
 	}, issuerKey)
 	test.AssertNotError(t, err, "creating OCSP response")
 
-	issuers, err := loadIssuers(map[string]int{
+	issuers, err := rocsp_config.LoadIssuers(map[string]int{
 		"../../test/hierarchy/int-e1.cert.pem": 23,
 	})
 	if err != nil {

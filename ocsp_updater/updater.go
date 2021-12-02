@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
-	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -34,7 +33,6 @@ type ocspReadOnlyDb interface {
 type ocspDb interface {
 	ocspReadOnlyDb
 	Exec(query string, args ...interface{}) (sql.Result, error)
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
 }
 
 type rocspClientInterface interface {
@@ -109,7 +107,7 @@ func New(
 	clk clock.Clock,
 	db ocspDb,
 	readOnlyDb ocspReadOnlyDb,
-	rocspClient *rocsp.WritingClient,
+	rocspClient rocspClientInterface,
 	issuers []rocsp_config.ShortIDIssuer,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
@@ -348,8 +346,7 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
-	_, err := updater.db.ExecContext(
-		ctx,
+	_, err := updater.db.Exec(
 		`UPDATE certificateStatus
 		 SET ocspResponse=?,ocspLastUpdated=?
 		 WHERE id=?
