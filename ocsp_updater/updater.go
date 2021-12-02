@@ -322,6 +322,9 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.Cert
 
 // storeResponse stores a given CertificateStatus in the database.
 func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertStatusMetadata) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if updater.rocspClient != nil {
 		go func() {
 			ttl := status.NotAfter.Sub(updater.clk.Now())
@@ -358,7 +361,6 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 	)
 
 	if err != nil {
-		updater.log.Debugf("failed to store response in DB: %s", err)
 		updater.storedCounter.WithLabelValues("failed").Inc()
 	} else {
 		updater.storedCounter.WithLabelValues("success").Inc()
