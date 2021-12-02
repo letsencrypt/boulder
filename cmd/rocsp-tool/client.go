@@ -37,25 +37,36 @@ type processResult struct {
 	err error
 }
 
-func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
+func getStartingID(ctx context.Context, clk clock.Clock, db *sql.DB) (int64, error) {
 	// To scan the DB efficiently, we want to select only currently-valid certificates. There's a
 	// handy expires index, but for selecting a large set of rows, using the primary key will be
 	// more efficient. So first we find a good id to start with, then scan from there. Note: since
 	// AUTO_INCREMENT can skip around a bit, we add padding to ensure we get all currently-valid
 	// certificates.
-	// TODO(#5783): Allow starting from a specific ID.
-	startTime := cl.clk.Now().Add(-24 * time.Hour)
+	startTime := clk.Now().Add(-24 * time.Hour)
 	var minID *int64
-	err := cl.db.QueryRowContext(
+	err := db.QueryRowContext(
 		ctx,
 		"SELECT MIN(id) FROM certificateStatus WHERE notAfter >= ?",
 		startTime,
 	).Scan(&minID)
 	if err != nil {
-		return fmt.Errorf("selecting minID: %w", err)
+		return 0, fmt.Errorf("selecting minID: %w", err)
 	}
 	if minID == nil {
-		return fmt.Errorf("no entries in certificateStatus (where notAfter >= %s)", startTime)
+		return 0, fmt.Errorf("no entries in certificateStatus (where notAfter >= %s)", startTime)
+	}
+	return *minID, nil
+}
+
+func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFromID int64) error {
+	prevID := startFromID
+	var err error
+	if prevID == 0 {
+		prevID, err = getStartingID(ctx, cl.clk, cl.db)
+		if err != nil {
+			return fmt.Errorf("getting starting ID: %w", err)
+		}
 	}
 
 	// Find the current maximum id in certificateStatus. We do this because the table is always
@@ -68,7 +79,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	if err != nil {
 		return fmt.Errorf("selecting maxID: %w", err)
 	}
-	if minID == nil {
+	if maxID == nil {
 		return fmt.Errorf("no entries in certificateStatus")
 	}
 
@@ -76,7 +87,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 	frequency := time.Duration(float64(time.Second) / float64(time.Duration(speed.RowsPerSecond)))
 	// a set of all inflight certificate statuses, indexed by their `ID`.
 	inflightIDs := newInflight()
-	statusesToSign := cl.scanFromDB(ctx, *minID, *maxID, frequency, inflightIDs)
+	statusesToSign := cl.scanFromDB(ctx, prevID, *maxID, frequency, inflightIDs)
 
 	results := make(chan processResult, speed.ParallelSigns)
 	var runningSigners int32
@@ -118,15 +129,15 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed) error {
 // its output channel at a maximum frequency of `frequency`. When it's read all available rows, it
 // closes its output channel and exits.
 // If there is an error, it logs the error, closes its output channel, and exits.
-func (cl *client) scanFromDB(ctx context.Context, minID int64, maxID int64, frequency time.Duration, inflightIDs *inflight) <-chan *sa.CertStatusMetadata {
+func (cl *client) scanFromDB(ctx context.Context, prevID int64, maxID int64, frequency time.Duration, inflightIDs *inflight) <-chan *sa.CertStatusMetadata {
 	statusesToSign := make(chan *sa.CertStatusMetadata)
 	go func() {
 		defer close(statusesToSign)
 
 		var err error
-		currentMin := minID
+		currentMin := prevID
 		for currentMin < maxID {
-			currentMin, err = cl.scanFromDBOneBatch(ctx, minID, frequency, statusesToSign, inflightIDs)
+			currentMin, err = cl.scanFromDBOneBatch(ctx, prevID, frequency, statusesToSign, inflightIDs)
 			if err != nil {
 				log.Printf("error scanning rows: %s", err)
 			}
@@ -139,12 +150,12 @@ func (cl *client) scanFromDB(ctx context.Context, minID int64, maxID int64, freq
 // writes them to `output`. When done, it returns the highest `id` it saw during the scan.
 // We do this in batches because if we tried to scan the whole table in a single query, MariaDB
 // would terminate the query after a certain amount of data transferred.
-func (cl *client) scanFromDBOneBatch(ctx context.Context, minID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) (int64, error) {
+func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) (int64, error) {
 	rowTicker := time.NewTicker(frequency)
 
 	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id > ? ORDER BY id LIMIT ?",
 		strings.Join(sa.CertStatusMetadataFields(), ", "))
-	rows, err := cl.db.QueryContext(ctx, query, minID, cl.scanBatchSize)
+	rows, err := cl.db.QueryContext(ctx, query, prevID, cl.scanBatchSize)
 	if err != nil {
 		return -1, fmt.Errorf("scanning certificateStatus: %w", err)
 	}

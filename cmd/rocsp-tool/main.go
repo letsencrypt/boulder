@@ -75,6 +75,7 @@ func main() {
 
 func main2() error {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	startFromID := flag.Int64("start-from-id", 0, "For load-from-db, the first ID in the certificateStatus table to scan")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -146,7 +147,7 @@ func main2() error {
 		if c.ROCSPTool.LoadFromDB == nil {
 			return fmt.Errorf("config field LoadFromDB was missing")
 		}
-		err = cl.loadFromDB(ctx, c.ROCSPTool.LoadFromDB.Speed)
+		err = cl.loadFromDB(ctx, c.ROCSPTool.LoadFromDB.Speed, *startFromID)
 		if err != nil {
 			return fmt.Errorf("loading OCSP responses from DB: %w", err)
 		}
