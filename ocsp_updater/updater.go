@@ -321,18 +321,23 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.Cert
 }
 
 // storeResponse stores a given CertificateStatus in the database.
-
 func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertStatusMetadata) error {
 	if updater.rocspClient != nil {
 		go func() {
 			ttl := status.NotAfter.Sub(updater.clk.Now())
 			shortIssuerID, err := rocsp_config.FindIssuerByID(status.IssuerID, updater.issuers)
+			if err != nil {
+				updater.storedRedisCounter.WithLabelValues("missing issuer").Inc()
+				return
+			}
 			err = updater.rocspClient.StoreResponse(ctx, status.OCSPResponse, shortIssuerID.ShortID(), ttl)
 			if err != nil {
-				updater.log.Debugf("failed to store response in Redis: %s", err)
-				updater.storedRedisCounter.WithLabelValues("failed").Inc()
+				if errors.Is(err, context.Canceled) {
+					updater.storedRedisCounter.WithLabelValues("canceled").Inc()
+				} else {
+					updater.storedRedisCounter.WithLabelValues("failed").Inc()
+				}
 			} else {
-				updater.log.Debugf("successfully stored a response in Redis")
 				updater.storedRedisCounter.WithLabelValues("success").Inc()
 			}
 		}()
