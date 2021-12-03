@@ -121,6 +121,7 @@ func main() {
 		cmd.FailOnError(err, "Making Redis client")
 	}
 	issuers, err := rocsp_config.LoadIssuers(c.OCSPUpdater.Issuers)
+	cmd.FailOnError(err, "loading issuers")
 
 	tlsConfig, err := c.OCSPUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
