@@ -2489,7 +2489,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
 	// Now treat example.com as if it had a recent failure.
-	ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "example.com"}
+	ra.SA = &mockInvalidPlusValidAuthzAuthority{mockInvalidAuthorizationsAuthority{domainWithFailures: "example.com"}}
 	// Set a very restrictive police for invalid authorizations - one failure
 	// and you're done for a day.
 	ra.rlPolicies = &dummyRateLimitConfig{
