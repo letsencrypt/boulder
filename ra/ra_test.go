@@ -2470,6 +2470,46 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertNotEquals(t, secondOrder.V2Authorizations[0], order.V2Authorizations[0])
 }
 
+// Test that the failed authorizations limit is checked before authz reuse.
+func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{"CheckFailedAuthorizationsFirst": true})
+	defer features.Reset()
+
+	// Create an order (and thus a pending authz) for example.com
+	ctx := context.Background()
+	order, err := ra.NewOrder(ctx, &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"example.com"},
+	})
+	test.AssertNotError(t, err, "adding an initial order for regA")
+	test.AssertNotNil(t, order.Id, "initial order had a nil ID")
+	test.AssertEquals(t, numAuthorizations(order), 1)
+
+	// Now treat example.com as if it had a recent failure.
+	ra.SA = &mockInvalidPlusValidAuthzAuthority{mockInvalidAuthorizationsAuthority{domainWithFailures: "example.com"}}
+	// Set a very restrictive police for invalid authorizations - one failure
+	// and you're done for a day.
+	ra.rlPolicies = &dummyRateLimitConfig{
+		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+		},
+	}
+
+	// Creating an order for example.com should error with the "too many failed
+	// authorizations recently" error.
+	_, err = ra.NewOrder(ctx, &rapb.NewOrderRequest{
+		RegistrationID: Registration.Id,
+		Names:          []string{"example.com"},
+	})
+
+	test.AssertError(t, err, "expected error for domain with too many failures")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
+}
+
 // mockSAUnsafeAuthzReuse has a GetAuthorizations implementation that returns
 // an HTTP-01 validated wildcard authz.
 type mockSAUnsafeAuthzReuse struct {

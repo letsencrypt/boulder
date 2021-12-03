@@ -59,30 +59,33 @@ const (
 	// GetAuthzUseIndex causes the SA to use to add a USE INDEX hint when it
 	// queries the authz2 table.
 	GetAuthzUseIndex
+	// Check the failed authorization limit before doing authz reuse.
+	CheckFailedAuthorizationsFirst
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
-	CAAValidationMethods:     false,
-	CAAAccountURI:            false,
-	EnforceMultiVA:           false,
-	MultiVAFullResults:       false,
-	MandatoryPOSTAsGET:       false,
-	AllowV1Registration:      true,
-	V1DisableNewValidations:  false,
-	PrecertificateRevocation: false,
-	StripDefaultSchemePort:   false,
-	StoreIssuerInfo:          false,
-	StoreRevokerInfo:         false,
-	RestrictRSAKeySizes:      false,
-	FasterNewOrdersRateLimit: false,
-	NonCFSSLSigner:           false,
-	ECDSAForAll:              false,
-	StreamlineOrderAndAuthzs: false,
-	ServeRenewalInfo:         false,
-	GetAuthzReadOnly:         false,
-	GetAuthzUseIndex:         false,
+	unused:                         false,
+	CAAValidationMethods:           false,
+	CAAAccountURI:                  false,
+	EnforceMultiVA:                 false,
+	MultiVAFullResults:             false,
+	MandatoryPOSTAsGET:             false,
+	AllowV1Registration:            true,
+	V1DisableNewValidations:        false,
+	PrecertificateRevocation:       false,
+	StripDefaultSchemePort:         false,
+	StoreIssuerInfo:                false,
+	StoreRevokerInfo:               false,
+	RestrictRSAKeySizes:            false,
+	FasterNewOrdersRateLimit:       false,
+	NonCFSSLSigner:                 false,
+	ECDSAForAll:                    false,
+	StreamlineOrderAndAuthzs:       false,
+	ServeRenewalInfo:               false,
+	GetAuthzReadOnly:               false,
+	GetAuthzUseIndex:               false,
+	CheckFailedAuthorizationsFirst: false,
 }
 
 var fMu = new(sync.RWMutex)

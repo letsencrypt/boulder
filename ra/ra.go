@@ -2165,6 +2165,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err := ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID); err != nil {
 		return nil, err
 	}
+	if features.Enabled(features.CheckFailedAuthorizationsFirst) {
+		err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, newOrder.Names)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// An order's lifetime is effectively bound by the shortest remaining lifetime
 	// of its associated authorizations. For that reason it would be Uncool if
@@ -2241,11 +2247,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// If the order isn't fully authorized we need to check that the client has
 	// rate limit room for more pending authorizations
 	if len(missingAuthzNames) > 0 {
-		if err := ra.checkPendingAuthorizationLimit(ctx, newOrder.RegistrationID); err != nil {
+		err := ra.checkPendingAuthorizationLimit(ctx, newOrder.RegistrationID)
+		if err != nil {
 			return nil, err
 		}
-		if err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, missingAuthzNames); err != nil {
-			return nil, err
+		if !features.Enabled(features.CheckFailedAuthorizationsFirst) {
+			err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, missingAuthzNames)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
