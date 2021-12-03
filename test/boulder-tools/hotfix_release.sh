@@ -5,34 +5,38 @@
 set -eu
 
 STATUS="FAILURE"
+RST=$(tput sgr0)
+RED=$(tput bold && tput setaf 1)
+GRN=$(tput bold && tput setaf 2)
+BLU=$(tput bold && tput setaf 4)
 
 function exit_msg() {
   # complain to STDERR and exit with error
-  echo "$*" >&2
+  echo "${*}" >&2
   exit 2
 }
 
 function print_outcome() {
-  if [ "$STATUS" == SUCCESS ]
+  if [ "${STATUS}" == SUCCESS ]
   then
     echo
-    echo -e "\e[32m"$STATUS"\e[0m"
+    echo "${GRN}${STATUS}${RST}"
   else
     echo
-    echo -e "\e[31m"$STATUS"\e[0m"
+    echo "${RED}${STATUS}${RST}"
   fi
 }
 
 function print_heading() {
   echo
-  echo -e "\e[34m\e[1m"$1"\e[0m"
+  echo "${BLU}${1}${RST}"
 }
 
 function not_yes_no() {
     case "${1}" in
-        y | Y | YES) create_branch="yes" && return 1 ;;
-        n | N | NO)  create_branch="no" && return 1 ;;
-        *)           return 0 ;;
+      [yY][eE][sS]|[yY]) create_branch="yes" && return 1 ;;
+      [nN][oO]|[nN]) create_branch="no" && return 1 ;;
+      *) return 0 ;;
     esac
 }
 
@@ -63,13 +67,14 @@ print_heading "Latest tag:"
 echo "${latest_tag_name}"
 echo "${latest_tag_sha}"
 
+
 print_heading "Hotfix release tag:"
-if [[ "${latest_tag_name: -1}" =~ '^[0-9]+$' ]]
+if [[ "${latest_tag_name: -1}" =~ ^[0-9] ]]
 then
     new_tag_name="${latest_tag_name}a"
 else
     tag_with_last_char_removed=$(echo "${latest_tag_name}" | sed 's|.$||')
-    next_tag_letter=$(echo "${latest_tag_name: -1}" | tr "0-9a-z" "1-9a-z_")
+    next_tag_letter=$(echo "${latest_tag_name: -1}" |  tr "0-9a-z" "1-9a-z_")
     new_tag_name="${tag_with_last_char_removed}${next_tag_letter}"   
 fi
 echo "${new_tag_name}"
@@ -81,24 +86,28 @@ then
     print_heading "Creating new branch ${new_tag_name} @ ${latest_tag_sha}"
     git checkout -b "${new_tag_name}" "${latest_tag_sha}"
     git push --set-upstream origin "${new_tag_name}"
+
+    cherry_pick_sha=""
+    while [ -z "${cherry_pick_sha}" ]; do
+        read -p "Commit to cherry pick: " cherry_pick_sha
+        print_heading "Cherry-picking ${cherry_pick_sha} to branch ${new_tag_name}"
+        git cherry-pick "${cherry_pick_sha}"
+        git push --force-with-lease
+        git tag "${new_tag_name}" -s -m "${new_tag_name}" "origin/${new_tag_name}"
+    done
+
+    print_heading "Complete the following steps:"
+    echo "- Open https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml"
+    echo "- Click the 'Run Workflow' button on the right-hand-side of the page"
+    echo "- Under 'Use workflow' click 'from Branch: main'"
+    echo "- Under 'select branch' paste: ${new_tag_name} and click 'Run'"
+    echo "- Diff: https://github.com/letsencrypt/boulder/compare/${latest_tag_name}...${new_tag_name}"
+    echo "- Once the CI pass has succeeded, run: git push origin --tags"
+else
+  exit_msg "No hotfix release branch was created, exiting..."
 fi
 
-cherry_pick_sha=""
-while [ -z "${cherry_pick_sha}" ]; do
-    read -p "Commit to cherry pick: " cherry_pick_sha
-    print_heading "Cherry-picking ${cherry_pick_sha} to branch ${new_tag_name}"
-    git cherry-pick "${cherry_pick_sha}"
-    git push --force-with-lease
-    git tag "${new_tag_name}" -s -m "${new_tag_name}" "origin/${new_tag_name}"
-done
 
-print_heading "Complete the following steps:"
-echo "- Open https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml"
-echo "- Click the 'Run Workflow' button on the right-hand-side of the page"
-echo "- Under 'Use workflow' click 'from Branch: main'"
-echo "- Under 'select branch' paste: ${new_tag_name} and click 'Run'"
-echo "- Diff: https://github.com/letsencrypt/boulder/compare/${latest_tag_name}...${new_tag_name}"
-echo "- Once the CI pass has succeeded, run: git push origin --tags"
 
 # Because set -e stops execution in the instance of a command or pipeline error;
 # if we got here we assume success
