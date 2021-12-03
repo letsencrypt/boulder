@@ -37,7 +37,7 @@ func TestLoadIssuers(t *testing.T) {
 	test.AssertEquals(t, r3.shortID, uint8(99))
 }
 
-func TestFindIssuerByName(t *testing.T) {
+func TestFindIssuerByKeyHash(t *testing.T) {
 	input := map[string]int{
 		"../../test/hierarchy/int-e1.cert.pem": 23,
 		"../../test/hierarchy/int-r3.cert.pem": 99,
@@ -60,7 +60,7 @@ func TestFindIssuerByName(t *testing.T) {
 		RawResponderName: elephant,
 	}
 
-	issuer, err := FindIssuerByName(ocspResp, issuers)
+	issuer, err := FindIssuerByKeyHash(ocspResp, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
@@ -71,7 +71,7 @@ func TestFindIssuerByName(t *testing.T) {
 		RawResponderName: rhino,
 	}
 
-	issuer, err = FindIssuerByName(ocspResp, issuers)
+	issuer, err = FindIssuerByKeyHash(ocspResp, issuers)
 	if err != nil {
 		t.Fatalf("couldn't find issuer: %s", err)
 	}
