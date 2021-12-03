@@ -2165,7 +2165,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err := ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID); err != nil {
 		return nil, err
 	}
-	if !features.Enabled(features.CheckFailedAuthorizationsFirst) {
+	if features.Enabled(features.CheckFailedAuthorizationsFirst) {
 		err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, newOrder.Names)
 		if err != nil {
 			return nil, err

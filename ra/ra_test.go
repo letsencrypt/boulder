@@ -2475,7 +2475,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	_ = features.Set(map[string]bool{"V1DisableNewValidations": true})
+	_ = features.Set(map[string]bool{"CheckFailedAuthorizationsFirst": true})
 	defer features.Reset()
 
 	// Create an order (and thus a pending authz) for example.com
