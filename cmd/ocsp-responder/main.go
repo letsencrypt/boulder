@@ -87,7 +87,7 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 	return &ocspFilter{crypto.SHA1, issuerKeyHashes, issuerNameKeyHashes, serialPrefixes}, nil
 }
 
-// sourceMetrics contan the metrics used to track ocsp lookup errors
+// sourceMetrics contain the metrics used to track ocsp lookup errors
 // between redis and mysql.
 type sourceMetrics struct {
 	ocspLookups *prometheus.CounterVec
