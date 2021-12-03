@@ -56,8 +56,7 @@ trap "print_outcome" EXIT
 
 print_heading "Ensuring main branch is up to date"
 git fetch --all
-git checkout main
-git pull --rebase
+git checkout origin/main
 
 print_heading "Fetching details for the most recent release tag"
 latest_tag_sha=$(git show-ref --tags | tail -1 | awk '{print $1}')
@@ -73,41 +72,38 @@ if [[ "${latest_tag_name: -1}" =~ ^[0-9] ]]
 then
     new_tag_name="${latest_tag_name}a"
 else
-    tag_with_last_char_removed=$(echo "${latest_tag_name}" | sed 's|.$||')
     next_tag_letter=$(echo "${latest_tag_name: -1}" |  tr "0-9a-z" "1-9a-z_")
+    tag_with_last_char_removed=$(echo "${latest_tag_name}" | sed 's|.$||')
     new_tag_name="${tag_with_last_char_removed}${next_tag_letter}"   
 fi
 echo "${new_tag_name}"
 
 create_branch=""
-get_user_input "Create hotfix release branch: ${new_tag_name}? "
+release_branch_name=$(echo "${new_tag_name}" | sed 's|release-|release-branch-|')
+get_user_input "Create hotfix release branch: ${release_branch_name}? "
 if [ "${create_branch}" = yes ]
 then
-    print_heading "Creating new branch ${new_tag_name} @ ${latest_tag_sha}"
-    git checkout -b "${new_tag_name}" "${latest_tag_sha}"
-    git push --set-upstream origin "${new_tag_name}"
+    print_heading "Creating new branch ${release_branch_name} @ ${latest_tag_sha}"
+    git checkout -b "${release_branch_name}" "${latest_tag_sha}"
+    git push --set-upstream origin "${release_branch_name}"
 
     cherry_pick_sha=""
     while [ -z "${cherry_pick_sha}" ]; do
         read -p "Commit to cherry pick: " cherry_pick_sha
-        print_heading "Cherry-picking ${cherry_pick_sha} to branch ${new_tag_name}"
+        print_heading "Cherry-picking ${cherry_pick_sha} to branch ${release_branch_name}"
         git cherry-pick "${cherry_pick_sha}"
-        git push --force-with-lease
-        git tag "${new_tag_name}" -s -m "${new_tag_name}" "origin/${new_tag_name}"
+        git push origin ${release_branch_name}:${release_branch_name}
+        git tag "${new_tag_name}" -s -m "${new_tag_name}" "origin/${release_branch_name}"
     done
 
     print_heading "Complete the following steps:"
+    echo "- Diff: https://github.com/letsencrypt/boulder/compare/${latest_tag_name}...${release_branch_name}"
     echo "- Open https://github.com/letsencrypt/boulder/actions/workflows/boulder-ci.yml"
-    echo "- Click the 'Run Workflow' button on the right-hand-side of the page"
-    echo "- Under 'Use workflow' click 'from Branch: main'"
-    echo "- Under 'select branch' paste: ${new_tag_name} and click 'Run'"
-    echo "- Diff: https://github.com/letsencrypt/boulder/compare/${latest_tag_name}...${new_tag_name}"
-    echo "- Once the CI pass has succeeded, run: git push origin --tags"
+    echo "- Ensure that the CI pass for ${release_branch_name} completes successfully"
+    echo "- Run: git push origin ${new_tag_name}"
 else
   exit_msg "No hotfix release branch was created, exiting..."
 fi
-
-
 
 # Because set -e stops execution in the instance of a command or pipeline error;
 # if we got here we assume success
