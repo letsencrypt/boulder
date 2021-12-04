@@ -5,6 +5,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"fmt"
+	"strings"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
@@ -206,13 +207,19 @@ func FindIssuerByID(longID int64, issuers []ShortIDIssuer) (*ShortIDIssuer, erro
 	return nil, fmt.Errorf("no issuer found for an ID in certificateStatus: %d", longID)
 }
 
-// FindIssuerByKeyHash returns the issuer with a KeyHash matching the *ocsp.Response.
-func FindIssuerByKeyHash(resp *ocsp.Response, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
+// FindIssuerByID returns the issuer with a Subject matching the *ocsp.Response.
+func FindIssuerByName(resp *ocsp.Response, issuers []ShortIDIssuer) (*ShortIDIssuer, error) {
+	var responder pkix.RDNSequence
+	_, err := asn1.Unmarshal(resp.RawResponderName, &responder)
+	if err != nil {
+		return nil, fmt.Errorf("parsing resp.RawResponderName: %w", err)
+	}
+	var responders strings.Builder
 	for _, issuer := range issuers {
-		keyHash := issuer.KeyHash()
-		if bytes.Equal(keyHash[:], resp.ResponderKeyHash) {
+		fmt.Fprintf(&responders, "%s\n", issuer.subject)
+		if bytes.Equal(issuer.RawSubject, resp.RawResponderName) {
 			return &issuer, nil
 		}
 	}
-	return nil, fmt.Errorf("no issuer found matching OCSP response for key hash %x", resp.ResponderKeyHash)
+	return nil, fmt.Errorf("no issuer found matching OCSP response for %s. Available issuers:\n%s\n", responder, responders.String())
 }

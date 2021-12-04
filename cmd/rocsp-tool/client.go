@@ -262,7 +262,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 	if err != nil {
 		return fmt.Errorf("parsing response: %w", err)
 	}
-	issuer, err := rocsp_config.FindIssuerByKeyHash(resp, cl.issuers)
+	issuer, err := rocsp_config.FindIssuerByName(resp, cl.issuers)
 	if err != nil {
 		return fmt.Errorf("finding issuer for response: %w", err)
 	}
