@@ -22,6 +22,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -164,6 +165,76 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
 	err = updater.storeResponse(context.Background(), meta)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
+}
+
+type rocspStorage struct {
+	shortIDIssuer byte
+	response      []byte
+	ttl           time.Duration
+}
+
+type recordingROCSP struct {
+	storage []rocspStorage
+}
+
+func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
+	rr.storage = append(rr.storage, rocspStorage{
+		shortIDIssuer: shortIssuerID,
+		response:      respBytes,
+		ttl:           ttl,
+	})
+	return nil
+}
+
+// A mock ocspDb that sleeps for 50ms when Exec is called.
+type mockDBBlocksOnExec struct{}
+
+func (mdboe *mockDBBlocksOnExec) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return nil, nil
+}
+
+func (mdboe *mockDBBlocksOnExec) Exec(query string, args ...interface{}) (sql.Result, error) {
+	time.Sleep(500 * time.Millisecond)
+	return nil, nil
+}
+
+func TestROCSP(t *testing.T) {
+	updater, sac, _, fc, cleanUp := setup(t)
+	defer cleanUp()
+
+	reg := satest.CreateWorkingRegistration(t, sac)
+	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
+	test.AssertNotError(t, err, "Couldn't read test certificate")
+	_, err = sac.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      parsedCert.Raw,
+		RegID:    reg.Id,
+		Ocsp:     nil,
+		Issued:   nowNano(fc),
+		IssuerID: 66283756913588288,
+	})
+	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
+
+	recorder := &recordingROCSP{}
+	updater.rocspClient = recorder
+	updater.issuers, err = rocsp_config.LoadIssuers(
+		map[string]int{
+			"../test/hierarchy/int-e1.cert.pem": 23,
+		},
+	)
+	test.AssertNotError(t, err, "loading issuers")
+	updater.db = &mockDBBlocksOnExec{}
+
+	err = updater.storeResponse(context.Background(), &sa.CertStatusMetadata{
+		CertificateStatus: core.CertificateStatus{
+			OCSPResponse: []byte("fake response"),
+			Serial:       "fake serial",
+			IssuerID:     66283756913588288,
+		},
+	})
+	test.AssertNotError(t, err, "Couldn't store certificate status")
+	test.AssertEquals(t, len(recorder.storage), 1)
+
+	test.AssertByteEquals(t, recorder.storage[0].response, []byte("fake response"))
 }
 
 // findStaleOCSPResponsesBuffered runs findStaleOCSPResponses and returns
