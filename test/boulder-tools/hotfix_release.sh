@@ -59,8 +59,8 @@ git fetch --all
 git checkout origin/main
 
 print_heading "Fetching details for the most recent release tag"
-latest_tag_sha=$(git show-ref --tags | tail -1 | awk '{print $1}')
-latest_tag_name=$(git show-ref --tags | tail -1 | awk '{print $2}' | sed 's|refs\/tags\/||')
+latest_tag_sha=$(git ls-remote --refs --tags | tail -1 | awk '{print $1}')
+latest_tag_name=$(git ls-remote --refs --tags | tail -1 | awk '{print $2}' | sed 's|refs\/tags\/||')
 
 print_heading "Latest tag:"
 echo "${latest_tag_name}"
