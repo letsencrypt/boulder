@@ -174,10 +174,20 @@ type rocspStorage struct {
 }
 
 type recordingROCSP struct {
+	sync.Mutex
 	storage []rocspStorage
 }
 
+func (rr *recordingROCSP) get() []rocspStorage {
+	rr.Lock()
+	defer rr.Unlock()
+	var ret []rocspStorage
+	return append(ret, rr.storage...)
+}
+
 func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
+	rr.Lock()
+	defer rr.Unlock()
 	rr.storage = append(rr.storage, rocspStorage{
 		shortIDIssuer: shortIssuerID,
 		response:      respBytes,
@@ -232,9 +242,10 @@ func TestROCSP(t *testing.T) {
 		},
 	})
 	test.AssertNotError(t, err, "Couldn't store certificate status")
-	test.AssertEquals(t, len(recorder.storage), 1)
+	storage := recorder.get()
+	test.AssertEquals(t, len(storage), 1)
 
-	test.AssertByteEquals(t, recorder.storage[0].response, []byte("fake response"))
+	test.AssertByteEquals(t, storage[0].response, []byte("fake response"))
 }
 
 // findStaleOCSPResponsesBuffered runs findStaleOCSPResponses and returns
