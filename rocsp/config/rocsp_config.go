@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/rocsp"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -75,7 +76,7 @@ type RedisConfig struct {
 }
 
 // MakeClient produces a *rocsp.WritingClient from a config.
-func MakeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
+func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*rocsp.WritingClient, error) {
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)
@@ -108,11 +109,11 @@ func MakeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
 		IdleTimeout:        c.IdleTimeout.Duration,
 		IdleCheckFrequency: c.IdleCheckFrequency.Duration,
 	})
-	return rocsp.NewWritingClient(rdb, timeout, clk), nil
+	return rocsp.NewWritingClient(rdb, timeout, clk, stats), nil
 }
 
 // MakeReadClient produces a *rocsp.Client from a config.
-func MakeReadClient(c *RedisConfig, clk clock.Clock) (*rocsp.Client, error) {
+func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*rocsp.Client, error) {
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)
@@ -144,7 +145,7 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock) (*rocsp.Client, error) {
 		IdleTimeout:        c.IdleTimeout.Duration,
 		IdleCheckFrequency: c.IdleCheckFrequency.Duration,
 	})
-	return rocsp.NewClient(rdb, timeout, clk), nil
+	return rocsp.NewClient(rdb, timeout, clk, stats), nil
 }
 
 // A ShortIDIssuer combines an issuance.Certificate with some fields necessary

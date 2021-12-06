@@ -10,6 +10,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/metrics"
 )
 
 func makeClient() (*WritingClient, clock.Clock) {
@@ -33,7 +34,7 @@ func makeClient() (*WritingClient, clock.Clock) {
 		TLSConfig: tlsConfig2,
 	})
 	clk := clock.NewFake()
-	return NewWritingClient(rdb, 5*time.Second, clk), clk
+	return NewWritingClient(rdb, 5*time.Second, clk, metrics.NoopRegisterer), clk
 }
 
 func TestSetAndGet(t *testing.T) {
