@@ -48,8 +48,8 @@
   },
 
   "syslog": {
-    "stdoutlevel": 7,
-    "sysloglevel": 7
+    "stdoutlevel": 6,
+    "sysloglevel": 6
   },
   "beeline": {
       "mute": true,
