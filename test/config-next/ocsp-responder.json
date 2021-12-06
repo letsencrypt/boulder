@@ -4,6 +4,19 @@
       "dbConnectFile": "test/secrets/ocsp_responder_dburl",
       "maxOpenConns": 10
     },
+    "redis": {
+      "username": "ocsp-responder",
+      "passwordFile": "test/secrets/ocsp_responder_redis_password",
+      "addrs": [
+        "10.33.33.7:4218"
+      ],
+      "timeout": "5s",
+      "tls": {
+        "caCertFile": "test/redis-tls/minica.pem",
+        "certFile": "test/redis-tls/boulder/cert.pem",
+        "keyFile": "test/redis-tls/boulder/key.pem"
+      }
+    },
     "path": "/",
     "listenAddress": "0.0.0.0:4002",
     "issuerCerts": [

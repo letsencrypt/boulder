@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-gorp/gorp/v3"
+	"github.com/jmhodges/clock"
 
 	"golang.org/x/crypto/ocsp"
 
@@ -45,6 +46,14 @@ func mustRead(path string) []byte {
 		panic(fmt.Sprintf("read %#v: %s", path, err))
 	}
 	return b
+}
+
+func setup(t *testing.T) (clock.FakeClock, *blog.Mock, *sourceMetrics) {
+	fc := clock.NewFake()
+	fc.Add(1 * time.Hour)
+	logger := blog.NewMock()
+	metrics := newSourceMetrics(metrics.NoopRegisterer)
+	return fc, logger, metrics
 }
 
 func TestMux(t *testing.T) {
@@ -158,13 +167,15 @@ func TestResponseMatchesIssuer(t *testing.T) {
 }
 
 func TestDBHandler(t *testing.T) {
-	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
-	if err != nil {
-		t.Fatalf("newFilter: %s", err)
-	}
-	src := &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
+	fc, mockLog, metrics := setup(t)
 
-	h := bocsp.NewResponder(src, stats, blog.NewMock())
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
+	test.AssertNotError(t, err, "newFilter")
+
+	db := dbReceiver{mockSelector{}, f, mockLog}
+	src := &dbSource{fc, db, nil, f, time.Second, mockLog, metrics}
+
+	h := bocsp.NewResponder(src, stats, mockLog)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {
@@ -285,28 +296,32 @@ func (bs brokenSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func TestErrorLog(t *testing.T) {
-	mockLog := blog.NewMock()
+	fc, mockLog, metrics := setup(t)
+
 	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
-	if err != nil {
-		t.Fatalf("newFilter: %s", err)
-	}
-	src := &dbSource{brokenSelector{}, f, time.Second, mockLog}
+	test.AssertNotError(t, err, "newFilter")
+
+	db := dbReceiver{brokenSelector{}, f, mockLog}
+	src := &dbSource{fc, db, nil, f, time.Second, mockLog, metrics}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(context.Background(), ocspReq)
+	test.AssertError(t, err, "expected error")
 	test.AssertEquals(t, err.Error(), "Failure!")
 
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Looking up OCSP response")), 1)
 }
 
 func TestRequiredSerialPrefix(t *testing.T) {
+	fc, mockLog, metrics := setup(t)
+
 	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"nope"})
-	if err != nil {
-		t.Fatalf("newFilter: %s", err)
-	}
-	src := &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
+	test.AssertNotError(t, err, "newFilter")
+
+	db := dbReceiver{mockSelector{}, f, mockLog}
+	src := &dbSource{fc, db, nil, f, time.Second, mockLog, metrics}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
@@ -317,10 +332,10 @@ func TestRequiredSerialPrefix(t *testing.T) {
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
 
 	f, err = newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00", "nope"})
-	if err != nil {
-		t.Fatalf("newFilter: %s", err)
-	}
-	src = &dbSource{mockSelector{}, f, time.Second, blog.NewMock()}
+	test.AssertNotError(t, err, "newFilter")
+
+	src = &dbSource{fc, db, nil, f, time.Second, mockLog, metrics}
+
 	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertNotError(t, err, "src.Response failed with acceptable prefix")
 }
@@ -343,15 +358,98 @@ func (es expiredSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func TestExpiredUnauthorized(t *testing.T) {
+	fc, mockLog, metrics := setup(t)
+
 	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, []string{"00"})
-	if err != nil {
-		t.Fatalf("newFilter: %s", err)
-	}
-	src := &dbSource{expiredSelector{}, f, time.Second, blog.NewMock()}
+	test.AssertNotError(t, err, "newFilter")
+
+	db := dbReceiver{expiredSelector{}, f, mockLog}
+	src := &dbSource{fc, db, nil, f, time.Second, mockLog, metrics}
 
 	ocspReq, err := ocsp.ParseRequest(req)
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(context.Background(), ocspReq)
 	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
+}
+
+type alwaysSucceedLookup struct{}
+
+func (src *alwaysSucceedLookup) getResponse(context.Context, *ocsp.Request) chan lookupResponse {
+	responseChan := make(chan lookupResponse, 1)
+	defer close(responseChan)
+	responseChan <- lookupResponse{resp.OCSPResponse, nil}
+	return responseChan
+}
+
+type alwaysErrLookup struct{}
+
+func (src *alwaysErrLookup) getResponse(context.Context, *ocsp.Request) chan lookupResponse {
+	responseChan := make(chan lookupResponse, 1)
+	defer close(responseChan)
+	responseChan <- lookupResponse{nil, fmt.Errorf("Failure!")}
+	return responseChan
+}
+
+type alwaysBlockLookup struct{}
+
+func (src *alwaysBlockLookup) getResponse(context.Context, *ocsp.Request) chan lookupResponse {
+	return nil
+}
+
+func TestGetResponsePrimaryGoodSecondaryErr(t *testing.T) {
+	fc, mockLog, metrics := setup(t)
+
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
+	test.AssertNotError(t, err, "newFilter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to parse OCSP request")
+
+	src := &dbSource{fc, &alwaysSucceedLookup{}, &alwaysErrLookup{}, f, time.Second, mockLog, metrics}
+	_, _, err = src.Response(context.Background(), ocspReq)
+	test.AssertNotError(t, err, "unexpected error")
+}
+
+func TestGetResponsePrimaryErrSecondaryGood(t *testing.T) {
+	fc, mockLog, metrics := setup(t)
+
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
+	test.AssertNotError(t, err, "newFilter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to parse OCSP request")
+
+	src := &dbSource{fc, &alwaysErrLookup{}, &alwaysSucceedLookup{}, f, time.Second, mockLog, metrics}
+	_, _, err = src.Response(context.Background(), ocspReq)
+	test.AssertError(t, err, "expected error")
+}
+
+func TestGetResponsePrimaryTimeoutSecondaryGood(t *testing.T) {
+	fc, mockLog, metrics := setup(t)
+
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
+	test.AssertNotError(t, err, "newFilter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to parse OCSP request")
+
+	src := &dbSource{fc, &alwaysBlockLookup{}, &alwaysSucceedLookup{}, f, time.Second, mockLog, metrics}
+	_, _, err = src.Response(context.Background(), ocspReq)
+	test.AssertError(t, err, "expected error")
+}
+
+func TestGetResponsePrimaryGoodSecondaryTimeout(t *testing.T) {
+	fc, mockLog, metrics := setup(t)
+
+	f, err := newFilter([]string{"./testdata/test-ca.der.pem"}, nil)
+	test.AssertNotError(t, err, "newFilter")
+
+	ocspReq, err := ocsp.ParseRequest(req)
+	test.AssertNotError(t, err, "Failed to parse OCSP request")
+
+	src := &dbSource{fc, &alwaysSucceedLookup{}, &alwaysBlockLookup{}, f, time.Second, mockLog, metrics}
+	_, _, err = src.Response(context.Background(), ocspReq)
+
+	test.AssertNotError(t, err, "unexpected error")
 }
