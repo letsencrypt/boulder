@@ -111,7 +111,7 @@ func MakeClient(c *RedisConfig, clk clock.Clock) (*rocsp.WritingClient, error) {
 	return rocsp.NewWritingClient(rdb, timeout, clk), nil
 }
 
-// MakeClient produces a *rocsp.Client from a config.
+// MakeReadClient produces a *rocsp.Client from a config.
 func MakeReadClient(c *RedisConfig, clk clock.Clock) (*rocsp.Client, error) {
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
@@ -155,7 +155,7 @@ type ShortIDIssuer struct {
 	shortID byte
 }
 
-// LoadIssuers take a map where the keys are filenames and the values are the
+// LoadIssuers takes a map where the keys are filenames and the values are the
 // corresponding short issuer ID. It loads issuer certificates from the given
 // files and produces a []ShortIDIssuer.
 func LoadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
@@ -176,7 +176,7 @@ func LoadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 		var shortID byte = byte(shortID)
 		for _, issuer := range issuers {
 			if issuer.shortID == shortID {
-				return nil, fmt.Errorf("duplicate shortID in config file: %d (for %q and %q)", shortID, issuer.subject, subject)
+				return nil, fmt.Errorf("duplicate shortID '%d' in (for %q and %q) in config file", shortID, issuer.subject, subject)
 			}
 			if !issuer.IsCA {
 				return nil, fmt.Errorf("certificate for %q is not a CA certificate", subject)
@@ -191,7 +191,7 @@ func LoadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 	return issuers, nil
 }
 
-// ShortID returns the short id of an issuer. The short ID is a single byte that
+// ShortID returns the short ID of an issuer. The short ID is a single byte that
 // is unique for that issuer.
 func (si *ShortIDIssuer) ShortID() byte {
 	return si.shortID
