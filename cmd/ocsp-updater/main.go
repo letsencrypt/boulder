@@ -16,6 +16,8 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/ocsp_updater"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -112,6 +114,15 @@ func main() {
 
 	clk := cmd.Clock()
 
+	redisConf := c.OCSPUpdater.Redis
+	var rocspClient *rocsp.WritingClient
+	if redisConf != nil {
+		rocspClient, err = rocsp_config.MakeClient(redisConf, clk)
+		cmd.FailOnError(err, "making Redis client")
+	}
+	issuers, err := rocsp_config.LoadIssuers(c.OCSPUpdater.Issuers)
+	cmd.FailOnError(err, "loading issuers")
+
 	tlsConfig, err := c.OCSPUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
@@ -129,6 +140,8 @@ func main() {
 		clk,
 		db,
 		readOnlyDb,
+		rocspClient,
+		issuers,
 		serialSuffixes,
 		ogc,
 		// Necessary evil for now

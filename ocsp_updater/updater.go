@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -32,6 +33,10 @@ type ocspReadOnlyDb interface {
 type ocspDb interface {
 	ocspReadOnlyDb
 	Exec(query string, args ...interface{}) (sql.Result, error)
+}
+
+type rocspClientInterface interface {
+	StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error
 }
 
 // failCounter provides a concurrent safe counter.
@@ -63,8 +68,11 @@ type OCSPUpdater struct {
 	log blog.Logger
 	clk clock.Clock
 
-	db         ocspDb
-	readOnlyDb ocspReadOnlyDb
+	db          ocspDb
+	readOnlyDb  ocspReadOnlyDb
+	rocspClient rocspClientInterface
+
+	issuers []rocsp_config.ShortIDIssuer
 
 	ogc capb.OCSPGeneratorClient
 
@@ -89,6 +97,7 @@ type OCSPUpdater struct {
 	genStoreHistogram    prometheus.Histogram
 	generatedCounter     *prometheus.CounterVec
 	storedCounter        *prometheus.CounterVec
+	storedRedisCounter   *prometheus.CounterVec
 	markExpiredCounter   *prometheus.CounterVec
 	findStaleOCSPCounter *prometheus.CounterVec
 }
@@ -98,6 +107,8 @@ func New(
 	clk clock.Clock,
 	db ocspDb,
 	readOnlyDb ocspReadOnlyDb,
+	rocspClient rocspClientInterface,
+	issuers []rocsp_config.ShortIDIssuer,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	config ocsp_updater_config.Config,
@@ -142,6 +153,10 @@ func New(
 		Help: "A counter of OCSP response generation calls labeled by result",
 	}, []string{"result"})
 	stats.MustRegister(generatedCounter)
+	storedRedisCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_updater_stored_redis",
+		Help: "A counter of OCSP response storage calls labeled by result",
+	}, []string{"result"})
 	storedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_updater_stored",
 		Help: "A counter of OCSP response storage calls labeled by result",
@@ -170,10 +185,16 @@ func New(
 	}, []string{"result"})
 	stats.MustRegister(findStaleOCSPCounter)
 
+	var rocspClientInterface rocspClientInterface
+	if rocspClient != nil {
+		rocspClientInterface = rocspClient
+	}
 	updater := OCSPUpdater{
 		clk:                          clk,
 		db:                           db,
 		readOnlyDb:                   readOnlyDb,
+		rocspClient:                  rocspClientInterface,
+		issuers:                      issuers,
 		ogc:                          ogc,
 		log:                          log,
 		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
@@ -181,6 +202,7 @@ func New(
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
+		storedRedisCounter:           storedRedisCounter,
 		markExpiredCounter:           markExpiredCounter,
 		findStaleOCSPCounter:         findStaleOCSPCounter,
 		stalenessHistogram:           stalenessHistogram,
@@ -297,7 +319,30 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.Cert
 }
 
 // storeResponse stores a given CertificateStatus in the database.
-func (updater *OCSPUpdater) storeResponse(status *sa.CertStatusMetadata) error {
+func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertStatusMetadata) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if updater.rocspClient != nil {
+		go func() {
+			ttl := status.NotAfter.Sub(updater.clk.Now())
+			shortIssuerID, err := rocsp_config.FindIssuerByID(status.IssuerID, updater.issuers)
+			if err != nil {
+				updater.storedRedisCounter.WithLabelValues("missing issuer").Inc()
+				return
+			}
+			err = updater.rocspClient.StoreResponse(ctx, status.OCSPResponse, shortIssuerID.ShortID(), ttl)
+			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					updater.storedRedisCounter.WithLabelValues("canceled").Inc()
+				} else {
+					updater.storedRedisCounter.WithLabelValues("failed").Inc()
+				}
+			} else {
+				updater.storedRedisCounter.WithLabelValues("success").Inc()
+			}
+		}()
+	}
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
@@ -311,6 +356,12 @@ func (updater *OCSPUpdater) storeResponse(status *sa.CertStatusMetadata) error {
 		status.ID,
 		string(status.Status),
 	)
+
+	if err != nil {
+		updater.storedCounter.WithLabelValues("failed").Inc()
+	} else {
+		updater.storedCounter.WithLabelValues("success").Inc()
+	}
 	return err
 }
 
@@ -385,7 +436,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStat
 		}
 		updater.generatedCounter.WithLabelValues("success").Inc()
 
-		err = updater.storeResponse(meta)
+		err = updater.storeResponse(ctx, meta)
 		if err != nil {
 			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
 			updater.storedCounter.WithLabelValues("failed").Inc()

@@ -90,7 +90,7 @@ func main2() error {
 		return fmt.Errorf("reading JSON config file: %w", err)
 	}
 
-	issuers, err := loadIssuers(c.ROCSPTool.Issuers)
+	issuers, err := rocsp_config.LoadIssuers(c.ROCSPTool.Issuers)
 	if err != nil {
 		return fmt.Errorf("loading issuers: %w", err)
 	}
