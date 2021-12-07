@@ -100,18 +100,15 @@ func (template Config) WithOutput(w io.Writer) Config {
 func GetIssuerFile(f string) (*x509.Certificate, error) {
 	certFileBytes, err := ioutil.ReadFile(f)
 	if err != nil {
-		fmt.Println("could not read issuer file")
-		return nil, err
+		return nil, fmt.Errorf("reading issuer file: %w", err)
 	}
-	block, err := pem.Decode(certFileBytes)
-	if err != nil {
-		fmt.Println("could not decode issuer file")
-		return nil, err
+	block, _ := pem.Decode(certFileBytes)
+	if block != nil {
+		return nil, fmt.Errorf("no pem data found in issuer file")
 	}
 	issuer, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		fmt.Println("could not parse issuer cert")
-		return nil, err
+		return nil, fmt.Errorf("parsing issuer certificate: %w", err)
 	}
 	return issuer, nil
 }
