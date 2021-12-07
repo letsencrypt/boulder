@@ -28,7 +28,7 @@ func (dbc metricsCollector) Describe(ch chan<- *prometheus.Desc) {
 // Then it creates constant metrics for each Stats value on the fly based
 // on the returned data.
 //
-// Note that Collect could be called concurrently, so we depend on Stats()
+// Note that Collect could be called concurrently, so we depend on PoolStats()
 // to be concurrency-safe.
 func (dbc metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	writeStat := func(stat *prometheus.Desc, typ prometheus.ValueType, val float64) {
