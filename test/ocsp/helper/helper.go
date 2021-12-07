@@ -103,7 +103,7 @@ func GetIssuerFile(f string) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("reading issuer file: %w", err)
 	}
 	block, _ := pem.Decode(certFileBytes)
-	if block != nil {
+	if block == nil {
 		return nil, fmt.Errorf("no pem data found in issuer file")
 	}
 	issuer, err := x509.ParseCertificate(block.Bytes)
