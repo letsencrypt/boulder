@@ -9,6 +9,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -67,32 +68,58 @@ type Client struct {
 	rdb     *redis.ClusterClient
 	timeout time.Duration
 	clk     clock.Clock
+	rdc     metricsCollector
 }
 
 // NewClient creates a Client. The timeout applies to all requests, though a shorter timeout can be
 // applied on a per-request basis using context.Context.
-func NewClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *Client {
+func NewClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock, stats prometheus.Registerer) *Client {
+	dbc := metricsCollector{rdb: rdb}
+
+	labels := prometheus.Labels{"address": rdb.Options().Addrs[0], "user": rdb.Options().Username}
+	dbc.hits = prometheus.NewDesc(
+		"redis_hits",
+		"Number of times free connection was found in the pool.",
+		nil, labels)
+	dbc.misses = prometheus.NewDesc(
+		"redis_misses",
+		"Number of times free connection was NOT found in the pool.",
+		nil, labels)
+	dbc.timeouts = prometheus.NewDesc(
+		"redis_timeouts",
+		"Number of times a wait timeout occurred.",
+		nil, labels)
+	dbc.totalConns = prometheus.NewDesc(
+		"redis_total_conns",
+		"Number of total connections in the pool.",
+		nil, labels)
+	dbc.idleConns = prometheus.NewDesc(
+		"redis_idle_conns",
+		"Number of idle connections in the pool.",
+		nil, labels)
+	dbc.staleConns = prometheus.NewDesc(
+		"redis_stale_conns",
+		"Number of stale connections removed from the pool.",
+		nil, labels)
+
+	stats.MustRegister(dbc)
+
 	return &Client{
 		rdb:     rdb,
 		timeout: timeout,
 		clk:     clk,
+		rdc:     dbc,
 	}
 }
 
 // WritingClient represents a Redis client that can both read and write.
 type WritingClient struct {
-	Client
+	*Client
 }
 
 // NewWritingClient creates a WritingClient.
-func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock) *WritingClient {
-	return &WritingClient{
-		Client{
-			rdb:     rdb,
-			timeout: timeout,
-			clk:     clk,
-		},
-	}
+func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock.Clock, stats prometheus.Registerer) *WritingClient {
+	return &WritingClient{NewClient(rdb, timeout, clk, stats)}
 }
 
 // StoreResponse parses the given bytes as an OCSP response, and stores it into

@@ -117,7 +117,7 @@ func main() {
 	redisConf := c.OCSPUpdater.Redis
 	var rocspClient *rocsp.WritingClient
 	if redisConf != nil {
-		rocspClient, err = rocsp_config.MakeClient(redisConf, clk)
+		rocspClient, err = rocsp_config.MakeClient(redisConf, clk, stats)
 		cmd.FailOnError(err, "making Redis client")
 	}
 	issuers, err := rocsp_config.LoadIssuers(c.OCSPUpdater.Issuers)

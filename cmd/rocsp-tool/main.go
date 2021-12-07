@@ -98,7 +98,7 @@ func main2() error {
 		return fmt.Errorf("'issuers' section of config JSON is required.")
 	}
 	clk := cmd.Clock()
-	redisClient, err := rocsp_config.MakeClient(&c.ROCSPTool.Redis, clk)
+	redisClient, err := rocsp_config.MakeClient(&c.ROCSPTool.Redis, clk, metrics.NoopRegisterer)
 	if err != nil {
 		return fmt.Errorf("making client: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
@@ -40,7 +41,7 @@ func makeClient() (*rocsp.WritingClient, clock.Clock) {
 		TLSConfig: tlsConfig2,
 	})
 	clk := clock.NewFake()
-	return rocsp.NewWritingClient(rdb, 500*time.Millisecond, clk), clk
+	return rocsp.NewWritingClient(rdb, 500*time.Millisecond, clk, metrics.NoopRegisterer), clk
 }
 
 func TestGetStartingID(t *testing.T) {
