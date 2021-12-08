@@ -239,8 +239,10 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 	case primaryResult := <-primaryChan:
 		if primaryResult.err != nil {
-			src.metrics.ocspLookups.WithLabelValues("mysql_failed").Inc()
-			src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			if !errors.Is(primaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("mysql_failed").Inc()
+				src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			}
 			return nil, nil, primaryResult.err
 		}
 		// Parse the OCSP bytes returned from the primary source to check
@@ -274,8 +276,10 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 
 		// Check for error returned from the mysql lookup, return on error.
 		if primaryResult.err != nil {
-			src.metrics.ocspLookups.WithLabelValues("mysql_failed").Inc()
-			src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			if !errors.Is(primaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("mysql_failed").Inc()
+				src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			}
 			return nil, nil, primaryResult.err
 		}
 
