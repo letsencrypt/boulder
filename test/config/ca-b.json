@@ -55,7 +55,7 @@
         {
           "useForRSALeaves": true,
           "useForECDSALeaves": true,
-          "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
+          "issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
           "ocspURL": "http://127.0.0.1:4002/",
           "crlURL": "http://example.com/crl",
           "location": {
@@ -67,7 +67,7 @@
         {
           "useForRSALeaves": false,
           "useForECDSALeaves": false,
-          "issuerURL": "http://127.0.0.1:4000/acme/issuer-cert",
+          "issuerURL": "http://127.0.0.1:4001/aia/issuer/41127673797486028",
           "ocspURL": "http://127.0.0.1:4002/",
           "crlURL": "http://example.com/crl",
           "location": {

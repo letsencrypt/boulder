@@ -39,14 +39,24 @@
         "timeout": "15s"
       }
     },
-    "certificateChains": {
-      "http://boulder:4430/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ],
-      "http://127.0.0.1:4000/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ]
-    },
-    "alternateCertificateChains": {
-      "http://boulder:4430/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ],
-      "http://127.0.0.1:4000/acme/issuer-cert": [ "/hierarchy/intermediate-cert-rsa-a.pem" ]
-    },
+    "chains": [
+      [
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "/hierarchy/root-cert-rsa.pem"
+      ],
+      [
+        "/hierarchy/intermediate-cert-rsa-b.pem",
+        "/hierarchy/root-cert-rsa.pem"
+      ],
+      [
+        "/hierarchy/intermediate-cert-ecdsa-a.pem",
+        "/hierarchy/root-cert-ecdsa.pem"
+      ],
+      [
+        "/hierarchy/intermediate-cert-ecdsa-b.pem",
+        "/hierarchy/root-cert-ecdsa.pem"
+      ]
+    ],
     "staleTimeout": "5m",
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
