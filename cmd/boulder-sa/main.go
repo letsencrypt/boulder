@@ -27,6 +27,9 @@ type config struct {
 
 		// Max simultaneous SQL queries caused by a single RPC.
 		ParallelismPerRPC int
+
+		CacheExpiration cmd.ConfigDuration
+		CachePurge      cmd.ConfigDuration
 	}
 
 	Syslog  cmd.SyslogConfig
@@ -107,7 +110,11 @@ func main() {
 	if parallel < 1 {
 		parallel = 1
 	}
-	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, clk, logger, scope, parallel)
+
+	cacheExpiration := c.SA.CacheExpiration
+	cachePurge := c.SA.CachePurge
+
+	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, clk, logger, scope, parallel, cacheExpiration.Duration, cachePurge.Duration)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	tls, err := c.SA.TLS.Load()

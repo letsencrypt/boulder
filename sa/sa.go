@@ -85,6 +85,8 @@ func NewSQLStorageAuthority(
 	logger blog.Logger,
 	stats prometheus.Registerer,
 	parallelismPerRPC int,
+	expirationDuration time.Duration,
+	cleanupDuration time.Duration,
 ) (*SQLStorageAuthority, error) {
 	SetSQLDebug(dbMap, logger)
 
@@ -101,7 +103,10 @@ func NewSQLStorageAuthority(
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,
 		rateLimitWriteErrors: rateLimitWriteErrors,
-		cache:                cache.New(5*time.Second, 1*time.Minute),
+	}
+
+	if features.Enabled(features.CacheGetRegistrationsById) {
+		ssa.cache = cache.New(expirationDuration, cleanupDuration)
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
@@ -115,11 +120,13 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 		return nil, errIncompleteRequest
 	}
 
-	// Check if the value exists in the in-memory cache.
 	idStr := strconv.FormatInt(req.Id, 10)
-	if model, found := ssa.cache.Get(idStr); found {
-		if model, ok := model.(*regModel); ok {
-			return registrationModelToPb(model)
+	if features.Enabled(features.CacheGetRegistrationsById) {
+		// Check if the value exists in the in-memory cache.
+		if model, found := ssa.cache.Get(idStr); found {
+			if model, ok := model.(*regModel); ok {
+				return registrationModelToPb(model)
+			}
 		}
 	}
 
@@ -132,8 +139,10 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 		return nil, err
 	}
 
-	// Store the value in the in-memory cache.
-	ssa.cache.Set(idStr, model, 0)
+	if features.Enabled(features.CacheGetRegistrationsById) {
+		// Store the value in the in-memory cache.
+		ssa.cache.Set(idStr, model, cache.DefaultExpiration)
+	}
 	return registrationModelToPb(model)
 }
 

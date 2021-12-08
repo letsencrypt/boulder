@@ -61,6 +61,9 @@ const (
 	GetAuthzUseIndex
 	// Check the failed authorization limit before doing authz reuse.
 	CheckFailedAuthorizationsFirst
+	// CacheGetRegistrationsById causes the SA to in-memory cache the
+	// registrations by Id requests.
+	CacheGetRegistrationsById
 )
 
 // List of features and their default value, protected by fMu
@@ -86,6 +89,7 @@ var features = map[FeatureFlag]bool{
 	GetAuthzReadOnly:               false,
 	GetAuthzUseIndex:               false,
 	CheckFailedAuthorizationsFirst: false,
+	CacheGetRegistrationsById:      false,
 }
 
 var fMu = new(sync.RWMutex)
