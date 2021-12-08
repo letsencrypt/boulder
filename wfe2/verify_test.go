@@ -1435,7 +1435,7 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 
 	payload := `{"resource":"ima-payload"}`
 	// Sign a request using test1key
-	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost:4000/test", payload, wfe.nonceService)
+	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost:4001/test", payload, wfe.nonceService)
 	request := makePostRequestWithPath("test", body)
 
 	// Ensure that ValidPOSTForAccount produces an error since the
