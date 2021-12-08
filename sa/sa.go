@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/patrickmn/go-cache"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
@@ -57,6 +59,9 @@ type SQLStorageAuthority struct {
 	// transactions fail and so use this stat to maintain visibility into the rate
 	// this occurs.
 	rateLimitWriteErrors prometheus.Counter
+
+	// cache TODO add documentation
+	cache *cache.Cache
 }
 
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
@@ -96,6 +101,7 @@ func NewSQLStorageAuthority(
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,
 		rateLimitWriteErrors: rateLimitWriteErrors,
+		cache:                cache.New(5*time.Second, 1*time.Minute),
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
@@ -109,6 +115,14 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 		return nil, errIncompleteRequest
 	}
 
+	// Check if the value exists in the in-memory cache.
+	idStr := strconv.FormatInt(req.Id, 10)
+	if model, found := ssa.cache.Get(idStr); found {
+		if model, ok := model.(*regModel); ok {
+			return registrationModelToPb(model)
+		}
+	}
+
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, req.Id)
 	if err != nil {
@@ -118,6 +132,8 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 		return nil, err
 	}
 
+	// Store the value in the in-memory cache.
+	ssa.cache.Set(idStr, model, 0)
 	return registrationModelToPb(model)
 }
 
