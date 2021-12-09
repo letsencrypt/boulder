@@ -24,7 +24,13 @@ apt-get install -y --no-install-recommends \
   autoconf \
   automake
 
-curl -L https://github.com/google/protobuf/releases/download/v3.15.6/protoc-3.15.6-linux-x86_64.zip -o /tmp/protoc.zip
+PROTO_ARCH=x86_64
+if [ "${GOARCH}" = arm64 ]
+then
+  PROTO_ARCH=aarch_64
+fi
+
+curl -L https://github.com/google/protobuf/releases/download/v3.15.6/protoc-3.15.6-linux-"${PROTO_ARCH}".zip -o /tmp/protoc.zip
 unzip /tmp/protoc.zip -d /usr/local/protoc
 
 # Override default GOBIN and GOCACHE
