@@ -246,11 +246,11 @@ STAGE="start"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
   python3 start.py &
-  for I in $(seq 1 100); do
+  for I in $(seq 1 200); do
     sleep 1
     curl -s http://localhost:4000/directory && break
   done
-  if [[ "$I" = 100 ]]; then
+  if [[ "$I" = 200 ]]; then
     echo "Boulder did not come up after ./start.py."
     exit 1
   fi
