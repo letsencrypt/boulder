@@ -459,10 +459,9 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 
 // LookupHost sends a DNS query to find all A and AAAA records associated with
 // the provided hostname. This method assumes that the external resolver will
-// chase CNAME/DNAME aliases and return relevant records.  It will retry
-// requests in the case of temporary network errors. It can return net package,
-// context.Canceled, and context.DeadlineExceeded errors, all wrapped in the
-// DNSError type.
+// chase CNAME/DNAME aliases and return relevant records. It will retry
+// requests in the case of temporary network errors. It returns an error if
+// both the A and AAAA lookups fail, but succeeds otherwise.
 func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
@@ -481,7 +480,12 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 	wg.Wait()
 
 	if errA != nil && errAAAA != nil {
-		return nil, errA
+		// Construct a new error from both underlying errors. We can only use %w for
+		// one of them, because the go error unwrapping protocol doesn't support
+		// branching. We don't use ProblemDetails and SubProblemDetails here, because
+		// this error will get wrapped in a DNSError and further munged by higher
+		// layers in the stack.
+		return nil, fmt.Errorf("multiple errors looking up DNS: A: %w; AAAA: %s", errA, errAAAA)
 	}
 
 	var addrs []net.IP

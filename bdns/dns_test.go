@@ -374,13 +374,13 @@ func TestDNSLookupHost(t *testing.T) {
 	test.Assert(t, ip[0].To16().Equal(expected), "wrong ipv6 address")
 
 	// IPv6 error, IPv4 error
-	// Should return the IPv4 error (Refused) and not IPv6 error (NotImplemented)
+	// Should return both the IPv4 error (Refused) and the IPv6 error (NotImplemented)
 	hostname := "dualstackerror.letsencrypt.org"
 	ip, err = obj.LookupHost(context.Background(), hostname)
 	t.Logf("%s - IP: %s, Err: %s", hostname, ip, err)
 	test.AssertError(t, err, "Should be an error")
-	expectedErr := &Error{dns.TypeA, hostname, nil, dns.RcodeRefused}
-	test.AssertDeepEquals(t, err, expectedErr)
+	test.AssertContains(t, err.Error(), "REFUSED looking up A for")
+	test.AssertContains(t, err.Error(), "NOTIMP looking up AAAA for")
 }
 
 func TestDNSNXDOMAIN(t *testing.T) {
@@ -391,11 +391,11 @@ func TestDNSNXDOMAIN(t *testing.T) {
 
 	hostname := "nxdomain.letsencrypt.org"
 	_, err = obj.LookupHost(context.Background(), hostname)
-	expected := &Error{dns.TypeA, hostname, nil, dns.RcodeNameError}
-	test.AssertDeepEquals(t, err, expected)
+	test.AssertContains(t, err.Error(), "NXDOMAIN looking up A for")
+	test.AssertContains(t, err.Error(), "NXDOMAIN looking up AAAA for")
 
 	_, err = obj.LookupTXT(context.Background(), hostname)
-	expected.recordType = dns.TypeTXT
+	expected := &Error{dns.TypeTXT, hostname, nil, dns.RcodeNameError}
 	test.AssertDeepEquals(t, err, expected)
 }
 
