@@ -306,7 +306,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1, time.Second, time.Minute)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -580,7 +580,7 @@ func TestNewRegistrationNoFieldOverwrite(t *testing.T) {
 	test.AssertNotError(t, err, "Could not create new registration")
 	test.Assert(t, result.Id != 23, "ID shouldn't be set by user")
 	// TODO: Enable this test case once we validate terms agreement.
-	//test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
+	// test.Assert(t, result.Agreement != "I agreed", "Agreement shouldn't be set with invalid URL")
 }
 
 func TestNewRegistrationBadKey(t *testing.T) {
