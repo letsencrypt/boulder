@@ -18,14 +18,14 @@ do
   
   # create a docker buildx node for cross-compilation.
   docker buildx create --use --name=cross
+
+  # on EXIT, delete the docker buildx node.
+  trap "docker buildx rm cross" EXIT
   
   # build, tag, and push the image.
   docker buildx build --build-arg "GO_VERSION=${GO_VERSION}" \
     --push --tag "${TAG_NAME}" \
     --platform=linux/amd64,linux/arm64 .
-  
-  # delete the docker buildx node.
-  docker buildx rm cross
 done
 
 # TODO(@cpu): Figure out a `sed` for updating the date in `docker-compose.yml`'s
