@@ -2897,14 +2897,6 @@ func TestFinalizeOrder(t *testing.T) {
 	}, testKey)
 	test.AssertNotError(t, err, "Error creating CSR with authorized names")
 
-	// reusedKeyCSR, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
-	// 	// AccountKeyA is used as the keypair for the global Registration in this test file.
-	// 	PublicKey:          AccountKeyA.Key,
-	// 	SignatureAlgorithm: x509.SHA256WithRSA,
-	// 	DNSNames:           []string{"not-example.com", "www.not-example.com"},
-	// }, testKey)
-	// test.AssertNotError(t, err, "Error creating CSR with same pubkey as registration")
-
 	expectedCert := &x509.Certificate{
 		SerialNumber:          big.NewInt(0),
 		Subject:               pkix.Name{CommonName: "not-example.com"},
@@ -3089,14 +3081,6 @@ func TestFinalizeOrder(t *testing.T) {
 			},
 			ExpectedErrMsg: "authorizations for these names not found or expired: a.com, b.com",
 		},
-		// {
-		// 	Name: "Order with reused pubkey in CSR",
-		// 	OrderReq: &rapb.FinalizeOrderRequest{
-		// 		Order: validatedOrder,
-		// 		Csr:   reusedKeyCSR,
-		// 	},
-		// 	ExpectedErrMsg: "certificate public key must be different than account key",
-		// },
 		{
 			Name: "Order with correct authorizations, ready status",
 			OrderReq: &rapb.FinalizeOrderRequest{
