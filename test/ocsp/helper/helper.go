@@ -29,6 +29,7 @@ var (
 	ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
 	expectStatus       = flag.Int("expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown); or -1 for no enforcement.")
 	expectReason       = flag.Int("expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc); or -1 for no enforcement.")
+	issuerFile         = flag.String("issuer-file", "", "Path to issuer file. Use as an alternative to automatic fetch of issuer from the certificate.")
 )
 
 // Config contains fields which control various behaviors of the
@@ -42,6 +43,7 @@ type Config struct {
 	expectStatus       int
 	expectReason       int
 	output             io.Writer
+	issuerFile         string
 }
 
 // DefaultConfig is a Config populated with the same defaults as if no
@@ -55,6 +57,7 @@ var DefaultConfig = Config{
 	expectStatus:       *expectStatus,
 	expectReason:       *expectReason,
 	output:             os.Stdout,
+	issuerFile:         *issuerFile,
 }
 
 var parseFlagsOnce sync.Once
@@ -74,6 +77,7 @@ func ConfigFromFlags() Config {
 		expectStatus:       *expectStatus,
 		expectReason:       *expectReason,
 		output:             os.Stdout,
+		issuerFile:         *issuerFile,
 	}
 }
 
@@ -91,6 +95,22 @@ func (template Config) WithOutput(w io.Writer) Config {
 	ret := template
 	ret.output = w
 	return ret
+}
+
+func GetIssuerFile(f string) (*x509.Certificate, error) {
+	certFileBytes, err := ioutil.ReadFile(f)
+	if err != nil {
+		return nil, fmt.Errorf("reading issuer file: %w", err)
+	}
+	block, _ := pem.Decode(certFileBytes)
+	if block == nil {
+		return nil, fmt.Errorf("no pem data found in issuer file")
+	}
+	issuer, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing issuer certificate: %w", err)
+	}
+	return issuer, nil
 }
 
 func GetIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
@@ -191,7 +211,13 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 // Req makes an OCSP request using the given config for the given in-memory
 // certificate, and returns the response.
 func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
-	issuer, err := GetIssuer(cert)
+	var issuer *x509.Certificate
+	var err error
+	if config.issuerFile == "" {
+		issuer, err = GetIssuer(cert)
+	} else {
+		issuer, err = GetIssuerFile(config.issuerFile)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("getting issuer: %s", err)
 	}
