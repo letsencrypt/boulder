@@ -991,13 +991,6 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(ctx context.Context, logEvent *web
 // NewCertificate is used by clients to request the issuance of a cert for an
 // authorized identifier.
 func (wfe *WebFrontEndImpl) NewCertificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	_, _, _, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceNewAuthz)
-	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		// verifyPOST handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
-		return
-	}
 	wfe.sendError(response, logEvent, probs.NotFound("The ACME v1 new-cert endpoint is no longer supported"), nil)
 	return
 }
