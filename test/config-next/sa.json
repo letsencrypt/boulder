@@ -33,8 +33,11 @@
       "FasterNewOrdersRateLimit": true,
       "StoreRevokerInfo": true,
       "GetAuthzReadOnly": true,
-      "GetAuthzUseIndex": true
-    }
+      "GetAuthzUseIndex": true,
+      "CacheGetRegistrationsById": true
+    },
+    "cacheExpiration": "5s",
+    "cachePurge": "1m"
   },
 
   "syslog": {
