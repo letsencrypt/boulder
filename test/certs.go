@@ -91,7 +91,7 @@ func ThrowAwayCertWithSerial(t *testing.T, nameCount int, sn *big.Int, issuer *x
 	template := &x509.Certificate{
 		SerialNumber:          sn,
 		DNSNames:              names,
-		IssuingCertificateURL: []string{"http://localhost:4000/acme/issuer-cert"},
+		IssuingCertificateURL: []string{"http://localhost:4001/acme/issuer-cert/1234"},
 	}
 
 	if issuer == nil {

@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 """
 This file contains basic infrastructure for running the integration test cases.
-Most test cases are in v1_integration.py and v2_integration.py. There are a few
-exceptions: Test cases that don't test either the v1 or v2 API are in this file,
-and test cases that have to run at a specific point in the cycle (e.g. after all
-other test cases) are also in this file.
+Most test cases are in v2_integration.py. There are a few exceptions: Test cases
+that don't test either the v1 or v2 API are in this file, and test cases that
+have to run at a specific point in the cycle (e.g. after all other test cases)
+are also in this file.
 """
 import argparse
 import datetime
@@ -24,7 +24,6 @@ import startservers
 
 import chisel
 from chisel import auth_and_issue
-import v1_integration
 import v2_integration
 from helpers import *
 
@@ -67,26 +66,6 @@ def test_single_ocsp():
     p.send_signal(signal.SIGTERM)
     p.wait()
 
-def test_stats():
-    """Fetch Prometheus metrics from a sample of Boulder components to check
-       they are present.
-
-       This is a non-API test.
-    """
-    def expect_stat(port, stat):
-        url = "http://localhost:%d/metrics" % port
-        response = requests.get(url)
-        if not stat in response.text:
-            print(response.content)
-            raise(Exception("%s not present in %s" % (stat, url)))
-    expect_stat(8000, "\nresponse_time_count{")
-    expect_stat(8000, "\ngo_goroutines ")
-    expect_stat(8000, '\ngrpc_client_handling_seconds_count{grpc_method="NewRegistration",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
-
-    expect_stat(8002, '\ngrpc_server_handling_seconds_sum{grpc_method="PerformValidation",grpc_service="ra.RegistrationAuthority",grpc_type="unary"} ')
-
-    expect_stat(8001, "\ngo_goroutines ")
-
 exit_status = 1
 
 def main():
@@ -118,7 +97,6 @@ def main():
         six_months_ago = now+datetime.timedelta(days=-30*6)
         if not startservers.start(fakeclock=fakeclock(six_months_ago)):
             raise(Exception("startservers failed (mocking six months ago)"))
-        v1_integration.caa_client = caa_client = chisel.make_client()
         setup_six_months_ago()
         startservers.stop()
 
@@ -196,9 +174,6 @@ def check_slow_queries():
         raise Exception("Found slow queries in the slow query log")
 
 def run_chisel(test_case_filter):
-    for key, value in inspect.getmembers(v1_integration):
-      if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
-        value()
     for key, value in inspect.getmembers(v2_integration):
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()

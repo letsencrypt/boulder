@@ -68,7 +68,11 @@ const (
 	getChallengePath = getAPIPrefix + "chall-v3/"
 	getCertPath      = getAPIPrefix + "cert/"
 
+	// Draft or likely-to-change paths
 	renewalInfoPath = getAPIPrefix + "draft-aaron-ari/renewalInfo/"
+
+	// Non-ACME paths
+	aiaIssuerPath = "/aia/issuer/"
 )
 
 var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
@@ -401,6 +405,9 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	if features.Enabled(features.ServeRenewalInfo) {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET")
 	}
+
+	// Non-ACME endpoints
+	wfe.HandleFunc(m, aiaIssuerPath, wfe.Issuer, "GET")
 
 	// We don't use our special HandleFunc for "/" because it matches everything,
 	// meaning we can wind up returning 405 when we mean to return 404. See
