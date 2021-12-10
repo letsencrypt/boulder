@@ -264,7 +264,7 @@ func TestDNSOneServer(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
-	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
+	_, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 
 	test.AssertNotError(t, err, "No message")
 }
@@ -275,7 +275,7 @@ func TestDNSDuplicateServers(t *testing.T) {
 
 	obj := NewTest(time.Second*10, staticProvider, metrics.NoopRegisterer, clock.NewFake(), 1, blog.UseMock())
 
-	_, err = obj.LookupHost(context.Background(), "letsencrypt.org")
+	_, err = obj.LookupHost(context.Background(), "cps.letsencrypt.org")
 
 	test.AssertNotError(t, err, "No message")
 }
@@ -328,7 +328,7 @@ func TestDNSLookupHost(t *testing.T) {
 
 	ip, err = obj.LookupHost(context.Background(), "nonexistent.letsencrypt.org")
 	t.Logf("nonexistent.letsencrypt.org - IP: %s, Err: %s", ip, err)
-	test.AssertNotError(t, err, "Not an error to not exist")
+	test.AssertError(t, err, "No valid A or AAAA records should error")
 	test.Assert(t, len(ip) == 0, "Should not have IPs")
 
 	// Single IPv4 address

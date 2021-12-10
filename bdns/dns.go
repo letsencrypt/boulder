@@ -461,7 +461,7 @@ func (dnsClient *impl) lookupIP(ctx context.Context, hostname string, ipType uin
 // the provided hostname. This method assumes that the external resolver will
 // chase CNAME/DNAME aliases and return relevant records. It will retry
 // requests in the case of temporary network errors. It returns an error if
-// both the A and AAAA lookups fail, but succeeds otherwise.
+// both the A and AAAA lookups fail or are empty, but succeeds otherwise.
 func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.IP, error) {
 	var recordsA, recordsAAAA []dns.RR
 	var errA, errAAAA error
@@ -479,6 +479,36 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 	}()
 	wg.Wait()
 
+	var addrsA []net.IP
+	if errA == nil {
+		for _, answer := range recordsA {
+			if answer.Header().Rrtype == dns.TypeA {
+				a, ok := answer.(*dns.A)
+				if ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsClient.allowRestrictedAddresses) {
+					addrsA = append(addrsA, a.A)
+				}
+			}
+		}
+		if len(addrsA) == 0 {
+			errA = fmt.Errorf("no valid A records found for %s", hostname)
+		}
+	}
+
+	var addrsAAAA []net.IP
+	if errAAAA == nil {
+		for _, answer := range recordsAAAA {
+			if answer.Header().Rrtype == dns.TypeAAAA {
+				aaaa, ok := answer.(*dns.AAAA)
+				if ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsClient.allowRestrictedAddresses) {
+					addrsAAAA = append(addrsAAAA, aaaa.AAAA)
+				}
+			}
+		}
+		if len(addrsAAAA) == 0 {
+			errAAAA = fmt.Errorf("no valid AAAA records found for %s", hostname)
+		}
+	}
+
 	if errA != nil && errAAAA != nil {
 		// Construct a new error from both underlying errors. We can only use %w for
 		// one of them, because the go error unwrapping protocol doesn't support
@@ -488,24 +518,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		return nil, fmt.Errorf("multiple errors looking up DNS: A: %w; AAAA: %s", errA, errAAAA)
 	}
 
-	var addrs []net.IP
-
-	for _, answer := range recordsA {
-		if answer.Header().Rrtype == dns.TypeA {
-			if a, ok := answer.(*dns.A); ok && a.A.To4() != nil && (!isPrivateV4(a.A) || dnsClient.allowRestrictedAddresses) {
-				addrs = append(addrs, a.A)
-			}
-		}
-	}
-	for _, answer := range recordsAAAA {
-		if answer.Header().Rrtype == dns.TypeAAAA {
-			if aaaa, ok := answer.(*dns.AAAA); ok && aaaa.AAAA.To16() != nil && (!isPrivateV6(aaaa.AAAA) || dnsClient.allowRestrictedAddresses) {
-				addrs = append(addrs, aaaa.AAAA)
-			}
-		}
-	}
-
-	return addrs, nil
+	return append(addrsA, addrsAAAA...), nil
 }
 
 // LookupCAA sends a DNS query to find all CAA records associated with
