@@ -156,7 +156,9 @@ def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
-    cmd = "/usr/bin/make GO_BUILD_FLAGS='-tags \"integration\"'  "
+    cmd = """
+        /usr/bin/make GO_BUILD_FLAGS="-gcflags='all=-N -l' -tags 'integration'"
+    """
     if race_detection:
         cmd = "/usr/bin/make GO_BUILD_FLAGS='-race -tags \"integration\"'"
 

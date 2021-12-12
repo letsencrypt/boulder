@@ -1,6 +1,29 @@
 FROM buildpack-deps:focal-scm
-ARG GO_VERSION
 
+RUN apt-get update
+# Install system deps
+RUN apt-get install -y --no-install-recommends \
+  mariadb-client-core-10.3 \
+  rpm \
+  ruby \
+  ruby-dev \
+  rsyslog \
+  build-essential \
+  cmake \
+  libssl-dev \
+  opensc \
+  unzip \
+  python3-pip \
+  gcc \
+  ca-certificates \
+  openssl \
+  softhsm2 \
+  pkg-config \
+  libtool \
+  autoconf \
+  automake
+
+ARG GO_VERSION
 # Provided automatically by docker buildx.
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM

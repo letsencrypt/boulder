@@ -1,29 +1,5 @@
 #!/bin/bash -ex
 
-apt-get update
-
-# Install system deps
-apt-get install -y --no-install-recommends \
-  mariadb-client-core-10.3 \
-  rpm \
-  ruby \
-  ruby-dev \
-  rsyslog \
-  build-essential \
-  cmake \
-  libssl-dev \
-  opensc \
-  unzip \
-  python3-pip \
-  gcc \
-  ca-certificates \
-  openssl \
-  softhsm2 \
-  pkg-config \
-  libtool \
-  autoconf \
-  automake
-
 PROTO_ARCH=x86_64
 if [ "${GOARCH}" = arm64 ]
 then
@@ -48,6 +24,8 @@ GO111MODULE=on go get \
   google.golang.org/protobuf/cmd/protoc-gen-go@v1.26.0 \
   google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1.0 \
   golang.org/x/tools/cmd/stringer
+
+go install github.com/go-delve/delve/cmd/dlv@HEAD
 
 # Pebble's latest version is v2+, but it's not properly go mod compatible, so we
 # fetch it in GOPATH mode.

@@ -26,6 +26,7 @@ services:
     # service names.
     dns: 10.77.77.77
     ports:
+      - 1234:1234 # Debugging
       - 4001:4001 # ACMEv2
       - 4002:4002 # OCSP
       - 4003:4003 # OCSP
@@ -36,6 +37,8 @@ services:
       - bredis_clusterer
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
+    cap_add:
+    - SYS_PTRACE
 
   bmysql:
     image: mariadb:10.5
