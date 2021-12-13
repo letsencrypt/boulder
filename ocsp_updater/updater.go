@@ -227,6 +227,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 			),
 			args...,
 		)
+
 		// If error, log and increment retries for backoff. Else no
 		// error, proceed to push statuses to channel.
 		if err != nil {
@@ -270,6 +271,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 			updater.log.AuditErrf("finishing row scan: %s", err)
 			updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
 			updater.readFailures.Add(1)
+			return
 		}
 
 		updater.findStaleOCSPCounter.WithLabelValues("success").Inc()
