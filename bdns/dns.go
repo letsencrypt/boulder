@@ -515,7 +515,7 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 		// branching. We don't use ProblemDetails and SubProblemDetails here, because
 		// this error will get wrapped in a DNSError and further munged by higher
 		// layers in the stack.
-		return nil, fmt.Errorf("multiple errors looking up DNS: A: %w; AAAA: %s", errA, errAAAA)
+		return nil, fmt.Errorf("%w; %s", errA, errAAAA)
 	}
 
 	return append(addrsA, addrsAAAA...), nil
