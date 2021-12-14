@@ -82,11 +82,12 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	RA    rapb.RegistrationAuthorityClient
-	SA    sapb.StorageAuthorityGetterClient
-	log   blog.Logger
-	clk   clock.Clock
-	stats wfe2Stats
+	RA            rapb.RegistrationAuthorityClient
+	SA            sapb.StorageAuthorityGetterClient
+	AccountGetter accountGetter
+	log           blog.Logger
+	clk           clock.Clock
+	stats         wfe2Stats
 
 	// certificateChains maps IssuerNameIDs to slice of []byte containing a leading
 	// newline and one or more PEM encoded certificates separated by a newline,
