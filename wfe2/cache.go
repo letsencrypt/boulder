@@ -102,13 +102,14 @@ func (ac *accountCache) queryAndStore(ctx context.Context, regID *sapb.Registrat
 		ac.requests.WithLabelValues("wrongid").Inc()
 		return nil, fmt.Errorf("shouldn't happen: wrong account ID from backend. expected %d, got %d", regID.Id, account.Id)
 	}
+	// Make sure we have our own copy that no one has a pointer to.
+	copied := new(corepb.Registration)
+	proto.Merge(copied, account)
 	ac.Lock()
 	ac.cache.Add(regID.Id, accountEntry{
-		account: account,
+		account: copied,
 		expires: ac.clk.Now().Add(ac.ttl),
 	})
 	ac.Unlock()
-	copied := new(corepb.Registration)
-	proto.Merge(copied, account)
-	return copied, nil
+	return account, nil
 }
