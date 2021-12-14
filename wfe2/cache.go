@@ -10,6 +10,7 @@ import (
 	"github.com/jmhodges/clock"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 )
@@ -26,18 +27,29 @@ type AccountGetter interface {
 // accountGetter is.
 type accountCache struct {
 	sync.RWMutex
-	under AccountGetter
-	ttl   time.Duration
-	cache *lru.Cache
-	clk   clock.Clock
+	under    AccountGetter
+	ttl      time.Duration
+	cache    *lru.Cache
+	clk      clock.Clock
+	requests *prometheus.CounterVec
 }
 
-func NewAccountCache(under AccountGetter, maxEntries int, ttl time.Duration, clk clock.Clock) *accountCache {
+func NewAccountCache(under AccountGetter,
+	maxEntries int,
+	ttl time.Duration,
+	clk clock.Clock,
+	stats prometheus.Registerer,
+) *accountCache {
+	requestsCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "cache_requests",
+	}, []string{"status"})
+	stats.MustRegister(requestsCount)
 	return &accountCache{
-		under: under,
-		ttl:   ttl,
-		cache: lru.New(maxEntries),
-		clk:   clk,
+		under:    under,
+		ttl:      ttl,
+		cache:    lru.New(maxEntries),
+		clk:      clk,
+		requests: requestsCount,
 	}
 }
 
@@ -51,13 +63,15 @@ func (ac *accountCache) GetRegistration(ctx context.Context, regID *sapb.Registr
 	val, ok := ac.cache.Get(regID.Id)
 	ac.RUnlock()
 	if !ok {
+		ac.requests.WithLabelValues("miss").Inc()
 		return ac.queryAndStore(ctx, regID)
 	}
 	entry, ok := val.(accountEntry)
 	if !ok {
+		ac.requests.WithLabelValues("wrongtype").Inc()
 		return nil, fmt.Errorf("shouldn't happen: wrong type %T for cache entry", entry)
 	}
-	if entry.expires.After(ac.clk.Now()) {
+	if entry.expires.Before(ac.clk.Now()) {
 		// Note: this has a slight TOCTOU issue but it's benign. If the entry for this account
 		// was expired off by some other goroutine and then a fresh one added, removing it a second
 		// time will just cause a slightly lower cache rate.
@@ -66,10 +80,16 @@ func (ac *accountCache) GetRegistration(ctx context.Context, regID *sapb.Registr
 		ac.Lock()
 		ac.cache.Remove(regID.Id)
 		ac.Unlock()
+		ac.requests.WithLabelValues("expired").Inc()
 		return ac.queryAndStore(ctx, regID)
+	}
+	if entry.account.Id != regID.Id {
+		ac.requests.WithLabelValues("wrongid").Inc()
+		return nil, fmt.Errorf("shouldn't happen: wrong account ID. expected %d, got %d", regID.Id, entry.account.Id)
 	}
 	copied := new(corepb.Registration)
 	proto.Merge(copied, entry.account)
+	ac.requests.WithLabelValues("hit").Inc()
 	return copied, nil
 }
 
@@ -77,6 +97,10 @@ func (ac *accountCache) queryAndStore(ctx context.Context, regID *sapb.Registrat
 	account, err := ac.under.GetRegistration(ctx, regID)
 	if err != nil {
 		return nil, err
+	}
+	if account.Id != regID.Id {
+		ac.requests.WithLabelValues("wrongid").Inc()
+		return nil, fmt.Errorf("shouldn't happen: wrong account ID from backend. expected %d, got %d", regID.Id, account.Id)
 	}
 	ac.Lock()
 	ac.cache.Add(regID.Id, accountEntry{
