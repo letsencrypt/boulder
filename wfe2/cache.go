@@ -26,7 +26,7 @@ type AccountGetter interface {
 // accountGetter. It is safe for concurrent access so long as the underlying
 // accountGetter is.
 type accountCache struct {
-	sync.RWMutex
+	sync.Mutex
 	under    AccountGetter
 	ttl      time.Duration
 	cache    *lru.Cache
@@ -60,9 +60,9 @@ type accountEntry struct {
 }
 
 func (ac *accountCache) GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
-	ac.RLock()
+	ac.Lock()
 	val, ok := ac.cache.Get(regID.Id)
-	ac.RUnlock()
+	ac.Unlock()
 	if !ok {
 		ac.requests.WithLabelValues("miss").Inc()
 		return ac.queryAndStore(ctx, regID)
