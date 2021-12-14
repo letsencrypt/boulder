@@ -8,8 +8,11 @@
     "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
-    "weakKeyFile": "test/example-weak-keys.json",
-    "blockedKeyFile": "test/example-blocked-keys.yaml",
+    "goodkey": {
+      "weakKeyFile": "test/example-weak-keys.json",
+      "blockedKeyFile": "test/example-blocked-keys.yaml",
+      "fermatRounds": 100
+    },
     "orderLifetime": "168h",
     "issuerCerts": [
       "/hierarchy/intermediate-cert-rsa-a.pem",

@@ -59,13 +59,15 @@ type config struct {
 		// than the minTimeToExpiry field for the OCSP Updater.
 		LifespanOCSP cmd.ConfigDuration
 
-		// WeakKeyFile is the path to a JSON file containing truncated RSA modulus
-		// hashes of known easily enumerable keys.
+		// GoodKey is an embedded config stanza for the goodkey library.
+		GoodKey *goodkey.Config
+
+		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
+		// TODO(#5851): Remove this.
 		WeakKeyFile string
 
-		// BlockedKeyFile is the path to a YAML file containing Base64 encoded
-		// SHA256 hashes of SubjectPublicKeyInfo's that should be considered
-		// administratively blocked.
+		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
+		// TODO(#5851): Remove this.
 		BlockedKeyFile string
 
 		// Path to directory holding orphan queue files, if not provided an orphan queue
@@ -209,7 +211,17 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := sapb.NewStorageAuthorityClient(conn)
 
-	kp, err := goodkey.NewKeyPolicy(c.CA.WeakKeyFile, c.CA.BlockedKeyFile, sa.KeyBlocked)
+	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
+	if c.CA.GoodKey == nil {
+		c.CA.GoodKey = &goodkey.Config{}
+	}
+	if c.CA.GoodKey.WeakKeyFile == "" && c.CA.WeakKeyFile != "" {
+		c.CA.GoodKey.WeakKeyFile = c.CA.WeakKeyFile
+	}
+	if c.CA.GoodKey.BlockedKeyFile == "" && c.CA.BlockedKeyFile != "" {
+		c.CA.GoodKey.BlockedKeyFile = c.CA.BlockedKeyFile
+	}
+	kp, err := goodkey.NewKeyPolicy(c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var orphanQueue *goque.Queue

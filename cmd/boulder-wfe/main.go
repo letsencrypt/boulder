@@ -153,7 +153,10 @@ func main() {
 
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
 	// don't load any weak keys, but do load blocked keys
-	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile, sac.KeyBlocked)
+	kp, err := goodkey.NewKeyPolicy(&goodkey.Config{
+		WeakKeyFile:    "",
+		BlockedKeyFile: c.WFE.BlockedKeyFile,
+	}, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 	wfe, err := wfe.NewWebFrontEndImpl(stats, clk, kp, rns, npm, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
