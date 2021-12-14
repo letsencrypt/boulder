@@ -390,6 +390,9 @@ func main() {
 
 	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
 	// The WFE does not do weak key checking, just blocked key checking.
+	if c.WFE.GoodKey == nil {
+		c.WFE.GoodKey = &goodkey.Config{}
+	}
 	if c.WFE.GoodKey.BlockedKeyFile == "" && c.WFE.BlockedKeyFile != "" {
 		c.WFE.GoodKey.BlockedKeyFile = c.WFE.BlockedKeyFile
 	}

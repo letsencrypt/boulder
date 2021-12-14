@@ -224,6 +224,9 @@ func main() {
 	}
 
 	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
+	if c.RA.GoodKey == nil {
+		c.RA.GoodKey = &goodkey.Config{}
+	}
 	if c.RA.GoodKey.WeakKeyFile == "" && c.RA.WeakKeyFile != "" {
 		c.RA.GoodKey.WeakKeyFile = c.RA.WeakKeyFile
 	}
