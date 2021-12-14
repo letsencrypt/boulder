@@ -388,7 +388,7 @@ func checkSmallPrimes(i *big.Int) bool {
 func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
 	// Pre-allocate some big numbers that we'll use a lot down below.
 	one := big.NewInt(1)
-	bb := big.NewInt(0)
+	bb := new(big.Int)
 
 	// Any odd integer is equal to a difference of squares of integers:
 	//   n = a^2 - b^2 = (a + b)(a - b)
@@ -403,12 +403,12 @@ func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
 	// first integer greater than the square root of n. Unfortunately, big.Int's
 	// built-in square root function takes the floor, so we have to add one to get
 	// the ceil.
-	a := big.NewInt(0)
+	a := new(big.Int)
 	a.Sqrt(n).Add(a, one)
 
-	// We calculate b2 to see if it is a perfect square (b^2), and therefore b is an
-	// integer. Specifically, b2 = a^2 - n.
-	b2 := big.NewInt(0)
+	// We calculate b2 to see if it is a perfect square (i.e. b^2), and therefore
+	// b is an integer. Specifically, b2 = a^2 - n.
+	b2 := new(big.Int)
 	b2.Mul(a, a).Sub(b2, n)
 
 	for i := 0; i < rounds; i++ {
@@ -417,11 +417,11 @@ func checkPrimeFactorsTooClose(n *big.Int, rounds int) error {
 		bb.Sqrt(b2).Mul(bb, bb)
 		if b2.Cmp(bb) == 0 {
 			// b2 is a perfect square, so we've found integer values of a and b,
-			// and could easily compute p and q as their sum and difference.
+			// and can easily compute p and q as their sum and difference.
 			bb.Sqrt(bb)
-			p := big.NewInt(0).Add(a, bb)
-			q := big.NewInt(0).Sub(a, bb)
-			return fmt.Errorf("public modulus n = pq factored into p: %s; q: %s", p.String(), q.String())
+			p := new(big.Int).Add(a, bb)
+			q := new(big.Int).Sub(a, bb)
+			return fmt.Errorf("public modulus n = pq factored into p: %s; q: %s", p, q)
 		}
 
 		// Set up the next iteration by incrementing a by one and recalculating b2.
