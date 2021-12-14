@@ -253,18 +253,23 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 		// If error, log and increment retries for backoff. Else no
 		// error, proceed to push statuses to channel.
 		if err != nil {
-			updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
+			updater.log.AuditErrf("failed to find stale OCSP responses: %s", err)
 			updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
 			updater.readFailures.Add(1)
 			return
 		}
+		defer func() {
+			err := rows.Close()
+			if err != nil {
+				updater.log.AuditErrf("closing query rows: %s", err)
+			}
+		}()
 
 		for rows.Next() {
 			var status sa.CertStatusMetadata
 			err := sa.ScanCertStatusMetadataRow(rows, &status)
 			if err != nil {
-				rows.Close()
-				updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
+				updater.log.AuditErrf("failed to scan metadata status row: %s", err)
 				updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
 				updater.readFailures.Add(1)
 				return
@@ -273,14 +278,19 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 			updater.stalenessHistogram.Observe(staleness)
 			select {
 			case <-ctx.Done():
+				err := ctx.Err()
+				if err != nil {
+					updater.log.AuditErrf("context done reading rows: %s", err)
+				}
 				return
 			case staleStatusesOut <- status:
 			}
 		}
+
 		// Ensure the query wasn't interrupted before it could complete.
-		err = rows.Close()
+		err = rows.Err()
 		if err != nil {
-			updater.log.AuditErrf("Failed to find stale OCSP responses: %s", err)
+			updater.log.AuditErrf("finishing row scan: %s", err)
 			updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
 			updater.readFailures.Add(1)
 			return
