@@ -307,7 +307,7 @@ func TestCheckPrimeFactorsTooClose(t *testing.T) {
 	n := big.NewInt(5959)
 	test.AssertNotError(t, checkPrimeFactorsTooClose(n, 2), "factored n in too few iterations")
 	err := checkPrimeFactorsTooClose(n, 3)
-	test.AssertError(t, checkPrimeFactorsTooClose(n, 3), "failed to factor n")
+	test.AssertError(t, err, "failed to factor n")
 
 	// These factors differ only in their second-to-last digit. They're so close
 	// that a single iteration of Fermat's method is sufficient to find them.
