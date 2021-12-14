@@ -3,6 +3,7 @@ package wfe2
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/golang/groupcache/lru"
@@ -24,6 +25,7 @@ type AccountGetter interface {
 // accountGetter. It is safe for concurrent access so long as the underlying
 // accountGetter is.
 type accountCache struct {
+	sync.RWMutex
 	under AccountGetter
 	ttl   time.Duration
 	cache *lru.Cache
@@ -45,7 +47,9 @@ type accountEntry struct {
 }
 
 func (ac *accountCache) GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
+	ac.RLock()
 	val, ok := ac.cache.Get(regID.Id)
+	ac.RUnlock()
 	if !ok {
 		return ac.queryAndStore(ctx, regID)
 	}
@@ -57,7 +61,11 @@ func (ac *accountCache) GetRegistration(ctx context.Context, regID *sapb.Registr
 		// Note: this has a slight TOCTOU issue but it's benign. If the entry for this account
 		// was expired off by some other goroutine and then a fresh one added, removing it a second
 		// time will just cause a slightly lower cache rate.
+		// We have to actively remove expired entries, because otherwise each retrieval counts as
+		// a "use" and they won't exit the cache on their own.
+		ac.Lock()
 		ac.cache.Remove(regID.Id)
+		ac.Unlock()
 		return ac.queryAndStore(ctx, regID)
 	}
 	copied := new(corepb.Registration)
@@ -70,10 +78,12 @@ func (ac *accountCache) queryAndStore(ctx context.Context, regID *sapb.Registrat
 	if err != nil {
 		return nil, err
 	}
+	ac.Lock()
 	ac.cache.Add(regID.Id, accountEntry{
 		account: account,
 		expires: ac.clk.Now().Add(ac.ttl),
 	})
+	ac.Unlock()
 	copied := new(corepb.Registration)
 	proto.Merge(copied, account)
 	return copied, nil
