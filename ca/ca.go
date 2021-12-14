@@ -397,14 +397,8 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	if err := csrlib.VerifyCSR(
-		ctx,
-		csr,
-		ca.maxNames,
-		&ca.keyPolicy,
-		ca.pa,
-		issueReq.RegistrationID,
-	); err != nil {
+	err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
+	if err != nil {
 		ca.log.AuditErr(err.Error())
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.

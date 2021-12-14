@@ -24,11 +24,9 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -36,15 +34,12 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
-	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	ira "github.com/letsencrypt/boulder/test/inmem/ra"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
-	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/square/go-jose.v2"
@@ -880,191 +875,6 @@ func TestRelativeDirectory(t *testing.T) {
 		body := replaceRandomKey(responseWriter.Body.Bytes())
 		test.AssertUnmarshaledEquals(t, string(body), fmt.Sprintf(tt.result, randomKey, randomDirKeyExplanationLink))
 	}
-}
-
-// TODO: Write additional test cases for:
-//  - RA returns with a failure
-func TestIssueCertificate(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	mux := wfe.Handler(metrics.NoopRegisterer)
-	mockLog := wfe.log.(*blog.Mock)
-
-	// The mock CA we use always returns the same test certificate, with a Not
-	// Before of 2015-09-22. Since we're currently using a real RA instead of a
-	// mock (see below), that date would trigger failures for excessive
-	// backdating. So we set the fake clock's time to a time that matches that
-	// test certificate.
-	testTime := time.Date(2015, 9, 9, 22, 56, 0, 0, time.UTC)
-	fc.Add(fc.Now().Sub(testTime))
-
-	mockCertPEM, err := ioutil.ReadFile("test/not-an-example.com.crt")
-	test.AssertNotError(t, err, "Could not load mock cert")
-
-	// TODO: Use a mock RA so we can test various conditions of authorized, not
-	// authorized, etc.
-	stats := metrics.NoopRegisterer
-
-	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, wfe.log, metrics.NoopRegisterer)
-	ra := ra.NewRegistrationAuthorityImpl(
-		fc,
-		wfe.log,
-		stats,
-		0,
-		testKeyPolicy,
-		100,
-		true,
-		300*24*time.Hour,
-		7*24*time.Hour,
-		nil,
-		noopCAA{},
-		0,
-		ctp,
-		nil,
-		nil,
-	)
-	ra.SA = mocks.NewStorageAuthority(fc)
-	ra.CA = &mocks.MockCA{
-		PEM: mockCertPEM,
-	}
-	ra.PA = &mockPA{}
-	wfe.RA = ira.RA{Impl: ra}
-	responseWriter := httptest.NewRecorder()
-
-	// GET instead of POST should be rejected
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(newCertPath),
-	})
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
-
-	// POST, but no body.
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "POST",
-		Header: map[string][]string{
-			"Content-Length": {"0"},
-		},
-	})
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No body on POST","status":400}`)
-
-	// POST, but body that isn't valid JWS
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
-
-	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload did not parse as JSON","status":400}`)
-
-	// Valid, signed JWS body, payload is '{}'
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(
-			signRequest(t, "{}", wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload does not specify a resource","status":400}`)
-
-	// Valid, signed JWS body, payload is '{"resource":"new-cert"}'
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{"resource":"new-cert"}`, wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Error parsing certificate request: asn1: syntax error: sequence truncated","status":400}`)
-
-	// Valid, signed JWS body, payload has an invalid signature on CSR and no authorizations:
-	// alias b64url="base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'"
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=foo.com | \
-	// sed 's/foo.com/fob.com/' | b64url
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(),
-		responseWriter,
-		makePostRequest(signRequest(t, `{
-      "resource":"new-cert",
-      "csr": "MIICVzCCAT8CAQAwEjEQMA4GA1UEAwwHZm9iLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKzHhqcMSTVjBu61vufGVmIYM4mMbWXgndHOUWnIqSKcNtFtPQ465tcZRT5ITIZWXGjsmgDrj31qvG3t5qLwyaF5hsTvFHK72nLMAQhdgM6481Qe9yaoaulWpkGr_9LVz4jQ9pGAaLVamXGpSxV-ipTOo79Sev4aZE8ksD9atEfWtcOD9w8_zj74vpWjTAHN49Q88chlChVqakn0zSfHPfS-jF8g0UTddBuF0Ti3sZChjxzbo6LwZ4182xX7XPnOLav3AGj0Su7j5XMl3OpenOrlWulWJeZIHq5itGW321j306XiGdbrdWH4K7JygICFds6oolwQRGBY6yinAtCgkTcCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxPiHOtKuBxtvecMNtLkTSuTyEkusQGnjoFDaKe5oqwGYQgy0YBii2-BbaPmqS4ZaDc-vDz_RLeKH5ZiH-NliYR1V_CRtpFLQi18g_2pLQnZLVO3ENs-SM37nU_nBGn9O93t2bkssoM3fZmtgp3R2W7I_wvx7Z8oWKa4boTeBAg_q9Gmi6QskZBddK7A4S_vOR0frU6QSPK_ksPhvovp9fwb6CVKrlJWf556UwRPWgbkW39hvTxK2KHhrUEg3oawNkWde2jZtnZ9e-9zpw8-_5O0X7-YN0ucbFTfQybce_ReuLlGepiHT5bvVavBZoIvqw1XOgSMvGgZFU8tAWMBlj"
-    }`, wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Error creating new cert :: invalid signature on CSR","status":400}`)
-
-	// Valid, signed JWS body, payload has a valid CSR but no authorizations:
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=meep.com | b64url
-	mockLog.Clear()
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-			"resource":"new-cert",
-			"csr": "MIICWDCCAUACAQAwEzERMA8GA1UEAwwIbWVlcC5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCaqzue57mgXEoGTZZoVkkCZraebWgXI8irX2BgQB1A3iZa9onxGPMcWQMxhSuUisbEJi4UkMcVST12HX01rUwhj41UuBxJvI1w4wvdstssTAaa9c9tsQ5-UED2bFRL1MsyBdbmCF_-pu3i-ZIYqWgiKbjVBe3nlAVbo77zizwp3Y4Tp1_TBOwTAuFkHePmkNT63uPm9My_hNzsSm1o-Q519Cf7ry-JQmOVgz_jIgFVGFYJ17EV3KUIpUuDShuyCFATBQspgJSN2DoXRUlQjXXkNTj23OxxdT_cVLcLJjytyG6e5izME2R2aCkDBWIc1a4_sRJ0R396auPXG6KhJ7o_AgMBAAGgADANBgkqhkiG9w0BAQsFAAOCAQEALu046p76aKgvoAEHFINkMTgKokPXf9mZ4IZx_BKz-qs1MPMxVtPIrQDVweBH6tYT7Hfj2naLry6SpZ3vUNP_FYeTFWgW1V03LiqacX-QQgbEYtn99Dt3ScGyzb7EH833ztb3vDJ_-ha_CJplIrg-kHBBrlLFWXhh-I9K1qLRTNpbhZ18ooFde4Sbhkw9o9fKivGhx9aYr7ZbjRsNtKit_DsG1nwEXz53TMJ2vB9IQY29coJv_n5NFLkvBfzbG5faRNiFcimPYBO2jFdaA2mWzfxltLtwMF_dBwzTXDpMo3TVT9zEdV8YpsWqr63igqGDZVpKenlkqvRTeGJVayVuMA"
-		}`, wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`unauthorized","detail":"Error creating new cert :: authorizations for these names not found or expired: meep.com","status":403}`)
-	assertCsrLogged(t, mockLog)
-
-	mockLog.Clear()
-	responseWriter.Body.Reset()
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-			"resource":"new-cert",
-			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
-		}`, wfe.nonceService)))
-	assertCsrLogged(t, mockLog)
-	cert, err := core.LoadCert("test/not-an-example.com.crt")
-	test.AssertNotError(t, err, "Could not load cert")
-	test.AssertEquals(t,
-		responseWriter.Body.String(),
-		string(cert.Raw))
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/cert/0000ff0000000000000e4b4f67d86e818c46")
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/issuer-cert>;rel="up"`)
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Content-Type"),
-		"application/pkix-cert")
-	reqlogs := mockLog.GetAllMatching(`Certificate request - successful`)
-	test.AssertEquals(t, len(reqlogs), 1)
-	test.AssertContains(t, reqlogs[0], `INFO: `)
-	test.AssertContains(t, reqlogs[0], `[AUDIT] `)
-	test.AssertContains(t, reqlogs[0], `"CommonName":"not-an-example.com",`)
-
-	mockLog.Clear()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-			"resource":"new-cert",
-			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
-		}`, wfe.nonceService)))
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/issuer-cert>;rel="up"`)
-
-	mockLog.Clear()
-	responseWriter.Body.Reset()
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-      "resource": "new-cert",
-      "csr": "MIICWjCCAUICADAWMRQwEgYDVQQDEwtleGFtcGxlLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMpwCSKfLhKC3SnvLNpVayAEyAHVixkusgProAPZRBH0VAog_r4JOfoJez7ABiZ2ZIXXA2gg65_05HkGNl9ww-sa0EY8eCty_8WcHxqzafUnyXOJZuLMPJjaJ2oiBv_3BM7PZgpFzyNZ0_0ZuRKdFGtEY-vX9GXZUV0A3sxZMOpce0lhHAiBk_vNARJyM2-O-cZ7WjzZ7R1T9myAyxtsFhWy3QYvIwiKVVF3lDp3KXlPZ_7wBhVIBcVSk0bzhseotyUnKg-aL5qZIeB1ci7IT5qA_6C1_bsCSJSbQ5gnQwIQ0iaUV_SgUBpKNqYbmnSdZmDxvvW8FzhuL6JSDLfBR2kCAwEAAaAAMA0GCSqGSIb3DQEBCwUAA4IBAQBxxkchTXfjv07aSWU9brHnRziNYOLvsSNiOWmWLNlZg9LKdBy6j1xwM8IQRCfTOVSkbuxVV-kU5p-Cg9UF_UGoerl3j8SiupurTovK9-L_PdX0wTKbK9xkh7OUq88jp32Rw0eAT87gODJRD-M1NXlTvm-j896e60hUmL-DIe3iPbFl8auUS-KROAWjci-LJZYVdomm9Iw47E-zr4Hg27EdZhvCZvSyPMK8ioys9mNg5TthHB6ExepKP1YW3HpQa1EdUVYWGEvyVL4upQZOxuEA1WJqHv6iVDzsQqkl5kkahK87NKTPS59k1TFetjw2GLnQ09-g_L7kT8dpq3Bk5Wo="
-    }`, wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"CSR generated using a pre-1.0.2 OpenSSL with a client that doesn't properly specify the CSR version. See https://community.letsencrypt.org/t/openssl-bug-information/19591","status":400}`)
-
-	// Test the CSR signature type counter works
-	test.AssertMetricWithLabelsEquals(
-		t, wfe.csrSignatureAlgs, prometheus.Labels{"type": "SHA256-RSA"}, 4)
 }
 
 func TestGetChallenge(t *testing.T) {
@@ -2220,33 +2030,6 @@ func assertCsrLogged(t *testing.T, mockLog *blog.Mock) {
 			len(matches)))
 }
 
-func TestLogCsrPem(t *testing.T) {
-	const certificateRequestJSON = `{
-		"csr": "MIICWTCCAUECAQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycX3ca-fViOuRWF38mssORISFxbJvspDfhPGRBZDxJ63NIqQzupB-6dp48xkcX7Z_KDaRJStcpJT2S0u33moNT4FHLklQBETLhExDk66cmlz6Xibp3LGZAwhWuec7wJoEwIgY8oq4rxihIyGq7HVIJoq9DqZGrUgfZMDeEJqbphukQOaXGEop7mD-eeu8-z5EVkB1LiJ6Yej6R8MAhVPHzG5fyOu6YVo6vY6QgwjRLfZHNj5XthxgPIEETZlUbiSoI6J19GYHvLURBTy5Ys54lYAPIGfNwcIBAH4gtH9FrYcDY68R22rp4iuxdvkf03ZWiT0F2W1y7_C9B2jayTzvQIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAHd6Do9DIZ2hvdt1GwBXYjsqprZidT_DYOMfYcK17KlvdkFT58XrBH88ulLZ72NXEpiFMeTyzfs3XEyGq_Bbe7TBGVYZabUEh-LOskYwhgcOuThVN7tHnH5rhN-gb7cEdysjTb1QL-vOUwYgV75CB6PE5JVYK-cQsMIVvo0Kz4TpNgjJnWzbcH7h0mtvub-fCv92vBPjvYq8gUDLNrok6rbg05tdOJkXsF2G_W-Q6sf2Fvx0bK5JeH4an7P7cXF9VG9nd4sRt5zd-L3IcyvHVKxNhIJXZVH0AOqh_1YrKI9R0QKQiZCEy0xN1okPlcaIVaFhb7IKAHPxTI3r5f72LXY"
-	}`
-	wfe, _ := setupWFE(t)
-	var certificateRequest core.CertificateRequest
-	err := json.Unmarshal([]byte(certificateRequestJSON), &certificateRequest)
-	test.AssertNotError(t, err, "Unable to parse certificateRequest")
-
-	regPB, err := wfe.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: 789})
-	test.AssertNotError(t, err, "Unable to get registration")
-	reg, err := bgrpc.PbToRegistration(regPB)
-	test.AssertNotError(t, err, "Unable to unmarshal registration")
-
-	req, err := http.NewRequest("GET", "http://[::1]/", nil)
-	test.AssertNotError(t, err, "NewRequest failed")
-	req.RemoteAddr = "12.34.98.76"
-	req.Header.Set("X-Forwarded-For", "10.0.0.1,172.16.0.1")
-
-	mockLog := wfe.log.(*blog.Mock)
-	mockLog.Clear()
-
-	wfe.logCsr(req, certificateRequest, reg.ID)
-
-	assertCsrLogged(t, mockLog)
-}
-
 func TestLengthRequired(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	_, _, _, prob := wfe.verifyPOST(ctx, newRequestEvent(), &http.Request{
@@ -2380,24 +2163,6 @@ func TestVerifyPOSTUsesStoredKey(t *testing.T) {
 	// registration with test2Key
 	_, _, _, err := wfe.verifyPOST(ctx, newRequestEvent(), makePostRequest(signRequest(t, `{"resource":"foo"}`, wfe.nonceService)), true, "foo")
 	test.AssertError(t, err, "No error returned when provided key differed from stored key.")
-}
-
-func TestBadKeyCSR(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	responseWriter := httptest.NewRecorder()
-
-	// CSR with a bad (512 bit RSA) key.
-	// openssl req -outform der -new -newkey rsa:512 -nodes -keyout foo.com.key
-	//   -subj /CN=foo.com | base64 -w0 | sed -e 's,+,-,g' -e 's,/,_,g'
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-			"resource":"new-cert",
-			"csr": "MIHLMHcCAQAwEjEQMA4GA1UEAwwHZm9vLmNvbTBcMA0GCSqGSIb3DQEBAQUAA0sAMEgCQQDCZftp4x4owgjBnwOKfzihIPedT-BUmV2fuQPMqaUlc8yJUp13vcO5uxUlaBm8leM7Dj_sgTDP_JgykorlYo73AgMBAAGgADANBgkqhkiG9w0BAQsFAANBAEaQ2QBhweK-kp1ejQCedUhMit_wG-uTBtKnc3M82f6_fztLkhg1vWQ782nmhbEI5orXp6QtNHgJYnBpqA9Ut00"
-		}`, wfe.nonceService)))
-
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid key in certificate request :: key too small: 512","status":400}`)
 }
 
 // This uses httptest.NewServer because ServeMux.ServeHTTP won't prevent the
@@ -2679,40 +2444,6 @@ func TestPrepChallengeForDisplay(t *testing.T) {
 		t.Errorf("Expected challenge status to be forced to invalid, got %#v", chall)
 	}
 	test.AssertEquals(t, chall.URI, "http://example.com/acme/chall-v3/eyup/iFVMwA")
-}
-
-// noSCTMockRA is a mock RA that always returns a `berrors.MissingSCTsError` from `NewCertificate`
-type noSCTMockRA struct {
-	MockRegistrationAuthority
-}
-
-func (ra *noSCTMockRA) NewCertificate(context.Context, *rapb.NewCertificateRequest, ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.MissingSCTsError("noSCTMockRA missing scts error")
-}
-
-func TestNewCertificateSCTError(t *testing.T) {
-	wfe, _ := setupWFE(t)
-
-	// Set up an RA mock that always returns a berrors.MissingSCTsError from
-	// `NewCertificate`
-	wfe.RA = &noSCTMockRA{}
-
-	// Create a response writer to capture the WFE response
-	responseWriter := httptest.NewRecorder()
-
-	// Make a well-formed NewCertificate request (test case from `TestNewCertificate`)
-	// openssl req -outform der -new -nodes -key wfe/test/178.key -subj /CN=not-an-example.com | b64url
-	wfe.NewCertificate(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-			"resource":"new-cert",
-			"csr": "MIICYjCCAUoCAQAwHTEbMBkGA1UEAwwSbm90LWFuLWV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmqs7nue5oFxKBk2WaFZJAma2nm1oFyPIq19gYEAdQN4mWvaJ8RjzHFkDMYUrlIrGxCYuFJDHFUk9dh19Na1MIY-NVLgcSbyNcOML3bLbLEwGmvXPbbEOflBA9mxUS9TLMgXW5ghf_qbt4vmSGKloIim41QXt55QFW6O-84s8Kd2OE6df0wTsEwLhZB3j5pDU-t7j5vTMv4Tc7EptaPkOdfQn-68viUJjlYM_4yIBVRhWCdexFdylCKVLg0obsghQEwULKYCUjdg6F0VJUI115DU49tzscXU_3FS3CyY8rchunuYszBNkdmgpAwViHNWuP7ESdEd_emrj1xuioSe6PwIDAQABoAAwDQYJKoZIhvcNAQELBQADggEBAE_T1nWU38XVYL28hNVSXU0rW5IBUKtbvr0qAkD4kda4HmQRTYkt-LNSuvxoZCC9lxijjgtJi-OJe_DCTdZZpYzewlVvcKToWSYHYQ6Wm1-fxxD_XzphvZOujpmBySchdiz7QSVWJmVZu34XD5RJbIcrmj_cjRt42J1hiTFjNMzQu9U6_HwIMmliDL-soFY2RTvvZf-dAFvOUQ-Wbxt97eM1PbbmxJNWRhbAmgEpe9PWDPTpqV5AK56VAa991cQ1P8ZVmPss5hvwGWhOtpnpTZVHN3toGNYFKqxWPboirqushQlfKiFqT9rpRgM3-mFjOHidGqsKEkTdmfSVlVEk3oo="
-		}`, wfe.nonceService)))
-
-	// We expect the berrors.MissingSCTsError error to have been converted into
-	// a serverInternal error with the right message.
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`serverInternal","detail":"Error creating new cert :: Unable to meet CA SCT embedding requirements","status":500}`)
 }
 
 type mockSAGetRegByKeyNotFoundAfterVerify struct {
