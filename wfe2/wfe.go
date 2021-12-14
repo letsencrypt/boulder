@@ -160,6 +160,7 @@ func NewWebFrontEndImpl(
 	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityClient,
+	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if issuerCertificates == nil || len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -183,7 +184,7 @@ func NewWebFrontEndImpl(
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		ra:                           rac,
 		sa:                           sac,
-		AccountGetter:                sac,
+		AccountGetter:                accountGetter,
 	}
 
 	if wfe.remoteNonceService == nil {

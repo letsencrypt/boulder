@@ -368,6 +368,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		issuerCertificates[id] = certs[0]
 	}
 
+	mockSA := mocks.NewStorageAuthority(fc)
+
 	wfe, err := NewWebFrontEndImpl(
 		stats,
 		fc,
@@ -381,7 +383,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		30*24*time.Hour,
 		7*24*time.Hour,
 		&MockRegistrationAuthority{},
-		mocks.NewStorageAuthority(fc))
+		mockSA,
+		mockSA)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL

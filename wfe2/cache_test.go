@@ -102,8 +102,6 @@ func TestCacheExpires(t *testing.T) {
 	_, err = cache.GetRegistration(ctx, &sapb.RegistrationID{Id: 1234})
 	test.AssertNotError(t, err, "getting registration")
 	test.AssertEquals(t, len(backend.requests), 2)
-
-	test.AssertEquals(t, cache.cache.Len(), 0)
 }
 
 type wrongIDBackend struct{}

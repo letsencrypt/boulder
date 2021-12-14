@@ -122,10 +122,17 @@ type config struct {
 		// date of pending authorizations by subtracting this value from the expiry.
 		// It should match the value configured in the RA.
 		PendingAuthorizationLifetimeDays int
+
+		AccountCache *CacheConfig
 	}
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
+}
+
+type CacheConfig struct {
+	Size int
+	TTL  cmd.ConfigDuration
 }
 
 // loadCertificateFile loads a PEM certificate from the certFile provided. It
@@ -403,7 +410,31 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * (24 * time.Hour)
 	}
 
-	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, allCertChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime, rac, sac)
+	var accountGetter wfe2.AccountGetter
+	if c.WFE.AccountCache != nil {
+		accountGetter = wfe2.NewAccountCache(sac,
+			c.WFE.AccountCache.Size,
+			c.WFE.AccountCache.TTL.Duration,
+			clk,
+			stats)
+	} else {
+		accountGetter = sac
+	}
+	wfe, err := wfe2.NewWebFrontEndImpl(
+		stats,
+		clk,
+		kp,
+		allCertChains,
+		issuerCerts,
+		rns,
+		npm,
+		logger,
+		c.WFE.StaleTimeout.Duration,
+		authorizationLifetime,
+		pendingAuthorizationLifetime,
+		rac,
+		sac,
+		accountGetter)
 	cmd.FailOnError(err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
