@@ -18,7 +18,8 @@ type recordingBackend struct {
 	requests []int64
 }
 
-func (rb *recordingBackend) GetRegistration(ctx context.Context,
+func (rb *recordingBackend) GetRegistration(
+	ctx context.Context,
 	regID *sapb.RegistrationID,
 	opts ...grpc.CallOption,
 ) (*corepb.Registration, error) {
@@ -106,7 +107,8 @@ func TestCacheExpires(t *testing.T) {
 
 type wrongIDBackend struct{}
 
-func (wib wrongIDBackend) GetRegistration(ctx context.Context,
+func (wib wrongIDBackend) GetRegistration(
+	ctx context.Context,
 	regID *sapb.RegistrationID,
 	opts ...grpc.CallOption,
 ) (*corepb.Registration, error) {

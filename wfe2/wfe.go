@@ -84,7 +84,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 type WebFrontEndImpl struct {
 	ra            rapb.RegistrationAuthorityClient
 	sa            sapb.StorageAuthorityGetterClient
-	AccountGetter AccountGetter
+	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
 	stats         wfe2Stats
@@ -184,7 +184,7 @@ func NewWebFrontEndImpl(
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		ra:                           rac,
 		sa:                           sac,
-		AccountGetter:                accountGetter,
+		accountGetter:                accountGetter,
 	}
 
 	if wfe.remoteNonceService == nil {

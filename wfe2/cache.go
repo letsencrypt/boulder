@@ -34,7 +34,8 @@ type accountCache struct {
 	requests *prometheus.CounterVec
 }
 
-func NewAccountCache(under AccountGetter,
+func NewAccountCache(
+	under AccountGetter,
 	maxEntries int,
 	ttl time.Duration,
 	clk clock.Clock,
@@ -84,7 +85,7 @@ func (ac *accountCache) GetRegistration(ctx context.Context, regID *sapb.Registr
 		return ac.queryAndStore(ctx, regID)
 	}
 	if entry.account.Id != regID.Id {
-		ac.requests.WithLabelValues("wrongid").Inc()
+		ac.requests.WithLabelValues("wrong id from cache").Inc()
 		return nil, fmt.Errorf("shouldn't happen: wrong account ID. expected %d, got %d", regID.Id, entry.account.Id)
 	}
 	copied := new(corepb.Registration)
@@ -99,7 +100,7 @@ func (ac *accountCache) queryAndStore(ctx context.Context, regID *sapb.Registrat
 		return nil, err
 	}
 	if account.Id != regID.Id {
-		ac.requests.WithLabelValues("wrongid").Inc()
+		ac.requests.WithLabelValues("wrong id from SA").Inc()
 		return nil, fmt.Errorf("shouldn't happen: wrong account ID from backend. expected %d, got %d", regID.Id, account.Id)
 	}
 	// Make sure we have our own copy that no one has a pointer to.
