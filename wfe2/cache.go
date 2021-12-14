@@ -26,6 +26,8 @@ type AccountGetter interface {
 // accountGetter. It is safe for concurrent access so long as the underlying
 // accountGetter is.
 type accountCache struct {
+	// Note: This must be a regular mutex, not an RWMutex, because cache.Get()
+	// actually mutates the lru.Cache (by updated the last-used info).
 	sync.Mutex
 	under    AccountGetter
 	ttl      time.Duration
