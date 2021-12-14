@@ -403,22 +403,22 @@ func checkPrimeFactorsTooClose(n *big.Int, rounds int) bool {
 	a := big.NewInt(0)
 	a.Sqrt(n).Add(a, one)
 
-	// We calculate b^2 to see if it is a perfect square, and therefore b is an
-	// integer. Specifically, b^2 = a^2 - n.
+	// We calculate b2 to see if it is a perfect square (b^2), and therefore b is an
+	// integer. Specifically, b2 = a^2 - n.
 	b2 := big.NewInt(0)
 	b2.Mul(a, a).Sub(b2, n)
 
 	for i := 0; i < rounds; i++ {
-		// To see if b^2 is a perfect square, we take its square root, square that,
+		// To see if b2 is a perfect square, we take its square root, square that,
 		// and check to see if we got the same result back.
 		bb.Sqrt(b2).Mul(bb, bb)
 		if b2.Cmp(bb) == 0 {
-			// b^2 is a perfect square, so we've found integer values of a and b,
+			// b2 is a perfect square, so we've found integer values of a and b,
 			// and could easily compute p and q as their sum and difference.
 			return true
 		}
 
-		// Set up the next iteration by incrementing a by one and recalculating b^2.
+		// Set up the next iteration by incrementing a by one and recalculating b2.
 		a.Add(a, one)
 		b2.Mul(a, a).Sub(b2, n)
 	}
