@@ -1014,7 +1014,7 @@ func TestLookupJWK(t *testing.T) {
 	nonNumericKeyIDJWS, nonNumericKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"abcd", wfe.nonceService)
 
 	validJWS, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
-	validAccountPB, _ := wfe.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
+	validAccountPB, _ := wfe.sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
 	// good key, log event requester is set
@@ -1269,7 +1269,7 @@ func TestValidPOSTForAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	validJWS, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
-	validAccountPB, _ := wfe.SA.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
+	validAccountPB, _ := wfe.sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
 	// ID 102 is mocked to return missing
@@ -1430,7 +1430,8 @@ func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.Re
 
 func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSADifferentStoredKey{mocks.NewStorageAuthority(fc)}
+	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthority(fc)}
+	wfe.accountGetter = wfe.sa
 	event := newRequestEvent()
 
 	payload := `{"resource":"ima-payload"}`

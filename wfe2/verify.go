@@ -458,7 +458,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 	}
 
 	// Try to find the account for this account ID
-	account, err := wfe.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
+	account, err := wfe.accountGetter.GetRegistration(ctx, &sapb.RegistrationID{Id: accountID})
 	if err != nil {
 		// If the account isn't found, return a suitable problem
 		if errors.Is(err, berrors.NotFound) {

@@ -27,6 +27,10 @@
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
     },
+    "accountCache": {
+      "size": 9000,
+      "ttl": "5s"
+    },
     "getNonceService": {
       "serverAddress": "nonce.boulder:9101",
       "timeout": "15s"

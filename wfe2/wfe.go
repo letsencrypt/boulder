@@ -82,11 +82,12 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	RA    rapb.RegistrationAuthorityClient
-	SA    sapb.StorageAuthorityGetterClient
-	log   blog.Logger
-	clk   clock.Clock
-	stats wfe2Stats
+	ra            rapb.RegistrationAuthorityClient
+	sa            sapb.StorageAuthorityGetterClient
+	accountGetter AccountGetter
+	log           blog.Logger
+	clk           clock.Clock
+	stats         wfe2Stats
 
 	// certificateChains maps IssuerNameIDs to slice of []byte containing a leading
 	// newline and one or more PEM encoded certificates separated by a newline,
@@ -157,6 +158,9 @@ func NewWebFrontEndImpl(
 	staleTimeout time.Duration,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
+	rac rapb.RegistrationAuthorityClient,
+	sac sapb.StorageAuthorityClient,
+	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if issuerCertificates == nil || len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -178,6 +182,9 @@ func NewWebFrontEndImpl(
 		staleTimeout:                 staleTimeout,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
+		ra:                           rac,
+		sa:                           sac,
+		accountGetter:                accountGetter,
 	}
 
 	if wfe.remoteNonceService == nil {
@@ -642,7 +649,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
 		return
 	}
-	existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
+	existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 	if err == nil {
 		returnExistingAcct(existingAcct)
 		return
@@ -700,10 +707,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	// Send the registration to the RA via grpc
-	acctPB, err := wfe.RA.NewRegistration(ctx, &reg)
+	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
-			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
+			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err == nil {
 				returnExistingAcct(existingAcct)
 				return
@@ -760,7 +767,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 }
 
 func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
-	authzMapPB, err := wfe.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+	authzMapPB, err := wfe.sa.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 		RegistrationID: acctID,
 		Domains:        names,
 		Now:            wfe.clk.Now().UnixNano(),
@@ -844,7 +851,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Check the certificate status for the provided certificate to see if it is
 	// already revoked
-	certStatus, err := wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	certStatus, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	if err != nil || certStatus.Status == "" {
 		return probs.ServerInternal("Failed to get certificate status")
 	}
@@ -880,7 +887,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 
 	// Revoke the certificate. AcctID may be 0 if there is no associated account
 	// (e.g. it was a self-authenticated JWS using the certificate public key)
-	_, err = wfe.RA.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
+	_, err = wfe.ra.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
 		Cert:  parsedCertificate.Raw,
 		Code:  int64(reason),
 		RegID: acctID,
@@ -891,7 +898,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 			// performing the revocation, a parallel request happened and revoked the
 			// cert. In this case, just retrieve the certificate status again and
 			// return the alreadyRevoked status.
-			certStatus, err = wfe.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+			certStatus, err = wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 			if err != nil || certStatus.Status == "" {
 				return probs.ServerInternal("Failed to get certificate status")
 			}
@@ -937,11 +944,11 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 
 		// Try to find a stored final certificate for the serial number
 		serial := core.SerialToString(parsedCertificate.SerialNumber)
-		cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+		cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 		if errors.Is(err, berrors.NotFound) {
 			// If there was an error and it was a not found error, then maybe they're
 			// trying to revoke via the precertificate. Try to find that instead.
-			cert, err = wfe.SA.GetPrecertificate(ctx, &sapb.Serial{Serial: serial})
+			cert, err = wfe.sa.GetPrecertificate(ctx, &sapb.Serial{Serial: serial})
 			if errors.Is(err, berrors.NotFound) {
 				// If looking up a precert also returned a not found error then return
 				// a not found problem.
@@ -1112,7 +1119,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		return
 	}
 	challengeID := slug[1]
-	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
+	authzPB, err := wfe.sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			notFound()
@@ -1331,7 +1338,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			return
 		}
 
-		authzPB, err = wfe.RA.PerformValidation(ctx, &rapb.PerformValidationRequest{
+		authzPB, err = wfe.ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
@@ -1473,7 +1480,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		if updatePb.Status != string(core.StatusDeactivated) {
 			return nil, probs.Malformed("Invalid value provided for status field")
 		}
-		_, err := wfe.RA.DeactivateRegistration(ctx, basePb)
+		_, err := wfe.ra.DeactivateRegistration(ctx, basePb)
 		if err != nil {
 			return nil, web.ProblemDetailsForError(err, "Unable to deactivate account")
 		}
@@ -1488,7 +1495,7 @@ func (wfe *WebFrontEndImpl) updateAccount(
 	// JSON to send via RPC to the RA.
 	updatePb.Key = basePb.Key
 
-	updatedAcct, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: basePb, Update: updatePb})
+	updatedAcct, err := wfe.ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: basePb, Update: updatePb})
 	if err != nil {
 		return nil, web.ProblemDetailsForError(err, "Unable to update account")
 	}
@@ -1525,7 +1532,7 @@ func (wfe *WebFrontEndImpl) deactivateAuthorization(
 		wfe.sendError(response, logEvent, probs.Malformed("Invalid status value"), err)
 		return false
 	}
-	_, err = wfe.RA.DeactivateAuthorization(ctx, authzPB)
+	_, err = wfe.ra.DeactivateAuthorization(ctx, authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error deactivating authorization"), err)
 		return false
@@ -1571,7 +1578,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		return
 	}
 
-	authzPB, err := wfe.SA.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
+	authzPB, err := wfe.sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authzID})
 	if errors.Is(err, berrors.NotFound) {
 		wfe.sendError(response, logEvent, probs.NotFound("No such authorization"), nil)
 		return
@@ -1697,7 +1704,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
-	cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		ierr := fmt.Errorf("unable to get certificate by serial id %#v: %s", serial, err)
 		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
@@ -1948,7 +1955,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
 	}
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes}); err == nil {
+	if existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes}); err == nil {
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.Id)))
 		wfe.sendError(response, logEvent,
@@ -1969,14 +1976,14 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	updatePb := &corepb.Registration{Key: newKeyBytes}
 
 	// Update the account key to the new key
-	updatedAcctPb, err := wfe.RA.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
+	updatedAcctPb, err := wfe.ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking for the existing key, and preforming the update
 			// a parallel update or new account request happened and claimed the key. In this case
 			// just retrieve the account again, and return an error as we would above with a Location
 			// header
-			existingAcct, err := wfe.SA.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
+			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
 			if err != nil {
 				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
 				return
@@ -2124,7 +2131,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
-	order, err := wfe.RA.NewOrder(ctx, &rapb.NewOrderRequest{
+	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
 	})
@@ -2183,7 +2190,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
+	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
@@ -2257,7 +2264,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	order, err := wfe.SA.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
+	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
@@ -2333,7 +2340,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	// Inc CSR signature algorithm counter
 	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
 
-	updatedOrder, err := wfe.RA.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
+	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Csr:   rawCSR.CSR,
 		Order: order,
 	})
@@ -2385,7 +2392,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 
 	// We use GetCertificate, not GetPrecertificate, because we don't intend to
 	// serve ARI for certs that never made it past the precert stage.
-	cert, err := wfe.SA.GetCertificate(ctx, &sapb.Serial{Serial: serial})
+	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
