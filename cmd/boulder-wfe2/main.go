@@ -434,7 +434,8 @@ func main() {
 		pendingAuthorizationLifetime,
 		rac,
 		sac,
-		accountGetter)
+		accountGetter
+	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL

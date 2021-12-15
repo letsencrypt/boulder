@@ -21,13 +21,13 @@ type AccountGetter interface {
 	GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error)
 }
 
-// accountCache is an implementation of accountGetter that first tries a local
+// accountCache is an implementation of AccountGetter that first tries a local
 // in-memory cache, and if the account is not there, calls out to an underlying
-// accountGetter. It is safe for concurrent access so long as the underlying
-// accountGetter is.
+// AccountGetter. It is safe for concurrent access so long as the underlying
+// AccountGetter is.
 type accountCache struct {
 	// Note: This must be a regular mutex, not an RWMutex, because cache.Get()
-	// actually mutates the lru.Cache (by updated the last-used info).
+	// actually mutates the lru.Cache (by updating the last-used info).
 	sync.Mutex
 	under    AccountGetter
 	ttl      time.Duration
