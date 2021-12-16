@@ -10,11 +10,11 @@ GO_VERSIONS=( "1.17" "1.17.5" )
 echo "Please login to allow push to DockerHub"
 docker login
 
-# create a docker buildx node for cross-compilation.
-docker buildx create --use --name=cross
-
-# on EXIT, delete the docker buildx node if it exists.
-trap "if [ $(docker buildx ls | grep 'cross' | wc -l) != 0 ]; then docker buildx rm cross; fi" EXIT
+# Create a docker buildx node for cross-compilation if it doesn't already exist.
+if !(docker buildx ls | grep -q "cross")
+then
+  docker buildx create --use --name=cross
+fi
 
 # Build and push a tagged image for each GO_VERSION.
 for GO_VERSION in "${GO_VERSIONS[@]}"
