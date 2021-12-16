@@ -681,6 +681,13 @@ def test_revoke_by_account():
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     reset_akamai_purges()
+    try:
+        client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass  # Good, we shouldn't be able to revoke with keyCompromise
+    else:
+        raise(Exception("Revoked by account with keyCompromise"))
+
     client.revoke(josepy.ComparableX509(cert), 0)
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
@@ -693,6 +700,13 @@ def test_revoke_by_issuer():
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     reset_akamai_purges()
+    try:
+        client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass  # Good, we shouldn't be able to revoke with keyCompromise
+    else:
+        raise(Exception("Revoked by issuer with keyCompromise"))
+
     client.revoke(josepy.ComparableX509(cert), 0)
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
@@ -709,6 +723,13 @@ def test_revoke_by_authz():
     chisel2.auth_and_issue(domains, client=client)
 
     reset_akamai_purges()
+    try:
+        client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass  # Good, we shouldn't be able to revoke with keyCompromise
+    else:
+        raise(Exception("Revoked by authz with keyCompromise"))
+
     client.revoke(josepy.ComparableX509(cert), 0)
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
@@ -737,7 +758,7 @@ def test_revoke_by_privkey():
 
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
     reset_akamai_purges()
-    client.revoke(josepy.ComparableX509(cert), 0)
+    client.revoke(josepy.ComparableX509(cert), 1)
 
     cert_file = tempfile.NamedTemporaryFile(
         dir=tempdir, suffix='.test_revoke_by_privkey.pem',
