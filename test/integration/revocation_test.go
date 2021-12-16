@@ -90,28 +90,29 @@ func TestRevocation(t *testing.T) {
 			domain := random_domain()
 
 			if tc.kind == precert {
-				// Make sure the ct-test-srv will reject generating SCTs for the domain,
-				// so we only get a precert and no final cert.
-				err := ctAddRejectHost(domain)
-				test.AssertNotError(t, err, "adding ct-test-srv reject host")
 			}
 
 			// Try to issue a certificate for the name.
-			res, err := authAndIssue(issueClient, certKey, []string{domain})
 			var cert *x509.Certificate
 			switch tc.kind {
 			case finalcert:
-				// This issuance should have succeeded.
+				res, err := authAndIssue(issueClient, certKey, []string{domain})
 				test.AssertNotError(t, err, "authAndIssue failed")
 				cert = res.certs[0]
 
 			case precert:
-				// This issuance should have failed.
+				// Make sure the ct-test-srv will reject generating SCTs for the domain,
+				// so we only get a precert and no final cert.
+				err := ctAddRejectHost(domain)
+				test.AssertNotError(t, err, "adding ct-test-srv reject host")
+
+				_, err = authAndIssue(issueClient, certKey, []string{domain})
 				test.AssertError(t, err, "expected error from authAndIssue, was nil")
 				if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
 					!strings.Contains(err.Error(), "SCT embedding") {
 					t.Fatal(err)
 				}
+
 				// Instead recover the precertificate from CT.
 				cert, err = ctFindRejection([]string{domain})
 				if err != nil || cert == nil {
@@ -131,6 +132,7 @@ func TestRevocation(t *testing.T) {
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
 
+			// Set up the account and key that we'll use to try to revoke the cert.
 			var revokeClient *client
 			var revokeKey crypto.Signer
 			switch tc.method {
@@ -161,7 +163,7 @@ func TestRevocation(t *testing.T) {
 				t.Fatalf("unrecognized revocation method %q", tc.method)
 			}
 
-			// Revoke the cert using the specified key and client
+			// Revoke the cert using the specified key and client.
 			err = revokeClient.RevokeCertificate(
 				revokeClient.Account,
 				cert,
