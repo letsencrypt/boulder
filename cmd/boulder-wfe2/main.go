@@ -103,9 +103,11 @@ type config struct {
 		// will differ in configuration for production and staging.
 		LegacyKeyIDPrefix string
 
-		// BlockedKeyFile is the path to a YAML file containing Base64 encoded
-		// SHA256 hashes of SubjectPublicKeyInfo's that should be considered
-		// administratively blocked.
+		// GoodKey is an embedded config stanza for the goodkey library.
+		GoodKey *goodkey.Config
+
+		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
+		// TODO(#5851): Remove this.
 		BlockedKeyFile string
 
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
@@ -122,10 +124,17 @@ type config struct {
 		// date of pending authorizations by subtracting this value from the expiry.
 		// It should match the value configured in the RA.
 		PendingAuthorizationLifetimeDays int
+
+		AccountCache *CacheConfig
 	}
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
+}
+
+type CacheConfig struct {
+	Size int
+	TTL  cmd.ConfigDuration
 }
 
 // loadCertificateFile loads a PEM certificate from the certFile provided. It
@@ -385,8 +394,16 @@ func main() {
 	clk := cmd.Clock()
 
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
-	// don't load any weak keys, but do load blocked keys
-	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile, sac.KeyBlocked)
+
+	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
+	// The WFE does not do weak key checking, just blocked key checking.
+	if c.WFE.GoodKey == nil {
+		c.WFE.GoodKey = &goodkey.Config{}
+	}
+	if c.WFE.GoodKey.BlockedKeyFile == "" && c.WFE.BlockedKeyFile != "" {
+		c.WFE.GoodKey.BlockedKeyFile = c.WFE.BlockedKeyFile
+	}
+	kp, err := goodkey.NewKeyPolicy(c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.WFE.StaleTimeout.Duration == 0 {
@@ -403,10 +420,33 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * (24 * time.Hour)
 	}
 
-	wfe, err := wfe2.NewWebFrontEndImpl(stats, clk, kp, allCertChains, issuerCerts, rns, npm, logger, c.WFE.StaleTimeout.Duration, authorizationLifetime, pendingAuthorizationLifetime)
+	var accountGetter wfe2.AccountGetter
+	if c.WFE.AccountCache != nil {
+		accountGetter = wfe2.NewAccountCache(sac,
+			c.WFE.AccountCache.Size,
+			c.WFE.AccountCache.TTL.Duration,
+			clk,
+			stats)
+	} else {
+		accountGetter = sac
+	}
+	wfe, err := wfe2.NewWebFrontEndImpl(
+		stats,
+		clk,
+		kp,
+		allCertChains,
+		issuerCerts,
+		rns,
+		npm,
+		logger,
+		c.WFE.StaleTimeout.Duration,
+		authorizationLifetime,
+		pendingAuthorizationLifetime,
+		rac,
+		sac,
+		accountGetter,
+	)
 	cmd.FailOnError(err, "Unable to create WFE")
-	wfe.RA = rac
-	wfe.SA = sac
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins

@@ -37,7 +37,7 @@ logger = logging.getLogger()
 logging.basicConfig()
 logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
-DIRECTORY = os.getenv('DIRECTORY', 'http://boulder:4000/directory')
+DIRECTORY = os.getenv('DIRECTORY', 'http://boulder:4001/directory')
 
 os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 

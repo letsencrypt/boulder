@@ -748,10 +748,9 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 
 // checkOrderAuthorizations verifies that a provided set of names associated
 // with a specific order and account has all of the required valid, unexpired
-// authorizations to proceed with issuance. It is the ACME v2 equivalent of
-// `checkAuthorizations`. It returns the authorizations that satisfied the set
-// of names or it returns an error. If it returns an error, it will be of type
-// BoulderError.
+// authorizations to proceed with issuance. It returns the authorizations that
+// satisfied the set of names or it returns an error. If it returns an error, it
+// will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	ctx context.Context,
 	names []string,
@@ -778,35 +777,6 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	}
 
 	return authzs, nil
-}
-
-// checkAuthorizations checks that each requested name has a valid authorization
-// that won't expire before the certificate expires. It returns the
-// authorizations that satisfied the set of names or it returns an error.
-// If it returns an error, it will be of type BoulderError.
-func (ra *RegistrationAuthorityImpl) checkAuthorizations(ctx context.Context, names []string, regID int64) (map[string]*core.Authorization, error) {
-	now := ra.clk.Now()
-	for i := range names {
-		names[i] = strings.ToLower(names[i])
-	}
-	authMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-		RegistrationID: regID,
-		Domains:        names,
-		Now:            now.UnixNano(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	auths, err := bgrpc.PBToAuthzMap(authMapPB)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = ra.checkAuthorizationsCAA(ctx, names, auths, regID, now); err != nil {
-		return nil, err
-	}
-
-	return auths, nil
 }
 
 // validatedBefore checks if a given authorization's challenge was
@@ -1047,7 +1017,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA, req.Order.RegistrationID); err != nil {
+	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA); err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -1140,29 +1110,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 // NewCertificate requests the issuance of a certificate for the v1 flow.
 func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
-	// Verify request
-	if req == nil || req.Csr == nil || req.RegID == 0 {
-		return nil, errIncompleteGRPCRequest
-	}
-	// Deserialize csr
-	csr, err := x509.ParseCertificateRequest(req.Csr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Verify the CSR
-	if err := csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA, req.RegID); err != nil {
-		return nil, berrors.MalformedError(err.Error())
-	}
-	// NewCertificate provides an order ID of 0, indicating this is a classic ACME
-	// v1 issuance request from the new certificate endpoint that is not
-	// associated with an ACME v2 order.
-	cert, err := ra.issueCertificate(ctx, core.CertificateRequest{CSR: csr, Bytes: req.Csr},
-		accountID(req.RegID), orderID(0), issuance.IssuerNameID(req.IssuerNameID))
-	if err != nil {
-		return nil, err
-	}
-	return bgrpc.CertToPB(cert), nil
+	return nil, errors.New("The ACME v1 NewCertificate flow is deprecated")
 }
 
 // To help minimize the chance that an accountID would be used as an order ID
@@ -1173,7 +1121,9 @@ type orderID int64
 
 // issueCertificate sets up a log event structure and captures any errors
 // encountered during issuance, then calls issueCertificateInner.
-// Used by both v1's NewCertificate and v2's FinalizeOrder.
+//
+// At this time, all callers of this function set issuerNameID to be zero, which
+// allows the CA to pick the issuer based on the CSR's PublicKeyAlgorithm.
 func (ra *RegistrationAuthorityImpl) issueCertificate(
 	ctx context.Context,
 	req core.CertificateRequest,
@@ -1204,9 +1154,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	return cert, err
 }
 
-// issueCertificateInner handles the common aspects of certificate issuance used by
-// both the "classic" NewCertificate endpoint (for ACME v1) and the
-// FinalizeOrder endpoint (for ACME v2).
+// issueCertificateInner handles the heavy lifting aspects of certificate
+// issuance.
 //
 // This function is responsible for ensuring that we never try to issue a final
 // certificate twice for the same precertificate, because that has the potential
@@ -1230,9 +1179,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, berrors.MalformedError("invalid account ID: %d", acctID)
 	}
 
-	// OrderID can be 0 if `issueCertificate` is called by `NewCertificate` for
-	// the classic issuance flow. It should never be less than 0.
-	if oID < 0 {
+	if oID <= 0 {
 		return emptyCert, berrors.MalformedError("invalid order ID: %d", oID)
 	}
 
@@ -1267,17 +1214,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, err
 	}
 
-	var authzs map[string]*core.Authorization
-	// If the orderID is 0 then this is a classic issuance and we need to check
-	// that the account is authorized for the names in the CSR.
-	if oID == 0 {
-		authzs, err = ra.checkAuthorizations(ctx, names, account.ID)
-	} else {
-		// Otherwise, if the orderID is not 0 we need to follow the order based
-		// issuance process and check that this specific order is fully authorized
-		// and associated with the expected account ID
-		authzs, err = ra.checkOrderAuthorizations(ctx, names, acctID, oID)
-	}
+	// Check that this specific order is fully authorized and associated with
+	// the expected account ID
+	authzs, err := ra.checkOrderAuthorizations(ctx, names, acctID, oID)
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.

@@ -247,18 +247,13 @@ for any query, so you can use any value for the -d flag. To return an answer
 other than `127.0.0.1` change the Boulder `FAKE_DNS` environment variable to
 another IP address.
 
-To use the legacy ACME v1 API over change `SERVER` to
-`http://localhost:4000/directory`.
-
 ### Working with another ACME Client
 
 Once you have followed the Boulder development environment instructions and have
 started the containers you will find the ACME endpoints exposed to your host at
 the following URLs:
 
-* ACME v1, HTTP: `http://localhost:4000/directory`
 * ACME v2, HTTP: `http://localhost:4001/directory`
-* ACME v1, HTTPS: `https://localhost:4430/directory`
 * ACME v2, HTTPS: `https://localhost:4431/directory`
 
 To access the HTTPS versions of the endpoints you will need to configure your

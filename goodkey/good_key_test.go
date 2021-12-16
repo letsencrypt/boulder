@@ -264,7 +264,7 @@ func TestDBBlocklistAccept(t *testing.T) {
 		return &sapb.Exists{Exists: false}, nil
 	}
 
-	policy, err := NewKeyPolicy("", "", testCheck)
+	policy, err := NewKeyPolicy(&Config{}, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -278,7 +278,7 @@ func TestDBBlocklistReject(t *testing.T) {
 		return &sapb.Exists{Exists: true}, nil
 	}
 
-	policy, err := NewKeyPolicy("", "", testCheck)
+	policy, err := NewKeyPolicy(&Config{}, testCheck)
 	test.AssertNotError(t, err, "NewKeyPolicy failed")
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -298,4 +298,44 @@ func TestRSAStrangeSize(t *testing.T) {
 	err = testingPolicy.GoodKey(context.Background(), k)
 	test.AssertError(t, err, "expected GoodKey to fail")
 	test.AssertEquals(t, err.Error(), "key size not supported: 4")
+}
+
+func TestCheckPrimeFactorsTooClose(t *testing.T) {
+	// The prime factors of 5959 are 59 and 101. The values a and b calculated
+	// by Fermat's method will be 80 and 21. The ceil of the square root of 5959
+	// is 78. Therefore it takes 3 rounds of Fermat's method to find the factors.
+	n := big.NewInt(5959)
+	err := checkPrimeFactorsTooClose(n, 2)
+	test.AssertNotError(t, err, "factored n in too few iterations")
+	err = checkPrimeFactorsTooClose(n, 3)
+	test.AssertError(t, err, "failed to factor n")
+	test.AssertContains(t, err.Error(), "p: 101")
+	test.AssertContains(t, err.Error(), "q: 59")
+
+	// These factors differ only in their second-to-last digit. They're so close
+	// that a single iteration of Fermat's method is sufficient to find them.
+	p, ok := new(big.Int).SetString("12451309173743450529024753538187635497858772172998414407116324997634262083672423797183640278969532658774374576700091736519352600717664126766443002156788367", 10)
+	test.Assert(t, ok, "failed to create large prime")
+	q, ok := new(big.Int).SetString("12451309173743450529024753538187635497858772172998414407116324997634262083672423797183640278969532658774374576700091736519352600717664126766443002156788337", 10)
+	test.Assert(t, ok, "failed to create large prime")
+	n = n.Mul(p, q)
+	err = checkPrimeFactorsTooClose(n, 0)
+	test.AssertNotError(t, err, "factored n in too few iterations")
+	err = checkPrimeFactorsTooClose(n, 1)
+	test.AssertError(t, err, "failed to factor n")
+	test.AssertContains(t, err.Error(), fmt.Sprintf("p: %s", p))
+	test.AssertContains(t, err.Error(), fmt.Sprintf("q: %s", q))
+
+	// These factors differ by slightly more than 2^256.
+	p, ok = p.SetString("11779932606551869095289494662458707049283241949932278009554252037480401854504909149712949171865707598142483830639739537075502512627849249573564209082969463", 10)
+	test.Assert(t, ok, "failed to create large prime")
+	q, ok = q.SetString("11779932606551869095289494662458707049283241949932278009554252037480401854503793357623711855670284027157475142731886267090836872063809791989556295953329083", 10)
+	test.Assert(t, ok, "failed to create large prime")
+	n = n.Mul(p, q)
+	err = checkPrimeFactorsTooClose(n, 13)
+	test.AssertNotError(t, err, "factored n in too few iterations")
+	err = checkPrimeFactorsTooClose(n, 14)
+	test.AssertError(t, err, "failed to factor n")
+	test.AssertContains(t, err.Error(), fmt.Sprintf("p: %s", p))
+	test.AssertContains(t, err.Error(), fmt.Sprintf("q: %s", q))
 }
