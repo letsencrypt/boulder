@@ -85,7 +85,7 @@ func newSourceMetrics(stats prometheus.Registerer) *sourceMetrics {
 	// Metrics for response lookups
 	ocspLookups := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_lookups",
-		Help: "A counter of ocsp lookups labeled by source_result",
+		Help: "A counter of ocsp lookups labeled with source, result and error",
 	}, []string{"source", "result", "error"})
 	stats.MustRegister(ocspLookups)
 
