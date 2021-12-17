@@ -10,18 +10,18 @@ GO_VERSIONS=( "1.17" "1.17.5" )
 echo "Please login to allow push to DockerHub"
 docker login
 
+# Create a docker buildx node for cross-compilation if it doesn't already exist.
+if !(docker buildx ls | grep -q "cross")
+then
+  docker buildx create --use --name=cross
+fi
+
 # Build and push a tagged image for each GO_VERSION.
 for GO_VERSION in "${GO_VERSIONS[@]}"
 do
   TAG_NAME="${DOCKER_REPO}:go${GO_VERSION}_${DATESTAMP}"
   echo "Building boulder-tools image ${TAG_NAME}"
-  
-  # create a docker buildx node for cross-compilation.
-  docker buildx create --use --name=cross
 
-  # on EXIT, delete the docker buildx node.
-  trap "docker buildx rm cross" EXIT
-  
   # build, tag, and push the image.
   docker buildx build --build-arg "GO_VERSION=${GO_VERSION}" \
     --push --tag "${TAG_NAME}" \
