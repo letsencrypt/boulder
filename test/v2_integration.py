@@ -758,10 +758,9 @@ def test_revoke_by_privkey():
         cleanup()
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
-    # Create a new client with the cert key as the account key.
+    # Create a new client with the cert key as the account key. We don't
+    # register a server-side account with this client, as we don't need one.
     revoke_client = chisel2.uninitialized_client(key=josepy.JWKRSA(key=key))
-    revoke_client.net.account = revoke_client.new_account(
-        NewRegistration.from_data(terms_of_service_agreed=True))
 
     reset_akamai_purges()
     revoke_client.revoke(josepy.ComparableX509(cert), 1)
