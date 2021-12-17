@@ -43,15 +43,11 @@ curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/insta
 # Note: The version of golang/protobuf is partially tied to the version of grpc
 # used by Boulder overall. Updating it may require updating the grpc version
 # and vice versa.
-GO111MODULE=on go get \
-  bitbucket.org/liamstask/goose/cmd/goose \
-  google.golang.org/protobuf/cmd/protoc-gen-go@v1.26.0 \
-  google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1.0 \
-  golang.org/x/tools/cmd/stringer
-
-# Pebble's latest version is v2+, but it's not properly go mod compatible, so we
-# fetch it in GOPATH mode.
-GO111MODULE=off go get github.com/letsencrypt/pebble/cmd/pebble-challtestsrv
+go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.26.0
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.1.0
+go install bitbucket.org/liamstask/goose/cmd/goose@latest
+go install golang.org/x/tools/cmd/stringer@latest
+go install github.com/letsencrypt/pebble/cmd/pebble-challtestsrv@master
 
 go clean -cache
 go clean -modcache
