@@ -63,18 +63,28 @@ import (
 	jose "gopkg.in/square/go-jose.v2"
 )
 
-func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) int64 {
+func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
 	t.Helper()
 
 	authz := core.Authorization{
 		Identifier:     identifier.DNSIdentifier(domain),
-		RegistrationID: 1,
+		RegistrationID: Registration.Id,
 		Status:         "pending",
 		Expires:        &exp,
 		Challenges: []core.Challenge{
 			{
 				Token:  core.NewToken(),
 				Type:   core.ChallengeTypeHTTP01,
+				Status: core.StatusPending,
+			},
+			{
+				Token:  core.NewToken(),
+				Type:   core.ChallengeTypeDNS01,
+				Status: core.StatusPending,
+			},
+			{
+				Token:  core.NewToken(),
+				Type:   core.ChallengeTypeTLSALPN01,
 				Status: core.StatusPending,
 			},
 		},
@@ -85,13 +95,15 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 		Authz: []*corepb.Authorization{authzPB},
 	})
 	test.AssertNotError(t, err, "sa.NewAuthorizations2 failed")
-	return ids.Ids[0]
+	return getAuthorization(t, fmt.Sprint(ids.Ids[0]), sa)
 }
 
 func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, status string, attemptedAt time.Time) int64 {
 	t.Helper()
-	pendingID := createPendingAuthorization(t, sa, domain, exp)
-	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+	pending := createPendingAuthorization(t, sa, domain, exp)
+	pendingID, err := strconv.ParseInt(pending.Id, 10, 64)
+	test.AssertNotError(t, err, "strconv.ParseInt failed")
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:          pendingID,
 		Status:      status,
 		Expires:     exp.UnixNano(),
@@ -802,15 +814,7 @@ func TestReusePendingAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	// Create one pending authorization
-	firstAuthz, err := ra.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
-		Authz: &corepb.Authorization{
-			Identifier:     "not-example.com",
-			RegistrationID: 1,
-			Status:         "pending",
-		},
-		RegID: Registration.Id,
-	})
-	test.AssertNotError(t, err, "Could not store test pending authorization")
+	firstAuthz := createPendingAuthorization(t, sa, "not-example.com", ra.clk.Now().Add(12*time.Hour))
 
 	// Create another one with the same identifier
 	secondAuthz, err := ra.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
@@ -950,16 +954,12 @@ func TestNewAuthorizationInvalidName(t *testing.T) {
 }
 
 func TestPerformValidationExpired(t *testing.T) {
-	_, _, ra, fc, cleanUp := initAuthorities(t)
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authz, err := ra.NewAuthorization(ctx, AuthzRequest)
-	test.AssertNotError(t, err, "NewAuthorization failed")
+	authz := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(-2*time.Hour))
 
-	expiry := fc.Now().Add(-2 * time.Hour)
-	authz.Expires = expiry.UTC().UnixNano()
-
-	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	_, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authz,
 		ChallengeIndex: int64(ResponseIndex),
 	})
@@ -1015,8 +1015,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB, err := ra.NewAuthorization(ctx, AuthzRequest)
-	test.AssertNotError(t, err, "NewAuthorization failed")
+	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
 
 	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -1031,7 +1030,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	}
 
 	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
 	})
@@ -1076,13 +1075,12 @@ func TestPerformValidationVAError(t *testing.T) {
 	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authzPB, err := ra.NewAuthorization(ctx, AuthzRequest)
-	test.AssertNotError(t, err, "NewAuthorization failed")
+	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
 
 	va.ResultError = fmt.Errorf("Something went wrong")
 
 	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
-	authzPB, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
 	})
@@ -3448,12 +3446,11 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 //
 // See https://github.com/letsencrypt/boulder/issues/3201
 func TestUpdateMissingAuthorization(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 	ctx := context.Background()
 
-	authzPB, err := ra.NewAuthorization(ctx, AuthzRequest)
-	test.AssertNotError(t, err, "NewAuthorization failed")
+	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "failed to deserialize authz")
 
