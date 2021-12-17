@@ -3,7 +3,10 @@
 out=''
 while read -r line; do
   elems=($line)
-  out+=$(printf "%s:%s" $(git show -s --format="%cs" ${elems[0]}) ${elems[1]})
+  name=${elems[1]#"refs/heads/"}
+  hash=${elems[0]}
+  date=$(git show -s --format="%cs" ${hash})
+  out+=$(printf "%s:%s" ${date} ${name})
   out+="\n"
 done <<< $(git ls-remote -h origin)
 
