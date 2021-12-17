@@ -63,7 +63,7 @@ type config struct {
 		PendingAuthorizationLifetimeDays int
 
 		// GoodKey is an embedded config stanza for the goodkey library.
-		GoodKey *goodkey.Config
+		GoodKey goodkey.Config
 
 		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
 		// TODO(#5851): Remove this.
@@ -224,9 +224,6 @@ func main() {
 	}
 
 	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	if c.RA.GoodKey == nil {
-		c.RA.GoodKey = &goodkey.Config{}
-	}
 	if c.RA.GoodKey.WeakKeyFile == "" && c.RA.WeakKeyFile != "" {
 		c.RA.GoodKey.WeakKeyFile = c.RA.WeakKeyFile
 	}

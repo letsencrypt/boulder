@@ -60,7 +60,7 @@ type config struct {
 		LifespanOCSP cmd.ConfigDuration
 
 		// GoodKey is an embedded config stanza for the goodkey library.
-		GoodKey *goodkey.Config
+		GoodKey goodkey.Config
 
 		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
 		// TODO(#5851): Remove this.
@@ -212,9 +212,6 @@ func main() {
 	sa := sapb.NewStorageAuthorityClient(conn)
 
 	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	if c.CA.GoodKey == nil {
-		c.CA.GoodKey = &goodkey.Config{}
-	}
 	if c.CA.GoodKey.WeakKeyFile == "" && c.CA.WeakKeyFile != "" {
 		c.CA.GoodKey.WeakKeyFile = c.CA.WeakKeyFile
 	}
