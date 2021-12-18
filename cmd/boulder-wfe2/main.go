@@ -400,7 +400,7 @@ func main() {
 	if c.WFE.GoodKey.BlockedKeyFile == "" && c.WFE.BlockedKeyFile != "" {
 		c.WFE.GoodKey.BlockedKeyFile = c.WFE.BlockedKeyFile
 	}
-	kp, err := goodkey.NewKeyPolicy(c.WFE.GoodKey, sac.KeyBlocked)
+	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.WFE.StaleTimeout.Duration == 0 {

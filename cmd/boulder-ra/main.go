@@ -230,7 +230,7 @@ func main() {
 	if c.RA.GoodKey.BlockedKeyFile == "" && c.RA.BlockedKeyFile != "" {
 		c.RA.GoodKey.BlockedKeyFile = c.RA.BlockedKeyFile
 	}
-	kp, err := goodkey.NewKeyPolicy(c.RA.GoodKey, sac.KeyBlocked)
+	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {

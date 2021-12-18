@@ -218,7 +218,7 @@ func main() {
 	if c.CA.GoodKey.BlockedKeyFile == "" && c.CA.BlockedKeyFile != "" {
 		c.CA.GoodKey.BlockedKeyFile = c.CA.BlockedKeyFile
 	}
-	kp, err := goodkey.NewKeyPolicy(c.CA.GoodKey, sa.KeyBlocked)
+	kp, err := goodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var orphanQueue *goque.Queue
