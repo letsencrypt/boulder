@@ -1,4 +1,4 @@
-package ocsp_updater
+package updater
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp/updater/config"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )

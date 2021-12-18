@@ -1,4 +1,4 @@
-package ocsp_updater
+package updater
 
 import (
 	"context"
@@ -21,7 +21,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp/updater/config"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -228,7 +228,7 @@ func TestROCSP(t *testing.T) {
 	updater.rocspClient = recorder
 	updater.issuers, err = rocsp_config.LoadIssuers(
 		map[string]int{
-			"../test/hierarchy/int-e1.cert.pem": 23,
+			"../../test/hierarchy/int-e1.cert.pem": 23,
 		},
 	)
 	test.AssertNotError(t, err, "loading issuers")

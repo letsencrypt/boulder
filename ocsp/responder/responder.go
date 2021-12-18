@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 // Package ocsp implements an OCSP responder based on a generic storage backend.
-package ocsp
+package responder
 
 import (
 	"context"

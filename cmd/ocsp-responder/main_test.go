@@ -24,7 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	bocsp "github.com/letsencrypt/boulder/ocsp"
+	ocsp_responder "github.com/letsencrypt/boulder/ocsp/responder"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -73,7 +73,7 @@ func TestMux(t *testing.T) {
 		ocspReq.SerialNumber.String():        resp.OCSPResponse,
 		doubleSlashReq.SerialNumber.String(): resp.OCSPResponse,
 	}
-	src := bocsp.NewMemorySource(responses, blog.NewMock())
+	src := ocsp_responder.NewMemorySource(responses, blog.NewMock())
 	h := mux(stats, "/foobar/", src, blog.NewMock())
 	type muxTest struct {
 		method       string
@@ -175,7 +175,7 @@ func TestDBHandler(t *testing.T) {
 	db := dbReceiver{mockSelector{}, f, mockLog}
 	src := &dbSource{fc, db, nil, f, time.Second, mockLog, metrics}
 
-	h := bocsp.NewResponder(src, stats, mockLog)
+	h := ocsp_responder.NewResponder(src, stats, mockLog)
 	w := httptest.NewRecorder()
 	r, err := http.NewRequest("POST", "/", bytes.NewReader(req))
 	if err != nil {
@@ -327,7 +327,7 @@ func TestRequiredSerialPrefix(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(context.Background(), ocspReq)
-	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
+	test.AssertErrorIs(t, err, ocsp_responder.ErrNotFound)
 
 	fmt.Println(core.SerialToString(ocspReq.SerialNumber))
 
@@ -370,7 +370,7 @@ func TestExpiredUnauthorized(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	_, _, err = src.Response(context.Background(), ocspReq)
-	test.AssertErrorIs(t, err, bocsp.ErrNotFound)
+	test.AssertErrorIs(t, err, ocsp_responder.ErrNotFound)
 }
 
 type alwaysSucceedLookup struct{}
