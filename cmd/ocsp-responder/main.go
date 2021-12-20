@@ -78,7 +78,6 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 // between redis and mysql.
 type sourceMetrics struct {
 	ocspLookups *prometheus.CounterVec
-	sourceUsed  *prometheus.CounterVec
 }
 
 func newSourceMetrics(stats prometheus.Registerer) *sourceMetrics {
