@@ -22,7 +22,7 @@ from helpers import *
 
 from acme import errors as acme_errors
 
-from acme.messages import Status, CertificateRequest, Directory
+from acme.messages import Status, CertificateRequest, Directory, NewRegistration
 from acme import crypto_util as acme_crypto_util
 from acme import client as acme_client
 from acme import messages
@@ -681,6 +681,13 @@ def test_revoke_by_account():
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     reset_akamai_purges()
+    try:
+        client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass  # Good, we shouldn't be able to revoke with keyCompromise
+    else:
+        raise(Exception("Revoked by account with keyCompromise"))
+
     client.revoke(josepy.ComparableX509(cert), 0)
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
@@ -693,6 +700,13 @@ def test_revoke_by_issuer():
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     reset_akamai_purges()
+    try:
+        client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass  # Good, we shouldn't be able to revoke with keyCompromise
+    else:
+        raise(Exception("Revoked by issuer with keyCompromise"))
+
     client.revoke(josepy.ComparableX509(cert), 0)
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
@@ -709,35 +723,47 @@ def test_revoke_by_authz():
     chisel2.auth_and_issue(domains, client=client)
 
     reset_akamai_purges()
+    try:
+        client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass  # Good, we shouldn't be able to revoke with keyCompromise
+    else:
+        raise(Exception("Revoked by authz with keyCompromise"))
+
     client.revoke(josepy.ComparableX509(cert), 0)
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
-    client = chisel2.make_client(None)
     domains = [random_domain()]
-    key = OpenSSL.crypto.PKey()
-    key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
-    key_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key)
-    csr_pem = chisel2.make_csr(domains)
-    order = client.new_order(csr_pem)
-    cleanup = chisel2.do_http_challenges(client, order.authorizations)
+
+    # We have to make our own CSR so that we can hold on to the private key
+    # for revocation later.
+    key = rsa.generate_private_key(65537, 2048, default_backend())
+    key_pem = key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
+
+    # We have to do our own issuance because we made our own CSR.
+    issue_client = chisel2.make_client(None)
+    order = issue_client.new_order(csr_pem)
+    cleanup = chisel2.do_http_challenges(issue_client, order.authorizations)
     try:
-        order = client.poll_and_finalize(order)
+        order = issue_client.poll_and_finalize(order)
     finally:
         cleanup()
-
-    # Create a new client with the JWK as the cert private key
-    jwk = josepy.JWKRSA(key=key)
-    net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
-
-    directory = Directory.from_json(net.get(chisel2.DIRECTORY_V2).json())
-    new_client = acme_client.ClientV2(directory, net)
-
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+
+    # Create a new client with the cert key as the account key. We don't
+    # register a server-side account with this client, as we don't need one.
+    revoke_client = chisel2.uninitialized_client(key=josepy.JWKRSA(key=key))
+
     reset_akamai_purges()
-    client.revoke(josepy.ComparableX509(cert), 0)
+    revoke_client.revoke(josepy.ComparableX509(cert), 1)
 
     cert_file = tempfile.NamedTemporaryFile(
         dir=tempdir, suffix='.test_revoke_by_privkey.pem',

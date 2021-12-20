@@ -8,6 +8,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -32,109 +33,160 @@ func isPrecert(cert *x509.Certificate) bool {
 	return false
 }
 
-// TestPrecertificateRevocation tests that a precertificate without a matching
-// certificate can be revoked using all of the available RFC 8555 revocation
-// authentication mechanisms.
-func TestPrecertificateRevocation(t *testing.T) {
+// TestRevocation tests that a certificate can be revoked using all of the
+// RFC 8555 revocation authentication mechanisms. It does so for both certs and
+// precerts (with no corresponding final cert), and for both the Unspecified and
+// keyCompromise revocation reasons.
+func TestRevocation(t *testing.T) {
 	t.Parallel()
 	// Create a base account to use for revocation tests.
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
-	c, err := makeClient("mailto:example@letsencrypt.org")
-	test.AssertNotError(t, err, "creating acme client")
 
-	// Create a specific key for CSRs so that it is possible to test revocation
-	// with the cert key.
-	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "creating random cert key")
+	type authMethod string
+	var (
+		byAccount authMethod = "byAccount"
+		byAuth    authMethod = "byAuth"
+		byKey     authMethod = "byKey"
+	)
 
-	// Create a second account to test revocation with an equally authorized account
-	otherAccount, err := makeClient()
-	test.AssertNotError(t, err, "creating second acme client")
-	// Preauthorize a specific domain with the other account before it has been
-	// added to the ct-test-srv reject list.
-	preAuthDomain := random_domain()
-	_, err = authAndIssue(otherAccount, nil, []string{preAuthDomain})
-	test.AssertNotError(t, err, "preauthorizing second acme client")
+	type certKind string
+	var (
+		finalcert certKind = "cert"
+		precert   certKind = "precert"
+	)
 
-	testCases := []struct {
-		name         string
-		domain       string
-		revokeClient *client
-		revokeKey    crypto.Signer
-	}{
-		{
-			name:      "revocation by certificate key",
-			revokeKey: certKey,
-		},
-		{
-			name:      "revocation by owner account key",
-			revokeKey: c.Account.PrivateKey,
-		},
-		{
-			name:         "equivalently authorized account key",
-			revokeClient: otherAccount,
-			revokeKey:    otherAccount.Account.PrivateKey,
-			domain:       preAuthDomain,
-		},
+	type testCase struct {
+		method      authMethod
+		reason      int
+		kind        certKind
+		expectError bool
+	}
+
+	var testCases []testCase
+	for _, kind := range []certKind{precert, finalcert} {
+		for _, reason := range []int{ocsp.Unspecified, ocsp.KeyCompromise} {
+			for _, method := range []authMethod{byAccount, byAuth, byKey} {
+				testCases = append(testCases, testCase{
+					method: method,
+					reason: reason,
+					kind:   kind,
+					// We expect an error only for KeyCompromise requests that use auth
+					// methods other than using the certificate key itself.
+					expectError: (reason == ocsp.KeyCompromise) && (method != byKey),
+				})
+			}
+		}
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// If the test case didn't specify a domain make one up randomly
-			if tc.domain == "" {
-				tc.domain = random_domain()
-			}
-			// If the test case didn't specify a different client to use for
-			// revocation use c.
-			if tc.revokeClient == nil {
-				tc.revokeClient = c
+		name := fmt.Sprintf("%s_%d_%s", tc.kind, tc.reason, tc.method)
+		t.Run(name, func(t *testing.T) {
+			issueClient, err := makeClient()
+			test.AssertNotError(t, err, "creating acme client")
+
+			certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			test.AssertNotError(t, err, "creating random cert key")
+
+			domain := random_domain()
+
+			// Try to issue a certificate for the name.
+			var cert *x509.Certificate
+			switch tc.kind {
+			case finalcert:
+				res, err := authAndIssue(issueClient, certKey, []string{domain})
+				test.AssertNotError(t, err, "authAndIssue failed")
+				cert = res.certs[0]
+
+			case precert:
+				// Make sure the ct-test-srv will reject generating SCTs for the domain,
+				// so we only get a precert and no final cert.
+				err := ctAddRejectHost(domain)
+				test.AssertNotError(t, err, "adding ct-test-srv reject host")
+
+				_, err = authAndIssue(issueClient, certKey, []string{domain})
+				test.AssertError(t, err, "expected error from authAndIssue, was nil")
+				if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
+					!strings.Contains(err.Error(), "SCT embedding") {
+					t.Fatal(err)
+				}
+
+				// Instead recover the precertificate from CT.
+				cert, err = ctFindRejection([]string{domain})
+				if err != nil || cert == nil {
+					t.Fatalf("couldn't find rejected precert for %q", domain)
+				}
+				// And make sure the cert we found is in fact a precert.
+				if !isPrecert(cert) {
+					t.Fatal("precert was missing poison extension")
+				}
+
+			default:
+				t.Fatalf("unrecognized cert kind %q", tc.kind)
 			}
 
-			// Make sure the ct-test-srv will reject issuance for the domain
-			err := ctAddRejectHost(tc.domain)
-			test.AssertNotError(t, err, "adding ct-test-srv reject host")
-
-			// Issue a certificate for the name using the `c` client. It should fail
-			// because not enough SCTs can be collected, leaving a precert without
-			// a matching final cert.
-			_, err = authAndIssue(c, certKey, []string{tc.domain})
-			test.AssertError(t, err, "expected error from authAndIssue, was nil")
-			if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
-				!strings.Contains(err.Error(), "SCT embedding") {
-				t.Fatal(err)
-			}
-
-			// Try to find a precertificate matching the domain from one of the
-			// configured ct-test-srv instances.
-			cert, err := ctFindRejection([]string{tc.domain})
-			if err != nil || cert == nil {
-				t.Fatalf("couldn't find rejected precert for %q", tc.domain)
-			}
-
-			// To be confident that we're testing the right thing also verify that the
-			// rejection is a poisoned precertificate.
-			if !isPrecert(cert) {
-				t.Fatal("precert was missing poison extension")
-			}
-
-			// To start with the precertificate should have a Good OCSP response.
+			// Initially, the cert should have a Good OCSP response.
 			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
 
-			// Revoke the precertificate using the specified key and client
-			err = tc.revokeClient.RevokeCertificate(
-				tc.revokeClient.Account,
-				cert,
-				tc.revokeKey,
-				ocsp.Unspecified)
-			test.AssertNotError(t, err, "revoking precert")
+			// Set up the account and key that we'll use to try to revoke the cert.
+			var revokeClient *client
+			var revokeKey crypto.Signer
+			switch tc.method {
+			case byAccount:
+				// When revoking by account, use the same client and key as were used
+				// for the original issuance.
+				revokeClient = issueClient
+				revokeKey = revokeClient.PrivateKey
 
-			// Check the OCSP response for the precertificate again. It should now be
-			// revoked.
-			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-			test.AssertNotError(t, err, "requesting OCSP for revoked precert")
+			case byAuth:
+				// When revoking by auth, create a brand new client, authorize it for
+				// the same domain, and use that account and key for revocation. Ignore
+				// errors from authAndIssue because all we need is the auth, not the
+				// issuance.
+				revokeClient, err = makeClient()
+				test.AssertNotError(t, err, "creating second acme client")
+				_, _ = authAndIssue(revokeClient, certKey, []string{domain})
+				revokeKey = revokeClient.PrivateKey
+
+			case byKey:
+				// When revoking by key, create a branch new client and use it and
+				// the cert's key for revocation.
+				revokeClient, err = makeClient()
+				test.AssertNotError(t, err, "creating second acme client")
+				revokeKey = certKey
+
+			default:
+				t.Fatalf("unrecognized revocation method %q", tc.method)
+			}
+
+			// Revoke the cert using the specified key and client.
+			err = revokeClient.RevokeCertificate(
+				revokeClient.Account,
+				cert,
+				revokeKey,
+				tc.reason,
+			)
+
+			switch tc.expectError {
+			case false:
+				test.AssertNotError(t, err, "revocation should have succeeded")
+
+				// Check the OCSP response for the certificate again. It should now be
+				// revoked.
+				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+
+			case true:
+				test.AssertError(t, err, "revocation should have failed")
+
+				// Check the OCSP response for the certificate again. It should still
+				// be good.
+				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+				test.AssertNotError(t, err, "requesting OCSP for nonrevoked cert")
+			}
 		})
 	}
 }
@@ -161,9 +213,9 @@ func TestRevokeWithKeyCompromise(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "failed to revoke certificate")
 
-	// attempt to create a new account using the blacklisted key
+	// attempt to create a new account using the blocklisted key
 	_, err = c.NewAccount(certKey, false, true)
-	test.AssertError(t, err, "NewAccount didn't fail with a blacklisted key")
+	test.AssertError(t, err, "NewAccount didn't fail with a blocklisted key")
 	test.AssertEquals(t, err.Error(), `acme: error code 400 "urn:ietf:params:acme:error:badPublicKey": public key is forbidden`)
 
 	// Check the OCSP response. It should be revoked with reason = 1 (keyCompromise)
