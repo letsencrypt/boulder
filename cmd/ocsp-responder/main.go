@@ -235,7 +235,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 			if errors.Is(primaryResult.err, bocsp.ErrNotFound) {
 				src.metrics.ocspLookups.WithLabelValues("mysql", "success", "not_found").Inc()
 			} else {
-				src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "error").Inc()
+				src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "other").Inc()
 			}
 			return nil, nil, primaryResult.err
 		}
@@ -244,7 +244,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing OCSP response: %s", err)
-			src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "error").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "other").Inc()
 			return nil, nil, err
 		}
 		src.log.Debugf("returning ocsp from primary source: %v", helper.PrettyResponse(primaryParsed))
@@ -271,7 +271,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 			if errors.Is(primaryResult.err, bocsp.ErrNotFound) {
 				src.metrics.ocspLookups.WithLabelValues("mysql", "success", "not_found").Inc()
 			} else {
-				src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "error").Inc()
+				src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "other").Inc()
 			}
 			return nil, nil, primaryResult.err
 		}
@@ -281,7 +281,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing OCSP response: %s", err)
-			src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "error").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "failed", "other").Inc()
 			return nil, nil, err
 		}
 
@@ -294,7 +294,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 			if errors.Is(secondaryResult.err, bocsp.ErrNotFound) {
 				src.metrics.ocspLookups.WithLabelValues("redis", "failed", "not_found").Inc()
 			} else {
-				src.metrics.ocspLookups.WithLabelValues("redis", "failed", "error").Inc()
+				src.metrics.ocspLookups.WithLabelValues("redis", "failed", "other").Inc()
 			}
 			src.metrics.ocspLookups.WithLabelValues("mysql", "success", "").Inc()
 			return primaryResult.bytes, header, nil
@@ -305,7 +305,7 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		secondaryParsed, err := ocsp.ParseResponse(secondaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing secondary OCSP response: %s", err)
-			src.metrics.ocspLookups.WithLabelValues("redis", "failed", "error").Inc()
+			src.metrics.ocspLookups.WithLabelValues("redis", "failed", "other").Inc()
 			src.metrics.ocspLookups.WithLabelValues("mysql", "success", "").Inc()
 			return primaryResult.bytes, header, nil
 		}
