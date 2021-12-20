@@ -3,7 +3,12 @@ package notmain
 import (
 	"bufio"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -32,12 +37,15 @@ admin-revoker serial-revoke --config <path> <serial> <reason-code>
 admin-revoker batched-serial-revoke --config <path> <serial-file-path> <reason-code> <parallelism>
 admin-revoker reg-revoke --config <path> <registration-id> <reason-code>
 admin-revoker list-reasons --config <path>
+admin-revoker list-reasons --config <path> <private-key-path> <reason-code>
 
 command descriptions:
   serial-revoke         Revoke a single certificate by the hex serial number
   batched-serial-revoke Revokes all certificates contained in a file of hex serial numbers
   reg-revoke            Revoke all certificates associated with a registration ID
   list-reasons          List all revocation reason codes
+  block-key             Adds the public key derived from the provided private key to the
+                        blocked keys table
 
 args:
   config    File path to the configuration file for this service
@@ -221,6 +229,42 @@ func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
+// loadPrivateKey loads a private key from the provided `contents` and returns a
+// `crypto.Signer`.
+func loadPrivateKey(keyContents []byte) (crypto.Signer, error) {
+	// Attempt to decode PEM block.
+	block, _ := pem.Decode(keyContents)
+	if block == nil {
+		return nil, errors.New("does not contain a PEM formatted block")
+	}
+
+	// Attempt to parse as PKCS #1.
+	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err == nil {
+		return rsaKey, nil
+	}
+
+	// Attempt to parse as PKCS #8.
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err == nil {
+		switch k := key.(type) {
+		case *rsa.PrivateKey:
+			return k, nil
+		case *ecdsa.PrivateKey:
+			return k, nil
+		}
+	}
+
+	// Attempt to parse as SEC 1.
+	ecdsaKey, err := x509.ParseECPrivateKey(block.Bytes)
+	if err == nil {
+		return ecdsaKey, nil
+	}
+
+	// Give up.
+	return nil, errors.New("unable to decode private key from provided key contents")
+}
+
 func main() {
 	usage := func() {
 		fmt.Fprint(os.Stderr, usageString)
@@ -300,10 +344,26 @@ func main() {
 			codes = append(codes, k)
 		}
 		sort.Sort(codes)
-		fmt.Printf("Revocation reason codes\n-----------------------\n\n")
+		fmt.Print("Revocation reason codes\n-----------------------\n\n")
 		for _, k := range codes {
 			fmt.Printf("%d: %s\n", k, revocation.ReasonToString[k])
 		}
+
+	case command == "block-key" && len(args) == 2:
+		// 1: keyPath, 2: reasonCode
+		keyPath := args[0]
+
+		keyContents, err := os.ReadFile(keyPath)
+		cmd.FailOnError(err, fmt.Sprintf("Cannot load file %q", keyPath))
+
+		privKey, err := loadPrivateKey(keyContents)
+		cmd.FailOnError(err, fmt.Sprintf("Cannot parse private key from file %q", keyPath))
+
+		fmt.Printf("%+v", privKey.Public())
+
+		reasonCode, err := strconv.Atoi(args[1])
+		cmd.FailOnError(err, "Reason code argument must be an integer")
+		fmt.Println(reasonCode)
 
 	default:
 		usage()
