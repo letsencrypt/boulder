@@ -715,6 +715,7 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 // used to determine if a certificate has previously been issued for a given
 // domain name in order to determine if validations should be allowed during
 // the v1 API shutoff.
+// TODO(#5816): Consider removing this method, as it has no callers.
 func (ssa *SQLStorageAuthority) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest) (*sapb.Exists, error) {
 	if req.Domain == "" || req.RegID == 0 {
 		return nil, errIncompleteRequest
@@ -1140,9 +1141,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 	return &emptypb.Empty{}, nil
 }
 
-// authzForOrder retrieves the authorization IDs for an order. It returns these
-// IDs in two slices: one for v1 style authorizations, and another for
-// v2 style authorizations.
+// authzForOrder retrieves the authorization IDs for an order.
 func (ssa *SQLStorageAuthority) authzForOrder(ctx context.Context, orderID int64) ([]int64, error) {
 	var v2IDs []int64
 	_, err := ssa.dbMap.WithContext(ctx).Select(
@@ -1237,13 +1236,6 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 //   * If all of the order's authorizations are valid, and we haven't begun
 //     processing, then the order is status ready.
 // An error is returned for any other case.
-//
-// While transitioning between the v1 and v2 authorization storage formats this method
-// needs to lookup authorizations using both the authz/pendingAuthorizations and authz2
-// tables. Since, if there are any v2 authorizations, we already have their IDs we don't
-// need to consult the orderToAuthz2 table a second time. We cannot do this as easily
-// for the v1 authorizations as their IDs can refer to one of two tables, whereas all
-// v2 authorizations exist in a single table.
 func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
@@ -1467,6 +1459,7 @@ func AuthzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error
 
 // NewAuthorizations2 adds a set of new style authorizations to the database and
 // returns either the IDs of the authorizations or an error.
+// TODO(#5816): Consider removing this method, as it has no callers.
 func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest) (*sapb.Authorization2IDs, error) {
 	if len(req.Authz) == 0 {
 		return nil, errIncompleteRequest
@@ -1565,10 +1558,6 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 
 // GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
 // provided. If both a valid and pending authorization exist only the valid one will be returned.
-// This method will look in both the v2 and v1 authorizations tables for authorizations but will
-// always prefer v2 authorizations. This method will only return authorizations created using the
-// WFE v2 API (in GetAuthorizations this feature was, now somewhat confusingly, called RequireV2Authzs).
-// This method is intended to deprecate GetAuthorizations. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
 		return nil, errIncompleteRequest
@@ -1623,48 +1612,10 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		return &sapb.Authorizations{}, nil
 	}
 
-	// Previously we used a JOIN on the orderToAuthz2 table in order to make sure
-	// we only returned authorizations created using the ACME v2 API. Each time an
-	// order is created a pivot row (order ID + authz ID) is added to the
-	// orderToAuthz2 table. If a large number of orders are created that all contain
-	// the same authorization, due to reuse, then the JOINd query would return a full
-	// authorization row for each entry in the orderToAuthz2 table with the authorization
-	// ID.
-	//
-	// Instead we now filter out these authorizations by doing a second query against
-	// the orderToAuthz2 table. Using this query still requires examining a large number
-	// of rows, but because we don't need to construct a temporary table for the JOIN
-	// and fill it with all the full authorization rows we should save resources.
-	var ids []interface{}
-	qmarks = make([]string, len(authzModels))
-	for i, am := range authzModels {
-		ids = append(ids, am.ID)
-		qmarks[i] = "?"
-	}
-	var authzIDs []int64
-	_, err = ssa.dbMap.Select(
-		&authzIDs,
-		fmt.Sprintf(`SELECT DISTINCT(authzID) FROM orderToAuthz2 WHERE authzID IN (%s)`, strings.Join(qmarks, ",")),
-		ids...,
-	)
-	if err != nil {
-		return nil, err
-	}
-	authzIDMap := map[int64]bool{}
-	for _, id := range authzIDs {
-		authzIDMap[id] = true
-	}
-
 	authzModelMap := make(map[string]authzModel)
 	for _, am := range authzModels {
-		// Anything not found in the ID map wasn't in the pivot table, meaning it
-		// didn't correspond to an order, meaning it wasn't created with ACMEv2.
-		// Don't return it for ACMEv2 requests.
-		if _, present := authzIDMap[am.ID]; !present {
-			continue
-		}
-		if existing, present := authzModelMap[am.IdentifierValue]; !present ||
-			uintToStatus[existing.Status] == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
+		existing, present := authzModelMap[am.IdentifierValue]
+		if !present || uintToStatus[existing.Status] == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
 			authzModelMap[am.IdentifierValue] = am
 		}
 	}
@@ -1793,6 +1744,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 
 // GetPendingAuthorization2 returns the most recent Pending authorization with
 // the given identifier, if available. This method only supports DNS identifier types.
+// TODO(#5816): Consider removing this method, as it has no callers.
 func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
 	if req.RegistrationID == 0 || req.IdentifierValue == "" || req.ValidUntil == 0 {
 		return nil, errIncompleteRequest

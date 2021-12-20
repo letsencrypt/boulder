@@ -17,6 +17,7 @@ const (
 	NonCFSSLSigner
 	StoreIssuerInfo
 	StreamlineOrderAndAuthzs
+	V1DisableNewValidations
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -34,9 +35,6 @@ const (
 	MandatoryPOSTAsGET
 	// Allow creation of new registrations in ACMEv1.
 	AllowV1Registration
-	// V1DisableNewValidations disables validations for new domain names in the V1
-	// API.
-	V1DisableNewValidations
 	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
 	// was checked for extant unrevoked certificates in the blockedKeys table.
 	StoreRevokerInfo
