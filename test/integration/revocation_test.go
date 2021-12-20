@@ -62,7 +62,7 @@ func TestRevocation(t *testing.T) {
 		expectError bool
 	}
 
-	testCases := make([]testCase, 0)
+	var testCases []testCase
 	for _, kind := range []certKind{precert, finalcert} {
 		for _, reason := range []int{ocsp.Unspecified, ocsp.KeyCompromise} {
 			for _, method := range []authMethod{byAccount, byAuth, byKey} {
@@ -70,7 +70,7 @@ func TestRevocation(t *testing.T) {
 					method: method,
 					reason: reason,
 					kind:   kind,
-					// We expect an error only for KeyComprommise requests that use auth
+					// We expect an error only for KeyCompromise requests that use auth
 					// methods other than using the certificate key itself.
 					expectError: (reason == ocsp.KeyCompromise) && (method != byKey),
 				})
@@ -88,9 +88,6 @@ func TestRevocation(t *testing.T) {
 			test.AssertNotError(t, err, "creating random cert key")
 
 			domain := random_domain()
-
-			if tc.kind == precert {
-			}
 
 			// Try to issue a certificate for the name.
 			var cert *x509.Certificate
