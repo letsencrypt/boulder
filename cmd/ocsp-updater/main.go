@@ -15,14 +15,13 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
-	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp/updater/config"
 	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
 type config struct {
-	OCSPUpdater ocsp_updater_config.Config
+	OCSPUpdater ocsp_updater.Config
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
