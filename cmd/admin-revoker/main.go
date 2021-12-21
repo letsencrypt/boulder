@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -353,17 +355,50 @@ func main() {
 		// 1: keyPath, 2: reasonCode
 		keyPath := args[0]
 
+		reasonCode, err := strconv.Atoi(args[1])
+		cmd.FailOnError(err, "Reason code argument must be an integer")
+		fmt.Println(reasonCode)
+
 		keyContents, err := os.ReadFile(keyPath)
 		cmd.FailOnError(err, fmt.Sprintf("Cannot load file %q", keyPath))
 
 		privKey, err := loadPrivateKey(keyContents)
 		cmd.FailOnError(err, fmt.Sprintf("Cannot parse private key from file %q", keyPath))
 
-		fmt.Printf("%+v", privKey.Public())
+		messageHash := sha256.New()
+		_, err = messageHash.Write([]byte("verifiable"))
+		cmd.FailOnError(err, "Failed to hash 'verifiable' msg")
+		messageHashSum := messageHash.Sum(nil)
 
-		reasonCode, err := strconv.Atoi(args[1])
-		cmd.FailOnError(err, "Reason code argument must be an integer")
-		fmt.Println(reasonCode)
+		privateKeyRSA, ok := privKey.(*rsa.PrivateKey)
+		if ok {
+			// privateKeyRSA2, err := rsa.GenerateKey(rand.Reader, 2048)
+			// cmd.FailOnError(err, "Failed to generate random RSA Key")
+
+			signatureRSA, err := rsa.SignPSS(rand.Reader, privateKeyRSA, crypto.SHA256, messageHashSum, nil)
+			cmd.FailOnError(err, "Failed to sign with RSA Key")
+
+			err = rsa.VerifyPSS(&privateKeyRSA.PublicKey, crypto.SHA256, messageHashSum, signatureRSA, nil)
+			cmd.FailOnError(err, "Failed to validate RSA private key")
+			r.log.AuditInfo("Provided key pair is valid.")
+		}
+
+		privateKeyECDSA, ok := privKey.(*ecdsa.PrivateKey)
+		if ok {
+			// privateKeyECDSA2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			// cmd.FailOnError(err, "Failed to generate random ECDSA Key")
+
+			x, y, err := ecdsa.Sign(rand.Reader, privateKeyECDSA, messageHashSum)
+			cmd.FailOnError(err, "Failed to sign with ECDSA Key")
+
+			verify := ecdsa.Verify(&privateKeyECDSA.PublicKey, messageHashSum, x, y)
+			if verify {
+				r.log.AuditInfo("Provided key pair is valid.")
+			} else {
+				r.log.AuditErr("Failed to validate ECDSA private key")
+				os.Exit(1)
+			}
+		}
 
 	default:
 		usage()
