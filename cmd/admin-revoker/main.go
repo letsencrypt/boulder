@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash"
 	"os"
 	"os/user"
 	"sort"
@@ -47,7 +48,9 @@ command descriptions:
   reg-revoke            Revoke all certificates associated with a registration ID
   list-reasons          List all revocation reason codes
   block-key             Adds the public key derived from the provided private key to the
-                        blocked keys table
+                        blocked keys table. <private-key-path> is expected to be the path
+						to a PEM formatted file containing an RSA or ECDSA private key in
+						a PKCS #1, PKCS# 8, or SEC 1 container.
 
 args:
   config    File path to the configuration file for this service
@@ -231,40 +234,99 @@ func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
-// loadPrivateKey loads a private key from the provided `contents` and returns a
-// `crypto.Signer`.
+// loadPrivateKey decodes and parses a private key from the provided
+// `keyContents` and returns the private key as `crypto.Signer`. `keyContents`
+// is expected to be a PEM formatted RSA or ECDSA private key in a PKCS #1,
+// PKCS# 8, or SEC 1 container.
 func loadPrivateKey(keyContents []byte) (crypto.Signer, error) {
-	// Attempt to decode PEM block.
+	// Attempt to find and decode the first PEM block.
 	block, _ := pem.Decode(keyContents)
 	if block == nil {
 		return nil, errors.New("does not contain a PEM formatted block")
 	}
 
-	// Attempt to parse as PKCS #1.
+	// Attempt to parse the PEM block as a private key in a PKCS #1 container.
 	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err == nil {
 		return rsaKey, nil
 	}
 
-	// Attempt to parse as PKCS #8.
+	// Attempt to parse the PEM block as a private key in a PKCS #8 container.
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err == nil {
 		switch k := key.(type) {
 		case *rsa.PrivateKey:
 			return k, nil
+
 		case *ecdsa.PrivateKey:
 			return k, nil
 		}
 	}
 
-	// Attempt to parse as SEC 1.
+	// Attempt to parse the PEM block as a private key in a SEC 1 container.
 	ecdsaKey, err := x509.ParseECPrivateKey(block.Bytes)
 	if err == nil {
 		return ecdsaKey, nil
 	}
 
-	// Give up.
-	return nil, errors.New("unable to decode private key from provided key contents")
+	// No private key could be parsed from the PEM block.
+	return nil, errors.New("cannot parse a private key from the provided PEM file")
+}
+
+func verifyRSAKeyPair(privKey *rsa.PrivateKey, pubKey *rsa.PublicKey, msgHash hash.Hash) error {
+	// privateKeyRSA2, err := rsa.GenerateKey(rand.Reader, 2048)
+	// cmd.FailOnError(err, "Failed to generate random RSA Key")
+
+	signatureRSA, err := rsa.SignPSS(rand.Reader, privKey, crypto.SHA256, msgHash.Sum(nil), nil)
+	if err != nil {
+		return fmt.Errorf("failed to sign using the provided RSA private key: %s", err)
+	}
+
+	err = rsa.VerifyPSS(pubKey, crypto.SHA256, msgHash.Sum(nil), signatureRSA, nil)
+	if err != nil {
+		return fmt.Errorf("the provided ECDSA private key failed signature verification: %s", err)
+	}
+	return err
+}
+
+func verifyECDSAKeyPair(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey, msgHash hash.Hash) error {
+	// privateKeyECDSA2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	// cmd.FailOnError(err, "Failed to generate random ECDSA Key")
+
+	r, s, err := ecdsa.Sign(rand.Reader, privKey, msgHash.Sum(nil))
+	if err != nil {
+		return fmt.Errorf("failed to sign using the provided ECDSA private key: %s", err)
+	}
+
+	verify := ecdsa.Verify(pubKey, msgHash.Sum(nil), r, s)
+	if !verify {
+		return errors.New("the provided ECDSA private key failed signature verification")
+	}
+	return err
+}
+
+// verifyPrivateKey accepts a private key in the form of a `crypto.Signer` and
+// performs signing and verification for both RSA and ECDSA private keys.
+// Returns a nil error if signing and verification has been completed
+// successfully.
+func verifyPrivateKey(privateKey crypto.Signer) error {
+	msgHash := sha256.New()
+	_, err := msgHash.Write([]byte("verifiable"))
+	if err != nil {
+		return fmt.Errorf("failed to hash 'verifiable' message: %s", err)
+	}
+
+	privateKeyRSA, ok := privateKey.(*rsa.PrivateKey)
+	if ok {
+		return verifyRSAKeyPair(privateKeyRSA, &privateKeyRSA.PublicKey, msgHash)
+	} else {
+		privateKeyECDSA, ok := privateKey.(*ecdsa.PrivateKey)
+		if ok {
+			return verifyECDSAKeyPair(privateKeyECDSA, &privateKeyECDSA.PublicKey, msgHash)
+		}
+	}
+	// This should not happen.
+	return errors.New("the provided private key could not be asserted to ECDSA or RSA")
 }
 
 func main() {
@@ -346,7 +408,7 @@ func main() {
 			codes = append(codes, k)
 		}
 		sort.Sort(codes)
-		fmt.Print("Revocation reason codes\n-----------------------\n\n")
+		fmt.Printf("Revocation reason codes\n-----------------------\n\n")
 		for _, k := range codes {
 			fmt.Printf("%d: %s\n", k, revocation.ReasonToString[k])
 		}
@@ -362,43 +424,12 @@ func main() {
 		keyContents, err := os.ReadFile(keyPath)
 		cmd.FailOnError(err, fmt.Sprintf("Cannot load file %q", keyPath))
 
-		privKey, err := loadPrivateKey(keyContents)
+		privateKey, err := loadPrivateKey(keyContents)
 		cmd.FailOnError(err, fmt.Sprintf("Cannot parse private key from file %q", keyPath))
 
-		messageHash := sha256.New()
-		_, err = messageHash.Write([]byte("verifiable"))
-		cmd.FailOnError(err, "Failed to hash 'verifiable' msg")
-		messageHashSum := messageHash.Sum(nil)
-
-		privateKeyRSA, ok := privKey.(*rsa.PrivateKey)
-		if ok {
-			// privateKeyRSA2, err := rsa.GenerateKey(rand.Reader, 2048)
-			// cmd.FailOnError(err, "Failed to generate random RSA Key")
-
-			signatureRSA, err := rsa.SignPSS(rand.Reader, privateKeyRSA, crypto.SHA256, messageHashSum, nil)
-			cmd.FailOnError(err, "Failed to sign with RSA Key")
-
-			err = rsa.VerifyPSS(&privateKeyRSA.PublicKey, crypto.SHA256, messageHashSum, signatureRSA, nil)
-			cmd.FailOnError(err, "Failed to validate RSA private key")
-			r.log.AuditInfo("Provided key pair is valid.")
-		}
-
-		privateKeyECDSA, ok := privKey.(*ecdsa.PrivateKey)
-		if ok {
-			// privateKeyECDSA2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-			// cmd.FailOnError(err, "Failed to generate random ECDSA Key")
-
-			x, y, err := ecdsa.Sign(rand.Reader, privateKeyECDSA, messageHashSum)
-			cmd.FailOnError(err, "Failed to sign with ECDSA Key")
-
-			verify := ecdsa.Verify(&privateKeyECDSA.PublicKey, messageHashSum, x, y)
-			if verify {
-				r.log.AuditInfo("Provided key pair is valid.")
-			} else {
-				r.log.AuditErr("Failed to validate ECDSA private key")
-				os.Exit(1)
-			}
-		}
+		err = verifyPrivateKey(privateKey)
+		cmd.FailOnError(err, "While attempting to verify")
+		r.log.AuditInfo("the provided private key has been successfully verified")
 
 	default:
 		usage()
