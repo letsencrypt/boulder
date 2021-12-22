@@ -2,7 +2,11 @@ package notmain
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
@@ -131,4 +135,40 @@ func TestRevokeBatch(t *testing.T) {
 		test.AssertNotError(t, err, "failed to retrieve certificate status")
 		test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	}
+}
+
+func TestVerifyRSAKeyPair(t *testing.T) {
+	msgHash := sha256.New()
+	_, err := msgHash.Write([]byte("verifiable"))
+	test.AssertNotError(t, err, "Failed to hash 'verifiable' message: %s")
+
+	privKey1, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed while generating test key 1.")
+
+	err = verifyRSAKeyPair(privKey1, &privKey1.PublicKey, msgHash)
+	test.AssertNotError(t, err, "Failed to verify valid key pair.")
+
+	privKey2, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed while generating test key 2.")
+
+	err = verifyRSAKeyPair(privKey1, &privKey2.PublicKey, msgHash)
+	test.AssertError(t, err, "Failed to detect invalid key pair.")
+}
+
+func TestVerifyECDSAKeyPair(t *testing.T) {
+	msgHash := sha256.New()
+	_, err := msgHash.Write([]byte("verifiable"))
+	test.AssertNotError(t, err, "Failed to hash 'verifiable' message: %s")
+
+	privKey1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Failed while generating test key 1.")
+
+	err = verifyECDSAKeyPair(privKey1, &privKey1.PublicKey, msgHash)
+	test.AssertNotError(t, err, "Failed to verify valid key pair")
+
+	privKey2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "Failed while generating test key 2.")
+
+	err = verifyECDSAKeyPair(privKey1, &privKey2.PublicKey, msgHash)
+	test.AssertError(t, err, "Failed to detect invalid key pair.")
 }

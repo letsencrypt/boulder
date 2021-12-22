@@ -273,10 +273,8 @@ func loadPrivateKey(keyContents []byte) (crypto.Signer, error) {
 	return nil, errors.New("cannot parse a private key from the provided PEM file")
 }
 
+// verifyRSAKeyPair is broken out of `verifyPrivateKey` for testing purposes.
 func verifyRSAKeyPair(privKey *rsa.PrivateKey, pubKey *rsa.PublicKey, msgHash hash.Hash) error {
-	// privateKeyRSA2, err := rsa.GenerateKey(rand.Reader, 2048)
-	// cmd.FailOnError(err, "Failed to generate random RSA Key")
-
 	signatureRSA, err := rsa.SignPSS(rand.Reader, privKey, crypto.SHA256, msgHash.Sum(nil), nil)
 	if err != nil {
 		return fmt.Errorf("failed to sign using the provided RSA private key: %s", err)
@@ -289,10 +287,8 @@ func verifyRSAKeyPair(privKey *rsa.PrivateKey, pubKey *rsa.PublicKey, msgHash ha
 	return err
 }
 
+// verifyECDSAKeyPair is broken out of `verifyPrivateKey` for testing purposes.
 func verifyECDSAKeyPair(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey, msgHash hash.Hash) error {
-	// privateKeyECDSA2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	// cmd.FailOnError(err, "Failed to generate random ECDSA Key")
-
 	r, s, err := ecdsa.Sign(rand.Reader, privKey, msgHash.Sum(nil))
 	if err != nil {
 		return fmt.Errorf("failed to sign using the provided ECDSA private key: %s", err)
