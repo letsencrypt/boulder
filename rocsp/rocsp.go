@@ -183,7 +183,7 @@ func (c *Client) GetResponse(ctx context.Context, serial string) ([]byte, error)
 	resp, err := c.rdb.Get(ctx, responseKey).Result()
 	if err != nil {
 		// go-redis `Get` returns redis.Nil error when key does not exist. In
-		// that case return a ErrNotFound error.
+		// that case return a `ErrRedisNotFound` error.
 		if errors.Is(err, redis.Nil) {
 			return nil, ErrRedisNotFound
 		}
