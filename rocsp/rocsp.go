@@ -180,18 +180,17 @@ func (c *Client) GetResponse(ctx context.Context, serial string) ([]byte, error)
 
 	responseKey := MakeResponseKey(serial)
 
-	resp := c.rdb.Get(ctx, responseKey)
-	// go-redis `Get` returns redis.Nil error when key does not exist. In
-	// that case return a ErrNotFound error.
-	if errors.Is(resp.Err(), redis.Nil) {
-		return nil, ErrRedisNotFound
-	}
-	val, err := resp.Result()
+	resp, err := c.rdb.Get(ctx, responseKey).Result()
 	if err != nil {
+		// go-redis `Get` returns redis.Nil error when key does not exist. In
+		// that case return a ErrNotFound error.
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrRedisNotFound
+		}
 		return nil, fmt.Errorf("getting response: %w", err)
 	}
 
-	return []byte(val), nil
+	return []byte(resp), nil
 }
 
 // GetMetadata fetches the metadata for the given serial number.
