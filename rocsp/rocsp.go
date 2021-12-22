@@ -3,6 +3,7 @@ package rocsp
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
+
+var ErrRedisNotFound = errors.New("redis key not found")
 
 // Metadata represents information stored with the 'm' prefix in the Redis DB:
 // information required to maintain or serve the response, but not the response
@@ -176,12 +179,17 @@ func (c *Client) GetResponse(ctx context.Context, serial string) ([]byte, error)
 
 	responseKey := MakeResponseKey(serial)
 
-	val, err := c.rdb.Get(ctx, responseKey).Result()
+	resp, err := c.rdb.Get(ctx, responseKey).Result()
 	if err != nil {
+		// go-redis `Get` returns redis.Nil error when key does not exist. In
+		// that case return a `ErrRedisNotFound` error.
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrRedisNotFound
+		}
 		return nil, fmt.Errorf("getting response: %w", err)
 	}
 
-	return []byte(val), nil
+	return []byte(resp), nil
 }
 
 // GetMetadata fetches the metadata for the given serial number.
@@ -191,11 +199,16 @@ func (c *Client) GetMetadata(ctx context.Context, serial string) (*Metadata, err
 
 	metadataKey := MakeMetadataKey(serial)
 
-	val, err := c.rdb.Get(ctx, metadataKey).Result()
+	resp, err := c.rdb.Get(ctx, metadataKey).Result()
 	if err != nil {
+		// go-redis `Get` returns redis.Nil error when key does not exist. In
+		// that case return a `ErrRedisNotFound` error.
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrRedisNotFound
+		}
 		return nil, fmt.Errorf("getting metadata: %w", err)
 	}
-	metadata, err := UnmarshalMetadata([]byte(val))
+	metadata, err := UnmarshalMetadata([]byte(resp))
 	if err != nil {
 		return nil, fmt.Errorf("unmarshaling metadata: %w", err)
 	}

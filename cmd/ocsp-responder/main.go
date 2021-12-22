@@ -78,26 +78,18 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 // between redis and mysql.
 type sourceMetrics struct {
 	ocspLookups *prometheus.CounterVec
-	sourceUsed  *prometheus.CounterVec
 }
 
 func newSourceMetrics(stats prometheus.Registerer) *sourceMetrics {
 	// Metrics for response lookups
 	ocspLookups := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_lookups",
-		Help: "A counter of ocsp lookups labeled by source_result",
-	}, []string{"result"})
+		Help: "A counter of ocsp lookups labeled with source and result",
+	}, []string{"source", "result"})
 	stats.MustRegister(ocspLookups)
-
-	sourceUsed := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "lookup_source_used",
-		Help: "A counter of lookups returned labeled by source used",
-	}, []string{"source"})
-	stats.MustRegister(sourceUsed)
 
 	metrics := sourceMetrics{
 		ocspLookups: ocspLookups,
-		sourceUsed:  sourceUsed,
 	}
 	return &metrics
 }
@@ -233,15 +225,17 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	select {
 	case <-ctx.Done():
 		if errors.Is(ctx.Err(), context.Canceled) {
-			src.metrics.ocspLookups.WithLabelValues("canceled").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "canceled").Inc()
+		} else {
+			src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
 		}
-		src.metrics.ocspLookups.WithLabelValues("deadline_exceeded").Inc()
 		return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 	case primaryResult := <-primaryChan:
 		if primaryResult.err != nil {
-			if !errors.Is(primaryResult.err, bocsp.ErrNotFound) {
-				src.metrics.ocspLookups.WithLabelValues("mysql_failed").Inc()
-				src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			if errors.Is(primaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "not_found").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "failed").Inc()
 			}
 			return nil, nil, primaryResult.err
 		}
@@ -250,13 +244,11 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing OCSP response: %s", err)
-			src.metrics.ocspLookups.WithLabelValues("mysql_parse_error").Inc()
-			src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "parse_error").Inc()
 			return nil, nil, err
 		}
 		src.log.Debugf("returning ocsp from primary source: %v", helper.PrettyResponse(primaryParsed))
-		src.metrics.ocspLookups.WithLabelValues("mysql_success").Inc()
-		src.metrics.sourceUsed.WithLabelValues("mysql").Inc()
+		src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
 		return primaryResult.bytes, header, nil
 	case secondaryResult := <-secondaryChan:
 		// If secondary returns first, wait for primary to return for
@@ -267,18 +259,20 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		select {
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.Canceled) {
-				src.metrics.ocspLookups.WithLabelValues("canceled").Inc()
+				src.metrics.ocspLookups.WithLabelValues("mysql", "canceled").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
 			}
-			src.metrics.ocspLookups.WithLabelValues("deadline_exceeded").Inc()
 			return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 		case primaryResult = <-primaryChan:
 		}
 
 		// Check for error returned from the mysql lookup, return on error.
 		if primaryResult.err != nil {
-			if !errors.Is(primaryResult.err, bocsp.ErrNotFound) {
-				src.metrics.ocspLookups.WithLabelValues("mysql_failed").Inc()
-				src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			if errors.Is(primaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "not_found").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "failed").Inc()
 			}
 			return nil, nil, primaryResult.err
 		}
@@ -288,16 +282,22 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing OCSP response: %s", err)
-			src.metrics.ocspLookups.WithLabelValues("mysql_parse_error").Inc()
-			src.metrics.sourceUsed.WithLabelValues("error_returned").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "parse_error").Inc()
 			return nil, nil, err
 		}
 
 		// Check for error returned from the redis lookup. If error return
 		// primary lookup result.
 		if secondaryResult.err != nil {
-			src.metrics.ocspLookups.WithLabelValues("redis_failed").Inc()
-			src.metrics.sourceUsed.WithLabelValues("mysql").Inc()
+			// If we made it this far then there was a successful lookup
+			// on mysql but an error on redis. Either the response exists
+			// in mysql and not in redis or a different error occurred.
+			if errors.Is(secondaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("redis", "not_found").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("redis", "failed").Inc()
+			}
+			src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
 			return primaryResult.bytes, header, nil
 		}
 
@@ -306,22 +306,21 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		secondaryParsed, err := ocsp.ParseResponse(secondaryResult.bytes, nil)
 		if err != nil {
 			src.log.AuditErrf("parsing secondary OCSP response: %s", err)
-			src.metrics.ocspLookups.WithLabelValues("redis_parse_error").Inc()
-			src.metrics.sourceUsed.WithLabelValues("mysql").Inc()
+			src.metrics.ocspLookups.WithLabelValues("redis", "parse_error").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
 			return primaryResult.bytes, header, nil
 		}
 
 		// If the secondary response status doesn't match primary return
 		// primary response.
 		if primaryParsed.Status != secondaryParsed.Status {
-			src.metrics.ocspLookups.WithLabelValues("redis_mismatch").Inc()
-			src.metrics.sourceUsed.WithLabelValues("mysql").Inc()
+			src.metrics.ocspLookups.WithLabelValues("redis", "mismatch").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
 			return primaryResult.bytes, header, nil
 		}
 
 		// The secondary response has passed checks, return it.
-		src.metrics.ocspLookups.WithLabelValues("redis_success").Inc()
-		src.metrics.sourceUsed.WithLabelValues("redis").Inc()
+		src.metrics.ocspLookups.WithLabelValues("redis", "success").Inc()
 		return secondaryResult.bytes, header, nil
 	}
 }
@@ -404,6 +403,10 @@ func (src redisReceiver) getResponse(ctx context.Context, req *ocsp.Request) cha
 	go func() {
 		defer close(responseChan)
 		respBytes, err := src.rocspReader.GetResponse(ctx, serialString)
+		if errors.Is(err, rocsp.ErrRedisNotFound) {
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		}
 		responseChan <- lookupResponse{respBytes, err}
 	}()
 
