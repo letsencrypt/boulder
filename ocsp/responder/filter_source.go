@@ -31,28 +31,19 @@ type filterSource struct {
 // NewFilterSource returns a filterSource which performs various checks on the
 // OCSP requests sent to the wrapped Source, and the OCSP responses returned
 // by it.
-func NewFilterSource(issuerCerts []string, serialPrefixes []string, wrapped Source, log blog.Logger) (Source, error) {
+func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, log blog.Logger) (Source, error) {
 	if len(issuerCerts) < 1 {
 		return nil, errors.New("Filter must include at least 1 issuer cert")
 	}
 	var issuersByNameId map[issuance.IssuerNameID]responderID
 	for _, issuerCert := range issuerCerts {
-		// Load the certificate from the file path.
-		cert, err := core.LoadCert(issuerCert)
-		if err != nil {
-			return nil, fmt.Errorf("Could not load issuer cert %s: %w", issuerCert, err)
-		}
-		caCert, err := issuance.NewCertificate(cert)
-		if err != nil {
-			return nil, err
-		}
-		keyHash := caCert.KeyHash()
-		nameHash := caCert.NameHash()
+		keyHash := issuerCert.KeyHash()
+		nameHash := issuerCert.NameHash()
 		rid := responderID{
 			keyHash:  keyHash[:],
 			nameHash: nameHash[:],
 		}
-		issuersByNameId[caCert.NameID()] = rid
+		issuersByNameId[issuerCert.NameID()] = rid
 	}
 	return &filterSource{
 		wrapped:        wrapped,
@@ -74,6 +65,9 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 	}
 
 	resp, err := src.wrapped.Response(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
 	err = src.checkResponse(iss, resp)
 	if err != nil {

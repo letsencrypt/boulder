@@ -144,6 +144,7 @@ func New(
 	ogc capb.OCSPGeneratorClient,
 	// A temporary evil. This constructor should not take a JSON config as input;
 	// everything should be prepped ahead of time.
+	// TODO(XXX): Fix this, or file a bug to fix it later.
 	config Config,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {

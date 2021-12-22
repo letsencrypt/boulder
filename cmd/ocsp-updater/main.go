@@ -144,6 +144,7 @@ func main() {
 		serialSuffixes,
 		ogc,
 		// Necessary evil for now
+		// TODO(XXX): Fix this, or file a bug to fix it later.
 		conf,
 		logger,
 	)
