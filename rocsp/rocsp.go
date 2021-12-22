@@ -10,7 +10,6 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
-	bocsp "github.com/letsencrypt/boulder/ocsp"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
@@ -200,17 +199,16 @@ func (c *Client) GetMetadata(ctx context.Context, serial string) (*Metadata, err
 
 	metadataKey := MakeMetadataKey(serial)
 
-	resp := c.rdb.Get(ctx, metadataKey)
-	// go-redis `Get` returns redis.Nil error when key does not exist. In
-	// that case return a ErrNotFound error.
-	if errors.Is(resp.Err(), redis.Nil) {
-		return nil, bocsp.ErrNotFound
-	}
-	val, err := resp.Result()
+	resp, err := c.rdb.Get(ctx, metadataKey).Result()
 	if err != nil {
+		// go-redis `Get` returns redis.Nil error when key does not exist. In
+		// that case return a `ErrRedisNotFound` error.
+		if errors.Is(err, redis.Nil) {
+			return nil, ErrRedisNotFound
+		}
 		return nil, fmt.Errorf("getting metadata: %w", err)
 	}
-	metadata, err := UnmarshalMetadata([]byte(val))
+	metadata, err := UnmarshalMetadata([]byte(resp))
 	if err != nil {
 		return nil, fmt.Errorf("unmarshaling metadata: %w", err)
 	}
