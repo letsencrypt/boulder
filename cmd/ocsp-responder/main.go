@@ -226,8 +226,9 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 	case <-ctx.Done():
 		if errors.Is(ctx.Err(), context.Canceled) {
 			src.metrics.ocspLookups.WithLabelValues("mysql", "canceled").Inc()
+		} else {
+			src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
 		}
-		src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
 		return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 	case primaryResult := <-primaryChan:
 		if primaryResult.err != nil {
@@ -259,8 +260,9 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, h
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.Canceled) {
 				src.metrics.ocspLookups.WithLabelValues("mysql", "canceled").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
 			}
-			src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
 			return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 		case primaryResult = <-primaryChan:
 		}
