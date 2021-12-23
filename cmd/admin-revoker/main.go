@@ -325,6 +325,16 @@ func verifyPrivateKey(privateKey crypto.Signer) error {
 	return errors.New("the provided private key could not be asserted to ECDSA or RSA")
 }
 
+// getPublicKeySPKIHash returns a SPKI hash for the provided public key. This
+// hash is usually used to query the 'keyHashToSerial' table.
+func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([32]byte, error) {
+	rawSubjectPublicKeyInfo, err := x509.MarshalPKIXPublicKey(pubKey)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(rawSubjectPublicKeyInfo), nil
+}
+
 func main() {
 	usage := func() {
 		fmt.Fprint(os.Stderr, usageString)
@@ -426,6 +436,9 @@ func main() {
 		err = verifyPrivateKey(privateKey)
 		cmd.FailOnError(err, "While attempting to verify")
 		r.log.AuditInfo("the provided private key has been successfully verified")
+
+		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
+		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
 	default:
 		usage()
