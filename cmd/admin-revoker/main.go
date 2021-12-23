@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
@@ -76,6 +77,7 @@ type revoker struct {
 	rac   rapb.RegistrationAuthorityClient
 	sac   sapb.StorageAuthorityClient
 	dbMap *db.WrappedMap
+	clk   clock.Clock
 	log   blog.Logger
 }
 
@@ -111,6 +113,7 @@ func newRevoker(c config) *revoker {
 		rac:   rac,
 		sac:   sac,
 		dbMap: dbMap,
+		clk:   clk,
 		log:   logger,
 	}
 }
@@ -227,6 +230,21 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 	return r.revokeCertificate(ctx, core.Certificate{Serial: serial}, reasonCode)
 }
 
+func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
+	var count int
+	err := r.dbMap.SelectOne(
+		&count,
+		"SELECT COUNT(*) FROM (SELECT DISTINCT id, certserial FROM keyHashToSerial WHERE keyHash = ? AND certNotAfter > ?)",
+		spkiHash,
+		r.clk.Now(),
+	)
+	if err != nil {
+		fmt.Println(err)
+		return 0, err
+	}
+	return count, nil
+}
+
 // This abstraction is needed so that we can use sort.Sort below
 type revocationCodes []revocation.Reason
 
@@ -325,14 +343,15 @@ func verifyPrivateKey(privateKey crypto.Signer) error {
 	return errors.New("the provided private key could not be asserted to ECDSA or RSA")
 }
 
-// getPublicKeySPKIHash returns a SPKI hash for the provided public key. This
+// getPublicKeySPKIHash returns an SPKI hash for the provided public key. This
 // hash is usually used to query the 'keyHashToSerial' table.
-func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([32]byte, error) {
+func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([]byte, error) {
 	rawSubjectPublicKeyInfo, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
-		return [32]byte{}, err
+		return nil, err
 	}
-	return sha256.Sum256(rawSubjectPublicKeyInfo), nil
+	spkiHash := sha256.Sum256(rawSubjectPublicKeyInfo)
+	return spkiHash[:], nil
 }
 
 func main() {
@@ -439,6 +458,10 @@ func main() {
 
 		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
+
+		certCount, err := r.countCertsMatchingSPKIHash(spkiHash)
+		cmd.FailOnError(err, "While counting certs matching the provided key")
+		fmt.Printf("There are %d unexpired certificates matching the provided key\n", certCount)
 
 	default:
 		usage()
