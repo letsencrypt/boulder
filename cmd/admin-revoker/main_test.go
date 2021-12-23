@@ -95,6 +95,7 @@ func TestRevokeBatch(t *testing.T) {
 		rac:   rac,
 		sac:   isa.SA{Impl: ssa},
 		dbMap: dbMap,
+		clk:   fc,
 		log:   log,
 	}
 
@@ -171,4 +172,121 @@ func TestVerifyECDSAKeyPair(t *testing.T) {
 
 	err = verifyECDSAKeyPair(privKey1, &privKey2.PublicKey, msgHash)
 	test.AssertError(t, err, "Failed to detect invalid key pair.")
+}
+
+func TestCountCertsMatchingSPKIHash(t *testing.T) {
+	log := blog.UseMock()
+	fc := clock.NewFake()
+
+	// Set to some non-zero time.
+	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+	fc.Set(time.Now())
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	if err != nil {
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
+	if err != nil {
+		t.Fatalf("Failed to create SA: %s", err)
+	}
+	//defer test.ResetSATestDatabase(t)
+	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: ssa})
+
+	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "Failed to load test issuer")
+	signer, err := test.LoadSigner("../../test/hierarchy/int-r3.key.pem")
+	test.AssertNotError(t, err, "failed to load test signer")
+
+	ra := ra.NewRegistrationAuthorityImpl(fc,
+		log,
+		metrics.NoopRegisterer,
+		1,
+		goodkey.KeyPolicy{},
+		100,
+		true,
+		300*24*time.Hour,
+		7*24*time.Hour,
+		nil,
+		nil,
+		0,
+		nil,
+		&mockPurger{},
+		[]*issuance.Certificate{issuer},
+	)
+	ra.SA = isa.SA{Impl: ssa}
+	ra.CA = &mockCA{}
+	rac := ira.RA{Impl: ra}
+
+	r := revoker{
+		rac:   rac,
+		sac:   isa.SA{Impl: ssa},
+		dbMap: dbMap,
+		clk:   fc,
+		log:   log,
+	}
+
+	serial := big.NewInt(1)
+	template := &x509.Certificate{
+		SerialNumber: serial,
+		DNSNames:     []string{"asd"},
+	}
+	rawCert, err := x509.CreateCertificate(rand.Reader, template, issuer.Certificate, signer.Public(), signer)
+	test.AssertNotError(t, err, "failed to generate test cert")
+
+	_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:      rawCert,
+		RegID:    reg.Id,
+		Issued:   time.Now().UnixNano(),
+		IssuerID: 1,
+	})
+
+	test.AssertNotError(t, err, "failed to add test cert")
+	_, err = ssa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:    rawCert,
+		RegID:  reg.Id,
+		Issued: time.Now().UnixNano(),
+	})
+	test.AssertNotError(t, err, "failed to add test cert")
+	cert, err := x509.ParseCertificate(rawCert)
+	test.AssertNotError(t, err, "failed to parse test cert")
+
+	spkiHash, err := getPublicKeySPKIHash(cert.PublicKey)
+	test.AssertNotError(t, err, "failed to get SPKI hash for test cert")
+	fmt.Println(spkiHash)
+
+	serials := []*big.Int{big.NewInt(2), big.NewInt(3), big.NewInt(4)}
+	for _, serial := range serials {
+		template := &x509.Certificate{
+			SerialNumber: serial,
+			DNSNames:     []string{"asd"},
+		}
+
+		der, err := x509.CreateCertificate(rand.Reader, template, issuer.Certificate, signer.Public(), signer)
+		test.AssertNotError(t, err, "failed to generate test cert")
+		_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:      der,
+			RegID:    reg.Id,
+			Issued:   time.Now().UnixNano(),
+			IssuerID: 1,
+		})
+		test.AssertNotError(t, err, "failed to add test cert")
+		_, err = ssa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:    der,
+			RegID:  reg.Id,
+			Issued: time.Now().UnixNano(),
+		})
+		test.AssertNotError(t, err, "failed to add test cert")
+
+		cert, err := x509.ParseCertificate(der)
+		test.AssertNotError(t, err, "failed to parse test cert")
+
+		spkiHash, err := getPublicKeySPKIHash(cert.PublicKey)
+		test.AssertNotError(t, err, "failed to get SPKI hash for test cert")
+		fmt.Println(spkiHash)
+	}
+
+	count, err := r.countCertsMatchingSPKIHash(spkiHash)
+	fmt.Println(count)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash failed")
+	test.AssertEquals(t, count, 1)
 }

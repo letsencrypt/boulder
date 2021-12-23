@@ -234,13 +234,13 @@ func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	var count int
 	err := r.dbMap.SelectOne(
 		&count,
-		"SELECT COUNT(*) FROM (SELECT DISTINCT id, certserial FROM keyHashToSerial WHERE keyHash = ? AND certNotAfter > ?)",
+		"SELECT COUNT(*) FROM keyHashToSerial WHERE keyHash = ?;",
 		spkiHash,
-		r.clk.Now(),
 	)
 	if err != nil {
-		fmt.Println(err)
-		return 0, err
+		if db.IsNoRows(err) {
+			return count, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
+		}
 	}
 	return count, nil
 }

@@ -43,6 +43,8 @@ services:
       bluenet:
         aliases:
           - boulder-mysql
+    ports:
+      - 3306:3306 # DB
     environment:
         MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     # Send slow queries to a table so we can check for them in the
