@@ -84,7 +84,7 @@ def check_challenge_dns_err(chalType):
 
     # Expect a DNS problem with a detail that matches a regex
     expectedProbType = "dns"
-    expectedProbRegex = re.compile(r"DNS problem: SERVFAIL looking up (A|AAAA|TXT|CAA) for {0}".format(d))
+    expectedProbRegex = re.compile(r"SERVFAIL looking up (A|AAAA|TXT|CAA) for {0}".format(d))
 
     # Try and issue for the domain with the given challenge type.
     failed = False
@@ -109,7 +109,7 @@ def check_challenge_dns_err(chalType):
             error = c.error
             if error is None or error.typ != "urn:ietf:params:acme:error:{0}".format(expectedProbType):
                 raise(Exception("Expected {0} prob, got {1}".format(expectedProbType, error.typ)))
-            if not expectedProbRegex.match(error.detail):
+            if not expectedProbRegex.search(error.detail):
                 raise(Exception("Prob detail did not match expectedProbRegex, got \"{0}\"".format(error.detail)))
     finally:
         challSrv.remove_servfail_response(d)
