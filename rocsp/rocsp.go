@@ -68,12 +68,11 @@ func MakeMetadataKey(serial string) string {
 
 // Client represents a read-only Redis client.
 type Client struct {
-	rdb                *redis.ClusterClient
-	timeout            time.Duration
-	clk                clock.Clock
-	rdc                metricsCollector
-	getResponseLatency *prometheus.HistogramVec
-	getMetadataLatency *prometheus.HistogramVec
+	rdb        *redis.ClusterClient
+	timeout    time.Duration
+	clk        clock.Clock
+	rdc        metricsCollector
+	getLatency *prometheus.HistogramVec
 }
 
 // NewClient creates a Client. The timeout applies to all requests, though a shorter timeout can be
@@ -112,30 +111,21 @@ func NewClient(
 		"Number of stale connections removed from the pool.",
 		nil, labels)
 	stats.MustRegister(dbc)
-	getResponseLatency := prometheus.NewHistogramVec(
+	getLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "rocsp_get_response_latency",
-			Help: "Histogram of latencies of rocsp.GetResponse calls with result labels",
+			Name: "rocsp_get_latency",
+			Help: "Histogram of latencies of rocsp.GetResponse and rocsp.GetMetadata calls with result and method labels",
 		},
-		[]string{"result"},
+		[]string{"result", "method"},
 	)
-	stats.MustRegister(getResponseLatency)
-	getMetadataLatency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name: "rocsp_get_metadata_latency",
-			Help: "Histogram of latencies of rocsp.GetMetadata calls with result labels",
-		},
-		[]string{"result"},
-	)
-	stats.MustRegister(getMetadataLatency)
+	stats.MustRegister(getLatency)
 
 	return &Client{
-		rdb:                rdb,
-		timeout:            timeout,
-		clk:                clk,
-		rdc:                dbc,
-		getResponseLatency: getResponseLatency,
-		getMetadataLatency: getMetadataLatency,
+		rdb:        rdb,
+		timeout:    timeout,
+		clk:        clk,
+		rdc:        dbc,
+		getLatency: getLatency,
 	}
 }
 
@@ -227,7 +217,7 @@ func (c *Client) GetResponse(ctx context.Context, serial string) ([]byte, error)
 		// go-redis `Get` returns redis.Nil error when key does not exist. In
 		// that case return a `ErrRedisNotFound` error.
 		if errors.Is(err, redis.Nil) {
-			c.getResponseLatency.With(prometheus.Labels{"result": "notFound"}).Observe(time.Since(start).Seconds())
+			c.getLatency.With(prometheus.Labels{"result": "notFound", "method": "GetResponse"}).Observe(time.Since(start).Seconds())
 			return nil, ErrRedisNotFound
 		}
 
@@ -237,11 +227,11 @@ func (c *Client) GetResponse(ctx context.Context, serial string) ([]byte, error)
 		} else if errors.Is(err, context.Canceled) {
 			state = "canceled"
 		}
-		c.getResponseLatency.With(prometheus.Labels{"result": state}).Observe(time.Since(start).Seconds())
+		c.getLatency.With(prometheus.Labels{"result": state, "method": "GetResponse"}).Observe(time.Since(start).Seconds())
 		return nil, fmt.Errorf("getting response: %w", err)
 	}
 
-	c.getResponseLatency.With(prometheus.Labels{"result": "success"}).Observe(time.Since(start).Seconds())
+	c.getLatency.With(prometheus.Labels{"result": "success", "method": "GetResponse"}).Observe(time.Since(start).Seconds())
 	return []byte(resp), nil
 }
 
@@ -258,7 +248,7 @@ func (c *Client) GetMetadata(ctx context.Context, serial string) (*Metadata, err
 		// go-redis `Get` returns redis.Nil error when key does not exist. In
 		// that case return a `ErrRedisNotFound` error.
 		if errors.Is(err, redis.Nil) {
-			c.getMetadataLatency.With(prometheus.Labels{"result": "notFound"}).Observe(time.Since(start).Seconds())
+			c.getLatency.With(prometheus.Labels{"result": "notFound", "method": "GetMetadata"}).Observe(time.Since(start).Seconds())
 			return nil, ErrRedisNotFound
 		}
 
@@ -268,15 +258,15 @@ func (c *Client) GetMetadata(ctx context.Context, serial string) (*Metadata, err
 		} else if errors.Is(err, context.Canceled) {
 			state = "canceled"
 		}
-		c.getMetadataLatency.With(prometheus.Labels{"result": state}).Observe(time.Since(start).Seconds())
+		c.getLatency.With(prometheus.Labels{"result": state, "method": "GetMetadata"}).Observe(time.Since(start).Seconds())
 		return nil, fmt.Errorf("getting metadata: %w", err)
 	}
 	metadata, err := UnmarshalMetadata([]byte(resp))
 	if err != nil {
-		c.getMetadataLatency.With(prometheus.Labels{"result": "failed"}).Observe(time.Since(start).Seconds())
+		c.getLatency.With(prometheus.Labels{"result": "failed", "method": "GetMetadata"}).Observe(time.Since(start).Seconds())
 		return nil, fmt.Errorf("unmarshaling metadata: %w", err)
 	}
 
-	c.getMetadataLatency.With(prometheus.Labels{"result": "success"}).Observe(time.Since(start).Seconds())
+	c.getLatency.With(prometheus.Labels{"result": "success", "method": "GetMetadata"}).Observe(time.Since(start).Seconds())
 	return &metadata, nil
 }
