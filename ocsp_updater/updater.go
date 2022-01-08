@@ -157,6 +157,7 @@ func New(
 		Name: "ocsp_updater_stored_redis",
 		Help: "A counter of OCSP response storage calls labeled by result",
 	}, []string{"result"})
+	stats.MustRegister(storedRedisCounter)
 	storedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_updater_stored",
 		Help: "A counter of OCSP response storage calls labeled by result",
