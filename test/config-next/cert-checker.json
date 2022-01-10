@@ -5,6 +5,9 @@
       "maxOpenConns": 10
     },
     "hostnamePolicyFile": "test/hostname-policy.yaml",
+    "goodkey": {
+      "fermatRounds": 100
+    },
     "workers": 16,
     "unexpiredOnly": true,
     "badResultsOnly": true,
