@@ -204,15 +204,11 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *co
 }
 
 func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, in *rapb.NewAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	in.Authz.RegistrationID = in.RegID
-	in.Authz.Id = "1"
-	in.Authz.Status = string(core.StatusValid)
-	in.Authz.Expires = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
-	return in.Authz, nil
+	return nil, errors.New("this method is gone, don't call it in tests")
 }
 
 func (ra *MockRegistrationAuthority) NewCertificate(context.Context, *rapb.NewCertificateRequest, ...grpc.CallOption) (*corepb.Certificate, error) {
-	return &corepb.Certificate{}, nil
+	return nil, errors.New("this method is gone, don't call it in tests")
 }
 
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, in *rapb.UpdateRegistrationRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
@@ -1595,152 +1591,6 @@ func TestAuthorization500(t *testing.T) {
 	}`
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), expected)
 
-}
-
-func TestNewAuthorizationEmptyDomain(t *testing.T) {
-	responseWriter := httptest.NewRecorder()
-	wfe, _ := setupWFE(t)
-
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-		  "resource":"new-authz",
-			"identifier": {
-				"Type": "dns",
-				"Value": ""
-			}
-		}`, wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid new-authorization request: missing fields","status":400}`)
-}
-
-func TestNewAuthorizationEmptyType(t *testing.T) {
-	responseWriter := httptest.NewRecorder()
-	wfe, _ := setupWFE(t)
-
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-		  "resource":"new-authz",
-			"identifier": {
-				"Type": "",
-				"Value": "example.com"
-			}
-		}`, wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid new-authorization request: missing fields","status":400}`)
-}
-
-func TestNewAuthorizationNonDNS(t *testing.T) {
-	responseWriter := httptest.NewRecorder()
-	wfe, _ := setupWFE(t)
-
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{
-		  "resource":"new-authz",
-			"identifier": {
-				"Type": "shibboleth",
-				"Value": "example.com"
-			}
-		}`, wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Invalid new-authorization request: wrong identifier type","status":400}`)
-}
-
-func TestAuthorization(t *testing.T) {
-	wfe, _ := setupWFE(t)
-	mux := wfe.Handler(metrics.NoopRegisterer)
-
-	responseWriter := httptest.NewRecorder()
-
-	// GET instead of POST should be rejected
-	mux.ServeHTTP(responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(newAuthzPath),
-	})
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
-
-	// POST, but no body.
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "POST",
-		Header: map[string][]string{
-			"Content-Length": {"0"},
-		},
-	})
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"No body on POST","status":400}`)
-
-	// POST, but body that isn't valid JWS
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequest("hi"))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V1ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
-
-	// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, "foo", wfe.nonceService)))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Request payload did not parse as JSON","status":400}`)
-
-	// Same signed body, but payload modified by one byte, breaking signature.
-	// should fail JWS verification.
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter, makePostRequest(`
-			{
-					"header": {
-							"alg": "RS256",
-							"jwk": {
-									"e": "AQAB",
-									"kty": "RSA",
-									"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw"
-							}
-					},
-					"payload": "xm9vCg",
-					"signature": "RjUQ679fxJgeAJlxqgvDP_sfGZnJ-1RgWF2qmcbnBWljs6h1qp63pLnJOl13u81bP_bCSjaWkelGG8Ymx_X-aQ"
-			}
-		`))
-	test.AssertUnmarshaledEquals(t,
-		responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"JWS verification error","status":400}`)
-
-	responseWriter.Body.Reset()
-	wfe.NewAuthorization(ctx, newRequestEvent(), responseWriter,
-		makePostRequest(signRequest(t, `{"resource":"new-authz","identifier":{"type":"dns","value":"test.com"}}`, wfe.nonceService)))
-
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Location"),
-		"http://localhost/acme/authz-v3/1")
-	test.AssertEquals(
-		t, responseWriter.Header().Get("Link"),
-		`<http://localhost/acme/new-cert>;rel="next"`)
-
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"identifier":{"type":"dns","value":"test.com"},"status": "valid","expires":"2021-01-01T00:00:00Z"}`)
-
-	var authz core.Authorization
-	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
-
-	// Expired authorizations should be inaccessible
-	authzURL := "3"
-	responseWriter = httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL(authzURL),
-	})
-	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
-	responseWriter.Body.Reset()
-
-	// Ensure that a valid authorization can't be reached with an invalid URL
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		URL:    mustParseURL("7"),
-		Method: "GET",
-	})
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V1ErrorNS+`malformed","detail":"No such authorization","status":404}`)
 }
 
 func TestAuthorizationV2(t *testing.T) {

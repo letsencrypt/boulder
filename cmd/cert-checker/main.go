@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
@@ -83,6 +85,7 @@ type certDB interface {
 
 type certChecker struct {
 	pa                          core.PolicyAuthority
+	kp                          goodkey.KeyPolicy
 	dbMap                       certDB
 	certs                       chan core.Certificate
 	clock                       clock.Clock
@@ -92,9 +95,10 @@ type certChecker struct {
 	acceptableValidityDurations map[time.Duration]bool
 }
 
-func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, period time.Duration, avd map[time.Duration]bool) certChecker {
+func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, kp goodkey.KeyPolicy, period time.Duration, avd map[time.Duration]bool) certChecker {
 	return certChecker{
 		pa:                          pa,
+		kp:                          kp,
 		dbMap:                       saDbMap,
 		certs:                       make(chan core.Certificate, batchSize),
 		rMu:                         new(sync.Mutex),
@@ -300,6 +304,15 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 				}
 			}
 		}
+
+		// Check that the cert has a good key. Note that this does not perform
+		// checks which rely on external resources such as weak or blocked key
+		// lists, or the list of blocked keys in the database. This only performs
+		// static checks, such as against the RSA key size and the ECDSA curve.
+		err = c.kp.GoodKey(context.Background(), parsedCert.PublicKey)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
+		}
 	}
 	return dnsNames, problems
 }
@@ -318,6 +331,11 @@ type config struct {
 		// AcceptableValidityDurations is a list of durations which are
 		// acceptable for certificates we issue.
 		AcceptableValidityDurations []cmd.ConfigDuration
+
+		// GoodKey is an embedded config stanza for the goodkey library. If this
+		// is populated, the cert-checker will perform static checks against the
+		// public keys in the certs it checks.
+		GoodKey goodkey.Config
 
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
 		// the IgnoredLists list are ignored regardless of LintStatus level.
@@ -367,6 +385,16 @@ func main() {
 	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
+	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
+	if config.CertChecker.GoodKey.WeakKeyFile != "" {
+		cmd.Fail("cert-checker does not support checking against weak key files")
+	}
+	if config.CertChecker.GoodKey.BlockedKeyFile != "" {
+		cmd.Fail("cert-checker does not support checking against blocked key files")
+	}
+	kp, err := goodkey.NewKeyPolicy(&config.CertChecker.GoodKey, nil)
+	cmd.FailOnError(err, "Unable to create key policy")
+
 	saDbURL, err := config.CertChecker.DB.URL()
 	cmd.FailOnError(err, "Couldn't load DB URL")
 
@@ -410,6 +438,7 @@ func main() {
 		saDbMap,
 		cmd.Clock(),
 		pa,
+		kp,
 		config.CertChecker.CheckPeriod.Duration,
 		acceptableValidityDurations,
 	)

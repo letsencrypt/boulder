@@ -573,117 +573,9 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 
 // NewAuthorization constructs a new Authz from a request. Values (domains) in
 // request.Identifier will be lowercased before storage.
+// TODO(#5681): Remove this method entirely
 func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	if req == nil || req.Authz.Identifier == "" || req.RegID == 0 {
-		return nil, errIncompleteGRPCRequest
-	}
-
-	// Create ACMEIdentifier. Assume Type DNS.
-	acmeIdentifier := identifier.ACMEIdentifier{
-		Type:  identifier.DNS,
-		Value: strings.ToLower(req.Authz.Identifier),
-	}
-
-	// Check that the identifier is present and appropriate
-	if err := ra.PA.WillingToIssue(acmeIdentifier); err != nil {
-		return nil, err
-	}
-
-	if err := ra.checkPendingAuthorizationLimit(ctx, req.RegID); err != nil {
-		return nil, err
-	}
-
-	if err := ra.checkInvalidAuthorizationLimit(ctx, req.RegID, acmeIdentifier.Value); err != nil {
-		return nil, err
-	}
-
-	if ra.reuseValidAuthz {
-		now := ra.clk.Now().UnixNano()
-		authzMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-			RegistrationID: req.RegID,
-			Domains:        []string{acmeIdentifier.Value},
-			Now:            now,
-		})
-		if err != nil {
-			outErr := berrors.InternalServerError(
-				"unable to get existing validations for request.RegID: %d, acmeIdentifier: %s, %s",
-				req.RegID,
-				acmeIdentifier.Value,
-				err,
-			)
-			ra.log.Warning(outErr.Error())
-			return nil, outErr
-		}
-		auths, err := bgrpc.PBToAuthzMap(authzMapPB)
-		if err != nil {
-			return nil, err
-		}
-
-		if existingAuthz, ok := auths[acmeIdentifier.Value]; ok {
-			if ra.authzValidChallengeEnabled(existingAuthz) {
-				// The existing authorization must not expire within the next 24 hours for
-				// it to be OK for reuse
-				reuseCutOff := ra.clk.Now().Add(time.Hour * 24)
-				if existingAuthz.Expires.After(reuseCutOff) {
-					ra.reusedValidAuthzCounter.Inc()
-					return bgrpc.AuthzToPB(*existingAuthz)
-				}
-			}
-		}
-	}
-
-	pendingAuthzRequest := &sapb.GetPendingAuthorizationRequest{
-		RegistrationID:  req.RegID,
-		IdentifierType:  string(acmeIdentifier.Type),
-		IdentifierValue: acmeIdentifier.Value,
-		ValidUntil:      ra.clk.Now().Add(time.Hour).UnixNano(),
-	}
-	pendingAuthzPB, err := ra.SA.GetPendingAuthorization2(ctx, pendingAuthzRequest)
-	if err != nil && !errors.Is(err, berrors.NotFound) {
-		return nil, berrors.InternalServerError(
-			"unable to get pending authorization for regID: %d, identifier: %s: %s",
-			req.RegID,
-			acmeIdentifier.Value,
-			err,
-		)
-	} else if err == nil {
-		// No need to check if the response was incomplete here, it's already
-		// checked by WFE.
-		return pendingAuthzPB, nil
-	}
-
-	if features.Enabled(features.V1DisableNewValidations) {
-		exists, err := ra.SA.PreviousCertificateExists(ctx, &sapb.PreviousCertificateExistsRequest{
-			Domain: acmeIdentifier.Value,
-			RegID:  req.RegID,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if !exists.Exists {
-			return nil, berrors.UnauthorizedError("Validations for new domains are disabled in the V1 API (https://community.letsencrypt.org/t/end-of-life-plan-for-acmev1/88430)")
-		}
-	}
-
-	authzPB, err := ra.createPendingAuthz(ctx, req.RegID, acmeIdentifier)
-	if err != nil {
-		return nil, err
-	}
-
-	authzIDs, err := ra.SA.NewAuthorizations2(ctx, &sapb.AddPendingAuthorizationsRequest{
-		Authz: []*corepb.Authorization{authzPB},
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(authzIDs.Ids) != 1 {
-		return nil, berrors.InternalServerError("unexpected number of authorization IDs returned from NewAuthorizations2: expected 1, got %d", len(authzIDs.Ids))
-	}
-	// The current internal authorization objects use a string for the ID, the new
-	// storage format uses a integer ID. In order to maintain compatibility we
-	// convert the integer ID to a string.
-	authzPB.Id = fmt.Sprintf("%d", authzIDs.Ids[0])
-	return authzPB, nil
+	return nil, fmt.Errorf("The ACME v1 NewAuthorization flow is deprecated")
 }
 
 // MatchesCSR tests the contents of a generated certificate to make sure
@@ -2296,17 +2188,6 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 		authz.Challenges = append(authz.Challenges, challPB)
 	}
 	return authz, nil
-}
-
-// authzValidChallengeEnabled checks whether the valid challenge in an authorization uses a type
-// which is still enabled for given regID
-func (ra *RegistrationAuthorityImpl) authzValidChallengeEnabled(authz *core.Authorization) bool {
-	for _, chall := range authz.Challenges {
-		if chall.Status == core.StatusValid {
-			return ra.PA.ChallengeTypeEnabled(chall.Type)
-		}
-	}
-	return false
 }
 
 // wildcardOverlap takes a slice of domain names and returns an error if any of

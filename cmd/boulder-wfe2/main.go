@@ -104,7 +104,7 @@ type config struct {
 		LegacyKeyIDPrefix string
 
 		// GoodKey is an embedded config stanza for the goodkey library.
-		GoodKey *goodkey.Config
+		GoodKey goodkey.Config
 
 		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
 		// TODO(#5851): Remove this.
@@ -397,13 +397,10 @@ func main() {
 
 	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
 	// The WFE does not do weak key checking, just blocked key checking.
-	if c.WFE.GoodKey == nil {
-		c.WFE.GoodKey = &goodkey.Config{}
-	}
 	if c.WFE.GoodKey.BlockedKeyFile == "" && c.WFE.BlockedKeyFile != "" {
 		c.WFE.GoodKey.BlockedKeyFile = c.WFE.BlockedKeyFile
 	}
-	kp, err := goodkey.NewKeyPolicy(c.WFE.GoodKey, sac.KeyBlocked)
+	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.WFE.StaleTimeout.Duration == 0 {

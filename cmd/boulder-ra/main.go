@@ -63,7 +63,7 @@ type config struct {
 		PendingAuthorizationLifetimeDays int
 
 		// GoodKey is an embedded config stanza for the goodkey library.
-		GoodKey *goodkey.Config
+		GoodKey goodkey.Config
 
 		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
 		// TODO(#5851): Remove this.
@@ -224,16 +224,13 @@ func main() {
 	}
 
 	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	if c.RA.GoodKey == nil {
-		c.RA.GoodKey = &goodkey.Config{}
-	}
 	if c.RA.GoodKey.WeakKeyFile == "" && c.RA.WeakKeyFile != "" {
 		c.RA.GoodKey.WeakKeyFile = c.RA.WeakKeyFile
 	}
 	if c.RA.GoodKey.BlockedKeyFile == "" && c.RA.BlockedKeyFile != "" {
 		c.RA.GoodKey.BlockedKeyFile = c.RA.BlockedKeyFile
 	}
-	kp, err := goodkey.NewKeyPolicy(c.RA.GoodKey, sac.KeyBlocked)
+	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {
