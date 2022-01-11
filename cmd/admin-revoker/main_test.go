@@ -180,7 +180,21 @@ func TestVerifyECDSAKeyPair(t *testing.T) {
 
 func TestCountCertsMatchingSPKIHash(t *testing.T) {
 	testCtx := setup(t)
-	// defer testCtx.cleanUp()
+	defer testCtx.cleanUp()
+
+	// Unique keys for each of our test certificates.
+	testKey1, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 1")
+	testKey2, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 2")
+	testKey3, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 3")
+
+	// Unique JWKs so we can register each of our entries.
+	testJWK1 := `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
+	testJWK2 := `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
+	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
+	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
 
 	type entry struct {
 		jwk      string
@@ -190,35 +204,73 @@ func TestCountCertsMatchingSPKIHash(t *testing.T) {
 		spkiHash []byte
 	}
 
-	testKey1, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 1")
-
-	testKey2, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 2")
-
-	testKey3, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 3")
-
-	testJWK1 := `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
-	testJWK2 := `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
-	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
-
-	entries := []entry{
+	entries := []*entry{
 		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: testKey1},
 		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: testKey2},
 		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: testKey3},
 	}
 
+	// Register and insert our first 3 certificates.
 	for _, entry := range entries {
 		regId := testCtx.addRegistation(t, entry.names, entry.jwk)
 		cert := testCtx.addCertificate(t, entry.serial, entry.names, entry.testKey.PublicKey, regId)
+
 		entry.spkiHash, err = getPublicKeySPKIHash(cert.PublicKey)
 		test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+
+		count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
+		test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
+		test.AssertEquals(t, count, 1)
 	}
 
-	count, err := testCtx.revoker.countCertsMatchingSPKIHash(entries[0].spkiHash)
-	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for 'entries[0].spkiHash' failed")
-	test.AssertEquals(t, count, 1)
+	// Register and insert a certificate which re-uses the same public key as
+	// our first test certificate.
+	regId := testCtx.addRegistation(t, []string{"example-1336.com"}, testJWK4)
+	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
+
+	// Now, let's pretend that the key matching both our first test certificate
+	// and our 4th test certificate has been compromised and a copy has been
+	// sent to an LE operator running the admin-revoker tool.
+
+	// First we validate the provided keypair.
+	msgHash := sha256.New()
+	_, err = msgHash.Write([]byte("verifiable"))
+	test.AssertNotError(t, err, "Failed to hash 'verifiable' message: %s")
+
+	err = verifyRSAKeyPair(testKey1, &testKey1.PublicKey, msgHash)
+	test.AssertNotError(t, err, "Failed to verify valid key pair")
+
+	// Next we get the SPKI hash for the provivided keypair.
+	spkiHash, err := getPublicKeySPKIHash(&testKey1.PublicKey)
+	test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+
+	// Finally, we query the 'keyHashToSerial' table for certificates with a
+	// matching SPKI hash. We expect that since this key was re-used we'll find
+	// 2 matches.
+	count, err := testCtx.revoker.countCertsMatchingSPKIHash(spkiHash)
+	test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+	test.AssertEquals(t, count, 2)
+
+	// For some additional validation let's ensure that counts for all test
+	// entries, except our known duplicate, are 1.
+	for _, entry := range entries {
+		switch entry.names[0] {
+		case "example-1337.com":
+			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
+			test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+			test.AssertEquals(t, count, 2)
+
+		case "example-1338.com":
+			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
+			test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+			test.AssertEquals(t, count, 1)
+
+		case "example-1339.com":
+			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
+			test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+			test.AssertEquals(t, count, 1)
+		}
+	}
 }
 
 type testCtx struct {

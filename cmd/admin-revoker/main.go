@@ -231,13 +231,28 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 }
 
 func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
+	var count int
+	err := r.dbMap.SelectOne(
+		&count,
+		"SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?;",
+		spkiHash,
+	)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return 0, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
+		}
+	}
+	return count, nil
+}
+
+func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	var matches []struct {
 		ID         int
 		CertSerial string
 	}
 	_, err := r.dbMap.Select(
 		&matches,
-		"SELECT id, certSerial FROM keyHashToSerial;",
+		"SELECT COUNT(certSerial) FROM keyHashToSerial WHERE keyHash = ?;",
 		spkiHash,
 	)
 	fmt.Println(matches)
