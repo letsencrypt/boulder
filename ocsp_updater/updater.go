@@ -93,6 +93,8 @@ type OCSPUpdater struct {
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
 
+	redisTimeout time.Duration
+
 	stalenessHistogram   prometheus.Histogram
 	genStoreHistogram    prometheus.Histogram
 	generatedCounter     *prometheus.CounterVec
@@ -215,6 +217,9 @@ func New(
 		serialSuffixes:               serialSuffixes,
 		queryBody:                    queryBody.String(),
 	}
+	if config.Redis != nil {
+		updater.redisTimeout = config.Redis.Timeout.Duration
+	}
 
 	return &updater, nil
 }
@@ -331,21 +336,31 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.Cert
 
 // storeResponse stores a given CertificateStatus in the database.
 func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertStatusMetadata) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
+	// If a redis client is configured, try to store the response in redis.
 	if updater.rocspClient != nil {
+		// Create a context to set a deadline for the goroutine that stores
+		// the response in redis. Set the timeout to one second longer than
+		// the configured redis timeout to give redis a chance to return a
+		// timeout error first. This context is necessary because we don't
+		// want to wait to confirm a write to redis (best effort), which
+		// causes a race with the Tick() context cancellation if the parent
+		// context is used. When writing to redis is the primary storage
+		// source we can change to use the parent context.
+		ctx2, cancel := context.WithTimeout(context.Background(), updater.redisTimeout+time.Second)
 		go func() {
+			defer cancel()
 			ttl := status.NotAfter.Sub(updater.clk.Now())
 			shortIssuerID, err := rocsp_config.FindIssuerByID(status.IssuerID, updater.issuers)
 			if err != nil {
 				updater.storedRedisCounter.WithLabelValues("missing issuer").Inc()
 				return
 			}
-			err = updater.rocspClient.StoreResponse(ctx, status.OCSPResponse, shortIssuerID.ShortID(), ttl)
+			err = updater.rocspClient.StoreResponse(ctx2, status.OCSPResponse, shortIssuerID.ShortID(), ttl)
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					updater.storedRedisCounter.WithLabelValues("canceled").Inc()
+				} else if errors.Is(err, context.DeadlineExceeded) {
+					updater.storedRedisCounter.WithLabelValues("deadlineExceeded").Inc()
 				} else {
 					updater.storedRedisCounter.WithLabelValues("failed").Inc()
 				}
@@ -354,6 +369,7 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 			}
 		}()
 	}
+
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
