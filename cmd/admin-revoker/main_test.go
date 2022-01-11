@@ -180,7 +180,7 @@ func TestVerifyECDSAKeyPair(t *testing.T) {
 
 func TestCountCertsMatchingSPKIHash(t *testing.T) {
 	testCtx := setup(t)
-	defer testCtx.cleanUp()
+	// defer testCtx.cleanUp()
 
 	type entry struct {
 		jwk      string

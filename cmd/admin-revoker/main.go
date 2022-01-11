@@ -231,18 +231,22 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 }
 
 func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
-	var count int
-	err := r.dbMap.SelectOne(
-		&count,
-		"SELECT COUNT(1) FROM keyHashToSerial WHERE keyHash = ?;",
+	var matches []struct {
+		ID         int
+		CertSerial string
+	}
+	_, err := r.dbMap.Select(
+		&matches,
+		"SELECT id, certSerial FROM keyHashToSerial;",
 		spkiHash,
 	)
+	fmt.Println(matches)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return count, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
+			return 0, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
 		}
 	}
-	return count, nil
+	return len(matches), nil
 }
 
 // This abstraction is needed so that we can use sort.Sort below
