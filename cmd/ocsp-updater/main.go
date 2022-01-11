@@ -21,7 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-type config struct {
+type Config struct {
 	OCSPUpdater ocsp_updater_config.Config
 
 	Syslog  cmd.SyslogConfig
@@ -73,7 +73,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 

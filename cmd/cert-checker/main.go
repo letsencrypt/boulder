@@ -317,7 +317,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 	return dnsNames, problems
 }
 
-type config struct {
+type Config struct {
 	CertChecker struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
@@ -354,7 +354,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var config config
+	var config Config
 	err := cmd.ReadConfigFile(*configFile, &config)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 

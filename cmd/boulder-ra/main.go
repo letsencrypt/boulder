@@ -27,7 +27,7 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-type config struct {
+type Config struct {
 	RA struct {
 		cmd.ServiceConfig
 		cmd.HostnamePolicyConfig
@@ -115,7 +115,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 

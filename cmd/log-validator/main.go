@@ -127,6 +127,14 @@ func (tl tailLogger) Println(v ...interface{}) {
 	tl.Info(fmt.Sprint(v...) + "\n")
 }
 
+type Config struct {
+	Files []string
+
+	DebugAddr string
+	Syslog    cmd.SyslogConfig
+	Beeline   cmd.BeelineConfig
+}
+
 func main() {
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
 	checkFile := flag.String("check-file", "", "File path to a file to directly validate, if this argument is provided the config will not be parsed and only this file will be inspected")
@@ -138,15 +146,9 @@ func main() {
 		return
 	}
 
-	var config struct {
-		Files []string
-
-		DebugAddr string
-		Syslog    cmd.SyslogConfig
-		Beeline   cmd.BeelineConfig
-	}
 	configBytes, err := ioutil.ReadFile(*configPath)
 	cmd.FailOnError(err, "failed to read config file")
+	var config Config
 	err = json.Unmarshal(configBytes, &config)
 	cmd.FailOnError(err, "failed to parse config file")
 

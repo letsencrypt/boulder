@@ -24,7 +24,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-type config struct {
+type Config struct {
 	CA struct {
 		cmd.ServiceConfig
 
@@ -140,7 +140,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
