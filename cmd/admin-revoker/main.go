@@ -234,7 +234,7 @@ func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	var count int
 	err := r.dbMap.SelectOne(
 		&count,
-		"SELECT COUNT(*) FROM keyHashToSerial WHERE keyHash = ?;",
+		"SELECT COUNT(1) FROM keyHashToSerial WHERE keyHash = ?;",
 		spkiHash,
 	)
 	if err != nil {
@@ -344,7 +344,7 @@ func verifyPrivateKey(privateKey crypto.Signer) error {
 }
 
 // getPublicKeySPKIHash returns an SPKI hash for the provided public key. This
-// hash is usually used to query the 'keyHashToSerial' table.
+// hash can be used to query the 'keyHashToSerial' table.
 func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([]byte, error) {
 	rawSubjectPublicKeyInfo, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
@@ -458,6 +458,8 @@ func main() {
 
 		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
+
+		// TODO: Check that the key isn't already in the 'blockedKeys' table.
 
 		certCount, err := r.countCertsMatchingSPKIHash(spkiHash)
 		cmd.FailOnError(err, "While counting certs matching the provided key")
