@@ -37,24 +37,35 @@ import (
 
 const usageString = `
 usage:
-admin-revoker serial-revoke --config <path> <serial> <reason-code>
-admin-revoker batched-serial-revoke --config <path> <serial-file-path> <reason-code> <parallelism>
-admin-revoker reg-revoke --config <path> <registration-id> <reason-code>
-admin-revoker list-reasons --config <path>
-admin-revoker list-reasons --config <path> <private-key-path> <reason-code>
+  list-reasons           -config <path>
+  serial-revoke          -config <path> <serial>           <reason-code>
+  batched-serial-revoke  -config <path> <serial-file-path> <reason-code> <parallelism>
+  reg-revoke             -config <path> <registration-id>  <reason-code>
+  private-key-block      -config <path> <priv-key-path>    <reason-code> -dry-run=<bool>
+  private-key-revoke     -config <path> <priv-key-path>    <reason-code> -dry-run=<bool>
 
-command descriptions:
-  serial-revoke         Revoke a single certificate by the hex serial number
-  batched-serial-revoke Revokes all certificates contained in a file of hex serial numbers
-  reg-revoke            Revoke all certificates associated with a registration ID
-  list-reasons          List all revocation reason codes
-  block-key             Adds the public key derived from the provided private key to the
-                        blocked keys table. <private-key-path> is expected to be the path
-						to a PEM formatted file containing an RSA or ECDSA private key in
-						a PKCS #1, PKCS# 8, or SEC 1 container.
 
-args:
-  config    File path to the configuration file for this service
+descriptions:
+  list-reasons           List all revocation reason codes
+  serial-revoke          Revoke a single certificate by the hex serial number
+  batched-serial-revoke  Revokes all certificates contained in a file of hex serial numbers
+  reg-revoke             Revoke all certificates associated with a registration ID
+  private-key-block      Adds the SPKI hash, derived from the provided private key, to the
+                         blocked keys table. <priv-key-path> is expected to be the path
+                         to a PEM formatted file containing an RSA or ECDSA private key
+
+  private-key-revoke     Revokes all certificates matching the SPKI hash derived from the
+                         provided private key. Then adds the hash to the blocked keys
+                         table. <priv-key-path> is expected to be the path to a PEM
+                         formatted file containing an RSA or ECDSA private key
+
+flags:
+  all:
+    -config              File path to the configuration file for this service
+
+  private-key-block | private-key-revoke:
+    -dry-run             true (default): only queries for affected certificates. false: will
+                         perform the requested block or revoke action
 `
 
 type config struct {
@@ -396,11 +407,17 @@ func main() {
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
+	dryRun := flagSet.Bool("dryRun", true, "")
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
 
 	if *configFile == "" {
 		usage()
+	}
+
+	// dryRun is only used for commands 'private-key-block' and 'private-key-revoke'.
+	if !*dryRun && !(command == "private-key-block" || command == "private-key-revoke") {
+		fmt.Println("Flag -dry-run is only compatible with commands 'private-key-block' and 'private-key-revoke'")
 	}
 
 	var c config
@@ -468,18 +485,11 @@ func main() {
 			fmt.Printf("%d: %s\n", k, revocation.ReasonToString[k])
 		}
 
-	case command == "block-key" && (len(args) == 2 || len(args) == 3):
+	case (command == "private-key-block" || command == "private-key-revoke") && len(args) == 2:
 		// 1: keyPath, 2: reasonCode
 		keyPath := args[0]
 
-		var skipDryRun bool
-		if len(args) == 3 {
-			if args[3] == "skip-dry-run" {
-				skipDryRun = true
-			} else {
-				cmd.Fail(fmt.Sprintf("%q is not a valid argument to command 'block-key'", args[3]))
-			}
-		}
+		fmt.Println("dryRun: ", *dryRun)
 
 		reasonCode, err := strconv.Atoi(args[1])
 		cmd.FailOnError(err, "Reason code argument must be an integer")
@@ -491,8 +501,8 @@ func main() {
 		cmd.FailOnError(err, fmt.Sprintf("Cannot parse the provided key %q", keyPath))
 
 		err = verifyPrivateKey(privateKey)
-		cmd.FailOnError(err, "While attempting to verify")
-		r.log.AuditInfo("The provided key has been successfully verified")
+		cmd.FailOnError(err, "Failed to validate the provided key pair")
+		r.log.AuditInfo("The provided key pair has been successfully verified")
 
 		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
@@ -505,30 +515,45 @@ func main() {
 
 		count, err := r.countCertsMatchingSPKIHash(spkiHash)
 		cmd.FailOnError(err, "While retrieving a count of certificates matching the provided key")
-		r.log.AuditInfof("Found '%d' certificates matching the provided key", count)
+		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
-		if !skipDryRun {
-			fmt.Printf("To proceed with revocation of '%d' certifcates, re-run with the argument 'skip-dry-run'\n", count)
-			r.log.AuditInfof("No 'skip-dry-run' argument provided, exiting...", count)
+		if *dryRun {
+			if command == "private-key-block" {
+				r.log.AuditInfof("To block this key from future issuance and (eventually) revoke %d certifcates via bad-key-revoker, run with -dry-run=false", count)
+			}
+
+			if command == "private-key-revoke" {
+				r.log.AuditInfof("To immediately revoke %d certificates and block this key from future issuance, run with -dry-run=false", count)
+			}
+
+			r.log.AuditInfo("No keys were blocked or revoked, exiting...")
 			os.Exit(0)
 		}
 
-		r.log.AuditInfof("Revoking '%d' certificates", count)
-		matches, err := r.getCertsMatchingSPKIHash(spkiHash)
-		cmd.FailOnError(err, "While retrieving a list of the affected cert serials")
+		if command == "private-key-block" {
 
-		for i, match := range matches {
-			err := r.revokeBySerial(context.Background(), match.CertSerial, revocation.Reason(reasonCode))
-			cmd.FailOnError(
-				err,
-				fmt.Sprintf(
-					"While attempting to revoke serial (%q), entry (%d) in (%d) affected certificates",
-					match.CertSerial,
-					(i+1),
-					len(matches),
-				),
-			)
 		}
+
+		if command == "private-key-revoke" {
+			r.log.AuditInfof("Collecting serials for %d affected certificates", count)
+
+			matches, err := r.getCertsMatchingSPKIHash(spkiHash)
+			cmd.FailOnError(err, "While retrieving a list of the affected cert serials")
+
+			for i, match := range matches {
+				err := r.revokeBySerial(context.Background(), match.CertSerial, revocation.Reason(reasonCode))
+				cmd.FailOnError(
+					err,
+					fmt.Sprintf(
+						"While attempting to revoke serial %q, entry %d of %d affected certificates",
+						match.CertSerial,
+						(i+1),
+						len(matches),
+					),
+				)
+			}
+		}
+
 	default:
 		usage()
 	}
