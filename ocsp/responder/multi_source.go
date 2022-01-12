@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -15,12 +14,11 @@ import (
 type multiSource struct {
 	primary   Source
 	secondary Source
-	timeout   time.Duration
 	counter   *prometheus.CounterVec
 	log       blog.Logger
 }
 
-func NewMultiSource(primary, secondary Source, timeout time.Duration, stats prometheus.Registerer, log blog.Logger) (Source, error) {
+func NewMultiSource(primary, secondary Source, stats prometheus.Registerer, log blog.Logger) (Source, error) {
 	if primary == nil || secondary == nil {
 		return nil, errors.New("must provide both primary and secondary sources")
 	}
@@ -31,7 +29,6 @@ func NewMultiSource(primary, secondary Source, timeout time.Duration, stats prom
 	return &multiSource{
 		primary:   primary,
 		secondary: secondary,
-		timeout:   timeout,
 		counter:   counter,
 		log:       log,
 	}, nil
@@ -42,12 +39,6 @@ func NewMultiSource(primary, secondary Source, timeout time.Duration, stats prom
 // first, with the caveat that if the secondary Source responds quicker, it will
 // wait for the result from the primary to ensure that they agree.
 func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Response, error) {
-	if src.timeout != 0 {
-		var cancel func()
-		ctx, cancel = context.WithTimeout(ctx, src.timeout)
-		defer cancel()
-	}
-
 	serialString := core.SerialToString(req.SerialNumber)
 
 	primaryChan := getResponse(ctx, src.primary, req)

@@ -32,6 +32,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package responder
 
 import (
+	"context"
 	"crypto"
 	"crypto/sha256"
 	"encoding/base64"
@@ -68,6 +69,7 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 // A Responder object provides an HTTP wrapper around a Source.
 type Responder struct {
 	Source        Source
+	timeout       time.Duration
 	responseTypes *prometheus.CounterVec
 	responseAges  prometheus.Histogram
 	requestSizes  prometheus.Histogram
@@ -76,7 +78,7 @@ type Responder struct {
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger) *Responder {
+func NewResponder(source Source, timeout time.Duration, stats prometheus.Registerer, logger blog.Logger) *Responder {
 	requestSizes := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "ocsp_request_sizes",
@@ -109,6 +111,7 @@ func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger
 
 	return &Responder{
 		Source:        source,
+		timeout:       timeout,
 		responseTypes: responseTypes,
 		responseAges:  responseAges,
 		requestSizes:  requestSizes,
@@ -160,6 +163,13 @@ var hashToString = map[crypto.Hash]string{
 // encoding.
 func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	ctx := request.Context()
+
+	if rs.timeout != 0 {
+		var cancel func()
+		ctx, cancel = context.WithTimeout(ctx, rs.timeout)
+		defer cancel()
+	}
+
 	le := logEvent{
 		IP:       request.RemoteAddr,
 		UA:       request.UserAgent(),
@@ -270,7 +280,6 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	beeline.AddFieldToTrace(ctx, "ocsp.hash_alg", hashToString[ocspRequest.HashAlgorithm])
 
 	// Look up OCSP response from source
-	// TODO(XXX): Set the timeout on the context here?
 	ocspResponse, err := rs.Source.Response(ctx, ocspRequest)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
