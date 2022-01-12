@@ -9,13 +9,14 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
 type dbSource struct {
-	dbMap dbSelector
-	log   blog.Logger
-	// TODO: Add sql-specific metrics.
+	dbMap   dbSelector
+	counter *prometheus.CounterVec
+	log     blog.Logger
 }
 
 // Define an interface with the needed methods from gorp.
@@ -27,10 +28,15 @@ type dbSelector interface {
 
 // NewDbSource returns a dbSource which will look up OCSP responses in a SQL
 // database.
-func NewDbSource(dbMap dbSelector, log blog.Logger) (Source, error) {
+func NewDbSource(dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) (Source, error) {
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_db_responses",
+		Help: "Count of OCSP requests/responses by action taken by the dbSource",
+	}, []string{"result"})
 	return &dbSource{
-		dbMap: dbMap,
-		log:   log,
+		dbMap:   dbMap,
+		counter: counter,
+		log:     log,
 	}, nil
 }
 
@@ -44,25 +50,31 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) (*Response
 	certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
 	if err != nil {
 		if db.IsNoRows(err) {
+			src.counter.WithLabelValues("not_found").Inc()
 			return nil, ErrNotFound
 		}
 
 		src.log.AuditErrf("Looking up OCSP response in DB: %s", err)
+		src.counter.WithLabelValues("lookup_error").Inc()
 		return nil, err
 	}
 
 	if certStatus.IsExpired {
 		src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+		src.counter.WithLabelValues("expired").Inc()
 		return nil, ErrNotFound
 	} else if certStatus.OCSPLastUpdated.IsZero() {
 		src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+		src.counter.WithLabelValues("never_updated").Inc()
 		return nil, ErrNotFound
 	}
 
 	resp, err := ocsp.ParseResponse(certStatus.OCSPResponse, nil)
 	if err != nil {
+		src.counter.WithLabelValues("parse_error").Inc()
 		return nil, err
 	}
 
+	src.counter.WithLabelValues("success").Inc()
 	return &Response{Response: resp, Raw: certStatus.OCSPResponse}, nil
 }

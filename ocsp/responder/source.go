@@ -18,16 +18,7 @@ type Response struct {
 }
 
 // Source represents the logical source of OCSP responses, i.e.,
-// the logic that actually chooses a response based on a request.  In
-// order to create an actual responder, wrap one of these in a Responder
-// object and pass it to http.Handle. By default the Responder will set
-// the headers Cache-Control to "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
-// Last-Modified to response.ThisUpdate, Expires to response.NextUpdate,
-// ETag to the SHA256 hash of the response, and Content-Type to
-// application/ocsp-response. If you want to override these headers,
-// or set extra headers, your source should return a http.Header
-// with the headers you wish to set. If you don't want to set any
-// extra headers you may return nil instead.
+// the logic that actually chooses a response based on a request.
 type Source interface {
 	Response(context.Context, *ocsp.Request) (*Response, error)
 }
@@ -46,17 +37,6 @@ func NewMemorySource(responses map[string]*Response, logger blog.Logger) Source 
 		responses: responses,
 		log:       logger,
 	}
-}
-
-// Response looks up an OCSP response to provide for a given request.
-// InMemorySource looks up a response purely based on serial number,
-// without regard to what issuer the request is asking for.
-func (src InMemorySource) Response(_ context.Context, request *ocsp.Request) (*Response, error) {
-	response, present := src.responses[request.SerialNumber.String()]
-	if !present {
-		return nil, ErrNotFound
-	}
-	return response, nil
 }
 
 // NewMemorySourceFromFile reads the named file into an InMemorySource.
@@ -97,4 +77,15 @@ func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (Source, e
 
 	logger.Infof("Read %d OCSP responses", len(responses))
 	return NewMemorySource(responses, logger), nil
+}
+
+// Response looks up an OCSP response to provide for a given request.
+// InMemorySource looks up a response purely based on serial number,
+// without regard to what issuer the request is asking for.
+func (src InMemorySource) Response(_ context.Context, request *ocsp.Request) (*Response, error) {
+	response, present := src.responses[request.SerialNumber.String()]
+	if !present {
+		return nil, ErrNotFound
+	}
+	return response, nil
 }

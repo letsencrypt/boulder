@@ -27,7 +27,8 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Package ocsp implements an OCSP responder based on a generic storage backend.
+// Package responder implements an OCSP HTTP responder based on a generic
+// storage backend.
 package responder
 
 import (
@@ -64,8 +65,7 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 	ocsp.Unauthorized:      "Unauthorized",
 }
 
-// A Responder object provides the HTTP logic to expose a
-// Source of OCSP responses.
+// A Responder object provides an HTTP wrapper around a Source.
 type Responder struct {
 	Source        Source
 	responseTypes *prometheus.CounterVec
@@ -142,10 +142,16 @@ var hashToString = map[crypto.Hash]string{
 	crypto.SHA512: "SHA512",
 }
 
-// A Responder can process both GET and POST requests.  The mapping
-// from an OCSP request to an OCSP response is done by the Source;
-// the Responder simply decodes the request, and passes back whatever
-// response is provided by the source.
+// A Responder can process both GET and POST requests. The mapping from an OCSP
+// request to an OCSP response is done by the Source; the Responder simply
+// decodes the request, and passes back whatever response is provided by the
+// source.
+// The Responder will set these headers:
+//   Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
+//   Last-Modified: response.ThisUpdate,
+//   Expires: response.NextUpdate,
+//   ETag: the SHA256 hash of the response, and
+//   Content-Type: application/ocsp-response.
 // Note: The caller must use http.StripPrefix to strip any path components
 // (including '/') on GET requests.
 // Do not use this responder in conjunction with http.NewServeMux, because the

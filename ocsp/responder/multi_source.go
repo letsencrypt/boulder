@@ -2,11 +2,13 @@ package responder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -14,17 +16,24 @@ type multiSource struct {
 	primary   Source
 	secondary Source
 	timeout   time.Duration
+	counter   *prometheus.CounterVec
 	log       blog.Logger
-	// TODO: add metrics
 }
 
-func NewMultiSource(primary, secondary Source, timeout time.Duration, log blog.Logger) (Source, error) {
+func NewMultiSource(primary, secondary Source, timeout time.Duration, stats prometheus.Registerer, log blog.Logger) (Source, error) {
+	if primary == nil || secondary == nil {
+		return nil, errors.New("must provide both primary and secondary sources")
+	}
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_multiplex_responses",
+		Help: "Count of OCSP requests/responses by action taken by the multiSource",
+	}, []string{"result"})
 	return &multiSource{
 		primary:   primary,
 		secondary: secondary,
 		timeout:   timeout,
+		counter:   counter,
 		log:       log,
-		// TODO: Add metrics
 	}, nil
 }
 
@@ -42,13 +51,7 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 	serialString := core.SerialToString(req.SerialNumber)
 
 	primaryChan := getResponse(ctx, src.primary, req)
-
-	// TODO(XXX): Instantiate secondary unconditionally, and rely on the top-level
-	// code to only instantiate a multiSource if it's actually necessary?
-	var secondaryChan chan responseResult
-	if src.secondary != nil {
-		secondaryChan = getResponse(ctx, src.secondary, req)
-	}
+	secondaryChan := getResponse(ctx, src.secondary, req)
 
 	// If the primary source returns first, check the output and return
 	// it. If the secondary source wins, then wait for the primary so the
@@ -58,9 +61,11 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 	// passes these checks, return its response instead.
 	select {
 	case <-ctx.Done():
+		src.counter.WithLabelValues("timed_out").Inc()
 		return nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 
 	case primaryResult := <-primaryChan:
+		src.counter.WithLabelValues("primary_result").Inc()
 		return primaryResult.resp, primaryResult.err
 
 	case secondaryResult := <-secondaryChan:
@@ -71,6 +76,7 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 		// Listen for cancellation or timeout waiting for primary result.
 		select {
 		case <-ctx.Done():
+			src.counter.WithLabelValues("timed_out").Inc()
 			return nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 
 		case primaryResult = <-primaryChan:
@@ -78,22 +84,26 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 
 		// Check for error returned from the primary lookup, return on error.
 		if primaryResult.err != nil {
+			src.counter.WithLabelValues("primary_error").Inc()
 			return nil, primaryResult.err
 		}
 
 		// Check for error returned from the secondary lookup. If error return
 		// primary lookup result.
 		if secondaryResult.err != nil {
+			src.counter.WithLabelValues("secondary_error").Inc()
 			return primaryResult.resp, nil
 		}
 
 		// If the secondary response status doesn't match primary, return
 		// primary response.
 		if secondaryResult.resp.Status != primaryResult.resp.Status {
+			src.counter.WithLabelValues("mismatch").Inc()
 			return primaryResult.resp, nil
 		}
 
 		// The secondary response has passed checks, return it.
+		src.counter.WithLabelValues("secondary_result").Inc()
 		return secondaryResult.resp, nil
 	}
 }

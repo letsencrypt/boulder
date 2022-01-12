@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -25,13 +26,14 @@ type filterSource struct {
 	hashAlgorithm  crypto.Hash
 	issuers        map[issuance.IssuerNameID]responderID
 	serialPrefixes []string
+	counter        *prometheus.CounterVec
 	log            blog.Logger
 }
 
 // NewFilterSource returns a filterSource which performs various checks on the
 // OCSP requests sent to the wrapped Source, and the OCSP responses returned
 // by it.
-func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, log blog.Logger) (Source, error) {
+func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, stats prometheus.Registerer, log blog.Logger) (Source, error) {
 	if len(issuerCerts) < 1 {
 		return nil, errors.New("Filter must include at least 1 issuer cert")
 	}
@@ -45,11 +47,16 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 		}
 		issuersByNameId[issuerCert.NameID()] = rid
 	}
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_filter_responses",
+		Help: "Count of OCSP requests/responses by action taken by the filter",
+	}, []string{"result"})
 	return &filterSource{
 		wrapped:        wrapped,
 		hashAlgorithm:  crypto.SHA1,
 		issuers:        issuersByNameId,
 		serialPrefixes: serialPrefixes,
+		counter:        counter,
 		log:            log,
 	}, nil
 }
@@ -61,20 +68,24 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 	iss, err := src.checkRequest(req)
 	if err != nil {
 		src.log.Debugf("Not responding to filtered OCSP request: %s", err.Error())
+		src.counter.WithLabelValues("request_filtered").Inc()
 		return nil, err
 	}
 
 	resp, err := src.wrapped.Response(ctx, req)
 	if err != nil {
+		src.counter.WithLabelValues("wrapped_error").Inc()
 		return nil, err
 	}
 
 	err = src.checkResponse(iss, resp)
 	if err != nil {
 		src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), core.SerialToString(req.SerialNumber))
+		src.counter.WithLabelValues("response_filtered").Inc()
 		return nil, err
 	}
 
+	src.counter.WithLabelValues("success").Inc()
 	return resp, nil
 }
 
