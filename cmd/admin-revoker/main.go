@@ -230,38 +230,49 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 	return r.revokeCertificate(ctx, core.Certificate{Serial: serial}, reasonCode)
 }
 
+func (r *revoker) spkiHashInBlockedKeys(spkiHash []byte) (bool, error) {
+	var count int
+	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?;", spkiHash)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	if count >= 1 {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	var count int
-	err := r.dbMap.SelectOne(
-		&count,
-		"SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?;",
-		spkiHash,
-	)
+	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?;", spkiHash)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return 0, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
 		}
+		return 0, err
 	}
 	return count, nil
 }
 
-func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
-	var matches []struct {
-		ID         int
-		CertSerial string
-	}
-	_, err := r.dbMap.Select(
-		&matches,
-		"SELECT COUNT(certSerial) FROM keyHashToSerial WHERE keyHash = ?;",
-		spkiHash,
-	)
-	fmt.Println(matches)
+type spkiMatch struct {
+	Id         int64
+	CertSerial string
+}
+
+func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) ([]spkiMatch, error) {
+	var h []spkiMatch
+	_, err := r.dbMap.Select(&h, "SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ?;", spkiHash)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return 0, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
+			return nil, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
 		}
+		return nil, err
 	}
-	return len(matches), nil
+	return h, nil
 }
 
 // This abstraction is needed so that we can use sort.Sort below
@@ -457,33 +468,67 @@ func main() {
 			fmt.Printf("%d: %s\n", k, revocation.ReasonToString[k])
 		}
 
-	case command == "block-key" && len(args) == 2:
+	case command == "block-key" && (len(args) == 2 || len(args) == 3):
 		// 1: keyPath, 2: reasonCode
 		keyPath := args[0]
 
+		var skipDryRun bool
+		if len(args) == 3 {
+			if args[3] == "skip-dry-run" {
+				skipDryRun = true
+			} else {
+				cmd.Fail(fmt.Sprintf("%q is not a valid argument to command 'block-key'", args[3]))
+			}
+		}
+
 		reasonCode, err := strconv.Atoi(args[1])
 		cmd.FailOnError(err, "Reason code argument must be an integer")
-		fmt.Println(reasonCode)
 
 		keyContents, err := os.ReadFile(keyPath)
-		cmd.FailOnError(err, fmt.Sprintf("Cannot load file %q", keyPath))
+		cmd.FailOnError(err, fmt.Sprintf("Cannot load the provided key %q", keyPath))
 
 		privateKey, err := loadPrivateKey(keyContents)
-		cmd.FailOnError(err, fmt.Sprintf("Cannot parse private key from file %q", keyPath))
+		cmd.FailOnError(err, fmt.Sprintf("Cannot parse the provided key %q", keyPath))
 
 		err = verifyPrivateKey(privateKey)
 		cmd.FailOnError(err, "While attempting to verify")
-		r.log.AuditInfo("the provided private key has been successfully verified")
+		r.log.AuditInfo("The provided key has been successfully verified")
 
 		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
-		// TODO: Check that the key isn't already in the 'blockedKeys' table.
+		ok, err := r.spkiHashInBlockedKeys(spkiHash)
+		cmd.FailOnError(err, "While checking if the provided key already exists in the 'blockedKeys' table")
+		if ok {
+			cmd.Fail("The provided key already exists in the 'blockedKeys' table")
+		}
 
-		certCount, err := r.countCertsMatchingSPKIHash(spkiHash)
-		cmd.FailOnError(err, "While counting certs matching the provided key")
-		fmt.Printf("There are %d unexpired certificates matching the provided key\n", certCount)
+		count, err := r.countCertsMatchingSPKIHash(spkiHash)
+		cmd.FailOnError(err, "While retrieving a count of certificates matching the provided key")
+		r.log.AuditInfof("Found '%d' certificates matching the provided key", count)
 
+		if !skipDryRun {
+			fmt.Printf("To proceed with revocation of '%d' certifcates, re-run with the argument 'skip-dry-run'\n", count)
+			r.log.AuditInfof("No 'skip-dry-run' argument provided, exiting...", count)
+			os.Exit(0)
+		}
+
+		r.log.AuditInfof("Revoking '%d' certificates", count)
+		matches, err := r.getCertsMatchingSPKIHash(spkiHash)
+		cmd.FailOnError(err, "While retrieving a list of the affected cert serials")
+
+		for i, match := range matches {
+			err := r.revokeBySerial(context.Background(), match.CertSerial, revocation.Reason(reasonCode))
+			cmd.FailOnError(
+				err,
+				fmt.Sprintf(
+					"While attempting to revoke serial (%q), entry (%d) in (%d) affected certificates",
+					match.CertSerial,
+					(i+1),
+					len(matches),
+				),
+			)
+		}
 	default:
 		usage()
 	}

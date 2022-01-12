@@ -238,17 +238,23 @@ func TestCountCertsMatchingSPKIHash(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to hash 'verifiable' message: %s")
 
 	err = verifyRSAKeyPair(testKey1, &testKey1.PublicKey, msgHash)
-	test.AssertNotError(t, err, "Failed to verify valid key pair")
+	test.AssertNotError(t, err, "Failed to verify valid key pair for dupe")
 
 	// Next we get the SPKI hash for the provivided keypair.
 	spkiHash, err := getPublicKeySPKIHash(&testKey1.PublicKey)
-	test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
+
+	// Next, we ensure that the SPKI hash hasn't already been added to the
+	// blockedKeys table.
+	ok, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.Assert(t, !ok, "SPKI hash should not be in blockedKeys")
 
 	// Finally, we query the 'keyHashToSerial' table for certificates with a
 	// matching SPKI hash. We expect that since this key was re-used we'll find
 	// 2 matches.
 	count, err := testCtx.revoker.countCertsMatchingSPKIHash(spkiHash)
-	test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.AssertEquals(t, count, 2)
 
 	// For some additional validation let's ensure that counts for all test
@@ -257,20 +263,36 @@ func TestCountCertsMatchingSPKIHash(t *testing.T) {
 		switch entry.names[0] {
 		case "example-1337.com":
 			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
-			test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 2)
 
 		case "example-1338.com":
 			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
-			test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 1)
 
 		case "example-1339.com":
 			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
-			test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
+			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 1)
 		}
 	}
+
+	// Fetch a full listing of the affected certificate serials.
+	matches, err := testCtx.revoker.getCertsMatchingSPKIHash(spkiHash)
+	test.AssertNotError(t, err, "getCertsMatchingSPKIHash for dupe failed")
+	test.AssertEquals(t, len(matches), 2)
+
+	// Revoke the affected certificates.
+	for _, match := range matches {
+		err := testCtx.revoker.revokeBySerial(context.Background(), match.CertSerial, 1)
+		test.AssertNotError(t, err, "Failed to revoke test certificate")
+	}
+
+	// Ensure that the key is now blocked.
+	ok, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.Assert(t, ok, "SPKI hash should not be in blockedKeys")
 }
 
 type testCtx struct {
