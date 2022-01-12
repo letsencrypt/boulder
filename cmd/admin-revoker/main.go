@@ -497,9 +497,9 @@ func main() {
 		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
-		ok, err := r.spkiHashInBlockedKeys(spkiHash)
+		keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
 		cmd.FailOnError(err, "While checking if the provided key already exists in the 'blockedKeys' table")
-		if ok {
+		if keyExists {
 			cmd.Fail("The provided key already exists in the 'blockedKeys' table")
 		}
 

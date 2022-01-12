@@ -73,7 +73,7 @@ func TestRevokeBatch(t *testing.T) {
 	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")
 	signer, err := test.LoadSigner("../../test/hierarchy/int-r3.key.pem")
-	test.AssertNotError(t, err, "Failed to load test signer")
+	test.AssertNotError(t, err, "failed to load test signer")
 
 	ra := ra.NewRegistrationAuthorityImpl(fc,
 		log,
@@ -104,7 +104,7 @@ func TestRevokeBatch(t *testing.T) {
 	}
 
 	serialFile, err := ioutil.TempFile("", "serials")
-	test.AssertNotError(t, err, "Failed to open temp file")
+	test.AssertNotError(t, err, "failed to open temp file")
 	defer os.Remove(serialFile.Name())
 
 	serials := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
@@ -114,22 +114,22 @@ func TestRevokeBatch(t *testing.T) {
 			DNSNames:     []string{"asd"},
 		}
 		der, err := x509.CreateCertificate(rand.Reader, template, issuer.Certificate, signer.Public(), signer)
-		test.AssertNotError(t, err, "Failed to generate test cert")
+		test.AssertNotError(t, err, "failed to generate test cert")
 		_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:      der,
 			RegID:    reg.Id,
 			Issued:   time.Now().UnixNano(),
 			IssuerID: 1,
 		})
-		test.AssertNotError(t, err, "Failed to add test cert")
+		test.AssertNotError(t, err, "failed to add test cert")
 		_, err = ssa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  reg.Id,
 			Issued: time.Now().UnixNano(),
 		})
-		test.AssertNotError(t, err, "Failed to add test cert")
+		test.AssertNotError(t, err, "failed to add test cert")
 		_, err = serialFile.WriteString(fmt.Sprintf("%s\n", core.SerialToString(serial)))
-		test.AssertNotError(t, err, "Failed to write serial to temp file")
+		test.AssertNotError(t, err, "failed to write serial to temp file")
 	}
 
 	err = r.revokeBySerialBatch(context.Background(), serialFile.Name(), 0, 2)
@@ -137,7 +137,7 @@ func TestRevokeBatch(t *testing.T) {
 
 	for _, serial := range serials {
 		status, err := ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(serial)})
-		test.AssertNotError(t, err, "Failed to retrieve certificate status")
+		test.AssertNotError(t, err, "failed to retrieve certificate status")
 		test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	}
 }
@@ -246,9 +246,9 @@ func TestCountCertsMatchingSPKIHash(t *testing.T) {
 
 	// Next, we ensure that the SPKI hash hasn't already been added to the
 	// blockedKeys table.
-	ok, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
-	test.Assert(t, !ok, "SPKI hash should not be in blockedKeys")
+	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Finally, we query the 'keyHashToSerial' table for certificates with a
 	// matching SPKI hash. We expect that since this key was re-used we'll find
@@ -290,9 +290,9 @@ func TestCountCertsMatchingSPKIHash(t *testing.T) {
 	}
 
 	// Ensure that the key is now blocked.
-	ok, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
-	test.Assert(t, ok, "SPKI hash should not be in blockedKeys")
+	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 }
 
 type testCtx struct {
@@ -349,7 +349,6 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 func setup(t *testing.T) testCtx {
 	log := blog.UseMock()
 	fc := clock.NewFake()
-	fc.Set(time.Now())
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	if err != nil {
@@ -385,7 +384,6 @@ func setup(t *testing.T) testCtx {
 		&mockPurger{},
 		[]*issuance.Certificate{issuer},
 	)
-
 	ra.SA = isa.SA{Impl: ssa}
 	ra.CA = &mockCA{}
 	rac := ira.RA{Impl: ra}
