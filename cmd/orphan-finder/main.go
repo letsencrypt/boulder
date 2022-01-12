@@ -42,7 +42,7 @@ command descriptions:
   parse-der       Parses a single orphaned DER certificate file and adds it to the database
 `
 
-type config struct {
+type Config struct {
 	TLS                  cmd.TLSConfig
 	SAService            *cmd.GRPCClientConfig
 	OCSPGeneratorService *cmd.GRPCClientConfig
@@ -200,7 +200,7 @@ type orphanFinder struct {
 func newOrphanFinder(configFile string) *orphanFinder {
 	configJSON, err := ioutil.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
-	var conf config
+	var conf Config
 	err = json.Unmarshal(configJSON, &conf)
 	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(conf.Features)

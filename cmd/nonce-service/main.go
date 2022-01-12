@@ -15,7 +15,7 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
-type config struct {
+type Config struct {
 	NonceService struct {
 		cmd.ServiceConfig
 
@@ -51,7 +51,7 @@ func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 

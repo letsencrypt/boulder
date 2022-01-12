@@ -18,7 +18,7 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 )
 
-type config struct {
+type Config struct {
 	Publisher struct {
 		cmd.ServiceConfig
 		Features map[string]bool
@@ -49,7 +49,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Publisher.Features)

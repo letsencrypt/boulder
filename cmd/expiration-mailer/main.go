@@ -385,7 +385,7 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
-type config struct {
+type Config struct {
 	Mailer struct {
 		cmd.ServiceConfig
 		DB cmd.DBConfig
@@ -483,7 +483,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Mailer.Features)
