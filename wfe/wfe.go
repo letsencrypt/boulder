@@ -757,79 +757,8 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 
 // NewAuthorization is used by clients to submit a new ID Authorization
 func (wfe *WebFrontEndImpl) NewAuthorization(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	body, _, currReg, prob := wfe.verifyPOST(ctx, logEvent, request, true, core.ResourceNewAuthz)
-	addRequesterHeader(response, logEvent.Requester)
-	if prob != nil {
-		// verifyPOST handles its own setting of logEvent.Errors
-		wfe.sendError(response, logEvent, prob, nil)
-		return
-	}
-	// Any version of the agreement is acceptable here. Version match is enforced in
-	// wfe.Registration when agreeing the first time. Agreement updates happen
-	// by mailing subscribers and don't require a registration update.
-	if currReg.Agreement == "" {
-		wfe.sendError(response, logEvent, probs.Unauthorized("Must agree to subscriber agreement before any further actions"), nil)
-		return
-	}
-
-	var newAuthzRequest struct {
-		Identifier struct {
-			Type  string
-			Value string
-		}
-	}
-	if err := json.Unmarshal(body, &newAuthzRequest); err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling JSON"), err)
-		return
-	}
-	if newAuthzRequest.Identifier.Type == "" || newAuthzRequest.Identifier.Value == "" {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid new-authorization request: missing fields"), nil)
-		return
-	}
-	if newAuthzRequest.Identifier.Type == string(identifier.DNS) {
-		logEvent.DNSName = newAuthzRequest.Identifier.Value
-	} else {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid new-authorization request: wrong identifier type"), nil)
-		return
-	}
-
-	// Create new authz and return
-	authzPB, err := wfe.RA.NewAuthorization(ctx, &rapb.NewAuthorizationRequest{
-		Authz: &corepb.Authorization{
-			Identifier: string(newAuthzRequest.Identifier.Value),
-		},
-		RegID: currReg.Id,
-	})
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
-		return
-	}
-	// Ensure gRPC response is complete.
-	if authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), errIncompleteGRPCResponse)
-		return
-	}
-
-	authz, err := bgrpc.PBToAuthz(authzPB)
-	if err != nil {
-		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new authz"), err)
-		return
-	}
-	logEvent.Created = authz.ID
-
-	// Make a URL for this authz, then blow away the ID and RegID before serializing
-	authzURL := urlForAuthz(authz, request)
-	wfe.prepAuthorizationForDisplay(request, &authz)
-
-	response.Header().Add("Location", authzURL)
-	response.Header().Add("Link", link(web.RelativeEndpoint(request, newCertPath), "next"))
-
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusCreated, authz)
-	if err != nil {
-		// ServerInternal because we generated the authz, it should be OK
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling authz"), err)
-		return
-	}
+	wfe.sendError(response, logEvent, probs.NotFound("The ACME v1 new-authz endpoint is no longer supported"), nil)
+	return
 }
 
 func (wfe *WebFrontEndImpl) regHoldsAuthorizations(ctx context.Context, regID int64, names []string) (bool, error) {
