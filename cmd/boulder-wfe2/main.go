@@ -29,7 +29,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type config struct {
+type Config struct {
 	WFE struct {
 		cmd.ServiceConfig
 		ListenAddress    string
@@ -282,7 +282,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c Config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
@@ -335,7 +335,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 

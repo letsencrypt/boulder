@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type config struct {
+type Config struct {
 	ROCSPTool struct {
 		Redis rocsp_config.RedisConfig
 		// Issuers is a map from filenames to short issuer IDs.
@@ -84,7 +84,7 @@ func main2() error {
 
 	rand.Seed(time.Now().UnixNano())
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	if err != nil {
 		return fmt.Errorf("reading JSON config file: %w", err)

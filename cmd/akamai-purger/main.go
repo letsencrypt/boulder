@@ -24,7 +24,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-type config struct {
+type Config struct {
 	AkamaiPurger struct {
 		cmd.ServiceConfig
 
@@ -135,7 +135,7 @@ func main() {
 		}
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
@@ -206,7 +206,7 @@ func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string, logg
 	cmd.FailOnError(err, "Purging tags")
 }
 
-func daemon(c config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
+func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
 	clk := cmd.Clock()
 
 	tlsConfig, err := c.AkamaiPurger.TLS.Load()
