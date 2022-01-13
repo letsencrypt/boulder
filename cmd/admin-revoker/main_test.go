@@ -241,7 +241,7 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	err = verifyRSAKeyPair(testKey1, &testKey1.PublicKey, msgHash)
 	test.AssertNotError(t, err, "Failed to verify valid key pair for dupe")
 
-	// Next we get the SPKI hash for the provivided keypair.
+	// Next we get the SPKI hash for the provided keypair.
 	spkiHash, err := getPublicKeySPKIHash(&testKey1.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
 
@@ -283,7 +283,7 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	err = testCtx.revoker.revokeByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
 	test.AssertNotError(t, err, "While attempting to revoke certificates for the provided key")
 
-	// Ensure that the key is not blocked.
+	// Ensure that the key is not blocked, yet.
 	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
@@ -351,6 +351,9 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 func setup(t *testing.T) testCtx {
 	log := blog.UseMock()
 	fc := clock.NewFake()
+
+	// Set some non-zero time for GRPC requests to be non-nil.
+	fc.Set(time.Now())
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	if err != nil {

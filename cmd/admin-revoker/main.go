@@ -160,7 +160,7 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 	}
 	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, req)
 	if err != nil {
-		return fmt.Errorf("HERE!! %s", err)
+		return err
 	}
 	r.log.Infof("Revoked certificate %s with reason '%s'", certObj.Serial, revocation.ReasonToString[reasonCode])
 	return nil
@@ -248,7 +248,7 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 // (Key Compromise). Keys passed to this function will be validated as a pair
 // before any actions are taken. This method does not revoke any certificates
 // directly; however 'bad-key-revoker', which references the 'blockedKeys'
-// table, will eventually revoke certicates with a matching SPKI hash.
+// table, will eventually revoke certificates with a matching SPKI hash.
 func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer, reasonCode revocation.Reason) error {
 	if reasonCode < 0 || reasonCode != 1 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
@@ -486,7 +486,7 @@ func main() {
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
-	dryRun := flagSet.Bool("dryRun", true, "")
+	dryRun := flagSet.Bool("dry-run", true, "")
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
 
@@ -597,7 +597,7 @@ func main() {
 		if *dryRun {
 			if command == "private-key-block" {
 				r.log.AuditInfof(
-					"To block issuance for this key and revoke %d certifcates via bad-key-revoker, run with -dry-run=false",
+					"To block issuance for this key and revoke %d certificates via bad-key-revoker, run with -dry-run=false",
 					count,
 				)
 			}

@@ -1746,7 +1746,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		RevokedAt: revokedAt,
 	})
 	if err != nil {
-		return fmt.Errorf("OCSP: %s", err)
+		return err
 	}
 
 	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
@@ -1756,7 +1756,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		Response: ocspResponse.Response,
 	})
 	if err != nil {
-		return fmt.Errorf("SA Revoke: %s", err)
+		return err
 	}
 
 	if reason == ocsp.KeyCompromise {
@@ -1838,7 +1838,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
-	fmt.Printf("\n\n>>>>>>>>>>>>>>>>>>>>>>>> admin: %s\nserial: %s\n reason: %s\ncert: %p\n", req.AdminName, req.Serial, req.Code, req.Cert)
 	if req == nil || req.AdminName == "" {
 		fmt.Println("req/admin")
 		return nil, errIncompleteGRPCRequest
