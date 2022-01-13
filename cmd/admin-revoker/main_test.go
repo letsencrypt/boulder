@@ -179,7 +179,7 @@ func TestVerifyECDSAKeyPair(t *testing.T) {
 	test.AssertError(t, err, "Failed to detect invalid key pair")
 }
 
-func TestCountCertsMatchingSPKIHash(t *testing.T) {
+func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
@@ -345,6 +345,8 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 
 	cert, err := x509.ParseCertificate(rawCert)
 	test.AssertNotError(t, err, "Failed to parse test cert")
+
+	fmt.Println(cert.SerialNumber)
 	return cert
 }
 

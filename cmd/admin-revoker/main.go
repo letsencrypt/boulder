@@ -638,7 +638,7 @@ func main() {
 			err = r.blockByPrivateKey(context.Background(), privateKey, revocation.Reason(reasonCode))
 			cmd.FailOnError(err, "While attempting to block issuance for the provided key")
 
-			r.log.AuditInfof("Certificates revoked and key blocked successfully, exiting...", count)
+			r.log.AuditInfof("All certificates revoked and key blocked successfully, exiting...", count)
 		}
 		os.Exit(0)
 
