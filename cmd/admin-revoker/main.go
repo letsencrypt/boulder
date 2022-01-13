@@ -68,7 +68,7 @@ flags:
                          perform the requested block or revoke action
 `
 
-type config struct {
+type Config struct {
 	Revoker struct {
 		DB cmd.DBConfig
 		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
@@ -92,7 +92,7 @@ type revoker struct {
 	log   blog.Logger
 }
 
-func newRevoker(c config) *revoker {
+func newRevoker(c Config) *revoker {
 	logger := cmd.NewLogger(c.Syslog)
 
 	tlsConfig, err := c.Revoker.TLS.Load()
@@ -499,7 +499,7 @@ func main() {
 		fmt.Println("Flag -dry-run is only compatible with commands 'private-key-block' and 'private-key-revoke'")
 	}
 
-	var c config
+	var c Config
 	err = cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Revoker.Features)
