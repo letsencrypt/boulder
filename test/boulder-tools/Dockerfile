@@ -15,6 +15,6 @@ RUN arch=$(echo $TARGETPLATFORM | sed 's|\/|-|') && wget -O go.tgz "https://dl.g
 COPY requirements.txt /tmp/requirements.txt
 COPY boulder.rsyslog.conf /etc/rsyslog.d/
 COPY build.sh /tmp/build.sh
-RUN /tmp/build.sh $TARGETPLATFORM
+RUN /tmp/build.sh
 RUN sed -i '/$ActionFileDefaultTemplate/s/^/#/' /etc/rsyslog.conf
 RUN sed -i '/imklog/s/^/#/' /etc/rsyslog.conf
