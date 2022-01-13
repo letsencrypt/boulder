@@ -1839,11 +1839,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // called from the admin-revoker tool.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	if req == nil || req.AdminName == "" {
-		fmt.Println("req/admin")
 		return nil, errIncompleteGRPCRequest
 	}
 	if req.Cert == nil && req.Serial == "" {
-		fmt.Println("cert/serial")
 		return nil, errIncompleteGRPCRequest
 	}
 
