@@ -8,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"math/big"
@@ -23,6 +22,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -38,6 +38,7 @@ var (
 	testValidityDuration  = 24 * 90 * time.Hour
 	testValidityDurations = map[time.Duration]bool{testValidityDuration: true}
 	pa                    *policy.AuthorityImpl
+	kp                    goodkey.KeyPolicy
 )
 
 func init() {
@@ -50,19 +51,14 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{FermatRounds: 100}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func BenchmarkCheckCert(b *testing.B) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
-	if err != nil {
-		fmt.Println("Couldn't connect to database")
-		return
-	}
-	defer func() {
-		test.ResetSATestDatabase(b)()
-	}()
-
-	checker := newChecker(saDbMap, clock.New(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -98,7 +94,7 @@ func TestCheckWildcardCert(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
-	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations)
 	issued := checker.clock.Now().Add(-time.Minute)
 	goodExpiry := issued.Add(testValidityDuration - time.Second)
 	serial := big.NewInt(1337)
@@ -141,7 +137,7 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 	defer func() {
 		saCleanup()
 	}()
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 
 	certPEM, err := ioutil.ReadFile("testdata/quite_invalid.pem")
 	if err != nil {
@@ -177,7 +173,7 @@ func TestCheckCert(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 
 	// Create a RFC 7633 OCSP Must Staple Extension.
 	// OID 1.3.6.1.5.5.7.1.24
@@ -296,7 +292,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(fc.Now().Add(time.Hour))
 
-	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
@@ -382,7 +378,7 @@ func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{
 func TestGetCertsEmptyResults(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
@@ -463,7 +459,7 @@ func TestIgnoredLint(t *testing.T) {
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 	serial := big.NewInt(1337)
 
 	template := &x509.Certificate{
