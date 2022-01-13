@@ -25,7 +25,7 @@ apt-get install -y --no-install-recommends \
   automake
 
 PROTO_ARCH=x86_64
-if [ "${GOARCH}" = arm64 ]
+if [ "${TARGETPLATFORM}" = linux/arm64 ]
 then
   PROTO_ARCH=aarch_64
 fi
