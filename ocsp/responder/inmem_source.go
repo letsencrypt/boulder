@@ -12,18 +12,18 @@ import (
 
 // An InMemorySource is just a map from serialNumber to Response with no safety
 // checks. Useful for testing.
-type InMemorySource struct {
+type inMemorySource struct {
 	responses map[string]*Response
 	log       blog.Logger
 }
 
 // NewMemorySource returns an initialized InMemorySource which simply looks up
 // responses from an in-memory map based on the serial number in the request.
-func NewMemorySource(responses map[string]*Response, logger blog.Logger) Source {
-	return InMemorySource{
+func NewMemorySource(responses map[string]*Response, logger blog.Logger) (*inMemorySource, error) {
+	return &inMemorySource{
 		responses: responses,
 		log:       logger,
-	}
+	}, nil
 }
 
 // NewMemorySourceFromFile reads the named file into an InMemorySource.
@@ -31,7 +31,7 @@ func NewMemorySource(responses map[string]*Response, logger blog.Logger) Source 
 // responses. Each OCSP response must be in base64-encoded DER form (i.e.,
 // PEM without headers or whitespace).  Invalid responses are ignored.
 // This function pulls the entire file into an InMemorySource.
-func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (Source, error) {
+func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (*inMemorySource, error) {
 	fileContents, err := ioutil.ReadFile(responseFile)
 	if err != nil {
 		return nil, err
@@ -63,13 +63,13 @@ func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (Source, e
 	}
 
 	logger.Infof("Read %d OCSP responses", len(responses))
-	return NewMemorySource(responses, logger), nil
+	return NewMemorySource(responses, logger)
 }
 
 // Response looks up an OCSP response to provide for a given request.
 // InMemorySource looks up a response purely based on serial number,
 // without regard to what issuer the request is asking for.
-func (src InMemorySource) Response(_ context.Context, request *ocsp.Request) (*Response, error) {
+func (src inMemorySource) Response(_ context.Context, request *ocsp.Request) (*Response, error) {
 	response, present := src.responses[request.SerialNumber.String()]
 	if !present {
 		return nil, ErrNotFound

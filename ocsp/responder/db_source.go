@@ -28,7 +28,7 @@ type dbSelector interface {
 
 // NewDbSource returns a dbSource which will look up OCSP responses in a SQL
 // database.
-func NewDbSource(dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) (Source, error) {
+func NewDbSource(dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) (*dbSource, error) {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_db_responses",
 		Help: "Count of OCSP requests/responses by action taken by the dbSource",

@@ -33,7 +33,7 @@ type filterSource struct {
 // NewFilterSource returns a filterSource which performs various checks on the
 // OCSP requests sent to the wrapped Source, and the OCSP responses returned
 // by it.
-func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, stats prometheus.Registerer, log blog.Logger) (Source, error) {
+func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, stats prometheus.Registerer, log blog.Logger) (*filterSource, error) {
 	if len(issuerCerts) < 1 {
 		return nil, errors.New("Filter must include at least 1 issuer cert")
 	}

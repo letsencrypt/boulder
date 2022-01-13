@@ -20,7 +20,7 @@ type redisSource struct {
 
 // NewRedisSource returns a dbSource which will look up OCSP responses in a
 // Redis table.
-func NewRedisSource(client *rocsp.Client, stats prometheus.Registerer, log blog.Logger) (Source, error) {
+func NewRedisSource(client *rocsp.Client, stats prometheus.Registerer, log blog.Logger) (*redisSource, error) {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_redis_responses",
 		Help: "Count of OCSP requests/responses by action taken by the redisSource",

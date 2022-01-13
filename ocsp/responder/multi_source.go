@@ -18,7 +18,7 @@ type multiSource struct {
 	log       blog.Logger
 }
 
-func NewMultiSource(primary, secondary Source, stats prometheus.Registerer, log blog.Logger) (Source, error) {
+func NewMultiSource(primary, secondary Source, stats prometheus.Registerer, log blog.Logger) (*multiSource, error) {
 	if primary == nil || secondary == nil {
 		return nil, errors.New("must provide both primary and secondary sources")
 	}
