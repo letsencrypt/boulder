@@ -584,18 +584,18 @@ func main() {
 		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
-		keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
-		cmd.FailOnError(err, "While checking if the provided key already exists in the 'blockedKeys' table")
-		if keyExists {
-			cmd.Fail("The provided key already exists in the 'blockedKeys' table")
-		}
-
 		count, err := r.countCertsMatchingSPKIHash(spkiHash)
 		cmd.FailOnError(err, "While retrieving a count of certificates matching the provided key")
 		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
 		if *dryRun {
 			if command == "private-key-block" {
+				keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
+				cmd.FailOnError(err, "While checking if the provided key already exists in the 'blockedKeys' table")
+				if keyExists {
+					cmd.Fail("The provided key already exists in the 'blockedKeys' table")
+				}
+
 				r.log.AuditInfof(
 					"To block issuance for this key and revoke %d certificates via bad-key-revoker, run with -dry-run=false",
 					count,
