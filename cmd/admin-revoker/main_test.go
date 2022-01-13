@@ -279,7 +279,7 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 		}
 	}
 
-	// Revoke the key, but do not block issuance.
+	// Revoke the certificates, but do not block issuance.
 	err = testCtx.revoker.revokeByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
 	test.AssertNotError(t, err, "While attempting to revoke certificates for the provided key")
 
@@ -345,8 +345,6 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 
 	cert, err := x509.ParseCertificate(rawCert)
 	test.AssertNotError(t, err, "Failed to parse test cert")
-
-	fmt.Println(cert.SerialNumber)
 	return cert
 }
 

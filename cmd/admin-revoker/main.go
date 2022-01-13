@@ -160,7 +160,7 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 	}
 	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, req)
 	if err != nil {
-		return err
+		return fmt.Errorf("HERE!! %s", err)
 	}
 	r.log.Infof("Revoked certificate %s with reason '%s'", certObj.Serial, revocation.ReasonToString[reasonCode])
 	return nil
@@ -311,11 +311,11 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Sign
 	}
 
 	for i, match := range matches {
-		err := r.revokeBySerial(context.Background(), match.CertSerial, revocation.Reason(reasonCode), true)
+		err := r.revokeBySerial(context.Background(), match, revocation.Reason(reasonCode), true)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to revoke serial %q, entry %d of %d affected certificates: %s",
-				match.CertSerial,
+				match,
 				(i + 1),
 				len(matches),
 				err,
@@ -353,14 +353,9 @@ func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	return count, nil
 }
 
-type spkiMatch struct {
-	Id         int64
-	CertSerial string
-}
-
-func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) ([]spkiMatch, error) {
-	var h []spkiMatch
-	_, err := r.dbMap.Select(&h, "SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ?;", spkiHash)
+func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) ([]string, error) {
+	var h []string
+	_, err := r.dbMap.Select(&h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?;", spkiHash)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
