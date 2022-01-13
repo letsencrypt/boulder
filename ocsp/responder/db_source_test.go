@@ -113,7 +113,7 @@ func TestDbSource(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to parse OCSP request")
 
 	respBytes, err := ioutil.ReadFile("./testdata/ocsp.resp")
-	test.AssertNotError(t, err, "failed to read OCSP request")
+	test.AssertNotError(t, err, "failed to read OCSP response")
 
 	// Test for failure when the database lookup fails.
 	dbErr := errors.New("something went wrong")

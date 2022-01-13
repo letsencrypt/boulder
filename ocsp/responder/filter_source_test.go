@@ -78,6 +78,8 @@ func TestCheckResponse(t *testing.T) {
 
 	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
 	test.AssertNotError(t, err, "failed to read OCSP request")
+	req, err := ocsp.ParseRequest(reqBytes)
+	test.AssertNotError(t, err, "failed to prepare fake ocsp request")
 
 	respBytes, err := ioutil.ReadFile("./testdata/ocsp.resp")
 	test.AssertNotError(t, err, "failed to read OCSP response")
@@ -88,9 +90,7 @@ func TestCheckResponse(t *testing.T) {
 	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, source, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
-	ocspReq, err := ocsp.ParseRequest(reqBytes)
-	test.AssertNotError(t, err, "failed to prepare fake ocsp request")
-	actual, err := f.Response(context.Background(), ocspReq)
+	actual, err := f.Response(context.Background(), req)
 	test.AssertNotError(t, err, "unexpected error")
 	test.AssertEquals(t, actual.Response, resp)
 
@@ -100,8 +100,6 @@ func TestCheckResponse(t *testing.T) {
 	f, err = NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, source, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
-	ocspReq, err = ocsp.ParseRequest(reqBytes)
-	test.AssertNotError(t, err, "failed to prepare fake ocsp request")
-	_, err = f.Response(context.Background(), ocspReq)
+	_, err = f.Response(context.Background(), req)
 	test.AssertError(t, err, "expected error")
 }
