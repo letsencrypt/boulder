@@ -66,6 +66,20 @@ func MakeMetadataKey(serial string) string {
 	return fmt.Sprintf("m{%s}", serial)
 }
 
+func SerialFromResponseKey(key string) (string, error) {
+	if len(key) != 39 || key[0:2] != "r{" || key[38:39] != "}" {
+		return "", fmt.Errorf("malformed Redis OCSP response key %q", key)
+	}
+	return key[2:38], nil
+}
+
+func SerialFromMetadataKey(key string) (string, error) {
+	if len(key) != 39 || key[0:2] != "m{" || key[38:39] != "}" {
+		return "", fmt.Errorf("malformed Redis OCSP metadata key %q", key)
+	}
+	return key[2:38], nil
+}
+
 // Client represents a read-only Redis client.
 type Client struct {
 	rdb        *redis.ClusterClient
@@ -302,11 +316,11 @@ func (c *Client) ScanResponses(ctx context.Context, serialPattern string) <-chan
 				return
 			}
 			for _, key := range keys {
-				if len(key) != 39 || key[0:2] != "r{" || key[38:39] != "}" {
-					results <- ScanResponsesResult{Err: fmt.Errorf("malformed Redis key %q", key)}
+				serial, err := SerialFromResponseKey(key)
+				if err != nil {
+					results <- ScanResponsesResult{Err: err}
 					return
 				}
-				serial := key[2:38]
 				val, err := c.rdb.Get(ctx, key).Result()
 				if err != nil {
 					results <- ScanResponsesResult{Err: fmt.Errorf("getting metadata: %w", err)}
@@ -319,7 +333,7 @@ func (c *Client) ScanResponses(ctx context.Context, serialPattern string) <-chan
 	return results
 }
 
-// ScanResponsesResult represents a single OCSP response entry in redis.
+// ScanMetadataResult represents a single OCSP response entry in redis.
 // `Serial` is the stringified serial number of the response. `Metadata` is the
 // parsed metadata. If this object represents an error, `Err` will
 // be non-nil and the other entries will have their zero values.
@@ -329,7 +343,7 @@ type ScanMetadataResult struct {
 	Err      error
 }
 
-// ScanResponses scans Redis for the metadata of all OCSP responses where the serial number matches
+// ScanMetadata scans Redis for the metadata of all OCSP responses where the serial number matches
 // the provided pattern. It returns immediately and emits results and errors on
 // `<-chan ScanResponsesResult`. It closes the channel when it is done or hits an error.
 func (c *Client) ScanMetadata(ctx context.Context, serialPattern string) <-chan ScanMetadataResult {
@@ -350,11 +364,11 @@ func (c *Client) ScanMetadata(ctx context.Context, serialPattern string) <-chan 
 				return
 			}
 			for _, key := range keys {
-				if len(key) != 39 || key[0:2] != "m{" || key[38:39] != "}" {
-					results <- ScanMetadataResult{Err: fmt.Errorf("malformed Redis key %q", key)}
+				serial, err := SerialFromMetadataKey(key)
+				if err != nil {
+					results <- ScanMetadataResult{Err: err}
 					return
 				}
-				serial := key[2:38]
 				m, err := c.GetMetadata(ctx, serial)
 				if err != nil {
 					results <- ScanMetadataResult{Err: err}
