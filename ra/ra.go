@@ -1700,7 +1700,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string, skipBlockKey bool) error {
 	serial := core.SerialToString(cert.SerialNumber)
 
 	var issuerID int64
@@ -1775,8 +1775,10 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		if features.Enabled(features.StoreRevokerInfo) && revokedBy != 0 {
 			req.RevokedBy = revokedBy
 		}
-		if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
-			return err
+		if !skipBlockKey {
+			if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1806,7 +1808,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	serialString := core.SerialToString(cert.SerialNumber)
 	revocationCode := revocation.Reason(req.Code)
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "")
+	err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "", false)
 
 	state := "Failure"
 	defer func() {
@@ -1883,7 +1885,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			req.AdminName)
 	}()
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
+	err = ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName), req.SkipBlockKey)
 	if err != nil {
 		state = fmt.Sprintf("Failure -- %s", err)
 		return nil, err

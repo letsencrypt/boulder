@@ -129,7 +129,7 @@ func newRevoker(c config) *revoker {
 	}
 }
 
-func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode revocation.Reason) error {
+func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificate, reasonCode revocation.Reason, skipBlockKey bool) error {
 	if reasonCode < 0 || reasonCode == 7 || reasonCode > 10 {
 		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
 	}
@@ -145,15 +145,17 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 			return err
 		}
 		req = &rapb.AdministrativelyRevokeCertificateRequest{
-			Cert:      cert.Raw,
-			Code:      int64(reasonCode),
-			AdminName: u.Username,
+			Cert:         cert.Raw,
+			Code:         int64(reasonCode),
+			AdminName:    u.Username,
+			SkipBlockKey: skipBlockKey,
 		}
 	} else {
 		req = &rapb.AdministrativelyRevokeCertificateRequest{
-			Serial:    certObj.Serial,
-			Code:      int64(reasonCode),
-			AdminName: u.Username,
+			Serial:       certObj.Serial,
+			Code:         int64(reasonCode),
+			AdminName:    u.Username,
+			SkipBlockKey: skipBlockKey,
 		}
 	}
 	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, req)
@@ -164,7 +166,7 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 	return nil
 }
 
-func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason) error {
+func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, skipBlockKey bool) error {
 	certObj, err := sa.SelectPrecertificate(r.dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
@@ -172,7 +174,7 @@ func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode 
 		}
 		return err
 	}
-	return r.revokeCertificate(ctx, certObj, reasonCode)
+	return r.revokeCertificate(ctx, certObj, reasonCode, skipBlockKey)
 }
 
 func (r *revoker) revokeBySerialBatch(ctx context.Context, serialPath string, reasonCode revocation.Reason, parallelism int) error {
@@ -197,7 +199,7 @@ func (r *revoker) revokeBySerialBatch(ctx context.Context, serialPath string, re
 				if serial == "" {
 					continue
 				}
-				err := r.revokeBySerial(ctx, serial, reasonCode)
+				err := r.revokeBySerial(ctx, serial, reasonCode, false)
 				if err != nil {
 					r.log.Errf("failed to revoke %q: %s", serial, err)
 				}
@@ -229,7 +231,7 @@ func (r *revoker) revokeByReg(ctx context.Context, regID int64, reasonCode revoc
 		return err
 	}
 	for _, certObj := range certObjs {
-		err = r.revokeCertificate(ctx, certObj.Certificate, reasonCode)
+		err = r.revokeCertificate(ctx, certObj.Certificate, reasonCode, false)
 		if err != nil {
 			return err
 		}
@@ -238,7 +240,89 @@ func (r *revoker) revokeByReg(ctx context.Context, regID int64, reasonCode revoc
 }
 
 func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, reasonCode revocation.Reason) error {
-	return r.revokeCertificate(ctx, core.Certificate{Serial: serial}, reasonCode)
+	return r.revokeCertificate(ctx, core.Certificate{Serial: serial}, reasonCode, false)
+}
+
+// blockByPrivateKey blocks future issuance for certificates with a public key
+// matching the SPKI hash of the provided private key. Reason code must be 1
+// (Key Compromise). Keys passed to this function will be validated as a pair
+// before any actions are taken. This method does not revoke any certificates
+// directly; however 'bad-key-revoker', which references the 'blockedKeys'
+// table, will eventually revoke certicates with a matching SPKI hash.
+func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer, reasonCode revocation.Reason) error {
+	if reasonCode < 0 || reasonCode != 1 {
+		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
+	}
+
+	err := verifyPrivateKey(privateKey)
+	if err != nil {
+		return err
+	}
+
+	spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
+	if err != nil {
+		return err
+	}
+
+	u, err := user.Current()
+	if err != nil {
+		return err
+	}
+
+	req := &sapb.AddBlockedKeyRequest{
+		KeyHash:   spkiHash,
+		Added:     r.clk.Now().UnixNano(),
+		Source:    "admin-revoker",
+		Comment:   fmt.Sprintf("blocked by %s", u),
+		RevokedBy: 0,
+	}
+
+	_, err = r.sac.AddBlockedKey(ctx, req)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// revokeByPrivateKey revokes all certificates with a public key matching the
+// SPKI hash of the provided private key. Reason code must be 1 (Key
+// Compromise). Keys passed to this function will be validated as a pair before
+// any actions are taken. The provided key will not be added to the
+// 'blockedKeys' table, this is done to avoid a race between 'admin-revoker'
+// and 'bad-key-revoker'.
+func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Signer, reasonCode revocation.Reason) error {
+	if reasonCode < 0 || reasonCode != 1 {
+		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
+	}
+
+	err := verifyPrivateKey(privateKey)
+	if err != nil {
+		return err
+	}
+
+	spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
+	if err != nil {
+		return err
+	}
+
+	matches, err := r.getCertsMatchingSPKIHash(spkiHash)
+	if err != nil {
+		return err
+	}
+
+	for i, match := range matches {
+		err := r.revokeBySerial(context.Background(), match.CertSerial, revocation.Reason(reasonCode), true)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to revoke serial %q, entry %d of %d affected certificates: %s",
+				match.CertSerial,
+				(i + 1),
+				len(matches),
+				err,
+			)
+		}
+	}
+	return nil
 }
 
 func (r *revoker) spkiHashInBlockedKeys(spkiHash []byte) (bool, error) {
@@ -438,7 +522,7 @@ func main() {
 		reasonCode, err := strconv.Atoi(args[1])
 		cmd.FailOnError(err, "Reason code argument must be an integer")
 
-		err = r.revokeBySerial(ctx, serial, revocation.Reason(reasonCode))
+		err = r.revokeBySerial(ctx, serial, revocation.Reason(reasonCode), false)
 		cmd.FailOnError(err, "Couldn't revoke certificate by serial")
 
 	case command == "batched-serial-revoke" && len(args) == 3:
@@ -489,8 +573,6 @@ func main() {
 		// 1: keyPath, 2: reasonCode
 		keyPath := args[0]
 
-		fmt.Println("dryRun: ", *dryRun)
-
 		reasonCode, err := strconv.Atoi(args[1])
 		cmd.FailOnError(err, "Reason code argument must be an integer")
 
@@ -519,40 +601,46 @@ func main() {
 
 		if *dryRun {
 			if command == "private-key-block" {
-				r.log.AuditInfof("To block this key from future issuance and (eventually) revoke %d certifcates via bad-key-revoker, run with -dry-run=false", count)
+				r.log.AuditInfof(
+					"To block issuance for this key and revoke %d certifcates via bad-key-revoker, run with -dry-run=false",
+					count,
+				)
 			}
 
 			if command == "private-key-revoke" {
-				r.log.AuditInfof("To immediately revoke %d certificates and block this key from future issuance, run with -dry-run=false", count)
+				r.log.AuditInfof(
+					"To immediately revoke %d certificates and block issuace for this key, run with -dry-run=false",
+					count,
+				)
 			}
 
-			r.log.AuditInfo("No keys were blocked or revoked, exiting...")
+			r.log.AuditInfo("No keys were blocked or certificates revoked, exiting...")
 			os.Exit(0)
 		}
 
 		if command == "private-key-block" {
+			r.log.AuditInfof("Blocking issuance for the provided key, bad-key-revoker will revoke %d certificates", count)
 
+			err = r.blockByPrivateKey(context.Background(), privateKey, revocation.Reason(reasonCode))
+			cmd.FailOnError(err, "While attempting to block issuance for the provided key")
+
+			r.log.AuditInfof("Key blocked successfully, exiting...", count)
 		}
 
-		if command == "private-key-revoke" {
-			r.log.AuditInfof("Collecting serials for %d affected certificates", count)
+		if command == "private-key-revoke" && count >= 1 {
+			r.log.AuditInfof("Attempting to revoke %d certificates", count)
 
-			matches, err := r.getCertsMatchingSPKIHash(spkiHash)
-			cmd.FailOnError(err, "While retrieving a list of the affected cert serials")
+			err = r.revokeByPrivateKey(context.Background(), privateKey, revocation.Reason(reasonCode))
+			cmd.FailOnError(err, "While attempting to revoke certificates for the provided key")
 
-			for i, match := range matches {
-				err := r.revokeBySerial(context.Background(), match.CertSerial, revocation.Reason(reasonCode))
-				cmd.FailOnError(
-					err,
-					fmt.Sprintf(
-						"While attempting to revoke serial %q, entry %d of %d affected certificates",
-						match.CertSerial,
-						(i+1),
-						len(matches),
-					),
-				)
-			}
+			r.log.AuditInfof("Blocking issuance for the provided key", count)
+
+			err = r.blockByPrivateKey(context.Background(), privateKey, revocation.Reason(reasonCode))
+			cmd.FailOnError(err, "While attempting to block issuance for the provided key")
+
+			r.log.AuditInfof("Certificates revoked and key blocked successfully, exiting...", count)
 		}
+		os.Exit(0)
 
 	default:
 		usage()

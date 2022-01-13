@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -278,16 +279,17 @@ func TestCountCertsMatchingSPKIHash(t *testing.T) {
 		}
 	}
 
-	// Fetch a full listing of the affected certificate serials.
-	matches, err := testCtx.revoker.getCertsMatchingSPKIHash(spkiHash)
-	test.AssertNotError(t, err, "getCertsMatchingSPKIHash for dupe failed")
-	test.AssertEquals(t, len(matches), 2)
+	// Revoke the key, but do not block issuance.
+	err = testCtx.revoker.revokeByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
+	test.AssertNotError(t, err, "While attempting to revoke certificates for the provided key")
 
-	// Revoke the affected certificates.
-	for _, match := range matches {
-		err := testCtx.revoker.revokeBySerial(context.Background(), match.CertSerial, 1)
-		test.AssertNotError(t, err, "Failed to revoke test certificate")
-	}
+	// Ensure that the key is not blocked.
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
+
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
 	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
