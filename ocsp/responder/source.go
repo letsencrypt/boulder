@@ -6,7 +6,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-// Reponse is a wrapper around the standard library's *ocsp.Response, but it
+// Response is a wrapper around the standard library's *ocsp.Response, but it
 // also carries with it the raw bytes of the encoded response.
 type Response struct {
 	*ocsp.Response

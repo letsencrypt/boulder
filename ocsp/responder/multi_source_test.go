@@ -103,7 +103,7 @@ func TestPrimaryTimeoutSecondaryGood(t *testing.T) {
 	src, err := NewMultiSource(&blockingSource{signal}, &succeedSource{}, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
-	// We use cancelation instead of timeout so we don't have to wait on real time.
+	// We use cancellation instead of timeout so we don't have to wait on real time.
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -125,7 +125,7 @@ func TestBothTimeout(t *testing.T) {
 	src, err := NewMultiSource(&blockingSource{signal}, &blockingSource{signal}, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
-	// We use cancelation instead of timeout so we don't have to wait on real time.
+	// We use cancellation instead of timeout so we don't have to wait on real time.
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 

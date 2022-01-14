@@ -61,6 +61,8 @@ func TestMux(t *testing.T) {
 		doubleSlashReq.SerialNumber.String(): {Response: resp, Raw: respBytes},
 	}
 	src, err := ocsp_responder.NewMemorySource(responses, blog.NewMock())
+	test.AssertNotError(t, err, "failed to create inMemorySource")
+
 	h := mux("/foobar/", src, time.Second, stats, blog.NewMock())
 
 	type muxTest struct {

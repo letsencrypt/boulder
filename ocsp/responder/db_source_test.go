@@ -110,7 +110,7 @@ func TestDbSource(t *testing.T) {
 	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
 	test.AssertNotError(t, err, "failed to read OCSP request")
 	req, err := ocsp.ParseRequest(reqBytes)
-	test.AssertNotError(t, err, "Failed to parse OCSP request")
+	test.AssertNotError(t, err, "failed to parse OCSP request")
 
 	respBytes, err := ioutil.ReadFile("./testdata/ocsp.resp")
 	test.AssertNotError(t, err, "failed to read OCSP response")
@@ -118,7 +118,7 @@ func TestDbSource(t *testing.T) {
 	// Test for failure when the database lookup fails.
 	dbErr := errors.New("something went wrong")
 	src, err := NewDbSource(errorSelector{err: dbErr}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "Failed to create dbSource")
+	test.AssertNotError(t, err, "failed to create dbSource")
 	_, err = src.Response(context.Background(), req)
 	test.AssertEquals(t, err, dbErr)
 
@@ -129,7 +129,7 @@ func TestDbSource(t *testing.T) {
 		Err:   sql.ErrNoRows,
 	}
 	src, err = NewDbSource(errorSelector{err: dbErr}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "Failed to create dbSource")
+	test.AssertNotError(t, err, "failed to create dbSource")
 	_, err = src.Response(context.Background(), req)
 	test.AssertErrorIs(t, err, ErrNotFound)
 
@@ -138,7 +138,7 @@ func TestDbSource(t *testing.T) {
 		IsExpired: true,
 	}
 	src, err = NewDbSource(echoSelector{status: status}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "Failed to create dbSource")
+	test.AssertNotError(t, err, "failed to create dbSource")
 	_, err = src.Response(context.Background(), req)
 	test.AssertErrorIs(t, err, ErrNotFound)
 
@@ -148,7 +148,7 @@ func TestDbSource(t *testing.T) {
 		OCSPLastUpdated: time.Time{},
 	}
 	src, err = NewDbSource(echoSelector{status: status}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "Failed to create dbSource")
+	test.AssertNotError(t, err, "failed to create dbSource")
 	_, err = src.Response(context.Background(), req)
 	test.AssertErrorIs(t, err, ErrNotFound)
 
@@ -159,7 +159,7 @@ func TestDbSource(t *testing.T) {
 		OCSPResponse:    respBytes[1:],
 	}
 	src, err = NewDbSource(echoSelector{status: status}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "Failed to create dbSource")
+	test.AssertNotError(t, err, "failed to create dbSource")
 	_, err = src.Response(context.Background(), req)
 	test.AssertError(t, err, "expected failure")
 
@@ -170,7 +170,7 @@ func TestDbSource(t *testing.T) {
 		OCSPResponse:    respBytes,
 	}
 	src, err = NewDbSource(echoSelector{status: status}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "Failed to create dbSource")
+	test.AssertNotError(t, err, "failed to create dbSource")
 	_, err = src.Response(context.Background(), req)
 	test.AssertNotError(t, err, "unexpected failure")
 }
