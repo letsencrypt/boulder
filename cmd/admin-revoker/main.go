@@ -39,10 +39,10 @@ const usageString = `
 usage:
   list-reasons           -config <path>
   serial-revoke          -config <path> <serial>           <reason-code>
-  batched-serial-revoke  -config <path> <serial-file-path> <reason-code> <parallelism>
+  batched-serial-revoke  -config <path> <serial-file-path> <reason-code>   <parallelism>
   reg-revoke             -config <path> <registration-id>  <reason-code>
-  private-key-block      -config <path> <priv-key-path>    <reason-code> -dry-run=<bool>
-  private-key-revoke     -config <path> <priv-key-path>    <reason-code> -dry-run=<bool>
+  private-key-block      -config <path> -dry-run=<bool>    <priv-key-path>
+  private-key-revoke     -config <path> -dry-run=<bool>    <priv-key-path>
 
 
 descriptions:
@@ -61,7 +61,7 @@ descriptions:
 
 flags:
   all:
-    -config              File path to the configuration file for this service
+    -config              File path to the configuration file for this service (required)
 
   private-key-block | private-key-revoke:
     -dry-run             true (default): only queries for affected certificates. false: will
@@ -71,8 +71,9 @@ flags:
 type Config struct {
 	Revoker struct {
 		DB cmd.DBConfig
-		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client certs,
-		// but doesn't get the TLS field from ServiceConfig, so declares its own.
+		// Similarly, the Revoker needs a TLSConfig to set up its GRPC client
+		// certs, but doesn't get the TLS field from ServiceConfig, so declares
+		// its own.
 		TLS cmd.TLSConfig
 
 		RAService *cmd.GRPCClientConfig
@@ -244,14 +245,17 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 }
 
 // blockByPrivateKey blocks future issuance for certificates with a public key
-// matching the SPKI hash of the provided private key. Reason code must be 1
-// (Key Compromise). Keys passed to this function will be validated as a pair
-// before any actions are taken. This method does not revoke any certificates
-// directly; however 'bad-key-revoker', which references the 'blockedKeys'
-// table, will eventually revoke certificates with a matching SPKI hash.
+// matching a SubjectPublicKeyInfo (SPKI) hash of the provided private key. The
+// SPKI hash will be generated from the PublicKey embedded in privateKey, after
+// verifying that the PublicKey is actually a match for the private key. For an
+// example of private keys embedding a mismatched public key, see:
+// https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
+// This method does not revoke any certificates directly. 'bad-key-revoker',
+// which references the 'blockedKeys' table, will eventually revoke certificates
+// with a matching SPKI hash.
 func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer, reasonCode revocation.Reason) error {
-	if reasonCode < 0 || reasonCode != 1 {
-		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
+	if reasonCode != 1 {
+		return fmt.Errorf("invalid reason code %d, must be 1 (Key Compromise)", reasonCode)
 	}
 
 	err := verifyPrivateKey(privateKey)
@@ -284,15 +288,17 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signe
 	return nil
 }
 
-// revokeByPrivateKey revokes all certificates with a public key matching the
-// SPKI hash of the provided private key. Reason code must be 1 (Key
-// Compromise). Keys passed to this function will be validated as a pair before
-// any actions are taken. The provided key will not be added to the
-// 'blockedKeys' table, this is done to avoid a race between 'admin-revoker'
-// and 'bad-key-revoker'.
+// revokeByPrivateKey revokes all certificates with a public key matching a
+// SubjectPublicKeyInfo (SPKI) hash of the provided private key. The SPKI hash
+// will be generated from the PublicKey embedded in privateKey, after verifying
+// that the PublicKey is actually a match for the private key. For an example of
+// private keys embedding a mismatched public key, see:
+// https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
+// The provided key will not be added to the 'blockedKeys' table, this is done
+// to avoid a race between 'admin-revoker' and 'bad-key-revoker'.
 func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Signer, reasonCode revocation.Reason) error {
-	if reasonCode < 0 || reasonCode != 1 {
-		panic(fmt.Sprintf("Invalid reason code: %d", reasonCode))
+	if reasonCode != 1 {
+		return fmt.Errorf("invalid reason code %d, must be 1 (Key Compromise)", reasonCode)
 	}
 
 	err := verifyPrivateKey(privateKey)
@@ -311,10 +317,10 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Sign
 	}
 
 	for i, match := range matches {
-		err := r.revokeBySerial(context.Background(), match, revocation.Reason(reasonCode), true)
+		err := r.revokeBySerial(ctx, match, revocation.Reason(reasonCode), true)
 		if err != nil {
 			return fmt.Errorf(
-				"failed to revoke serial %q, entry %d of %d affected certificates: %s",
+				"failed to revoke serial %q. Entry %d of %d affected certificates: %s",
 				match,
 				(i + 1),
 				len(matches),
@@ -329,13 +335,10 @@ func (r *revoker) spkiHashInBlockedKeys(spkiHash []byte) (bool, error) {
 	var count int
 	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?;", spkiHash)
 	if err != nil {
-		if db.IsNoRows(err) {
-			return false, nil
-		}
 		return false, err
 	}
 
-	if count >= 1 {
+	if count > 0 {
 		return true, nil
 	}
 	return false, nil
@@ -345,9 +348,6 @@ func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	var count int
 	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?;", spkiHash)
 	if err != nil {
-		if db.IsNoRows(err) {
-			return 0, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
-		}
 		return 0, err
 	}
 	return count, nil
@@ -420,7 +420,7 @@ func verifyRSAKeyPair(privKey *rsa.PrivateKey, pubKey *rsa.PublicKey, msgHash ha
 
 	err = rsa.VerifyPSS(pubKey, crypto.SHA256, msgHash.Sum(nil), signatureRSA, nil)
 	if err != nil {
-		return fmt.Errorf("the provided ECDSA private key failed signature verification: %s", err)
+		return fmt.Errorf("the provided RSA private key failed signature verification: %s", err)
 	}
 	return err
 }
@@ -439,10 +439,10 @@ func verifyECDSAKeyPair(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey, msgH
 	return err
 }
 
-// verifyPrivateKey accepts a private key in the form of a `crypto.Signer` and
-// performs signing and verification for both RSA and ECDSA private keys.
-// Returns a nil error if signing and verification has been completed
-// successfully.
+// verifyPrivateKey verifies that the embedded PublicKey of the provided
+// privateKey is actually a match for the private key. For an example of private
+// keys embedding a mismatched public key, see:
+// https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
 func verifyPrivateKey(privateKey crypto.Signer) error {
 	msgHash := sha256.New()
 	_, err := msgHash.Write([]byte("verifiable"))
@@ -450,21 +450,79 @@ func verifyPrivateKey(privateKey crypto.Signer) error {
 		return fmt.Errorf("failed to hash 'verifiable' message: %s", err)
 	}
 
-	privateKeyRSA, ok := privateKey.(*rsa.PrivateKey)
-	if ok {
-		return verifyRSAKeyPair(privateKeyRSA, &privateKeyRSA.PublicKey, msgHash)
-	} else {
-		privateKeyECDSA, ok := privateKey.(*ecdsa.PrivateKey)
-		if ok {
-			return verifyECDSAKeyPair(privateKeyECDSA, &privateKeyECDSA.PublicKey, msgHash)
-		}
+	switch k := privateKey.(type) {
+	case *rsa.PrivateKey:
+		return verifyRSAKeyPair(k, &k.PublicKey, msgHash)
+
+	case *ecdsa.PrivateKey:
+		return verifyECDSAKeyPair(k, &k.PublicKey, msgHash)
+
+	default:
+		// This should never happen.
+		return errors.New("the provided private key could not be asserted to ECDSA or RSA")
 	}
-	// This should not happen.
-	return errors.New("the provided private key could not be asserted to ECDSA or RSA")
 }
 
-// getPublicKeySPKIHash returns an SPKI hash for the provided public key. This
-// hash can be used to query the 'keyHashToSerial' table.
+func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privateKey crypto.Signer) error {
+	reasonCode := revocation.Reason(1)
+	if dryRun {
+		keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
+		if err != nil {
+			return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
+		}
+
+		if keyExists {
+			cmd.Fail("The provided key already exists in the 'blockedKeys' table")
+		}
+
+		r.log.AuditInfof(
+			"To block issuance for this key and revoke %d certificates via bad-key-revoker, run with -dry-run=false",
+			count,
+		)
+		r.log.AuditInfo("No keys were blocked or certificates revoked, exiting...")
+		return nil
+	}
+
+	r.log.AuditInfo("Attempting to block issuance for the provided key")
+	err := r.blockByPrivateKey(context.Background(), privateKey, reasonCode)
+	if err != nil {
+		return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
+	}
+	r.log.AuditInfo("Issuance for the provided key has been successfully blocked, exiting...")
+	return nil
+}
+
+func privateKeyRevoke(r *revoker, dryRun bool, count int, privateKey crypto.Signer) error {
+	reasonCode := revocation.Reason(1)
+	if dryRun {
+		r.log.AuditInfof(
+			"To immediately revoke %d certificates and block issuance for this key, run with -dry-run=false",
+			count,
+		)
+		r.log.AuditInfo("No keys were blocked or certificates revoked, exiting...")
+		return nil
+	}
+
+	if count >= 1 {
+		r.log.AuditInfof("Attempting to revoke %d certificates", count)
+		err := r.revokeByPrivateKey(context.Background(), privateKey, reasonCode)
+		if err != nil {
+			return fmt.Errorf("while attempting to revoke certificates for the provided key: %s", err)
+		}
+		r.log.AuditInfo("All certificates matching using the provided key have been successfully")
+
+		r.log.AuditInfo("Attempting to block issuance for the provided key")
+		err = r.blockByPrivateKey(context.Background(), privateKey, reasonCode)
+		if err != nil {
+			return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
+		}
+		r.log.AuditInfo("All certificates have been successfully revoked and issuance blocked, exiting...")
+	}
+	return nil
+}
+
+// getPublicKeySPKIHash returns a hash of the SubjectPublicKeyInfo for the
+// provided public key.
 func getPublicKeySPKIHash(pubKey crypto.PublicKey) ([]byte, error) {
 	rawSubjectPublicKeyInfo, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
@@ -494,9 +552,10 @@ func main() {
 		usage()
 	}
 
-	// dryRun is only used for commands 'private-key-block' and 'private-key-revoke'.
+	// dryRun is only used for commands 'private-key-block' and
+	// 'private-key-revoke'.
 	if !*dryRun && !(command == "private-key-block" || command == "private-key-revoke") {
-		fmt.Println("Flag -dry-run is only compatible with commands 'private-key-block' and 'private-key-revoke'")
+		fmt.Println("The -dry-run flag is only compatible with commands 'private-key-block' and 'private-key-revoke'")
 	}
 
 	var c Config
@@ -564,12 +623,9 @@ func main() {
 			fmt.Printf("%d: %s\n", k, revocation.ReasonToString[k])
 		}
 
-	case (command == "private-key-block" || command == "private-key-revoke") && len(args) == 2:
-		// 1: keyPath, 2: reasonCode
+	case (command == "private-key-block" || command == "private-key-revoke") && len(args) == 1:
+		// 1: keyPath
 		keyPath := args[0]
-
-		reasonCode, err := strconv.Atoi(args[1])
-		cmd.FailOnError(err, "Reason code argument must be an integer")
 
 		keyContents, err := os.ReadFile(keyPath)
 		cmd.FailOnError(err, fmt.Sprintf("Cannot load the provided key %q", keyPath))
@@ -588,52 +644,14 @@ func main() {
 		cmd.FailOnError(err, "While retrieving a count of certificates matching the provided key")
 		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
-		if *dryRun {
-			if command == "private-key-block" {
-				keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
-				cmd.FailOnError(err, "While checking if the provided key already exists in the 'blockedKeys' table")
-				if keyExists {
-					cmd.Fail("The provided key already exists in the 'blockedKeys' table")
-				}
-
-				r.log.AuditInfof(
-					"To block issuance for this key and revoke %d certificates via bad-key-revoker, run with -dry-run=false",
-					count,
-				)
-			}
-
-			if command == "private-key-revoke" {
-				r.log.AuditInfof(
-					"To immediately revoke %d certificates and block issuace for this key, run with -dry-run=false",
-					count,
-				)
-			}
-
-			r.log.AuditInfo("No keys were blocked or certificates revoked, exiting...")
-			os.Exit(0)
-		}
-
 		if command == "private-key-block" {
-			r.log.AuditInfof("Blocking issuance for the provided key, bad-key-revoker will revoke %d certificates", count)
-
-			err = r.blockByPrivateKey(context.Background(), privateKey, revocation.Reason(reasonCode))
-			cmd.FailOnError(err, "While attempting to block issuance for the provided key")
-
-			r.log.AuditInfof("Key blocked successfully, exiting...", count)
+			err := privateKeyBlock(r, *dryRun, count, spkiHash, privateKey)
+			cmd.Fail(err.Error())
 		}
 
-		if command == "private-key-revoke" && count >= 1 {
-			r.log.AuditInfof("Attempting to revoke %d certificates", count)
-
-			err = r.revokeByPrivateKey(context.Background(), privateKey, revocation.Reason(reasonCode))
-			cmd.FailOnError(err, "While attempting to revoke certificates for the provided key")
-
-			r.log.AuditInfof("Blocking issuance for the provided key", count)
-
-			err = r.blockByPrivateKey(context.Background(), privateKey, revocation.Reason(reasonCode))
-			cmd.FailOnError(err, "While attempting to block issuance for the provided key")
-
-			r.log.AuditInfof("All certificates revoked and key blocked successfully, exiting...", count)
+		if command == "private-key-revoke" {
+			err := privateKeyRevoke(r, *dryRun, count, privateKey)
+			cmd.Fail(err.Error())
 		}
 		os.Exit(0)
 

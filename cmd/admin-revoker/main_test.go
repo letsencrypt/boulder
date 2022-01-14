@@ -288,6 +288,7 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
+	// Block issuance for the key.
 	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
@@ -295,6 +296,10 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
+
+	// Ensure that blocking issuance is idempotent.
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 }
 
 type testCtx struct {
