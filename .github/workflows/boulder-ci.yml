@@ -33,7 +33,6 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.17_2022-01-13
           - go1.17.5_2022-01-13
         # Tests command definitions. Use the entire docker-compose command you want to run.
         tests:
