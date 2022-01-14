@@ -29,7 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
-	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -179,7 +178,7 @@ func TestVerifyECDSAKeyPair(t *testing.T) {
 	test.AssertError(t, err, "Failed to detect invalid key pair")
 }
 
-func TestRevokeAndBlockByPrivateKey(t *testing.T) {
+func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
@@ -229,31 +228,22 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	regId := testCtx.addRegistation(t, []string{"example-1336.com"}, testJWK4)
 	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
 
-	// Now, let's pretend that the key matching both our first test certificate
-	// and our 4th test certificate has been compromised and a copy has been
-	// sent to an LE operator running the admin-revoker tool.
-
-	// First we validate the provided keypair.
-	msgHash := sha256.New()
-	_, err = msgHash.Write([]byte("verifiable"))
-	test.AssertNotError(t, err, "Failed to hash 'verifiable' message: %s")
-
-	err = verifyRSAKeyPair(testKey1, &testKey1.PublicKey, msgHash)
+	// Validate the provided keypair.
+	err = verifyPrivateKey(testKey1)
 	test.AssertNotError(t, err, "Failed to verify valid key pair for dupe")
 
-	// Next we get the SPKI hash for the provided keypair.
+	// Get the SPKI hash for the provided keypair.
 	spkiHash, err := getPublicKeySPKIHash(&testKey1.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
 
-	// Next, we ensure that the SPKI hash hasn't already been added to the
-	// blockedKeys table.
+	// Ensure that the SPKI hash hasn't already been added to the blockedKeys
+	// table.
 	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
-	// Finally, we query the 'keyHashToSerial' table for certificates with a
-	// matching SPKI hash. We expect that since this key was re-used we'll find
-	// 2 matches.
+	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
+	// hash. We expect that since this key was re-used we'll find 2 matches.
 	count, err := testCtx.revoker.countCertsMatchingSPKIHash(spkiHash)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.AssertEquals(t, count, 2)
@@ -280,7 +270,7 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	}
 
 	// Revoke the certificates, but do not block issuance.
-	err = testCtx.revoker.revokeByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
+	err = testCtx.revoker.revokeByPrivateKey(context.Background(), testKey1)
 	test.AssertNotError(t, err, "While attempting to revoke certificates for the provided key")
 
 	// Ensure that the key is not blocked, yet.
@@ -289,7 +279,7 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Block issuance for the key.
-	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1)
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
@@ -298,8 +288,153 @@ func TestRevokeAndBlockByPrivateKey(t *testing.T) {
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Ensure that blocking issuance is idempotent.
-	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1, revocation.Reason(1))
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1)
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
+}
+
+func TestPrivateKeyBlock(t *testing.T) {
+	testCtx := setup(t)
+	defer testCtx.cleanUp()
+
+	// Unique keys for each of our test certificates.
+	testKey1, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 1")
+	testKey2, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 2")
+	testKey3, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 3")
+
+	// Unique JWKs so we can register each of our entries.
+	testJWK1 := `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
+	testJWK2 := `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
+	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
+	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
+
+	type entry struct {
+		jwk     string
+		serial  *big.Int
+		names   []string
+		testKey *rsa.PrivateKey
+	}
+
+	entries := []*entry{
+		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: testKey1},
+		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: testKey2},
+		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: testKey3},
+	}
+
+	// Register and insert our first 3 certificates.
+	for _, entry := range entries {
+		regId := testCtx.addRegistation(t, entry.names, entry.jwk)
+		testCtx.addCertificate(t, entry.serial, entry.names, entry.testKey.PublicKey, regId)
+	}
+
+	// Register and insert a certificate which re-uses the same public key as
+	// our first test certificate.
+	regId := testCtx.addRegistation(t, []string{"example-1336.com"}, testJWK4)
+	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
+
+	// Get the SPKI hash for the provided keypair.
+	spkiHash1, err := getPublicKeySPKIHash(&testKey1.PublicKey)
+	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
+
+	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
+	// hash. We expect that since this key was re-used we'll find 2 matches.
+	count, err := testCtx.revoker.countCertsMatchingSPKIHash(spkiHash1)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.AssertEquals(t, count, 2)
+
+	// With dryRun=true this should not block the key.
+	err = privateKeyBlock(&testCtx.revoker, true, count, spkiHash1, testKey1)
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
+
+	// Ensure that the key is not blocked, yet.
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
+
+	// With dryRun=false this should block the key.
+	err = privateKeyBlock(&testCtx.revoker, false, count, spkiHash1, testKey1)
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
+
+	// With dryRun=false this should result in an error as the key is already blocked.
+	err = privateKeyBlock(&testCtx.revoker, false, count, spkiHash1, testKey1)
+	test.AssertError(t, err, "Attempting to block a key which is already blocked should have failed.")
+}
+
+func TestPrivateKeyRevoke(t *testing.T) {
+	testCtx := setup(t)
+	defer testCtx.cleanUp()
+
+	// Unique keys for each of our test certificates.
+	testKey1, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 1")
+	testKey2, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 2")
+	testKey3, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Failed to generate test key 3")
+
+	// Unique JWKs so we can register each of our entries.
+	testJWK1 := `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
+	testJWK2 := `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
+	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
+	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
+
+	type entry struct {
+		jwk     string
+		serial  *big.Int
+		names   []string
+		testKey *rsa.PrivateKey
+	}
+
+	entries := []*entry{
+		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: testKey1},
+		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: testKey2},
+		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: testKey3},
+	}
+
+	// Register and insert our first 3 certificates.
+	for _, entry := range entries {
+		regId := testCtx.addRegistation(t, entry.names, entry.jwk)
+		testCtx.addCertificate(t, entry.serial, entry.names, entry.testKey.PublicKey, regId)
+	}
+
+	// Register and insert a certificate which re-uses the same public key as
+	// our first test certificate.
+	regId := testCtx.addRegistation(t, []string{"example-1336.com"}, testJWK4)
+	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
+
+	// Get the SPKI hash for the provided keypair.
+	spkiHash1, err := getPublicKeySPKIHash(&testKey1.PublicKey)
+	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
+
+	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
+	// hash. We expect that since this key was re-used we'll find 2 matches.
+	count, err := testCtx.revoker.countCertsMatchingSPKIHash(spkiHash1)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.AssertEquals(t, count, 2)
+
+	// With dryRun=true this should not revoke certificates or block issuance.
+	err = privateKeyRevoke(&testCtx.revoker, true, count, testKey1)
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
+
+	// Ensure that the key is not blocked, yet.
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
+
+	// With dryRun=false this should revoke matching certificates and block the key.
+	err = privateKeyRevoke(&testCtx.revoker, false, count, testKey1)
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
+
+	// Ensure that the key is now blocked.
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
+
+	// With dryRun=false this should revoke matching certificates and block the key.
+	err = privateKeyRevoke(&testCtx.revoker, false, count, testKey1)
+	test.AssertError(t, err, "Failed to error while attempting to revoke already revoked certificates")
 }
 
 type testCtx struct {

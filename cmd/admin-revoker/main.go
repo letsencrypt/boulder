@@ -253,11 +253,7 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 // This method does not revoke any certificates directly. 'bad-key-revoker',
 // which references the 'blockedKeys' table, will eventually revoke certificates
 // with a matching SPKI hash.
-func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer, reasonCode revocation.Reason) error {
-	if reasonCode != 1 {
-		return fmt.Errorf("invalid reason code %d, must be 1 (Key Compromise)", reasonCode)
-	}
-
+func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
 	err := verifyPrivateKey(privateKey)
 	if err != nil {
 		return err
@@ -296,11 +292,7 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signe
 // https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
 // The provided key will not be added to the 'blockedKeys' table, this is done
 // to avoid a race between 'admin-revoker' and 'bad-key-revoker'.
-func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Signer, reasonCode revocation.Reason) error {
-	if reasonCode != 1 {
-		return fmt.Errorf("invalid reason code %d, must be 1 (Key Compromise)", reasonCode)
-	}
-
+func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
 	err := verifyPrivateKey(privateKey)
 	if err != nil {
 		return err
@@ -317,7 +309,7 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Sign
 	}
 
 	for i, match := range matches {
-		err := r.revokeBySerial(ctx, match, revocation.Reason(reasonCode), true)
+		err := r.revokeBySerial(ctx, match, revocation.Reason(1), true)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to revoke serial %q. Entry %d of %d affected certificates: %s",
@@ -464,17 +456,15 @@ func verifyPrivateKey(privateKey crypto.Signer) error {
 }
 
 func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privateKey crypto.Signer) error {
-	reasonCode := revocation.Reason(1)
+	keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
+	if err != nil {
+		return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
+	}
+	if keyExists {
+		return errors.New("the provided key already exists in the 'blockedKeys' table")
+	}
+
 	if dryRun {
-		keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
-		if err != nil {
-			return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
-		}
-
-		if keyExists {
-			cmd.Fail("The provided key already exists in the 'blockedKeys' table")
-		}
-
 		r.log.AuditInfof(
 			"To block issuance for this key and revoke %d certificates via bad-key-revoker, run with -dry-run=false",
 			count,
@@ -484,7 +474,7 @@ func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privat
 	}
 
 	r.log.AuditInfo("Attempting to block issuance for the provided key")
-	err := r.blockByPrivateKey(context.Background(), privateKey, reasonCode)
+	err = r.blockByPrivateKey(context.Background(), privateKey)
 	if err != nil {
 		return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
 	}
@@ -493,7 +483,6 @@ func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privat
 }
 
 func privateKeyRevoke(r *revoker, dryRun bool, count int, privateKey crypto.Signer) error {
-	reasonCode := revocation.Reason(1)
 	if dryRun {
 		r.log.AuditInfof(
 			"To immediately revoke %d certificates and block issuance for this key, run with -dry-run=false",
@@ -504,15 +493,17 @@ func privateKeyRevoke(r *revoker, dryRun bool, count int, privateKey crypto.Sign
 	}
 
 	if count >= 1 {
+		// Revoke certificates.
 		r.log.AuditInfof("Attempting to revoke %d certificates", count)
-		err := r.revokeByPrivateKey(context.Background(), privateKey, reasonCode)
+		err := r.revokeByPrivateKey(context.Background(), privateKey)
 		if err != nil {
 			return fmt.Errorf("while attempting to revoke certificates for the provided key: %s", err)
 		}
 		r.log.AuditInfo("All certificates matching using the provided key have been successfully")
 
+		// Block future issuance.
 		r.log.AuditInfo("Attempting to block issuance for the provided key")
-		err = r.blockByPrivateKey(context.Background(), privateKey, reasonCode)
+		err = r.blockByPrivateKey(context.Background(), privateKey)
 		if err != nil {
 			return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
 		}
@@ -552,8 +543,6 @@ func main() {
 		usage()
 	}
 
-	// dryRun is only used for commands 'private-key-block' and
-	// 'private-key-revoke'.
 	if !*dryRun && !(command == "private-key-block" || command == "private-key-revoke") {
 		fmt.Println("The -dry-run flag is only compatible with commands 'private-key-block' and 'private-key-revoke'")
 	}
