@@ -46,7 +46,7 @@ var (
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
 // the CSR which lowers the case of DNS names and subject CN, and hoist a DNS name into the CN
 // if it is empty.
-func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority, regID int64) error {
+func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, keyPolicy *goodkey.KeyPolicy, pa core.PolicyAuthority) error {
 	normalizeCSR(csr)
 	key, ok := csr.PublicKey.(crypto.PublicKey)
 	if !ok {

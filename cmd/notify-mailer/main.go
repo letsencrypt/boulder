@@ -442,6 +442,14 @@ Required arguments:
 - subject
 - recipientList`
 
+type Config struct {
+	NotifyMailer struct {
+		DB cmd.DBConfig
+		cmd.SMTPConfig
+	}
+	Syslog cmd.SyslogConfig
+}
+
 func main() {
 	from := flag.String("from", "", "From header for emails. Must be a bare email address.")
 	subject := flag.String("subject", "", "Subject of emails")
@@ -473,16 +481,8 @@ func main() {
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, "Couldn't load JSON config file")
 
-	type config struct {
-		NotifyMailer struct {
-			DB cmd.DBConfig
-			cmd.SMTPConfig
-		}
-		Syslog cmd.SyslogConfig
-	}
-
 	// Parse JSON config.
-	var cfg config
+	var cfg Config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Couldn't unmarshal JSON config file")
 

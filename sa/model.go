@@ -111,11 +111,25 @@ func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([
 	return models, err
 }
 
+// SelectPrecertificates selects all fields of multiple precertificate objects.
+func SelectPrecertificates(s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
+	var models []CertWithID
+	_, err := s.Select(
+		&models,
+		"SELECT id, "+precertFields+" FROM precertificates "+q, args)
+	return models, err
+}
+
+type CertStatusMetadata struct {
+	core.CertificateStatus
+}
+
 // CertStatusMetadataFields returns a slice of column names for rows in the
 // certificateStatus table. Changes to the ordering of this list returned by
 // this function should also be made in `ScanCertStatusRow()`.
 func CertStatusMetadataFields() []string {
 	return []string{
+		"id",
 		"serial",
 		"status",
 		"ocspLastUpdated",
@@ -132,8 +146,22 @@ func CertStatusMetadataFields() []string {
 // check that there's a 1:1 correspondence between the column name in the DB,
 // `CertStatusMetadataFields()`, and the `*core.CerticateStatus` field name
 // being copied to.
-func ScanCertStatusRow(rows *sql.Rows, status *core.CertificateStatus) error {
-	err := rows.Scan(
+func ScanCertStatusMetadataRow(rows *sql.Rows, status *CertStatusMetadata) error {
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	expectedColumns := CertStatusMetadataFields()
+	if len(columns) != len(expectedColumns) {
+		return fmt.Errorf("incorrect number of columns in scanned rows: got %d, expected %d", len(columns), len(expectedColumns))
+	}
+	for i, v := range columns {
+		if v != expectedColumns[i] {
+			return fmt.Errorf("incorrect column %d in scanned rows: got %q, expected %q", i, v, expectedColumns[i])
+		}
+	}
+	err = rows.Scan(
+		&status.ID,
 		&status.Serial,
 		&status.Status,
 		&status.OCSPLastUpdated,
@@ -150,27 +178,8 @@ func ScanCertStatusRow(rows *sql.Rows, status *core.CertificateStatus) error {
 	return nil
 }
 
-// TODO(#5655) Remove once #5642 has been deployed to staging and production.
-func certStatusMetadataFieldsSelect(restOfQuery string) string {
-	fields := strings.Join(CertStatusMetadataFields(), ",")
-	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
-}
-
-// SelectCertificateStatusMetadata selects all non-OCSPResponse fields of
-// multiple certificate status objects.
-//
-// TODO(#5655) Remove once #5642 has been deployed to staging and production.
-func SelectCertificateStatusMetadata(s db.Selector, q string, args ...interface{}) ([]core.CertificateStatus, error) {
-	var models []core.CertificateStatus
-	_, err := s.Select(
-		&models,
-		certStatusMetadataFieldsSelect(q),
-		args...,
-	)
-	return models, err
-}
-
 func certStatusFields() []string {
+	// Add the full response bytes.
 	return append(CertStatusMetadataFields(), "ocspResponse")
 }
 
@@ -468,7 +477,7 @@ func statusUint(status core.AcmeStatus) uint8 {
 
 // authzFields is used in a variety of places in sa.go, and modifications to
 // it must be carried through to every use in sa.go
-const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, token, validationError, validationRecord"
+const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, attemptedAt, token, validationError, validationRecord"
 
 type authzModel struct {
 	ID               int64      `db:"id"`

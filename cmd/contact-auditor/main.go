@@ -160,6 +160,12 @@ func makeDBConnection(dsn string) (*sql.DB, error) {
 	return sql.Open("mysql", conf.FormatDSN())
 }
 
+type Config struct {
+	ContactAuditor struct {
+		DB cmd.DBConfig
+	}
+}
+
 func main() {
 	configFile := flag.String("config", "", "File containing a JSON config.")
 	writeToStdout := flag.Bool("to-stdout", false, "Print the audit results to stdout.")
@@ -172,13 +178,7 @@ func main() {
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Error reading config file: %q", *configFile))
 
-	type config struct {
-		ContactAuditor struct {
-			DB cmd.DBConfig
-		}
-	}
-
-	var cfg config
+	var cfg Config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Couldn't unmarshal config")
 

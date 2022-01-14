@@ -33,12 +33,12 @@ func init() {
 		Citation:      "BRs v1.7.0: 6.1.6",
 		Source:        lint.CABFBaselineRequirements,
 		EffectiveDate: util.CABEffectiveDate,
-		Lint:          &dsaSubgroup{},
+		Lint:          NewDsaSubgroup,
 	})
 }
 
-func (l *dsaSubgroup) Initialize() error {
-	return nil
+func NewDsaSubgroup() lint.LintInterface {
+	return &dsaSubgroup{}
 }
 
 func (l *dsaSubgroup) CheckApplies(c *x509.Certificate) bool {

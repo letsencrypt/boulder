@@ -385,7 +385,7 @@ func (ds durationSlice) Swap(a, b int) {
 	ds[a], ds[b] = ds[b], ds[a]
 }
 
-type config struct {
+type Config struct {
 	Mailer struct {
 		cmd.ServiceConfig
 		DB cmd.DBConfig
@@ -447,15 +447,16 @@ func initStats(stats prometheus.Registerer) mailerStats {
 	sendLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "send_latency",
-			Help:    "Time the mailer takes sending messages",
+			Help:    "Time the mailer takes sending messages in seconds",
 			Buckets: metrics.InternetFacingBuckets,
 		})
 	stats.MustRegister(sendLatency)
 
 	processingLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
-			Name: "processing_latency",
-			Help: "Time the mailer takes processing certificates",
+			Name:    "processing_latency",
+			Help:    "Time the mailer takes processing certificates in seconds",
+			Buckets: []float64{1, 15, 30, 60, 75, 90, 120},
 		})
 	stats.MustRegister(processingLatency)
 
@@ -482,7 +483,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.Mailer.Features)

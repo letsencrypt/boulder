@@ -248,7 +248,7 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   python3 start.py &
   for I in $(seq 1 100); do
     sleep 1
-    curl -s http://localhost:4000/directory && break
+    curl -s http://localhost:4001/directory && break
   done
   if [[ "$I" = 100 ]]; then
     echo "Boulder did not come up after ./start.py."

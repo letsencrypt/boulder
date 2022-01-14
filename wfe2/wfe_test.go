@@ -9,12 +9,14 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -366,13 +368,26 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		issuerCertificates[id] = certs[0]
 	}
 
-	wfe, err := NewWebFrontEndImpl(stats, fc, testKeyPolicy, certChains, issuerCertificates, nil, nil, blog.NewMock(), 10*time.Second, 30*24*time.Hour, 7*24*time.Hour)
+	mockSA := mocks.NewStorageAuthority(fc)
+
+	wfe, err := NewWebFrontEndImpl(
+		stats,
+		fc,
+		testKeyPolicy,
+		certChains,
+		issuerCertificates,
+		nil,
+		nil,
+		blog.NewMock(),
+		10*time.Second,
+		30*24*time.Hour,
+		7*24*time.Hour,
+		&MockRegistrationAuthority{},
+		mockSA,
+		mockSA)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
-
-	wfe.RA = &MockRegistrationAuthority{}
-	wfe.SA = mocks.NewStorageAuthority(fc)
 
 	return wfe, fc
 }
@@ -1196,7 +1211,7 @@ func (ra *MockRAPerformValidationError) PerformValidation(context.Context, *rapb
 // the RA.
 func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.RA = &MockRAPerformValidationError{}
+	wfe.ra = &MockRAPerformValidationError{}
 	responseWriter := httptest.NewRecorder()
 
 	signedURL := "http://localhost/1/-ZfxEw"
@@ -1219,7 +1234,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 func TestUpdateChallengeRAError(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	// Mock the RA to always fail PerformValidation
-	wfe.RA = &MockRAPerformValidationError{}
+	wfe.ra = &MockRAPerformValidationError{}
 
 	// Update a pending challenge
 	signedURL := "http://localhost/2/-ZfxEw"
@@ -1618,7 +1633,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	wfe, clk := setupWFE(t)
 
 	mockSA := &mocks.SAWithFailedChallenges{Clk: clk}
-	wfe.SA = mockSA
+	wfe.sa = mockSA
 
 	// For "oldNS" the SA mock returns an authorization with a failed challenge
 	// that has an error with the type already prefixed by the v1 error NS
@@ -1799,7 +1814,7 @@ func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Seri
 
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -2053,7 +2068,7 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 // GET api.
 func TestGetCertificateNew(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.SA = &mockSAWithNewCert{wfe.SA, fc}
+	wfe.sa = &mockSAWithNewCert{wfe.sa, fc}
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -2148,7 +2163,7 @@ func TestGetCertificateNew(t *testing.T) {
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	certPemBytes, _ := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -2196,7 +2211,7 @@ func TestGetCertificateServerError(t *testing.T) {
 	// TODO: add tests for failure to parse the retrieved cert, a cert whose
 	// IssuerNameID is unknown, and a cert whose signature can't be verified.
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAWithError{wfe.SA}
+	wfe.sa = &mockSAWithError{wfe.sa}
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -2917,7 +2932,7 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 // key.
 func TestRevokeCertificateValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -2939,7 +2954,7 @@ func TestRevokeCertificateValid(t *testing.T) {
 // if it was signed by the private key.
 func TestRevokeCertificateKeyCompromiseValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -2966,7 +2981,7 @@ func TestRevokeCertificateKeyCompromiseValid(t *testing.T) {
 
 func TestRevokeCertificateKeyCompromiseInvalid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	revocationReason := revocation.Reason(ocsp.KeyCompromise)
 	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
@@ -2989,7 +3004,7 @@ func TestRevokeCertificateKeyCompromiseInvalid(t *testing.T) {
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -3025,8 +3040,8 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
-	ra := wfe.RA.(*MockRegistrationAuthority)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	ra := wfe.ra.(*MockRegistrationAuthority)
 
 	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3097,7 +3112,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // that issued the cert.
 func TestRevokeCertificateIssuingAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -3140,7 +3155,7 @@ func (sa mockSAWithValidAuthz) GetValidAuthorizations2(_ context.Context, _ *sap
 // that has authorizations for names in cert
 func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = mockSAWithValidAuthz{newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)}
+	wfe.sa = mockSAWithValidAuthz{newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)}
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -3167,7 +3182,7 @@ func TestRevokeCertificateWithAuthorizations(t *testing.T) {
 // A revocation request signed by an unauthorized key.
 func TestRevokeCertificateWrongKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	test2JWK := loadKey(t, []byte(test2KeyPrivatePEM))
 
@@ -3186,7 +3201,7 @@ func TestRevokeCertificateWrongKey(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3213,7 +3228,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 // Valid revocation request for already-revoked cert
 func TestRevokeCertificateAlreadyRevoked(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusRevoked)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusRevoked)
 
 	responseWriter := httptest.NewRecorder()
 
@@ -3245,7 +3260,7 @@ func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, req *s
 // return internal server errors.
 func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyFails{wfe.SA}
+	wfe.sa = &mockSAGetRegByKeyFails{wfe.sa}
 	key := loadKey(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
@@ -3274,7 +3289,7 @@ func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req
 
 func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = &mockSAGetRegByKeyNotFound{wfe.SA}
+	wfe.sa = &mockSAGetRegByKeyNotFound{wfe.sa}
 	key := loadKey(t, []byte(testE2KeyPrivatePEM))
 	_, ok := key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
@@ -3338,10 +3353,9 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	}
 
 	// We expect the authz challenge has its URL set and the URI emptied.
-	chal := authz.Challenges[0]
 	authz.ID = "12345"
 	wfe.prepAuthorizationForDisplay(&http.Request{Host: "localhost"}, authz)
-	chal = authz.Challenges[0]
+	chal := authz.Challenges[0]
 	test.AssertEquals(t, chal.URL, "http://localhost/acme/chall-v3/12345/po1V2w")
 	test.AssertEquals(t, chal.URI, "")
 	test.AssertEquals(t, chal.ProvidedKeyAuthorization, "")
@@ -3361,7 +3375,7 @@ func TestFinalizeSCTError(t *testing.T) {
 
 	// Set up an RA mock that always returns a berrors.MissingSCTsError from
 	// `FinalizeOrder`
-	wfe.RA = &noSCTMockRA{}
+	wfe.ra = &noSCTMockRA{}
 
 	// Create a response writer to capture the WFE response
 	responseWriter := httptest.NewRecorder()
@@ -3603,7 +3617,7 @@ func TestIndexGet404(t *testing.T) {
 // enough that we're no longer worried about stale info being cached.
 func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.SA = newMockSAWithCert(t, wfe.SA, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3619,4 +3633,56 @@ func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	resp := httptest.NewRecorder()
 	wfe.Certificate(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 200)
+}
+
+// TestARI tests that requests for real certs result in renewal info, while
+// requests for certs that don't exist result in errors.
+func TestARI(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+	}
+	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
+	defer features.Reset()
+
+	// Load the certificate and its issuer.
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test certificate")
+	issuer, err := core.LoadCert("../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test issuer")
+
+	// Take advantage of OCSP to build the issuer hashes.
+	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, nil)
+	test.AssertNotError(t, err, "failed to create ocsp request")
+	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
+	test.AssertNotError(t, err, "failed to parse ocsp request")
+
+	// Ensure that a correct query results in a 200.
+	path := fmt.Sprintf(
+		"%s/%s/%s",
+		hex.EncodeToString(ocspReq.IssuerKeyHash),
+		hex.EncodeToString(ocspReq.IssuerNameHash),
+		core.SerialToString(cert.SerialNumber),
+	)
+	req, event := makeGet(path, renewalInfoPath)
+	resp := httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 200)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+
+	// Ensure that a mangled query (wrong serial) results in a 404.
+	path = fmt.Sprintf(
+		"%s/%s/%s",
+		hex.EncodeToString(ocspReq.IssuerKeyHash),
+		hex.EncodeToString(ocspReq.IssuerNameHash),
+		core.SerialToString(big.NewInt(0).Add(cert.SerialNumber, big.NewInt(1))),
+	)
+	req, event = makeGet(path, renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 404)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
 }

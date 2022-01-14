@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto"
-	"crypto/sha1"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -20,6 +17,7 @@ import (
 	"github.com/go-gorp/gorp/v3"
 	"github.com/honeycombio/beeline-go"
 	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
+	"github.com/jmhodges/clock"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -32,7 +30,10 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
 	bocsp "github.com/letsencrypt/boulder/ocsp"
+	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/test/ocsp/helper"
 )
 
 // ocspFilter stores information needed to filter OCSP requests (to ensure we
@@ -62,25 +63,35 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 		if err != nil {
 			return nil, fmt.Errorf("Could not load issuer cert %s: %w", issuerCert, err)
 		}
-		caCert := &issuance.Certificate{Certificate: cert}
-		// The issuerKeyHash in OCSP requests is constructed over the DER
-		// encoding of the public key per RFC 6960 (defined in RFC 4055 for
-		// RSA and RFC 5480 for ECDSA). We can't use MarshalPKIXPublicKey
-		// for this since it encodes keys using the SPKI structure itself,
-		// and we just want the contents of the subjectPublicKey for the
-		// hash, so we need to extract it ourselves.
-		var spki struct {
-			Algo      pkix.AlgorithmIdentifier
-			BitString asn1.BitString
-		}
-		if _, err := asn1.Unmarshal(caCert.RawSubjectPublicKeyInfo, &spki); err != nil {
+		caCert, err := issuance.NewCertificate(cert)
+		if err != nil {
 			return nil, err
 		}
-		keyHash := sha1.Sum(spki.BitString.Bytes)
+		keyHash := caCert.KeyHash()
 		issuerKeyHashes[caCert.ID()] = keyHash[:]
 		issuerNameKeyHashes[caCert.NameID()] = keyHash[:]
 	}
 	return &ocspFilter{crypto.SHA1, issuerKeyHashes, issuerNameKeyHashes, serialPrefixes}, nil
+}
+
+// sourceMetrics contain the metrics used to track ocsp lookup errors
+// between redis and mysql.
+type sourceMetrics struct {
+	ocspLookups *prometheus.CounterVec
+}
+
+func newSourceMetrics(stats prometheus.Registerer) *sourceMetrics {
+	// Metrics for response lookups
+	ocspLookups := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_lookups",
+		Help: "A counter of ocsp lookups labeled with source and result",
+	}, []string{"source", "result"})
+	stats.MustRegister(ocspLookups)
+
+	metrics := sourceMetrics{
+		ocspLookups: ocspLookups,
+	}
+	return &metrics
 }
 
 // checkRequest returns a descriptive error if the request does not satisfy any of
@@ -147,10 +158,13 @@ func (f *ocspFilter) responseMatchesIssuer(req *ocsp.Request, status core.Certif
 // serial number in hex. You must have an index on the serialNumber field,
 // since we will always query on it.
 type dbSource struct {
-	dbMap   dbSelector
-	filter  *ocspFilter
-	timeout time.Duration
-	log     blog.Logger
+	clk             clock.Clock
+	primaryLookup   ocspLookup
+	secondaryLookup ocspLookup
+	filter          *ocspFilter
+	timeout         time.Duration
+	log             blog.Logger
+	metrics         *sourceMetrics
 }
 
 // Define an interface with the needed methods from gorp.
@@ -160,8 +174,9 @@ type dbSelector interface {
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
-// Response is called by the HTTP server to handle a new OCSP request.
-func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
+// Response implements the `responder.Source` interface and is called by
+// the HTTP server to handle a new OCSP request.
+func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) ([]byte, http.Header, error) {
 	err := src.filter.checkRequest(req)
 	if err != nil {
 		src.log.Debugf("Not responding to filtered OCSP request: %s", err.Error())
@@ -171,40 +186,239 @@ func (src *dbSource) Response(req *ocsp.Request) ([]byte, http.Header, error) {
 	serialString := core.SerialToString(req.SerialNumber)
 	src.log.Debugf("Searching for OCSP issued by us for serial %s", serialString)
 
+	var header http.Header = make(map[string][]string)
+	if len(serialString) > 2 {
+		// Set a cache tag that is equal to the last two bytes of the serial.
+		// We expect that to be randomly distributed, so each tag should map to
+		// about 1/256 of our responses.
+		header.Add("Edge-Cache-Tag", serialString[len(serialString)-2:])
+	}
+
 	var certStatus core.CertificateStatus
 	defer func() {
 		if len(certStatus.OCSPResponse) != 0 {
 			src.log.Debugf("OCSP Response sent for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		}
 	}()
-	ctx := context.Background()
 	if src.timeout != 0 {
 		var cancel func()
 		ctx, cancel = context.WithTimeout(ctx, src.timeout)
 		defer cancel()
 	}
-	certStatus, err = sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return nil, nil, bocsp.ErrNotFound
+
+	// The primary and secondary lookups send goroutines to get an OCSP
+	// status given a serial and return a channel of the output.
+	primaryChan := src.primaryLookup.getResponse(ctx, req)
+
+	// If the redis source is nil, don't try to get a response.
+	var secondaryChan chan lookupResponse
+	if src.secondaryLookup != nil {
+		secondaryChan = src.secondaryLookup.getResponse(ctx, req)
+	}
+
+	// If the primary source returns first, check the output and return
+	// it. If the secondary source wins, then wait for the primary so the
+	// results from the secondary can be verified. It is important that we
+	// never return a response from the redis source that is good if mysql
+	// has a revoked status. If the secondary source wins the race and
+	// passes these checks, return its response instead.
+	select {
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.Canceled) {
+			src.metrics.ocspLookups.WithLabelValues("mysql", "canceled").Inc()
+		} else {
+			src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
 		}
-		src.log.AuditErrf("Looking up OCSP response: %s", err)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
+	case primaryResult := <-primaryChan:
+		if primaryResult.err != nil {
+			if errors.Is(primaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "not_found").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "failed").Inc()
+			}
+			return nil, nil, primaryResult.err
+		}
+		// Parse the OCSP bytes returned from the primary source to check
+		// status, expiration and other fields.
+		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
+		if err != nil {
+			src.log.AuditErrf("parsing OCSP response: %s", err)
+			src.metrics.ocspLookups.WithLabelValues("mysql", "parse_error").Inc()
+			return nil, nil, err
+		}
+		src.log.Debugf("returning ocsp from primary source: %v", helper.PrettyResponse(primaryParsed))
+		src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
+		return primaryResult.bytes, header, nil
+	case secondaryResult := <-secondaryChan:
+		// If secondary returns first, wait for primary to return for
+		// comparison.
+		var primaryResult lookupResponse
+
+		// Listen for cancellation or timeout waiting for primary result.
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.Canceled) {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "canceled").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "deadline_exceeded").Inc()
+			}
+			return nil, nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
+		case primaryResult = <-primaryChan:
+		}
+
+		// Check for error returned from the mysql lookup, return on error.
+		if primaryResult.err != nil {
+			if errors.Is(primaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "not_found").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("mysql", "failed").Inc()
+			}
+			return nil, nil, primaryResult.err
+		}
+
+		// Parse the OCSP bytes returned from the primary source to check
+		// status, expiration and other fields.
+		primaryParsed, err := ocsp.ParseResponse(primaryResult.bytes, nil)
+		if err != nil {
+			src.log.AuditErrf("parsing OCSP response: %s", err)
+			src.metrics.ocspLookups.WithLabelValues("mysql", "parse_error").Inc()
+			return nil, nil, err
+		}
+
+		// Check for error returned from the redis lookup. If error return
+		// primary lookup result.
+		if secondaryResult.err != nil {
+			// If we made it this far then there was a successful lookup
+			// on mysql but an error on redis. Either the response exists
+			// in mysql and not in redis or a different error occurred.
+			if errors.Is(secondaryResult.err, bocsp.ErrNotFound) {
+				src.metrics.ocspLookups.WithLabelValues("redis", "not_found").Inc()
+			} else {
+				src.metrics.ocspLookups.WithLabelValues("redis", "failed").Inc()
+			}
+			src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
+			return primaryResult.bytes, header, nil
+		}
+
+		// Parse the OCSP bytes returned from the secondary source to
+		// compare to primary result.
+		secondaryParsed, err := ocsp.ParseResponse(secondaryResult.bytes, nil)
+		if err != nil {
+			src.log.AuditErrf("parsing secondary OCSP response: %s", err)
+			src.metrics.ocspLookups.WithLabelValues("redis", "parse_error").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
+			return primaryResult.bytes, header, nil
+		}
+
+		// If the secondary response status doesn't match primary return
+		// primary response.
+		if primaryParsed.Status != secondaryParsed.Status {
+			src.metrics.ocspLookups.WithLabelValues("redis", "mismatch").Inc()
+			src.metrics.ocspLookups.WithLabelValues("mysql", "success").Inc()
+			return primaryResult.bytes, header, nil
+		}
+
+		// The secondary response has passed checks, return it.
+		src.metrics.ocspLookups.WithLabelValues("redis", "success").Inc()
+		return secondaryResult.bytes, header, nil
 	}
-	if certStatus.IsExpired {
-		src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-		return nil, nil, bocsp.ErrNotFound
-	} else if certStatus.OCSPLastUpdated.IsZero() {
-		src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-		return nil, nil, bocsp.ErrNotFound
-	} else if !src.filter.responseMatchesIssuer(req, certStatus) {
-		src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
-		return nil, nil, bocsp.ErrNotFound
-	}
-	return certStatus.OCSPResponse, nil, nil
 }
 
-type config struct {
+// ocspLookup has a getResponse method that knows how to retrieve an OCSP
+// response from a datastore and return it or an error in a lookupResponse
+// object channel
+type ocspLookup interface {
+	getResponse(context.Context, *ocsp.Request) chan lookupResponse
+}
+
+// dbReceiver can get an OCSP response from a mysql database.
+type dbReceiver struct {
+	dbMap  dbSelector
+	filter *ocspFilter
+	log    blog.Logger
+}
+
+// redisReciever can get an OCSP response from a redis datastore.
+type redisReceiver struct {
+	rocspReader *rocsp.Client
+}
+
+// lookupResponse contains an OCSP response in bytes or error.
+type lookupResponse struct {
+	bytes []byte
+	err   error
+}
+
+// getResponse implements the ocspLookup interface. Given a context and
+// `*ocsp.Request`, getResponse will retrieve the appropriate OCSP
+// response from a mysql database and return it or an error in a
+// lookupResponse object channel
+func (src dbReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan lookupResponse {
+	responseChan := make(chan lookupResponse)
+	serialString := core.SerialToString(req.SerialNumber)
+
+	go func() {
+		defer close(responseChan)
+		certStatus, err := sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
+		if err != nil {
+			if db.IsNoRows(err) {
+				responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+				return
+			}
+			src.log.AuditErrf("Looking up OCSP response in DB: %s", err)
+
+			responseChan <- lookupResponse{nil, err}
+			return
+		}
+
+		if certStatus.IsExpired {
+			src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		} else if certStatus.OCSPLastUpdated.IsZero() {
+			src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		} else if !src.filter.responseMatchesIssuer(req, certStatus) {
+			src.log.Warningf("OCSP Response not sent (issuer and serial mismatch) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		}
+		responseChan <- lookupResponse{certStatus.OCSPResponse, err}
+
+	}()
+
+	return responseChan
+}
+
+// getResponse implements the ocspLookup interface. Given a context and
+// `*ocsp.Request`, getResponse will retrieve the appropriate OCSP
+// response from a redis datastore and return it or an error in a
+// lookupResponse object channel.
+func (src redisReceiver) getResponse(ctx context.Context, req *ocsp.Request) chan lookupResponse {
+	responseChan := make(chan lookupResponse)
+	serialString := core.SerialToString(req.SerialNumber)
+
+	go func() {
+		defer close(responseChan)
+		respBytes, err := src.rocspReader.GetResponse(ctx, serialString)
+		if errors.Is(err, rocsp.ErrRedisNotFound) {
+			responseChan <- lookupResponse{nil, bocsp.ErrNotFound}
+			return
+		}
+		responseChan <- lookupResponse{respBytes, err}
+	}()
+
+	return responseChan
+}
+
+// Make sure that dbReceiver and redisReceiver implements ocspLookup if it
+// does not, this will error at compile time.
+var _ ocspLookup = (*dbReceiver)(nil)
+var _ ocspLookup = (*redisReceiver)(nil)
+
+type Config struct {
 	OCSPResponder struct {
 		cmd.ServiceConfig
 		DB cmd.DBConfig
@@ -234,6 +448,8 @@ type config struct {
 		RequiredSerialPrefixes []string
 
 		Features map[string]bool
+
+		Redis rocsp_config.RedisConfig
 	}
 
 	Syslog  cmd.SyslogConfig
@@ -253,11 +469,13 @@ as generated by Boulder's ceremony command.
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.OCSPResponder.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
+
+	clk := cmd.Clock()
 
 	bc, err := c.Beeline.Load()
 	cmd.FailOnError(err, "Failed to load Beeline config")
@@ -305,7 +523,31 @@ as generated by Boulder's ceremony command.
 		filter, err := newFilter(issuerCerts, c.OCSPResponder.RequiredSerialPrefixes)
 		cmd.FailOnError(err, "Couldn't create OCSP filter")
 
-		source = &dbSource{dbMap, filter, c.OCSPResponder.Timeout.Duration, logger}
+		pLookup := dbReceiver{dbMap, filter, logger}
+
+		// Set up the redis source if there is a config. Otherwise just
+		// set up a mysql source.
+		var redisLookup ocspLookup
+		if c.OCSPResponder.Redis.Addrs != nil {
+			logger.Info("redis config found, configuring redis reader")
+			rocspReader, err := rocsp_config.MakeReadClient(&c.OCSPResponder.Redis, clk, stats)
+			if err != nil {
+				cmd.FailOnError(err, "could not make redis client")
+			}
+			redisLookup = redisReceiver{rocspReader}
+		} else {
+			logger.Info("no redis config found, using mysql as only ocsp source")
+		}
+
+		source = &dbSource{
+			clk:             clk,
+			primaryLookup:   pLookup,
+			secondaryLookup: redisLookup,
+			filter:          filter,
+			timeout:         c.OCSPResponder.Timeout.Duration,
+			log:             logger,
+			metrics:         newSourceMetrics(stats),
+		}
 
 		// Export the value for dbSettings.MaxOpenConns
 		dbConnStat := prometheus.NewGauge(prometheus.GaugeOpts{

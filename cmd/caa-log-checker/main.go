@@ -4,16 +4,17 @@ import (
 	"bufio"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 var raIssuanceLineRE = regexp.MustCompile(`Certificate request - successful JSON=(.*)`)
@@ -193,23 +194,21 @@ func removeCoveredTimestamps(timestamps []time.Time, cover time.Time, tolerance 
 	return r
 }
 
-// formatErrors returns nil if the input map is empty. Otherwise, it returns an
-// error containing a listing of every name and issuance time that was not
-// covered by a CAA check.
-func formatErrors(remaining map[string][]time.Time) string {
+// emitErrors returns nil if the input map is empty. Otherwise, it logs
+// a line for each name and issuance time that was not covered by a CAA
+// check, and return an error.
+func emitErrors(log blog.Logger, remaining map[string][]time.Time) error {
 	if len(remaining) == 0 {
-		return ""
+		return nil
 	}
 
-	messages := make([]string, len(remaining))
 	for name, timestamps := range remaining {
 		for _, timestamp := range timestamps {
-			messages = append(messages, fmt.Sprintf("%v: %s", timestamp, name))
+			log.Infof("CAA-checking log event not found for issuance of %s at %s", name, timestamp)
 		}
 	}
 
-	sort.Strings(messages)
-	return strings.Join(messages, "\n")
+	return errors.New("Some CAA-checking log events not found")
 }
 
 func main() {
@@ -249,9 +248,9 @@ func main() {
 		cmd.FailOnError(err, "failed to process CAA checking logs")
 	}
 
-	errStr := formatErrors(issuanceMap)
-	if errStr != "" {
-		logger.AuditErrf("The following issuances were missing CAA checks:\n%s", errStr)
+	err = emitErrors(logger, issuanceMap)
+	if err != nil {
+		logger.AuditErrf("%s", err)
 		os.Exit(1)
 	}
 }

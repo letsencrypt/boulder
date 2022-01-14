@@ -16,6 +16,12 @@ func TestLineValidRejects(t *testing.T) {
 	test.AssertError(t, err, "didn't error on invalid checksum")
 }
 
+func TestLineValidRejectsNotAChecksum(t *testing.T) {
+	err := lineValid("2020-07-06T18:07:43.109389+00:00 70877f679c72 datacenter 6 boulder-wfe[1595]: xxxx Caught SIGTERM")
+	test.AssertError(t, err, "didn't error on invalid checksum")
+	test.AssertErrorIs(t, err, invalidChecksumErr)
+}
+
 func TestLineValidNonOurobouros(t *testing.T) {
 	err := lineValid("2020-07-06T18:07:43.109389+00:00 70877f679c72 datacenter 6 boulder-wfe[1595]: xxxxxxx Caught SIGTERM")
 	test.AssertError(t, err, "didn't error on invalid checksum")

@@ -17,6 +17,7 @@ const (
 	NonCFSSLSigner
 	StoreIssuerInfo
 	StreamlineOrderAndAuthzs
+	V1DisableNewValidations
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -34,9 +35,6 @@ const (
 	MandatoryPOSTAsGET
 	// Allow creation of new registrations in ACMEv1.
 	AllowV1Registration
-	// V1DisableNewValidations disables validations for new domain names in the V1
-	// API.
-	V1DisableNewValidations
 	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
 	// was checked for extant unrevoked certificates in the blockedKeys table.
 	StoreRevokerInfo
@@ -49,27 +47,43 @@ const (
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
+	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
+	// GET requests. WARNING: This feature is a draft and highly unstable.
+	ServeRenewalInfo
+	// GetAuthzReadOnly causes the SA to use its read-only database connection
+	// (which is generally pointed at a replica rather than the primary db) when
+	// querying the authz2 table.
+	GetAuthzReadOnly
+	// GetAuthzUseIndex causes the SA to use to add a USE INDEX hint when it
+	// queries the authz2 table.
+	GetAuthzUseIndex
+	// Check the failed authorization limit before doing authz reuse.
+	CheckFailedAuthorizationsFirst
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                   false,
-	CAAValidationMethods:     false,
-	CAAAccountURI:            false,
-	EnforceMultiVA:           false,
-	MultiVAFullResults:       false,
-	MandatoryPOSTAsGET:       false,
-	AllowV1Registration:      true,
-	V1DisableNewValidations:  false,
-	PrecertificateRevocation: false,
-	StripDefaultSchemePort:   false,
-	StoreIssuerInfo:          false,
-	StoreRevokerInfo:         false,
-	RestrictRSAKeySizes:      false,
-	FasterNewOrdersRateLimit: false,
-	NonCFSSLSigner:           false,
-	ECDSAForAll:              false,
-	StreamlineOrderAndAuthzs: false,
+	unused:                         false,
+	CAAValidationMethods:           false,
+	CAAAccountURI:                  false,
+	EnforceMultiVA:                 false,
+	MultiVAFullResults:             false,
+	MandatoryPOSTAsGET:             false,
+	AllowV1Registration:            true,
+	V1DisableNewValidations:        false,
+	PrecertificateRevocation:       false,
+	StripDefaultSchemePort:         false,
+	StoreIssuerInfo:                false,
+	StoreRevokerInfo:               false,
+	RestrictRSAKeySizes:            false,
+	FasterNewOrdersRateLimit:       false,
+	NonCFSSLSigner:                 false,
+	ECDSAForAll:                    false,
+	StreamlineOrderAndAuthzs:       false,
+	ServeRenewalInfo:               false,
+	GetAuthzReadOnly:               false,
+	GetAuthzUseIndex:               false,
+	CheckFailedAuthorizationsFirst: false,
 }
 
 var fMu = new(sync.RWMutex)

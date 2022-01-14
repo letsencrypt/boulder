@@ -438,6 +438,7 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 // Certificate objects are entirely internal to the server.  The only
 // thing exposed on the wire is the certificate itself.
 type Certificate struct {
+	ID             int64 `db:"id"`
 	RegistrationID int64 `db:"registrationID"`
 
 	Serial  string    `db:"serial"`
@@ -451,6 +452,8 @@ type Certificate struct {
 // latest data about the status of the certificate, required for OCSP updating
 // and for validating that the subscriber has accepted the certificate.
 type CertificateStatus struct {
+	ID int64 `db:"id"`
+
 	Serial string `db:"serial"`
 
 	// status: 'good' or 'revoked'. Note that good, expired certificates remain
@@ -511,3 +514,15 @@ type SCTDERs [][]byte
 // CertDER is a convenience type that helps differentiate what the
 // underlying byte slice contains
 type CertDER []byte
+
+// SuggestedWindow is a type exposed inside the RenewalInfo resource.
+type SuggestedWindow struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+// RenewalInfo is a type which is exposed to clients which query the renewalInfo
+// endpoint specified in draft-aaron-ari.
+type RenewalInfo struct {
+	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
+}

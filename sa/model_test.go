@@ -227,7 +227,53 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 	}
 }
 
-func TestCerficatesTableContainsDuplicateSerials(t *testing.T) {
+func TestScanCertStatusMetadataRow(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	inputStatus := core.CertificateStatus{
+		Serial: "ff00ff00",
+		Status: "good",
+	}
+	err := sa.dbMap.Insert(&inputStatus)
+	test.AssertNotError(t, err, "couldn't insert certificateStatus")
+
+	rows, err := sa.dbMap.Query("SELECT serial, status, ocspLastUpdated FROM certificateStatus")
+	test.AssertNotError(t, err, "selecting")
+
+	if !rows.Next() {
+		t.Fatal("got no rows")
+	}
+	var certStatus CertStatusMetadata
+	err = ScanCertStatusMetadataRow(rows, &certStatus)
+
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	expected := "incorrect number of columns in scanned rows: got 3, expected 10"
+	if err.Error() != expected {
+		t.Errorf("wrong error: got %q, expected %q", err, expected)
+	}
+
+	rows, err = sa.dbMap.Query("SELECT id, status, serial, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, notAfter, isExpired, issuerID FROM certificateStatus")
+	test.AssertNotError(t, err, "selecting")
+
+	if !rows.Next() {
+		t.Fatal("got no rows")
+	}
+
+	err = ScanCertStatusMetadataRow(rows, &certStatus)
+
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	expected = "incorrect column 1 in scanned rows: got \"status\", expected \"serial\""
+	if err.Error() != expected {
+		t.Errorf("wrong error: got %q, expected %q", err, expected)
+	}
+}
+
+func TestCertificatesTableContainsDuplicateSerials(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 

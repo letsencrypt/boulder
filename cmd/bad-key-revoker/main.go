@@ -343,49 +343,50 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	return false, nil
 }
 
-func main() {
-	var config struct {
-		BadKeyRevoker struct {
-			DB        cmd.DBConfig
-			DebugAddr string
+type Config struct {
+	BadKeyRevoker struct {
+		DB        cmd.DBConfig
+		DebugAddr string
 
-			TLS       cmd.TLSConfig
-			RAService *cmd.GRPCClientConfig
+		TLS       cmd.TLSConfig
+		RAService *cmd.GRPCClientConfig
 
-			// MaximumRevocations specifies the maximum number of certificates associated with
-			// a key hash that bad-key-revoker will attempt to revoke. If the number of certificates
-			// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
-			// progress until this is addressed.
-			MaximumRevocations int
-			// FindCertificatesBatchSize specifies the maximum number of serials to select from the
-			// keyHashToSerial table at once
-			FindCertificatesBatchSize int
+		// MaximumRevocations specifies the maximum number of certificates associated with
+		// a key hash that bad-key-revoker will attempt to revoke. If the number of certificates
+		// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
+		// progress until this is addressed.
+		MaximumRevocations int
+		// FindCertificatesBatchSize specifies the maximum number of serials to select from the
+		// keyHashToSerial table at once
+		FindCertificatesBatchSize int
 
-			// Interval specifies the minimum duration bad-key-revoker
-			// should sleep between attempting to find blockedKeys rows to
-			// process when there is an error or no work to do.
-			Interval cmd.ConfigDuration
+		// Interval specifies the minimum duration bad-key-revoker
+		// should sleep between attempting to find blockedKeys rows to
+		// process when there is an error or no work to do.
+		Interval cmd.ConfigDuration
 
-			// BackoffIntervalMax specifies a maximum duration the backoff
-			// algorithm will wait before retrying in the event of error
-			// or no work to do.
-			BackoffIntervalMax cmd.ConfigDuration
+		// BackoffIntervalMax specifies a maximum duration the backoff
+		// algorithm will wait before retrying in the event of error
+		// or no work to do.
+		BackoffIntervalMax cmd.ConfigDuration
 
-			Mailer struct {
-				cmd.SMTPConfig
-				// Path to a file containing a list of trusted root certificates for use
-				// during the SMTP connection (as opposed to the gRPC connections).
-				SMTPTrustedRootFile string
+		Mailer struct {
+			cmd.SMTPConfig
+			// Path to a file containing a list of trusted root certificates for use
+			// during the SMTP connection (as opposed to the gRPC connections).
+			SMTPTrustedRootFile string
 
-				From          string
-				EmailSubject  string
-				EmailTemplate string
-			}
+			From          string
+			EmailSubject  string
+			EmailTemplate string
 		}
-
-		Syslog  cmd.SyslogConfig
-		Beeline cmd.BeelineConfig
 	}
+
+	Syslog  cmd.SyslogConfig
+	Beeline cmd.BeelineConfig
+}
+
+func main() {
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
@@ -393,6 +394,7 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	var config Config
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
 

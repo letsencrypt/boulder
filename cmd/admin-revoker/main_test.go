@@ -87,6 +87,13 @@ func TestRevokeBatch(t *testing.T) {
 	ra.CA = &mockCA{}
 	rac := ira.RA{Impl: ra}
 
+	r := revoker{
+		rac:   rac,
+		sac:   isa.SA{Impl: ssa},
+		dbMap: dbMap,
+		log:   log,
+	}
+
 	serialFile, err := ioutil.TempFile("", "serials")
 	test.AssertNotError(t, err, "failed to open temp file")
 	defer os.Remove(serialFile.Name())
@@ -116,7 +123,7 @@ func TestRevokeBatch(t *testing.T) {
 		test.AssertNotError(t, err, "failed to write serial to temp file")
 	}
 
-	err = revokeBatch(rac, log, dbMap, serialFile.Name(), 0, 2)
+	err = r.revokeBySerialBatch(context.Background(), serialFile.Name(), 0, 2)
 	test.AssertNotError(t, err, "revokeBatch failed")
 
 	for _, serial := range serials {

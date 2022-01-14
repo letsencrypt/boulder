@@ -11,7 +11,9 @@
     "directoryCAAIdentity": "happy-hacker-ca.invalid",
     "directoryWebsite": "https://github.com/letsencrypt/boulder",
     "legacyKeyIDPrefix": "http://boulder:4000/reg/",
-    "blockedKeyFile": "test/example-blocked-keys.yaml",
+    "goodkey": {
+      "blockedKeyFile": "test/example-blocked-keys.yaml"
+    },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
@@ -24,6 +26,10 @@
     "saService": {
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
+    },
+    "accountCache": {
+      "size": 9000,
+      "ttl": "5s"
     },
     "getNonceService": {
       "serverAddress": "nonce.boulder:9101",
@@ -62,7 +68,8 @@
     "pendingAuthorizationLifetimeDays": 7,
     "features": {
       "MandatoryPOSTAsGET": true,
-      "PrecertificateRevocation": true
+      "PrecertificateRevocation": true,
+      "ServeRenewalInfo": true
     }
   },
 

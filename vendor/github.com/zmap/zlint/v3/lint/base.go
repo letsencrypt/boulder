@@ -23,9 +23,6 @@ import (
 
 // LintInterface is implemented by each Lint.
 type LintInterface interface {
-	// Initialize runs once per-lint. It is called during RegisterLint().
-	Initialize() error
-
 	// CheckApplies runs once per certificate. It returns true if the Lint should
 	// run on the given certificate. If CheckApplies returns false, the Lint
 	// result is automatically set to NA without calling CheckEffective() or
@@ -66,8 +63,8 @@ type Lint struct {
 	// IneffectiveDate is zero. Please see CheckEffective for more information.
 	IneffectiveDate time.Time `json:"-"`
 
-	// The implementation of the lint logic.
-	Lint LintInterface `json:"-"`
+	// A constructor which returns the implementation of the lint logic.
+	Lint func() LintInterface `json:"-"`
 }
 
 // CheckEffective returns true if c was issued on or after the EffectiveDate
@@ -100,11 +97,12 @@ func (l *Lint) Execute(cert *x509.Certificate) *LintResult {
 	if l.Source == CABFBaselineRequirements && !util.IsServerAuthCert(cert) {
 		return &LintResult{Status: NA}
 	}
-	if !l.Lint.CheckApplies(cert) {
+	lint := l.Lint()
+	if !lint.CheckApplies(cert) {
 		return &LintResult{Status: NA}
 	} else if !l.CheckEffective(cert) {
 		return &LintResult{Status: NE}
 	}
-	res := l.Lint.Execute(cert)
+	res := lint.Execute(cert)
 	return res
 }

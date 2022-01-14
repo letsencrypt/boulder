@@ -1,7 +1,7 @@
 version: '3'
 services:
   boulder:
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.17_2021-08-26}
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.17_2021-12-16}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
@@ -16,6 +16,8 @@ services:
         ipv4_address: 10.77.77.77
       rednet:
         ipv4_address: 10.88.88.88
+      redisnet:
+        ipv4_address: 10.33.33.33
     # Use sd-test-srv as a backup to Docker's embedded DNS server
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
     # If there's a name Docker's DNS server doesn't know about, it will
@@ -24,15 +26,14 @@ services:
     # service names.
     dns: 10.77.77.77
     ports:
-      - 4000:4000 # ACME
       - 4001:4001 # ACMEv2
       - 4002:4002 # OCSP
       - 4003:4003 # OCSP
-      - 4430:4430 # ACME via HTTPS
       - 4431:4431 # ACMEv2 via HTTPS
       - 8055:8055 # dns-test-srv updates
     depends_on:
       - bmysql
+      - bredis_clusterer
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
 
@@ -53,6 +54,79 @@ services:
     logging:
         driver: none
 
+  bredis_1:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.2
+
+  bredis_2:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.3
+
+  bredis_3:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.4
+
+  bredis_4:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.5
+
+  bredis_5:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.6
+
+  bredis_6:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+          ipv4_address: 10.33.33.7
+
+  bredis_clusterer:
+    image: redis:latest
+    volumes:
+      - ./test/:/test/:cached
+      - ./cluster/:/cluster/:cached
+    command: /test/wait-for-it.sh 10.33.33.2 4218 /test/redis-create.sh
+    depends_on:
+      - bredis_1
+      - bredis_2
+      - bredis_3
+      - bredis_4
+      - bredis_5
+      - bredis_6
+    networks:
+        redisnet:
+          ipv4_address: 10.33.33.10
+          aliases:
+            - boulder-redis-clusterer
+
   netaccess:
     image: *boulder_image
     environment:
@@ -65,8 +139,6 @@ services:
       - .:/go/src/github.com/letsencrypt/boulder
     working_dir: *boulder_working_dir
     entrypoint: test/entrypoint-netaccess.sh
-    depends_on:
-      - bmysql
 
 networks:
   bluenet:
@@ -81,3 +153,10 @@ networks:
       driver: default
       config:
         - subnet: 10.88.88.0/24
+
+  redisnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.33.33.0/24

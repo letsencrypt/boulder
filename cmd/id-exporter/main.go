@@ -222,6 +222,14 @@ func unmarshalHostnames(filePath string) ([]string, error) {
 	return hostnames, nil
 }
 
+type Config struct {
+	ContactExporter struct {
+		DB cmd.DBConfig
+		cmd.PasswordConfig
+		Features map[string]bool
+	}
+}
+
 func main() {
 	outFile := flag.String("outfile", "", "File to output results JSON to.")
 	grace := flag.Duration("grace", 2*24*time.Hour, "Include results with certificates that expired in < grace ago.")
@@ -252,16 +260,8 @@ func main() {
 	configData, err := ioutil.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 
-	type config struct {
-		ContactExporter struct {
-			DB cmd.DBConfig
-			cmd.PasswordConfig
-			Features map[string]bool
-		}
-	}
-
 	// Unmarshal JSON config file.
-	var cfg config
+	var cfg Config
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Unmarshaling config")
 

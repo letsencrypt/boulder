@@ -81,7 +81,6 @@ func TestVerifyCSR(t *testing.T) {
 		maxNames      int
 		keyPolicy     *goodkey.KeyPolicy
 		pa            core.PolicyAuthority
-		regID         int64
 		expectedError error
 	}{
 		{
@@ -89,7 +88,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			invalidPubKey,
 		},
 		{
@@ -97,7 +95,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			unsupportedSigAlg,
 		},
 		{
@@ -105,7 +102,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			invalidSig,
 		},
 		{
@@ -113,7 +109,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			invalidNoDNS,
 		},
 		{
@@ -121,7 +116,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			berrors.BadCSRError("CN was longer than %d bytes", maxCNLength),
 		},
 		{
@@ -129,7 +123,6 @@ func TestVerifyCSR(t *testing.T) {
 			1,
 			testingPolicy,
 			&mockPA{},
-			0,
 			berrors.BadCSRError("CSR contains more than 1 DNS names"),
 		},
 		{
@@ -137,7 +130,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			errors.New("policy forbids issuing for identifier"),
 		},
 		{
@@ -145,7 +137,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			invalidEmailPresent,
 		},
 		{
@@ -153,7 +144,6 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			invalidIPPresent,
 		},
 		{
@@ -161,13 +151,12 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			0,
 			invalidAllSANTooLong,
 		},
 	}
 
 	for _, c := range cases {
-		err := VerifyCSR(context.Background(), c.csr, c.maxNames, c.keyPolicy, c.pa, c.regID)
+		err := VerifyCSR(context.Background(), c.csr, c.maxNames, c.keyPolicy, c.pa)
 		test.AssertDeepEquals(t, c.expectedError, err)
 	}
 }

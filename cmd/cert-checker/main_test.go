@@ -7,12 +7,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"fmt"
+	"encoding/pem"
+	"io/ioutil"
 	"log"
 	"math/big"
 	mrand "math/rand"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -35,6 +38,7 @@ var (
 	testValidityDuration  = 24 * 90 * time.Hour
 	testValidityDurations = map[time.Duration]bool{testValidityDuration: true}
 	pa                    *policy.AuthorityImpl
+	kp                    goodkey.KeyPolicy
 )
 
 func init() {
@@ -47,19 +51,14 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{FermatRounds: 100}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func BenchmarkCheckCert(b *testing.B) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
-	if err != nil {
-		fmt.Println("Couldn't connect to database")
-		return
-	}
-	defer func() {
-		test.ResetSATestDatabase(b)()
-	}()
-
-	checker := newChecker(saDbMap, clock.New(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations)
 	testKey, _ := rsa.GenerateKey(rand.Reader, 1024)
 	expiry := time.Now().AddDate(0, 0, 1)
 	serial := big.NewInt(1337)
@@ -95,7 +94,7 @@ func TestCheckWildcardCert(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	fc := clock.NewFake()
-	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations)
 	issued := checker.clock.Now().Add(-time.Minute)
 	goodExpiry := issued.Add(testValidityDuration - time.Second)
 	serial := big.NewInt(1337)
@@ -125,9 +124,42 @@ func TestCheckWildcardCert(t *testing.T) {
 		Issued:  parsed.NotBefore,
 		DER:     wildcardCertDer,
 	}
-	problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(cert, nil)
 	for _, p := range problems {
 		t.Errorf(p)
+	}
+}
+
+func TestCheckCertReturnsDNSNames(t *testing.T) {
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	test.AssertNotError(t, err, "Couldn't connect to database")
+	saCleanup := test.ResetSATestDatabase(t)
+	defer func() {
+		saCleanup()
+	}()
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
+
+	certPEM, err := ioutil.ReadFile("testdata/quite_invalid.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		t.Fatal("failed to parse cert PEM")
+	}
+
+	cert := core.Certificate{
+		Serial:  "00000000000",
+		Digest:  core.Fingerprint256(block.Bytes),
+		Expires: time.Now().Add(time.Hour),
+		Issued:  time.Now(),
+		DER:     block.Bytes,
+	}
+
+	names, problems := checker.checkCert(cert, nil)
+	if !reflect.DeepEqual(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
+		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
 }
 
@@ -141,7 +173,7 @@ func TestCheckCert(t *testing.T) {
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 
 	// Create a RFC 7633 OCSP Must Staple Extension.
 	// OID 1.3.6.1.5.5.7.1.24
@@ -199,7 +231,7 @@ func TestCheckCert(t *testing.T) {
 		Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 	}
 
-	problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(cert, nil)
 
 	problemsMap := map[string]int{
 		"Stored digest doesn't match certificate digest":                            1,
@@ -225,7 +257,7 @@ func TestCheckCert(t *testing.T) {
 
 	// Same settings as above, but the stored serial number in the DB is invalid.
 	cert.Serial = "not valid"
-	problems = checker.checkCert(cert, nil)
+	_, problems = checker.checkCert(cert, nil)
 	foundInvalidSerialProblem := false
 	for _, p := range problems {
 		if p == "Stored serial is invalid" {
@@ -250,7 +282,7 @@ func TestCheckCert(t *testing.T) {
 	cert.DER = goodCertDer
 	cert.Expires = parsed.NotAfter
 	cert.Issued = parsed.NotBefore
-	problems = checker.checkCert(cert, nil)
+	_, problems = checker.checkCert(cert, nil)
 	test.AssertEquals(t, len(problems), 0)
 }
 
@@ -260,7 +292,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(fc.Now().Add(time.Hour))
 
-	checker := newChecker(saDbMap, fc, pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations)
 	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
@@ -346,7 +378,7 @@ func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{
 func TestGetCertsEmptyResults(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
@@ -427,7 +459,7 @@ func TestIgnoredLint(t *testing.T) {
 	}()
 
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
-	checker := newChecker(saDbMap, clock.NewFake(), pa, time.Hour, testValidityDurations)
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 	serial := big.NewInt(1337)
 
 	template := &x509.Certificate{
@@ -487,13 +519,13 @@ func TestIgnoredLint(t *testing.T) {
 
 	// Check the certificate with a nil ignore map. This should return the
 	// expected zlint problems.
-	problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(cert, nil)
 	sort.Strings(problems)
 	test.Assert(t, reflect.DeepEqual(problems, expectedProblems), "problems did not match expected")
 
 	// Check the certificate again with an ignore map that excludes the affected
 	// lints. This should return no problems.
-	problems = checker.checkCert(cert, map[string]bool{
+	_, problems = checker.checkCert(cert, map[string]bool{
 		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
 		"n_subject_common_name_included":           true,
 		"w_ct_sct_policy_count_unsatisfied":        true,

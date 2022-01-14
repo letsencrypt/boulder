@@ -13,7 +13,6 @@ import (
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
@@ -27,7 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type config struct {
+type Config struct {
 	WFE struct {
 		cmd.ServiceConfig
 		ListenAddress    string
@@ -80,7 +79,7 @@ type config struct {
 	}
 }
 
-func setupWFE(c config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c Config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -134,7 +133,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
@@ -154,7 +153,10 @@ func main() {
 
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
 	// don't load any weak keys, but do load blocked keys
-	kp, err := goodkey.NewKeyPolicy("", c.WFE.BlockedKeyFile, sac.KeyBlocked)
+	kp, err := goodkey.NewKeyPolicy(&goodkey.Config{
+		WeakKeyFile:    "",
+		BlockedKeyFile: c.WFE.BlockedKeyFile,
+	}, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 	wfe, err := wfe.NewWebFrontEndImpl(stats, clk, kp, rns, npm, logger)
 	cmd.FailOnError(err, "Unable to create WFE")
@@ -166,9 +168,8 @@ func main() {
 	wfe.DirectoryCAAIdentity = c.WFE.DirectoryCAAIdentity
 	wfe.DirectoryWebsite = c.WFE.DirectoryWebsite
 
-	issuerCert, err := core.LoadCert(c.Common.IssuerCert)
+	wfe.IssuerCert, err = issuance.LoadCertificate(c.Common.IssuerCert)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't load issuer cert [%s]", c.Common.IssuerCert))
-	wfe.IssuerCert = &issuance.Certificate{Certificate: issuerCert}
 
 	logger.Infof("WFE using key policy: %#v", kp)
 

@@ -38,12 +38,12 @@ func init() {
 		Citation:      "BRs: 7.1.3",
 		Source:        lint.CABFBaselineRequirements,
 		EffectiveDate: time.Date(2015, time.January, 16, 0, 0, 0, 0, time.UTC),
-		Lint:          &sha1ExpireLong{},
+		Lint:          NewSha1ExpireLong,
 	})
 }
 
-func (l *sha1ExpireLong) Initialize() error {
-	return nil
+func NewSha1ExpireLong() lint.LintInterface {
+	return &sha1ExpireLong{}
 }
 
 func (l *sha1ExpireLong) CheckApplies(c *x509.Certificate) bool {

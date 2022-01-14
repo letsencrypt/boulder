@@ -27,7 +27,7 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-type config struct {
+type Config struct {
 	RA struct {
 		cmd.ServiceConfig
 		cmd.HostnamePolicyConfig
@@ -62,13 +62,15 @@ type config struct {
 		// you need to request a new challenge.
 		PendingAuthorizationLifetimeDays int
 
-		// WeakKeyFile is the path to a JSON file containing truncated RSA modulus
-		// hashes of known easily enumerable keys.
+		// GoodKey is an embedded config stanza for the goodkey library.
+		GoodKey goodkey.Config
+
+		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
+		// TODO(#5851): Remove this.
 		WeakKeyFile string
 
-		// BlockedKeyFile is the path to a YAML file containing Base64 encoded
-		// SHA256 hashes of SubjectPublicKeyInfo's that should be considered
-		// administratively blocked.
+		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
+		// TODO(#5851): Remove this.
 		BlockedKeyFile string
 
 		OrderLifetime cmd.ConfigDuration
@@ -113,7 +115,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var c config
+	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
@@ -221,7 +223,14 @@ func main() {
 		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 	}
 
-	kp, err := goodkey.NewKeyPolicy(c.RA.WeakKeyFile, c.RA.BlockedKeyFile, sac.KeyBlocked)
+	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
+	if c.RA.GoodKey.WeakKeyFile == "" && c.RA.WeakKeyFile != "" {
+		c.RA.GoodKey.WeakKeyFile = c.RA.WeakKeyFile
+	}
+	if c.RA.GoodKey.BlockedKeyFile == "" && c.RA.BlockedKeyFile != "" {
+		c.RA.GoodKey.BlockedKeyFile = c.RA.BlockedKeyFile
+	}
+	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {
