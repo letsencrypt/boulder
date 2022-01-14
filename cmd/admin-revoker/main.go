@@ -240,11 +240,11 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 	return r.revokeCertificate(ctx, core.Certificate{Serial: serial}, reasonCode, false)
 }
 
-// blockByPrivateKey blocks future issuance for certificates with a public key
-// matching a SubjectPublicKeyInfo (SPKI) hash of the provided private key. The
-// SPKI hash will be generated from the PublicKey embedded in privateKey, after
-// verifying that the PublicKey is actually a match for the private key. This
-// method does not revoke any certificates directly. 'bad-key-revoker', which
+// blockByPrivateKey blocks future issuance for certificates with a a public key
+// matching the SubjectPublicKeyInfo hash generated from the PublicKey embedded
+// in privateKey. The embedded PublicKey will be verfied as an actual match for
+// the provided private key before any blocking takes place. This method does
+// not revoke any certificates directly. However, 'bad-key-revoker', which
 // references the 'blockedKeys' table, will eventually revoke certificates with
 // a matching SPKI hash.
 func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
@@ -278,13 +278,13 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signe
 	return nil
 }
 
-// revokeByPrivateKey revokes all certificates with a public key matching a
-// SubjectPublicKeyInfo (SPKI) hash of the provided private key. The SPKI hash
-// will be generated from the PublicKey embedded in privateKey, after verifying
-// that the PublicKey is actually a match for the private key. The provided key
-// will not be added to the 'blockedKeys' table, this is done to avoid a race
-// between 'admin-revoker' and 'bad-key-revoker'. "You MUST call
-// blockByPrivateKey after calling this function, on pain of violating the BRs.
+// revokeByPrivateKey revokes all certificates with a public key matching the
+// SubjectPublicKeyInfo hash generated from the PublicKey embedded in
+// privateKey. The embedded PublicKey will be verfied as an actual match for the
+// provided private key before any revocation takes place. The provided key will
+// not be added to the 'blockedKeys' table, this is done to avoid a race between
+// 'admin-revoker' and 'bad-key-revoker'. You MUST call blockByPrivateKey after
+// calling this function, on pain of violating the BRs.
 func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
 	err := privatekey.Verify(privateKey)
 	if err != nil {

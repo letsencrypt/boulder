@@ -42,9 +42,9 @@ func verifyECDSA(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey, msgHash has
 	return err
 }
 
-// verifyPrivateKey verifies that the embedded PublicKey of the provided
-// privateKey is actually a match for the private key. For an example of private
-// keys embedding a mismatched public key, see:
+// Verify ensures that the embedded PublicKey of the provided privateKey is
+// actually a match for the private key. For an example of private keys
+// embedding a mismatched public key, see:
 // https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
 func Verify(privateKey crypto.Signer) error {
 	msgHash := sha256.New()
