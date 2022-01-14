@@ -303,31 +303,27 @@ func (c *Client) ScanResponses(ctx context.Context, serialPattern string) <-chan
 	results := make(chan ScanResponsesResult)
 	go func() {
 		defer close(results)
-		var cursor uint64
-		for {
-			var keys []string
-			var err error
-			keys, cursor, err = c.rdb.Scan(ctx, cursor, pattern, 10).Result()
-			if err != nil {
-				results <- ScanResponsesResult{Err: err}
-				return
-			}
-			if cursor == 0 {
-				return
-			}
-			for _, key := range keys {
+		err := c.rdb.ForEachMaster(ctx, func(ctx context.Context, rdb *redis.Client) error {
+			iter := rdb.Scan(ctx, 0, pattern, 0).Iterator()
+			for iter.Next(ctx) {
+				key := iter.Val()
 				serial, err := SerialFromResponseKey(key)
 				if err != nil {
 					results <- ScanResponsesResult{Err: err}
-					return
+					continue
 				}
 				val, err := c.rdb.Get(ctx, key).Result()
 				if err != nil {
 					results <- ScanResponsesResult{Err: fmt.Errorf("getting metadata: %w", err)}
-					return
+					continue
 				}
 				results <- ScanResponsesResult{Serial: serial, Body: []byte(val)}
 			}
+			return iter.Err()
+		})
+		if err != nil {
+			results <- ScanResponsesResult{Err: err}
+			return
 		}
 	}()
 	return results
