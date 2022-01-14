@@ -3,11 +3,8 @@ package notmain
 import (
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
@@ -28,6 +25,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -142,42 +140,6 @@ func TestRevokeBatch(t *testing.T) {
 	}
 }
 
-func TestVerifyRSAKeyPair(t *testing.T) {
-	msgHash := sha256.New()
-	_, err := msgHash.Write([]byte("verifiable"))
-	test.AssertNotError(t, err, "Failed to hash 'verifiable' message: %s")
-
-	privKey1, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed while generating test key 1")
-
-	err = verifyRSAKeyPair(privKey1, &privKey1.PublicKey, msgHash)
-	test.AssertNotError(t, err, "Failed to verify valid key pair")
-
-	privKey2, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed while generating test key 2")
-
-	err = verifyRSAKeyPair(privKey1, &privKey2.PublicKey, msgHash)
-	test.AssertError(t, err, "Failed to detect invalid key pair")
-}
-
-func TestVerifyECDSAKeyPair(t *testing.T) {
-	msgHash := sha256.New()
-	_, err := msgHash.Write([]byte("verifiable"))
-	test.AssertNotError(t, err, "Failed to hash 'verifiable' message: %s")
-
-	privKey1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Failed while generating test key 1")
-
-	err = verifyECDSAKeyPair(privKey1, &privKey1.PublicKey, msgHash)
-	test.AssertNotError(t, err, "Failed to verify valid key pair")
-
-	privKey2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Failed while generating test key 2")
-
-	err = verifyECDSAKeyPair(privKey1, &privKey2.PublicKey, msgHash)
-	test.AssertError(t, err, "Failed to detect invalid key pair")
-}
-
 func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
@@ -229,7 +191,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
 
 	// Validate the provided keypair.
-	err = verifyPrivateKey(testKey1)
+	err = privatekey.Verify(testKey1)
 	test.AssertNotError(t, err, "Failed to verify valid key pair for dupe")
 
 	// Get the SPKI hash for the provided keypair.

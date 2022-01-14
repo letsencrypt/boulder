@@ -4,16 +4,11 @@ import (
 	"bufio"
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
-	"hash"
 	"os"
 	"os/user"
 	"sort"
@@ -29,6 +24,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/privatekey"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
@@ -247,14 +243,12 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 // blockByPrivateKey blocks future issuance for certificates with a public key
 // matching a SubjectPublicKeyInfo (SPKI) hash of the provided private key. The
 // SPKI hash will be generated from the PublicKey embedded in privateKey, after
-// verifying that the PublicKey is actually a match for the private key. For an
-// example of private keys embedding a mismatched public key, see:
-// https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
-// This method does not revoke any certificates directly. 'bad-key-revoker',
-// which references the 'blockedKeys' table, will eventually revoke certificates
-// with a matching SPKI hash.
+// verifying that the PublicKey is actually a match for the private key. This
+// method does not revoke any certificates directly. 'bad-key-revoker', which
+// references the 'blockedKeys' table, will eventually revoke certificates with
+// a matching SPKI hash.
 func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
-	err := verifyPrivateKey(privateKey)
+	err := privatekey.Verify(privateKey)
 	if err != nil {
 		return err
 	}
@@ -287,13 +281,12 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signe
 // revokeByPrivateKey revokes all certificates with a public key matching a
 // SubjectPublicKeyInfo (SPKI) hash of the provided private key. The SPKI hash
 // will be generated from the PublicKey embedded in privateKey, after verifying
-// that the PublicKey is actually a match for the private key. For an example of
-// private keys embedding a mismatched public key, see:
-// https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
-// The provided key will not be added to the 'blockedKeys' table, this is done
-// to avoid a race between 'admin-revoker' and 'bad-key-revoker'.
+// that the PublicKey is actually a match for the private key. The provided key
+// will not be added to the 'blockedKeys' table, this is done to avoid a race
+// between 'admin-revoker' and 'bad-key-revoker'. "You MUST call
+// blockByPrivateKey after calling this function, on pain of violating the BRs.
 func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
-	err := verifyPrivateKey(privateKey)
+	err := privatekey.Verify(privateKey)
 	if err != nil {
 		return err
 	}
@@ -363,97 +356,6 @@ type revocationCodes []revocation.Reason
 func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
-
-// loadPrivateKey decodes and parses a private key from the provided
-// `keyContents` and returns the private key as `crypto.Signer`. `keyContents`
-// is expected to be a PEM formatted RSA or ECDSA private key in a PKCS #1,
-// PKCS# 8, or SEC 1 container.
-func loadPrivateKey(keyContents []byte) (crypto.Signer, error) {
-	// Attempt to find and decode the first PEM block.
-	block, _ := pem.Decode(keyContents)
-	if block == nil {
-		return nil, errors.New("does not contain a PEM formatted block")
-	}
-
-	// Attempt to parse the PEM block as a private key in a PKCS #1 container.
-	rsaKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err == nil {
-		return rsaKey, nil
-	}
-
-	// Attempt to parse the PEM block as a private key in a PKCS #8 container.
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err == nil {
-		switch k := key.(type) {
-		case *rsa.PrivateKey:
-			return k, nil
-
-		case *ecdsa.PrivateKey:
-			return k, nil
-		}
-	}
-
-	// Attempt to parse the PEM block as a private key in a SEC 1 container.
-	ecdsaKey, err := x509.ParseECPrivateKey(block.Bytes)
-	if err == nil {
-		return ecdsaKey, nil
-	}
-
-	// No private key could be parsed from the PEM block.
-	return nil, errors.New("cannot parse a private key from the provided PEM file")
-}
-
-// verifyRSAKeyPair is broken out of `verifyPrivateKey` for testing purposes.
-func verifyRSAKeyPair(privKey *rsa.PrivateKey, pubKey *rsa.PublicKey, msgHash hash.Hash) error {
-	signatureRSA, err := rsa.SignPSS(rand.Reader, privKey, crypto.SHA256, msgHash.Sum(nil), nil)
-	if err != nil {
-		return fmt.Errorf("failed to sign using the provided RSA private key: %s", err)
-	}
-
-	err = rsa.VerifyPSS(pubKey, crypto.SHA256, msgHash.Sum(nil), signatureRSA, nil)
-	if err != nil {
-		return fmt.Errorf("the provided RSA private key failed signature verification: %s", err)
-	}
-	return err
-}
-
-// verifyECDSAKeyPair is broken out of `verifyPrivateKey` for testing purposes.
-func verifyECDSAKeyPair(privKey *ecdsa.PrivateKey, pubKey *ecdsa.PublicKey, msgHash hash.Hash) error {
-	r, s, err := ecdsa.Sign(rand.Reader, privKey, msgHash.Sum(nil))
-	if err != nil {
-		return fmt.Errorf("failed to sign using the provided ECDSA private key: %s", err)
-	}
-
-	verify := ecdsa.Verify(pubKey, msgHash.Sum(nil), r, s)
-	if !verify {
-		return errors.New("the provided ECDSA private key failed signature verification")
-	}
-	return err
-}
-
-// verifyPrivateKey verifies that the embedded PublicKey of the provided
-// privateKey is actually a match for the private key. For an example of private
-// keys embedding a mismatched public key, see:
-// https://blog.hboeck.de/archives/888-How-I-tricked-Symantec-with-a-Fake-Private-Key.html.
-func verifyPrivateKey(privateKey crypto.Signer) error {
-	msgHash := sha256.New()
-	_, err := msgHash.Write([]byte("verifiable"))
-	if err != nil {
-		return fmt.Errorf("failed to hash 'verifiable' message: %s", err)
-	}
-
-	switch k := privateKey.(type) {
-	case *rsa.PrivateKey:
-		return verifyRSAKeyPair(k, &k.PublicKey, msgHash)
-
-	case *ecdsa.PrivateKey:
-		return verifyECDSAKeyPair(k, &k.PublicKey, msgHash)
-
-	default:
-		// This should never happen.
-		return errors.New("the provided private key could not be asserted to ECDSA or RSA")
-	}
-}
 
 func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privateKey crypto.Signer) error {
 	keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
@@ -614,15 +516,12 @@ func main() {
 
 	case (command == "private-key-block" || command == "private-key-revoke") && len(args) == 1:
 		// 1: keyPath
-		keyPath := args[0]
+		privateKey, err := privatekey.Load(args[0])
+		if err != nil {
+			cmd.Fail(err.Error())
+		}
 
-		keyContents, err := os.ReadFile(keyPath)
-		cmd.FailOnError(err, fmt.Sprintf("Cannot load the provided key %q", keyPath))
-
-		privateKey, err := loadPrivateKey(keyContents)
-		cmd.FailOnError(err, fmt.Sprintf("Cannot parse the provided key %q", keyPath))
-
-		err = verifyPrivateKey(privateKey)
+		err = privatekey.Verify(privateKey)
 		cmd.FailOnError(err, "Failed to validate the provided key pair")
 		r.log.AuditInfo("The provided key pair has been successfully verified")
 
