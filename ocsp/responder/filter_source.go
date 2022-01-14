@@ -113,7 +113,7 @@ func (src *filterSource) checkRequest(req *ocsp.Request) (issuance.IssuerNameID,
 	}
 
 	for nameID, rid := range src.issuers {
-		if bytes.Equal(req.IssuerKeyHash, rid.keyHash) {
+		if bytes.Equal(req.IssuerNameHash, rid.nameHash) && bytes.Equal(req.IssuerKeyHash, rid.keyHash) {
 			return nameID, nil
 		}
 	}
