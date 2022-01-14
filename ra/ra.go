@@ -1759,7 +1759,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		return err
 	}
 
-	if reason == ocsp.KeyCompromise {
+	if reason == ocsp.KeyCompromise && !skipBlockKey {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return err
@@ -1775,10 +1775,8 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		if features.Enabled(features.StoreRevokerInfo) && revokedBy != 0 {
 			req.RevokedBy = revokedBy
 		}
-		if !skipBlockKey {
-			if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
-				return err
-			}
+		if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
+			return err
 		}
 	}
 
@@ -1848,6 +1846,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	revocationCode := revocation.Reason(req.Code)
 	if revocationCode == ocsp.KeyCompromise && req.Cert == nil {
 		return nil, fmt.Errorf("cannot revoke for KeyCompromise by serial alone")
+	}
+	if req.SkipBlockKey && revocationCode != ocsp.KeyCompromise {
+		return nil, fmt.Errorf("cannot skip key blocking for reasons other than KeyCompromise")
 	}
 
 	var cert *x509.Certificate

@@ -653,7 +653,6 @@ func main() {
 			err := privateKeyRevoke(r, *dryRun, count, privateKey)
 			cmd.Fail(err.Error())
 		}
-		os.Exit(0)
 
 	default:
 		usage()
