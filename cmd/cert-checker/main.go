@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/zmap/zcrypto/x509"
@@ -395,27 +394,9 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	saDbURL, err := config.CertChecker.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
+	saDbMap, err := sa.InitDbMap(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
+	cmd.FailOnError(err, "While initializing dbMap")
 
-	dbSettings := sa.NewDbSettingsFromDBConfig(config.CertChecker.DB)
-	conf, err := mysql.ParseDSN(saDbURL)
-	cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
-
-	// Set transaction isolation level to READ UNCOMMITTED. This trades
-	// consistency for performance.
-	if len(conf.Params) == 0 {
-		conf.Params = make(map[string]string)
-	}
-	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
-	saDbURL = conf.FormatDSN()
-	saDbMap, err := sa.NewDbMap(saDbURL, dbSettings)
-	cmd.FailOnError(err, "Could not connect to database")
-
-	dbAddr, dbUser, err := config.CertChecker.DB.DSNAddressAndUser()
-	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
-
-	sa.InitDBMetrics(saDbMap.Db, prometheus.DefaultRegisterer, dbSettings, dbAddr, dbUser)
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "cert_checker_latency",
 		Help: "Histogram of latencies a cert-checker worker takes to complete a batch",

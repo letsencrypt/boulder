@@ -410,18 +410,8 @@ func main() {
 	scope.MustRegister(certsRevoked)
 	scope.MustRegister(mailErrors)
 
-	dbURL, err := config.BadKeyRevoker.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
-
-	dbSettings := sa.NewDbSettingsFromDBConfig(config.BadKeyRevoker.DB)
-	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
-	cmd.FailOnError(err, "Could not connect to database")
-	sa.SetSQLDebug(dbMap, logger)
-
-	dbAddr, dbUser, err := config.BadKeyRevoker.DB.DSNAddressAndUser()
-	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
-
-	sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
+	dbMap, err := sa.InitDbMap(config.BadKeyRevoker.DB, scope, logger)
+	cmd.FailOnError(err, "While initializing dbMap")
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

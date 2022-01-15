@@ -4,7 +4,6 @@ import (
 	"flag"
 	"os"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -66,25 +65,8 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	configureDb := func(scope prometheus.Registerer, databaseConfig cmd.DBConfig) *db.WrappedMap {
-		dbSettings := sa.NewDbSettingsFromDBConfig(databaseConfig)
-
-		dbDSN, err := databaseConfig.URL()
-		cmd.FailOnError(err, "Couldn't load DB URL")
-
-		dbMap, err := sa.NewDbMap(dbDSN, dbSettings)
-		cmd.FailOnError(err, "Couldn't connect to SA database")
-
-		dbAddr, dbUser, err := databaseConfig.DSNAddressAndUser()
-		cmd.FailOnError(err, "Could not determine address or user of DB DSN")
-
-		// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-		sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
-
-		return dbMap
-	}
-
-	dbMap := configureDb(scope, c.SA.DB)
+	dbMap, err := sa.InitDbMap(c.SA.DB, scope, logger)
+	cmd.FailOnError(err, "While initializing dbMap")
 
 	dbReadOnlyURL, err := c.SA.ReadOnlyDB.URL()
 	cmd.FailOnError(err, "Couldn't load read-only DB URL")
@@ -93,7 +75,8 @@ func main() {
 	if dbReadOnlyURL == "" {
 		dbReadOnlyMap = dbMap
 	} else {
-		dbReadOnlyMap = configureDb(scope, c.SA.ReadOnlyDB)
+		dbReadOnlyMap, err = sa.InitDbMap(c.SA.ReadOnlyDB, scope, logger)
+		cmd.FailOnError(err, "While initializing dbMap")
 	}
 
 	clk := cmd.Clock()

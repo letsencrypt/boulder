@@ -95,11 +95,11 @@ func (d *DBConfig) URL() (string, error) {
 func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
 	dsnStr, err := d.URL()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to load DBConnect URL: %s", err)
 	}
 	config, err := mysql.ParseDSN(dsnStr)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to parse DSN from the DBConnect URL: %s", err)
 	}
 	return config.Addr, config.User, nil
 }
