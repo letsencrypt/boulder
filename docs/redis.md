@@ -34,7 +34,7 @@ addresses for Redis nodes is in `docker-compose.yml`. You can also pass other
 redis-cli commandline parameters. They'll get passed through.
 
 You may want to go a level deeper and communicate with a Redis node using the
-Redis protocol. Here's the commandline to do that (run from the Boulder root):
+Redis protocol. Here's the command to do that (run from the Boulder root):
 
 ```
 openssl s_client -connect 10.33.33.2:4218 \
