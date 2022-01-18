@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -17,7 +18,9 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
+	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 )
 
 type Config struct {
@@ -138,6 +141,20 @@ func main2() error {
 		scanBatchSize: scanBatchSize,
 	}
 	switch flag.Arg(0) {
+	case "get":
+		for _, serial := range flag.Args()[1:] {
+			resp, err := cl.redis.GetResponse(ctx, serial)
+			if err != nil {
+				return err
+			}
+			parsed, err := ocsp.ParseResponse(resp, nil)
+			if err != nil {
+				log.Printf("parsing error on %x: %s", resp, err)
+				continue
+			} else {
+				log.Printf("%s", helper.PrettyResponse(parsed))
+			}
+		}
 	case "store":
 		err := cl.storeResponsesFromFiles(ctx, flag.Args()[1:])
 		if err != nil {
@@ -151,6 +168,23 @@ func main2() error {
 		if err != nil {
 			return fmt.Errorf("loading OCSP responses from DB: %w", err)
 		}
+	case "scan-metadata":
+		results := cl.redis.ScanMetadata(ctx, "*")
+		for r := range results {
+			if r.Err != nil {
+				log.Fatalf("scanning: %s", r.Err)
+			}
+			age := clk.Now().Sub(r.Metadata.ThisUpdate)
+			fmt.Printf("%s: %g\n", r.Serial, age.Hours())
+		}
+	case "scan-responses":
+		results := cl.redis.ScanResponses(ctx, "*")
+		for r := range results {
+			if r.Err != nil {
+				log.Fatalf("scanning: %s", r.Err)
+			}
+			fmt.Printf("%s: %s\n", r.Serial, base64.StdEncoding.EncodeToString(r.Body))
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "unrecognized subcommand %q\n", flag.Arg(0))
 		helpExit()
@@ -159,9 +193,12 @@ func main2() error {
 }
 
 func helpExit() {
-	fmt.Fprintf(os.Stderr, "Usage: %s [store|copy-from-db] --config path/to/config.json\n", os.Args[0])
-	fmt.Fprintln(os.Stderr, "  store -- for each command line arg, read that filename as an OCSP response and store it in Redis")
+	fmt.Fprintf(os.Stderr, "Usage: %s [store|copy-from-db|scan-metadata|scan-responses] --config path/to/config.json\n", os.Args[0])
+	fmt.Fprintln(os.Stderr, "  store -- for each filename on command line, read the file as an OCSP response and store it in Redis")
+	fmt.Fprintln(os.Stderr, "  get -- for each serial on command line, fetch that serial's response and pretty-print it")
 	fmt.Fprintln(os.Stderr, "  load-from-db -- scan the database for all OCSP entries for unexpired certificates, and store in Redis")
+	fmt.Fprintln(os.Stderr, "  scan-metadata -- scan Redis for metadata entries. For each entry, print the serial and the age in hours")
+	fmt.Fprintln(os.Stderr, "  scan-responses -- scan Redis for OCSP response entries. For each entry, print the serial and base64-encoded response")
 	fmt.Fprintln(os.Stderr)
 	flag.PrintDefaults()
 	os.Exit(1)
