@@ -506,7 +506,7 @@ func main() {
 		c.Mailer.CertLimit = 100
 	}
 
-	dbMap, err := sa.InitDbMap(c.Mailer.DB, scope, logger)
+	dbMap, err := sa.InitWrappedDb(c.Mailer.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	tlsConfig, err := c.Mailer.TLS.Load()

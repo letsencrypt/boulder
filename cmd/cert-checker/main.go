@@ -394,7 +394,7 @@ func main() {
 	kp, err := goodkey.NewKeyPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	saDbMap, err := sa.InitDbMap(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
+	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	checkerLatency := prometheus.NewHistogram(prometheus.HistogramOpts{

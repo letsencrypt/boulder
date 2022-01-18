@@ -488,7 +488,7 @@ func main() {
 	log := cmd.NewLogger(cfg.Syslog)
 	defer log.AuditPanic()
 
-	dbMap, err := sa.InitDbMap(cfg.NotifyMailer.DB, nil, log)
+	dbMap, err := sa.InitWrappedDb(cfg.NotifyMailer.DB, nil, log)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	// Load and parse message body.

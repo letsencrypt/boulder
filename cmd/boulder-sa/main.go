@@ -65,7 +65,7 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	dbMap, err := sa.InitDbMap(c.SA.DB, scope, logger)
+	dbMap, err := sa.InitWrappedDb(c.SA.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	dbReadOnlyURL, err := c.SA.ReadOnlyDB.URL()
@@ -75,7 +75,7 @@ func main() {
 	if dbReadOnlyURL == "" {
 		dbReadOnlyMap = dbMap
 	} else {
-		dbReadOnlyMap, err = sa.InitDbMap(c.SA.ReadOnlyDB, scope, logger)
+		dbReadOnlyMap, err = sa.InitWrappedDb(c.SA.ReadOnlyDB, scope, logger)
 		cmd.FailOnError(err, "While initializing dbMap")
 	}
 

@@ -265,7 +265,7 @@ func main() {
 	err = features.Set(cfg.ContactExporter.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	dbMap, err := sa.InitDbMap(cfg.ContactExporter.DB, nil, log)
+	dbMap, err := sa.InitWrappedDb(cfg.ContactExporter.DB, nil, log)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	exporter := idExporter{

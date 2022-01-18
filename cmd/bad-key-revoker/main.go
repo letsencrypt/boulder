@@ -410,7 +410,7 @@ func main() {
 	scope.MustRegister(certsRevoked)
 	scope.MustRegister(mailErrors)
 
-	dbMap, err := sa.InitDbMap(config.BadKeyRevoker.DB, scope, logger)
+	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()

@@ -45,11 +45,11 @@ type DbSettings struct {
 	ConnMaxIdleTime time.Duration
 }
 
-// InitDbMap constructs a wrapped gorp mapping object with the provided
+// InitWrappedDb constructs a wrapped gorp mapping object with the provided
 // settings. If scope is non-Nil database metrics will be initialized. If logger
 // is non-Nil (gorp) SQL debugging will be enabled. The only required parameter
 // is config.
-func InitDbMap(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
+func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	url, err := config.URL()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load DBConnect URL: %s", err)
