@@ -3,6 +3,7 @@ package notmain
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,7 +17,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/zmap/zcrypto/x509"
+	zX509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
@@ -212,7 +213,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		problems = append(problems, "Stored digest doesn't match certificate digest")
 	}
 	// Parse the certificate.
-	parsedCert, err := x509.ParseCertificate(cert.DER)
+	parsedCert, err := zX509.ParseCertificate(cert.DER)
 	if err != nil {
 		problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 	} else {
@@ -287,7 +288,7 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 			}
 		}
 		// Check the cert has the correct key usage extensions
-		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
 		}
 
@@ -308,7 +309,11 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		// checks which rely on external resources such as weak or blocked key
 		// lists, or the list of blocked keys in the database. This only performs
 		// static checks, such as against the RSA key size and the ECDSA curve.
-		err = c.kp.GoodKey(context.Background(), parsedCert.PublicKey)
+		p, err := x509.ParseCertificate(cert.DER)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
+		}
+		err = c.kp.GoodKey(context.Background(), p.PublicKey)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
