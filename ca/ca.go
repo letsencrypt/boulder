@@ -231,7 +231,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, issuer, ocspResp, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, ocspResp, issuer, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +380,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *issuance.Issuer, *capb.OCSPResponse, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *capb.OCSPResponse, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, nil, err
@@ -459,7 +459,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
 		hex.EncodeToString(certDER))
 
-	return certDER, issuer, ocspResp, nil
+	return certDER, ocspResp, issuer, nil
 }
 
 func (ca *certificateAuthorityImpl) storeCertificate(
