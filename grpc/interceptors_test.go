@@ -138,7 +138,7 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 		spent := int64(time.Since(start) / time.Nanosecond)
 		return &test_proto.Time{Time: spent}, nil
 	case <-ctx.Done():
-		return nil, grpc.Errorf(codes.DeadlineExceeded, "the chiller overslept")
+		return nil, status.Errorf(codes.DeadlineExceeded, "the chiller overslept")
 	}
 }
 
