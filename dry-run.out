@@ -1,0 +1,380 @@
+$ for year (2015 2016 2017 2018 2019 2020) ./old-branches.sh ${year}
+
+Going to delete the following branches:
+
+2015-06-09  containerize
+2015-06-17  deb-weak-keys
+2015-07-12  ct-submission-verified
+2015-07-16  441-vet_int64
+2015-07-16  integration
+2015-07-20  policy-checks
+2015-07-28  mac-recovery
+2015-07-31  investigate-containers
+2015-08-13  test-random-test
+2015-08-20  cmd-consolidation
+2015-08-21  no-ignore-errors
+2015-09-07  reduce_jwk_storage
+2015-09-11  prod_with_pkcs11
+2015-09-17  ct-sig
+2015-09-18  serial_unique_index
+2015-09-21  unsub
+2015-09-28  ct-ocsp
+2015-09-28  issued-names
+2015-09-29  paranoid-key-storage
+2015-10-02  rpc-maxgoroutines
+2015-10-04  more-stats
+2015-10-05  switch-gojose
+2015-10-07  empty-sct
+2015-10-10  dvsni2
+2015-10-13  lowercase-policy
+2015-10-16  ca-bench
+2015-10-21  hsm-fault-ocsp-backoff
+2015-10-29  coyote
+2015-10-29  stop-offering
+2015-11-06  loadtest_stats
+2015-11-18  sig-verify
+2015-11-19  test-sct-branch
+2015-11-20  config-pkg
+2015-11-22  jcj/master
+2015-11-23  ct-2
+2015-11-24  build_id
+2015-11-24  test-amqp-rpc-timeout-1
+2015-11-24  test-amqp-rpc-timeout-2
+2015-11-24  test-amqp-rpc-timeout-3
+
+Type [yY] to continue: n
+Aborting
+
+Going to delete the following branches:
+
+2016-01-14  tor-va
+2016-01-18  happy-eyeballs
+2016-01-26  ra-test-fix
+2016-01-26  ra-test-fix-must-staple
+2016-02-01  exempt-fqdn-cbn
+2016-02-22  go1.6-test
+2016-02-22  test-go1.6
+2016-03-11  docker-build
+2016-03-16  test-mariadb-failure-2
+2016-03-24  rm-set-auditlogger
+2016-04-04  multi-ra-email
+2016-04-07  pass-log
+2016-04-07  test-travis-cmds
+2016-04-12  test-remove-deps
+2016-04-13  add-caa-tools
+2016-04-14  test-vendorvendorvendor2
+2016-04-14  va-grpc
+2016-04-14  vendorvendorvendor
+2016-04-15  grpc-metric-gen
+2016-04-17  test-integration-quiet
+2016-04-19  ipv6
+2016-05-04  caa-quorum
+2016-05-06  empty-ocsp
+2016-05-26  csr-checking
+2016-05-27  test-goveralls
+2016-05-28  test-simple-testing
+2016-06-01  rm-updateocsp
+2016-06-01  test-va-tests
+2016-06-02  dummy_tests
+2016-06-02  fix-va-better
+2016-06-02  little-bit-quieter-now
+2016-06-03  authz-purger
+2016-06-03  rename
+2016-06-03  rw-nonce
+2016-06-06  ocsp-status-faster
+2016-06-06  remove-donotforce
+2016-06-08  fix-dns-test-srv
+2016-06-14  notify-mailer
+2016-06-15  dwk-mem
+2016-06-16  better-syslog-defaults
+2016-06-17  fix-contact-exporter
+2016-06-17  grpc-stats
+2016-06-28  cdr-race
+2016-06-30  ra-race
+2016-07-13  dc-refresh
+2016-07-18  fd-monitor
+2016-07-18  ofd-monitor
+2016-07-29  upr
+2016-08-03  test-one-six
+2016-08-04  no-transaction
+2016-08-04  one-six
+2016-08-05  issuerconfig-ca2
+2016-08-05  log-malformed-csr
+2016-08-08  tidy-test
+2016-08-12  badcsr_test
+2016-08-12  expiration-emails
+2016-08-15  log-tls-sni-cert
+2016-08-15  publisher-stats
+2016-08-16  wfe-hex
+2016-08-22  nonce-prof
+2016-08-22  revert-oldx509
+2016-08-23  authz-deact
+2016-09-09  grpc-client-metrics
+2016-09-19  revert-2138
+2016-09-29  newauthz-fix
+2016-09-29  re-reg-deact
+2016-09-30  idna
+2016-10-03  update-release
+2016-10-04  fix-reg-status
+2016-10-11  update-google-ct
+2016-10-18  error-tweaks
+2016-10-19  count-async
+2016-10-19  dbtimeout
+2016-10-20  ct-rl
+2016-10-20  go15
+2016-10-21  debug-later
+2016-10-21  key-pool
+2016-10-21  rpc-error
+2016-10-26  key-rollover
+2016-10-27  acct-deact-int
+2016-10-27  authz-deact-int
+2016-11-02  switch-173
+2016-11-07  max_statement_time
+2016-11-08  ct-to-ra
+2016-11-16  log-endpoint
+2016-11-16  log-shutdown
+2016-11-22  expiration-mailer-versions
+2016-11-22  remove-caa-checker
+2016-11-29  less-amqp-next
+2016-11-29  rm-checkmalformed
+2016-12-02  simpler-timeout
+2016-12-02  va-log-hostname
+2016-12-05  test-improvements
+2016-12-06  fail-fast
+2016-12-08  more-orphans
+2016-12-08  quieter-silence
+2016-12-12  ocsp-updater-parallel
+2016-12-15  rollforward-fail-fast
+2016-12-20  akamai-tests
+2016-12-21  safebrowsingv4
+2016-12-24  finer-creds
+
+Type [yY] to continue: n
+Aborting
+
+Going to delete the following branches:
+
+2017-01-03  split-ca
+2017-01-05  more-ports
+2017-01-06  simpler-tls
+2017-01-07  skip-parse
+2017-01-09  client-handling-histogram
+2017-01-09  even-more-prom
+2017-01-09  grpc-config-example
+2017-01-10  cfssl-update
+2017-01-12  better-up
+2017-01-12  loadtest2
+2017-01-16  multi-domain
+2017-01-19  https-confuse
+2017-01-19  limit-failures
+2017-01-19  sig-counter
+2017-01-19  test-https-confuse
+2017-01-22  chisel
+2017-01-24  grpc-va-fix
+2017-01-25  restore-error-check
+2017-02-06  test-ewf
+2017-02-08  latest-integration
+2017-02-09  err-wrapping
+2017-02-10  test-fancy-errors
+2017-02-14  close-httptest
+2017-03-06  test-gorp-2
+2017-03-07  gorp-2
+2017-03-07  no-transact
+2017-03-07  test-gorp-22
+2017-03-16  chisel-acme2
+2017-03-16  no-prefix
+2017-03-28  test-rm-amqp
+2017-03-29  time-coveralls
+2017-03-31  pkg-updates
+2017-04-03  not-next
+2017-04-03  stats-stats-stats
+2017-04-04  eap-tests-fix
+2017-04-07  no-prefix-for-realz
+2017-04-08  fix-test-timeouts
+2017-04-11  fix-prom-collection
+2017-04-11  valiation-typo
+2017-04-13  fix-chisel-logging
+2017-04-13  update-divergences
+2017-04-14  boulderdash
+2017-04-18  limit-endpoints
+2017-05-02  test-race-speed
+2017-05-03  remove-old-err-checks
+2017-05-03  round-robin-dns
+2017-05-08  greased-pig
+2017-05-09  ocsp-slash-fix
+2017-05-11  rm-statsd-output
+2017-05-15  fix-va-test
+2017-05-17  revert-2769-ct-switch
+2017-05-24  log-payload
+2017-05-25  dashboard-update
+2017-05-30  better-error
+2017-05-31  more-prom-stats
+2017-06-08  test-multi-va
+2017-06-09  remove-cdr
+2017-06-19  renewal-exemption
+2017-06-24  no-problem
+2017-06-26  contact-filter
+2017-06-27  update-gsb
+2017-06-29  fix-chall-type
+2017-06-30  econnrefused
+2017-07-10  noerror-noscope
+2017-07-11  contact-to-id
+2017-07-11  no-clientname
+2017-07-17  dns-client-not-resolver
+2017-07-27  fix-maxnames
+2017-08-03  email-integration-test
+2017-08-10  nfkc-cherry-pick
+2017-08-10  nfkc-patch
+2017-08-11  fix-lg
+2017-08-15  reserved-labels
+2017-08-15  wfe2-remove-features
+2017-08-16  bad-to-good
+2017-08-16  root-zone
+2017-08-16  trim-wfe2
+2017-08-16  wfe-neworder
+2017-08-17  csr-sig-usage
+2017-08-17  remove-suffix-match
+2017-08-22  prom-dns-switch
+2017-08-25  split-caa
+2017-08-28  fix-race-maybe
+2017-08-28  recheck-caa-ra
+2017-08-29  consolidate-travis
+2017-08-29  rm-named-return
+2017-08-31  host-override
+2017-09-02  prevent-parallel-validation
+2017-09-05  fewer-errors
+2017-09-05  revert-3045-master
+2017-09-06  cleaner-shutdown
+2017-09-11  caa-problem
+2017-09-11  more-tests-wfe2
+2017-09-11  va-stats
+2017-09-11  wfe-getreg-notfound
+2017-09-12  legacy-caa-opt
+2017-09-12  time-warp
+2017-09-13  less-logging
+2017-09-14  move-caa-mock
+2017-09-15  caa-cname-hotfix-2
+2017-09-15  cname-hotfix-2
+2017-09-15  proper-cname-branching
+2017-09-18  pull-out-probs
+2017-10-02  parall-test
+2017-10-05  golang-191
+2017-10-15  purger-shorter
+2017-10-16  purge-shorter-2
+2017-10-26  readme-updates
+2017-10-30  wfe-seccomp
+2017-10-31  update-google-cct
+2017-11-01  remove-feature-exports
+2017-11-02  test-godep-restore-delete
+2017-12-14  test-less-ports
+2017-12-14  test-travis-docker-pull
+2017-12-15  nopublish
+
+Type [yY] to continue: n
+Aborting
+
+Going to delete the following branches:
+
+2018-01-02  dns-multiple
+2018-01-22  strict-yaml
+2018-01-29  bsmith-wip-issue-certificate-for-precert-impl-pr3409
+2018-02-07  test-codeowners
+2018-02-15  revendor-certificate-transparency-go
+2018-02-16  deprecate-exact-rate-limit
+2018-02-16  new-cert-error-more-details
+2018-02-16  send-error-better
+2018-02-16  update-golang-crypto
+2018-02-20  revendor-grpc
+2018-02-26  authorization-refactor
+2018-02-26  log-less-on-poll
+2018-03-01  fix-ra-race
+2018-03-07  update-boulder-tools-2018-03
+2018-03-09  nonce-faster
+2018-03-09  nonce-faster-benchmark
+2018-03-12  add-certlint
+2018-03-13  zlint-cert-checker
+2018-03-16  test-parallel
+2018-03-26  sa-fetch-fewer-challenges
+2018-04-03  log-latency
+2018-04-09  add-tracing
+2018-04-12  chillcli
+2018-04-18  update-grpc
+2018-04-25  cpu-load-gen-check-errs
+2018-05-04  mucking-about-with-cpu-new-and-improved-challsrv
+2018-05-04  test-cleanup-travis-yml
+2018-05-04  test-diff-cpu-golang-1.10.2
+2018-05-13  rm-before-install
+2018-06-04  move-to-zlint
+2018-06-19  fix-ip-redirect
+2018-06-29  cpu-match-issuer-urls
+2018-07-09  caa-with-semicolons
+2018-08-02  cpu-one-authz-revocation
+2018-08-15  test-update-grpc-stuff
+2018-09-27  pub-timeout
+2018-10-05  va-latency-thing
+2018-11-13  import-fixup
+
+Type [yY] to continue: n
+Aborting
+
+Going to delete the following branches:
+
+2019-01-17  authz2-creation
+2019-02-07  fix-mailer-bug
+2019-02-19  update-go-jose
+2019-03-05  cpu-export-all-the-dbstats
+2019-04-23  authz2-ra-new
+2019-05-21  authz2-purger
+2019-05-22  test-authz2-purger
+2019-05-23  authz2-purger-actually
+2019-10-16  sa-authz2-changes-only
+2019-11-14  tracer
+2019-12-13  rollback-go-jose
+2019-12-16  upgrade-go-jose-v2.4.1
+
+Type [yY] to continue: n
+Aborting
+
+Going to delete the following branches:
+
+2020-01-06  cpu-bump-ct-go
+2020-01-27  gen-crl-tool
+2020-03-04  purge-by-serial
+2020-03-18  delete-unused-ra
+2020-03-25  go1.14
+2020-03-25  go1.14a
+2020-03-31  test-use-travis-docker
+2020-04-06  fix-goodkey
+2020-04-07  remove-duplicate-goget
+2020-04-13  deprecated-deleteunusedchallenges
+2020-04-22  test-faster-travis
+2020-04-30  disable-v1-new-validations
+2020-05-12  port-v1-integrations
+2020-05-13  test-v1-tests-have-setup
+2020-06-12  deprecate-storeissuerinfo-ocsp-updater
+2020-07-20  ca-proto3
+2020-07-20  proto-nil-checks
+2020-07-22  generate-key-check-for-empty
+2020-07-28  elr
+2020-07-29  lookup-by-pubkey
+2020-08-13  use-2020
+2020-08-17  ceremony-parse-urls
+2020-08-17  test-flakes-bisect
+2020-08-18  test-flake-1
+2020-08-18  test-flake-10
+2020-08-18  test-flake-2
+2020-08-18  test-flake-3
+2020-08-18  test-flake-4
+2020-08-18  test-flake-5
+2020-08-18  test-flake-6
+2020-08-18  test-flake-7
+2020-08-18  test-flake-8
+2020-08-18  test-flake-9
+2020-08-18  test-flake-revert-signer
+2020-09-16  more-restrict-rsa
+2020-10-27  ecdsa-test-configs
+2020-11-19  deprecate_v1_reg_flags
+2020-12-17  bypass-keyusage-check
+
+Type [yY] to continue: n
+Aborting
