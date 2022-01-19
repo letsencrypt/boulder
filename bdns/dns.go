@@ -173,15 +173,6 @@ type exchanger interface {
 	Exchange(m *dns.Msg, a string) (*dns.Msg, time.Duration, error)
 }
 
-// server represents a single backend server
-type server struct {
-	// hostport is used to connect to this server
-	hostport string
-	// host is used in reporting metrics by host (since one host
-	// may offer service on multiple ports)
-	host string
-}
-
 // New constructs a new DNS resolver object that utilizes the
 // provided list of DNS servers for resolution.
 func New(

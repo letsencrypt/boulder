@@ -14,11 +14,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 )
 
-var (
-	errIncompleteRequest  = errors.New("Incomplete gRPC request message")
-	errIncompleteResponse = errors.New("Incomplete gRPC response message")
-)
-
 // wrapError wraps the internal error types we use for transport across the gRPC
 // layer and appends an appropriate errortype to the gRPC trailer via the provided
 // context. errors.BoulderError error types are encoded using the grpc/metadata

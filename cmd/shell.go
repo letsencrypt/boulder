@@ -252,12 +252,6 @@ func VersionString() string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
-var signalToName = map[os.Signal]string{
-	syscall.SIGTERM: "SIGTERM",
-	syscall.SIGINT:  "SIGINT",
-	syscall.SIGHUP:  "SIGHUP",
-}
-
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
 // method before exiting
 func CatchSignals(logger blog.Logger, callback func()) {

@@ -19,16 +19,13 @@ import (
 	"google.golang.org/grpc"
 )
 
-type mockPub struct {
-}
+type mockPub struct{}
 
 func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
 
-type alwaysFail struct {
-	mockPub
-}
+type alwaysFail struct{}
 
 func (mp *alwaysFail) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return nil, errors.New("BAD")
@@ -135,8 +132,6 @@ func TestGetSCTs(t *testing.T) {
 }
 
 type failOne struct {
-	mockPub
-
 	badURL string
 }
 
@@ -147,9 +142,7 @@ func (mp *failOne) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Requ
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
 
-type slowPublisher struct {
-	mockPub
-}
+type slowPublisher struct{}
 
 func (sp *slowPublisher) SubmitToSingleCTWithResult(_ context.Context, req *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	time.Sleep(time.Second)
