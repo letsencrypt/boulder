@@ -244,7 +244,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	// requested ChillerServer delay so that the RPC completes normally
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var delayTime int64 = (time.Second * 5).Nanoseconds()
+	delayTime := (time.Second * 5).Nanoseconds()
 	if _, err := c.Chill(ctx, &test_proto.Time{Time: delayTime}); err != nil {
 		t.Fatalf("Unexpected error calling Chill RPC: %s", err)
 	}

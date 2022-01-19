@@ -26,7 +26,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/grpc"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
@@ -701,7 +700,7 @@ func (wfe *WebFrontEndImpl) NewRegistration(ctx context.Context, logEvent *web.R
 			return
 		}
 	}
-	newRegPB, err := grpc.RegistrationToPB(init)
+	newRegPB, err := bgrpc.RegistrationToPB(init)
 	if err != nil {
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)

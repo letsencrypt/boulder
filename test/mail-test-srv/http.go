@@ -32,33 +32,33 @@ func (f *toFilter) Match(m rcvdMail) bool {
 /mail/1?to=foo@bar.com - second mail for foo@bar.com
 */
 
-func (s *mailSrv) setupHTTP(serveMux *http.ServeMux) {
-	serveMux.HandleFunc("/count", s.httpCount)
-	serveMux.HandleFunc("/clear", s.httpClear)
-	serveMux.Handle("/mail/", http.StripPrefix("/mail/", http.HandlerFunc(s.httpGetMail)))
+func (srv *mailSrv) setupHTTP(serveMux *http.ServeMux) {
+	serveMux.HandleFunc("/count", srv.httpCount)
+	serveMux.HandleFunc("/clear", srv.httpClear)
+	serveMux.Handle("/mail/", http.StripPrefix("/mail/", http.HandlerFunc(srv.httpGetMail)))
 }
 
-func (s *mailSrv) httpClear(w http.ResponseWriter, r *http.Request) {
+func (srv *mailSrv) httpClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
-		s.allMailMutex.Lock()
-		s.allReceivedMail = nil
-		s.allMailMutex.Unlock()
+		srv.allMailMutex.Lock()
+		srv.allReceivedMail = nil
+		srv.allMailMutex.Unlock()
 		w.WriteHeader(200)
 	} else {
 		w.WriteHeader(405)
 	}
 }
 
-func (s *mailSrv) httpCount(w http.ResponseWriter, r *http.Request) {
+func (srv *mailSrv) httpCount(w http.ResponseWriter, r *http.Request) {
 	count := 0
-	s.iterMail(extractFilter(r), func(m rcvdMail) bool {
+	srv.iterMail(extractFilter(r), func(m rcvdMail) bool {
 		count++
 		return false
 	})
 	fmt.Fprintf(w, "%d\n", count)
 }
 
-func (s *mailSrv) httpGetMail(w http.ResponseWriter, r *http.Request) {
+func (srv *mailSrv) httpGetMail(w http.ResponseWriter, r *http.Request) {
 	mailNum, err := strconv.Atoi(strings.Trim(r.URL.Path, "/"))
 	if err != nil {
 		w.WriteHeader(400)
@@ -66,7 +66,7 @@ func (s *mailSrv) httpGetMail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	idx := 0
-	found := s.iterMail(extractFilter(r), func(m rcvdMail) bool {
+	found := srv.iterMail(extractFilter(r), func(m rcvdMail) bool {
 		if mailNum == idx {
 			printMail(w, m)
 			return true
@@ -85,10 +85,10 @@ func extractFilter(r *http.Request) toFilter {
 	return toFilter{To: to}
 }
 
-func (s *mailSrv) iterMail(f toFilter, cb func(rcvdMail) bool) bool {
-	s.allMailMutex.Lock()
-	defer s.allMailMutex.Unlock()
-	for _, v := range s.allReceivedMail {
+func (srv *mailSrv) iterMail(f toFilter, cb func(rcvdMail) bool) bool {
+	srv.allMailMutex.Lock()
+	defer srv.allMailMutex.Unlock()
+	for _, v := range srv.allReceivedMail {
 		if !f.Match(v) {
 			continue
 		}

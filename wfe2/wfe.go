@@ -22,7 +22,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/grpc"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
@@ -627,7 +626,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		beeline.AddFieldToTrace(ctx, "acct.id", acctPB.Id)
 		addRequesterHeader(response, acctPB.Id)
 
-		acct, err := grpc.PbToRegistration(acctPB)
+		acct, err := bgrpc.PbToRegistration(acctPB)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 			return
