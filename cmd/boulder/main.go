@@ -14,7 +14,6 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/boulder-ra"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-sa"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-va"
-	_ "github.com/letsencrypt/boulder/cmd/boulder-wfe"
 	_ "github.com/letsencrypt/boulder/cmd/boulder-wfe2"
 	_ "github.com/letsencrypt/boulder/cmd/caa-log-checker"
 	_ "github.com/letsencrypt/boulder/cmd/ceremony"
