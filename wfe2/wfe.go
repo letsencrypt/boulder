@@ -161,11 +161,11 @@ func NewWebFrontEndImpl(
 	sac sapb.StorageAuthorityClient,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
-	if issuerCertificates == nil || len(issuerCertificates) == 0 {
+	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
 	}
 
-	if certificateChains == nil || len(certificateChains) == 0 {
+	if len(certificateChains) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one certificate chain")
 	}
 

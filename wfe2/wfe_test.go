@@ -1989,7 +1989,7 @@ func TestGetCertificate(t *testing.T) {
 			if len(tc.ExpectedCert) > 0 {
 				// If the expectation was to return a certificate, check that it was the one expected
 				bodyBytes := responseWriter.Body.Bytes()
-				test.Assert(t, bytes.Compare(bodyBytes, tc.ExpectedCert) == 0, "Certificates don't match")
+				test.Assert(t, bytes.Equal(bodyBytes, tc.ExpectedCert), "Certificates don't match")
 
 				// Successful requests should be logged as such
 				reqlogs := mockLog.GetAllMatching(`INFO: [^ ]+ [^ ]+ [^ ]+ 200 .*`)

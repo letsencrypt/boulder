@@ -4,6 +4,7 @@ linters:
     - errcheck
     - gofmt
     - gosec
+    - gosimple
     - govet
     - ineffassign
     - misspell
@@ -12,13 +13,14 @@ linters:
 linters-settings:
   errcheck:
     ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write
+  gosimple:
+    # S1029: Range over the string directly
+    checks: ["all", "-S1029"]
   staticcheck:
-    go: "1.17"
     # SA1019: Using a deprecated function, variable, constant or field
     # SA6003: Converting a string to a slice of runes before ranging over it
     checks: ["all", "-SA1019", "-SA6003"]
   stylecheck:
-    go: "1.17"
     # ST1003: Poorly chosen identifier
     # ST1005: Incorrectly formatted error string
     checks: ["all", "-ST1003", "-ST1005"]

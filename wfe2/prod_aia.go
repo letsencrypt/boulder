@@ -17,5 +17,4 @@ func (wfe *WebFrontEndImpl) Issuer(ctx context.Context, logEvent *web.RequestEve
 	logEvent.AddError("AIA Issuer URL requested")
 	http.NotFound(response, request)
 	response.Header().Set("Content-Type", "application/problem+json")
-	return
 }

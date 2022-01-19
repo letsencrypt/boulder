@@ -55,8 +55,8 @@ func newFilter(issuerCerts []string, serialPrefixes []string) (*ocspFilter, erro
 	if len(issuerCerts) < 1 {
 		return nil, errors.New("Filter must include at least 1 issuer cert")
 	}
-	issuerKeyHashes := make(map[issuance.IssuerID][]byte, 0)
-	issuerNameKeyHashes := make(map[issuance.IssuerNameID][]byte, 0)
+	issuerKeyHashes := make(map[issuance.IssuerID][]byte)
+	issuerNameKeyHashes := make(map[issuance.IssuerNameID][]byte)
 	for _, issuerCert := range issuerCerts {
 		// Load the certificate from the file path.
 		cert, err := core.LoadCert(issuerCert)
