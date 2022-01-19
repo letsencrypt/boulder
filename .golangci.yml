@@ -33,10 +33,9 @@ issues:
       - staticcheck
       # TODO: Identify, fix, and remove violations of each of these rules
       # SA1019: Using a deprecated function, variable, constant or field
-      # SA2002: Called testing.T.FailNow or SkipNow in a goroutine, which isn’t allowed
       # SA5011: Deferring Close before checking for a possible error
       # SA6003: Converting a string to a slice of runes before ranging over it
       # S1029: Range over the string directly
       # ST1005: Incorrectly formatted error string
       # ST1013: Should use constants for HTTP error codes, not magic numbers
-      text: "(SA1019|SA2002|SA5011|SA6003|S1029|ST1005|ST1013)"
+      text: "(SA1019|SA5011|SA6003|S1029|ST1005|ST1013)"
