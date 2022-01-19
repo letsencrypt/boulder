@@ -128,45 +128,6 @@ func (s *Session) getPrivateKey(publicKeyID []byte) (pkcs11.ObjectHandle, error)
 	})
 }
 
-// x509Signer is a convenience wrapper used for converting between the
-// PKCS#11 ECDSA signature format and the RFC 5480 one which is required
-// for X.509 certificates. It implements crypt.Signer.
-type x509Signer struct {
-	session      *Session
-	objectHandle pkcs11.ObjectHandle
-	keyType      keyType
-
-	pub crypto.PublicKey
-}
-
-// Sign wraps pkcs11helpers.Sign. If the signing key is ECDSA then the signature
-// is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
-// conversion step is not needed.
-func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
-	signature, err := p.session.Sign(p.objectHandle, p.keyType, digest, opts.HashFunc())
-	if err != nil {
-		return nil, err
-	}
-
-	if p.keyType == ECDSAKey {
-		// Convert from the PKCS#11 format to the RFC 5480 format so that
-		// it can be used in a X.509 certificate
-		r := big.NewInt(0).SetBytes(signature[:len(signature)/2])
-		s := big.NewInt(0).SetBytes(signature[len(signature)/2:])
-		signature, err = asn1.Marshal(struct {
-			R, S *big.Int
-		}{R: r, S: s})
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert signature to RFC 5480 format: %s", err)
-		}
-	}
-	return signature, nil
-}
-
-func (p *x509Signer) Public() crypto.PublicKey {
-	return p.pub
-}
-
 func (s *Session) GetAttributeValue(object pkcs11.ObjectHandle, attributes []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 	return s.Module.GetAttributeValue(s.Session, object, attributes)
 }
@@ -335,10 +296,10 @@ func (s *Session) FindObject(tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, err
 	return handles[0], nil
 }
 
-// X509Signer is a convenience wrapper used for converting between the
+// x509Signer is a convenience wrapper used for converting between the
 // PKCS#11 ECDSA signature format and the RFC 5480 one which is required
 // for X.509 certificates
-type X509Signer struct {
+type x509Signer struct {
 	session      *Session
 	objectHandle pkcs11.ObjectHandle
 	keyType      keyType
@@ -349,7 +310,7 @@ type X509Signer struct {
 // Sign signs a digest. If the signing key is ECDSA then the signature
 // is converted from the PKCS#11 format to the RFC 5480 format. For RSA keys a
 // conversion step is not needed.
-func (p *X509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func (p *x509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	signature, err := p.session.Sign(p.objectHandle, p.keyType, digest, opts.HashFunc())
 	if err != nil {
 		return nil, err
@@ -370,11 +331,11 @@ func (p *X509Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts)
 	return signature, nil
 }
 
-func (p *X509Signer) Public() crypto.PublicKey {
+func (p *x509Signer) Public() crypto.PublicKey {
 	return p.pub
 }
 
-// NewSigner constructs an X509Signer for the private key object associated with the
+// NewSigner constructs an x509Signer for the private key object associated with the
 // given label and public key.
 func (s *Session) NewSigner(label string, publicKey crypto.PublicKey) (crypto.Signer, error) {
 	var kt keyType

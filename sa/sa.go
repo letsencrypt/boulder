@@ -670,9 +670,6 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 	return &sapb.Count{Count: count}, err
 }
 
-// setHash is a []byte representing the hash of an FQDN Set
-type setHash []byte
-
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {

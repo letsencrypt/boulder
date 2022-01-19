@@ -330,14 +330,6 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 	return authz, nil
 }
 
-func newRegistrationValid(reg *corepb.Registration) bool {
-	return !(len(reg.Key) == 0 || len(reg.InitialIP) == 0)
-}
-
-func registrationValid(reg *corepb.Registration) bool {
-	return newRegistrationValid(reg) && reg.Id != 0
-}
-
 // orderValid checks that a corepb.Order is valid. In addition to the checks
 // from `newOrderValid` it ensures the order ID and the Created field are not nil.
 func orderValid(order *corepb.Order) bool {
@@ -353,10 +345,6 @@ func orderValid(order *corepb.Order) bool {
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
 	return !(order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0)
-}
-
-func authorizationValid(authz *corepb.Authorization) bool {
-	return !(authz.Id == "" || authz.Identifier == "" || authz.Status == "" || authz.Expires == 0)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {

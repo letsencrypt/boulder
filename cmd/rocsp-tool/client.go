@@ -190,11 +190,6 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 	return previousID, nil
 }
 
-type signedResponse struct {
-	der []byte
-	ttl time.Duration
-}
-
 // signAndStoreResponses consumes cert statuses on its input channel and writes them to its output
 // channel. Before returning, it atomically decrements the provided runningSigners int. If the
 // result is 0, indicating this was the last running signer, it closes its output channel.
