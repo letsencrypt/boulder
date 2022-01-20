@@ -236,6 +236,12 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 		}
 	}
 
+	// Revoke one of our two testKey1 certificates by serial. This is to test
+	// that revokeByPrivateKey will continue if one of the two matching
+	// certificates has already been revoked.
+	err = testCtx.revoker.revokeBySerial(context.Background(), core.SerialToString(big.NewInt(1)), 1, true)
+	test.AssertNotError(t, err, "While attempting to revoke 1 of our matching certificates ahead of time")
+
 	// Revoke the certificates, but do not block issuance.
 	err = testCtx.revoker.revokeByPrivateKey(context.Background(), testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to revoke certificates for the provided key")
