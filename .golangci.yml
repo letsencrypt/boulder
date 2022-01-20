@@ -10,6 +10,7 @@ linters:
     - misspell
     - staticcheck
     - stylecheck
+    - unused
 linters-settings:
   errcheck:
     ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write
