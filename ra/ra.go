@@ -571,13 +571,6 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	return nil
 }
 
-// NewAuthorization constructs a new Authz from a request. Values (domains) in
-// request.Identifier will be lowercased before storage.
-// TODO(#5681): Remove this method entirely
-func (ra *RegistrationAuthorityImpl) NewAuthorization(ctx context.Context, req *rapb.NewAuthorizationRequest) (*corepb.Authorization, error) {
-	return nil, fmt.Errorf("The ACME v1 NewAuthorization flow is deprecated")
-}
-
 // MatchesCSR tests the contents of a generated certificate to make sure
 // that the PublicKey, CommonName, and DNSNames match those provided in
 // the CSR that was used to generate the certificate. It also checks the
