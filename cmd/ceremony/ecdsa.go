@@ -1,7 +1,6 @@
 package notmain
 
 import (
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"errors"
@@ -25,19 +24,6 @@ var curveToOIDDER = map[string][]byte{
 	elliptic.P256().Params().Name: {6, 8, 42, 134, 72, 206, 61, 3, 1, 7},
 	elliptic.P384().Params().Name: {6, 5, 43, 129, 4, 0, 34},
 	elliptic.P521().Params().Name: {6, 5, 43, 129, 4, 0, 35},
-}
-
-var curveToHash = map[elliptic.Curve]crypto.Hash{
-	elliptic.P224(): crypto.SHA256,
-	elliptic.P256(): crypto.SHA256,
-	elliptic.P384(): crypto.SHA384,
-	elliptic.P521(): crypto.SHA512,
-}
-
-var hashToString = map[crypto.Hash]string{
-	crypto.SHA256: "SHA-256",
-	crypto.SHA384: "SHA-384",
-	crypto.SHA512: "SHA-512",
 }
 
 // ecArgs constructs the private and public key template attributes sent to the

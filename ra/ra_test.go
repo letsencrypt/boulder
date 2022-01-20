@@ -227,7 +227,6 @@ var ctx = context.Background()
 // dummyRateLimitConfig satisfies the ratelimit.RateLimitConfig interface while
 // allowing easy mocking of the individual RateLimitPolicy's
 type dummyRateLimitConfig struct {
-	TotalCertificatesPolicy               ratelimit.RateLimitPolicy
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
 	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
@@ -237,10 +236,6 @@ type dummyRateLimitConfig struct {
 	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetFastPolicy      ratelimit.RateLimitPolicy
-}
-
-func (r *dummyRateLimitConfig) TotalCertificates() ratelimit.RateLimitPolicy {
-	return r.TotalCertificatesPolicy
 }
 
 func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
@@ -369,23 +364,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.reuseValidAuthz = true
 
 	return va, sa, ra, fc, cleanUp
-}
-
-func assertAuthzEqual(t *testing.T, a1, a2 *corepb.Authorization) {
-	t.Helper()
-	test.Assert(t, a1.Id == a2.Id, "ret != DB: ID")
-	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
-	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	test.Assert(t, a1.RegistrationID == a2.RegistrationID, "ret != DB: RegID")
-	if a1.Expires == 0 && a2.Expires == 0 {
-		return
-	} else if a1.Expires == 0 || a2.Expires == 0 {
-		t.Errorf("one and only one of authorization's Expires was 0; ret %v, DB %v", a1, a2)
-	} else {
-		test.AssertEquals(t, a1.Expires, a2.Expires)
-	}
-
-	// Not testing: Challenges
 }
 
 func TestValidateContacts(t *testing.T) {
@@ -734,14 +712,6 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	// actually differ from the existing content
 	_, err = ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: result, Update: updateSame})
 	test.AssertNotError(t, err, "Error updating registration")
-}
-
-type mockSAWithBadGetValidAuthz struct {
-	mocks.StorageAuthority
-}
-
-func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations2(ctx context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
 }
 
 func TestPerformValidationExpired(t *testing.T) {
@@ -3458,29 +3428,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			}
 		})
 	}
-}
-
-type mockSAPreviousValidations struct {
-	mocks.StorageAuthority
-	existsDomain string
-}
-
-func (ms *mockSAPreviousValidations) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: req.Domain == ms.existsDomain}, nil
-}
-
-func (ms *mockSAPreviousValidations) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return &sapb.Authorizations{}, nil
-}
-
-func (ms *mockSAPreviousValidations) GetPendingAuthorization2(_ context.Context, _ *sapb.GetPendingAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	return nil, berrors.NotFoundError("")
-}
-
-func (ms *mockSAPreviousValidations) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
-	return &sapb.Authorization2IDs{
-		Ids: []int64{1},
-	}, nil
 }
 
 func TestNewOrderMaxNames(t *testing.T) {
