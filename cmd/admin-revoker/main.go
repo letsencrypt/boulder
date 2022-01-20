@@ -553,16 +553,12 @@ func main() {
 
 		if command == "private-key-block" {
 			err := privateKeyBlock(r, *dryRun, count, spkiHash, keyPath)
-			if err != nil {
-				cmd.Fail(err.Error())
-			}
+			cmd.FailOnError(err, "")
 		}
 
 		if command == "private-key-revoke" {
 			err := privateKeyRevoke(r, *dryRun, count, keyPath)
-			if err != nil {
-				cmd.Fail(err.Error())
-			}
+			cmd.FailOnError(err, "")
 		}
 
 	default:
