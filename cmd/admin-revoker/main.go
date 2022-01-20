@@ -61,7 +61,8 @@ flags:
 
   private-key-block | private-key-revoke:
     -dry-run             true (default): only queries for affected certificates. false: will
-                         perform the requested block or revoke action
+                         perform the requested block or revoke action. Only implemented for
+                         private-key-block and private-key-revoke.
 `
 
 type Config struct {
@@ -305,7 +306,7 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 		resp, err := r.sac.GetCertificateStatus(ctx, &sapb.Serial{Serial: match})
 		if err != nil {
 			return fmt.Errorf(
-				"failed to get status for serial %q. Entry %d of %d affected certificates: %s",
+				"failed to get status for serial %q. Entry %d of %d affected certificates: %w",
 				match,
 				(i + 1),
 				len(matches),
@@ -321,7 +322,7 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 		err = r.revokeBySerial(ctx, match, revocation.Reason(1), true)
 		if err != nil {
 			return fmt.Errorf(
-				"failed to revoke serial %q. Entry %d of %d affected certificates: %s",
+				"failed to revoke serial %q. Entry %d of %d affected certificates: %w",
 				match,
 				(i + 1),
 				len(matches),
