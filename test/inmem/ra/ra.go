@@ -3,7 +3,6 @@ package ra
 import (
 	"context"
 
-	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 
@@ -23,9 +22,4 @@ type RA struct {
 // AdministrativelyRevokeCertificate is a wrapper for `*ra.RegistrationAuthorityImpl.AdministrativelyRevokeCertificate`.
 func (ra RA) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return ra.Impl.AdministrativelyRevokeCertificate(ctx, req)
-}
-
-// NewCertificate is a wrapper for `*ra.RegistrationAuthorityImpl.NewCertificate`.
-func (ra RA) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest, _ ...grpc.CallOption) (*proto.Certificate, error) {
-	return ra.Impl.NewCertificate(ctx, req)
 }

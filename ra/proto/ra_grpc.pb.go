@@ -21,8 +21,6 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RegistrationAuthorityClient interface {
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
-	NewAuthorization(ctx context.Context, in *NewAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
-	NewCertificate(ctx context.Context, in *NewCertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
 	UpdateRegistration(ctx context.Context, in *UpdateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
 	RevokeCertificateWithReg(ctx context.Context, in *RevokeCertificateWithRegRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -44,24 +42,6 @@ func NewRegistrationAuthorityClient(cc grpc.ClientConnInterface) RegistrationAut
 func (c *registrationAuthorityClient) NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error) {
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/NewRegistration", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *registrationAuthorityClient) NewAuthorization(ctx context.Context, in *NewAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error) {
-	out := new(proto.Authorization)
-	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/NewAuthorization", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *registrationAuthorityClient) NewCertificate(ctx context.Context, in *NewCertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error) {
-	out := new(proto.Certificate)
-	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/NewCertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -145,8 +125,6 @@ func (c *registrationAuthorityClient) FinalizeOrder(ctx context.Context, in *Fin
 // for forward compatibility
 type RegistrationAuthorityServer interface {
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
-	NewAuthorization(context.Context, *NewAuthorizationRequest) (*proto.Authorization, error)
-	NewCertificate(context.Context, *NewCertificateRequest) (*proto.Certificate, error)
 	UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*proto.Registration, error)
 	PerformValidation(context.Context, *PerformValidationRequest) (*proto.Authorization, error)
 	RevokeCertificateWithReg(context.Context, *RevokeCertificateWithRegRequest) (*emptypb.Empty, error)
@@ -164,12 +142,6 @@ type UnimplementedRegistrationAuthorityServer struct {
 
 func (UnimplementedRegistrationAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
-}
-func (UnimplementedRegistrationAuthorityServer) NewAuthorization(context.Context, *NewAuthorizationRequest) (*proto.Authorization, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method NewAuthorization not implemented")
-}
-func (UnimplementedRegistrationAuthorityServer) NewCertificate(context.Context, *NewCertificateRequest) (*proto.Certificate, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method NewCertificate not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistration not implemented")
@@ -222,42 +194,6 @@ func _RegistrationAuthority_NewRegistration_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RegistrationAuthorityServer).NewRegistration(ctx, req.(*proto.Registration))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RegistrationAuthority_NewAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(NewAuthorizationRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RegistrationAuthorityServer).NewAuthorization(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/ra.RegistrationAuthority/NewAuthorization",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistrationAuthorityServer).NewAuthorization(ctx, req.(*NewAuthorizationRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RegistrationAuthority_NewCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(NewCertificateRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RegistrationAuthorityServer).NewCertificate(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/ra.RegistrationAuthority/NewCertificate",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RegistrationAuthorityServer).NewCertificate(ctx, req.(*NewCertificateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -416,14 +352,6 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NewRegistration",
 			Handler:    _RegistrationAuthority_NewRegistration_Handler,
-		},
-		{
-			MethodName: "NewAuthorization",
-			Handler:    _RegistrationAuthority_NewAuthorization_Handler,
-		},
-		{
-			MethodName: "NewCertificate",
-			Handler:    _RegistrationAuthority_NewCertificate_Handler,
 		},
 		{
 			MethodName: "UpdateRegistration",
