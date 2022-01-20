@@ -242,18 +242,18 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 
 // blockByPrivateKey blocks future issuance for certificates with a a public key
 // matching the SubjectPublicKeyInfo hash generated from the PublicKey embedded
-// in privateKey. The embedded PublicKey will be verfied as an actual match for
+// in privateKey. The embedded PublicKey will be verified as an actual match for
 // the provided private key before any blocking takes place. This method does
 // not revoke any certificates directly. However, 'bad-key-revoker', which
 // references the 'blockedKeys' table, will eventually revoke certificates with
 // a matching SPKI hash.
-func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
-	err := privatekey.Verify(privateKey)
+func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey string) error {
+	_, publicKey, err := privatekey.Load(privateKey)
 	if err != nil {
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
+	spkiHash, err := getPublicKeySPKIHash(publicKey)
 	if err != nil {
 		return err
 	}
@@ -280,18 +280,18 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey crypto.Signe
 
 // revokeByPrivateKey revokes all certificates with a public key matching the
 // SubjectPublicKeyInfo hash generated from the PublicKey embedded in
-// privateKey. The embedded PublicKey will be verfied as an actual match for the
+// privateKey. The embedded PublicKey will be verified as an actual match for the
 // provided private key before any revocation takes place. The provided key will
-// not be added to the 'blockedKeys' table, this is done to avoid a race between
+// not be added to the 'blockedKeys' table. This is done to avoid a race between
 // 'admin-revoker' and 'bad-key-revoker'. You MUST call blockByPrivateKey after
 // calling this function, on pain of violating the BRs.
-func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey crypto.Signer) error {
-	err := privatekey.Verify(privateKey)
+func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) error {
+	_, publicKey, err := privatekey.Load(privateKey)
 	if err != nil {
 		return err
 	}
 
-	spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
+	spkiHash, err := getPublicKeySPKIHash(publicKey)
 	if err != nil {
 		return err
 	}
@@ -338,6 +338,8 @@ func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	return count, nil
 }
 
+// TODO(#5899) Use an non-wrapped sql.Db client to iterate over results and
+// return them on a channel.
 func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) ([]string, error) {
 	var h []string
 	_, err := r.dbMap.Select(&h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?;", spkiHash)
@@ -357,7 +359,7 @@ func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
-func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privateKey crypto.Signer) error {
+func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, keyPath string) error {
 	keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
 	if err != nil {
 		return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
@@ -376,7 +378,7 @@ func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privat
 	}
 
 	r.log.AuditInfo("Attempting to block issuance for the provided key")
-	err = r.blockByPrivateKey(context.Background(), privateKey)
+	err = r.blockByPrivateKey(context.Background(), keyPath)
 	if err != nil {
 		return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
 	}
@@ -384,7 +386,7 @@ func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, privat
 	return nil
 }
 
-func privateKeyRevoke(r *revoker, dryRun bool, count int, privateKey crypto.Signer) error {
+func privateKeyRevoke(r *revoker, dryRun bool, count int, keyPath string) error {
 	if dryRun {
 		r.log.AuditInfof(
 			"To immediately revoke %d certificates and block issuance for this key, run with -dry-run=false",
@@ -394,23 +396,26 @@ func privateKeyRevoke(r *revoker, dryRun bool, count int, privateKey crypto.Sign
 		return nil
 	}
 
-	if count >= 1 {
-		// Revoke certificates.
-		r.log.AuditInfof("Attempting to revoke %d certificates", count)
-		err := r.revokeByPrivateKey(context.Background(), privateKey)
-		if err != nil {
-			return fmt.Errorf("while attempting to revoke certificates for the provided key: %s", err)
-		}
-		r.log.AuditInfo("All certificates matching using the provided key have been successfully")
-
-		// Block future issuance.
-		r.log.AuditInfo("Attempting to block issuance for the provided key")
-		err = r.blockByPrivateKey(context.Background(), privateKey)
-		if err != nil {
-			return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
-		}
-		r.log.AuditInfo("All certificates have been successfully revoked and issuance blocked, exiting...")
+	if count <= 0 {
+		// Do not revoke.
+		return nil
 	}
+
+	// Revoke certificates.
+	r.log.AuditInfof("Attempting to revoke %d certificates", count)
+	err := r.revokeByPrivateKey(context.Background(), keyPath)
+	if err != nil {
+		return fmt.Errorf("while attempting to revoke certificates for the provided key: %s", err)
+	}
+	r.log.AuditInfo("All certificates matching using the provided key have been successfully")
+
+	// Block future issuance.
+	r.log.AuditInfo("Attempting to block issuance for the provided key")
+	err = r.blockByPrivateKey(context.Background(), keyPath)
+	if err != nil {
+		return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
+	}
+	r.log.AuditInfo("All certificates have been successfully revoked and issuance blocked, exiting...")
 	return nil
 }
 
@@ -437,16 +442,16 @@ func main() {
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
-	dryRun := flagSet.Bool("dry-run", true, "")
+	dryRun := flagSet.Bool(
+		"dry-run",
+		true,
+		"true (default): only queries for affected certificates. false: will perform the requested block or revoke action",
+	)
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
 
 	if *configFile == "" {
 		usage()
-	}
-
-	if !*dryRun && !(command == "private-key-block" || command == "private-key-revoke") {
-		fmt.Println("The -dry-run flag is only compatible with commands 'private-key-block' and 'private-key-revoke'")
 	}
 
 	var c Config
@@ -516,16 +521,13 @@ func main() {
 
 	case (command == "private-key-block" || command == "private-key-revoke") && len(args) == 1:
 		// 1: keyPath
-		privateKey, err := privatekey.Load(args[0])
-		if err != nil {
-			cmd.Fail(err.Error())
-		}
+		keyPath := args[0]
 
-		err = privatekey.Verify(privateKey)
-		cmd.FailOnError(err, "Failed to validate the provided key pair")
-		r.log.AuditInfo("The provided key pair has been successfully verified")
+		_, publicKey, err := privatekey.Load(keyPath)
+		cmd.FailOnError(err, "Failed to load the provided private key")
+		r.log.AuditInfo("The provided private key has been successfully verified")
 
-		spkiHash, err := getPublicKeySPKIHash(privateKey.Public())
+		spkiHash, err := getPublicKeySPKIHash(publicKey)
 		cmd.FailOnError(err, "While obtaining the SPKI hash for the provided key")
 
 		count, err := r.countCertsMatchingSPKIHash(spkiHash)
@@ -533,12 +535,12 @@ func main() {
 		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
 		if command == "private-key-block" {
-			err := privateKeyBlock(r, *dryRun, count, spkiHash, privateKey)
+			err := privateKeyBlock(r, *dryRun, count, spkiHash, keyPath)
 			cmd.Fail(err.Error())
 		}
 
 		if command == "private-key-revoke" {
-			err := privateKeyRevoke(r, *dryRun, count, privateKey)
+			err := privateKeyRevoke(r, *dryRun, count, keyPath)
 			cmd.Fail(err.Error())
 		}
 

@@ -114,7 +114,11 @@ func LoadCertificate(path string) (*Certificate, error) {
 
 func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 	if location.File != "" {
-		return privatekey.Load(location.File)
+		signer, _, err := privatekey.Load(location.File)
+		if err != nil {
+			return nil, err
+		}
+		return signer, nil
 	}
 
 	var pkcs11Config *pkcs11key.Config
