@@ -993,11 +993,6 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	return order, nil
 }
 
-// NewCertificate requests the issuance of a certificate for the v1 flow.
-func (ra *RegistrationAuthorityImpl) NewCertificate(ctx context.Context, req *rapb.NewCertificateRequest) (*corepb.Certificate, error) {
-	return nil, errors.New("The ACME v1 NewCertificate flow is deprecated")
-}
-
 // To help minimize the chance that an accountID would be used as an order ID
 // (or vice versa) when calling `issueCertificate` we define internal
 // `accountID` and `orderID` types so that callers must explicitly cast.
