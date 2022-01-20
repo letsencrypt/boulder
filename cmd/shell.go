@@ -226,13 +226,11 @@ func FailOnError(err error, msg string) {
 	if err == nil {
 		return
 	}
-	if msg != "" {
-		Fail(fmt.Sprintf("%s: %s", msg, err))
-	}
 	if msg == "" {
 		Fail(err.Error())
+	} else {
+		Fail(fmt.Sprintf("%s: %s", msg, err))
 	}
-
 }
 
 // ReadConfigFile takes a file path as an argument and attempts to
