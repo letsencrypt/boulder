@@ -106,8 +106,10 @@ func Load(keyPath string) (crypto.Signer, crypto.PublicKey, error) {
 	// Attempt to parse the PEM block as a private key in a PKCS #8 container.
 	signer, err := x509.ParsePKCS8PrivateKey(keyDER.Bytes)
 	if err == nil {
-		crytoSigner, _ := signer.(crypto.Signer)
-		return verify(crytoSigner)
+		crytoSigner, ok := signer.(crypto.Signer)
+		if ok {
+			return verify(crytoSigner)
+		}
 	}
 
 	// Attempt to parse the PEM block as a private key in a PKCS #1 container.
