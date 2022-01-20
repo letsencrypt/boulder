@@ -221,11 +221,15 @@ func Fail(msg string) {
 }
 
 // FailOnError exits and prints an error message, but only if we encountered
-// a problem and err != nil
+// a problem and err != nil. err is required but msg can be "".
 func FailOnError(err error, msg string) {
-	if err != nil {
-		msg := fmt.Sprintf("%s: %s", msg, err)
-		Fail(msg)
+	if err == nil {
+		return
+	}
+	if msg == "" {
+		Fail(err.Error())
+	} else {
+		Fail(fmt.Sprintf("%s: %s", msg, err))
 	}
 }
 
