@@ -219,16 +219,6 @@ func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *co
 	return in, nil
 }
 
-func (ra *MockRegistrationAuthority) NewAuthorization(ctx context.Context, in *rapb.NewAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	in.Authz.RegistrationID = in.RegID
-	in.Authz.Id = "bkrPh2u0JUf18-rVBZtOOWWb3GuIiliypL-hBM9Ak1Q"
-	return in.Authz, nil
-}
-
-func (ra *MockRegistrationAuthority) NewCertificate(context.Context, *rapb.NewCertificateRequest, ...grpc.CallOption) (*corepb.Certificate, error) {
-	return &corepb.Certificate{}, nil
-}
-
 func (ra *MockRegistrationAuthority) UpdateRegistration(ctx context.Context, in *rapb.UpdateRegistrationRequest, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	if !bytes.Equal(in.Base.Key, in.Update.Key) {
 		in.Base.Key = in.Update.Key

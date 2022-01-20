@@ -187,13 +187,6 @@ func (t *TLSConfig) Load() (*tls.Config, error) {
 	}, nil
 }
 
-// RPCServerConfig contains configuration particular to a specific RPC server
-// type (e.g. RA, SA, etc)
-type RPCServerConfig struct {
-	Server     string // Queue name where the server receives requests
-	RPCTimeout ConfigDuration
-}
-
 // SyslogConfig defines the config for syslogging.
 type SyslogConfig struct {
 	StdoutLevel int

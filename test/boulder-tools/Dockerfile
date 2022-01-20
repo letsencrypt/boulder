@@ -7,7 +7,6 @@ ARG BUILDPLATFORM
 
 # Copied from https://github.com/docker-library/golang/blob/master/Dockerfile-debian.template
 ENV GOPATH /go
-ENV GOARCH=$TARGETARCH
 ENV PATH $GOPATH/bin:/usr/local/go/bin:/usr/local/protoc/bin:$PATH
 RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
 WORKDIR $GOPATH

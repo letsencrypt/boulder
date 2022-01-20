@@ -221,11 +221,15 @@ func Fail(msg string) {
 }
 
 // FailOnError exits and prints an error message, but only if we encountered
-// a problem and err != nil
+// a problem and err != nil. err is required but msg can be "".
 func FailOnError(err error, msg string) {
-	if err != nil {
-		msg := fmt.Sprintf("%s: %s", msg, err)
-		Fail(msg)
+	if err == nil {
+		return
+	}
+	if msg == "" {
+		Fail(err.Error())
+	} else {
+		Fail(fmt.Sprintf("%s: %s", msg, err))
 	}
 }
 
@@ -250,12 +254,6 @@ func ReadConfigFile(filename string, out interface{}) error {
 func VersionString() string {
 	name := path.Base(os.Args[0])
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
-}
-
-var signalToName = map[os.Signal]string{
-	syscall.SIGTERM: "SIGTERM",
-	syscall.SIGINT:  "SIGINT",
-	syscall.SIGHUP:  "SIGHUP",
 }
 
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback

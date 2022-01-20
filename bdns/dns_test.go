@@ -22,7 +22,6 @@ import (
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"
-const dnsLoopbackHost = "127.0.0.1"
 
 func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)

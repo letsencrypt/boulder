@@ -231,22 +231,11 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, issuer, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, ocspResp, issuer, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
 	issuerID := issuer.Cert.NameID()
-
-	ocspResp, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:   serialHex,
-		IssuerID: int64(issuerID),
-		Status:   string(core.OCSPStatusGood),
-	})
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfof("OCSP Signing failure: serial=[%s] err=[%s]", serialHex, err)
-		return nil, err
-	}
 
 	req := &sapb.AddCertificateRequest{
 		Der:      precertDER,
@@ -391,10 +380,10 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *issuance.Issuer, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *capb.OCSPResponse, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
@@ -402,7 +391,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErr(err.Error())
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	var issuer *issuance.Issuer
@@ -417,22 +406,34 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		}
 		issuer, ok = ca.issuers.byAlg[alg]
 		if !ok {
-			return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
+			return nil, nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 		}
 	} else {
 		issuer, ok = ca.issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
 		if !ok {
-			return nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
+			return nil, nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
 		}
 	}
 
 	if issuer.Cert.NotAfter.Before(validity.NotAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
+
+	// Generate ocsp response before issuing precertificate
+	ocspResp, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+		Serial:   serialHex,
+		IssuerID: int64(issuer.Cert.NameID()),
+		Status:   string(core.OCSPStatusGood),
+	})
+	if err != nil {
+		err = berrors.InternalServerError(err.Error())
+		ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
+		return nil, nil, nil, err
+	}
 
 	ca.log.AuditInfof("Signing: serial=[%s] names=[%s] csr=[%s]",
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
@@ -450,7 +451,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if err != nil {
 		err = berrors.InternalServerError("failed to sign certificate: %s", err)
 		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 
@@ -458,7 +459,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		serialHex, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
 		hex.EncodeToString(certDER))
 
-	return certDER, issuer, nil
+	return certDER, ocspResp, issuer, nil
 }
 
 func (ca *certificateAuthorityImpl) storeCertificate(

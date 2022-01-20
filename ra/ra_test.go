@@ -206,12 +206,7 @@ var (
 
 	Registration = &corepb.Registration{Id: 1}
 
-	AuthzRequest = &rapb.NewAuthorizationRequest{
-		Authz: &corepb.Authorization{
-			Identifier: "not-example.com",
-		},
-		RegID: Registration.Id,
-	}
+	Identifier = "not-example.com"
 
 	log = blog.UseMock()
 )
@@ -227,7 +222,6 @@ var ctx = context.Background()
 // dummyRateLimitConfig satisfies the ratelimit.RateLimitConfig interface while
 // allowing easy mocking of the individual RateLimitPolicy's
 type dummyRateLimitConfig struct {
-	TotalCertificatesPolicy               ratelimit.RateLimitPolicy
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
 	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
@@ -237,10 +231,6 @@ type dummyRateLimitConfig struct {
 	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetFastPolicy      ratelimit.RateLimitPolicy
-}
-
-func (r *dummyRateLimitConfig) TotalCertificates() ratelimit.RateLimitPolicy {
-	return r.TotalCertificatesPolicy
 }
 
 func (r *dummyRateLimitConfig) CertificatesPerName() ratelimit.RateLimitPolicy {
@@ -369,23 +359,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.reuseValidAuthz = true
 
 	return va, sa, ra, fc, cleanUp
-}
-
-func assertAuthzEqual(t *testing.T, a1, a2 *corepb.Authorization) {
-	t.Helper()
-	test.Assert(t, a1.Id == a2.Id, "ret != DB: ID")
-	test.Assert(t, a1.Identifier == a2.Identifier, "ret != DB: Identifier")
-	test.Assert(t, a1.Status == a2.Status, "ret != DB: Status")
-	test.Assert(t, a1.RegistrationID == a2.RegistrationID, "ret != DB: RegID")
-	if a1.Expires == 0 && a2.Expires == 0 {
-		return
-	} else if a1.Expires == 0 || a2.Expires == 0 {
-		t.Errorf("one and only one of authorization's Expires was 0; ret %v, DB %v", a1, a2)
-	} else {
-		test.AssertEquals(t, a1.Expires, a2.Expires)
-	}
-
-	// Not testing: Challenges
 }
 
 func TestValidateContacts(t *testing.T) {
@@ -736,19 +709,11 @@ func TestUpdateRegistrationSame(t *testing.T) {
 	test.AssertNotError(t, err, "Error updating registration")
 }
 
-type mockSAWithBadGetValidAuthz struct {
-	mocks.StorageAuthority
-}
-
-func (m mockSAWithBadGetValidAuthz) GetValidAuthorizations2(ctx context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return nil, fmt.Errorf("mockSAWithBadGetValidAuthz always errors!")
-}
-
 func TestPerformValidationExpired(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authz := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(-2*time.Hour))
+	authz := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(-2*time.Hour))
 
 	_, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authz,
@@ -806,7 +771,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
 	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -866,7 +831,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
 	va.ResultError = fmt.Errorf("Something went wrong")
 
@@ -3136,7 +3101,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	defer cleanUp()
 	ctx := context.Background()
 
-	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "failed to deserialize authz")
 
@@ -3458,29 +3423,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			}
 		})
 	}
-}
-
-type mockSAPreviousValidations struct {
-	mocks.StorageAuthority
-	existsDomain string
-}
-
-func (ms *mockSAPreviousValidations) PreviousCertificateExists(ctx context.Context, req *sapb.PreviousCertificateExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
-	return &sapb.Exists{Exists: req.Domain == ms.existsDomain}, nil
-}
-
-func (ms *mockSAPreviousValidations) GetValidAuthorizations2(_ context.Context, _ *sapb.GetValidAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	return &sapb.Authorizations{}, nil
-}
-
-func (ms *mockSAPreviousValidations) GetPendingAuthorization2(_ context.Context, _ *sapb.GetPendingAuthorizationRequest, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	return nil, berrors.NotFoundError("")
-}
-
-func (ms *mockSAPreviousValidations) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
-	return &sapb.Authorization2IDs{
-		Ids: []int64{1},
-	}, nil
 }
 
 func TestNewOrderMaxNames(t *testing.T) {

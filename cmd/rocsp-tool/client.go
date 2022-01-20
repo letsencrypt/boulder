@@ -138,7 +138,7 @@ func (cl *client) scanFromDB(ctx context.Context, prevID int64, maxID int64, fre
 		var err error
 		currentMin := prevID
 		for currentMin < maxID {
-			currentMin, err = cl.scanFromDBOneBatch(ctx, prevID, frequency, statusesToSign, inflightIDs)
+			currentMin, err = cl.scanFromDBOneBatch(ctx, currentMin, frequency, statusesToSign, inflightIDs)
 			if err != nil {
 				log.Printf("error scanning rows: %s", err)
 			}
@@ -188,11 +188,6 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 		previousID = status.ID
 	}
 	return previousID, nil
-}
-
-type signedResponse struct {
-	der []byte
-	ttl time.Duration
 }
 
 // signAndStoreResponses consumes cert statuses on its input channel and writes them to its output
