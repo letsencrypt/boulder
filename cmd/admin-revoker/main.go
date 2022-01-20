@@ -302,7 +302,23 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 	}
 
 	for i, match := range matches {
-		err := r.revokeBySerial(ctx, match, revocation.Reason(1), true)
+		resp, err := r.sac.GetCertificateStatus(ctx, &sapb.Serial{Serial: match})
+		if err != nil {
+			return fmt.Errorf(
+				"failed to get status for serial %q. Entry %d of %d affected certificates: %s",
+				match,
+				(i + 1),
+				len(matches),
+				err,
+			)
+		}
+
+		if resp.Status != string(core.OCSPStatusGood) {
+			r.log.AuditInfof("serial %q is already revoked, skipping", match)
+			continue
+		}
+
+		err = r.revokeBySerial(ctx, match, revocation.Reason(1), true)
 		if err != nil {
 			return fmt.Errorf(
 				"failed to revoke serial %q. Entry %d of %d affected certificates: %s",
