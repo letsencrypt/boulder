@@ -45,6 +45,7 @@ message AdministrativelyRevokeCertificateRequest {
   string serial = 4;
   int64 code = 2;
   string adminName = 3;
+  bool skipBlockKey = 5;
 }
 
 message NewOrderRequest {
