@@ -46,7 +46,7 @@ func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPReques
 type noopROCSP struct {
 }
 
-func (_ noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte, _ time.Duration) error {
+func (noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte, _ time.Duration) error {
 	return nil
 }
 

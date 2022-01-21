@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
@@ -48,7 +48,7 @@ func SendError(
 	// auditable events. Also, skip the audit log for deadline exceeded errors
 	// since we don't need to keep those long-term. Note that they are still
 	// included in the request logs.
-	deadlineExceeded := ierr == context.DeadlineExceeded || grpc.Code(ierr) == codes.DeadlineExceeded
+	deadlineExceeded := ierr == context.DeadlineExceeded || status.Code(ierr) == codes.DeadlineExceeded
 	if prob.Type == probs.ServerInternalProblem && !deadlineExceeded {
 		if ierr != nil {
 			log.AuditErrf("Internal error - %s - %s", prob.Detail, ierr)

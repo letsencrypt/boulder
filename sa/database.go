@@ -186,8 +186,7 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 // autoincremented value that resulted from the insert. See
 // https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
 func initTables(dbMap *gorp.DbMap) {
-	var regTable *gorp.TableMap
-	regTable = dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
+	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
 
 	regTable.SetVersionCol("LockCol")
 	regTable.ColMap("Key").SetNotNull(true)

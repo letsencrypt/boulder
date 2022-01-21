@@ -88,7 +88,7 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	deadline = deadline.Add(-returnOverhead)
 	remaining := time.Until(deadline)
 	if remaining < meaningfulWorkOverhead {
-		return nil, grpc.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
+		return nil, status.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
 	}
 	var cancel func()
 	ctx, cancel = context.WithDeadline(ctx, deadline)
@@ -166,7 +166,7 @@ func (ci *clientInterceptor) intercept(
 	defer cancel()
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
-	opts = append(opts, grpc.FailFast(false))
+	opts = append(opts, grpc.WaitForReady(true))
 
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
 	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)

@@ -37,7 +37,7 @@ func (m Metadata) String() string {
 func (m Metadata) Marshal() []byte {
 	var output [9]byte
 	output[0] = m.ShortIssuerID
-	var epochSeconds uint64 = uint64(m.ThisUpdate.Unix())
+	epochSeconds := uint64(m.ThisUpdate.Unix())
 	binary.LittleEndian.PutUint64(output[1:], epochSeconds)
 	return output[:]
 }

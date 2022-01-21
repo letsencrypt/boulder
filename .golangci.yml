@@ -4,13 +4,27 @@ linters:
     - errcheck
     - gofmt
     - gosec
+    - gosimple
     - govet
     - ineffassign
     - misspell
     - staticcheck
+    - stylecheck
+    - unused
 linters-settings:
   errcheck:
     ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write
+  gosimple:
+    # S1029: Range over the string directly
+    checks: ["all", "-S1029"]
+  staticcheck:
+    # SA1019: Using a deprecated function, variable, constant or field
+    # SA6003: Converting a string to a slice of runes before ranging over it
+    checks: ["all", "-SA1019", "-SA6003"]
+  stylecheck:
+    # ST1003: Poorly chosen identifier
+    # ST1005: Incorrectly formatted error string
+    checks: ["all", "-ST1003", "-ST1005"]
 issues:
   exclude-rules:
     - linters:
@@ -29,6 +43,3 @@ issues:
       # G501: Blacklisted import `crypto/md5`: weak cryptographic primitive
       # G505: Blacklisted import `crypto/sha1`: weak cryptographic primitive
       text: "G(101|102|107|201|202|306|401|402|403|404|501|505)"
-    - linters:
-      - staticcheck
-      text: "(SA1019|ST1005|ST1013|SA6003|SA5011|S1029|SA2002):"

@@ -33,7 +33,7 @@ func (l *certValidityTooLong) CheckApplies(c *x509.Certificate) bool {
 
 func (l *certValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
 	// CPS 7.1: "DV SSL End Entity Certificate Validity Period: Up to 100 days."
-	maxValidity := 100 * lints.DaySeconds
+	maxValidity := 100 * lints.BRDay
 
 	// RFC 5280 4.1.2.5: "The validity period for a certificate is the period
 	// of time from notBefore through notAfter, inclusive."

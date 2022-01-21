@@ -266,7 +266,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 
 	var tlsErr tls.RecordHeaderError
-	if errors.As(err, &tlsErr) && bytes.Compare(tlsErr.RecordHeader[:], badTLSHeader) == 0 {
+	if errors.As(err, &tlsErr) && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
 		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 

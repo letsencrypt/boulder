@@ -206,12 +206,7 @@ var (
 
 	Registration = &corepb.Registration{Id: 1}
 
-	AuthzRequest = &rapb.NewAuthorizationRequest{
-		Authz: &corepb.Authorization{
-			Identifier: "not-example.com",
-		},
-		RegID: Registration.Id,
-	}
+	Identifier = "not-example.com"
 
 	log = blog.UseMock()
 )
@@ -718,7 +713,7 @@ func TestPerformValidationExpired(t *testing.T) {
 	_, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authz := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(-2*time.Hour))
+	authz := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(-2*time.Hour))
 
 	_, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authz,
@@ -776,7 +771,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	defer cleanUp()
 
 	// We know this is OK because of TestNewAuthorization
-	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
 	va.ResultReturn = &vapb.ValidationResult{
 		Records: []*corepb.ValidationRecord{
@@ -836,7 +831,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	va, sa, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 
 	va.ResultError = fmt.Errorf("Something went wrong")
 
@@ -2184,18 +2179,18 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(ctx context.Context, req *
 
 }
 
-func (sa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
+func (msa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
 	return &sapb.Authorization2IDs{
 		Ids: []int64{5},
 	}, nil
 }
 
-func (sa *mockSAUnsafeAuthzReuse) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+func (msa *mockSAUnsafeAuthzReuse) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	r := req.NewOrder
 	for range req.NewAuthzs {
 		r.V2Authorizations = append(r.V2Authorizations, mrand.Int63())
 	}
-	return sa.NewOrder(ctx, r)
+	return msa.NewOrder(ctx, r)
 }
 
 // TestNewOrderAuthzReuseSafety checks that the RA's safety check for reusing an
@@ -3106,7 +3101,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 	defer cleanUp()
 	ctx := context.Background()
 
-	authzPB := createPendingAuthorization(t, sa, AuthzRequest.Authz.Identifier, fc.Now().Add(12*time.Hour))
+	authzPB := createPendingAuthorization(t, sa, Identifier, fc.Now().Add(12*time.Hour))
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	test.AssertNotError(t, err, "failed to deserialize authz")
 

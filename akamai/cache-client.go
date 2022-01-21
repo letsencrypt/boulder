@@ -96,9 +96,7 @@ func NewCachePurgeClient(
 	}, []string{"type"})
 	stats.MustRegister(purges)
 
-	if strings.HasSuffix(endpoint, "/") {
-		endpoint = endpoint[:len(endpoint)-1]
-	}
+	endpoint = strings.TrimSuffix(endpoint, "/")
 	apiURL, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err

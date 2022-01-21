@@ -174,7 +174,7 @@ func LoadIssuers(input map[string]int) ([]ShortIDIssuer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing issuer.RawSubject: %w", err)
 		}
-		var shortID byte = byte(shortID)
+		shortID := byte(shortID)
 		for _, issuer := range issuers {
 			if issuer.shortID == shortID {
 				return nil, fmt.Errorf("duplicate shortID '%d' in (for %q and %q) in config file", shortID, issuer.subject, subject)
