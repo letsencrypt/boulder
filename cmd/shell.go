@@ -53,9 +53,8 @@ type grpcLogger struct {
 	blog.Logger
 }
 
-// Ensure that fatal logs exit, because we don't use the either the gRPC default
-// logger nor the stdlib default logger, both of which would call os.Exit(1) for
-// us.
+// Ensure that fatal logs exit, because we use neither the gRPC default logger
+// nor the stdlib default logger, both of which would call os.Exit(1) for us.
 func (log grpcLogger) Fatal(args ...interface{}) {
 	log.Error(args...)
 	os.Exit(1)
