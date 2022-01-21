@@ -19,8 +19,8 @@ type dbSource struct {
 	log     blog.Logger
 }
 
-// Define an interface with the needed methods from gorp.
-// This also allows us to simulate MySQL failures by mocking the interface.
+// dbSelector is a limited subset of the db.WrappedMap interface to allow for
+// easier mocking of mysql operations in tests.
 type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
 	WithContext(ctx context.Context) gorp.SqlExecutor

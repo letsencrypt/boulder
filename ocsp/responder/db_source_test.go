@@ -28,46 +28,46 @@ import (
 type mockSqlExecutor struct{}
 
 func (mse mockSqlExecutor) Get(i interface{}, keys ...interface{}) (interface{}, error) {
-	return nil, fmt.Errorf("unimplemented")
+	return nil, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) Insert(list ...interface{}) error {
-	return fmt.Errorf("unimplemented")
+	return errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) Update(list ...interface{}) (int64, error) {
-	return 0, fmt.Errorf("unimplemented")
+	return 0, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) Delete(list ...interface{}) (int64, error) {
-	return 0, fmt.Errorf("unimplemented")
+	return 0, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return nil, fmt.Errorf("unimplemented")
+	return nil, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) Select(i interface{}, query string, args ...interface{}) ([]interface{}, error) {
-	return nil, fmt.Errorf("unimplemented")
+	return nil, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) SelectInt(query string, args ...interface{}) (int64, error) {
-	return 0, fmt.Errorf("unimplemented")
+	return 0, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error) {
-	return sql.NullInt64{}, fmt.Errorf("unimplemented")
+	return sql.NullInt64{}, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) SelectFloat(query string, args ...interface{}) (float64, error) {
-	return 0, fmt.Errorf("unimplemented")
+	return 0, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) SelectNullFloat(query string, args ...interface{}) (sql.NullFloat64, error) {
-	return sql.NullFloat64{}, fmt.Errorf("unimplemented")
+	return sql.NullFloat64{}, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) SelectStr(query string, args ...interface{}) (string, error) {
-	return "", fmt.Errorf("unimplemented")
+	return "", errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) SelectNullStr(query string, args ...interface{}) (sql.NullString, error) {
-	return sql.NullString{}, fmt.Errorf("unimplemented")
+	return sql.NullString{}, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	return fmt.Errorf("unimplemented")
+	return errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return nil, fmt.Errorf("unimplemented")
+	return nil, errors.New("unimplemented")
 }
 func (mse mockSqlExecutor) QueryRow(query string, args ...interface{}) *sql.Row {
 	return nil

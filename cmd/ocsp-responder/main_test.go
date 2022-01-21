@@ -16,7 +16,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/ocsp/responder"
-	ocsp_responder "github.com/letsencrypt/boulder/ocsp/responder"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -60,7 +59,7 @@ func TestMux(t *testing.T) {
 		req.SerialNumber.String():            {Response: resp, Raw: respBytes},
 		doubleSlashReq.SerialNumber.String(): {Response: resp, Raw: respBytes},
 	}
-	src, err := ocsp_responder.NewMemorySource(responses, blog.NewMock())
+	src, err := responder.NewMemorySource(responses, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create inMemorySource")
 
 	h := mux("/foobar/", src, time.Second, stats, blog.NewMock())

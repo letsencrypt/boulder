@@ -10,8 +10,8 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-// An InMemorySource is just a map from serialNumber to Response with no safety
-// checks. Useful for testing.
+// inMemorySource wraps a map from serialNumber to Response and just looks up
+// Responses from that map with no safety checks. Useful for testing.
 type inMemorySource struct {
 	responses map[string]*Response
 	log       blog.Logger

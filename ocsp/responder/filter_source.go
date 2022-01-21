@@ -135,15 +135,8 @@ func (src *filterSource) checkResponse(reqIssuerID issuance.IssuerNameID, resp *
 	// CertID (equivalent to looking up the key hash in src.issuers) against the
 	// Issuer Key Hash contained in the response's CertID. However, the Go OCSP
 	// library does not provide access to the response's CertID, so we can't.
-	// reqIssuerCertID, ok := src.issuers[reqIssuerID]
-	// if !ok {
-	// 	return fmt.Errorf("unrecognized issuer name ID: %d", reqIssuerID)
-	// }
-	// reqIssuerKeyHash := reqIssuerCertID.keyHash
-	// respIssuerKeyHash := resp.CertID.IssuerKeyHash // <-- This doesn't exist
-	// if !bytes.Equal(reqIssuerKeyHash, respIssuerKeyHash) {
-	// 	return fmt.Errorf("responder does not match requested issuer")
-	// }
+	// Specifically, we want to compare `src.issuers[reqIssuerID].keyHash` against
+	// something like resp.CertID.IssuerKeyHash, but the latter does not exist.
 
 	return nil
 }
