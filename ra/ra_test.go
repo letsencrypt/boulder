@@ -2179,18 +2179,18 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(ctx context.Context, req *
 
 }
 
-func (sa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
+func (msa *mockSAUnsafeAuthzReuse) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
 	return &sapb.Authorization2IDs{
 		Ids: []int64{5},
 	}, nil
 }
 
-func (sa *mockSAUnsafeAuthzReuse) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+func (msa *mockSAUnsafeAuthzReuse) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	r := req.NewOrder
 	for range req.NewAuthzs {
 		r.V2Authorizations = append(r.V2Authorizations, mrand.Int63())
 	}
-	return sa.NewOrder(ctx, r)
+	return msa.NewOrder(ctx, r)
 }
 
 // TestNewOrderAuthzReuseSafety checks that the RA's safety check for reusing an

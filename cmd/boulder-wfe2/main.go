@@ -18,7 +18,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/grpc"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -286,23 +285,23 @@ func setupWFE(c Config, logger blog.Logger, stats prometheus.Registerer, clk clo
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
-	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, clientMetrics, clk, grpc.CancelTo408Interceptor)
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, clientMetrics, clk, bgrpc.CancelTo408Interceptor)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(raConn)
 
-	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, clientMetrics, clk, grpc.CancelTo408Interceptor)
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, clientMetrics, clk, bgrpc.CancelTo408Interceptor)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	var rns noncepb.NonceServiceClient
 	npm := map[string]noncepb.NonceServiceClient{}
 	if c.WFE.GetNonceService != nil {
-		rnsConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, clientMetrics, clk, grpc.CancelTo408Interceptor)
+		rnsConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, clientMetrics, clk, bgrpc.CancelTo408Interceptor)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 		rns = noncepb.NewNonceServiceClient(rnsConn)
 		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
 			serviceConfig := serviceConfig
-			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, clientMetrics, clk, grpc.CancelTo408Interceptor)
+			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, clientMetrics, clk, bgrpc.CancelTo408Interceptor)
 			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 			npm[prefix] = noncepb.NewNonceServiceClient(conn)
 		}

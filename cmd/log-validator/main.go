@@ -19,7 +19,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-var invalidChecksumErr = errors.New("invalid checksum length")
+var errInvalidChecksum = errors.New("invalid checksum length")
 
 func lineValid(text string) error {
 	// Line format should match the following rsyslog omfile template:
@@ -53,7 +53,7 @@ func lineValid(text string) error {
 			"%s expected a 7 character base64 raw URL decodable string, got %q: %w",
 			errorPrefix,
 			checksum,
-			invalidChecksumErr,
+			errInvalidChecksum,
 		)
 	}
 
@@ -186,7 +186,7 @@ func main() {
 					continue
 				}
 				if err := lineValid(line.Text); err != nil {
-					if errors.Is(err, invalidChecksumErr) {
+					if errors.Is(err, errInvalidChecksum) {
 						lineCounter.WithLabelValues(t.Filename, "invalid checksum length").Inc()
 					} else {
 						lineCounter.WithLabelValues(t.Filename, "bad").Inc()

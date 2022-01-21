@@ -11,7 +11,7 @@ const (
 	// For the purpose of calculations, a day is measured as 86,400 seconds.
 	// Any amount of time greater than this, including fractional seconds and/or
 	// leap seconds, shall represent an additional day.
-	DaySeconds time.Duration = 86400 * time.Second
+	BRDay time.Duration = 86400 * time.Second
 
 	// Declare our own Sources for use in zlint registry filtering.
 	LetsEncryptCPSAll          lint.LintSource = "LECPSAll"
