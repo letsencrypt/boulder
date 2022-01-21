@@ -66,6 +66,20 @@ func MakeMetadataKey(serial string) string {
 	return fmt.Sprintf("m{%s}", serial)
 }
 
+func SerialFromResponseKey(key string) (string, error) {
+	if len(key) != 39 || key[0:2] != "r{" || key[38:39] != "}" {
+		return "", fmt.Errorf("malformed Redis OCSP response key %q", key)
+	}
+	return key[2:38], nil
+}
+
+func SerialFromMetadataKey(key string) (string, error) {
+	if len(key) != 39 || key[0:2] != "m{" || key[38:39] != "}" {
+		return "", fmt.Errorf("malformed Redis OCSP metadata key %q", key)
+	}
+	return key[2:38], nil
+}
+
 // Client represents a read-only Redis client.
 type Client struct {
 	rdb        *redis.ClusterClient
@@ -269,4 +283,96 @@ func (c *Client) GetMetadata(ctx context.Context, serial string) (*Metadata, err
 
 	c.getLatency.With(prometheus.Labels{"result": "success", "method": "GetMetadata"}).Observe(time.Since(start).Seconds())
 	return &metadata, nil
+}
+
+// ScanResponsesResult represents a single OCSP response entry in redis.
+// `Serial` is the stringified serial number of the response. `Body` is the
+// DER bytes of the response. If this object represents an error, `Err` will
+// be non-nil and the other entries will have their zero values.
+type ScanResponsesResult struct {
+	Serial string
+	Body   []byte
+	Err    error
+}
+
+// ScanResponses scans Redis for all OCSP responses where the serial number matches the provided pattern.
+// It returns immediately and emits results and errors on `<-chan ScanResponsesResult`. It closes the
+// channel when it is done or hits an error.
+func (c *Client) ScanResponses(ctx context.Context, serialPattern string) <-chan ScanResponsesResult {
+	pattern := fmt.Sprintf("r{%s}", serialPattern)
+	results := make(chan ScanResponsesResult)
+	go func() {
+		defer close(results)
+		err := c.rdb.ForEachMaster(ctx, func(ctx context.Context, rdb *redis.Client) error {
+			iter := rdb.Scan(ctx, 0, pattern, 0).Iterator()
+			for iter.Next(ctx) {
+				key := iter.Val()
+				serial, err := SerialFromResponseKey(key)
+				if err != nil {
+					results <- ScanResponsesResult{Err: err}
+					continue
+				}
+				val, err := c.rdb.Get(ctx, key).Result()
+				if err != nil {
+					results <- ScanResponsesResult{Err: fmt.Errorf("getting metadata: %w", err)}
+					continue
+				}
+				results <- ScanResponsesResult{Serial: serial, Body: []byte(val)}
+			}
+			return iter.Err()
+		})
+		if err != nil {
+			results <- ScanResponsesResult{Err: err}
+			return
+		}
+	}()
+	return results
+}
+
+// ScanMetadataResult represents a single OCSP response entry in redis.
+// `Serial` is the stringified serial number of the response. `Metadata` is the
+// parsed metadata. If this object represents an error, `Err` will
+// be non-nil and the other entries will have their zero values.
+type ScanMetadataResult struct {
+	Serial   string
+	Metadata *Metadata
+	Err      error
+}
+
+// ScanMetadata scans Redis for the metadata of all OCSP responses where the serial number matches
+// the provided pattern. It returns immediately and emits results and errors on
+// `<-chan ScanResponsesResult`. It closes the channel when it is done or hits an error.
+func (c *Client) ScanMetadata(ctx context.Context, serialPattern string) <-chan ScanMetadataResult {
+	pattern := fmt.Sprintf("m{%s}", serialPattern)
+	results := make(chan ScanMetadataResult)
+	go func() {
+		defer close(results)
+		var cursor uint64
+		for {
+			var keys []string
+			var err error
+			keys, cursor, err = c.rdb.Scan(ctx, cursor, pattern, 10).Result()
+			if err != nil {
+				results <- ScanMetadataResult{Err: err}
+				return
+			}
+			if cursor == 0 {
+				return
+			}
+			for _, key := range keys {
+				serial, err := SerialFromMetadataKey(key)
+				if err != nil {
+					results <- ScanMetadataResult{Err: err}
+					return
+				}
+				m, err := c.GetMetadata(ctx, serial)
+				if err != nil {
+					results <- ScanMetadataResult{Err: err}
+					return
+				}
+				results <- ScanMetadataResult{Serial: serial, Metadata: m}
+			}
+		}
+	}()
+	return results
 }

@@ -8,12 +8,10 @@ import (
 	"errors"
 	"math/big"
 	"time"
-
-	"github.com/letsencrypt/boulder/x509crl"
 )
 
 func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nextUpdate time.Time, number int64, revokedCertificates []pkix.RevokedCertificate) ([]byte, error) {
-	template := &x509crl.RevocationList{
+	template := &x509.RevocationList{
 		RevokedCertificates: revokedCertificates,
 		Number:              big.NewInt(number),
 		ThisUpdate:          thisUpdate,
@@ -40,7 +38,7 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
 	// we use one that always returns errors in case the internal usage of this reader
 	// changes.
-	crlBytes, err := x509crl.CreateRevocationList(&failReader{}, template, issuer, signer)
+	crlBytes, err := x509.CreateRevocationList(&failReader{}, template, issuer, signer)
 	if err != nil {
 		return nil, err
 	}

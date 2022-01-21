@@ -80,17 +80,6 @@ func (c *logCache) Len() int {
 	return len(c.logs)
 }
 
-// LogURIs returns the URIs of all logs currently in the logCache
-func (c *logCache) LogURIs() []string {
-	c.RLock()
-	defer c.RUnlock()
-	var uris []string
-	for _, l := range c.logs {
-		uris = append(uris, l.uri)
-	}
-	return uris
-}
-
 type logAdaptor struct {
 	blog.Logger
 }

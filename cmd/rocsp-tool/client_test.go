@@ -2,12 +2,14 @@ package notmain
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
+	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/log"
@@ -18,6 +20,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
 )
 
 func makeClient() (*rocsp.WritingClient, clock.Clock) {
@@ -110,4 +113,55 @@ func TestStoreResponse(t *testing.T) {
 	ttl := time.Hour
 	err = cl.storeResponse(context.Background(), response, &ttl)
 	test.AssertNotError(t, err, "storing response")
+}
+
+type mockOCSPGenerator struct{}
+
+func (mog mockOCSPGenerator) GenerateOCSP(ctx context.Context, in *capb.GenerateOCSPRequest, opts ...grpc.CallOption) (*capb.OCSPResponse, error) {
+	return &capb.OCSPResponse{
+		Response: []byte("phthpbt"),
+	}, nil
+
+}
+
+func TestLoadFromDB(t *testing.T) {
+	redisClient, clk := makeClient()
+
+	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	if err != nil {
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+
+	defer test.ResetSATestDatabase(t)
+
+	for i := 0; i < 100; i++ {
+		err = dbMap.Insert(&core.CertificateStatus{
+			Serial:          fmt.Sprintf("%036x", i),
+			OCSPResponse:    []byte("phthpbt"),
+			NotAfter:        clk.Now().Add(200 * time.Hour),
+			OCSPLastUpdated: clk.Now(),
+		})
+		if err != nil {
+			t.Fatalf("Failed to insert certificateStatus: %s", err)
+		}
+	}
+
+	rocspToolClient := client{
+		issuers:       nil,
+		redis:         redisClient,
+		db:            dbMap.Db,
+		ocspGenerator: mockOCSPGenerator{},
+		clk:           clk,
+		scanBatchSize: 10,
+	}
+
+	speed := ProcessingSpeed{
+		RowsPerSecond: 10000,
+		ParallelSigns: 100,
+	}
+
+	err = rocspToolClient.loadFromDB(context.Background(), speed, 0)
+	if err != nil {
+		t.Fatalf("loading from DB: %s", err)
+	}
 }
