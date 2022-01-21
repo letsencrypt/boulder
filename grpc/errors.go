@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	berrors "github.com/letsencrypt/boulder/errors"
 )
@@ -48,9 +49,9 @@ func wrapError(ctx context.Context, err error) error {
 		// fails, we'll still return an error, but it will be interpreted on the
 		// other side as an InternalServerError instead of a more specific one.
 		_ = grpc.SetTrailer(ctx, metadata.Pairs(pairs...))
-		return grpc.Errorf(codes.Unknown, err.Error())
+		return status.Errorf(codes.Unknown, err.Error())
 	}
-	return grpc.Errorf(codes.Unknown, err.Error())
+	return status.Errorf(codes.Unknown, err.Error())
 }
 
 // unwrapError unwraps errors returned from gRPC client calls which were wrapped
@@ -61,50 +62,60 @@ func unwrapError(err error, md metadata.MD) error {
 	if err == nil {
 		return nil
 	}
-	if errTypeStrs, ok := md["errortype"]; ok {
-		unwrappedErr := grpc.ErrorDesc(err)
-		if len(errTypeStrs) != 1 {
-			return berrors.InternalServerError(
-				"multiple errorType metadata, wrapped error %q",
-				unwrappedErr,
-			)
-		}
-		errType, decErr := strconv.Atoi(errTypeStrs[0])
-		if decErr != nil {
-			return berrors.InternalServerError(
-				"failed to decode error type, decoding error %q, wrapped error %q",
-				decErr,
-				unwrappedErr,
-			)
-		}
-		outErr := berrors.New(berrors.ErrorType(errType), unwrappedErr)
-		if subErrsJSON, ok := md["suberrors"]; ok {
-			if len(subErrsJSON) != 1 {
-				return berrors.InternalServerError(
-					"multiple suberrors metadata, wrapped error %q",
-					unwrappedErr,
-				)
-			}
-			var suberrs []berrors.SubBoulderError
-			if err := json.Unmarshal([]byte(subErrsJSON[0]), &suberrs); err != nil {
-				return berrors.InternalServerError(
-					"error unmarshaling suberrs JSON %q, wrapped error %q",
-					subErrsJSON[0],
-					unwrappedErr,
-				)
-			}
-			var berr *berrors.BoulderError
-			if errors.As(outErr, &berr) {
-				outErr = berr.WithSubErrors(suberrs)
-			} else {
-				return fmt.Errorf(
-					"expected type of outErr to be %T got %T: %q",
-					berr, outErr,
-					outErr.Error(),
-				)
-			}
-		}
+
+	unwrappedErr := status.Convert(err).Message()
+
+	errTypeStrs, ok := md["errortype"]
+	if !ok {
+		return err
+	}
+	if len(errTypeStrs) != 1 {
+		return berrors.InternalServerError(
+			"multiple errorType metadata, wrapped error %q",
+			unwrappedErr,
+		)
+	}
+
+	errType, decErr := strconv.Atoi(errTypeStrs[0])
+	if decErr != nil {
+		return berrors.InternalServerError(
+			"failed to decode error type, decoding error %q, wrapped error %q",
+			decErr,
+			unwrappedErr,
+		)
+	}
+	outErr := berrors.New(berrors.ErrorType(errType), unwrappedErr)
+
+	subErrsJSON, ok := md["suberrors"]
+	if !ok {
 		return outErr
 	}
-	return err
+	if len(subErrsJSON) != 1 {
+		return berrors.InternalServerError(
+			"multiple suberrors metadata, wrapped error %q",
+			unwrappedErr,
+		)
+	}
+
+	var suberrs []berrors.SubBoulderError
+	err2 := json.Unmarshal([]byte(subErrsJSON[0]), &suberrs)
+	if err2 != nil {
+		return berrors.InternalServerError(
+			"error unmarshaling suberrs JSON %q, wrapped error %q",
+			subErrsJSON[0],
+			unwrappedErr,
+		)
+	}
+
+	var berr *berrors.BoulderError
+	if errors.As(outErr, &berr) {
+		outErr = berr.WithSubErrors(suberrs)
+	} else {
+		return fmt.Errorf(
+			"expected type of outErr to be %T got %T: %q",
+			berr, outErr,
+			outErr.Error(),
+		)
+	}
+	return outErr
 }

@@ -136,11 +136,11 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 		// us early-return once we successfully parse once.
 		signer, err := x509.ParsePKCS8PrivateKey(keyDER.Bytes)
 		if err == nil {
-			switch signer.(type) {
+			switch signer := signer.(type) {
 			case *rsa.PrivateKey:
-				return signer.(*rsa.PrivateKey), nil
+				return signer, nil
 			case *ecdsa.PrivateKey:
-				return signer.(*ecdsa.PrivateKey), nil
+				return signer, nil
 			}
 		}
 		rsaSigner, err := x509.ParsePKCS1PrivateKey(keyDER.Bytes)

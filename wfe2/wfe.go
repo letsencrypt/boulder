@@ -22,7 +22,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
-	"github.com/letsencrypt/boulder/grpc"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
@@ -162,11 +161,11 @@ func NewWebFrontEndImpl(
 	sac sapb.StorageAuthorityClient,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
-	if issuerCertificates == nil || len(issuerCertificates) == 0 {
+	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
 	}
 
-	if certificateChains == nil || len(certificateChains) == 0 {
+	if len(certificateChains) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one certificate chain")
 	}
 
@@ -627,7 +626,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		beeline.AddFieldToTrace(ctx, "acct.id", acctPB.Id)
 		addRequesterHeader(response, acctPB.Id)
 
-		acct, err := grpc.PbToRegistration(acctPB)
+		acct, err := bgrpc.PbToRegistration(acctPB)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
 			return

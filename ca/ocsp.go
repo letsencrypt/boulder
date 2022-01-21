@@ -206,7 +206,7 @@ func newOCSPLogQueue(
 		wg:        sync.WaitGroup{},
 		depth:     depth,
 		logger:    logger,
-		clk:       clock.Default(),
+		clk:       clock.New(),
 	}
 	olq.wg.Add(1)
 	return &olq

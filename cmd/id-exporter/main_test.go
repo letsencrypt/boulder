@@ -244,7 +244,7 @@ type testCtx struct {
 	cleanUp func()
 }
 
-func (c testCtx) addRegistrations(t *testing.T) {
+func (tc testCtx) addRegistrations(t *testing.T) {
 	emailA := "mailto:" + emailARaw
 	emailB := "mailto:" + emailBRaw
 	emailC := "mailto:" + emailCRaw
@@ -304,17 +304,17 @@ func (c testCtx) addRegistrations(t *testing.T) {
 
 	// Add the four test registrations
 	ctx := context.Background()
-	regA, err = c.ssa.NewRegistration(ctx, regA)
+	regA, err = tc.ssa.NewRegistration(ctx, regA)
 	test.AssertNotError(t, err, "Couldn't store regA")
-	regB, err = c.ssa.NewRegistration(ctx, regB)
+	regB, err = tc.ssa.NewRegistration(ctx, regB)
 	test.AssertNotError(t, err, "Couldn't store regB")
-	regC, err = c.ssa.NewRegistration(ctx, regC)
+	regC, err = tc.ssa.NewRegistration(ctx, regC)
 	test.AssertNotError(t, err, "Couldn't store regC")
-	regD, err = c.ssa.NewRegistration(ctx, regD)
+	regD, err = tc.ssa.NewRegistration(ctx, regD)
 	test.AssertNotError(t, err, "Couldn't store regD")
 }
 
-func (ctx testCtx) addCertificates(t *testing.T) {
+func (tc testCtx) addCertificates(t *testing.T) {
 	serial1 := big.NewInt(1336)
 	serial1String := core.SerialToString(serial1)
 	serial2 := big.NewInt(1337)
@@ -353,9 +353,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	err := ctx.c.dbMap.Insert(certA)
+	err := tc.c.dbMap.Insert(certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = tc.c.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-a",
 		serial1String,
@@ -378,9 +378,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
-	err = ctx.c.dbMap.Insert(certB)
+	err = tc.c.dbMap.Insert(certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = tc.c.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-b",
 		serial2String,
@@ -403,9 +403,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
-	err = ctx.c.dbMap.Insert(certC)
+	err = tc.c.dbMap.Insert(certC)
 	test.AssertNotError(t, err, "Couldn't add certC")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = tc.c.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-c",
 		serial3String,
@@ -428,9 +428,9 @@ func (ctx testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertD.NotAfter,
 		DER:            certDerD,
 	}
-	err = ctx.c.dbMap.Insert(certD)
+	err = tc.c.dbMap.Insert(certD)
 	test.AssertNotError(t, err, "Couldn't add certD")
-	_, err = ctx.c.dbMap.Exec(
+	_, err = tc.c.dbMap.Exec(
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-d",
 		serial4String,

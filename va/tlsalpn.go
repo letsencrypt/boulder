@@ -185,7 +185,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		return validationRecords, problem
 	}
 
-	if !cs.NegotiatedProtocolIsMutual || cs.NegotiatedProtocol != ACMETLS1Protocol {
+	if cs.NegotiatedProtocol != ACMETLS1Protocol {
 		errText := fmt.Sprintf(
 			"Cannot negotiate ALPN protocol %q for %s challenge",
 			ACMETLS1Protocol,

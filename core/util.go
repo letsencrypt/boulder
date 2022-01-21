@@ -148,7 +148,7 @@ func PublicKeysEqual(a, b interface{}) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return bytes.Compare(aBytes, bBytes) == 0, nil
+	return bytes.Equal(aBytes, bBytes), nil
 }
 
 // SerialToString converts a certificate serial number (big.Int) to a String

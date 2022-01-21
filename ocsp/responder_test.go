@@ -259,7 +259,7 @@ func TestCacheHeaders(t *testing.T) {
 		{"Etag", "\"8169FB0843B081A76E9F6F13FD70C8411597BEACF8B182136FFDD19FBD26140A\""},
 	}
 	for _, tc := range testCases {
-		headers, ok := rw.HeaderMap[tc.header]
+		headers, ok := rw.Result().Header[tc.header]
 		if !ok {
 			t.Errorf("Header %s missing from HTTP response", tc.header)
 			continue

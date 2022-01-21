@@ -19,22 +19,19 @@ func (m monitor) start(logger blog.Logger) {
 	ticker := time.NewTicker(m.period)
 	timeout := m.period / 2
 	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				// Attempt to probe the configured target.
-				success, dur := m.prober.Probe(timeout)
+		for range ticker.C {
+			// Attempt to probe the configured target.
+			success, dur := m.prober.Probe(timeout)
 
-				// Produce metrics to be scraped by Prometheus.
-				histObservations.WithLabelValues(
-					m.prober.Name(), m.prober.Kind(), strconv.FormatBool(success),
-				).Observe(dur.Seconds())
+			// Produce metrics to be scraped by Prometheus.
+			histObservations.WithLabelValues(
+				m.prober.Name(), m.prober.Kind(), strconv.FormatBool(success),
+			).Observe(dur.Seconds())
 
-				// Log the outcome of the probe attempt.
-				logger.Infof(
-					"kind=[%s] success=[%v] duration=[%f] name=[%s]",
-					m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
-			}
+			// Log the outcome of the probe attempt.
+			logger.Infof(
+				"kind=[%s] success=[%v] duration=[%f] name=[%s]",
+				m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
 		}
 	}()
 }
