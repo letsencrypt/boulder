@@ -3,7 +3,6 @@ package notmain
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -12,32 +11,11 @@ import (
 
 	"golang.org/x/crypto/ocsp"
 
-	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	"github.com/letsencrypt/boulder/test"
 )
-
-var (
-	issuerID = int64(3568119531)
-	req      = mustRead("./testdata/ocsp.req")
-	resp     = core.CertificateStatus{
-		OCSPResponse:    mustRead("./testdata/ocsp.resp"),
-		IsExpired:       false,
-		OCSPLastUpdated: time.Now(),
-		IssuerID:        issuerID,
-	}
-	stats = metrics.NoopRegisterer
-)
-
-func mustRead(path string) []byte {
-	b, err := ioutil.ReadFile(path)
-	if err != nil {
-		panic(fmt.Sprintf("read %#v: %s", path, err))
-	}
-	return b
-}
 
 func TestMux(t *testing.T) {
 	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
@@ -62,7 +40,7 @@ func TestMux(t *testing.T) {
 	src, err := responder.NewMemorySource(responses, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create inMemorySource")
 
-	h := mux("/foobar/", src, time.Second, stats, blog.NewMock())
+	h := mux("/foobar/", src, time.Second, metrics.NoopRegisterer, blog.NewMock())
 
 	type muxTest struct {
 		method       string

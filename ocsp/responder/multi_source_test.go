@@ -79,9 +79,7 @@ type blockingSource struct {
 }
 
 func (src *blockingSource) Response(context.Context, *ocsp.Request) (*Response, error) {
-	select {
-	case <-src.signal:
-	}
+	<-src.signal
 	return nil, nil
 }
 
