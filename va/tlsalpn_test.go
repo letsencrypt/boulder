@@ -398,18 +398,26 @@ func TestTLSALPN01Success(t *testing.T) {
 		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
 
 	hs.Close()
-	chall = tlsalpnChallenge()
-	hs, err = tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, 0, "localhost")
+}
+
+func TestTLSALPN01ObsoleteFailure(t *testing.T) {
+	// NOTE: unfortunately another document claimed the OID we were using in
+	// draft-ietf-acme-tls-alpn-01 for their own extension and IANA chose to
+	// assign it early. Because of this we had to increment the
+	// id-pe-acmeIdentifier OID. We supported this obsolete OID for a long time,
+	// but no longer do so.
+	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.1
+	// id-pe OID + 30 (acmeIdentifier) + 1 (v1)
+	IdPeAcmeIdentifierV1Obsolete := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
+
+	chall := tlsalpnChallenge()
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, 0, "localhost")
 	test.AssertNotError(t, err, "Error creating test server")
 
-	va, _ = setup(hs, 0, "", nil)
+	va, _ := setup(hs, 0, "", nil)
 
-	_, prob = va.validateChallenge(ctx, dnsi("localhost"), chall)
-	if prob != nil {
-		t.Errorf("Validation failed: %v", prob)
-	}
-	test.AssertMetricWithLabelsEquals(
-		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifierV1Obsolete.String()}, 1)
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	test.AssertNotNil(t, prob, "expected validation to fail")
 }
 
 func TestValidateTLSALPN01BadChallenge(t *testing.T) {

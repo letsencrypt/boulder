@@ -25,14 +25,6 @@ const (
 )
 
 var (
-	// NOTE: unfortunately another document claimed the OID we were using in draft-ietf-acme-tls-alpn-01
-	// for their own extension and IANA chose to assign it early. Because of this we had to increment
-	// the id-pe-acmeIdentifier OID. Since there are in the wild implementations that use the original
-	// OID we still need to support it until everyone is switched over to the new one.
-	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.1
-	// id-pe OID + 30 (acmeIdentifier) + 1 (v1)
-	IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
-
 	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
 	// id-pe OID + 31 (acmeIdentifier)
 	IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
@@ -212,12 +204,8 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	// Verify key authorization in acmeValidation extension
 	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
 	for _, ext := range leafCert.Extensions {
-		if IdPeAcmeIdentifier.Equal(ext.Id) || IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
-			if IdPeAcmeIdentifier.Equal(ext.Id) {
-				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
-			} else {
-				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifierV1Obsolete.String()).Inc()
-			}
+		if IdPeAcmeIdentifier.Equal(ext.Id) {
+			va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
 			if !ext.Critical {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
 					"acmeValidationV1 extension not critical", core.ChallengeTypeTLSALPN01)
