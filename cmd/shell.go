@@ -39,7 +39,7 @@ func init() {
 	}
 }
 
-// mysqlLogger proxies blog.AuditLogger to provide a Print(...) method.
+// mysqlLogger implements the mysql.Logger interface.
 type mysqlLogger struct {
 	blog.Logger
 }
@@ -48,68 +48,75 @@ func (m mysqlLogger) Print(v ...interface{}) {
 	m.AuditErrf("[mysql] %s", fmt.Sprint(v...))
 }
 
+// grpcLogger implements the grpclog.LoggerV2 interface.
 type grpcLogger struct {
 	blog.Logger
 }
 
-// V returns true if the verbosity level l is less than the verbosity we want to
-// log at.
-func (log grpcLogger) V(l int) bool {
-	return l < 0
-}
-
+// Ensure that fatal logs exit, because we use neither the gRPC default logger
+// nor the stdlib default logger, both of which would call os.Exit(1) for us.
 func (log grpcLogger) Fatal(args ...interface{}) {
 	log.Error(args...)
 	os.Exit(1)
 }
 func (log grpcLogger) Fatalf(format string, args ...interface{}) {
-	log.Error(args...)
+	log.Errorf(format, args...)
 	os.Exit(1)
 }
 func (log grpcLogger) Fatalln(args ...interface{}) {
-	log.Error(args...)
+	log.Errorln(args...)
 	os.Exit(1)
 }
 
-func (log grpcLogger) error(output string) {
-	if output == `ccResolverWrapper: error parsing service config: no JSON service config provided` {
-		return
-	}
-	if strings.Contains(output, `Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"`) {
-		return
-	}
-	log.Logger.AuditErr(output)
-}
-
+// Treat all gRPC error logs as potential audit events.
 func (log grpcLogger) Error(args ...interface{}) {
-	log.error(fmt.Sprint(args...))
+	log.Logger.AuditErr(fmt.Sprint(args...))
 }
 func (log grpcLogger) Errorf(format string, args ...interface{}) {
-	log.error(fmt.Sprintf(format, args...))
+	log.Logger.AuditErrf(format, args...)
 }
 func (log grpcLogger) Errorln(args ...interface{}) {
-	log.error(fmt.Sprint(args...))
+	log.Logger.AuditErr(fmt.Sprintln(args...))
 }
 
+// Pass through most Warnings, but filter out a few noisy ones.
 func (log grpcLogger) Warning(args ...interface{}) {
-	log.Error(args...)
+	log.Logger.Warning(fmt.Sprint(args...))
 }
 func (log grpcLogger) Warningf(format string, args ...interface{}) {
-	log.Errorf(format, args...)
+	log.Logger.Warningf(format, args...)
 }
 func (log grpcLogger) Warningln(args ...interface{}) {
-	log.Errorln(args...)
+	msg := fmt.Sprintln(args...)
+	// See https://github.com/letsencrypt/boulder/issues/4628
+	if strings.Contains(msg, `ccResolverWrapper: error parsing service config: no JSON service config provided`) {
+		return
+	}
+	// See https://github.com/letsencrypt/boulder/issues/4379
+	if strings.Contains(msg, `Server.processUnaryRPC failed to write status: connection error: desc = "transport is closing"`) {
+		return
+	}
+	// Since we've already formatted the message, just pass through to .Warning()
+	log.Logger.Warning(msg)
 }
 
 // Don't log any INFO-level gRPC stuff. In practice this is all noise, like
 // failed TXT lookups for service discovery (we only use A records).
-func (log grpcLogger) Info(args ...interface{}) {
-}
-func (log grpcLogger) Infof(format string, args ...interface{}) {
-}
-func (log grpcLogger) Infoln(args ...interface{}) {
+func (log grpcLogger) Info(args ...interface{})                 {}
+func (log grpcLogger) Infof(format string, args ...interface{}) {}
+func (log grpcLogger) Infoln(args ...interface{})               {}
+
+// V returns true if the verbosity level l is less than the verbosity we want to
+// log at.
+func (log grpcLogger) V(l int) bool {
+	// We always return false. This causes gRPC to not log some things which are
+	// only logged conditionally if the logLevel is set below a certain value.
+	// TODO: Use the wrapped log.Logger.stdoutLevel and log.Logger.syslogLevel
+	// to determine a correct return value here.
+	return false
 }
 
+// promLogger implements the promhttp.Logger interface.
 type promLogger struct {
 	blog.Logger
 }
@@ -118,6 +125,7 @@ func (log promLogger) Println(args ...interface{}) {
 	log.AuditErr(fmt.Sprint(args...))
 }
 
+// logWriter implements the io.Writer interface.
 type logWriter struct {
 	blog.Logger
 }
