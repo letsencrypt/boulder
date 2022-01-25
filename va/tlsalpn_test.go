@@ -82,7 +82,7 @@ func tlsalpn01SrvWithCert(
 	names []string,
 	cert *tls.Certificate,
 	acmeCert *tls.Certificate,
-	minTLSVersion uint16) *httptest.Server {
+	tlsVersion uint16) *httptest.Server {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{},
 		ClientAuth:   tls.NoClientCert,
@@ -96,7 +96,8 @@ func tlsalpn01SrvWithCert(
 			return cert, nil
 		},
 		NextProtos: []string{"http/1.1", ACMETLS1Protocol},
-		MinVersion: minTLSVersion,
+		MinVersion: tlsVersion,
+		MaxVersion: tlsVersion,
 	}
 
 	hs := httptest.NewUnstartedServer(http.DefaultServeMux)
@@ -114,7 +115,7 @@ func tlsalpn01Srv(
 	t *testing.T,
 	chall core.Challenge,
 	oid asn1.ObjectIdentifier,
-	minTLSVersion uint16,
+	tlsVersion uint16,
 	names ...string) (*httptest.Server, error) {
 	template := tlsCertTemplate(names)
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
@@ -146,7 +147,7 @@ func tlsalpn01Srv(
 		PrivateKey:  &TheKey,
 	}
 
-	return tlsalpn01SrvWithCert(t, chall, oid, names, cert, acmeCert, minTLSVersion), nil
+	return tlsalpn01SrvWithCert(t, chall, oid, names, cert, acmeCert, tlsVersion), nil
 }
 
 func TestTLSALPN01FailIP(t *testing.T) {
@@ -537,21 +538,46 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 
 }
 
-func TestTLSALPN01TLS13(t *testing.T) {
-	chall := tlsalpnChallenge()
-	// Create a server that uses tls.VersionTLS13 as the minimum supported version
-	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tls.VersionTLS13, "localhost")
-	test.AssertNotError(t, err, "Error creating test server")
-	defer hs.Close()
+func TestTLSALPN01TLSVersion(t *testing.T) {
+	for _, tc := range []struct {
+		version     uint16
+		expectError bool
+	}{
+		{
+			version:     tls.VersionTLS11,
+			expectError: true,
+		},
+		{
+			version:     tls.VersionTLS12,
+			expectError: false,
+		},
+		{
+			version:     tls.VersionTLS13,
+			expectError: false,
+		},
+	} {
+		chall := tlsalpnChallenge()
 
-	va, _ := setup(hs, 0, "", nil)
+		// Create a server that only negotiates the given TLS version
+		hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tc.version, "localhost")
+		test.AssertNotError(t, err, "Error creating test server")
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
-	// Validation should not fail
-	if prob != nil {
-		t.Errorf("Validation failed: %v", prob)
+		va, _ := setup(hs, 0, "", nil)
+
+		_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+		if !tc.expectError {
+			if prob != nil {
+				t.Errorf("expected success, got: %v", prob)
+			}
+			// The correct TLS-ALPN-01 OID counter should have been incremented
+			test.AssertMetricWithLabelsEquals(
+				t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
+		} else {
+			test.AssertNotNil(t, prob, "expected validation error")
+			test.AssertMetricWithLabelsEquals(
+				t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 0)
+		}
+
+		hs.Close()
 	}
-	// The correct TLS-ALPN-01 OID counter should have been incremented
-	test.AssertMetricWithLabelsEquals(
-		t, va.metrics.tlsALPNOIDCounter, prometheus.Labels{"oid": IdPeAcmeIdentifier.String()}, 1)
 }
