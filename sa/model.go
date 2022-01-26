@@ -455,24 +455,24 @@ var uintToIdentifierType = map[uint8]string{
 	0: "dns",
 }
 
-var statusToUint = map[string]uint8{
-	"pending":     0,
-	"valid":       1,
-	"invalid":     2,
-	"deactivated": 3,
-	"revoked":     4,
+var statusToUint = map[core.AcmeStatus]uint8{
+	core.StatusPending:     0,
+	core.StatusValid:       1,
+	core.StatusInvalid:     2,
+	core.StatusDeactivated: 3,
+	core.StatusRevoked:     4,
 }
 
-var uintToStatus = map[uint8]string{
-	0: "pending",
-	1: "valid",
-	2: "invalid",
-	3: "deactivated",
-	4: "revoked",
+var uintToStatus = map[uint8]core.AcmeStatus{
+	0: core.StatusPending,
+	1: core.StatusValid,
+	2: core.StatusInvalid,
+	3: core.StatusDeactivated,
+	4: core.StatusRevoked,
 }
 
 func statusUint(status core.AcmeStatus) uint8 {
-	return statusToUint[string(status)]
+	return statusToUint[status]
 }
 
 // authzFields is used in a variety of places in sa.go, and modifications to
@@ -516,7 +516,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 	am := &authzModel{
 		IdentifierValue: authz.Identifier,
 		RegistrationID:  authz.RegistrationID,
-		Status:          statusToUint[authz.Status],
+		Status:          statusToUint[core.AcmeStatus(authz.Status)],
 		Expires:         time.Unix(0, authz.Expires).UTC(),
 	}
 	if authz.Id != "" {
@@ -642,7 +642,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 	pb := &corepb.Authorization{
 		Id:             fmt.Sprintf("%d", am.ID),
-		Status:         uintToStatus[am.Status],
+		Status:         string(uintToStatus[am.Status]),
 		Identifier:     am.IdentifierValue,
 		RegistrationID: am.RegistrationID,
 		Expires:        am.Expires.UTC().UnixNano(),
