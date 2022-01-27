@@ -2104,7 +2104,7 @@ func TestAuthzModelMapToPB(t *testing.T) {
 		test.AssertEquals(t, authzPB.Id, fmt.Sprintf("%d", model.ID))
 		test.AssertEquals(t, authzPB.Identifier, model.IdentifierValue)
 		test.AssertEquals(t, authzPB.RegistrationID, model.RegistrationID)
-		test.AssertEquals(t, authzPB.Status, uintToStatus[model.Status])
+		test.AssertEquals(t, authzPB.Status, string(uintToStatus[model.Status]))
 		gotTime := time.Unix(0, authzPB.Expires).UTC()
 		if !model.Expires.Equal(gotTime) {
 			t.Errorf("Times didn't match. Got %s, expected %s (%d)", gotTime, model.Expires, authzPB.Expires)
