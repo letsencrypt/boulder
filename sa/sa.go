@@ -1222,9 +1222,8 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 // statusForOrder examines the status of a provided order's authorizations to
 // determine what the overall status of the order should be. In summary:
 //   * If the order has an error, the order is invalid
-//   * If any of the order's authorizations are invalid, the order is invalid.
-//   * If any of the order's authorizations are expired, the order is invalid.
-//   * If any of the order's authorizations are deactivated, the order is invalid.
+//   * If any of the order's authorizations are in any state other than
+//     valid or pending, the order is invalid.
 //   * If any of the order's authorizations are pending, the order is pending.
 //   * If all of the order's authorizations are valid, and there is
 //     a certificate serial, the order is valid.
@@ -1269,23 +1268,24 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// Keep a count of the authorizations seen
-	invalidAuthzs := 0
-	expiredAuthzs := 0
-	deactivatedAuthzs := 0
 	pendingAuthzs := 0
 	validAuthzs := 0
+	otherAuthzs := 0
+	expiredAuthzs := 0
 
 	// Loop over each of the order's authorization objects to examine the authz status
 	for _, info := range authzValidityInfo {
 		switch core.AcmeStatus(info.Status) {
-		case core.StatusInvalid:
-			invalidAuthzs++
-		case core.StatusDeactivated:
-			deactivatedAuthzs++
 		case core.StatusPending:
 			pendingAuthzs++
 		case core.StatusValid:
 			validAuthzs++
+		case core.StatusInvalid:
+			otherAuthzs++
+		case core.StatusDeactivated:
+			otherAuthzs++
+		case core.StatusRevoked:
+			otherAuthzs++
 		default:
 			return "", berrors.InternalServerError(
 				"Order is in an invalid state. Authz has invalid status %s",
@@ -1297,10 +1297,8 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// An order is invalid if **any** of its authzs are invalid, deactivated,
-	// or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
-	if invalidAuthzs > 0 ||
-		expiredAuthzs > 0 ||
-		deactivatedAuthzs > 0 {
+	// revoked, or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
+	if otherAuthzs > 0 || expiredAuthzs > 0 {
 		return string(core.StatusInvalid), nil
 	}
 	// An order is pending if **any** of its authzs are pending
