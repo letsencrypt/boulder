@@ -1222,9 +1222,8 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 // statusForOrder examines the status of a provided order's authorizations to
 // determine what the overall status of the order should be. In summary:
 //   * If the order has an error, the order is invalid
-//   * If any of the order's authorizations are invalid, the order is invalid.
-//   * If any of the order's authorizations are expired, the order is invalid.
-//   * If any of the order's authorizations are deactivated, the order is invalid.
+//   * If any of the order's authorizations are in any state other than
+//     valid or pending, the order is invalid.
 //   * If any of the order's authorizations are pending, the order is pending.
 //   * If all of the order's authorizations are valid, and there is
 //     a certificate serial, the order is valid.
