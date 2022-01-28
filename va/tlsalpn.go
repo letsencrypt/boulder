@@ -201,11 +201,20 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	leafCert := certs[0]
 
 	// The certificate returned must have a subjectAltName extension containing
-	// only the dNSName being validated and no other entries. First check the
-	// simple thing -- that there's only one DNSName and that it is the name that
-	// we expect. Then double-check that the raw extension has no extra bytes by
-	// constructing the extension we expect from just the name that we expect.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
+	// only the dNSName being validated and no other entries.
+	unexpectedSAN := false
+	for _, ext := range leafCert.Extensions {
+		if IdCeSubjectAltName.Equal(ext.Id) {
+			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
+				{Tag: 2, Class: 2, Bytes: []byte(leafCert.DNSNames[0])},
+			})
+			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
+				unexpectedSAN = true
+				break
+			}
+		}
+	}
+	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) || unexpectedSAN {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 		names := certAltNames(leafCert)
 		errText := fmt.Sprintf(
@@ -214,19 +223,6 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 				"first certificate had identifiers %q",
 			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
 		return validationRecords, probs.Unauthorized(errText)
-	}
-	for _, ext := range leafCert.Extensions {
-		if IdCeSubjectAltName.Equal(ext.Id) {
-			asn1SANs, err := asn1.Marshal([]asn1.RawValue{
-				{Tag: 2, Class: 2, Bytes: []byte(leafCert.DNSNames[0])},
-			})
-			if err != nil {
-				return validationRecords, probs.Unauthorized("couldn't create expected SANs")
-			}
-			if !bytes.Equal(asn1SANs, ext.Value) {
-				return validationRecords, probs.Unauthorized("wrong SAN extension")
-			}
-		}
 	}
 
 	// Verify key authorization in acmeValidation extension
