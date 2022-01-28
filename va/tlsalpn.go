@@ -1,6 +1,7 @@
 package va
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -16,8 +17,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
-	"golang.org/x/crypto/cryptobyte"
-	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 const (
@@ -202,27 +201,10 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	leafCert := certs[0]
 
 	// The certificate returned must have a subjectAltName extension containing
-	// only the dNSName being validated and no other entries.
-	for _, ext := range leafCert.Extensions {
-		if IdCeSubjectAltName.Equal(ext.Id) {
-			der := cryptobyte.String(ext.Value)
-			// We need to be able to read the SAN extension
-			if !der.ReadASN1(&der, cryptobyte_asn1.SEQUENCE) {
-				return validationRecords, probs.Unauthorized("Unreadable SAN")
-			}
-			// We try to read one item from the SAN Sequence
-			var san cryptobyte.String
-			var tag cryptobyte_asn1.Tag
-			if !der.ReadAnyASN1(&san, &tag) {
-				return validationRecords, probs.Unauthorized("Unreadable SAN entry")
-			}
-			// If reading that one item left any bytes remaining, then there was more
-			// than one item in the sequence, which is a problem.
-			if !der.Empty() {
-				return validationRecords, probs.Unauthorized("Too many entries in SAN")
-			}
-		}
-	}
+	// only the dNSName being validated and no other entries. First check the
+	// simple thing -- that there's only one DNSName and that it is the name that
+	// we expect. Then double-check that the raw extension has no extra bytes by
+	// constructing the extension we expect from just the name that we expect.
 	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 		names := certAltNames(leafCert)
@@ -232,6 +214,19 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 				"first certificate had identifiers %q",
 			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
 		return validationRecords, probs.Unauthorized(errText)
+	}
+	for _, ext := range leafCert.Extensions {
+		if IdCeSubjectAltName.Equal(ext.Id) {
+			asn1SANs, err := asn1.Marshal([]asn1.RawValue{
+				{Tag: 2, Class: 2, Bytes: []byte(leafCert.DNSNames[0])},
+			})
+			if err != nil {
+				return validationRecords, probs.Unauthorized("couldn't create expected SANs")
+			}
+			if !bytes.Equal(asn1SANs, ext.Value) {
+				return validationRecords, probs.Unauthorized("wrong SAN extension")
+			}
+		}
 	}
 
 	// Verify key authorization in acmeValidation extension
