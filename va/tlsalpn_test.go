@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -80,20 +81,13 @@ func tlsalpn01SrvWithCert(
 	chall core.Challenge,
 	oid asn1.ObjectIdentifier,
 	names []string,
-	cert *tls.Certificate,
 	acmeCert *tls.Certificate,
 	tlsVersion uint16) *httptest.Server {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{},
 		ClientAuth:   tls.NoClientCert,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			if clientHello.ServerName != names[0] {
-				return nil, nil
-			}
-			if len(clientHello.SupportedProtos) == 1 && clientHello.SupportedProtos[0] == ACMETLS1Protocol {
-				return acmeCert, nil
-			}
-			return cert, nil
+			return acmeCert, nil
 		},
 		NextProtos: []string{"http/1.1", ACMETLS1Protocol},
 		MinVersion: tlsVersion,
@@ -118,14 +112,6 @@ func tlsalpn01Srv(
 	tlsVersion uint16,
 	names ...string) (*httptest.Server, error) {
 	template := tlsCertTemplate(names)
-	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-	if err != nil {
-		return nil, err
-	}
-	cert := &tls.Certificate{
-		Certificate: [][]byte{certBytes},
-		PrivateKey:  &TheKey,
-	}
 
 	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
 	encHash, err := asn1.Marshal(shasum[:])
@@ -138,21 +124,23 @@ func tlsalpn01Srv(
 		Value:    encHash,
 	}
 	template.ExtraExtensions = []pkix.Extension{acmeExtension}
-	certBytes, err = x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
 	if err != nil {
 		return nil, err
 	}
+
 	acmeCert := &tls.Certificate{
 		Certificate: [][]byte{certBytes},
 		PrivateKey:  &TheKey,
 	}
 
-	return tlsalpn01SrvWithCert(t, chall, oid, names, cert, acmeCert, tlsVersion), nil
+	return tlsalpn01SrvWithCert(t, chall, oid, names, acmeCert, tlsVersion), nil
 }
 
 func TestTLSALPN01FailIP(t *testing.T) {
 	chall := tlsalpnChallenge()
-	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "expected")
 	test.AssertNotError(t, err, "Error creating test server")
 
 	va, _ := setup(hs, 0, "", nil)
@@ -267,13 +255,13 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 
 func TestTLSALPN01Refused(t *testing.T) {
 	chall := tlsalpnChallenge()
-	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "expected")
 	test.AssertNotError(t, err, "Error creating test server")
 
 	va, _ := setup(hs, 0, "", nil)
 	// Take down validation server and check that validation fails.
 	hs.Close()
-	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateTLSALPN01(ctx, dnsi("expected"), chall)
 	if prob == nil {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
@@ -286,14 +274,14 @@ func TestTLSALPN01Refused(t *testing.T) {
 
 func TestTLSALPN01TalkingToHTTP(t *testing.T) {
 	chall := tlsalpnChallenge()
-	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "expected")
 	test.AssertNotError(t, err, "Error creating test server")
 
 	va, _ := setup(hs, 0, "", nil)
 	httpOnly := httpSrv(t, "")
 	va.tlsPort = getPort(httpOnly)
 
-	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateTLSALPN01(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "TLS-SNI-01 validation passed when talking to a HTTP-only server")
 	expected := "Server only speaks HTTP, not TLS"
 	if !strings.HasSuffix(prob.Detail, expected) {
@@ -318,7 +306,7 @@ func TestTLSError(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil)
 
-	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateTLSALPN01(ctx, dnsi("expected"), chall)
 	if prob == nil {
 		t.Fatalf("TLS validation should have failed: What cert was used?")
 	}
@@ -345,18 +333,10 @@ func TestDNSError(t *testing.T) {
 }
 
 func TestCertNames(t *testing.T) {
-	// We duplicate names inside the SAN set
-	names := []string{
-		"hello.world", "goodbye.world",
-		"hello.world", "goodbye.world",
-		"bonjour.le.monde", "au.revoir.le.monde",
-		"bonjour.le.monde", "au.revoir.le.monde",
-	}
-	// We expect only unique names, in sorted order.
-	expected := []string{
-		"au.revoir.le.monde", "bonjour.le.monde",
-		"goodbye.world", "hello.world",
-	}
+	uri, err := url.Parse("ftp://something.else:1234")
+	test.AssertNotError(t, err, "failed to parse fake URI")
+
+	// We duplicate names inside the fields corresponding to the SAN set
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1337),
 		NotBefore:             time.Now(),
@@ -367,9 +347,36 @@ func TestCertNames(t *testing.T) {
 
 		Subject: pkix.Name{
 			// We also duplicate a name from the SANs as the CN
-			CommonName: names[0],
+			CommonName: "hello.world",
 		},
-		DNSNames: names,
+		DNSNames: []string{
+			"hello.world", "goodbye.world",
+			"hello.world", "goodbye.world",
+			"bonjour.le.monde", "au.revoir.le.monde",
+			"bonjour.le.monde", "au.revoir.le.monde",
+		},
+		EmailAddresses: []string{
+			"hello@world.gov", "hello@world.gov",
+		},
+		IPAddresses: []net.IP{
+			net.ParseIP("192.168.0.1"), net.ParseIP("192.168.0.1"),
+			net.ParseIP("2001:db8::68"), net.ParseIP("2001:db8::68"),
+		},
+		URIs: []*url.URL{
+			uri, uri,
+		},
+	}
+
+	// We expect only unique names, in sorted order.
+	expected := []string{
+		"192.168.0.1",
+		"2001:db8::68",
+		"au.revoir.le.monde",
+		"bonjour.le.monde",
+		"ftp://something.else:1234",
+		"goodbye.world",
+		"hello.world",
+		"hello@world.gov",
 	}
 
 	// Create the certificate, check that certNames provides the expected result
@@ -379,18 +386,18 @@ func TestCertNames(t *testing.T) {
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "Error parsing certificate")
 
-	actual := certNames(cert)
+	actual := certAltNames(cert)
 	test.AssertDeepEquals(t, actual, expected)
 }
 
 func TestTLSALPN01Success(t *testing.T) {
 	chall := tlsalpnChallenge()
-	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost")
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "expected")
 	test.AssertNotError(t, err, "Error creating test server")
 
 	va, _ := setup(hs, 0, "", nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	if prob != nil {
 		t.Errorf("Validation failed: %v", prob)
 	}
@@ -411,12 +418,12 @@ func TestTLSALPN01ObsoleteFailure(t *testing.T) {
 	IdPeAcmeIdentifierV1Obsolete := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
 
 	chall := tlsalpnChallenge()
-	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, 0, "localhost")
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifierV1Obsolete, 0, "expected")
 	test.AssertNotError(t, err, "Error creating test server")
 
 	va, _ := setup(hs, 0, "", nil)
 
-	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertNotNil(t, prob, "expected validation to fail")
 }
 
@@ -425,12 +432,12 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	chall2 := chall
 	setChallengeToken(&chall2, "bad token")
 
-	hs, err := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, 0, "localhost")
+	hs, err := tlsalpn01Srv(t, chall2, IdPeAcmeIdentifier, 0, "expected")
 	test.AssertNotError(t, err, "Error creating test server")
 
 	va, _ := setup(hs, 0, "", nil)
 
-	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateTLSALPN01(ctx, dnsi("expected"), chall)
 
 	if prob == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
@@ -454,7 +461,7 @@ func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
 
 	va, _ := setup(hs, 0, "", nil)
 
-	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateTLSALPN01(ctx, dnsi("expected"), chall)
 	if prob == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
@@ -463,11 +470,11 @@ func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
 
 func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 	chall := tlsalpnChallenge()
-	hs := tlssniSrvWithNames(t, chall, "localhost")
+	hs := tlssniSrvWithNames(t, chall, "expected")
 
 	va, _ := setup(hs, 0, "", nil)
 
-	_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+	_, prob := va.validateTLSALPN01(ctx, dnsi("expected"), chall)
 	if prob == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
@@ -484,7 +491,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 // will result in a problem with the invalid UTF-8.
 func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 	chall := tlsalpnChallenge()
-	_, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "localhost", "\xf0\x28\x8c\xbc")
+	_, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, 0, "expected", "\xf0\x28\x8c\xbc")
 	test.AssertContains(t, err.Error(), "cannot be encoded as an IA5String")
 }
 
@@ -495,13 +502,8 @@ func TestValidateTLSALPN01BadUTFSrv(t *testing.T) {
 func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 	chall := tlsalpnChallenge()
 
-	names := []string{"localhost"}
+	names := []string{"expected"}
 	template := tlsCertTemplate(names)
-	certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
-	cert := &tls.Certificate{
-		Certificate: [][]byte{certBytes},
-		PrivateKey:  &TheKey,
-	}
 
 	wrongTypeDER, _ := asn1.Marshal("a string")
 	wrongLengthDER, _ := asn1.Marshal(make([]byte, 31))
@@ -523,16 +525,16 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 
 	for _, badExt := range badExtensions {
 		template.ExtraExtensions = []pkix.Extension{badExt}
-		certBytes, _ = x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+		certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
 		acmeCert := &tls.Certificate{
 			Certificate: [][]byte{certBytes},
 			PrivateKey:  &TheKey,
 		}
 
-		hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, names, cert, acmeCert, 0)
+		hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, names, acmeCert, 0)
 		va, _ := setup(hs, 0, "", nil)
 
-		_, prob := va.validateTLSALPN01(ctx, dnsi("localhost"), chall)
+		_, prob := va.validateTLSALPN01(ctx, dnsi("expected"), chall)
 		hs.Close()
 
 		if prob == nil {
@@ -567,12 +569,12 @@ func TestTLSALPN01TLSVersion(t *testing.T) {
 		chall := tlsalpnChallenge()
 
 		// Create a server that only negotiates the given TLS version
-		hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tc.version, "localhost")
+		hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tc.version, "expected")
 		test.AssertNotError(t, err, "Error creating test server")
 
 		va, _ := setup(hs, 0, "", nil)
 
-		_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+		_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 		if !tc.expectError {
 			if prob != nil {
 				t.Errorf("expected success, got: %v", prob)
@@ -588,4 +590,76 @@ func TestTLSALPN01TLSVersion(t *testing.T) {
 
 		hs.Close()
 	}
+}
+
+func TestTLSALPN01WrongName(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with a different name from what we're validating
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tls.VersionTLS12, "incorrect")
+	test.AssertNotError(t, err, "failed to set up tls-alpn-01 server")
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	test.AssertError(t, prob, "validation should have failed")
+}
+
+func TestTLSALPN01ExtraNames(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with two names when we only want to validate one.
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tls.VersionTLS12, "expected", "extra")
+	test.AssertNotError(t, err, "failed to set up tls-alpn-01 server")
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	test.AssertError(t, prob, "validation should have failed")
+}
+
+func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with an extra non-dnsName identifier.
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1337),
+		Subject: pkix.Name{
+			Organization: []string{"tests"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().AddDate(0, 0, 1),
+
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		DNSNames:    []string{"expected"},
+		IPAddresses: []net.IP{net.ParseIP("192.168.0.1")},
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, err := asn1.Marshal(shasum[:])
+	test.AssertNotError(t, err, "failed to create key authorization")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+	template.ExtraExtensions = []pkix.Extension{acmeExtension}
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
+
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, []string{"expected"}, acmeCert, tls.VersionTLS12)
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	test.AssertError(t, prob, "validation should have failed")
 }

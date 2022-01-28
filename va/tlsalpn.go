@@ -1,6 +1,7 @@
 package va
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -8,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -28,17 +30,27 @@ var (
 	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
 	// id-pe OID + 31 (acmeIdentifier)
 	IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
+	// OID for the Subject Alternative Name extension, as defined in
+	// https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
+	IdCeSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
 )
 
-// certNames collects up all of a certificate's subject names (Subject CN and
+// certAltNames collects up all of a certificate's subject names (Subject CN and
 // Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
 // error message
-func certNames(cert *x509.Certificate) []string {
+func certAltNames(cert *x509.Certificate) []string {
 	var names []string
 	if cert.Subject.CommonName != "" {
 		names = append(names, cert.Subject.CommonName)
 	}
 	names = append(names, cert.DNSNames...)
+	names = append(names, cert.EmailAddresses...)
+	for _, id := range cert.IPAddresses {
+		names = append(names, id.String())
+	}
+	for _, id := range cert.URIs {
+		names = append(names, id.String())
+	}
 	names = core.UniqueLowerNames(names)
 	return names
 }
@@ -163,6 +175,29 @@ func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string,
 	return conn, nil
 }
 
+func checkExpectedSAN(cert *x509.Certificate, name identifier.ACMEIdentifier) error {
+	if len(cert.DNSNames) != 1 {
+		return errors.New("wrong number of dNSNames")
+	}
+
+	for _, ext := range cert.Extensions {
+		if IdCeSubjectAltName.Equal(ext.Id) {
+			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
+				{Tag: 2, Class: 2, Bytes: []byte(cert.DNSNames[0])},
+			})
+			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
+				return errors.New("SAN extension does not match expected bytes")
+			}
+		}
+	}
+
+	if !strings.EqualFold(cert.DNSNames[0], name.Value) {
+		return errors.New("dNSName does not match expected identifier")
+	}
+
+	return nil
+}
+
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
@@ -189,15 +224,17 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 
 	leafCert := certs[0]
 
-	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
+	// The certificate returned must have a subjectAltName extension containing
+	// only the dNSName being validated and no other entries.
+	err := checkExpectedSAN(leafCert, identifier)
+	if err != nil {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
-		names := certNames(leafCert)
+		names := certAltNames(leafCert)
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
-				"first certificate had names %q",
-			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
+				"first certificate had identifiers %q; got error %s",
+			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "), err)
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
