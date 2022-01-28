@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -174,6 +175,29 @@ func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string,
 	return conn, nil
 }
 
+func checkExpectedSAN(cert *x509.Certificate, name identifier.ACMEIdentifier) error {
+	if len(cert.DNSNames) != 1 {
+		return errors.New("wrong number of dNSNames")
+	}
+
+	for _, ext := range cert.Extensions {
+		if IdCeSubjectAltName.Equal(ext.Id) {
+			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
+				{Tag: 2, Class: 2, Bytes: []byte(cert.DNSNames[0])},
+			})
+			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
+				return errors.New("SAN extension does not match expected bytes")
+			}
+		}
+	}
+
+	if !strings.EqualFold(cert.DNSNames[0], name.Value) {
+		return errors.New("dNSName does not match expected identifier")
+	}
+
+	return nil
+}
+
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
@@ -202,19 +226,8 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 
 	// The certificate returned must have a subjectAltName extension containing
 	// only the dNSName being validated and no other entries.
-	unexpectedSAN := false
-	for _, ext := range leafCert.Extensions {
-		if IdCeSubjectAltName.Equal(ext.Id) {
-			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
-				{Tag: 2, Class: 2, Bytes: []byte(leafCert.DNSNames[0])},
-			})
-			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
-				unexpectedSAN = true
-				break
-			}
-		}
-	}
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) || unexpectedSAN {
+	err := checkExpectedSAN(leafCert, identifier)
+	if err != nil {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 		names := certAltNames(leafCert)
 		errText := fmt.Sprintf(
