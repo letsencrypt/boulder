@@ -16,6 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 const (
@@ -28,6 +30,9 @@ var (
 	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
 	// id-pe OID + 31 (acmeIdentifier)
 	IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
+	// OID for the Subject Alternative Name extension, as defined in
+	// https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
+	IdCeSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
 )
 
 // certAltNames collects up all of a certificate's subject names (Subject CN and
@@ -198,11 +203,27 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 
 	// The certificate returned must have a subjectAltName extension containing
 	// only the dNSName being validated and no other entries.
-	if len(leafCert.EmailAddresses) != 0 ||
-		len(leafCert.IPAddresses) != 0 ||
-		len(leafCert.URIs) != 0 ||
-		len(leafCert.DNSNames) != 1 ||
-		!strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
+	for _, ext := range leafCert.Extensions {
+		if IdCeSubjectAltName.Equal(ext.Id) {
+			der := cryptobyte.String(ext.Value)
+			// We need to be able to read the SAN extension
+			if !der.ReadASN1(&der, cryptobyte_asn1.SEQUENCE) {
+				return validationRecords, probs.Unauthorized("Unreadable SAN")
+			}
+			// We try to read one item from the SAN Sequence
+			var san cryptobyte.String
+			var tag cryptobyte_asn1.Tag
+			if !der.ReadAnyASN1(&san, &tag) {
+				return validationRecords, probs.Unauthorized("Unreadable SAN entry")
+			}
+			// If reading that one item left any bytes remaining, then there was more
+			// than one item in the sequence, which is a problem.
+			if !der.Empty() {
+				return validationRecords, probs.Unauthorized("Too many entries in SAN")
+			}
+		}
+	}
+	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 		names := certAltNames(leafCert)
 		errText := fmt.Sprintf(
