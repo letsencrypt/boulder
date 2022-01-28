@@ -610,6 +610,19 @@ func TestTLSALPN01TLSVersion(t *testing.T) {
 	}
 }
 
+func TestTLSALPN01WrongName(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with a different name from what we're validating
+	hs, err := tlsalpn01Srv(t, chall, IdPeAcmeIdentifier, tls.VersionTLS12, "incorrect")
+	test.AssertNotError(t, err, "failed to set up tls-alpn-01 server")
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
+	test.AssertError(t, prob, "validation should have failed")
+}
+
 func TestTLSALPN01ExtraNames(t *testing.T) {
 	chall := tlsalpnChallenge()
 
