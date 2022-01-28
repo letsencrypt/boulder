@@ -233,8 +233,8 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
-				"first certificate had identifiers %q",
-			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
+				"first certificate had identifiers %q; got error %s",
+			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "), err)
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
