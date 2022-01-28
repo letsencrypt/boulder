@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -345,18 +346,10 @@ func TestDNSError(t *testing.T) {
 }
 
 func TestCertNames(t *testing.T) {
-	// We duplicate names inside the SAN set
-	names := []string{
-		"hello.world", "goodbye.world",
-		"hello.world", "goodbye.world",
-		"bonjour.le.monde", "au.revoir.le.monde",
-		"bonjour.le.monde", "au.revoir.le.monde",
-	}
-	// We expect only unique names, in sorted order.
-	expected := []string{
-		"au.revoir.le.monde", "bonjour.le.monde",
-		"goodbye.world", "hello.world",
-	}
+	uri, err := url.Parse("ftp://something.else:1234")
+	test.AssertNotError(t, err, "failed to parse fake URI")
+
+	// We duplicate names inside the fields corresponding to the SAN set
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1337),
 		NotBefore:             time.Now(),
@@ -367,9 +360,36 @@ func TestCertNames(t *testing.T) {
 
 		Subject: pkix.Name{
 			// We also duplicate a name from the SANs as the CN
-			CommonName: names[0],
+			CommonName: "hello.world",
 		},
-		DNSNames: names,
+		DNSNames: []string{
+			"hello.world", "goodbye.world",
+			"hello.world", "goodbye.world",
+			"bonjour.le.monde", "au.revoir.le.monde",
+			"bonjour.le.monde", "au.revoir.le.monde",
+		},
+		EmailAddresses: []string{
+			"hello@world.gov", "hello@world.gov",
+		},
+		IPAddresses: []net.IP{
+			net.ParseIP("192.168.0.1"), net.ParseIP("192.168.0.1"),
+			net.ParseIP("2001:db8::68"), net.ParseIP("2001:db8::68"),
+		},
+		URIs: []*url.URL{
+			uri, uri,
+		},
+	}
+
+	// We expect only unique names, in sorted order.
+	expected := []string{
+		"192.168.0.1",
+		"2001:db8::68",
+		"au.revoir.le.monde",
+		"bonjour.le.monde",
+		"ftp://something.else:1234",
+		"goodbye.world",
+		"hello.world",
+		"hello@world.gov",
 	}
 
 	// Create the certificate, check that certNames provides the expected result
@@ -379,7 +399,7 @@ func TestCertNames(t *testing.T) {
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "Error parsing certificate")
 
-	actual := certNames(cert)
+	actual := certAltNames(cert)
 	test.AssertDeepEquals(t, actual, expected)
 }
 

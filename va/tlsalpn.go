@@ -30,15 +30,22 @@ var (
 	IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 )
 
-// certNames collects up all of a certificate's subject names (Subject CN and
+// certAltNames collects up all of a certificate's subject names (Subject CN and
 // Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
 // error message
-func certNames(cert *x509.Certificate) []string {
+func certAltNames(cert *x509.Certificate) []string {
 	var names []string
 	if cert.Subject.CommonName != "" {
 		names = append(names, cert.Subject.CommonName)
 	}
 	names = append(names, cert.DNSNames...)
+	names = append(names, cert.EmailAddresses...)
+	for _, id := range cert.IPAddresses {
+		names = append(names, id.String())
+	}
+	for _, id := range cert.URIs {
+		names = append(names, id.String())
+	}
 	names = core.UniqueLowerNames(names)
 	return names
 }
@@ -189,14 +196,19 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 
 	leafCert := certs[0]
 
-	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
+	// The certificate returned must have a subjectAltName extension containing
+	// only the dNSName being validated and no other entries.
+	if len(leafCert.EmailAddresses) != 0 ||
+		len(leafCert.IPAddresses) != 0 ||
+		len(leafCert.URIs) != 0 ||
+		len(leafCert.DNSNames) != 1 ||
+		!strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
-		names := certNames(leafCert)
+		names := certAltNames(leafCert)
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. Received %d certificate(s), "+
-				"first certificate had names %q",
+				"first certificate had identifiers %q",
 			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
 		return validationRecords, probs.Unauthorized(errText)
 	}
