@@ -82,7 +82,11 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 				NotAfter:              parsed.NotAfter,
 				IsExpired:             false,
 				IssuerID:              req.IssuerID,
-			})
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
 
 		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
 		// that it is a renewal) we use just the DNSNames from the certificate and
