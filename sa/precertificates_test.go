@@ -197,4 +197,5 @@ func TestAddPrecertificateStatusFail(t *testing.T) {
 		IssuerID: 1,
 	})
 	test.AssertError(t, err, "adding precert should fail when inserting ocsp fails")
+	test.AssertContains(t, err.Error(), "failed to insert *core.CertificateStatus")
 }
