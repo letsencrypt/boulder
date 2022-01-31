@@ -717,3 +717,56 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 	test.AssertError(t, prob, "validation should have failed")
 	test.AssertContains(t, prob.Error(), "Only a single SubjectAlternativeName extension is allowed")
 }
+
+func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with multiple SAN extensions
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1337),
+		Subject: pkix.Name{
+			Organization: []string{"tests"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().AddDate(0, 0, 1),
+
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		DNSNames: []string{"expected"},
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, err := asn1.Marshal(shasum[:])
+	test.AssertNotError(t, err, "failed to create key authorization")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+
+	extraAcmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+
+	template.ExtraExtensions = []pkix.Extension{acmeExtension, extraAcmeExtension}
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
+
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, []string{"expected"}, acmeCert, tls.VersionTLS12)
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	test.AssertError(t, prob, "validation should have failed")
+	test.AssertContains(t, prob.Error(), "More than one acmeValidationV1 extension.")
+}
