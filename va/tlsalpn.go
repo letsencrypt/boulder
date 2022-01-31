@@ -213,9 +213,7 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 	}
 
 	for _, required := range requiredOIDs {
-		_, requiredOIDisPresent := oidSeen[required.String()]
-
-		if !requiredOIDisPresent {
+		if !oidSeen[required.String()] {
 			return fmt.Errorf("Required extension OID %s is not present", required)
 		}
 	}
