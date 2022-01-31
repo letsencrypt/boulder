@@ -769,5 +769,53 @@ func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
 
 	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
-	test.AssertContains(t, prob.Error(), "More than one acmeValidationV1 extension.")
+	test.AssertContains(t, prob.Error(), "Extension seen twice")
+}
+
+func TestAcceptableExtensions(t *testing.T) {
+	requireAcmeAndSAN := []asn1.ObjectIdentifier{
+		IdPeAcmeIdentifier,
+		IdCeSubjectAltName,
+	}
+
+	var err error
+	subjectAltName := pkix.Extension{}
+	subjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+	subjectAltName.Critical = false
+	subjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+		{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+	})
+	test.AssertNotError(t, err, "failed to marshal SAN")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    []byte{},
+	}
+
+	weirdExt := pkix.Extension{
+		Id:       asn1.ObjectIdentifier{99, 99, 99, 99},
+		Critical: false,
+		Value:    []byte(`because I'm tacky`),
+	}
+
+	doubleAcmeExts := []pkix.Extension{subjectAltName, acmeExtension, acmeExtension}
+	err = checkAcceptableExtensions(doubleAcmeExts, requireAcmeAndSAN)
+	test.AssertError(t, err, "Two ACME extensions isn't okay")
+
+	doubleSANExts := []pkix.Extension{subjectAltName, subjectAltName, acmeExtension}
+	err = checkAcceptableExtensions(doubleSANExts, requireAcmeAndSAN)
+	test.AssertError(t, err, "Two SAN extensions isn't okay")
+
+	onlyUnexpectedExt := []pkix.Extension{weirdExt}
+	err = checkAcceptableExtensions(onlyUnexpectedExt, requireAcmeAndSAN)
+	test.AssertError(t, err, "Missing required extensions")
+
+	okayExts := []pkix.Extension{acmeExtension, subjectAltName}
+	err = checkAcceptableExtensions(okayExts, requireAcmeAndSAN)
+	test.AssertNotError(t, err, "Correct type and number of extensions")
+
+	okayWithUnexpectedExt := []pkix.Extension{weirdExt, acmeExtension, subjectAltName}
+	err = checkAcceptableExtensions(okayWithUnexpectedExt, requireAcmeAndSAN)
+	test.AssertNotError(t, err, "Correct type and number of extensions")
 }
