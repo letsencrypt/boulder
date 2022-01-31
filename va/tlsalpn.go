@@ -247,7 +247,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 
 	leafCert := certs[0]
 
-	// The certificate may only have the subjectAltName and acmeIdentifier
+	// The certificate must have the subjectAltName and acmeIdentifier
 	// extensions, and only one of each.
 	allowedOIDs := []asn1.ObjectIdentifier{
 		IdPeAcmeIdentifier, IdCeSubjectAltName,
