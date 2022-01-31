@@ -7,7 +7,6 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
 	"errors"
@@ -247,52 +246,36 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
-	countAcmeExtensions := 0
-	var acmeExtension *pkix.Extension
-
-	for idx, ext := range leafCert.Extensions {
+	// Verify key authorization in acmeValidation extension
+	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
+	for _, ext := range leafCert.Extensions {
 		if IdPeAcmeIdentifier.Equal(ext.Id) {
-			countAcmeExtensions += 1
-			acmeExtension = &leafCert.Extensions[idx]
+			va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
+			if !ext.Critical {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"acmeValidationV1 extension not critical", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			var extValue []byte
+			rest, err := asn1.Unmarshal(ext.Value, &extValue)
+			if err != nil || len(rest) > 0 || len(h) != len(extValue) {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
+				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
+					"Expected acmeValidationV1 extension value %s for this challenge but got %s",
+					core.ChallengeTypeTLSALPN01, hex.EncodeToString(h[:]), hex.EncodeToString(extValue))
+				return validationRecords, probs.Unauthorized(errText)
+			}
+			return validationRecords, nil
 		}
 	}
 
-	if acmeExtension == nil {
-		errText := fmt.Sprintf(
-			"Incorrect validation certificate for %s challenge. "+
-				"Missing acmeValidationV1 extension.",
-			core.ChallengeTypeTLSALPN01)
-		return validationRecords, probs.Unauthorized(errText)
-	}
-
-	if countAcmeExtensions > 1 {
-		errText := fmt.Sprintf(
-			"Incorrect validation certificate for %s challenge. "+
-				"More than one acmeValidationV1 extension.",
-			core.ChallengeTypeTLSALPN01)
-		return validationRecords, probs.Unauthorized(errText)
-	}
-
-	// Verify key authorization in acmeValidation extension
-	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
-	va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
-	if !acmeExtension.Critical {
-		errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-			"acmeValidationV1 extension not critical", core.ChallengeTypeTLSALPN01)
-		return validationRecords, probs.Unauthorized(errText)
-	}
-	var extValue []byte
-	rest, err := asn1.Unmarshal(acmeExtension.Value, &extValue)
-	if err != nil || len(rest) > 0 || len(h) != len(extValue) {
-		errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-			"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
-		return validationRecords, probs.Unauthorized(errText)
-	}
-	if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
-		errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-			"Expected acmeValidationV1 extension value %s for this challenge but got %s",
-			core.ChallengeTypeTLSALPN01, hex.EncodeToString(h[:]), hex.EncodeToString(extValue))
-		return validationRecords, probs.Unauthorized(errText)
-	}
-	return validationRecords, nil
+	errText := fmt.Sprintf(
+		"Incorrect validation certificate for %s challenge. "+
+			"Missing acmeValidationV1 extension.",
+		core.ChallengeTypeTLSALPN01)
+	return validationRecords, probs.Unauthorized(errText)
 }
