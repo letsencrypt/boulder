@@ -250,26 +250,26 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	countAcmeExtensions := 0
 	var acmeExtension *pkix.Extension
 
-	for _, ext := range leafCert.Extensions {
+	for idx, ext := range leafCert.Extensions {
 		if IdPeAcmeIdentifier.Equal(ext.Id) {
 			countAcmeExtensions += 1
-			acmeExtension = &ext
+			acmeExtension = &leafCert.Extensions[idx]
 		}
 	}
 
 	if acmeExtension == nil {
 		errText := fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Missing acmeValidationV1 extension.",
-		core.ChallengeTypeTLSALPN01)
+			"Incorrect validation certificate for %s challenge. "+
+				"Missing acmeValidationV1 extension.",
+			core.ChallengeTypeTLSALPN01)
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
 	if countAcmeExtensions > 1 {
 		errText := fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"More than one acmeValidationV1 extension.",
-		core.ChallengeTypeTLSALPN01)
+			"Incorrect validation certificate for %s challenge. "+
+				"More than one acmeValidationV1 extension.",
+			core.ChallengeTypeTLSALPN01)
 		return validationRecords, probs.Unauthorized(errText)
 	}
 

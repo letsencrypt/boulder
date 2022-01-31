@@ -697,6 +697,7 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 	subjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
 		{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
 	})
+	test.AssertNotError(t, err, "failed to marshal first SAN")
 
 	extraSubjectAltName := pkix.Extension{}
 	extraSubjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
