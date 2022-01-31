@@ -180,8 +180,12 @@ func checkExpectedSAN(cert *x509.Certificate, name identifier.ACMEIdentifier) er
 		return errors.New("wrong number of dNSNames")
 	}
 
+	countSANExtensions := 0
+
 	for _, ext := range cert.Extensions {
 		if IdCeSubjectAltName.Equal(ext.Id) {
+			countSANExtensions += 1
+
 			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
 				{Tag: 2, Class: 2, Bytes: []byte(cert.DNSNames[0])},
 			})
@@ -193,6 +197,10 @@ func checkExpectedSAN(cert *x509.Certificate, name identifier.ACMEIdentifier) er
 
 	if !strings.EqualFold(cert.DNSNames[0], name.Value) {
 		return errors.New("dNSName does not match expected identifier")
+	}
+
+	if countSANExtensions != 1 {
+		return errors.New("Only a single SubjectAlternativeName extension is allowed")
 	}
 
 	return nil

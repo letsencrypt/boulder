@@ -663,3 +663,59 @@ func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
 	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
 }
+
+func TestTLSALPN01ExtraSANs(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with multiple SAN extensions
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1337),
+		Subject: pkix.Name{
+			Organization: []string{"tests"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().AddDate(0, 0, 1),
+
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, err := asn1.Marshal(shasum[:])
+	test.AssertNotError(t, err, "failed to create key authorization")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+
+	subjectAltName := pkix.Extension{}
+    subjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+    subjectAltName.Critical = false
+    subjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+				{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+			})
+
+	extraSubjectAltName := pkix.Extension{}
+    extraSubjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+    extraSubjectAltName.Critical = false
+    extraSubjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+				{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+			})
+    test.AssertNotError(t, err, "failed to marshal extra SAN")
+
+	template.ExtraExtensions = []pkix.Extension{acmeExtension, subjectAltName, extraSubjectAltName}
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
+
+	fmt.Println(hex.EncodeToString(certBytes))
+
+	cert, err := x509.ParseCertificate(certBytes)
+	test.AssertNotError(t, err, "Error parsing certificate")
+
+	prob := checkExpectedSAN(cert, identifier.DNSIdentifier("expected"))
+	test.AssertError(t, prob, "validation should have failed")
+	test.AssertContains(t, prob.Error(), "Only a single SubjectAlternativeName extension is allowed")
+}
