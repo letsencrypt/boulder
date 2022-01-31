@@ -3,11 +3,9 @@ package notmain
 import (
 	"database/sql"
 	"flag"
-	"fmt"
 	"os"
 	"strings"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/honeycombio/beeline-go"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -26,43 +24,6 @@ type Config struct {
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
-}
-
-func configureDb(dbConfig cmd.DBConfig) (*sql.DB, error) {
-	dsn, err := dbConfig.URL()
-	if err != nil {
-		return nil, fmt.Errorf("while loading DSN from 'DBConnectFile': %s", err)
-	}
-
-	conf, err := mysql.ParseDSN(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("while parsing DSN from 'DBConnectFile': %s", err)
-	}
-
-	// Transaction isolation level 'READ-UNCOMMITTED' trades consistency for
-	// performance.
-	if len(conf.Params) == 0 {
-		conf.Params = map[string]string{
-			"tx_isolation":      "'READ-UNCOMMITTED'",
-			"interpolateParams": "true",
-			"parseTime":         "true",
-		}
-	} else {
-		conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
-		conf.Params["interpolateParams"] = "true"
-		conf.Params["parseTime"] = "true"
-	}
-
-	db, err := sql.Open("mysql", conf.FormatDSN())
-	if err != nil {
-		return nil, fmt.Errorf("couldn't setup database client: %s", err)
-	}
-
-	db.SetMaxOpenConns(dbConfig.MaxOpenConns)
-	db.SetMaxIdleConns(dbConfig.MaxIdleConns)
-	db.SetConnMaxLifetime(dbConfig.ConnMaxLifetime.Duration)
-	db.SetConnMaxIdleTime(dbConfig.ConnMaxIdleTime.Duration)
-	return db, nil
 }
 
 func main() {
@@ -90,26 +51,16 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	db, err := configureDb(conf.DB)
-	cmd.FailOnError(err, "Failed to create database client")
-
-	dbAddr, dbUser, err := conf.DB.DSNAddressAndUser()
-	cmd.FailOnError(err, "Failed to parse DB config")
-
-	sa.InitDBMetrics(db, stats, sa.NewDbSettingsFromDBConfig(conf.DB), dbAddr, dbUser)
+	db, err := sa.InitSqlDb(conf.DB, stats)
+	cmd.FailOnError(err, "Failed to initialize database client")
 
 	var readOnlyDb *sql.DB
 	readOnlyDbDSN, _ := conf.ReadOnlyDB.URL()
 	if readOnlyDbDSN == "" {
 		readOnlyDb = db
 	} else {
-		readOnlyDb, err = configureDb(conf.ReadOnlyDB)
-		cmd.FailOnError(err, "Failed to create read-only database client")
-
-		dbAddr, dbUser, err := conf.ReadOnlyDB.DSNAddressAndUser()
-		cmd.FailOnError(err, "Failed to parse read-only DB config")
-
-		sa.InitDBMetrics(readOnlyDb, stats, sa.NewDbSettingsFromDBConfig(conf.DB), dbAddr, dbUser)
+		readOnlyDb, err = sa.InitSqlDb(conf.ReadOnlyDB, stats)
+		cmd.FailOnError(err, "Failed to initialize read-only database client")
 	}
 
 	clk := cmd.Clock()

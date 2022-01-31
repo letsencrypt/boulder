@@ -103,16 +103,8 @@ func newRevoker(c Config) *revoker {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(raConn)
 
-	dbURL, err := c.Revoker.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Revoker.DB.MaxOpenConns,
-		MaxIdleConns:    c.Revoker.DB.MaxIdleConns,
-		ConnMaxLifetime: c.Revoker.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.Revoker.DB.ConnMaxIdleTime.Duration,
-	}
-	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
-	cmd.FailOnError(err, "Couldn't setup database connection")
+	dbMap, err := sa.InitWrappedDb(c.Revoker.DB, nil, logger)
+	cmd.FailOnError(err, "While initializing dbMap")
 
 	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")

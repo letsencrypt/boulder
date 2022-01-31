@@ -16,7 +16,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -489,29 +488,8 @@ func main() {
 	log := cmd.NewLogger(cfg.Syslog)
 	defer log.AuditPanic()
 
-	// Setup database client.
-	dbURL, err := cfg.NotifyMailer.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
-
-	conf, err := mysql.ParseDSN(dbURL)
-	cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
-
-	// Transaction isolation level READ UNCOMMITTED trades consistency for
-	// performance.
-	if len(conf.Params) == 0 {
-		conf.Params = make(map[string]string)
-	}
-	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
-
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    cfg.NotifyMailer.DB.MaxOpenConns,
-		MaxIdleConns:    cfg.NotifyMailer.DB.MaxIdleConns,
-		ConnMaxLifetime: cfg.NotifyMailer.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: cfg.NotifyMailer.DB.ConnMaxIdleTime.Duration,
-	}
-
-	dbMap, err := sa.NewDbMap(conf.FormatDSN(), dbSettings)
-	cmd.FailOnError(err, "Couldn't create database connection")
+	dbMap, err := sa.InitWrappedDb(cfg.NotifyMailer.DB, nil, log)
+	cmd.FailOnError(err, "While initializing dbMap")
 
 	// Load and parse message body.
 	template, err := template.New("email").ParseFiles(*bodyFile)

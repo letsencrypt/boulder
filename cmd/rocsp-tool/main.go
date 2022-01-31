@@ -11,13 +11,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -111,7 +111,7 @@ func main2() error {
 	var scanBatchSize int
 	if c.ROCSPTool.LoadFromDB != nil {
 		lfd := c.ROCSPTool.LoadFromDB
-		db, err = configureDb(&lfd.DB)
+		db, err = sa.InitSqlDb(lfd.DB, nil)
 		if err != nil {
 			return fmt.Errorf("connecting to DB: %w", err)
 		}
@@ -213,39 +213,6 @@ func configureOCSPGenerator(tlsConf cmd.TLSConfig, grpcConf cmd.GRPCClientConfig
 	caConn, err := bgrpc.ClientSetup(&grpcConf, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	return capb.NewOCSPGeneratorClient(caConn), nil
-}
-
-func configureDb(dbConfig *cmd.DBConfig) (*sql.DB, error) {
-	if dbConfig == nil {
-		return nil, nil
-	}
-	dsn, err := dbConfig.URL()
-	if err != nil {
-		return nil, fmt.Errorf("loading DB URL: %w", err)
-	}
-
-	conf, err := mysql.ParseDSN(dsn)
-	if err != nil {
-		return nil, fmt.Errorf("while parsing DSN from 'DBConnectFile': %s", err)
-	}
-
-	if len(conf.Params) == 0 {
-		conf.Params = make(map[string]string)
-	}
-	conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
-	conf.Params["interpolateParams"] = "true"
-	conf.Params["parseTime"] = "true"
-
-	db, err := sql.Open("mysql", conf.FormatDSN())
-	if err != nil {
-		return nil, fmt.Errorf("couldn't setup database client: %s", err)
-	}
-
-	db.SetMaxOpenConns(dbConfig.MaxOpenConns)
-	db.SetMaxIdleConns(dbConfig.MaxIdleConns)
-	db.SetConnMaxLifetime(dbConfig.ConnMaxLifetime.Duration)
-	db.SetConnMaxIdleTime(dbConfig.ConnMaxIdleTime.Duration)
-	return db, nil
 }
 
 // setDefault sets the target to a default value, if it is zero.
