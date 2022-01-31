@@ -207,7 +207,7 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 
 	for _, ext := range exts {
 		if oidSeen[ext.Id.String()] {
-			return errors.New("Extension seen twice")
+			return errors.New(fmt.Sprintf("Extension OID %s seen twice", ext.Id))
 		}
 		oidSeen[ext.Id.String()] = true
 	}
@@ -216,7 +216,7 @@ func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.Object
 		_, requiredOIDisPresent := oidSeen[required.String()]
 
 		if !requiredOIDisPresent {
-			return errors.New("Required extension is not present")
+			return errors.New(fmt.Sprintf("Required extension OID %s is not present", required))
 		}
 	}
 

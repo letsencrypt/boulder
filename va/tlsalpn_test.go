@@ -722,7 +722,7 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 
 	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
-	test.AssertContains(t, prob.Error(), "Extension seen twice")
+	test.AssertContains(t, prob.Error(), "Extension OID 2.5.29.17 seen twice")
 }
 
 func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
@@ -775,7 +775,7 @@ func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
 
 	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
-	test.AssertContains(t, prob.Error(), "Extension seen twice")
+	test.AssertContains(t, prob.Error(), "Extension OID 1.3.6.1.5.5.7.1.31 seen twice")
 }
 
 func TestAcceptableExtensions(t *testing.T) {
@@ -816,6 +816,7 @@ func TestAcceptableExtensions(t *testing.T) {
 	onlyUnexpectedExt := []pkix.Extension{weirdExt}
 	err = checkAcceptableExtensions(onlyUnexpectedExt, requireAcmeAndSAN)
 	test.AssertError(t, err, "Missing required extensions")
+	test.AssertContains(t, err.Error(), "Required extension OID 1.3.6.1.5.5.7.1.31 is not present")
 
 	okayExts := []pkix.Extension{acmeExtension, subjectAltName}
 	err = checkAcceptableExtensions(okayExts, requireAcmeAndSAN)
