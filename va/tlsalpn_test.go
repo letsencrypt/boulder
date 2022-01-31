@@ -711,12 +711,18 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
 	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
 
-	cert, err := x509.ParseCertificate(certBytes)
-	test.AssertNotError(t, err, "Error parsing certificate")
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
 
-	prob := checkExpectedSAN(cert, identifier.DNSIdentifier("expected"))
+	hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, []string{"expected"}, acmeCert, tls.VersionTLS12)
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
-	test.AssertContains(t, prob.Error(), "Only a single SubjectAlternativeName extension is allowed")
+	test.AssertContains(t, prob.Error(), "Extension seen twice")
 }
 
 func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
