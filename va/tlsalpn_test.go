@@ -692,25 +692,23 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 	}
 
 	subjectAltName := pkix.Extension{}
-    subjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
-    subjectAltName.Critical = false
-    subjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
-				{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
-			})
+	subjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+	subjectAltName.Critical = false
+	subjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+		{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+	})
 
 	extraSubjectAltName := pkix.Extension{}
-    extraSubjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
-    extraSubjectAltName.Critical = false
-    extraSubjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
-				{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
-			})
-    test.AssertNotError(t, err, "failed to marshal extra SAN")
+	extraSubjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+	extraSubjectAltName.Critical = false
+	extraSubjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+		{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+	})
+	test.AssertNotError(t, err, "failed to marshal extra SAN")
 
 	template.ExtraExtensions = []pkix.Extension{acmeExtension, subjectAltName, extraSubjectAltName}
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
 	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
-
-	fmt.Println(hex.EncodeToString(certBytes))
 
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "Error parsing certificate")
