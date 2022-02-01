@@ -60,13 +60,16 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		var row struct {
 			Count int64
 		}
-		if err := txWithCtx.SelectOne(&row, "SELECT count(1) as count FROM precertificates WHERE serial=?", serialHex); err != nil {
+		err := txWithCtx.SelectOne(&row, "SELECT count(1) as count FROM precertificates WHERE serial=?", serialHex)
+		if err != nil {
 			return nil, err
 		}
 		if row.Count > 0 {
 			return nil, berrors.DuplicateError("cannot add a duplicate cert")
 		}
-		if err := txWithCtx.Insert(preCertModel); err != nil {
+
+		err = txWithCtx.Insert(preCertModel)
+		if err != nil {
 			return nil, err
 		}
 
@@ -100,10 +103,14 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		if err != nil {
 			return nil, err
 		}
-		if err := addIssuedNames(txWithCtx, parsed, isRenewal); err != nil {
+
+		err = addIssuedNames(txWithCtx, parsed, isRenewal)
+		if err != nil {
 			return nil, err
 		}
-		if err := addKeyHash(txWithCtx, parsed); err != nil {
+
+		err = addKeyHash(txWithCtx, parsed)
+		if err != nil {
 			return nil, err
 		}
 
