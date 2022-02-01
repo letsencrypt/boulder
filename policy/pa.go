@@ -326,7 +326,8 @@ func ValidEmail(address string) error {
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	if err := ValidDomain(domain); err != nil {
+	err = ValidDomain(domain)
+	if err != nil {
 		return berrors.InvalidEmailError(
 			"contact email %q has invalid domain : %s",
 			email.Address, err)
@@ -368,12 +369,14 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 	}
 	domain := id.Value
 
-	if err := ValidDomain(domain); err != nil {
+	err := ValidDomain(domain)
+	if err != nil {
 		return err
 	}
 
 	// Require no match against hostname block lists
-	if err := pa.checkHostLists(domain); err != nil {
+	err = pa.checkHostLists(domain)
+	if err != nil {
 		return err
 	}
 
@@ -402,7 +405,8 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
 	var subErrors []berrors.SubBoulderError
 	for _, ident := range idents {
-		if err := pa.willingToIssueWildcard(ident); err != nil {
+		err := pa.willingToIssueWildcard(ident)
+		if err != nil {
 			var bErr *berrors.BoulderError
 			if errors.As(err, &bErr) {
 				subErrors = append(subErrors, berrors.SubBoulderError{
@@ -479,7 +483,8 @@ func (pa *AuthorityImpl) willingToIssueWildcard(ident identifier.ACMEIdentifier)
 			return errICANNTLDWildcard
 		}
 		// The base domain can't be in the wildcard exact blocklist
-		if err := pa.checkWildcardHostList(baseDomain); err != nil {
+		err = pa.checkWildcardHostList(baseDomain)
+		if err != nil {
 			return err
 		}
 		// Check that the PA is willing to issue for the base domain

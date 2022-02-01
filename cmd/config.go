@@ -230,7 +230,8 @@ func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 // parser (vs. the JSON parser).
 func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
-	if err := unmarshal(&s); err != nil {
+	err := unmarshal(&s)
+	if err != nil {
 		return err
 	}
 	dur, err := time.ParseDuration(s)

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/yaml.v2"
 )
 
@@ -54,8 +55,11 @@ func TestDNSConf_validateServer(t *testing.T) {
 			c := DNSConf{
 				Server: tt.fields.Server,
 			}
-			if err := c.validateServer(); (err != nil) != tt.wantErr {
-				t.Errorf("DNSConf.validateServer() error = %v, wantErr %v", err, tt.wantErr)
+			err := c.validateServer()
+			if tt.wantErr {
+				test.AssertError(t, err, "DNSConf.validateServer() should have errored")
+			} else {
+				test.AssertNotError(t, err, "DNSConf.validateServer() shouldn't have errored")
 			}
 		})
 	}
@@ -84,8 +88,11 @@ func TestDNSConf_validateQType(t *testing.T) {
 			c := DNSConf{
 				QType: tt.fields.QType,
 			}
-			if err := c.validateQType(); (err != nil) != tt.wantErr {
-				t.Errorf("DNSConf.validateQType() error = %v, wantErr %v", err, tt.wantErr)
+			err := c.validateQType()
+			if tt.wantErr {
+				test.AssertError(t, err, "DNSConf.validateQType() should have errored")
+			} else {
+				test.AssertNotError(t, err, "DNSConf.validateQType() shouldn't have errored")
 			}
 		})
 	}
@@ -111,8 +118,11 @@ func TestDNSConf_validateProto(t *testing.T) {
 			c := DNSConf{
 				Proto: tt.fields.Proto,
 			}
-			if err := c.validateProto(); (err != nil) != tt.wantErr {
-				t.Errorf("DNSConf.validateProto() error = %v, wantErr %v", err, tt.wantErr)
+			err := c.validateProto()
+			if tt.wantErr {
+				test.AssertError(t, err, "DNSConf.validateProto() should have errored")
+			} else {
+				test.AssertNotError(t, err, "DNSConf.validateProto() shouldn't have errored")
 			}
 		})
 	}
@@ -147,8 +157,11 @@ func TestDNSConf_MakeProber(t *testing.T) {
 				QName:   tt.fields.QName,
 				QType:   tt.fields.QType,
 			}
-			if _, err := c.MakeProber(); (err != nil) != tt.wantErr {
-				t.Errorf("HTTPConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			_, err := c.MakeProber()
+			if tt.wantErr {
+				test.AssertError(t, err, "DNSConf.MakeProber() should have errored")
+			} else {
+				test.AssertNotError(t, err, "DNSConf.MakeProber() shouldn't have errored")
 			}
 		})
 	}

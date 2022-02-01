@@ -667,7 +667,8 @@ func TestIndex(t *testing.T) {
 // object.
 func randomDirectoryKeyPresent(t *testing.T, buf []byte) bool {
 	var dir map[string]interface{}
-	if err := json.Unmarshal(buf, &dir); err != nil {
+	err := json.Unmarshal(buf, &dir)
+	if err != nil {
 		t.Errorf("Failed to unmarshal directory: %s", err)
 	}
 	for _, v := range dir {

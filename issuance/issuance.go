@@ -596,7 +596,8 @@ type IssuanceRequest struct {
 // is not signed using the issuer's key.
 func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	// check request is valid according to the issuance profile
-	if err := i.Profile.requestValid(i.Clk, req); err != nil {
+	err := i.Profile.requestValid(i.Clk, req)
+	if err != nil {
 		return nil, err
 	}
 

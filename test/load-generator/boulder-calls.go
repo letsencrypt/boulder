@@ -395,7 +395,8 @@ func fulfillOrder(s *State, ctx *context) error {
 		}
 
 		// Complete the authorization by solving a challenge
-		if err := completeAuthorization(authz, s, ctx); err != nil {
+		err = completeAuthorization(authz, s, ctx)
+		if err != nil {
 			return err
 		}
 	}

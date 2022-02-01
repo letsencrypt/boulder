@@ -103,7 +103,8 @@ func authenticateClient(t *testing.T, conn net.Conn) {
 	// failures will be caught on the connecting
 	// side
 	_, _ = conn.Write([]byte("220 smtp.example.com ESMTP\n"))
-	if err := expect(t, buf, "EHLO localhost"); err != nil {
+	err := expect(t, buf, "EHLO localhost")
+	if err != nil {
 		return
 	}
 
@@ -111,7 +112,8 @@ func authenticateClient(t *testing.T, conn net.Conn) {
 	_, _ = conn.Write([]byte("250-AUTH PLAIN LOGIN\n"))
 	_, _ = conn.Write([]byte("250 8BITMIME\n"))
 	// Base64 encoding of "\0user@example.com\0passwd"
-	if err := expect(t, buf, "AUTH PLAIN AHVzZXJAZXhhbXBsZS5jb20AcGFzc3dk"); err != nil {
+	err = expect(t, buf, "AUTH PLAIN AHVzZXJAZXhhbXBsZS5jb20AcGFzc3dk")
+	if err != nil {
 		return
 	}
 	_, _ = conn.Write([]byte("235 2.7.0 Authentication successful\n"))
@@ -147,7 +149,8 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
-		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+		err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME")
+		if err != nil {
 			return
 		}
 
@@ -164,12 +167,14 @@ func disconnectHandler(closeFirst int, goodbyeMsg string) connHandler {
 		}
 		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
 
-		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+		err = expect(t, buf, "RCPT TO:<hi@bye.com>")
+		if err != nil {
 			return
 		}
 		_, _ = conn.Write([]byte("250 Tell Me More \r\n"))
 
-		if err := expect(t, buf, "DATA"); err != nil {
+		err = expect(t, buf, "DATA")
+		if err != nil {
 			return
 		}
 		_, _ = conn.Write([]byte("354 Cool Data\r\n"))
@@ -188,17 +193,20 @@ func badEmailHandler(messagesToProcess int) connHandler {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
-		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+		err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME")
+		if err != nil {
 			return
 		}
 
 		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
 
-		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+		err = expect(t, buf, "RCPT TO:<hi@bye.com>")
+		if err != nil {
 			return
 		}
 		_, _ = conn.Write([]byte("401 4.1.3 Bad recipient address syntax\r\n"))
-		if err := expect(t, buf, "RSET"); err != nil {
+		err = expect(t, buf, "RSET")
+		if err != nil {
 			return
 		}
 		_, _ = conn.Write([]byte("250 Ok yr rset now\r\n"))
@@ -224,7 +232,8 @@ func rstHandler(rstFirst int) connHandler {
 		authenticateClient(t, tlsConn)
 
 		buf := bufio.NewReader(tlsConn)
-		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+		err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME")
+		if err != nil {
 			return
 		}
 		// Set the socket of the listening connection to abruptively
@@ -240,12 +249,14 @@ func rstHandler(rstFirst int) connHandler {
 		}
 		_, _ = tlsConn.Write([]byte("250 Sure. Go on. \r\n"))
 
-		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+		err = expect(t, buf, "RCPT TO:<hi@bye.com>")
+		if err != nil {
 			return
 		}
 		_, _ = tlsConn.Write([]byte("250 Tell Me More \r\n"))
 
-		if err := expect(t, buf, "DATA"); err != nil {
+		err = expect(t, buf, "DATA")
+		if err != nil {
 			return
 		}
 		_, _ = tlsConn.Write([]byte("354 Cool Data\r\n"))
@@ -406,19 +417,22 @@ func TestOtherError(t *testing.T) {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
-		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+		err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME")
+		if err != nil {
 			return
 		}
 
 		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
 
-		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+		err = expect(t, buf, "RCPT TO:<hi@bye.com>")
+		if err != nil {
 			return
 		}
 
 		_, _ = conn.Write([]byte("999 1.1.1 This would probably be bad?\r\n"))
 
-		if err := expect(t, buf, "RSET"); err != nil {
+		err = expect(t, buf, "RSET")
+		if err != nil {
 			return
 		}
 
@@ -453,19 +467,22 @@ func TestOtherError(t *testing.T) {
 		authenticateClient(t, conn)
 
 		buf := bufio.NewReader(conn)
-		if err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME"); err != nil {
+		err := expect(t, buf, "MAIL FROM:<<you-are-a-winner@example.com>> BODY=8BITMIME")
+		if err != nil {
 			return
 		}
 
 		_, _ = conn.Write([]byte("250 Sure. Go on. \r\n"))
 
-		if err := expect(t, buf, "RCPT TO:<hi@bye.com>"); err != nil {
+		err = expect(t, buf, "RCPT TO:<hi@bye.com>")
+		if err != nil {
 			return
 		}
 
 		_, _ = conn.Write([]byte("999 1.1.1 This would probably be bad?\r\n"))
 
-		if err := expect(t, buf, "RSET"); err != nil {
+		err = expect(t, buf, "RSET")
+		if err != nil {
 			return
 		}
 

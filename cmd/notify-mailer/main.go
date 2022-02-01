@@ -70,7 +70,8 @@ func (i *interval) includes(s string) bool {
 
 // ok ensures that both the `targetRange` and `sleepInterval` are valid.
 func (m *mailer) ok() error {
-	if err := m.targetRange.ok(); err != nil {
+	err := m.targetRange.ok()
+	if err != nil {
 		return err
 	}
 
@@ -103,7 +104,8 @@ func sortAddresses(input addressToRecipientMap) []string {
 }
 
 func (m *mailer) run() error {
-	if err := m.ok(); err != nil {
+	err := m.ok()
+	if err != nil {
 		return err
 	}
 
@@ -151,7 +153,8 @@ func (m *mailer) run() error {
 			continue
 		}
 
-		if err := policy.ValidEmail(address); err != nil {
+		err := policy.ValidEmail(address)
+		if err != nil {
 			m.log.Infof("Skipping %q due to policy violation: %s", address, err)
 			continue
 		}
@@ -169,7 +172,7 @@ func (m *mailer) run() error {
 			return errors.New("message body was empty after interpolation")
 		}
 
-		err := m.mailer.SendMail([]string{address}, m.subject, messageBody.String())
+		err = m.mailer.SendMail([]string{address}, m.subject, messageBody.String())
 		if err != nil {
 			var badAddrErr bmail.BadAddressSMTPError
 			if errors.As(err, &badAddrErr) {

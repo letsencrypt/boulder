@@ -36,9 +36,8 @@ func TestIntervalOK(t *testing.T) {
 	}
 
 	badInterval := interval{start: "bb", end: "aa"}
-	if err := badInterval.ok(); err == nil {
-		t.Errorf("Bad interval %#v was considered ok", badInterval)
-	}
+	err := badInterval.ok()
+	test.AssertError(t, err, "bad interval was considered ok")
 }
 
 func setupMakeRecipientList(t *testing.T, contents string) string {

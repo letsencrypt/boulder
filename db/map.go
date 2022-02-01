@@ -226,7 +226,8 @@ func (we WrappedExecutor) Get(holder interface{}, keys ...interface{}) (interfac
 }
 
 func (we WrappedExecutor) Insert(list ...interface{}) error {
-	if err := we.SqlExecutor.Insert(list...); err != nil {
+	err := we.SqlExecutor.Insert(list...)
+	if err != nil {
 		return errForOp("insert", err, list)
 	}
 	return nil
@@ -257,7 +258,8 @@ func (we WrappedExecutor) Select(holder interface{}, query string, args ...inter
 }
 
 func (we WrappedExecutor) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	if err := we.SqlExecutor.SelectOne(holder, query, args...); err != nil {
+	err := we.SqlExecutor.SelectOne(holder, query, args...)
+	if err != nil {
 		return errForQuery(query, "select one", err, []interface{}{holder})
 	}
 	return nil

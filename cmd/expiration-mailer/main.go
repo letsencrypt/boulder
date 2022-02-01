@@ -241,7 +241,8 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			} else if renewed {
 				m.log.Debugf("Cert %s is already renewed", cert.Serial)
 				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
-				if err := m.updateCertStatus(cert.Serial); err != nil {
+				err := m.updateCertStatus(cert.Serial)
+				if err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
 					m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
 				}

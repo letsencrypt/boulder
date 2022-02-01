@@ -199,7 +199,8 @@ func (log *impl) auditAtLevel(level syslog.Priority, msg string) {
 // AuditPanic catches panicking executables. This method should be added
 // in a defer statement as early as possible
 func (log *impl) AuditPanic() {
-	if err := recover(); err != nil {
+	err := recover()
+	if err != nil {
 		buf := make([]byte, 8192)
 		log.AuditErrf("Panic caused by err: %s", err)
 

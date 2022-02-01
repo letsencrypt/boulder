@@ -277,14 +277,16 @@ var ErrNoObject = errors.New("no objects found matching provided template")
 // In the case where zero or more than one objects are found to match the
 // template an error is returned.
 func (s *Session) FindObject(tmpl []*pkcs11.Attribute) (pkcs11.ObjectHandle, error) {
-	if err := s.Module.FindObjectsInit(s.Session, tmpl); err != nil {
+	err := s.Module.FindObjectsInit(s.Session, tmpl)
+	if err != nil {
 		return 0, err
 	}
 	handles, _, err := s.Module.FindObjects(s.Session, 2)
 	if err != nil {
 		return 0, err
 	}
-	if err := s.Module.FindObjectsFinal(s.Session); err != nil {
+	err = s.Module.FindObjectsFinal(s.Session)
+	if err != nil {
 		return 0, err
 	}
 	if len(handles) == 0 {

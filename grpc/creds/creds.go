@@ -204,13 +204,15 @@ func (tc *serverTransportCredentials) ServerHandshake(rawConn net.Conn) (net.Con
 	// Perform the server <- client TLS handshake. This will validate the peer's
 	// client certificate.
 	conn := tls.Server(rawConn, tc.serverConfig)
-	if err := conn.Handshake(); err != nil {
+	err := conn.Handshake()
+	if err != nil {
 		return nil, nil, err
 	}
 
 	// In addition to the validation from `conn.Handshake()` we apply further
 	// constraints on what constitutes a valid peer
-	if err := tc.validateClient(conn.ConnectionState()); err != nil {
+	err = tc.validateClient(conn.ConnectionState())
+	if err != nil {
 		return nil, nil, err
 	}
 
