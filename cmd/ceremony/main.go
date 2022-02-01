@@ -106,25 +106,30 @@ type rootConfig struct {
 }
 
 func (rc rootConfig) validate() error {
-	if err := rc.PKCS11.validate(); err != nil {
+	err := rc.PKCS11.validate()
+	if err != nil {
 		return err
 	}
 
 	// Key gen fields
-	if err := rc.Key.validate(); err != nil {
+	err = rc.Key.validate()
+	if err != nil {
 		return err
 	}
 
 	// Output fields
-	if err := checkOutputFile(rc.Outputs.PublicKeyPath, "public-key-path"); err != nil {
+	err = checkOutputFile(rc.Outputs.PublicKeyPath, "public-key-path")
+	if err != nil {
 		return err
 	}
-	if err := checkOutputFile(rc.Outputs.CertificatePath, "certificate-path"); err != nil {
+	err = checkOutputFile(rc.Outputs.CertificatePath, "certificate-path")
+	if err != nil {
 		return err
 	}
 
 	// Certificate profile
-	if err := rc.CertProfile.verifyProfile(rootCert); err != nil {
+	err = rc.CertProfile.verifyProfile(rootCert)
+	if err != nil {
 		return err
 	}
 
@@ -164,7 +169,8 @@ type intermediateConfig struct {
 }
 
 func (ic intermediateConfig) validate(ct certType) error {
-	if err := ic.PKCS11.validate(); err != nil {
+	err := ic.PKCS11.validate()
+	if err != nil {
 		return err
 	}
 
@@ -177,12 +183,14 @@ func (ic intermediateConfig) validate(ct certType) error {
 	}
 
 	// Output fields
-	if err := checkOutputFile(ic.Outputs.CertificatePath, "certificate-path"); err != nil {
+	err = checkOutputFile(ic.Outputs.CertificatePath, "certificate-path")
+	if err != nil {
 		return err
 	}
 
 	// Certificate profile
-	if err := ic.CertProfile.verifyProfile(ct); err != nil {
+	err = ic.CertProfile.verifyProfile(ct)
+	if err != nil {
 		return err
 	}
 
@@ -202,7 +210,8 @@ type csrConfig struct {
 }
 
 func (cc csrConfig) validate() error {
-	if err := cc.PKCS11.validate(); err != nil {
+	err := cc.PKCS11.validate()
+	if err != nil {
 		return err
 	}
 
@@ -212,12 +221,14 @@ func (cc csrConfig) validate() error {
 	}
 
 	// Output fields
-	if err := checkOutputFile(cc.Outputs.CSRPath, "csr-path"); err != nil {
+	err = checkOutputFile(cc.Outputs.CSRPath, "csr-path")
+	if err != nil {
 		return err
 	}
 
 	// Certificate profile
-	if err := cc.CertProfile.verifyProfile(requestCert); err != nil {
+	err = cc.CertProfile.verifyProfile(requestCert)
+	if err != nil {
 		return err
 	}
 
@@ -234,17 +245,20 @@ type keyConfig struct {
 }
 
 func (kc keyConfig) validate() error {
-	if err := kc.PKCS11.validate(); err != nil {
+	err := kc.PKCS11.validate()
+	if err != nil {
 		return err
 	}
 
 	// Key gen fields
-	if err := kc.Key.validate(); err != nil {
+	err = kc.Key.validate()
+	if err != nil {
 		return err
 	}
 
 	// Output fields
-	if err := checkOutputFile(kc.Outputs.PublicKeyPath, "public-key-path"); err != nil {
+	err = checkOutputFile(kc.Outputs.PublicKeyPath, "public-key-path")
+	if err != nil {
 		return err
 	}
 
@@ -270,7 +284,8 @@ type ocspRespConfig struct {
 }
 
 func (orc ocspRespConfig) validate() error {
-	if err := orc.PKCS11.validate(); err != nil {
+	err := orc.PKCS11.validate()
+	if err != nil {
 		return err
 	}
 
@@ -284,7 +299,8 @@ func (orc ocspRespConfig) validate() error {
 	// DelegatedIssuerCertificatePath may be omitted
 
 	// Output fields
-	if err := checkOutputFile(orc.Outputs.ResponsePath, "response-path"); err != nil {
+	err = checkOutputFile(orc.Outputs.ResponsePath, "response-path")
+	if err != nil {
 		return err
 	}
 
@@ -324,7 +340,8 @@ type crlConfig struct {
 }
 
 func (cc crlConfig) validate() error {
-	if err := cc.PKCS11.validate(); err != nil {
+	err := cc.PKCS11.validate()
+	if err != nil {
 		return err
 	}
 
@@ -334,7 +351,8 @@ func (cc crlConfig) validate() error {
 	}
 
 	// Output fields
-	if err := checkOutputFile(cc.Outputs.CRLPath, "crl-path"); err != nil {
+	err = checkOutputFile(cc.Outputs.CRLPath, "crl-path")
+	if err != nil {
 		return err
 	}
 
@@ -434,10 +452,12 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
 	}
 
-	if err := cert.CheckSignatureFrom(issuer); err != nil {
+	err = cert.CheckSignatureFrom(issuer)
+	if err != nil {
 		return fmt.Errorf("failed to verify certificate signature: %s", err)
 	}
-	if err := writeFile(certPath, pemBytes); err != nil {
+	err = writeFile(certPath, pemBytes)
+	if err != nil {
 		return fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
 	}
 	log.Printf("Certificate written to %q\n", certPath)
@@ -450,7 +470,8 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	if err := config.validate(); err != nil {
+	err = config.validate()
+	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 	session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
@@ -485,7 +506,8 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	if err := config.validate(ct); err != nil {
+	err = config.validate(ct)
+	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
@@ -531,7 +553,8 @@ func csrCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	if err := config.validate(); err != nil {
+	err = config.validate()
+	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
@@ -558,7 +581,8 @@ func csrCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to generate CSR: %s", err)
 	}
 	csrPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csrDER})
-	if err := writeFile(config.Outputs.CSRPath, csrPEM); err != nil {
+	err = writeFile(config.Outputs.CSRPath, csrPEM)
+	if err != nil {
 		return fmt.Errorf("failed to write CSR to %q: %s", config.Outputs.CSRPath, err)
 	}
 	log.Printf("CSR written to %q\n", config.Outputs.CSRPath)
@@ -572,7 +596,8 @@ func keyCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	if err := config.validate(); err != nil {
+	err = config.validate()
+	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 	session, err := pkcs11helpers.Initialize(config.PKCS11.Module, config.PKCS11.StoreSlot, config.PKCS11.PIN)
@@ -593,7 +618,8 @@ func ocspRespCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	if err := config.validate(); err != nil {
+	err = config.validate()
+	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
@@ -648,7 +674,8 @@ func ocspRespCeremony(configBytes []byte) error {
 		return err
 	}
 
-	if err := writeFile(config.Outputs.ResponsePath, resp); err != nil {
+	err = writeFile(config.Outputs.ResponsePath, resp)
+	if err != nil {
 		return fmt.Errorf("failed to write OCSP response to %q: %s", config.Outputs.ResponsePath, err)
 	}
 
@@ -661,7 +688,8 @@ func crlCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	if err := config.validate(); err != nil {
+	err = config.validate()
+	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
@@ -715,7 +743,8 @@ func crlCeremony(configBytes []byte) error {
 
 	log.Printf("Signed CRL PEM:\n%s", crlBytes)
 
-	if err := writeFile(config.Outputs.CRLPath, crlBytes); err != nil {
+	err = writeFile(config.Outputs.CRLPath, crlBytes)
+	if err != nil {
 		return fmt.Errorf("failed to write CRL to %q: %s", config.Outputs.CRLPath, err)
 	}
 

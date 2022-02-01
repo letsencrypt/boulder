@@ -67,7 +67,8 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
 	// latency with Prometheus.
 	if md, ok := metadata.FromIncomingContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
-		if err := si.observeLatency(md[clientRequestTimeKey][0]); err != nil {
+		err := si.observeLatency(md[clientRequestTimeKey][0])
+		if err != nil {
 			return nil, err
 		}
 	}

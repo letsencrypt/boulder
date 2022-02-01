@@ -82,7 +82,8 @@ func validateFile(filename string) error {
 		if line == "" {
 			continue
 		}
-		if err := lineValid(line); err != nil {
+		err := lineValid(line)
+		if err != nil {
 			badFile = true
 			fmt.Fprintf(os.Stderr, "[line %d] %s: %s\n", i+1, err, line)
 		}
@@ -185,7 +186,8 @@ func main() {
 					logger.Errf("error while tailing %s: %s", t.Filename, err)
 					continue
 				}
-				if err := lineValid(line.Text); err != nil {
+				err := lineValid(line.Text)
+				if err != nil {
 					if errors.Is(err, errInvalidChecksum) {
 						lineCounter.WithLabelValues(t.Filename, "invalid checksum length").Inc()
 					} else {

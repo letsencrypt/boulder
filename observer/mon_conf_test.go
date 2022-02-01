@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestMonConf_validatePeriod(t *testing.T) {
@@ -25,8 +26,11 @@ func TestMonConf_validatePeriod(t *testing.T) {
 			c := &MonConf{
 				Period: tt.fields.Period,
 			}
-			if err := c.validatePeriod(); (err != nil) != tt.wantErr {
-				t.Errorf("MonConf.validatePeriod() error = %v, wantErr %v", err, tt.wantErr)
+			err := c.validatePeriod()
+			if tt.wantErr {
+				test.AssertError(t, err, "MonConf.validatePeriod() should have errored")
+			} else {
+				test.AssertNotError(t, err, "MonConf.validatePeriod() shouldn't have errored")
 			}
 		})
 	}

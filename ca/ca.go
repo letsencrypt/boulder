@@ -513,7 +513,8 @@ func (ca *certificateAuthorityImpl) queueOrphan(o *orphanedCert) {
 // testing the orphan queue functionality somewhat more simple.
 func (ca *certificateAuthorityImpl) OrphanIntegrationLoop() {
 	for {
-		if err := ca.integrateOrphan(); err != nil {
+		err := ca.integrateOrphan()
+		if err != nil {
 			if err == goque.ErrEmpty {
 				time.Sleep(time.Minute)
 				continue

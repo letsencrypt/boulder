@@ -107,7 +107,8 @@ func loadIssuanceLog(path string) (map[string][]time.Time, time.Time, time.Time,
 			issuanceMap[name] = append(issuanceMap[name], ie.issuanceTime)
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	err = scanner.Err()
+	if err != nil {
 		return nil, earliest, latest, err
 	}
 

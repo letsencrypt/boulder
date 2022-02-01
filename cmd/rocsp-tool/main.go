@@ -71,7 +71,8 @@ func init() {
 }
 
 func main() {
-	if err := main2(); err != nil {
+	err := main2()
+	if err != nil {
 		log.Fatal(err)
 	}
 }

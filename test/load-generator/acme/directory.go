@@ -195,7 +195,8 @@ func NewDirectory(directoryURL string) (*Directory, error) {
 
 	// Unmarshal the directory
 	var dirResource map[string]interface{}
-	if err := json.Unmarshal(dirContents, &dirResource); err != nil {
+	err = json.Unmarshal(dirContents, &dirResource)
+	if err != nil {
 		return nil, ErrInvalidDirectoryJSON
 	}
 

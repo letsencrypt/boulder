@@ -39,11 +39,13 @@ func resetTestDatabase(t testing.TB, dbType string) func() {
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
-	if err := deleteEverythingInAllTables(db); err != nil {
+	err = deleteEverythingInAllTables(db)
+	if err != nil {
 		t.Fatalf("Failed to delete everything: %s", err)
 	}
 	return func() {
-		if err := deleteEverythingInAllTables(db); err != nil {
+		err := deleteEverythingInAllTables(db)
+		if err != nil {
 			t.Fatalf("Failed to truncate tables after the test: %s", err)
 		}
 		_ = db.Close()

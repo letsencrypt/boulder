@@ -8,6 +8,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
 	_ "github.com/letsencrypt/boulder/observer/probers/mock"
+	"github.com/letsencrypt/boulder/test"
 )
 
 const (
@@ -94,8 +95,11 @@ func TestObsConf_ValidateDebugAddr(t *testing.T) {
 			c := &ObsConf{
 				DebugAddr: tt.fields.DebugAddr,
 			}
-			if err := c.validateDebugAddr(); (err != nil) != tt.wantErr {
-				t.Errorf("ObsConf.ValidateDebugAddr() error = %v, wantErr %v", err, tt.wantErr)
+			err := c.validateDebugAddr()
+			if tt.wantErr {
+				test.AssertError(t, err, "ObsConf.ValidateDebugAddr() should have errored")
+			} else {
+				test.AssertNotError(t, err, "ObsConf.ValidateDebugAddr() shouldn't have errored")
 			}
 		})
 	}
@@ -125,8 +129,11 @@ func TestObsConf_validateSyslog(t *testing.T) {
 			c := &ObsConf{
 				Syslog: tt.fields.Syslog,
 			}
-			if err := c.validateSyslog(); (err != nil) != tt.wantErr {
-				t.Errorf("ObsConf.validateSyslog() error = %v, wantErr %v", err, tt.wantErr)
+			err := c.validateSyslog()
+			if tt.wantErr {
+				test.AssertError(t, err, "ObsConf.validateSyslog() should have errored")
+			} else {
+				test.AssertNotError(t, err, "ObsConf.validateSyslog() shouldn't have errored")
 			}
 		})
 	}
