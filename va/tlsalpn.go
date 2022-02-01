@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
 	"errors"
@@ -198,6 +199,28 @@ func checkExpectedSAN(cert *x509.Certificate, name identifier.ACMEIdentifier) er
 	return nil
 }
 
+// Confirm that of the OIDs provided, all of them are in the provided list of
+// extensions. Also confirms that of the extensions provided that none are
+// repeated. Per RFC8737, allows unexpected extensions.
+func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.ObjectIdentifier) error {
+	oidSeen := make(map[string]bool)
+
+	for _, ext := range exts {
+		if oidSeen[ext.Id.String()] {
+			return fmt.Errorf("Extension OID %s seen twice", ext.Id)
+		}
+		oidSeen[ext.Id.String()] = true
+	}
+
+	for _, required := range requiredOIDs {
+		if !oidSeen[required.String()] {
+			return fmt.Errorf("Required extension OID %s is not present", required)
+		}
+	}
+
+	return nil
+}
+
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
@@ -224,9 +247,25 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 
 	leafCert := certs[0]
 
+	// The certificate must have the subjectAltName and acmeIdentifier
+	// extensions, and only one of each.
+	allowedOIDs := []asn1.ObjectIdentifier{
+		IdPeAcmeIdentifier, IdCeSubjectAltName,
+	}
+	err := checkAcceptableExtensions(leafCert.Extensions, allowedOIDs)
+	if err != nil {
+		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
+		errText := fmt.Sprintf(
+			"Incorrect validation certificate for %s challenge. "+
+				"Requested %s from %s. Received %d certificate(s), "+
+				"first certificate had unexpected extensions; got error %s",
+			challenge.Type, identifier.Value, hostPort, len(certs), err)
+		return validationRecords, probs.Unauthorized(errText)
+	}
+
 	// The certificate returned must have a subjectAltName extension containing
 	// only the dNSName being validated and no other entries.
-	err := checkExpectedSAN(leafCert, identifier)
+	err = checkExpectedSAN(leafCert, identifier)
 	if err != nil {
 		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 		names := certAltNames(leafCert)

@@ -663,3 +663,166 @@ func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
 	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
 }
+
+func TestTLSALPN01ExtraSANs(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with multiple SAN extensions
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1337),
+		Subject: pkix.Name{
+			Organization: []string{"tests"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().AddDate(0, 0, 1),
+
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, err := asn1.Marshal(shasum[:])
+	test.AssertNotError(t, err, "failed to create key authorization")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+
+	subjectAltName := pkix.Extension{}
+	subjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+	subjectAltName.Critical = false
+	subjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+		{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+	})
+	test.AssertNotError(t, err, "failed to marshal first SAN")
+
+	extraSubjectAltName := pkix.Extension{}
+	extraSubjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+	extraSubjectAltName.Critical = false
+	extraSubjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+		{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+	})
+	test.AssertNotError(t, err, "failed to marshal extra SAN")
+
+	template.ExtraExtensions = []pkix.Extension{acmeExtension, subjectAltName, extraSubjectAltName}
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
+
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, []string{"expected"}, acmeCert, tls.VersionTLS12)
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	test.AssertError(t, prob, "validation should have failed")
+	test.AssertContains(t, prob.Error(), "Extension OID 2.5.29.17 seen twice")
+}
+
+func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with multiple SAN extensions
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1337),
+		Subject: pkix.Name{
+			Organization: []string{"tests"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().AddDate(0, 0, 1),
+
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+
+		DNSNames: []string{"expected"},
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, err := asn1.Marshal(shasum[:])
+	test.AssertNotError(t, err, "failed to create key authorization")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+
+	extraAcmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+
+	template.ExtraExtensions = []pkix.Extension{acmeExtension, extraAcmeExtension}
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
+	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
+
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, []string{"expected"}, acmeCert, tls.VersionTLS12)
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	test.AssertError(t, prob, "validation should have failed")
+	test.AssertContains(t, prob.Error(), "Extension OID 1.3.6.1.5.5.7.1.31 seen twice")
+}
+
+func TestAcceptableExtensions(t *testing.T) {
+	requireAcmeAndSAN := []asn1.ObjectIdentifier{
+		IdPeAcmeIdentifier,
+		IdCeSubjectAltName,
+	}
+
+	var err error
+	subjectAltName := pkix.Extension{}
+	subjectAltName.Id = asn1.ObjectIdentifier{2, 5, 29, 17}
+	subjectAltName.Critical = false
+	subjectAltName.Value, err = asn1.Marshal([]asn1.RawValue{
+		{Tag: 2, Class: 2, Bytes: []byte(`expected`)},
+	})
+	test.AssertNotError(t, err, "failed to marshal SAN")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    []byte{},
+	}
+
+	weirdExt := pkix.Extension{
+		Id:       asn1.ObjectIdentifier{99, 99, 99, 99},
+		Critical: false,
+		Value:    []byte(`because I'm tacky`),
+	}
+
+	doubleAcmeExts := []pkix.Extension{subjectAltName, acmeExtension, acmeExtension}
+	err = checkAcceptableExtensions(doubleAcmeExts, requireAcmeAndSAN)
+	test.AssertError(t, err, "Two ACME extensions isn't okay")
+
+	doubleSANExts := []pkix.Extension{subjectAltName, subjectAltName, acmeExtension}
+	err = checkAcceptableExtensions(doubleSANExts, requireAcmeAndSAN)
+	test.AssertError(t, err, "Two SAN extensions isn't okay")
+
+	onlyUnexpectedExt := []pkix.Extension{weirdExt}
+	err = checkAcceptableExtensions(onlyUnexpectedExt, requireAcmeAndSAN)
+	test.AssertError(t, err, "Missing required extensions")
+	test.AssertContains(t, err.Error(), "Required extension OID 1.3.6.1.5.5.7.1.31 is not present")
+
+	okayExts := []pkix.Extension{acmeExtension, subjectAltName}
+	err = checkAcceptableExtensions(okayExts, requireAcmeAndSAN)
+	test.AssertNotError(t, err, "Correct type and number of extensions")
+
+	okayWithUnexpectedExt := []pkix.Extension{weirdExt, acmeExtension, subjectAltName}
+	err = checkAcceptableExtensions(okayWithUnexpectedExt, requireAcmeAndSAN)
+	test.AssertNotError(t, err, "Correct type and number of extensions")
+}
