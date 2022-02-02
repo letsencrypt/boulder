@@ -16,13 +16,16 @@ package nonce
 import (
 	"container/heap"
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
-	"fmt"
-	"math/big"
+	"hash"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,11 +43,11 @@ var errInvalidNonceLength = errors.New("invalid nonce length")
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
 	mu               sync.Mutex
-	latest           int64
-	earliest         int64
-	used             map[int64]bool
-	usedHeap         *int64Heap
-	gcm              cipher.AEAD
+	latest           uint64
+	earliest         uint64
+	used             map[uint64]bool
+	usedHeap         *uint64Heap
+	key              []byte
 	maxUsed          int
 	prefix           string
 	nonceCreates     prometheus.Counter
@@ -52,17 +55,17 @@ type NonceService struct {
 	nonceHeapLatency prometheus.Histogram
 }
 
-type int64Heap []int64
+type uint64Heap []uint64
 
-func (h int64Heap) Len() int           { return len(h) }
-func (h int64Heap) Less(i, j int) bool { return h[i] < h[j] }
-func (h int64Heap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h uint64Heap) Len() int           { return len(h) }
+func (h uint64Heap) Less(i, j int) bool { return h[i] < h[j] }
+func (h uint64Heap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
-func (h *int64Heap) Push(x interface{}) {
-	*h = append(*h, x.(int64))
+func (h *uint64Heap) Push(x interface{}) {
+	*h = append(*h, x.(uint64))
 }
 
-func (h *int64Heap) Pop() interface{} {
+func (h *uint64Heap) Pop() interface{} {
 	old := *h
 	n := len(old)
 	x := old[n-1]
@@ -87,18 +90,9 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		}
 	}
 
-	key := make([]byte, 16)
+	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
-	}
-
-	c, err := aes.NewCipher(key)
-	if err != nil {
-		panic("Failure in NewCipher: " + err.Error())
-	}
-	gcm, err := cipher.NewGCM(c)
-	if err != nil {
-		panic("Failure in NewGCM: " + err.Error())
 	}
 
 	if maxUsed <= 0 {
@@ -124,9 +118,9 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	return &NonceService{
 		earliest:         0,
 		latest:           0,
-		used:             make(map[int64]bool, maxUsed),
-		usedHeap:         &int64Heap{},
-		gcm:              gcm,
+		used:             make(map[uint64]bool, maxUsed),
+		usedHeap:         &uint64Heap{},
+		key:              key,
 		maxUsed:          maxUsed,
 		prefix:           prefix,
 		nonceCreates:     nonceCreates,
@@ -135,84 +129,56 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	}, nil
 }
 
-func (ns *NonceService) encrypt(counter int64) (string, error) {
-	// Generate a nonce with upper 4 bytes zero
-	nonce := make([]byte, 12)
-	for i := 0; i < 4; i++ {
-		nonce[i] = 0
-	}
-	if _, err := rand.Read(nonce[4:]); err != nil {
-		return "", err
-	}
-
-	// Encode counter to plaintext
-	pt := make([]byte, 8)
-	ctr := big.NewInt(counter)
-	pad := 8 - len(ctr.Bytes())
-	copy(pt[pad:], ctr.Bytes())
-
-	// Encrypt
-	ret := make([]byte, nonceLen)
-	ct := ns.gcm.Seal(nil, nonce, pt, nil)
-	copy(ret, nonce[4:])
-	copy(ret[8:], ct)
-
-	return ns.prefix + base64.RawURLEncoding.EncodeToString(ret), nil
+func (ns *NonceService) createHMAC() hash.Hash {
+	return hmac.New(sha256.New, ns.key)
 }
 
-func (ns *NonceService) decrypt(nonce string) (int64, error) {
-	body := nonce
-	if ns.prefix != "" {
-		var prefix string
-		var err error
-		prefix, body, err = splitNonce(nonce)
-		if err != nil {
-			return 0, err
-		}
-		if ns.prefix != prefix {
-			return 0, fmt.Errorf("nonce contains invalid prefix: expected %q, got %q", ns.prefix, prefix)
-		}
-	}
-	decoded, err := base64.RawURLEncoding.DecodeString(body)
-	if err != nil {
-		return 0, err
-	}
-	if len(decoded) != nonceLen {
-		return 0, errInvalidNonceLength
-	}
+func (ns *NonceService) mac(counter uint64) []byte {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, counter)
 
-	n := make([]byte, 12)
-	for i := 0; i < 4; i++ {
-		n[i] = 0
-	}
-	copy(n[4:], decoded[:8])
-
-	pt, err := ns.gcm.Open(nil, n, decoded[8:], nil)
-	if err != nil {
-		return 0, err
-	}
-
-	ctr := big.NewInt(0)
-	ctr.SetBytes(pt)
-	return ctr.Int64(), nil
+	// mac it
+	mac := ns.createHMAC()
+	mac.Write(b)
+	return mac.Sum(nil)
 }
 
 // Nonce provides a new Nonce.
 func (ns *NonceService) Nonce() (string, error) {
+	sb := strings.Builder{}
 	ns.mu.Lock()
 	ns.latest++
 	latest := ns.latest
 	ns.mu.Unlock()
+
 	defer ns.nonceCreates.Inc()
-	return ns.encrypt(latest)
+
+	sb.WriteString(ns.prefix)
+	sb.WriteString(",")
+
+	sb.WriteString(strconv.FormatUint(latest, 10))
+	sb.WriteString(",")
+	sb.WriteString(base64.RawURLEncoding.EncodeToString(ns.mac(latest)))
+
+	return sb.String(), nil
 }
 
 // Valid determines whether the provided Nonce string is valid, returning
 // true if so.
 func (ns *NonceService) Valid(nonce string) bool {
-	c, err := ns.decrypt(nonce)
+	prefix, c, mac, err := splitNonce(nonce)
+	if ns.prefix != prefix {
+		ns.nonceRedeems.WithLabelValues("invalid", "prefix").Inc()
+		return false
+	}
 	if err != nil {
-		ns.nonceRedeems.WithLabelValues("invalid", "decrypt").Inc()
+		ns.nonceRedeems.WithLabelValues("invalid", "split").Inc()
+		return false
+	}
+
+	expected := ns.mac(c)
+	if subtle.ConstantTimeCompare(expected, mac) != 1 {
+		ns.nonceRedeems.WithLabelValues("invalid", "hmac").Inc()
 		return false
 	}
 
@@ -237,7 +203,7 @@ func (ns *NonceService) Valid(nonce string) bool {
 	heap.Push(ns.usedHeap, c)
 	if len(ns.used) > ns.maxUsed {
 		s := time.Now()
-		ns.earliest = heap.Pop(ns.usedHeap).(int64)
+		ns.earliest = heap.Pop(ns.usedHeap).(uint64)
 		ns.nonceHeapLatency.Observe(time.Since(s).Seconds())
 		delete(ns.used, ns.earliest)
 	}
@@ -246,17 +212,10 @@ func (ns *NonceService) Valid(nonce string) bool {
 	return true
 }
 
-func splitNonce(nonce string) (string, string, error) {
-	if len(nonce) < 4 {
-		return "", "", errInvalidNonceLength
-	}
-	return nonce[:4], nonce[4:], nil
-}
-
 // RemoteRedeem checks the nonce prefix and routes the Redeem RPC
 // to the associated remote nonce service
 func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceServiceClient, nonce string) (bool, error) {
-	prefix, _, err := splitNonce(nonce)
+	prefix, _, _, err := splitNonce(nonce)
 	if err != nil {
 		return false, nil
 	}
@@ -269,4 +228,28 @@ func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceSe
 		return false, err
 	}
 	return resp.Valid, nil
+}
+
+func splitNonce(nonce string) (prefix string, number uint64, mac []byte, err error) {
+	split := strings.Split(nonce, ",")
+	if len(split) != 3 {
+		err = errInvalidNonceLength
+		return
+	}
+	prefix = split[0]
+	numberStr := split[1]
+	macStr := split[2]
+
+	mac, err = base64.RawURLEncoding.DecodeString(macStr)
+	if err != nil {
+		return
+	}
+
+	number, err = strconv.ParseUint(numberStr, 10, 64)
+	if err != nil {
+		return
+	}
+
+	err = nil
+	return
 }

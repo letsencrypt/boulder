@@ -35,7 +35,7 @@ func TestRejectMalformed(t *testing.T) {
 	test.AssertNotError(t, err, "Could not create nonce service")
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	test.Assert(t, !ns.Valid("asdf"+n), "Accepted an invalid nonce")
+	test.Assert(t, !ns.Valid(n+"asdf"), "Accepted an invalid nonce")
 }
 
 func TestRejectShort(t *testing.T) {
