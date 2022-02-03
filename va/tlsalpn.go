@@ -56,9 +56,9 @@ func certAltNames(cert *x509.Certificate) []string {
 	return names
 }
 
-func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
+func (va *ValidationAuthorityImpl) tryGetChallengeCert(ctx context.Context,
 	identifier identifier.ACMEIdentifier, challenge core.Challenge,
-	tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
+	tlsConfig *tls.Config) (*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
 
 	allAddrs, err := va.getAddrs(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
@@ -87,11 +87,11 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = v6[0]
 
-		certs, cs, prob := va.getTLSCerts(ctx, address, identifier, challenge, tlsConfig)
+		cert, cs, prob := va.getChallengeCert(ctx, address, identifier, challenge, tlsConfig)
 
 		// If there is no problem, return immediately
 		if err == nil {
-			return certs, cs, validationRecords, prob
+			return cert, cs, validationRecords, prob
 		}
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
@@ -113,18 +113,18 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 	// Otherwise if there are no IPv6 addresses, or there was an error
 	// talking to the first IPv6 address, try the first IPv4 address
 	thisRecord.AddressUsed = v4[0]
-	certs, cs, prob := va.getTLSCerts(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
+	cert, cs, prob := va.getChallengeCert(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
 		identifier, challenge, tlsConfig)
-	return certs, cs, validationRecords, prob
+	return cert, cs, validationRecords, prob
 }
 
-func (va *ValidationAuthorityImpl) getTLSCerts(
+func (va *ValidationAuthorityImpl) getChallengeCert(
 	ctx context.Context,
 	hostPort string,
 	identifier identifier.ACMEIdentifier,
 	challenge core.Challenge,
 	config *tls.Config,
-) ([]*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
+) (*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, config.ServerName))
 	// We expect a self-signed challenge certificate, do not verify it here.
 	config.InsecureSkipVerify = true
@@ -149,7 +149,7 @@ func (va *ValidationAuthorityImpl) getTLSCerts(
 		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
 			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
-	return certs, &cs, nil
+	return certs[0], &cs, nil
 }
 
 // tlsDial does the equivalent of tls.Dial, but obeying a context. Once
@@ -227,7 +227,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		return nil, probs.Malformed("Identifier type for TLS-ALPN-01 was not DNS")
 	}
 
-	certs, cs, validationRecords, problem := va.tryGetTLSCerts(ctx, identifier, challenge, &tls.Config{
+	cert, cs, validationRecords, problem := va.tryGetChallengeCert(ctx, identifier, challenge, &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{ACMETLS1Protocol},
 		ServerName: identifier.Value,
@@ -245,41 +245,52 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
-	leafCert := certs[0]
+	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
+
+	// The certificate must be self-signed.
+	err := cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature)
+	if err != nil || !bytes.Equal(cert.RawSubject, cert.RawIssuer) {
+		errText := fmt.Sprintf(
+			"Incorrect validation certificate for %s challenge. "+
+				"Requested %s from %s. "+
+				"Received certificate which is not self-signed.",
+			challenge.Type, identifier.Value, hostPort)
+		return validationRecords, probs.Unauthorized(errText)
+	}
 
 	// The certificate must have the subjectAltName and acmeIdentifier
 	// extensions, and only one of each.
 	allowedOIDs := []asn1.ObjectIdentifier{
 		IdPeAcmeIdentifier, IdCeSubjectAltName,
 	}
-	err := checkAcceptableExtensions(leafCert.Extensions, allowedOIDs)
+	err = checkAcceptableExtensions(cert.Extensions, allowedOIDs)
 	if err != nil {
-		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
-				"Requested %s from %s. Received %d certificate(s), "+
-				"first certificate had unexpected extensions; got error %s",
-			challenge.Type, identifier.Value, hostPort, len(certs), err)
+				"Requested %s from %s. "+
+				"Received certificate with unexpected extensions. "+
+				"Got error: %q",
+			challenge.Type, identifier.Value, hostPort, err)
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
 	// The certificate returned must have a subjectAltName extension containing
 	// only the dNSName being validated and no other entries.
-	err = checkExpectedSAN(leafCert, identifier)
+	err = checkExpectedSAN(cert, identifier)
 	if err != nil {
-		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
-		names := certAltNames(leafCert)
+		names := certAltNames(cert)
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
-				"Requested %s from %s. Received %d certificate(s), "+
-				"first certificate had identifiers %q; got error %s",
-			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "), err)
+				"Requested %s from %s. "+
+				"Received certificate with unexpected identifiers: %q. "+
+				"Got error: %q",
+			challenge.Type, identifier.Value, hostPort, strings.Join(names, ", "), err)
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
 	// Verify key authorization in acmeValidation extension
 	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
-	for _, ext := range leafCert.Extensions {
+	for _, ext := range cert.Extensions {
 		if IdPeAcmeIdentifier.Equal(ext.Id) {
 			va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
 			if !ext.Critical {

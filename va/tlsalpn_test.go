@@ -618,6 +618,65 @@ func TestTLSALPN01ExtraNames(t *testing.T) {
 	test.AssertError(t, prob, "validation should have failed")
 }
 
+func TestTLSALPN01NotSelfSigned(t *testing.T) {
+	chall := tlsalpnChallenge()
+
+	// Create a cert with an extra non-dnsName identifier.
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1337),
+		Subject: pkix.Name{
+			Organization: []string{"tests"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().AddDate(0, 0, 1),
+
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+
+		DNSNames:    []string{"expected"},
+		IPAddresses: []net.IP{net.ParseIP("192.168.0.1")},
+	}
+
+	shasum := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
+	encHash, err := asn1.Marshal(shasum[:])
+	test.AssertNotError(t, err, "failed to create key authorization")
+
+	acmeExtension := pkix.Extension{
+		Id:       IdPeAcmeIdentifier,
+		Critical: true,
+		Value:    encHash,
+	}
+	template.ExtraExtensions = []pkix.Extension{acmeExtension}
+
+	parent := &x509.Certificate{
+		SerialNumber: big.NewInt(1234),
+		Subject: pkix.Name{
+			Organization: []string{"testissuer"},
+		},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	// Note that this currently only tests that the subject and issuer are the
+	// same; it does not test the case where the cert is signed by a different key.
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, parent, &TheKey.PublicKey, &TheKey)
+	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
+
+	acmeCert := &tls.Certificate{
+		Certificate: [][]byte{certBytes},
+		PrivateKey:  &TheKey,
+	}
+
+	hs := tlsalpn01SrvWithCert(t, chall, IdPeAcmeIdentifier, []string{"expected"}, acmeCert, tls.VersionTLS12)
+
+	va, _ := setup(hs, 0, "", nil)
+
+	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
+	test.AssertError(t, prob, "validation should have failed")
+	test.AssertContains(t, prob.Detail, "not self-signed")
+}
+
 func TestTLSALPN01ExtraIdentifiers(t *testing.T) {
 	chall := tlsalpnChallenge()
 
