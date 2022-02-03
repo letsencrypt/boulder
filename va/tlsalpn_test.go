@@ -658,6 +658,8 @@ func TestTLSALPN01NotSelfSigned(t *testing.T) {
 		BasicConstraintsValid: true,
 	}
 
+	// Note that this currently only tests that the subject and issuer are the
+	// same; it does not test the case where the cert is signed by a different key.
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, parent, &TheKey.PublicKey, &TheKey)
 	test.AssertNotError(t, err, "failed to create acme-tls/1 cert")
 

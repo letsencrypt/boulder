@@ -268,7 +268,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. "+
-				"Received certificate with unexpected extensions."+
+				"Received certificate with unexpected extensions. "+
 				"Got error: %q",
 			challenge.Type, identifier.Value, hostPort, err)
 		return validationRecords, probs.Unauthorized(errText)
@@ -282,7 +282,7 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
 				"Requested %s from %s. "+
-				"Received certificate with unexpected identifiers: %q"+
+				"Received certificate with unexpected identifiers: %q. "+
 				"Got error: %q",
 			challenge.Type, identifier.Value, hostPort, strings.Join(names, ", "), err)
 		return validationRecords, probs.Unauthorized(errText)
