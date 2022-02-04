@@ -67,7 +67,8 @@ func (ap *akamaiPurger) purge() error {
 		return nil
 	}
 
-	if err := ap.client.Purge(urls); err != nil {
+	err := ap.client.Purge(urls)
+	if err != nil {
 		// Add the URLs back to the queue
 		ap.mu.Lock()
 		ap.toPurge = append(urls, ap.toPurge...)
@@ -229,7 +230,8 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		// in case there is anything that still needs to be purged.
 		if queueLen := ap.len(); queueLen > 0 {
 			logger.Info(fmt.Sprintf("Shutting down; purging %d queue entries before exit.", queueLen))
-			if err := ap.purge(); err != nil {
+			err := ap.purge()
+			if err != nil {
 				cmd.Fail(fmt.Sprintf("Shutting down; failed to purge %d queue entries before exit: %s",
 					queueLen, err))
 			} else {

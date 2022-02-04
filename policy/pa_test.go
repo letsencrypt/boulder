@@ -209,9 +209,8 @@ func TestWillingToIssue(t *testing.T) {
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
 		ident := identifier.DNSIdentifier(domain)
-		if err := pa.WillingToIssue(ident); err != nil {
-			t.Error("Identifier was incorrectly forbidden: ", ident, err)
-		}
+		err := pa.WillingToIssue(ident)
+		test.AssertNotError(t, err, "identiier was incorrectly forbidden")
 	}
 }
 

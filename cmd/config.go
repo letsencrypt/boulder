@@ -95,11 +95,11 @@ func (d *DBConfig) URL() (string, error) {
 func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
 	dsnStr, err := d.URL()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to load DBConnect URL: %s", err)
 	}
 	config, err := mysql.ParseDSN(dsnStr)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to parse DSN from the DBConnect URL: %s", err)
 	}
 	return config.Addr, config.User, nil
 }
@@ -230,7 +230,8 @@ func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 // parser (vs. the JSON parser).
 func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
-	if err := unmarshal(&s); err != nil {
+	err := unmarshal(&s)
+	if err != nil {
 		return err
 	}
 	dur, err := time.ParseDuration(s)

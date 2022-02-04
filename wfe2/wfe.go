@@ -815,7 +815,8 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		CertificateDER core.JSONBuffer    `json:"certificate"`
 		Reason         *revocation.Reason `json:"reason"`
 	}
-	if err := json.Unmarshal(jwsBody, &revokeRequest); err != nil {
+	err := json.Unmarshal(jwsBody, &revokeRequest)
+	if err != nil {
 		return probs.Malformed("Unable to JSON parse revoke request")
 	}
 
@@ -1326,7 +1327,8 @@ func (wfe *WebFrontEndImpl) postChallenge(
 		// that the POST body is valid JSON. Any data/fields included are ignored to
 		// be kind to ACMEv2 implementations that still send a key authorization.
 		var challengeUpdate struct{}
-		if err := json.Unmarshal(body, &challengeUpdate); err != nil {
+		err := json.Unmarshal(body, &challengeUpdate)
+		if err != nil {
 			wfe.sendError(response, logEvent, probs.Malformed("Error unmarshaling challenge response"), err)
 			return
 		}
@@ -1441,7 +1443,8 @@ func (wfe *WebFrontEndImpl) updateAccount(
 		Status  core.AcmeStatus `json:"status"`
 	}
 
-	if err := json.Unmarshal(requestBody, &accountUpdateRequest); err != nil {
+	err := json.Unmarshal(requestBody, &accountUpdateRequest)
+	if err != nil {
 		return nil, probs.Malformed("Error unmarshaling account")
 	}
 

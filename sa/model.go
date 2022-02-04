@@ -669,7 +669,8 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 			// challenges "gone" per https://tools.ietf.org/html/rfc8555#section-7.1.4
 			if am.Attempted != nil {
 				if uintToChallType[*am.Attempted] == challType {
-					if err := populateAttemptedFields(am, challenge); err != nil {
+					err := populateAttemptedFields(am, challenge)
+					if err != nil {
 						return nil, err
 					}
 					// Get the attemptedAt time and assign to the challenge validated time.

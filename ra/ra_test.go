@@ -1777,9 +1777,8 @@ func (cf *caaFailer) IsCAAValid(
 func TestRecheckCAAEmpty(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	if err := ra.recheckCAA(context.Background(), nil); err != nil {
-		t.Errorf("expected nil err, got %s", err)
-	}
+	err := ra.recheckCAA(context.Background(), nil)
+	test.AssertNotError(t, err, "expected nil")
 }
 
 func makeHTTP01Authorization(domain string) *core.Authorization {
@@ -1797,9 +1796,8 @@ func TestRecheckCAASuccess(t *testing.T) {
 		makeHTTP01Authorization("b.com"),
 		makeHTTP01Authorization("c.com"),
 	}
-	if err := ra.recheckCAA(context.Background(), authzs); err != nil {
-		t.Errorf("expected nil err, got %s", err)
-	}
+	err := ra.recheckCAA(context.Background(), authzs)
+	test.AssertNotError(t, err, "expected nil")
 }
 
 func TestRecheckCAAFail(t *testing.T) {

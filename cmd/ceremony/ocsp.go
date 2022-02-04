@@ -12,14 +12,16 @@ import (
 )
 
 func generateOCSPResponse(signer crypto.Signer, issuer, delegatedIssuer, cert *x509.Certificate, thisUpdate, nextUpdate time.Time, status int) ([]byte, error) {
-	if err := cert.CheckSignatureFrom(issuer); err != nil {
+	err := cert.CheckSignatureFrom(issuer)
+	if err != nil {
 		return nil, fmt.Errorf("invalid signature on certificate from issuer: %s", err)
 	}
 
 	signingCert := issuer
 	if delegatedIssuer != nil {
 		signingCert = delegatedIssuer
-		if err := delegatedIssuer.CheckSignatureFrom(issuer); err != nil {
+		err := delegatedIssuer.CheckSignatureFrom(issuer)
+		if err != nil {
 			return nil, fmt.Errorf("invalid signature on delegated issuer from issuer: %s", err)
 		}
 

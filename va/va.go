@@ -361,7 +361,8 @@ func (va *ValidationAuthorityImpl) validate(
 }
 
 func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
-	if err := challenge.CheckConsistencyForValidation(); err != nil {
+	err := challenge.CheckConsistencyForValidation()
+	if err != nil {
 		return nil, probs.Malformed("Challenge failed consistency check: %s", err)
 	}
 	switch challenge.Type {

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -237,8 +236,6 @@ func main() {
 		"hostnames", "", "Only include results with unexpired certificates that contain hostnames\nlisted (newline separated) in this file.")
 	withExampleHostnames := flag.Bool(
 		"with-example-hostnames", false, "Include an example hostname for each registration ID with an unexpired certificate.")
-	useDefaultIsolationLevel := flag.Bool(
-		"use-default-isolation-level", false, "Do not override database transaction isolation level to READ UNCOMMITTED")
 	configFile := flag.String("config", "", "File containing a JSON config.")
 
 	flag.Usage = func() {
@@ -268,32 +265,8 @@ func main() {
 	err = features.Set(cfg.ContactExporter.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	// Setup database client.
-	dbURL, err := cfg.ContactExporter.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
-
-	if !*useDefaultIsolationLevel {
-		conf, err := mysql.ParseDSN(dbURL)
-		cmd.FailOnError(err, "Couldn't parse DB URL as DSN")
-
-		// Transaction isolation level READ UNCOMMITTED trades consistency for
-		// performance.
-		if len(conf.Params) == 0 {
-			conf.Params = make(map[string]string)
-		}
-		conf.Params["tx_isolation"] = "'READ-UNCOMMITTED'"
-		dbURL = conf.FormatDSN()
-	}
-
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    cfg.ContactExporter.DB.MaxOpenConns,
-		MaxIdleConns:    cfg.ContactExporter.DB.MaxIdleConns,
-		ConnMaxLifetime: cfg.ContactExporter.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: cfg.ContactExporter.DB.ConnMaxIdleTime.Duration,
-	}
-
-	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
-	cmd.FailOnError(err, "Could not connect to database")
+	dbMap, err := sa.InitWrappedDb(cfg.ContactExporter.DB, nil, log)
+	cmd.FailOnError(err, "While initializing dbMap")
 
 	exporter := idExporter{
 		log:   log,

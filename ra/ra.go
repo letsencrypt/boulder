@@ -362,27 +362,33 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 
 	// Check if account key is acceptable for use.
 	var key jose.JSONWebKey
-	if err := key.UnmarshalJSON(request.Key); err != nil {
+	err := key.UnmarshalJSON(request.Key)
+	if err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
 	}
-	if err := ra.keyPolicy.GoodKey(ctx, key.Key); err != nil {
+	err = ra.keyPolicy.GoodKey(ctx, key.Key)
+	if err != nil {
 		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
 	}
 
 	// Check IP address rate limits.
 	var ipAddr net.IP
-	if err := ipAddr.UnmarshalText(request.InitialIP); err != nil {
+	err = ipAddr.UnmarshalText(request.InitialIP)
+	if err != nil {
 		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
 	}
-	if err := ra.checkRegistrationLimits(ctx, ipAddr); err != nil {
+	err = ra.checkRegistrationLimits(ctx, ipAddr)
+	if err != nil {
 		return nil, err
 	}
 
 	// Check that contacts conform to our expectations.
-	if err := validateContactsPresent(request.Contact, request.ContactsPresent); err != nil {
+	err = validateContactsPresent(request.Contact, request.ContactsPresent)
+	if err != nil {
 		return nil, err
 	}
-	if err := ra.validateContacts(ctx, request.Contact); err != nil {
+	err = ra.validateContacts(ctx, request.Contact)
+	if err != nil {
 		return nil, err
 	}
 
@@ -448,7 +454,8 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 				contact,
 			)
 		}
-		if err := policy.ValidEmail(parsed.Opaque); err != nil {
+		err = policy.ValidEmail(parsed.Opaque)
+		if err != nil {
 			return err
 		}
 	}
@@ -506,7 +513,8 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context
 	// enough capacity in the chan for them all to write their result even if
 	// nothing is reading off the chan anymore.
 	for i := 0; i < len(hostnames); i++ {
-		if err := <-results; err != nil {
+		err := <-results
+		if err != nil {
 			return err
 		}
 	}
@@ -733,7 +741,8 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	}
 
 	if len(recheckAuthzs) > 0 {
-		if err := ra.recheckCAA(ctx, recheckAuthzs); err != nil {
+		err := ra.recheckCAA(ctx, recheckAuthzs)
+		if err != nil {
 			return err
 		}
 	}
@@ -810,7 +819,8 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 		recheckResult := <-ch
 		// If the result had a CAA boulder error, construct a suberror with the
 		// identifier from the authorization that was checked.
-		if err := recheckResult.err; err != nil {
+		err := recheckResult.err
+		if err != nil {
 			var bErr *berrors.BoulderError
 			if errors.As(err, &bErr) && bErr.Type == berrors.CAA {
 				subErrors = append(subErrors, berrors.SubBoulderError{
@@ -902,7 +912,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
-	if err := csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA); err != nil {
+	err = csrlib.VerifyCSR(ctx, csrOb, ra.maxNames, &ra.keyPolicy, ra.PA)
+	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
 		return nil, err
@@ -1387,13 +1398,16 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 		return nil, errIncompleteGRPCRequest
 	}
 
-	if err := validateContactsPresent(req.Base.Contact, req.Base.ContactsPresent); err != nil {
+	err := validateContactsPresent(req.Base.Contact, req.Base.ContactsPresent)
+	if err != nil {
 		return nil, err
 	}
-	if err := validateContactsPresent(req.Update.Contact, req.Update.ContactsPresent); err != nil {
+	err = validateContactsPresent(req.Update.Contact, req.Update.ContactsPresent)
+	if err != nil {
 		return nil, err
 	}
-	if err := ra.validateContacts(ctx, req.Update.Contact); err != nil {
+	err = ra.validateContacts(ctx, req.Update.Contact)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1405,7 +1419,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 		return req.Base, nil
 	}
 
-	_, err := ra.SA.UpdateRegistration(ctx, update)
+	_, err = ra.SA.UpdateRegistration(ctx, update)
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
@@ -1667,7 +1681,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		challenge.Validated = &vStart
 		authz.Challenges[challIndex] = *challenge
 
-		if err := ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge); err != nil {
+		err = ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge)
+		if err != nil {
 			ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
 				err, authz.RegistrationID, authz.ID)
 		}
@@ -1688,7 +1703,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string, skipBlockKey bool) error {
 	serial := core.SerialToString(cert.SerialNumber)
 
 	var issuerID int64
@@ -1747,7 +1762,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		return err
 	}
 
-	if reason == ocsp.KeyCompromise {
+	if reason == ocsp.KeyCompromise && !skipBlockKey {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return err
@@ -1794,7 +1809,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	serialString := core.SerialToString(cert.SerialNumber)
 	revocationCode := revocation.Reason(req.Code)
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "")
+	err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "", false)
 
 	state := "Failure"
 	defer func() {
@@ -1835,6 +1850,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	if revocationCode == ocsp.KeyCompromise && req.Cert == nil {
 		return nil, fmt.Errorf("cannot revoke for KeyCompromise by serial alone")
 	}
+	if req.SkipBlockKey && revocationCode != ocsp.KeyCompromise {
+		return nil, fmt.Errorf("cannot skip key blocking for reasons other than KeyCompromise")
+	}
 
 	var cert *x509.Certificate
 	var serialString string
@@ -1871,7 +1889,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			req.AdminName)
 	}()
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
+	err = ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName), req.SkipBlockKey)
 	if err != nil {
 		state = fmt.Sprintf("Failure -- %s", err)
 		return nil, err
@@ -1921,7 +1939,8 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 	for i, name := range names {
 		idents[i] = identifier.DNSIdentifier(name)
 	}
-	if err := ra.PA.WillingToIssueWildcards(idents); err != nil {
+	err := ra.PA.WillingToIssueWildcards(idents)
+	if err != nil {
 		return err
 	}
 	return nil
@@ -1944,11 +1963,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Validate that our policy allows issuing for each of the names in the order
-	if err := ra.checkOrderNames(newOrder.Names); err != nil {
+	err := ra.checkOrderNames(newOrder.Names)
+	if err != nil {
 		return nil, err
 	}
 
-	if err := wildcardOverlap(newOrder.Names); err != nil {
+	err = wildcardOverlap(newOrder.Names)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1975,13 +1996,15 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	// Check if there is rate limit space for a new order within the current window
-	if err := ra.checkNewOrdersPerAccountLimit(ctx, newOrder.RegistrationID); err != nil {
+	err = ra.checkNewOrdersPerAccountLimit(ctx, newOrder.RegistrationID)
+	if err != nil {
 		return nil, err
 	}
 	// Check if there is rate limit space for issuing a certificate for the new
 	// order's names. If there isn't then it doesn't make sense to allow creating
 	// an order - it will just fail when finalization checks the same limits.
-	if err := ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID); err != nil {
+	err = ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID)
+	if err != nil {
 		return nil, err
 	}
 	if features.Enabled(features.CheckFailedAuthorizationsFirst) {
@@ -2163,7 +2186,8 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg
 	}
 	// Check each challenge for sanity.
 	for _, challenge := range challenges {
-		if err := challenge.CheckConsistencyForClientOffer(); err != nil {
+		err := challenge.CheckConsistencyForClientOffer()
+		if err != nil {
 			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.
 			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)

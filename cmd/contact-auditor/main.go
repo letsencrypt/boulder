@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/sa"
 )
 
 type contactAuditor struct {
@@ -146,20 +146,6 @@ func (c contactAuditor) run(resChan chan *result) error {
 	return nil
 }
 
-func makeDBConnection(dsn string) (*sql.DB, error) {
-	conf, err := mysql.ParseDSN(dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	// Transaction isolation level READ UNCOMMITTED trades consistency
-	// for performance.
-	conf.Params = map[string]string{
-		"tx_isolation": "'READ-UNCOMMITTED'",
-	}
-	return sql.Open("mysql", conf.FormatDSN())
-}
-
 type Config struct {
 	ContactAuditor struct {
 		DB cmd.DBConfig
@@ -182,17 +168,8 @@ func main() {
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Couldn't unmarshal config")
 
-	// Setup database client.
-	dbURL, err := cfg.ContactAuditor.DB.URL()
-	cmd.FailOnError(err, "Couldn't load dbURL")
-	db, err := makeDBConnection(dbURL)
+	db, err := sa.InitSqlDb(cfg.ContactAuditor.DB, nil)
 	cmd.FailOnError(err, "Couldn't setup database client")
-
-	// Apply database settings.
-	db.SetMaxOpenConns(cfg.ContactAuditor.DB.MaxOpenConns)
-	db.SetMaxIdleConns(cfg.ContactAuditor.DB.MaxIdleConns)
-	db.SetConnMaxLifetime(cfg.ContactAuditor.DB.ConnMaxLifetime.Duration)
-	db.SetConnMaxIdleTime(cfg.ContactAuditor.DB.ConnMaxIdleTime.Duration)
 
 	var resultsFile *os.File
 	if *writeToFile {

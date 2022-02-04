@@ -141,3 +141,17 @@ func TestLogWriter(t *testing.T) {
 	test.AssertEquals(t, len(lines), 1)
 	test.AssertEquals(t, lines[0], "INFO: hi")
 }
+
+func TestGRPCLoggerWarningFilter(t *testing.T) {
+	m := blog.NewMock()
+	l := grpcLogger{m}
+	l.Warningln("asdf", "qwer")
+	lines := m.GetAllMatching(".*")
+	test.AssertEquals(t, len(lines), 1)
+
+	m = blog.NewMock()
+	l = grpcLogger{m}
+	l.Warningln("Server.processUnaryRPC failed to write status: connection error: desc = \"transport is closing\"")
+	lines = m.GetAllMatching(".*")
+	test.AssertEquals(t, len(lines), 0)
+}

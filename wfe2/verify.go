@@ -299,7 +299,8 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 		Header     map[string]string
 		Signatures []interface{}
 	}
-	if err := json.Unmarshal(body, &unprotected); err != nil {
+	err := json.Unmarshal(body, &unprotected)
+	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnmarshalFailed"}).Inc()
 		return nil, probs.Malformed("Parse error reading JWS")
 	}
@@ -513,7 +514,8 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	logEvent *web.RequestEvent) ([]byte, *probs.ProblemDetails) {
 
 	// Check that the public key and JWS algorithms match expected
-	if err := checkAlgorithm(jwk, jws); err != nil {
+	err := checkAlgorithm(jwk, jws)
+	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAlgorithmCheckFailed"}).Inc()
 		return nil, probs.BadSignatureAlgorithm(err.Error())
 	}
@@ -549,7 +551,8 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	// trying to unmarshal the payload (when it is non-empty to allow POST-as-GET
 	// behaviour) as part of the verification and failing early if it isn't valid JSON.
 	var parsedBody struct{}
-	if err := json.Unmarshal(payload, &parsedBody); string(payload) != "" && err != nil {
+	err = json.Unmarshal(payload, &parsedBody)
+	if string(payload) != "" && err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSBodyUnmarshalFailed"}).Inc()
 		return nil, probs.Malformed("Request payload did not parse as JSON")
 	}
@@ -685,7 +688,8 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	}
 
 	// If the key doesn't meet the GoodKey policy return a problem
-	if err := wfe.keyPolicy.GoodKey(ctx, pubKey.Key); err != nil {
+	err := wfe.keyPolicy.GoodKey(ctx, pubKey.Key)
+	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
 		return nil, nil, probs.BadPublicKey(err.Error())
 	}
@@ -740,13 +744,15 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	}
 
 	// If the key doesn't meet the GoodKey policy return a problem immediately
-	if err := wfe.keyPolicy.GoodKey(ctx, jwk.Key); err != nil {
+	err := wfe.keyPolicy.GoodKey(ctx, jwk.Key)
+	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "KeyRolloverJWKRejectedByGoodKey"}).Inc()
 		return nil, probs.BadPublicKey(err.Error())
 	}
 
 	// Check that the public key and JWS algorithms match expected
-	if err := checkAlgorithm(jwk, innerJWS); err != nil {
+	err = checkAlgorithm(jwk, innerJWS)
+	if err != nil {
 		return nil, probs.Malformed(err.Error())
 	}
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-gorp/gorp/v3"
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -44,15 +45,87 @@ type DbSettings struct {
 	ConnMaxIdleTime time.Duration
 }
 
-// NewDbSettingsFromDBConfig returns a `DbSettings` object for the provided
-// `cmd.DBConfig`.
-func NewDbSettingsFromDBConfig(dbconfig cmd.DBConfig) DbSettings {
-	return DbSettings{
-		MaxOpenConns:    dbconfig.MaxOpenConns,
-		MaxIdleConns:    dbconfig.MaxIdleConns,
-		ConnMaxLifetime: dbconfig.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: dbconfig.ConnMaxIdleTime.Duration,
+// InitWrappedDb constructs a wrapped gorp mapping object with the provided
+// settings. If scope is non-Nil database metrics will be initialized. If logger
+// is non-Nil (gorp) SQL debugging will be enabled. The only required parameter
+// is config.
+func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
+	url, err := config.URL()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load DBConnect URL: %s", err)
 	}
+
+	settings := DbSettings{
+		MaxOpenConns:    config.MaxOpenConns,
+		MaxIdleConns:    config.MaxIdleConns,
+		ConnMaxLifetime: config.ConnMaxLifetime.Duration,
+		ConnMaxIdleTime: config.ConnMaxIdleTime.Duration,
+	}
+
+	dbMap, err := NewDbMap(url, settings)
+	if err != nil {
+		return nil, fmt.Errorf("while initializing database connection: %s", err)
+	}
+
+	if logger != nil {
+		SetSQLDebug(dbMap, logger)
+	}
+
+	addr, user, err := config.DSNAddressAndUser()
+	cmd.FailOnError(err, "while parsing DSN")
+
+	if scope != nil {
+		InitDBMetrics(dbMap.Db, scope, settings, addr, user)
+	}
+	return dbMap, nil
+}
+
+// InitSqlDb constructs a *sql.DB object using the provided settings and enables
+// 'interpolateParams' and 'parseTime'. If scope is non-Nil database metrics
+// will also be initialized. The only required parameter is config.
+func InitSqlDb(config cmd.DBConfig, scope prometheus.Registerer) (*sql.DB, error) {
+	url, err := config.URL()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load DBConnect URL: %s", err)
+	}
+
+	conf, err := mysql.ParseDSN(url)
+	if err != nil {
+		return nil, fmt.Errorf("while parsing DSN from 'DBConnectFile': %s", err)
+	}
+
+	if len(conf.Params) == 0 {
+		conf.Params = map[string]string{
+			"interpolateParams": "true",
+			"parseTime":         "true",
+		}
+	} else {
+		conf.Params["interpolateParams"] = "true"
+		conf.Params["parseTime"] = "true"
+	}
+
+	db, err := sql.Open("mysql", conf.FormatDSN())
+	if err != nil {
+		return nil, fmt.Errorf("couldn't setup database client: %s", err)
+	}
+	db.SetMaxOpenConns(config.MaxOpenConns)
+	db.SetMaxIdleConns(config.MaxIdleConns)
+	db.SetConnMaxLifetime(config.ConnMaxLifetime.Duration)
+	db.SetConnMaxIdleTime(config.ConnMaxIdleTime.Duration)
+
+	addr, user, err := config.DSNAddressAndUser()
+	cmd.FailOnError(err, "while parsing DSN")
+
+	if scope != nil {
+		settings := DbSettings{
+			MaxOpenConns:    config.MaxOpenConns,
+			MaxIdleConns:    config.MaxIdleConns,
+			ConnMaxLifetime: config.ConnMaxLifetime.Duration,
+			ConnMaxIdleTime: config.ConnMaxIdleTime.Duration,
+		}
+		InitDBMetrics(db, scope, settings, addr, user)
+	}
+	return db, nil
 }
 
 // NewDbMap creates a wrapped root gorp mapping object. Create one of these for

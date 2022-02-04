@@ -241,7 +241,8 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 			} else if renewed {
 				m.log.Debugf("Cert %s is already renewed", cert.Serial)
 				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
-				if err := m.updateCertStatus(cert.Serial); err != nil {
+				err := m.updateCertStatus(cert.Serial)
+				if err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
 					m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
 				}
@@ -506,24 +507,8 @@ func main() {
 		c.Mailer.CertLimit = 100
 	}
 
-	// Configure DB
-	dbURL, err := c.Mailer.DB.URL()
-	cmd.FailOnError(err, "Couldn't load DB URL")
-	dbSettings := sa.DbSettings{
-		MaxOpenConns:    c.Mailer.DB.MaxOpenConns,
-		MaxIdleConns:    c.Mailer.DB.MaxIdleConns,
-		ConnMaxLifetime: c.Mailer.DB.ConnMaxLifetime.Duration,
-		ConnMaxIdleTime: c.Mailer.DB.ConnMaxIdleTime.Duration,
-	}
-	dbMap, err := sa.NewDbMap(dbURL, dbSettings)
-	cmd.FailOnError(err, "Could not connect to database")
-	sa.SetSQLDebug(dbMap, logger)
-
-	dbAddr, dbUser, err := c.Mailer.DB.DSNAddressAndUser()
-	cmd.FailOnError(err, "Could not determine address or user of DB DSN")
-
-	// Collect and periodically report DB metrics using the DBMap and prometheus scope.
-	sa.InitDBMetrics(dbMap.Db, scope, dbSettings, dbAddr, dbUser)
+	dbMap, err := sa.InitWrappedDb(c.Mailer.DB, scope, logger)
+	cmd.FailOnError(err, "While initializing dbMap")
 
 	tlsConfig, err := c.Mailer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")

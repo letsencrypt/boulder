@@ -1,13 +1,16 @@
 package va
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -25,35 +28,37 @@ const (
 )
 
 var (
-	// NOTE: unfortunately another document claimed the OID we were using in draft-ietf-acme-tls-alpn-01
-	// for their own extension and IANA chose to assign it early. Because of this we had to increment
-	// the id-pe-acmeIdentifier OID. Since there are in the wild implementations that use the original
-	// OID we still need to support it until everyone is switched over to the new one.
-	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-01#section-5.1
-	// id-pe OID + 30 (acmeIdentifier) + 1 (v1)
-	IdPeAcmeIdentifierV1Obsolete = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
-
 	// As defined in https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-04#section-5.1
 	// id-pe OID + 31 (acmeIdentifier)
 	IdPeAcmeIdentifier = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
+	// OID for the Subject Alternative Name extension, as defined in
+	// https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
+	IdCeSubjectAltName = asn1.ObjectIdentifier{2, 5, 29, 17}
 )
 
-// certNames collects up all of a certificate's subject names (Subject CN and
+// certAltNames collects up all of a certificate's subject names (Subject CN and
 // Subject Alternate Names) and reduces them to a unique, sorted set, typically for an
 // error message
-func certNames(cert *x509.Certificate) []string {
+func certAltNames(cert *x509.Certificate) []string {
 	var names []string
 	if cert.Subject.CommonName != "" {
 		names = append(names, cert.Subject.CommonName)
 	}
 	names = append(names, cert.DNSNames...)
+	names = append(names, cert.EmailAddresses...)
+	for _, id := range cert.IPAddresses {
+		names = append(names, id.String())
+	}
+	for _, id := range cert.URIs {
+		names = append(names, id.String())
+	}
 	names = core.UniqueLowerNames(names)
 	return names
 }
 
-func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
+func (va *ValidationAuthorityImpl) tryGetChallengeCert(ctx context.Context,
 	identifier identifier.ACMEIdentifier, challenge core.Challenge,
-	tlsConfig *tls.Config) ([]*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
+	tlsConfig *tls.Config) (*x509.Certificate, *tls.ConnectionState, []core.ValidationRecord, *probs.ProblemDetails) {
 
 	allAddrs, err := va.getAddrs(ctx, identifier.Value)
 	validationRecords := []core.ValidationRecord{
@@ -82,11 +87,11 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 		address := net.JoinHostPort(v6[0].String(), thisRecord.Port)
 		thisRecord.AddressUsed = v6[0]
 
-		certs, cs, prob := va.getTLSCerts(ctx, address, identifier, challenge, tlsConfig)
+		cert, cs, prob := va.getChallengeCert(ctx, address, identifier, challenge, tlsConfig)
 
 		// If there is no problem, return immediately
 		if err == nil {
-			return certs, cs, validationRecords, prob
+			return cert, cs, validationRecords, prob
 		}
 
 		// Otherwise, we note that we tried an address and fall back to trying IPv4
@@ -108,18 +113,18 @@ func (va *ValidationAuthorityImpl) tryGetTLSCerts(ctx context.Context,
 	// Otherwise if there are no IPv6 addresses, or there was an error
 	// talking to the first IPv6 address, try the first IPv4 address
 	thisRecord.AddressUsed = v4[0]
-	certs, cs, prob := va.getTLSCerts(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
+	cert, cs, prob := va.getChallengeCert(ctx, net.JoinHostPort(v4[0].String(), thisRecord.Port),
 		identifier, challenge, tlsConfig)
-	return certs, cs, validationRecords, prob
+	return cert, cs, validationRecords, prob
 }
 
-func (va *ValidationAuthorityImpl) getTLSCerts(
+func (va *ValidationAuthorityImpl) getChallengeCert(
 	ctx context.Context,
 	hostPort string,
 	identifier identifier.ACMEIdentifier,
 	challenge core.Challenge,
 	config *tls.Config,
-) ([]*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
+) (*x509.Certificate, *tls.ConnectionState, *probs.ProblemDetails) {
 	va.log.Info(fmt.Sprintf("%s [%s] Attempting to validate for %s %s", challenge.Type, identifier, hostPort, config.ServerName))
 	// We expect a self-signed challenge certificate, do not verify it here.
 	config.InsecureSkipVerify = true
@@ -144,7 +149,7 @@ func (va *ValidationAuthorityImpl) getTLSCerts(
 		va.log.AuditInfof("%s challenge for %s received certificate (%d of %d): cert=[%s]",
 			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
-	return certs, &cs, nil
+	return certs[0], &cs, nil
 }
 
 // tlsDial does the equivalent of tls.Dial, but obeying a context. Once
@@ -171,13 +176,59 @@ func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string,
 	return conn, nil
 }
 
+func checkExpectedSAN(cert *x509.Certificate, name identifier.ACMEIdentifier) error {
+	if len(cert.DNSNames) != 1 {
+		return errors.New("wrong number of dNSNames")
+	}
+
+	for _, ext := range cert.Extensions {
+		if IdCeSubjectAltName.Equal(ext.Id) {
+			expectedSANs, err := asn1.Marshal([]asn1.RawValue{
+				{Tag: 2, Class: 2, Bytes: []byte(cert.DNSNames[0])},
+			})
+			if err != nil || !bytes.Equal(expectedSANs, ext.Value) {
+				return errors.New("SAN extension does not match expected bytes")
+			}
+		}
+	}
+
+	if !strings.EqualFold(cert.DNSNames[0], name.Value) {
+		return errors.New("dNSName does not match expected identifier")
+	}
+
+	return nil
+}
+
+// Confirm that of the OIDs provided, all of them are in the provided list of
+// extensions. Also confirms that of the extensions provided that none are
+// repeated. Per RFC8737, allows unexpected extensions.
+func checkAcceptableExtensions(exts []pkix.Extension, requiredOIDs []asn1.ObjectIdentifier) error {
+	oidSeen := make(map[string]bool)
+
+	for _, ext := range exts {
+		if oidSeen[ext.Id.String()] {
+			return fmt.Errorf("Extension OID %s seen twice", ext.Id)
+		}
+		oidSeen[ext.Id.String()] = true
+	}
+
+	for _, required := range requiredOIDs {
+		if !oidSeen[required.String()] {
+			return fmt.Errorf("Required extension OID %s is not present", required)
+		}
+	}
+
+	return nil
+}
+
 func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identifier identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {
 	if identifier.Type != "dns" {
 		va.log.Info(fmt.Sprintf("Identifier type for TLS-ALPN-01 was not DNS: %s", identifier))
 		return nil, probs.Malformed("Identifier type for TLS-ALPN-01 was not DNS")
 	}
 
-	certs, cs, validationRecords, problem := va.tryGetTLSCerts(ctx, identifier, challenge, &tls.Config{
+	cert, cs, validationRecords, problem := va.tryGetChallengeCert(ctx, identifier, challenge, &tls.Config{
+		MinVersion: tls.VersionTLS12,
 		NextProtos: []string{ACMETLS1Protocol},
 		ServerName: identifier.Value,
 	})
@@ -194,29 +245,54 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
-	leafCert := certs[0]
+	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
 
-	// Verify SNI - certificate returned must be issued only for the domain we are verifying.
-	if len(leafCert.DNSNames) != 1 || !strings.EqualFold(leafCert.DNSNames[0], identifier.Value) {
-		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
-		names := certNames(leafCert)
+	// The certificate must be self-signed.
+	err := cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature)
+	if err != nil || !bytes.Equal(cert.RawSubject, cert.RawIssuer) {
 		errText := fmt.Sprintf(
 			"Incorrect validation certificate for %s challenge. "+
-				"Requested %s from %s. Received %d certificate(s), "+
-				"first certificate had names %q",
-			challenge.Type, identifier.Value, hostPort, len(certs), strings.Join(names, ", "))
+				"Requested %s from %s. "+
+				"Received certificate which is not self-signed.",
+			challenge.Type, identifier.Value, hostPort)
+		return validationRecords, probs.Unauthorized(errText)
+	}
+
+	// The certificate must have the subjectAltName and acmeIdentifier
+	// extensions, and only one of each.
+	allowedOIDs := []asn1.ObjectIdentifier{
+		IdPeAcmeIdentifier, IdCeSubjectAltName,
+	}
+	err = checkAcceptableExtensions(cert.Extensions, allowedOIDs)
+	if err != nil {
+		errText := fmt.Sprintf(
+			"Incorrect validation certificate for %s challenge. "+
+				"Requested %s from %s. "+
+				"Received certificate with unexpected extensions. "+
+				"Got error: %q",
+			challenge.Type, identifier.Value, hostPort, err)
+		return validationRecords, probs.Unauthorized(errText)
+	}
+
+	// The certificate returned must have a subjectAltName extension containing
+	// only the dNSName being validated and no other entries.
+	err = checkExpectedSAN(cert, identifier)
+	if err != nil {
+		names := certAltNames(cert)
+		errText := fmt.Sprintf(
+			"Incorrect validation certificate for %s challenge. "+
+				"Requested %s from %s. "+
+				"Received certificate with unexpected identifiers: %q. "+
+				"Got error: %q",
+			challenge.Type, identifier.Value, hostPort, strings.Join(names, ", "), err)
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
 	// Verify key authorization in acmeValidation extension
 	h := sha256.Sum256([]byte(challenge.ProvidedKeyAuthorization))
-	for _, ext := range leafCert.Extensions {
-		if IdPeAcmeIdentifier.Equal(ext.Id) || IdPeAcmeIdentifierV1Obsolete.Equal(ext.Id) {
-			if IdPeAcmeIdentifier.Equal(ext.Id) {
-				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
-			} else {
-				va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifierV1Obsolete.String()).Inc()
-			}
+	for _, ext := range cert.Extensions {
+		if IdPeAcmeIdentifier.Equal(ext.Id) {
+			va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
 			if !ext.Critical {
 				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
 					"acmeValidationV1 extension not critical", core.ChallengeTypeTLSALPN01)

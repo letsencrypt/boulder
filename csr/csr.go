@@ -52,7 +52,8 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if !ok {
 		return invalidPubKey
 	}
-	if err := keyPolicy.GoodKey(ctx, key); err != nil {
+	err := keyPolicy.GoodKey(ctx, key)
+	if err != nil {
 		if errors.Is(err, goodkey.ErrBadKey) {
 			return berrors.BadCSRError("invalid public key in CSR: %s", err)
 		}
@@ -61,7 +62,8 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg
 	}
-	if err := csr.CheckSignature(); err != nil {
+	err = csr.CheckSignature()
+	if err != nil {
 		return invalidSig
 	}
 	if len(csr.EmailAddresses) > 0 {
@@ -86,7 +88,8 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	for i, dnsName := range csr.DNSNames {
 		idents[i] = identifier.DNSIdentifier(dnsName)
 	}
-	if err := pa.WillingToIssueWildcards(idents); err != nil {
+	err = pa.WillingToIssueWildcards(idents)
+	if err != nil {
 		return err
 	}
 	return nil

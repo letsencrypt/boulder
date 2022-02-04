@@ -456,12 +456,14 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		var row struct {
 			Count int64
 		}
-		if err := txWithCtx.SelectOne(&row, "SELECT count(1) as count FROM certificates WHERE serial=?", serial); err != nil {
+		err := txWithCtx.SelectOne(&row, "SELECT count(1) as count FROM certificates WHERE serial=?", serial)
+		if err != nil {
 			return nil, err
 		}
 		if row.Count > 0 {
 			return nil, berrors.DuplicateError("cannot add a duplicate cert")
 		}
+
 		// Save the final certificate
 		err = txWithCtx.Insert(cert)
 		if err != nil {
@@ -507,20 +509,22 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-			if err := ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour); err != nil {
+			err := ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
+			if err != nil {
 				return nil, err
 			}
 		}
 
 		// Update the FQDN sets now that there is a final certificate to ensure rate
 		// limits are calculated correctly.
-		if err := addFQDNSet(
+		err = addFQDNSet(
 			txWithCtx,
 			parsedCertificate.DNSNames,
 			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
 			parsedCertificate.NotAfter,
-		); err != nil {
+		)
+		if err != nil {
 			return nil, err
 		}
 
@@ -816,7 +820,8 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrder
 			Created:        ssa.clk.Now(),
 		}
 
-		if err := txWithCtx.Insert(order); err != nil {
+		err := txWithCtx.Insert(order)
+		if err != nil {
 			return nil, err
 		}
 
@@ -825,7 +830,8 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrder
 				OrderID: order.ID,
 				AuthzID: id,
 			}
-			if err := txWithCtx.Insert(otoa); err != nil {
+			err := txWithCtx.Insert(otoa)
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -835,14 +841,15 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrder
 				OrderID:      order.ID,
 				ReversedName: ReverseName(name),
 			}
-			if err := txWithCtx.Insert(reqdName); err != nil {
+			err := txWithCtx.Insert(reqdName)
+			if err != nil {
 				return nil, err
 			}
 		}
 
 		// Add an FQDNSet entry for the order
-		if err := addOrderFQDNSet(
-			txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires); err != nil {
+		err = addOrderFQDNSet(txWithCtx, req.Names, order.ID, order.RegistrationID, order.Expires)
+		if err != nil {
 			return nil, err
 		}
 
@@ -859,7 +866,8 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrder
 
 	if features.Enabled(features.FasterNewOrdersRateLimit) {
 		// Increment the order creation count
-		if err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
+		err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -939,7 +947,8 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			Expires:        time.Unix(0, req.NewOrder.Expires),
 			Created:        ssa.clk.Now(),
 		}
-		if err := txWithCtx.Insert(order); err != nil {
+		err := txWithCtx.Insert(order)
+		if err != nil {
 			return nil, err
 		}
 
@@ -1013,7 +1022,8 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 	if features.Enabled(features.FasterNewOrdersRateLimit) {
 		// Increment the order creation count
-		if err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute)); err != nil {
+		err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -1126,7 +1136,8 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 
 		// Delete the orderFQDNSet row for the order now that it has been finalized.
 		// We use this table for order reuse and should not reuse a finalized order.
-		if err := deleteOrderFQDNSet(txWithCtx, req.Id); err != nil {
+		err = deleteOrderFQDNSet(txWithCtx, req.Id)
+		if err != nil {
 			return nil, err
 		}
 
@@ -1222,9 +1233,8 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 // statusForOrder examines the status of a provided order's authorizations to
 // determine what the overall status of the order should be. In summary:
 //   * If the order has an error, the order is invalid
-//   * If any of the order's authorizations are invalid, the order is invalid.
-//   * If any of the order's authorizations are expired, the order is invalid.
-//   * If any of the order's authorizations are deactivated, the order is invalid.
+//   * If any of the order's authorizations are in any state other than
+//     valid or pending, the order is invalid.
 //   * If any of the order's authorizations are pending, the order is pending.
 //   * If all of the order's authorizations are valid, and there is
 //     a certificate serial, the order is valid.
@@ -1269,23 +1279,24 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// Keep a count of the authorizations seen
-	invalidAuthzs := 0
-	expiredAuthzs := 0
-	deactivatedAuthzs := 0
 	pendingAuthzs := 0
 	validAuthzs := 0
+	otherAuthzs := 0
+	expiredAuthzs := 0
 
 	// Loop over each of the order's authorization objects to examine the authz status
 	for _, info := range authzValidityInfo {
 		switch core.AcmeStatus(info.Status) {
-		case core.StatusInvalid:
-			invalidAuthzs++
-		case core.StatusDeactivated:
-			deactivatedAuthzs++
 		case core.StatusPending:
 			pendingAuthzs++
 		case core.StatusValid:
 			validAuthzs++
+		case core.StatusInvalid:
+			otherAuthzs++
+		case core.StatusDeactivated:
+			otherAuthzs++
+		case core.StatusRevoked:
+			otherAuthzs++
 		default:
 			return "", berrors.InternalServerError(
 				"Order is in an invalid state. Authz has invalid status %s",
@@ -1297,10 +1308,8 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	}
 
 	// An order is invalid if **any** of its authzs are invalid, deactivated,
-	// or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
-	if invalidAuthzs > 0 ||
-		expiredAuthzs > 0 ||
-		deactivatedAuthzs > 0 {
+	// revoked, or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
+	if otherAuthzs > 0 || expiredAuthzs > 0 {
 		return string(core.StatusInvalid), nil
 	}
 	// An order is pending if **any** of its authzs are pending
@@ -1985,14 +1994,15 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 	if req == nil || req.KeyHash == nil {
 		return nil, errIncompleteRequest
 	}
-	exists := false
+
 	var id int64
-	if err := ssa.dbMap.SelectOne(&id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash); err != nil {
+	err := ssa.dbMap.SelectOne(&id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash)
+	if err != nil {
 		if db.IsNoRows(err) {
-			return &sapb.Exists{Exists: exists}, nil
+			return &sapb.Exists{Exists: false}, nil
 		}
 		return nil, err
 	}
-	exists = true
-	return &sapb.Exists{Exists: exists}, nil
+
+	return &sapb.Exists{Exists: true}, nil
 }

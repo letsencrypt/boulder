@@ -97,7 +97,8 @@ type RawCertificateRequest struct {
 // UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
 func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
 	var raw RawCertificateRequest
-	if err := json.Unmarshal(data, &raw); err != nil {
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
 		return err
 	}
 
@@ -283,7 +284,8 @@ func (ch Challenge) RecordsSane() bool {
 // CheckConsistencyForClientOffer checks the fields of a challenge object before it is
 // given to the client.
 func (ch Challenge) CheckConsistencyForClientOffer() error {
-	if err := ch.checkConsistency(); err != nil {
+	err := ch.checkConsistency()
+	if err != nil {
 		return err
 	}
 
@@ -297,7 +299,8 @@ func (ch Challenge) CheckConsistencyForClientOffer() error {
 // CheckConsistencyForValidation checks the fields of a challenge object before it is
 // given to the VA.
 func (ch Challenge) CheckConsistencyForValidation() error {
-	if err := ch.checkConsistency(); err != nil {
+	err := ch.checkConsistency()
+	if err != nil {
 		return err
 	}
 

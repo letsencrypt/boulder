@@ -58,7 +58,8 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 
 	readBuf := bufio.NewReader(conn)
 	conn.Write([]byte("220 smtp.example.com ESMTP\r\n"))
-	if err := expectLine(readBuf, "EHLO localhost"); err != nil {
+	err := expectLine(readBuf, "EHLO localhost")
+	if err != nil {
 		log.Printf("mail-test-srv: %s: %v\n", conn.RemoteAddr(), err)
 		return
 	}
@@ -67,7 +68,8 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 	conn.Write([]byte("250 8BITMIME\r\n"))
 	// This AUTH PLAIN is the output of: echo -en '\0cert-manager@example.com\0password' | base64
 	// Must match the mail configs for integration tests.
-	if err := expectLine(readBuf, "AUTH PLAIN AGNlcnQtbWFuYWdlckBleGFtcGxlLmNvbQBwYXNzd29yZA=="); err != nil {
+	err = expectLine(readBuf, "AUTH PLAIN AGNlcnQtbWFuYWdlckBleGFtcGxlLmNvbQBwYXNzd29yZA==")
+	if err != nil {
 		log.Printf("mail-test-srv: %s: %v\n", conn.RemoteAddr(), err)
 		return
 	}

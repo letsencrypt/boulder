@@ -173,7 +173,8 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 		<-rowTicker.C
 
 		status := new(sa.CertStatusMetadata)
-		if err := sa.ScanCertStatusMetadataRow(rows, status); err != nil {
+		err := sa.ScanCertStatusMetadataRow(rows, status)
+		if err != nil {
 			return -1, fmt.Errorf("scanning row %d (previous ID %d): %w", scanned, previousID, err)
 		}
 		scanned++
