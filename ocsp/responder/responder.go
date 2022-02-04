@@ -27,8 +27,9 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-// Package ocsp implements an OCSP responder based on a generic storage backend.
-package ocsp
+// Package responder implements an OCSP HTTP responder based on a generic
+// storage backend.
+package responder
 
 import (
 	"context"
@@ -41,7 +42,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"regexp"
 	"time"
 
 	"github.com/honeycombio/beeline-go"
@@ -57,83 +57,6 @@ import (
 // indicate that the responder should reply with unauthorizedErrorResponse.
 var ErrNotFound = errors.New("Request OCSP Response not found")
 
-// Source represents the logical source of OCSP responses, i.e.,
-// the logic that actually chooses a response based on a request.  In
-// order to create an actual responder, wrap one of these in a Responder
-// object and pass it to http.Handle. By default the Responder will set
-// the headers Cache-Control to "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
-// Last-Modified to response.ThisUpdate, Expires to response.NextUpdate,
-// ETag to the SHA256 hash of the response, and Content-Type to
-// application/ocsp-response. If you want to override these headers,
-// or set extra headers, your source should return a http.Header
-// with the headers you wish to set. If you don't want to set any
-// extra headers you may return nil instead.
-type Source interface {
-	Response(context.Context, *ocsp.Request) ([]byte, http.Header, error)
-}
-
-// An InMemorySource is a map from serialNumber -> der(response)
-type InMemorySource struct {
-	responses map[string][]byte
-	log       blog.Logger
-}
-
-// NewMemorySource returns an initialized InMemorySource
-func NewMemorySource(responses map[string][]byte, logger blog.Logger) Source {
-	return InMemorySource{
-		responses: responses,
-		log:       logger,
-	}
-}
-
-// Response looks up an OCSP response to provide for a given request.
-// InMemorySource looks up a response purely based on serial number,
-// without regard to what issuer the request is asking for.
-func (src InMemorySource) Response(_ context.Context, request *ocsp.Request) ([]byte, http.Header, error) {
-	response, present := src.responses[request.SerialNumber.String()]
-	if !present {
-		return nil, nil, ErrNotFound
-	}
-	return response, nil, nil
-}
-
-// NewMemorySourceFromFile reads the named file into an InMemorySource.
-// The file read by this function must contain whitespace-separated OCSP
-// responses. Each OCSP response must be in base64-encoded DER form (i.e.,
-// PEM without headers or whitespace).  Invalid responses are ignored.
-// This function pulls the entire file into an InMemorySource.
-func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (Source, error) {
-	fileContents, err := ioutil.ReadFile(responseFile)
-	if err != nil {
-		return nil, err
-	}
-
-	responsesB64 := regexp.MustCompile(`\s`).Split(string(fileContents), -1)
-	responses := make(map[string][]byte, len(responsesB64))
-	for _, b64 := range responsesB64 {
-		// if the line/space is empty just skip
-		if b64 == "" {
-			continue
-		}
-		der, tmpErr := base64.StdEncoding.DecodeString(b64)
-		if tmpErr != nil {
-			logger.Errf("Base64 decode error %s on: %s", tmpErr, b64)
-			continue
-		}
-
-		response, tmpErr := ocsp.ParseResponse(der, nil)
-		if tmpErr != nil {
-			logger.Errf("OCSP decode error %s on: %s", tmpErr, b64)
-			continue
-		}
-
-		responses[response.SerialNumber.String()] = der
-	}
-
-	logger.Infof("Read %d OCSP responses", len(responses))
-	return NewMemorySource(responses, logger), nil
-}
-
 var responseTypeToString = map[ocsp.ResponseStatus]string{
 	ocsp.Success:           "Success",
 	ocsp.Malformed:         "Malformed",
@@ -143,10 +66,10 @@ var responseTypeToString = map[ocsp.ResponseStatus]string{
 	ocsp.Unauthorized:      "Unauthorized",
 }
 
-// A Responder object provides the HTTP logic to expose a
-// Source of OCSP responses.
+// A Responder object provides an HTTP wrapper around a Source.
 type Responder struct {
 	Source        Source
+	timeout       time.Duration
 	responseTypes *prometheus.CounterVec
 	responseAges  prometheus.Histogram
 	requestSizes  prometheus.Histogram
@@ -155,7 +78,7 @@ type Responder struct {
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger) *Responder {
+func NewResponder(source Source, timeout time.Duration, stats prometheus.Registerer, logger blog.Logger) *Responder {
 	requestSizes := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "ocsp_request_sizes",
@@ -188,24 +111,12 @@ func NewResponder(source Source, stats prometheus.Registerer, logger blog.Logger
 
 	return &Responder{
 		Source:        source,
+		timeout:       timeout,
 		responseTypes: responseTypes,
 		responseAges:  responseAges,
 		requestSizes:  requestSizes,
 		clk:           clock.New(),
 		log:           logger,
-	}
-}
-
-func overrideHeaders(response http.ResponseWriter, headers http.Header) {
-	for k, v := range headers {
-		if len(v) == 1 {
-			response.Header().Set(k, v[0])
-		} else if len(v) > 1 {
-			response.Header().Del(k)
-			for _, e := range v {
-				response.Header().Add(k, e)
-			}
-		}
 	}
 }
 
@@ -234,10 +145,16 @@ var hashToString = map[crypto.Hash]string{
 	crypto.SHA512: "SHA512",
 }
 
-// A Responder can process both GET and POST requests.  The mapping
-// from an OCSP request to an OCSP response is done by the Source;
-// the Responder simply decodes the request, and passes back whatever
-// response is provided by the source.
+// A Responder can process both GET and POST requests. The mapping from an OCSP
+// request to an OCSP response is done by the Source; the Responder simply
+// decodes the request, and passes back whatever response is provided by the
+// source.
+// The Responder will set these headers:
+//   Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
+//   Last-Modified: response.ThisUpdate,
+//   Expires: response.NextUpdate,
+//   ETag: the SHA256 hash of the response, and
+//   Content-Type: application/ocsp-response.
 // Note: The caller must use http.StripPrefix to strip any path components
 // (including '/') on GET requests.
 // Do not use this responder in conjunction with http.NewServeMux, because the
@@ -246,6 +163,13 @@ var hashToString = map[crypto.Hash]string{
 // encoding.
 func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	ctx := request.Context()
+
+	if rs.timeout != 0 {
+		var cancel func()
+		ctx, cancel = context.WithTimeout(ctx, rs.timeout)
+		defer cancel()
+	}
+
 	le := logEvent{
 		IP:       request.RemoteAddr,
 		UA:       request.UserAgent(),
@@ -356,7 +280,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	beeline.AddFieldToTrace(ctx, "ocsp.hash_alg", hashToString[ocspRequest.HashAlgorithm])
 
 	// Look up OCSP response from source
-	ocspResponse, headers, err := rs.Source.Response(ctx, ocspRequest)
+	ocspResponse, err := rs.Source.Response(ctx, ocspRequest)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			rs.log.Infof("No response found for request: serial %x, request body %s",
@@ -373,23 +297,13 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		return
 	}
 
-	parsedResponse, err := ocsp.ParseResponse(ocspResponse, nil)
-	if err != nil {
-		rs.log.Errf("Error parsing response for serial %x: %x %s",
-			ocspRequest.SerialNumber, parsedResponse, err)
-		response.WriteHeader(http.StatusInternalServerError)
-		response.Write(ocsp.InternalErrorErrorResponse)
-		rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.InternalError]}).Inc()
-		return
-	}
-
 	// Write OCSP response
-	response.Header().Add("Last-Modified", parsedResponse.ThisUpdate.Format(time.RFC1123))
-	response.Header().Add("Expires", parsedResponse.NextUpdate.Format(time.RFC1123))
+	response.Header().Add("Last-Modified", ocspResponse.ThisUpdate.Format(time.RFC1123))
+	response.Header().Add("Expires", ocspResponse.NextUpdate.Format(time.RFC1123))
 	now := rs.clk.Now()
 	maxAge := 0
-	if now.Before(parsedResponse.NextUpdate) {
-		maxAge = int(parsedResponse.NextUpdate.Sub(now) / time.Second)
+	if now.Before(ocspResponse.NextUpdate) {
+		maxAge = int(ocspResponse.NextUpdate.Sub(now) / time.Second)
 	} else {
 		// TODO(#530): we want max-age=0 but this is technically an authorized OCSP response
 		//             (despite being stale) and 5019 forbids attaching no-cache
@@ -402,11 +316,15 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			maxAge,
 		),
 	)
-	responseHash := sha256.Sum256(ocspResponse)
+	responseHash := sha256.Sum256(ocspResponse.Raw)
 	response.Header().Add("ETag", fmt.Sprintf("\"%X\"", responseHash))
 
-	if headers != nil {
-		overrideHeaders(response, headers)
+	serialString := core.SerialToString(ocspResponse.SerialNumber)
+	if len(serialString) > 2 {
+		// Set a cache tag that is equal to the last two bytes of the serial.
+		// We expect that to be randomly distributed, so each tag should map to
+		// about 1/256 of our responses.
+		response.Header().Add("Edge-Cache-Tag", serialString[len(serialString)-2:])
 	}
 
 	// RFC 7232 says that a 304 response must contain the above
@@ -419,7 +337,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		}
 	}
 	response.WriteHeader(http.StatusOK)
-	response.Write(ocspResponse)
-	rs.responseAges.Observe(rs.clk.Now().Sub(parsedResponse.ThisUpdate).Seconds())
+	response.Write(ocspResponse.Raw)
+	rs.responseAges.Observe(rs.clk.Now().Sub(ocspResponse.ThisUpdate).Seconds())
 	rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Success]}).Inc()
 }

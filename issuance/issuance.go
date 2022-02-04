@@ -31,6 +31,7 @@ import (
 	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/pkcs11key/v4"
+	"golang.org/x/crypto/ocsp"
 )
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
@@ -426,6 +427,15 @@ func (ic *Certificate) KeyHash() [20]byte {
 // Useful for performing lookups in contexts that don't expect hash collisions.
 func GetIssuerNameID(ee *x509.Certificate) IssuerNameID {
 	return truncatedHash(ee.RawIssuer)
+}
+
+// GetOCSPIssuerNameID returns the IssuerNameID (a truncated hash over the raw
+// bytes of the Responder Distinguished Name) of the given OCSP Response.
+// As per the OCSP spec, it is technically possible for this field to not be
+// populated: the OCSP Response can instead contain a SHA-1 hash of the Issuer
+// Public Key as the Responder ID. The Go stdlib always uses the DN, though.
+func GetOCSPIssuerNameID(resp *ocsp.Response) IssuerNameID {
+	return truncatedHash(resp.RawResponderName)
 }
 
 // truncatedHash computes a truncated SHA1 hash across arbitrary bytes. Uses

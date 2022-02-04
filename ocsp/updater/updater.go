@@ -1,4 +1,4 @@
-package ocsp_updater
+package updater
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
-	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
@@ -61,6 +61,37 @@ func (c *failCounter) Value() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.count
+}
+
+// Config provides the various window tick times and batch sizes needed
+// for the OCSP updater
+type Config struct {
+	cmd.ServiceConfig
+	DB         cmd.DBConfig
+	ReadOnlyDB cmd.DBConfig
+	Redis      *rocsp_config.RedisConfig
+
+	// Issuers is a map from filenames to short issuer IDs.
+	// Each filename must contain an issuer certificate. The short issuer
+	// IDs are arbitrarily assigned and must be consistent across OCSP
+	// components. For production we'll use the number part of the CN, i.e.
+	// E1 -> 1, R3 -> 3, etc.
+	Issuers map[string]int
+
+	OldOCSPWindow    cmd.ConfigDuration
+	OldOCSPBatchSize int
+
+	OCSPMinTimeToExpiry          cmd.ConfigDuration
+	ParallelGenerateOCSPRequests int
+
+	SignFailureBackoffFactor float64
+	SignFailureBackoffMax    cmd.ConfigDuration
+
+	SerialSuffixShards string
+
+	OCSPGeneratorService *cmd.GRPCClientConfig
+
+	Features map[string]bool
 }
 
 // OCSPUpdater contains the useful objects for the Updater
@@ -113,7 +144,10 @@ func New(
 	issuers []rocsp_config.ShortIDIssuer,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
-	config ocsp_updater_config.Config,
+	// A temporary evil. This constructor should not take a JSON config as input;
+	// everything should be prepped ahead of time.
+	// TODO(XXX): Fix this, or file a bug to fix it later.
+	config Config,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
 	if config.OldOCSPBatchSize == 0 {

@@ -12,15 +12,14 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/ocsp_updater"
-	ocsp_updater_config "github.com/letsencrypt/boulder/ocsp_updater/config"
+	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
 	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
 type Config struct {
-	OCSPUpdater ocsp_updater_config.Config
+	OCSPUpdater ocsp_updater.Config
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
@@ -96,6 +95,7 @@ func main() {
 		serialSuffixes,
 		ogc,
 		// Necessary evil for now
+		// TODO(XXX): Fix this, or file a bug to fix it later.
 		conf,
 		logger,
 	)
