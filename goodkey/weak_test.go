@@ -34,8 +34,7 @@ func TestLoadKeys(t *testing.T) {
 	mod := &big.Int{}
 	mod.SetBytes(modBytes)
 	testKey := rsa.PublicKey{N: mod}
-	tempDir, err := ioutil.TempDir("", "weak-keys")
-	test.AssertNotError(t, err, "Failed to create temporary directory")
+	tempDir := t.TempDir()
 	tempPath := filepath.Join(tempDir, "a.json")
 	err = ioutil.WriteFile(tempPath, []byte("[\"8df20e6961a16398b85a\"]"), os.ModePerm)
 	test.AssertNotError(t, err, "Failed to create temporary file")
