@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -o errexit
 cd $(dirname $0)/..
 
@@ -147,4 +147,4 @@ for dbenv in $DBENVS; do
 done
 
 echo
-echo "database setup complete"
+echo "database setup complete" && exit 0
