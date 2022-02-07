@@ -270,7 +270,6 @@ example.net
 	recipients = []recipient{{id: 10, Data: map[string]string{"domainName": "example.com"}}}
 	_, err = m.makeMessageBody(recipients)
 	test.AssertEquals(t, err.Error(), "template: email:2:8: executing \"email\" at <.Data.date>: map has no entry for key \"date\"")
-
 }
 
 func TestSleepInterval(t *testing.T) {
