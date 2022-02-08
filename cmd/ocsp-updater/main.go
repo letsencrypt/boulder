@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/honeycombio/beeline-go"
 
@@ -94,8 +95,10 @@ func main() {
 
 	redisConf := c.OCSPUpdater.Redis
 	var rocspClient *rocsp.WritingClient
+	var redisTimeout time.Duration
 	if redisConf != nil {
 		rocspClient, err = rocsp_config.MakeClient(redisConf, clk, stats)
+		redisTimeout = redisConf.Timeout.Duration
 		cmd.FailOnError(err, "making Redis client")
 	}
 	issuers, err := rocsp_config.LoadIssuers(c.OCSPUpdater.Issuers)
@@ -128,7 +131,7 @@ func main() {
 		conf.SignFailureBackoffFactor,
 		conf.OCSPMinTimeToExpiry.Duration,
 		conf.ParallelGenerateOCSPRequests,
-		conf.Redis.Timeout.Duration,
+		redisTimeout,
 		logger,
 	)
 	cmd.FailOnError(err, "Failed to create updater")
