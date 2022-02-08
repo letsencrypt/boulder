@@ -102,6 +102,25 @@ func sortAddresses(input addressToRecipientMap) []string {
 	return addresses
 }
 
+// makeMessageBody is a helper for mailer.run() that's split out for the
+// purposes of testing.
+func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
+	var messageBody strings.Builder
+
+	// Ensure that in the event of a missing key, an informative error is
+	// returned.
+	m.emailTemplate.Option("missingkey=error")
+	err := m.emailTemplate.Execute(&messageBody, recipients)
+	if err != nil {
+		return "", err
+	}
+
+	if messageBody.Len() == 0 {
+		return "", errors.New("templating resulted in an empty message body")
+	}
+	return messageBody.String(), nil
+}
+
 func (m *mailer) run() error {
 	err := m.ok()
 	if err != nil {
@@ -161,17 +180,13 @@ func (m *mailer) run() error {
 		recipients := addressToRecipient[address]
 		m.logStatus(address, i+1, totalAddresses, startTime)
 
-		var messageBody strings.Builder
-		err = m.emailTemplate.Execute(&messageBody, recipients)
+		messageBody, err := m.makeMessageBody(recipients)
 		if err != nil {
-			return err
+			m.log.Errf("Skipping %q due to templating error: %s", address, err)
+			continue
 		}
 
-		if messageBody.Len() == 0 {
-			return errors.New("message body was empty after interpolation")
-		}
-
-		err = m.mailer.SendMail([]string{address}, m.subject, messageBody.String())
+		err = m.mailer.SendMail([]string{address}, m.subject, messageBody)
 		if err != nil {
 			var badAddrErr bmail.BadAddressSMTPError
 			if errors.As(err, &badAddrErr) {
@@ -253,11 +268,20 @@ func getAddressForID(id int64, dbMap dbSelector) ([]string, error) {
 	return addresses, nil
 }
 
-// recipient represents a single record from the recipient list file.
+// recipient represents a single record from the recipient list file. The 'id'
+// column is parsed to the 'id' field, all additional data will be parsed to a
+// mapping of column name to value in the 'Data' field. Please inform SRE if you
+// make any changes to the exported fields of this struct. These fields are
+// referenced in operationally critical e-mail templates used to notify
+// subscribers during incident response.
 type recipient struct {
+	// id is the subscriber's ID.
 	id int64
 
-	// Data is exported so the contents can be referenced from message template.
+	// Data is a mapping of column name to value parsed from a single record in
+	// the provided recipient list file. It's exported so the contents can be
+	// accessed by the the template package. Please inform SRE if you make any
+	// changes to this field.
 	Data map[string]string
 }
 
@@ -384,7 +408,7 @@ fields to be interpolated into the email template:
 The additional fields will be interpolated with Golang templating, e.g.:
 
   Your last issuance on each account was:
-		{{ range . }} {{ .Extra.lastIssuance }}
+		{{ range . }} {{ .Data.lastIssuance }}
 		{{ end }}
 
 To help the operator gain confidence in the mailing run before committing fully
