@@ -19,7 +19,35 @@ import (
 )
 
 type Config struct {
-	OCSPUpdater ocsp_updater.Config
+	OCSPUpdater struct {
+		cmd.ServiceConfig
+		DB         cmd.DBConfig
+		ReadOnlyDB cmd.DBConfig
+		Redis      *rocsp_config.RedisConfig
+
+		// Issuers is a map from filenames to short issuer IDs.
+		// Each filename must contain an issuer certificate. The short issuer
+		// IDs are arbitrarily assigned and must be consistent across OCSP
+		// components. For production we'll use the number part of the CN, i.e.
+		// E1 -> 1, R3 -> 3, etc.
+		Issuers map[string]int
+
+		OldOCSPWindow    cmd.ConfigDuration
+		OldOCSPBatchSize int
+
+		OCSPMinTimeToExpiry          cmd.ConfigDuration
+		ParallelGenerateOCSPRequests int
+
+		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
+		SignFailureBackoffFactor float64
+		SignFailureBackoffMax    cmd.ConfigDuration
+
+		SerialSuffixShards string
+
+		OCSPGeneratorService *cmd.GRPCClientConfig
+
+		Features map[string]bool
+	}
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
