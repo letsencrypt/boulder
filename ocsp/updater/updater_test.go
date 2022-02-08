@@ -15,7 +15,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -75,14 +74,13 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 		nil,
 		strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"),
 		&mockOCSP{},
-		Config{
-			OldOCSPBatchSize:         1,
-			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
-			SignFailureBackoffFactor: 1.5,
-			SignFailureBackoffMax: cmd.ConfigDuration{
-				Duration: time.Minute,
-			},
-		},
+		1,
+		time.Second,
+		time.Minute,
+		1.5,
+		0,
+		0,
+		0,
 		blog.NewMock(),
 	)
 	test.AssertNotError(t, err, "Failed to create newUpdater")
@@ -716,14 +714,13 @@ func mkNewUpdaterWithStrings(t *testing.T, shards []string) (*OCSPUpdater, error
 		nil,
 		shards,
 		&mockOCSP{},
-		Config{
-			OldOCSPBatchSize:         1,
-			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
-			SignFailureBackoffFactor: 1.5,
-			SignFailureBackoffMax: cmd.ConfigDuration{
-				Duration: time.Minute,
-			},
-		},
+		1,
+		time.Second,
+		time.Minute,
+		1.5,
+		0,
+		0,
+		0,
 		blog.NewMock(),
 	)
 	return updater, err

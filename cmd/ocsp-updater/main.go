@@ -94,9 +94,13 @@ func main() {
 		issuers,
 		serialSuffixes,
 		ogc,
-		// Necessary evil for now
-		// TODO(XXX): Fix this, or file a bug to fix it later.
-		conf,
+		conf.OldOCSPBatchSize,
+		conf.OldOCSPWindow.Duration,
+		conf.SignFailureBackoffMax.Duration,
+		conf.SignFailureBackoffFactor,
+		conf.OCSPMinTimeToExpiry.Duration,
+		conf.ParallelGenerateOCSPRequests,
+		conf.Redis.Timeout.Duration,
 		logger,
 	)
 	cmd.FailOnError(err, "Failed to create updater")
