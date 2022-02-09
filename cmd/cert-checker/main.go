@@ -450,7 +450,7 @@ func main() {
 	wg.Wait()
 	fmt.Fprintf(
 		os.Stderr,
-		"# Finished processing certificates, sample: %d, good: %d, bad: %d\n",
+		"# Finished processing certificates, report length: %d, good: %d, bad: %d\n",
 		len(checker.issuedReport.Entries),
 		checker.issuedReport.GoodCerts,
 		checker.issuedReport.BadCerts,
