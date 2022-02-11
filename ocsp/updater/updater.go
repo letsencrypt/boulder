@@ -13,7 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
@@ -63,37 +62,6 @@ func (c *failCounter) Value() int {
 	return c.count
 }
 
-// Config provides the various window tick times and batch sizes needed
-// for the OCSP updater
-type Config struct {
-	cmd.ServiceConfig
-	DB         cmd.DBConfig
-	ReadOnlyDB cmd.DBConfig
-	Redis      *rocsp_config.RedisConfig
-
-	// Issuers is a map from filenames to short issuer IDs.
-	// Each filename must contain an issuer certificate. The short issuer
-	// IDs are arbitrarily assigned and must be consistent across OCSP
-	// components. For production we'll use the number part of the CN, i.e.
-	// E1 -> 1, R3 -> 3, etc.
-	Issuers map[string]int
-
-	OldOCSPWindow    cmd.ConfigDuration
-	OldOCSPBatchSize int
-
-	OCSPMinTimeToExpiry          cmd.ConfigDuration
-	ParallelGenerateOCSPRequests int
-
-	SignFailureBackoffFactor float64
-	SignFailureBackoffMax    cmd.ConfigDuration
-
-	SerialSuffixShards string
-
-	OCSPGeneratorService *cmd.GRPCClientConfig
-
-	Features map[string]bool
-}
-
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
 	log blog.Logger
@@ -107,10 +75,9 @@ type OCSPUpdater struct {
 
 	ogc capb.OCSPGeneratorClient
 
-	tickWindow    time.Duration
-	batchSize     int
-	tickHistogram *prometheus.HistogramVec
+	batchSize int
 
+	tickWindow    time.Duration
 	maxBackoff    time.Duration
 	backoffFactor float64
 	readFailures  failCounter
@@ -126,6 +93,7 @@ type OCSPUpdater struct {
 
 	redisTimeout time.Duration
 
+	tickHistogram        *prometheus.HistogramVec
 	stalenessHistogram   prometheus.Histogram
 	genStoreHistogram    prometheus.Histogram
 	generatedCounter     *prometheus.CounterVec
@@ -144,21 +112,24 @@ func New(
 	issuers []rocsp_config.ShortIDIssuer,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
-	// A temporary evil. This constructor should not take a JSON config as input;
-	// everything should be prepped ahead of time.
-	// TODO(XXX): Fix this, or file a bug to fix it later.
-	config Config,
+	batchSize int,
+	windowSize time.Duration,
+	retryBackoffMax time.Duration,
+	retryBackoffFactor float64,
+	ocspMinTimeToExpiry time.Duration,
+	parallelGenerateOCSPRequests int,
+	redisTimeout time.Duration,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
-	if config.OldOCSPBatchSize == 0 {
-		return nil, fmt.Errorf("Loop batch sizes must be non-zero")
+	if batchSize == 0 {
+		return nil, errors.New("loop batch sizes must be non-zero")
 	}
-	if config.OldOCSPWindow.Duration == 0 {
-		return nil, fmt.Errorf("Loop window sizes must be non-zero")
+	if windowSize == 0 {
+		return nil, errors.New("loop window sizes must be non-zero")
 	}
-	if config.ParallelGenerateOCSPRequests == 0 {
+	if parallelGenerateOCSPRequests == 0 {
 		// Default to 1
-		config.ParallelGenerateOCSPRequests = 1
+		parallelGenerateOCSPRequests = 1
 	}
 	for _, s := range serialSuffixes {
 		if len(s) != 1 || strings.ToLower(s) != s {
@@ -227,32 +198,31 @@ func New(
 		rocspClientInterface = rocspClient
 	}
 	updater := OCSPUpdater{
+		log:                          log,
 		clk:                          clk,
 		db:                           db,
 		readOnlyDb:                   readOnlyDb,
 		rocspClient:                  rocspClientInterface,
 		issuers:                      issuers,
 		ogc:                          ogc,
-		log:                          log,
-		ocspMinTimeToExpiry:          config.OCSPMinTimeToExpiry.Duration,
-		parallelGenerateOCSPRequests: config.ParallelGenerateOCSPRequests,
+		batchSize:                    batchSize,
+		tickWindow:                   windowSize,
+		maxBackoff:                   retryBackoffMax,
+		backoffFactor:                retryBackoffFactor,
+		readFailures:                 failCounter{},
+		serialSuffixes:               serialSuffixes,
+		queryBody:                    queryBody.String(),
+		ocspMinTimeToExpiry:          ocspMinTimeToExpiry,
+		parallelGenerateOCSPRequests: parallelGenerateOCSPRequests,
+		redisTimeout:                 redisTimeout,
+		tickHistogram:                tickHistogram,
+		stalenessHistogram:           stalenessHistogram,
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
 		storedRedisCounter:           storedRedisCounter,
 		markExpiredCounter:           markExpiredCounter,
 		findStaleOCSPCounter:         findStaleOCSPCounter,
-		stalenessHistogram:           stalenessHistogram,
-		tickHistogram:                tickHistogram,
-		tickWindow:                   config.OldOCSPWindow.Duration,
-		batchSize:                    config.OldOCSPBatchSize,
-		maxBackoff:                   config.SignFailureBackoffMax.Duration,
-		backoffFactor:                config.SignFailureBackoffFactor,
-		serialSuffixes:               serialSuffixes,
-		queryBody:                    queryBody.String(),
-	}
-	if config.Redis != nil {
-		updater.redisTimeout = config.Redis.Timeout.Duration
 	}
 
 	return &updater, nil

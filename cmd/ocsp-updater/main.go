@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/honeycombio/beeline-go"
 
@@ -19,7 +20,35 @@ import (
 )
 
 type Config struct {
-	OCSPUpdater ocsp_updater.Config
+	OCSPUpdater struct {
+		cmd.ServiceConfig
+		DB         cmd.DBConfig
+		ReadOnlyDB cmd.DBConfig
+		Redis      *rocsp_config.RedisConfig
+
+		// Issuers is a map from filenames to short issuer IDs.
+		// Each filename must contain an issuer certificate. The short issuer
+		// IDs are arbitrarily assigned and must be consistent across OCSP
+		// components. For production we'll use the number part of the CN, i.e.
+		// E1 -> 1, R3 -> 3, etc.
+		Issuers map[string]int
+
+		OldOCSPWindow    cmd.ConfigDuration
+		OldOCSPBatchSize int
+
+		OCSPMinTimeToExpiry          cmd.ConfigDuration
+		ParallelGenerateOCSPRequests int
+
+		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
+		SignFailureBackoffFactor float64
+		SignFailureBackoffMax    cmd.ConfigDuration
+
+		SerialSuffixShards string
+
+		OCSPGeneratorService *cmd.GRPCClientConfig
+
+		Features map[string]bool
+	}
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
@@ -66,8 +95,10 @@ func main() {
 
 	redisConf := c.OCSPUpdater.Redis
 	var rocspClient *rocsp.WritingClient
+	var redisTimeout time.Duration
 	if redisConf != nil {
 		rocspClient, err = rocsp_config.MakeClient(redisConf, clk, stats)
+		redisTimeout = redisConf.Timeout.Duration
 		cmd.FailOnError(err, "making Redis client")
 	}
 	issuers, err := rocsp_config.LoadIssuers(c.OCSPUpdater.Issuers)
@@ -94,9 +125,13 @@ func main() {
 		issuers,
 		serialSuffixes,
 		ogc,
-		// Necessary evil for now
-		// TODO(XXX): Fix this, or file a bug to fix it later.
-		conf,
+		conf.OldOCSPBatchSize,
+		conf.OldOCSPWindow.Duration,
+		conf.SignFailureBackoffMax.Duration,
+		conf.SignFailureBackoffFactor,
+		conf.OCSPMinTimeToExpiry.Duration,
+		conf.ParallelGenerateOCSPRequests,
+		redisTimeout,
 		logger,
 	)
 	cmd.FailOnError(err, "Failed to create updater")
