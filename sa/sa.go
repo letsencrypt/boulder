@@ -1380,7 +1380,7 @@ func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, id
 	allAuthzValidity := make([]authzValidity, len(validityInfo))
 	for i, info := range validityInfo {
 		allAuthzValidity[i] = authzValidity{
-			Status:  uintToStatus[info.Status],
+			Status:  string(uintToStatus[info.Status]),
 			Expires: info.Expires,
 		}
 	}
@@ -1621,7 +1621,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	authzModelMap := make(map[string]authzModel)
 	for _, am := range authzModels {
 		existing, present := authzModelMap[am.IdentifierValue]
-		if !present || uintToStatus[existing.Status] == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
+		if !present || uintToStatus[existing.Status] == core.StatusPending && uintToStatus[am.Status] == core.StatusValid {
 			authzModelMap[am.IdentifierValue] = am
 		}
 	}
@@ -1682,7 +1682,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		attemptedTime = &val
 	}
 	params := map[string]interface{}{
-		"status":           statusToUint[req.Status],
+		"status":           statusToUint[core.AcmeStatus(req.Status)],
 		"attempted":        challTypeToUint[req.Attempted],
 		"attemptedAt":      attemptedTime,
 		"validationRecord": vrJSON,
