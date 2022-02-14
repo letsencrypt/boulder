@@ -39,3 +39,7 @@ tags
 .vscode/*
 .hierarchy/
 .softhsm-tokens/
+
+# Terraform
+*.terraform*
+*.tfstate*

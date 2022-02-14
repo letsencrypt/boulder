@@ -83,7 +83,7 @@ job "boulder" {
         port = "grpc"
       }
       config {
-        command = "$${HOME}/repos/boulder/bin/boulder-remoteva"
+        command = "${var.repo-dir}/bin/boulder-remoteva"
         args = [
           "--config", "${NOMAD_ALLOC_DIR}/data/remote-va.json"
         ]
@@ -130,54 +130,7 @@ job "boulder" {
         port = "grpc"
       }
       config {
-        command = "$${HOME}/repos/boulder/bin/boulder-sa"
-        args = [
-          "--config", "${NOMAD_ALLOC_DIR}/data/sa.json"
-        ]
-      }
-      template {
-        data        = var.sa-json-template
-        destination = "${NOMAD_ALLOC_DIR}/data/sa.json"
-        change_mode = "restart"
-      }
-      env {
-        REPO_DIR = "${var.repo-dir}"
-      }
-    }
-  }
-
- group "sa" {
-    count = 1
-    network {
-      port "debug" {}
-      port "grpc" {}
-    }
-    task "sa-await-db" {
-      driver = "raw_exec"
-      lifecycle {
-        hook    = "prestart"
-        sidecar = false
-      }
-      config {
-        command = "${NOMAD_ALLOC_DIR}/data/await_dependency.sh"
-      }
-      env {
-        DEPENDENCY_NAME = "boulder-mysql"
-      }
-      template {
-        data        = var.await-dependency-sh-template
-        destination = "${NOMAD_ALLOC_DIR}/data/await_dependency.sh"
-        change_mode = "noop"
-      }
-    }
-    task "server" {
-      driver = "raw_exec"
-      service {
-        name = "sa"
-        port = "grpc"
-      }
-      config {
-        command = "$${HOME}/repos/boulder/bin/boulder-sa"
+        command = "${var.repo-dir}/bin/boulder-sa"
         args = [
           "--config", "${NOMAD_ALLOC_DIR}/data/sa.json"
         ]
