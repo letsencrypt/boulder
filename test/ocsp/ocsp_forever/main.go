@@ -80,7 +80,7 @@ func main() {
 	}
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
-		err = http.ListenAndServe(*listenAddress, nil)
+		err := http.ListenAndServe(*listenAddress, nil)
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}

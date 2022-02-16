@@ -189,7 +189,7 @@ func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, sho
 	metadataValue := metadataStruct.Marshal()
 
 	err = c.rdb.Watch(ctx, func(tx *redis.Tx) error {
-		err = tx.Set(ctx, responseKey, respBytes, ttl).Err()
+		err := tx.Set(ctx, responseKey, respBytes, ttl).Err()
 		if err != nil {
 			return fmt.Errorf("setting response: %w", err)
 		}
