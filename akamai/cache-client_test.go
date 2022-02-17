@@ -16,7 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestConstructAuthHeader(t *testing.T) {
+func TestMakeAuthHeader(t *testing.T) {
 	log := blog.NewMock()
 	stats := metrics.NoopRegisterer
 	cpc, err := NewCachePurgeClient(
@@ -38,7 +38,7 @@ func TestConstructAuthHeader(t *testing.T) {
 	fc.Set(wantedTimestamp)
 
 	expectedHeader := "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=hXm4iCxtpN22m4cbZb4lVLW5rhX8Ca82vCFqXzSTPe4="
-	authHeader, err := cpc.constructAuthHeader(
+	authHeader, err := cpc.makeAuthHeader(
 		[]byte("datadatadatadatadatadatadatadata"),
 		"/testapi/v1/t3",
 		"nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
