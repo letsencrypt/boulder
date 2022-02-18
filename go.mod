@@ -26,7 +26,7 @@ require (
 	github.com/zmap/zlint/v3 v3.3.1-0.20211019173530-cb17369b4628
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2
 	golang.org/x/net v0.0.0-20211029224645-99673261e6eb
-	golang.org/x/text v0.3.6
+	golang.org/x/text v0.3.7
 	google.golang.org/grpc v1.36.1
 	google.golang.org/protobuf v1.27.1
 	gopkg.in/square/go-jose.v2 v2.4.1
