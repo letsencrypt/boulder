@@ -30,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -893,6 +894,13 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		RegID: acctID,
 	})
 	if err != nil {
+		if errors.Is(err, ra.ErrFailedToPurgeOCSP) {
+			// If purging fails from an ACME-initiated revocation request,
+			// that's okay because the old entry will fall out of the cache in
+			// less than 24 hours.
+			wfe.log.AuditErr(err.Error())
+			return nil
+		}
 		if errors.Is(err, berrors.Duplicate) {
 			// It is possible that between checking the certificate's status and
 			// performing the revocation, a parallel request happened and revoked the

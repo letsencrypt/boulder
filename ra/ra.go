@@ -45,11 +45,14 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/square/go-jose.v2"
 )
 
 var (
+	ErrFailedToPurgeOCSP      = errors.New("OCSP purge request could not be sent to the akamai-purger")
 	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
 	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 )
@@ -1789,6 +1792,16 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	}
 	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
 	if err != nil {
+		status, ok := status.FromError(err)
+		if !ok {
+			// This error wasn't emitted by the GRPC package.
+			return err
+		}
+
+		if status.Code() == codes.Unavailable {
+			// This error indicates that the akamai-purger was unavailable.
+			return ErrFailedToPurgeOCSP
+		}
 		return err
 	}
 
