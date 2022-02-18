@@ -13,6 +13,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -151,6 +152,21 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	})
 	if overallError != nil {
 		return nil, overallError
+	}
+
+	// If there is no error after the DB transaction, store the OCSP
+	// response in Redis (if configured) on a best effort basis.
+	if ssa.rocspWriteClient != nil {
+		shortIssuerID, err := rocsp_config.FindIssuerByID(req.IssuerID, ssa.shortIssuers)
+		if err != nil {
+			// draft: remove this error when metric is plumbed
+			fmt.Println("log error but don't bail")
+		}
+		err = ssa.rocspWriteClient.StoreResponse(ctx, req.Ocsp, shortIssuerID.ShortID(), 72*time.Hour)
+		if err != nil {
+			// draft: remove this error when metric is plumbed
+			fmt.Println("log error but don't bail")
+		}
 	}
 	return &emptypb.Empty{}, nil
 }

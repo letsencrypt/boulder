@@ -28,6 +28,8 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -42,6 +44,10 @@ type SQLStorageAuthority struct {
 	dbReadOnlyMap *db.WrappedMap
 	clk           clock.Clock
 	log           blog.Logger
+
+	// Redis client for storing OCSP responses in Redis.
+	rocspWriteClient *rocsp.WritingClient
+	shortIssuers     []rocsp_config.ShortIDIssuer
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -77,6 +83,8 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
+	rocspWriteClient *rocsp.WritingClient,
+	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -97,6 +105,8 @@ func NewSQLStorageAuthority(
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,
 		rateLimitWriteErrors: rateLimitWriteErrors,
+		rocspWriteClient:     rocspWriteClient,
+		shortIssuers:         shortIssuers,
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
