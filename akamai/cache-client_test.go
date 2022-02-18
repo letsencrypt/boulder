@@ -249,8 +249,9 @@ func TestBigBatchPurge(t *testing.T) {
 		urls = append(urls, fmt.Sprintf("http://test.com/%d", i))
 	}
 
-	_, err = client.Purge(urls)
+	stoppedAt, err := client.Purge(urls)
 	test.AssertNotError(t, err, "Purge failed with 201 response")
+	test.AssertEquals(t, stoppedAt, 250)
 
 	// Add a malformed URL.
 	urls = append(urls, "http:/test.com")
@@ -260,7 +261,7 @@ func TestBigBatchPurge(t *testing.T) {
 		urls = append(urls, fmt.Sprintf("http://test.com/%d", i))
 	}
 
-	stoppedAt, err := client.Purge(urls)
+	stoppedAt, err = client.Purge(urls)
 	test.AssertError(t, err, "Purge succeeded with a malformed URL")
 	test.AssertEquals(t, stoppedAt, 200)
 }

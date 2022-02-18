@@ -285,7 +285,7 @@ func (cpc *CachePurgeClient) Purge(urls []string) (int, error) {
 		}
 		batchBegin += batchSizeLimit
 	}
-	return 0, nil
+	return totalURLs, nil
 }
 
 // CheckSignature is exported for use in tests and akamai-test-srv.

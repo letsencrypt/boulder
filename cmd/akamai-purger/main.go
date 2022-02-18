@@ -78,7 +78,7 @@ func (ap *akamaiPurger) purge() error {
 
 	stoppedAt, err := ap.client.Purge(urls)
 	if err != nil {
-		// Add the URLs back to the queue.
+		// Add the remaining URLs back to the queue.
 		ap.Lock()
 		ap.toPurge = append(ap.toPurge, urls[stoppedAt:]...)
 		ap.Unlock()
