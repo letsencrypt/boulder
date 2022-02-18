@@ -1,0 +1,5 @@
+version: '3'
+services:
+  boulder:
+    volumes:
+      - ./temp:/tmp
