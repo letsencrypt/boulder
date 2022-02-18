@@ -13,9 +13,11 @@ import (
 	"os/user"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/akamai"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
@@ -25,6 +27,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/privatekey"
+	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
@@ -129,8 +132,9 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 	}
 
 	var req *rapb.AdministrativelyRevokeCertificateRequest
+	var cert *x509.Certificate
 	if certObj.DER != nil {
-		cert, err := x509.ParseCertificate(certObj.DER)
+		cert, err = x509.ParseCertificate(certObj.DER)
 		if err != nil {
 			return err
 		}
@@ -148,9 +152,28 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 			SkipBlockKey: skipBlockKey,
 		}
 	}
-	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, req)
+	issuer, err := r.rac.AdministrativelyRevokeCertificate(ctx, req)
 	if err != nil {
-		return err
+		if errors.Is(err, ra.ErrFailedToPurgeOCSP) {
+			r.log.AuditErr(err.Error())
+			if cert != nil {
+				issuerCert, err := x509.ParseCertificate(issuer.Der)
+				if err != nil {
+					return fmt.Errorf("while parsing the issuer to generate manual purge URLs: %w", err)
+				}
+
+				urls, err := akamai.GeneratePurgeURLs(cert, issuerCert)
+				if err != nil {
+					return fmt.Errorf("while attempting to generate manual purge URLs: %w", err)
+				}
+				r.log.Errf(
+					"akamai-purger was unavailable. Entries %q will still be dropped in <24h. Use the akamai webUI as a break-glass",
+					strings.Join(urls, ", "),
+				)
+			}
+		} else {
+			return err
+		}
 	}
 	r.log.Infof("Revoked certificate %s with reason '%s'", certObj.Serial, revocation.ReasonToString[reasonCode])
 	return nil

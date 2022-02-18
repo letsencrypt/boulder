@@ -52,7 +52,7 @@ import (
 )
 
 var (
-	ErrFailedToPurgeOCSP      = errors.New("OCSP purge request could not be sent to the akamai-purger")
+	ErrFailedToPurgeOCSP      = errors.New("akamai-purger was unavailable, OCSP entries will still be dropped in <24h")
 	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
 	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 )
@@ -1706,7 +1706,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 
 // revokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string, skipBlockKey bool) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string, skipBlockKey bool) (*issuance.Certificate, error) {
 	serial := core.SerialToString(cert.SerialNumber)
 
 	var issuerID int64
@@ -1718,12 +1718,12 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		// it is unparsable. We need to gather the relevant info using only the
 		// serial number.
 		if reason == ocsp.KeyCompromise {
-			return fmt.Errorf("cannot revoke for KeyCompromise without full cert")
+			return nil, fmt.Errorf("cannot revoke for KeyCompromise without full cert")
 		}
 
 		status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 		if err != nil {
-			return fmt.Errorf("unable to confirm that serial %q was ever issued: %w", serial, err)
+			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", serial, err)
 		}
 
 		issuerID = status.IssuerID
@@ -1732,14 +1732,14 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 			// TODO(#5152): Remove this fallback to old-style IssuerIDs.
 			issuer, ok = ra.issuersByID[issuance.IssuerID(issuerID)]
 			if !ok {
-				return fmt.Errorf("unable to identify issuer of serial %q", serial)
+				return nil, fmt.Errorf("unable to identify issuer of serial %q", serial)
 			}
 		}
 	} else {
 		issuerID = int64(issuance.GetIssuerNameID(cert))
 		issuer, ok = ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
 		if !ok {
-			return fmt.Errorf("unable to identify issuer of cert with serial %q", serial)
+			return nil, fmt.Errorf("unable to identify issuer of cert with serial %q", serial)
 		}
 	}
 
@@ -1752,7 +1752,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		RevokedAt: revokedAt,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
@@ -1762,13 +1762,13 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 		Response: ocspResponse.Response,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if reason == ocsp.KeyCompromise && !skipBlockKey {
 		digest, err := core.KeyDigest(cert.PublicKey)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		req := &sapb.AddBlockedKeyRequest{
 			KeyHash: digest[:],
@@ -1782,30 +1782,30 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 			req.RevokedBy = revokedBy
 		}
 		if _, err = ra.SA.AddBlockedKey(ctx, req); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
 	if err != nil {
 		status, ok := status.FromError(err)
 		if !ok {
 			// This error wasn't emitted by the GRPC package.
-			return err
+			return nil, err
 		}
 
 		if status.Code() == codes.Unavailable {
 			// This error indicates that the akamai-purger was unavailable.
-			return ErrFailedToPurgeOCSP
+			return issuer, ErrFailedToPurgeOCSP
 		}
-		return err
+		return nil, err
 	}
 
-	return nil
+	return nil, nil
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
@@ -1822,7 +1822,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	serialString := core.SerialToString(cert.SerialNumber)
 	revocationCode := revocation.Reason(req.Code)
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "", false)
+	_, err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "", false)
 
 	state := "Failure"
 	defer func() {
@@ -1851,7 +1851,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 // AdministrativelyRevokeCertificate terminates trust in the certificate provided and
 // does not require the registration ID of the requester since this method is only
 // called from the admin-revoker tool.
-func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
+func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*corepb.Certificate, error) {
 	if req == nil || req.AdminName == "" {
 		return nil, errIncompleteGRPCRequest
 	}
@@ -1902,15 +1902,20 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			req.AdminName)
 	}()
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName), req.SkipBlockKey)
+	issuer, err := ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName), req.SkipBlockKey)
 	if err != nil {
+		if errors.Is(err, ErrFailedToPurgeOCSP) {
+			if req.Cert != nil {
+				return bgrpc.CertToPB(core.Certificate{DER: issuer.Raw}), err
+			}
+		}
 		state = fmt.Sprintf("Failure -- %s", err)
 		return nil, err
 	}
 
 	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
 	state = "Success"
-	return &emptypb.Empty{}, nil
+	return &corepb.Certificate{}, nil
 }
 
 // DeactivateRegistration deactivates a valid registration

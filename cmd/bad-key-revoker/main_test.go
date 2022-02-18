@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/mocks"
@@ -20,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func randHash(t *testing.T) []byte {
@@ -267,7 +267,7 @@ type mockRevoker struct {
 	mu      sync.Mutex
 }
 
-func (mr *mockRevoker) AdministrativelyRevokeCertificate(ctx context.Context, in *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (mr *mockRevoker) AdministrativelyRevokeCertificate(ctx context.Context, in *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	mr.mu.Lock()
 	defer mr.mu.Unlock()
 	mr.revoked++

@@ -3,11 +3,10 @@ package ra
 import (
 	"context"
 
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ra"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
-
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // RA meets the `rapb.RegistrationAuthorityClient` interface and acts as a
@@ -20,6 +19,6 @@ type RA struct {
 }
 
 // AdministrativelyRevokeCertificate is a wrapper for `*ra.RegistrationAuthorityImpl.AdministrativelyRevokeCertificate`.
-func (ra RA) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+func (ra RA) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	return ra.Impl.AdministrativelyRevokeCertificate(ctx, req)
 }
