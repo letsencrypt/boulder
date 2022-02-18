@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	akamaiBatchSize = 100
+	batchSizeLimit  = 100
 	timestampFormat = "20060102T15:04:05-0700"
 	v3PurgePath     = "/ccu/v3/delete/url/"
 	v3PurgeTagPath  = "/ccu/v3/delete/tag/"
@@ -266,21 +266,26 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 	return nil
 }
 
-// Purge attempts to send a purge request to the Akamai CCU API cpc.retries
-// number of times before giving up and returning ErrAllRetriesFailed.
-func (cpc *CachePurgeClient) Purge(urls []string) error {
-	for i := 0; i < len(urls); {
-		sliceEnd := i + akamaiBatchSize
-		if sliceEnd > len(urls) {
-			sliceEnd = len(urls)
+// Purge dispatches the provided urls in batched requests to the Akamai CCU API.
+// Requests will be attempted cpc.retries number of times before giving up and
+// returning ErrAllRetriesFailed and the beginning index position of the batch
+// where the failure was encountered.
+func (cpc *CachePurgeClient) Purge(urls []string) (int, error) {
+	totalURLs := len(urls)
+	for batchBegin := 0; batchBegin < totalURLs; {
+		batchEnd := batchBegin + batchSizeLimit
+		if batchEnd > totalURLs {
+			// Avoid index out of range error.
+			batchEnd = totalURLs
 		}
-		err := cpc.purgeBatch(urls[i:sliceEnd])
+
+		err := cpc.purgeBatch(urls[batchBegin:batchEnd])
 		if err != nil {
-			return err
+			return batchBegin, err
 		}
-		i += akamaiBatchSize
+		batchBegin += batchSizeLimit
 	}
-	return nil
+	return 0, nil
 }
 
 // CheckSignature is exported for use in tests and akamai-test-srv.
