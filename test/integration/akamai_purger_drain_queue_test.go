@@ -5,7 +5,6 @@ package integration
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -17,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 )
 
 func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
@@ -49,20 +47,11 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 	conn, err := grpc.Dial(
 		"dns:///akamai-purger.boulder:9199",
 		grpc.WithTransportCredentials(creds),
+		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	)
 	if err != nil {
 		sigterm()
 		return nil, nil, nil, err
-	}
-	for i := 0; ; i++ {
-		if conn.GetState() == connectivity.Ready {
-			break
-		}
-		if i > 40 {
-			sigterm()
-			return nil, nil, nil, fmt.Errorf("timed out waiting for akamai-purger to come up")
-		}
-		time.Sleep(50 * time.Millisecond)
 	}
 	purgerClient := akamaipb.NewAkamaiPurgerClient(conn)
 	return purgerCmd, &outputBuffer, purgerClient, nil
