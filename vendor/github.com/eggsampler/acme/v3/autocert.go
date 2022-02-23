@@ -107,7 +107,7 @@ func (m *AutoCert) HTTPHandler(handler http.Handler) http.Handler {
 			return
 		}
 
-		w.Write(keyAuth)
+		_, _ = w.Write(keyAuth)
 	})
 }
 
@@ -132,7 +132,7 @@ func (m *AutoCert) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate,
 
 	// check if there's an existing cert
 	m.certLock.RLock()
-	existingCert := m.getExistingCert(name)
+	existingCert, _ := m.getExistingCert(name)
 	m.certLock.RUnlock()
 	if existingCert != nil {
 		return existingCert, nil
@@ -198,7 +198,7 @@ func (m *AutoCert) putCache(data []byte, keys ...string) context.Context {
 	}
 
 	go func() {
-		ioutil.WriteFile(path.Join(m.CacheDir, key), data, 0700)
+		_ = ioutil.WriteFile(path.Join(m.CacheDir, key), data, 0700)
 		cancel()
 	}()
 
@@ -212,18 +212,16 @@ func (m *AutoCert) checkHost(name string) error {
 	return m.HostCheck(name)
 }
 
-func (m *AutoCert) getExistingCert(name string) *tls.Certificate {
+func (m *AutoCert) getExistingCert(name string) (*tls.Certificate, error) {
 	// check for a stored cert
 	certData := m.getCache("cert", name)
 	if len(certData) == 0 {
-		// no cert
-		return nil
+		return nil, errors.New("autocert: no existing certificate")
 	}
 
 	privBlock, pubData := pem.Decode(certData)
 	if len(pubData) == 0 {
-		// no public key data (cert/issuer), ignore
-		return nil
+		return nil, errors.New("autocert: no public key data (cert/issuer)")
 	}
 
 	// decode pub chain
@@ -239,14 +237,12 @@ func (m *AutoCert) getExistingCert(name string) *tls.Certificate {
 		pub = append(pub, b.Bytes...)
 	}
 	if len(pubData) > 0 {
-		// leftover data in file - possibly corrupt, ignore
-		return nil
+		return nil, errors.New("autocert: leftover data in file - possibly corrupt")
 	}
 
 	certs, err := x509.ParseCertificates(pub)
 	if err != nil {
-		// bad certificates, ignore
-		return nil
+		return nil, fmt.Errorf("autocert: bad certificate: %v", err)
 	}
 
 	leaf := certs[0]
@@ -263,31 +259,40 @@ func (m *AutoCert) getExistingCert(name string) *tls.Certificate {
 	// add a root certificate if present
 	var roots *x509.CertPool
 	if m.RootCert != "" {
-		roots = x509.NewCertPool()
-		rootBlock, _ := pem.Decode([]byte(m.RootCert))
-		rootCert, err := x509.ParseCertificate(rootBlock.Bytes)
-		if err != nil {
-			return nil
+		block, rest := pem.Decode([]byte(m.RootCert))
+		for block != nil {
+			rootCert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return nil, errors.New("autocert: error parsing root certificate")
+			}
+			if roots == nil {
+				roots = x509.NewCertPool()
+			}
+			roots.AddCert(rootCert)
+			block, rest = pem.Decode(rest)
 		}
-		roots.AddCert(rootCert)
 	}
 
-	if _, err := leaf.Verify(x509.VerifyOptions{DNSName: name, Intermediates: intermediates, Roots: roots}); err != nil {
-		// invalid certificates , ignore
-		return nil
+	opts := x509.VerifyOptions{
+		DNSName:       name,
+		Intermediates: intermediates,
+		Roots:         roots,
+	}
+
+	if _, err := leaf.Verify(opts); err != nil {
+		return nil, fmt.Errorf("autocert: unable to verify: %v", err)
 	}
 
 	privKey, err := x509.ParseECPrivateKey(privBlock.Bytes)
 	if err != nil {
-		// invalid private key, ignore
-		return nil
+		return nil, errors.New("autocert: invalid private key")
 	}
 
 	return &tls.Certificate{
 		Certificate: pubDER,
 		PrivateKey:  privKey,
 		Leaf:        leaf,
-	}
+	}, nil
 }
 
 func (m *AutoCert) issueCert(domainName string) (*tls.Certificate, error) {
@@ -415,16 +420,16 @@ func (m *AutoCert) issueCert(domainName string) (*tls.Certificate, error) {
 	}
 
 	certPem := certKeyPem
-	var certDer [][]byte
+	// var certDer [][]byte
 	for _, c := range certs {
 		b := pem.EncodeToMemory(&pem.Block{
 			Type:  "CERTIFICATE",
 			Bytes: c.Raw,
 		})
 		certPem = append(certPem, b...)
-		certDer = append(certDer, c.Raw)
+		// certDer = append(certDer, c.Raw)
 	}
 	m.putCache(certPem, "cert", domainName)
 
-	return m.getExistingCert(domainName), nil
+	return m.getExistingCert(domainName)
 }
