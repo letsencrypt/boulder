@@ -1767,7 +1767,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 				revokedReason = ?,
 				ocspLastUpdated = ?,
 				ocspResponse = ?
-			WHERE serial = ? AND status == ? AND revokedReason != ? AND revokedDate == ?`,
+			WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
 		revocation.Reason(ocsp.KeyCompromise),
 		thisUpdate,
 		req.Response,
