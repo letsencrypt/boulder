@@ -45,6 +45,7 @@ service StorageAuthority {
   rpc GetOrder(OrderRequest) returns (core.Order) {}
   rpc GetOrderForNames(GetOrderForNamesRequest) returns (core.Order) {}
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
+  rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc NewAuthorizations2(AddPendingAuthorizationsRequest) returns (Authorization2IDs) {}
   rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (google.protobuf.Empty) {}
   rpc DeactivateAuthorization2(AuthorizationID2) returns (google.protobuf.Empty) {}
@@ -236,6 +237,7 @@ message RevokeCertificateRequest {
   string serial = 1;
   int64 reason = 2;
   int64 date = 3; // Unix timestamp (nanoseconds)
+  int64 backdate = 5; // Unix timestamp (nanoseconds)
   bytes response = 4;
 }
 
