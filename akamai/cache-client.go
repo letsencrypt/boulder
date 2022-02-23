@@ -220,7 +220,7 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	defer resp.Body.Close()
 
 	if resp.Body == nil {
-		return fmt.Errorf("response body was empty for URL %q", resp.Request.URL)
+		return fmt.Errorf("response body was empty from URL %q", resp.Request.URL)
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -239,10 +239,10 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
 			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
 		}
-		return fmt.Errorf("received HTTP %d (body %q) (URL %q)", resp.StatusCode, respBody, resp.Request.URL)
+		return fmt.Errorf("received HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
 	}
 
-	cpc.log.AuditInfof("Sent successful purge request (purgeID: %s), purge expected in: %ds, for request body: %s",
+	cpc.log.AuditInfof("Purge request sent successfuly (ID %s) (body %s). Purge expected in %ds",
 		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, reqBody)
 	return nil
 }
