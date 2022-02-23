@@ -66,11 +66,20 @@ var ErrAllRetriesFailed = errors.New("all attempts to submit purge request faile
 
 // errFatal is returned by the purge method of CachePurgeClient to indicate that
 // it failed for a reason that cannot be remediated by retrying the request.
-var errFatal = errors.New("a non-retryable error was encountered")
+var errFatal = errors.New("fatal error")
 
 // NewCachePurgeClient performs some basic validation of supplied configuration
 // and returns a newly constructed CachePurgeClient.
-func NewCachePurgeClient(baseURL, cToken, secret, aToken, network string, retries int, backoff time.Duration, log blog.Logger, scope prometheus.Registerer) (*CachePurgeClient, error) {
+func NewCachePurgeClient(
+	baseURL,
+	clientToken,
+	secret,
+	accessToken,
+	network string,
+	retries int,
+	backoff time.Duration,
+	log blog.Logger, scope prometheus.Registerer,
+) (*CachePurgeClient, error) {
 	if network != "production" && network != "staging" {
 		return nil, fmt.Errorf("'V3Network' must be \"staging\" or \"production\", got %q", network)
 	}
@@ -98,9 +107,9 @@ func NewCachePurgeClient(baseURL, cToken, secret, aToken, network string, retrie
 		apiEndpoint:  endpoint.String(),
 		apiHost:      endpoint.Host,
 		apiScheme:    strings.ToLower(endpoint.Scheme),
-		clientToken:  cToken,
+		clientToken:  clientToken,
 		clientSecret: secret,
-		accessToken:  aToken,
+		accessToken:  accessToken,
 		v3Network:    network,
 		retries:      retries,
 		retryBackoff: backoff,
@@ -200,18 +209,18 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	}
 	req.Header.Set("Authorization", authorization)
 	req.Header.Set("Content-Type", "application/json")
-	cpc.log.Debugf("POSTing to %q with header %q, and body %q", endpoint, authorization, reqBody)
+	cpc.log.Debugf("POSTing to endpoint %q (header %q) (body %q)", endpoint, authorization, reqBody)
 
 	start := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
 	cpc.purgeLatency.Observe(cpc.clk.Since(start).Seconds())
 	if err != nil {
-		return err
+		return fmt.Errorf("while POSTing to endpoint %q: %w", endpointURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.Body == nil {
-		return fmt.Errorf("response body was empty")
+		return fmt.Errorf("response body was empty for URL %q", resp.Request.URL)
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -223,17 +232,17 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	var purgeInfo purgeResponse
 	err = json.Unmarshal(respBody, &purgeInfo)
 	if err != nil {
-		return fmt.Errorf("while unmarshalling response %q from endpoint %q as JSON: %w", respBody, endpoint, err)
+		return fmt.Errorf("while unmarshalling body %q from URL %q as JSON: %w", respBody, resp.Request.URL, err)
 	}
 
 	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
-			return fmt.Errorf("the client was not authorized to make this request: %w", errFatal)
+			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
 		}
-		return fmt.Errorf("received unexpected HTTP response code '%d', for body %q", resp.StatusCode, respBody)
+		return fmt.Errorf("received HTTP %d (body %q) (URL %q)", resp.StatusCode, respBody, resp.Request.URL)
 	}
 
-	cpc.log.AuditInfof("Sent successful purge request purgeID: %s, purge expected in: %ds, for request body: %s",
+	cpc.log.AuditInfof("Sent successful purge request (purgeID: %s), purge expected in: %ds, for request body: %s",
 		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, reqBody)
 	return nil
 }
