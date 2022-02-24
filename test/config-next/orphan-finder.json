@@ -8,7 +8,7 @@
 
   "syslog": {
     "stdoutlevel": 7,
-    "stdoutlevel": 7
+    "sysloglevel": 7
   },
 
   "tls": {
