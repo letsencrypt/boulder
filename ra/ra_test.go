@@ -3641,6 +3641,14 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with empty string for `AdminName`")
 
+	// Revoking for a forbidden reason should fail immediately.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      ocsp.CertificateHold,
+		AdminName: "root",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with forbidden revocation reason")
+
 	// Revoking a cert for an unspecified reason should work but not block the key.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,

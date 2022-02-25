@@ -2162,6 +2162,10 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return nil, fmt.Errorf("cannot skip key blocking for reasons other than KeyCompromise")
 	}
 
+	if _, present := revocation.AdminAllowedReasons[reasonCode]; !present {
+		return nil, fmt.Errorf("cannot revoke for reason %d", reasonCode)
+	}
+
 	// If we don't have a real cert, we create a fake cert (containing just the
 	// serial number, which is all we need) and look up the IssuerID from the db.
 	// We could instead look up and parse the certificate itself, but we avoid

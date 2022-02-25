@@ -36,6 +36,18 @@ var UserAllowedReasons = map[Reason]struct{}{
 	ocsp.CessationOfOperation: {}, // cessationOfOperation
 }
 
+// AdminAllowedReasons contains the subset of Reasons which admins are allowed
+// to use. Reasons not found here will soon be forbidden from appearing in CRLs
+// or OCSP responses by root programs.
+var AdminAllowedReasons = map[Reason]struct{}{
+	ocsp.Unspecified:          {}, // unspecified
+	ocsp.KeyCompromise:        {}, // keyCompromise
+	ocsp.AffiliationChanged:   {}, // affiliationChanged
+	ocsp.Superseded:           {}, // superseded
+	ocsp.CessationOfOperation: {}, // cessationOfOperation
+	ocsp.PrivilegeWithdrawn:   {}, // privilegeWithdrawn
+}
+
 // UserAllowedReasonsMessage contains a string describing a list of user allowed
 // revocation reasons. This is useful when a revocation is rejected because it
 // is not a valid user supplied reason and the allowed values must be
