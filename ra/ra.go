@@ -1899,8 +1899,8 @@ func (ra *RegistrationAuthorityImpl) reRevokeCertificate(ctx context.Context, se
 
 // purgeOCSPCache makes a request to akamai-purger to purge the cache entries
 // for the given certificate.
-func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate) error {
-	issuerID := issuance.GetIssuerNameID(cert)
+// TODO(#5152) make the issuerID argument an issuance.IssuerNameID
+func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID int64) error {
 	issuer, ok := ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
 	if !ok {
 		// TODO(#5152): Remove this fallback (which only gets used when revoking by
@@ -1966,7 +1966,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertBySubscriber(ctx context.Context,
 		return nil, err
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert)
+	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 	if err != nil {
 		return nil, err
 	}
@@ -2015,7 +2015,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByController(ctx context.Context,
 		return nil, err
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert)
+	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 	if err != nil {
 		return nil, err
 	}
@@ -2093,7 +2093,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		}
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert)
+	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 	if err != nil {
 		return nil, err
 	}
@@ -2225,14 +2225,15 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 			KeyHash: digest[:],
 			Added:   ra.clk.Now().UnixNano(),
-			Source:  "API",
+			Source:  "admin-revoker",
+			Comment: fmt.Sprintf("revoked by %s", req.AdminName),
 		})
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert)
+	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 	if err != nil {
 		return nil, err
 	}

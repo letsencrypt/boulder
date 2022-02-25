@@ -205,6 +205,21 @@ func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Contex
 	return &emptypb.Empty{}, nil
 }
 
+func (ra *MockRegistrationAuthority) RevokeCertBySubscriber(ctx context.Context, in *rapb.RevokeCertBySubscriberRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	ra.lastRevocationReason = revocation.Reason(in.Code)
+	return &emptypb.Empty{}, nil
+}
+
+func (ra *MockRegistrationAuthority) RevokeCertByController(ctx context.Context, in *rapb.RevokeCertByControllerRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	ra.lastRevocationReason = revocation.Reason(ocsp.CessationOfOperation)
+	return &emptypb.Empty{}, nil
+}
+
+func (ra *MockRegistrationAuthority) RevokeCertByKey(ctx context.Context, in *rapb.RevokeCertByKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	ra.lastRevocationReason = revocation.Reason(ocsp.KeyCompromise)
+	return &emptypb.Empty{}, nil
+}
+
 func (ra *MockRegistrationAuthority) AdministrativelyRevokeCertificate(context.Context, *rapb.AdministrativelyRevokeCertificateRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil
 }
