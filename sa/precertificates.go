@@ -157,16 +157,24 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	// If there is no error after the DB transaction, store the OCSP
 	// response in Redis (if configured) on a best effort basis.
 	if ssa.rocspWriteClient != nil {
-		shortIssuerID, err := rocsp_config.FindIssuerByID(req.IssuerID, ssa.shortIssuers)
-		if err != nil {
-			// draft: remove this error when metric is plumbed
-			fmt.Println("log error but don't bail")
-		}
-		err = ssa.rocspWriteClient.StoreResponse(ctx, req.Ocsp, shortIssuerID.ShortID(), 72*time.Hour)
-		if err != nil {
-			// draft: remove this error when metric is plumbed
-			fmt.Println("log error but don't bail")
-		}
+		rocspCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		go func() {
+			defer cancel()
+			shortIssuerID, err := rocsp_config.FindIssuerByID(req.IssuerID, ssa.shortIssuers)
+			if err != nil {
+				// draft: remove this error when metric is plumbed
+				ssa.log.AuditErrf("FindIssuerByID fail: %v", err)
+			} else {
+				ssa.log.AuditErrf("FindIssuerByID success!, issuer: %v", shortIssuerID)
+			}
+			err = ssa.rocspWriteClient.StoreResponse(rocspCtx, req.Ocsp, shortIssuerID.ShortID(), 72*time.Hour)
+			if err != nil {
+				// draft: remove this error when metric is plumbed
+				ssa.log.AuditErrf("StoreResponse fail: %v", err)
+			} else {
+				ssa.log.AuditErr("StoreResponse success!")
+			}
+		}()
 	}
 	return &emptypb.Empty{}, nil
 }
