@@ -1,10 +1,12 @@
 # eggsampler/acme
 
-[![GoDoc](https://godoc.org/github.com/eggsampler/acme?status.svg)](https://godoc.org/github.com/eggsampler/acme) [![Build Status](https://travis-ci.com/eggsampler/acme.svg?branch=master)](https://travis-ci.com/eggsampler/acme) [![codecov.io](https://codecov.io/gh/eggsampler/acme/branch/master/graph/badge.svg)](https://codecov.io/gh/eggsampler/acme/branch/master)
+[![GoDoc](https://godoc.org/github.com/eggsampler/acme?status.svg)](https://godoc.org/github.com/eggsampler/acme)
+[![Build Status](https://travis-ci.com/eggsampler/acme.svg?branch=master)](https://travis-ci.com/eggsampler/acme)
+[![Coverage Status](https://coveralls.io/repos/github/eggsampler/acme/badge.svg?branch=master)](https://coveralls.io/github/eggsampler/acme?branch=master)
 
 ## About
 
-`eggsampler/acme` is a Go client library implementation for [RFC8555](https://tools.ietf.org/html/rfc8555) (previously ACME v2), specifically for use with the [Let's Encrypt](https://letsencrypt.org/)™ service. 
+`eggsampler/acme` is a Go client library implementation for [RFC8555](https://tools.ietf.org/html/rfc8555) (previously ACME v2). This library can be used with the [Let's Encrypt](https://letsencrypt.org/) Certificate Authority (CA), but also other ACME compliant CA's such as [ZeroSSL](https://zerossl.com/). 
 
 The library is designed to provide a zero external dependency wrapper over exposed directory endpoints and provide objects in easy to use structures.
 
@@ -20,7 +22,7 @@ Simply import the module into a project,
 import "github.com/eggsampler/acme/v3"
 ```
 
-Note the `/v3` major version at the end. Due to the way modules function, this is the major version as represented int he `go.mod` file and latest git repo [semver](https://semver.org/) tag.
+Note the `/v3` major version at the end. Due to the way modules function, this is the major version as represented in the `go.mod` file and latest git repo [semver](https://semver.org/) tag.
 All functions are still exported and called using the `acme` package name.
 
 ## Examples

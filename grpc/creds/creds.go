@@ -69,23 +69,13 @@ func (tc *clientTransportCredentials) ClientHandshake(ctx context.Context, addr 
 		ServerName:   host,
 		RootCAs:      tc.roots,
 		Certificates: tc.clients,
-		MinVersion:   tls.VersionTLS12, // Override default of tls.VersionTLS10
-		MaxVersion:   tls.VersionTLS12, // Same as default in golang <= 1.6
 	})
-	errChan := make(chan error, 1)
-	go func() {
-		errChan <- conn.Handshake()
-	}()
-	select {
-	case <-ctx.Done():
-		return nil, nil, ctx.Err()
-	case err := <-errChan:
-		if err != nil {
-			_ = rawConn.Close()
-			return nil, nil, err
-		}
-		return conn, nil, nil
+	err = conn.HandshakeContext(ctx)
+	if err != nil {
+		_ = rawConn.Close()
+		return nil, nil, err
 	}
+	return conn, nil, nil
 }
 
 // ServerHandshake is not implemented for a `clientTransportCredentials`, use

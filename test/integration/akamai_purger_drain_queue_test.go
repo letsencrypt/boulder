@@ -87,7 +87,7 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	if err == nil {
 		t.Error("expected error shutting down akamai-purger that could not reach backend")
 	}
-	expectedOutput := "failed to purge 1 queue entries before exit: All attempts to submit purge request failed"
+	expectedOutput := "failed to purge 1 queue entries before exit: all attempts to submit purge request failed"
 	if !strings.Contains(outputBuffer.String(), expectedOutput) {
 		t.Errorf("akamai-purger stdout did not contain expected %q. Output was:\n%s", expectedOutput, outputBuffer.String())
 	}
