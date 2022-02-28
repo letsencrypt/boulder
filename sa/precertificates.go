@@ -33,6 +33,33 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
+func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+
+	if !core.ValidSerial(req.Serial) {
+		return nil, fmt.Errorf("invalid serial %q", req.Serial)
+	}
+
+	recordedSerial := recordedSerialModel{}
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&recordedSerial,
+		"SELECT * FROM serials WHERE serial = ?",
+		req.Serial,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sapb.SerialMetadata{
+		Serial:         recordedSerial.Serial,
+		RegistrationID: recordedSerial.RegistrationID,
+		Created:        recordedSerial.Created.UnixNano(),
+		Expires:        recordedSerial.Expires.UnixNano(),
+	}, nil
+}
+
 // AddPrecertificate writes a record of a precertificate generation to the DB.
 // Note: this is not idempotent: it does not protect against inserting the same
 // certificate multiple times. Calling code needs to first insert the cert's

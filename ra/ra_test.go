@@ -3557,7 +3557,7 @@ func TestRevokerCertificateWithReg(t *testing.T) {
 	}
 
 	// Revoking for an unspecified reason should work but not block the key.
-	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
+	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertByApplicantRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.Unspecified,
 		RegID: 0,
@@ -3568,7 +3568,7 @@ func TestRevokerCertificateWithReg(t *testing.T) {
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
 	// Revoking for key comprommise should work and block the key.
-	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
+	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertByApplicantRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.KeyCompromise,
 		RegID: 0,

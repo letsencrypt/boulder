@@ -23,6 +23,7 @@ type StorageAuthorityClient interface {
 	// Getters
 	GetRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*proto.Registration, error)
 	GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error)
+	GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error)
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetPrecertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.CertificateStatus, error)
@@ -85,6 +86,15 @@ func (c *storageAuthorityClient) GetRegistration(ctx context.Context, in *Regist
 func (c *storageAuthorityClient) GetRegistrationByKey(ctx context.Context, in *JSONWebKey, opts ...grpc.CallOption) (*proto.Registration, error) {
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetRegistrationByKey", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) GetSerialMetadata(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*SerialMetadata, error) {
+	out := new(SerialMetadata)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetSerialMetadata", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +441,7 @@ type StorageAuthorityServer interface {
 	// Getters
 	GetRegistration(context.Context, *RegistrationID) (*proto.Registration, error)
 	GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error)
+	GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error)
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetPrecertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error)
@@ -483,6 +494,9 @@ func (UnimplementedStorageAuthorityServer) GetRegistration(context.Context, *Reg
 }
 func (UnimplementedStorageAuthorityServer) GetRegistrationByKey(context.Context, *JSONWebKey) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetRegistrationByKey not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetSerialMetadata(context.Context, *Serial) (*SerialMetadata, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSerialMetadata not implemented")
 }
 func (UnimplementedStorageAuthorityServer) GetCertificate(context.Context, *Serial) (*proto.Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCertificate not implemented")
@@ -640,6 +654,24 @@ func _StorageAuthority_GetRegistrationByKey_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).GetRegistrationByKey(ctx, req.(*JSONWebKey))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_GetSerialMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).GetSerialMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/GetSerialMetadata",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).GetSerialMetadata(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1324,6 +1356,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetRegistrationByKey",
 			Handler:    _StorageAuthority_GetRegistrationByKey_Handler,
+		},
+		{
+			MethodName: "GetSerialMetadata",
+			Handler:    _StorageAuthority_GetSerialMetadata_Handler,
 		},
 		{
 			MethodName: "GetCertificate",

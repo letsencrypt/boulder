@@ -183,6 +183,16 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JS
 	}, nil
 }
 
+// GetSerialMetadata is a mock
+func (sa *StorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	return &sapb.SerialMetadata{
+		Serial:         req.Serial,
+		RegistrationID: 1,
+		Created:        sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
+		Expires:        sa.clk.Now().Add(2159 * time.Hour).UnixNano(),
+	}, nil
+}
+
 // GetCertificate is a mock
 func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	// Serial ee == 238.crt
