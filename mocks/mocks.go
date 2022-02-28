@@ -521,6 +521,11 @@ func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.Rev
 	return nil, nil
 }
 
+// RevokeCertificate is a mock
+func (sa *StorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
+}
+
 // AddBlockedKey is a mock
 func (sa *StorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, nil

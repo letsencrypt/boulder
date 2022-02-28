@@ -58,6 +58,7 @@ type StorageAuthorityClient interface {
 	GetOrder(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	GetOrderForNames(ctx context.Context, in *GetOrderForNamesRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	RevokeCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	UpdateRevokedCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewAuthorizations2(ctx context.Context, in *AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*Authorization2IDs, error)
 	FinalizeAuthorization2(ctx context.Context, in *FinalizeAuthorizationRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -378,6 +379,15 @@ func (c *storageAuthorityClient) RevokeCertificate(ctx context.Context, in *Revo
 	return out, nil
 }
 
+func (c *storageAuthorityClient) UpdateRevokedCertificate(ctx context.Context, in *RevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/UpdateRevokedCertificate", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) NewAuthorizations2(ctx context.Context, in *AddPendingAuthorizationsRequest, opts ...grpc.CallOption) (*Authorization2IDs, error) {
 	out := new(Authorization2IDs)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/NewAuthorizations2", in, out, opts...)
@@ -456,6 +466,7 @@ type StorageAuthorityServer interface {
 	GetOrder(context.Context, *OrderRequest) (*proto.Order, error)
 	GetOrderForNames(context.Context, *GetOrderForNamesRequest) (*proto.Order, error)
 	RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
+	UpdateRevokedCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error)
 	NewAuthorizations2(context.Context, *AddPendingAuthorizationsRequest) (*Authorization2IDs, error)
 	FinalizeAuthorization2(context.Context, *FinalizeAuthorizationRequest) (*emptypb.Empty, error)
 	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error)
@@ -568,6 +579,9 @@ func (UnimplementedStorageAuthorityServer) GetOrderForNames(context.Context, *Ge
 }
 func (UnimplementedStorageAuthorityServer) RevokeCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RevokeCertificate not implemented")
+}
+func (UnimplementedStorageAuthorityServer) UpdateRevokedCertificate(context.Context, *RevokeCertificateRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateRevokedCertificate not implemented")
 }
 func (UnimplementedStorageAuthorityServer) NewAuthorizations2(context.Context, *AddPendingAuthorizationsRequest) (*Authorization2IDs, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewAuthorizations2 not implemented")
@@ -1206,6 +1220,24 @@ func _StorageAuthority_RevokeCertificate_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_UpdateRevokedCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeCertificateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).UpdateRevokedCertificate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/UpdateRevokedCertificate",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).UpdateRevokedCertificate(ctx, req.(*RevokeCertificateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_NewAuthorizations2_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AddPendingAuthorizationsRequest)
 	if err := dec(in); err != nil {
@@ -1420,6 +1452,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RevokeCertificate",
 			Handler:    _StorageAuthority_RevokeCertificate_Handler,
+		},
+		{
+			MethodName: "UpdateRevokedCertificate",
+			Handler:    _StorageAuthority_UpdateRevokedCertificate_Handler,
 		},
 		{
 			MethodName: "NewAuthorizations2",

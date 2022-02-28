@@ -15,6 +15,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -1744,6 +1745,48 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		// InternalServerError because we expected this certificate status to exist and
 		// not be revoked.
 		return nil, berrors.InternalServerError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// UpdateRevokedCertificate stores new revocation information about an
+// already-revoked certificate. It will only store this information if the
+// cert is already revoked, if the new revocation reason is `KeyCompromise`,
+// and if the revokedDate is identical to the current revokedDate.
+func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+	if req.Serial == "" || req.Date == 0 || req.Backdate == 0 || req.Response == nil {
+		return nil, errIncompleteRequest
+	}
+	if req.Reason != ocsp.KeyCompromise {
+		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
+	}
+	thisUpdate := time.Unix(0, req.Date)
+	revokedDate := time.Unix(0, req.Backdate)
+	res, err := ssa.dbMap.Exec(
+		`UPDATE certificateStatus SET
+				revokedReason = ?,
+				ocspLastUpdated = ?,
+				ocspResponse = ?
+			WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
+		revocation.Reason(ocsp.KeyCompromise),
+		thisUpdate,
+		req.Response,
+		req.Serial,
+		string(core.OCSPStatusRevoked),
+		revocation.Reason(ocsp.KeyCompromise),
+		revokedDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		// InternalServerError because we expected this certificate status to exist,
+		// to already be revoked for a different reason, and to have a matching date.
+		return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
 	}
 	return &emptypb.Empty{}, nil
 }
