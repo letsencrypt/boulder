@@ -25,10 +25,21 @@ import (
 )
 
 const (
-	batchSizeLimit  = 100
+	akamaiBatchSize = 100
 	timestampFormat = "20060102T15:04:05-0700"
 	v3PurgePath     = "/ccu/v3/delete/url/"
 	v3PurgeTagPath  = "/ccu/v3/delete/tag/"
+)
+
+var (
+	// ErrAllRetriesFailed indicates that all purge submission attempts have
+	// failed.
+	ErrAllRetriesFailed = errors.New("all attempts to submit purge request failed")
+
+	// errFatal is returned by the purge method of CachePurgeClient to indicate
+	// that it failed for a reason that cannot be remediated by retrying the
+	// request.
+	errFatal = errors.New("fatal error")
 )
 
 type v3PurgeRequest struct {
@@ -61,16 +72,18 @@ type CachePurgeClient struct {
 	clk          clock.Clock
 }
 
-// ErrAllRetriesFailed indicates that all purge submission attempts have failed.
-var ErrAllRetriesFailed = errors.New("all attempts to submit purge request failed")
-
-// errFatal is returned by the purge method of CachePurgeClient to indicate that
-// it failed for a reason that cannot be remediated by retrying the request.
-var errFatal = errors.New("a non-retryable error was encountered")
-
 // NewCachePurgeClient performs some basic validation of supplied configuration
 // and returns a newly constructed CachePurgeClient.
-func NewCachePurgeClient(baseURL, cToken, secret, aToken, network string, retries int, backoff time.Duration, log blog.Logger, scope prometheus.Registerer) (*CachePurgeClient, error) {
+func NewCachePurgeClient(
+	baseURL,
+	clientToken,
+	secret,
+	accessToken,
+	network string,
+	retries int,
+	backoff time.Duration,
+	log blog.Logger, scope prometheus.Registerer,
+) (*CachePurgeClient, error) {
 	if network != "production" && network != "staging" {
 		return nil, fmt.Errorf("'V3Network' must be \"staging\" or \"production\", got %q", network)
 	}
@@ -98,9 +111,9 @@ func NewCachePurgeClient(baseURL, cToken, secret, aToken, network string, retrie
 		apiEndpoint:  endpoint.String(),
 		apiHost:      endpoint.Host,
 		apiScheme:    strings.ToLower(endpoint.Scheme),
-		clientToken:  cToken,
+		clientToken:  clientToken,
 		clientSecret: secret,
-		accessToken:  aToken,
+		accessToken:  accessToken,
 		v3Network:    network,
 		retries:      retries,
 		retryBackoff: backoff,
@@ -200,18 +213,18 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	}
 	req.Header.Set("Authorization", authorization)
 	req.Header.Set("Content-Type", "application/json")
-	cpc.log.Debugf("POSTing to %q with header %q, and body %q", endpoint, authorization, reqBody)
+	cpc.log.Debugf("POSTing to endpoint %q (header %q) (body %q)", endpoint, authorization, reqBody)
 
 	start := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
 	cpc.purgeLatency.Observe(cpc.clk.Since(start).Seconds())
 	if err != nil {
-		return err
+		return fmt.Errorf("while POSTing to endpoint %q: %w", endpointURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.Body == nil {
-		return fmt.Errorf("response body was empty")
+		return fmt.Errorf("response body was empty from URL %q", resp.Request.URL)
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -223,17 +236,17 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	var purgeInfo purgeResponse
 	err = json.Unmarshal(respBody, &purgeInfo)
 	if err != nil {
-		return fmt.Errorf("while unmarshalling response %q from endpoint %q as JSON: %w", respBody, endpoint, err)
+		return fmt.Errorf("while unmarshalling body %q from URL %q as JSON: %w", respBody, resp.Request.URL, err)
 	}
 
 	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
-			return fmt.Errorf("the client was not authorized to make this request: %w", errFatal)
+			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
 		}
-		return fmt.Errorf("received unexpected HTTP response code '%d', for body %q", resp.StatusCode, respBody)
+		return fmt.Errorf("received HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
 	}
 
-	cpc.log.AuditInfof("Sent successful purge request purgeID: %s, purge expected in: %ds, for request body: %s",
+	cpc.log.AuditInfof("Purge request sent successfully (ID %s) (body %s). Purge expected in %ds",
 		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, reqBody)
 	return nil
 }
@@ -273,7 +286,7 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 func (cpc *CachePurgeClient) Purge(urls []string) (int, error) {
 	totalURLs := len(urls)
 	for batchBegin := 0; batchBegin < totalURLs; {
-		batchEnd := batchBegin + batchSizeLimit
+		batchEnd := batchBegin + akamaiBatchSize
 		if batchEnd > totalURLs {
 			// Avoid index out of range error.
 			batchEnd = totalURLs
@@ -283,7 +296,7 @@ func (cpc *CachePurgeClient) Purge(urls []string) (int, error) {
 		if err != nil {
 			return batchBegin, err
 		}
-		batchBegin += batchSizeLimit
+		batchBegin += akamaiBatchSize
 	}
 	return totalURLs, nil
 }

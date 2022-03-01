@@ -32,6 +32,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"golang.org/x/crypto/ocsp"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -1633,6 +1634,108 @@ func TestRevokeCertificate(t *testing.T) {
 		Response: response,
 	})
 	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
+}
+
+func TestUpdateRevokedCertificate(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a cert to the DB to test with.
+	reg := createWorkingRegistration(t, sa)
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	serial := "000000000000000000000000000000021bd4"
+	issuedTime := fc.Now().UnixNano()
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      certDER,
+		RegID:    reg.Id,
+		Ocsp:     nil,
+		Issued:   issuedTime,
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	fc.Add(1 * time.Hour)
+
+	// Try to update it before its been revoked
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   serial,
+		Date:     fc.Now().UnixNano(),
+		Backdate: fc.Now().UnixNano(),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
+	})
+	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
+	test.AssertContains(t, err.Error(), "no certificate with serial")
+
+	// Now revoke it, so we can update it.
+	revokedTime := fc.Now().UnixNano()
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   serial,
+		Date:     revokedTime,
+		Reason:   ocsp.CessationOfOperation,
+		Response: []byte{1, 2, 3},
+	})
+	test.AssertNotError(t, err, "RevokeCertificate failed")
+
+	// Double check that setup worked.
+	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
+	test.AssertEquals(t, int(status.RevokedReason), ocsp.CessationOfOperation)
+	fc.Add(1 * time.Hour)
+
+	// Try to update its revocation info with no backdate
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   serial,
+		Date:     fc.Now().UnixNano(),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
+	})
+	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
+	test.AssertContains(t, err.Error(), "incomplete")
+
+	// Try to update its revocation info for a reason other than keyCompromise
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   serial,
+		Date:     fc.Now().UnixNano(),
+		Backdate: revokedTime,
+		Reason:   ocsp.Unspecified,
+		Response: []byte{4, 5, 6},
+	})
+	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
+	test.AssertContains(t, err.Error(), "cannot update revocation for any reason other than keyCompromise")
+
+	// Try to update the revocation info of the wrong certificate
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   "000000000000000000000000000000021bd5",
+		Date:     fc.Now().UnixNano(),
+		Backdate: revokedTime,
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
+	})
+	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
+	test.AssertContains(t, err.Error(), "no certificate with serial")
+
+	// Try to update its revocation info with the wrong backdate
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   serial,
+		Date:     fc.Now().UnixNano(),
+		Backdate: fc.Now().UnixNano(),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
+	})
+	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
+	test.AssertContains(t, err.Error(), "no certificate with serial")
+
+	// Try to update its revocation info correctly
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   serial,
+		Date:     fc.Now().UnixNano(),
+		Backdate: revokedTime,
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
+	})
+	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
 }
 
 func TestAddCertificateRenewalBit(t *testing.T) {

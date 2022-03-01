@@ -478,12 +478,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
-	// In go1.16 it makes the connection but shouldn't be able to complete it;
-	// in go1.17 the stdlib refuses to handshake when there is no overlap in
-	// negotiated TLS application protocols.
-	go116ok := prob.Type == probs.UnauthorizedProblem
-	go117ok := prob.Type == probs.TLSProblem
-	test.Assert(t, go116ok != go117ok, "Only one of go1.16 or go1.17 should pass")
+	test.AssertEquals(t, prob.Type, probs.TLSProblem)
 }
 
 // TestValidateTLSALPN01BadUTFSrv tests that validating TLS-ALPN-01 against

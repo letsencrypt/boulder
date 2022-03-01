@@ -1,9 +1,7 @@
 package core
 
 import (
-	"encoding/asn1"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -172,10 +170,7 @@ func TestLoadCert(t *testing.T) {
 
 	_, err = LoadCert("../test/test-ca.key")
 	test.AssertError(t, err, "Loading non-cert file did not error")
-	var asnStructuralErr asn1.StructuralError
-	go116ok := errors.As(err, &asnStructuralErr)
-	go117ok := (err.Error() == "x509: malformed tbs certificate")
-	test.Assert(t, go116ok != go117ok, "Only one of go1.16 or go1.17 should pass")
+	test.AssertEquals(t, err.Error(), "x509: malformed tbs certificate")
 
 	cert, err := LoadCert("../test/test-ca.pem")
 	test.AssertNotError(t, err, "Failed to load cert file")
