@@ -50,8 +50,10 @@ type Config struct {
 	Beeline cmd.BeelineConfig
 }
 
-// akamaiPurger is a wrapper for an inner slice of URLs to be purged, protected
-// by a mutex.
+// akamaiPurger is a mutex protected container for a gRPC server which recieves
+// requests to purge the URLs of OCSP responses cached by Akamai, stores these
+// URLs in an inner slice, and dispatches them to Akamai's Fast Purge API in
+// batches.
 type akamaiPurger struct {
 	sync.Mutex
 	akamaipb.UnimplementedAkamaiPurgerServer
