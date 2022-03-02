@@ -607,6 +607,11 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, records, err
 	}
 
+	if httpResponse.StatusCode != 200 {
+		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
+			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
+	}
+
 	// At this point we've made a successful request (be it from a retry or
 	// otherwise) and can read and process the response body.
 	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
@@ -617,15 +622,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if err != nil {
 		return nil, records, berrors.UnauthorizedError("Error reading HTTP response body: %v", err)
 	}
+
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
 		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
-	}
-	if httpResponse.StatusCode != 200 {
-		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
 	}
 	return body, records, nil
 }
