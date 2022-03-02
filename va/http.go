@@ -505,9 +505,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
-		// If the response contains an HTTP 303 redirect, do not follow.
-		if req.Response.StatusCode == 303 {
-			return berrors.ConnectionFailureError("Cannot follow HTTP 303 redirects")
+		// If the response contains an HTTP 303 or any other forbidden redirect, do not follow.
+		acceptableRedirects := map[int]struct{}{
+			301: {}, 302: {}, 307: {}, 308: {},
+		}
+		if _, present := acceptableRedirects[req.Response.StatusCode]; !present {
+			return berrors.ConnectionFailureError("received disallowed redirect status code")
 		}
 
 		// Lowercase the redirect host immediately, as the dialer and redirect
