@@ -50,7 +50,7 @@ type Config struct {
 	Beeline cmd.BeelineConfig
 }
 
-// akamaiPurger is a mutex protected container for a gRPC server which recieves
+// akamaiPurger is a mutex protected container for a gRPC server which receives
 // requests to purge the URLs of OCSP responses cached by Akamai, stores these
 // URLs in an inner slice, and dispatches them to Akamai's Fast Purge API in
 // batches.

@@ -232,18 +232,29 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 		return err
 	}
 
-	// Ensure that the purge request was successful.
+	// Success for a request to purge a URL or Cache tag is 'HTTP 201'.
+	// https://techdocs.akamai.com/purge-cache/reference/delete-url
+	// https://techdocs.akamai.com/purge-cache/reference/delete-tag
+	if resp.StatusCode != http.StatusCreated {
+		if resp.StatusCode == http.StatusForbidden {
+			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
+		}
+		return fmt.Errorf("received HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
+	}
+
 	var purgeInfo purgeResponse
 	err = json.Unmarshal(respBody, &purgeInfo)
 	if err != nil {
 		return fmt.Errorf("while unmarshalling body %q from URL %q as JSON: %w", respBody, resp.Request.URL, err)
 	}
 
-	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
+	// Ensure the unmarshaled body concurs with the status of the response
+	// received.
+	if purgeInfo.HTTPStatus != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
 			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
 		}
-		return fmt.Errorf("received HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
+		return fmt.Errorf("unmarshaled HTTP %d (body %q) from URL %q", purgeInfo.HTTPStatus, respBody, resp.Request.URL)
 	}
 
 	cpc.log.AuditInfof("Purge request sent successfully (ID %s) (body %s). Purge expected in %ds",
