@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -34,9 +35,6 @@ const (
 	// maxPathSize is the maximum number of bytes we will accept in the path of a
 	// redirect URL.
 	maxPathSize = 2000
-	// whitespaceCutset is the set of characters trimmed from the right of an
-	// HTTP-01 key authorization response.
-	whitespaceCutset = "\n\r\t "
 )
 
 // preresolvedDialer is a struct type that provides a DialContext function which
@@ -648,7 +646,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 		return validationRecords, prob
 	}
 
-	payload := strings.TrimRight(string(body), whitespaceCutset)
+	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
 	if payload != challenge.ProvidedKeyAuthorization {
 		problem := probs.Unauthorized(fmt.Sprintf("The key authorization file from the server did not match this challenge %q != %q",
