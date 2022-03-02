@@ -164,6 +164,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			if err != nil {
 				// draft: remove this error when metric is plumbed
 				ssa.log.AuditErrf("FindIssuerByID fail: %v", err)
+				return
 			} else {
 				ssa.log.AuditErrf("FindIssuerByID success!, issuer: %v", shortIssuerID)
 			}
@@ -171,6 +172,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			if err != nil {
 				// draft: remove this error when metric is plumbed
 				ssa.log.AuditErrf("StoreResponse fail: %v", err)
+				return
 			} else {
 				ssa.log.AuditErr("StoreResponse success!")
 			}
