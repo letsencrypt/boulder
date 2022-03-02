@@ -100,8 +100,8 @@ github.com/klauspost/compress/huff0
 github.com/klauspost/compress/snappy
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/letsencrypt/challtestsrv v1.2.0
-## explicit
+# github.com/letsencrypt/challtestsrv v1.2.1
+## explicit; go 1.13
 github.com/letsencrypt/challtestsrv
 # github.com/letsencrypt/pkcs11key/v4 v4.0.0
 ## explicit; go 1.12

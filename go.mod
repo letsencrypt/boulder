@@ -14,7 +14,7 @@ require (
 	github.com/honeycombio/beeline-go v1.1.1
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
-	github.com/letsencrypt/challtestsrv v1.2.0
+	github.com/letsencrypt/challtestsrv v1.2.1
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
 	github.com/miekg/dns v1.1.45
 	github.com/miekg/pkcs11 v1.0.3

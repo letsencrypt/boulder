@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -183,7 +184,7 @@ func (s *ChallSrv) Run() {
 	for _, srv := range s.servers {
 		go func(srv challengeServer) {
 			err := srv.ListenAndServe()
-			if err != nil {
+			if err != nil && !strings.Contains(err.Error(), "Server closed") {
 				s.log.Print(err)
 			}
 		}(srv)
