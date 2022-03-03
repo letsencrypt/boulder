@@ -571,11 +571,11 @@ func httpTestSrv(t *testing.T) *httptest.Server {
 	})
 
 	// A path that always responds with a 303 redirect
-	mux.HandleFunc("/other", func(resp http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("/303-see-other", func(resp http.ResponseWriter, req *http.Request) {
 		http.Redirect(
 			resp,
 			req,
-			"http://example.org/other",
+			"http://example.org/303-see-other",
 			http.StatusSeeOther,
 		)
 	})
@@ -938,14 +938,14 @@ func TestFetchHTTP(t *testing.T) {
 		{
 			Name: "HTTP status code 303 redirect",
 			Host: "example.com",
-			Path: "/other",
+			Path: "/303-see-other",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching http://example.org/other: Cannot follow HTTP 303 redirects"),
+				"Fetching http://example.org/303-see-other: received disallowed redirect status code"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
-					URL:               "http://example.com/other",
+					URL:               "http://example.com/303-see-other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},
