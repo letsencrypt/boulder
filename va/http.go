@@ -503,7 +503,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
-		// If the response contains an HTTP 303 or any other forbidden redirect, do not follow.
+		// If the response contains an HTTP 303 or any other forbidden redirect,
+		// do not follow it. The four allowed redirect status codes are defined
+		// explicitly in BRs Section 3.2.2.4.19. Although the go stdlib currently
+		// limits redirects to a set of status codes with only one additional
+		// entry (303), we capture the full list of allowed codes here in case the
+		// go stdlib expands the set of redirects it follows in the future.
 		acceptableRedirects := map[int]struct{}{
 			301: {}, 302: {}, 307: {}, 308: {},
 		}
