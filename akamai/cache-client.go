@@ -236,8 +236,24 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	// https://techdocs.akamai.com/purge-cache/reference/delete-url
 	// https://techdocs.akamai.com/purge-cache/reference/delete-tag
 	if resp.StatusCode != http.StatusCreated {
+		// https://techdocs.akamai.com/purge-cache/reference/403
 		if resp.StatusCode == http.StatusForbidden {
 			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
+		}
+
+		// https://techdocs.akamai.com/purge-cache/reference/504
+		if resp.StatusCode == http.StatusGatewayTimeout {
+			return fmt.Errorf("server timed out, got %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
+		}
+
+		// https://techdocs.akamai.com/purge-cache/reference/429
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return fmt.Errorf("exceeded request count rate limit, got HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
+		}
+
+		// https://techdocs.akamai.com/purge-cache/reference/413
+		if resp.StatusCode == http.StatusRequestEntityTooLarge {
+			return fmt.Errorf("exceeded request size rate limit, HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
 		}
 		return fmt.Errorf("received HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
 	}
