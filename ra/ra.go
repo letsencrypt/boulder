@@ -1851,13 +1851,13 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 	return nil
 }
 
-// reRevokeCertificate generates a revoked OCSP response for the already-revoked
-// certificate with the given serial and issuer, and stores that response in
-// the database. This only works for certificates that were previously revoked
-// for a reason other than keyCompromise, and which are now being updated to
-// keyCompromise instead.
+// updateRevocationForKeyCompromise generates a revoked OCSP response for the
+// already-revoked certificate with the given serial and issuer, and stores that
+// response in the database. This only works for certificates that were
+// previously revoked for a reason other than keyCompromise, and which are now
+// being updated to keyCompromise instead.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
-func (ra *RegistrationAuthorityImpl) reRevokeCertificate(ctx context.Context, serial *big.Int, issuerID int64) error {
+func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
 	serialString := core.SerialToString(serial)
 
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
@@ -2087,7 +2087,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// error
 	if revokeErr != nil {
 		if errors.Is(revokeErr, berrors.AlreadyRevoked) {
-			revokeErr = ra.reRevokeCertificate(ctx, cert.SerialNumber, int64(issuerID))
+			revokeErr = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
 			if revokeErr != nil {
 				return nil, revokeErr
 			}
@@ -2217,7 +2217,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	err = ra.revokeCertificate(ctx, cert.SerialNumber, issuerID, revocation.Reason(req.Code))
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
-			err = ra.reRevokeCertificate(ctx, cert.SerialNumber, issuerID)
+			err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, issuerID)
 			if err != nil {
 				return nil, err
 			}
