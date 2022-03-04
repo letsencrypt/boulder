@@ -51,7 +51,6 @@ import (
 )
 
 var (
-	ErrFailedToPurgeOCSP      = errors.New("akamai-purger was unavailable, OCSP entries will still be dropped in <24h")
 	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
 	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 )
@@ -1909,18 +1908,18 @@ func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x
 		// serial, so the issuer ID had to be read from the db).
 		issuer, ok = ra.issuersByID[issuance.IssuerID(issuerID)]
 		if !ok {
-			return fmt.Errorf("%w: unable to identify issuer of cert with serial %q", ErrFailedToPurgeOCSP, core.SerialToString(cert.SerialNumber))
+			return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
 		}
 	}
 
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrFailedToPurgeOCSP, err)
+		return err
 	}
 
 	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrFailedToPurgeOCSP, err)
+		return err
 	}
 
 	return nil
@@ -2016,10 +2015,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-	if err != nil {
-		return nil, err
-	}
+	ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
 }
@@ -2095,10 +2091,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		}
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-	if err != nil {
-		return nil, err
-	}
+	ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
 }
@@ -2145,9 +2138,14 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	return &emptypb.Empty{}, nil
 }
 
-// AdministrativelyRevokeCertificate terminates trust in the certificate provided and
-// does not require the registration ID of the requester since this method is only
-// called from the admin-revoker tool.
+// AdministrativelyRevokeCertificate terminates trust in the certificate
+// provided and does not require the registration ID of the requester since this
+// method is only called from the admin-revoker tool. It trusts that the admin
+// is doing the right thing, so if the requested reason is keyCompromise, it
+// blocks the key from future issuance even though compromise has not been
+// demonstrated here. It purges the certificate from the Akamai cache, and
+// returns an error if that purge fails, since this method may be called late
+// in the BRs-mandated revocation timeframe.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	if req == nil || req.AdminName == "" {
 		return nil, errIncompleteGRPCRequest
