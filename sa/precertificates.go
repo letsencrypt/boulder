@@ -33,6 +33,9 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
+// GetSerialMetadata returns metadata stored alongside the serial number,
+// such as the RegID whose certificate request created that serial, and when
+// the certificate with that serial will expire.
 func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
 	if req == nil || req.Serial == "" {
 		return nil, errIncompleteRequest

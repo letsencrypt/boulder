@@ -286,7 +286,7 @@ type certificateRequestEvent struct {
 type certificateRevocationEvent struct {
 	ID string `json:",omitempty"`
 	// SerialNumber is the string representation of the revoked certificate's
-	// serial number
+	// serial number.
 	SerialNumber string `json:",omitempty"`
 	// Reason is the integer representing the revocation reason used.
 	Reason int64 `json:",omitempty"`
@@ -299,7 +299,7 @@ type certificateRevocationEvent struct {
 	// AdminName is the name of the admin requester.
 	// Will be zero for subscriber revocations.
 	AdminName string `json:",omitempty"`
-	// Error contains any encountered errors
+	// Error contains any error encountered during revocation.
 	Error string `json:",omitempty"`
 }
 
@@ -1724,7 +1724,7 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 	)
 }
 
-// decprecatedRevokeCertificate generates a revoked OCSP response for the given certificate, stores
+// deprecatedRevokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
 // DEPRECATED: Used only by RevokeCertificateWithReg, which is itself deprecated.
 func (ra *RegistrationAuthorityImpl) deprecatedRevokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string, skipBlockKey bool) error {
