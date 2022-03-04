@@ -2083,12 +2083,16 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 	// Finally check the error from revocation itself. If there was an error,
 	// try to re-revoke the cert, in case the error was due to it being already
-	// revoked for some reason other than keyCompromise.
+	// revoked for some reason other than keyCompromise. Either way, return the
+	// error
 	if revokeErr != nil {
-		revokeErr = ra.reRevokeCertificate(ctx, cert.SerialNumber, int64(issuerID))
-		if revokeErr != nil {
-			return nil, err
+		if errors.Is(revokeErr, berrors.AlreadyRevoked) {
+			revokeErr = ra.reRevokeCertificate(ctx, cert.SerialNumber, int64(issuerID))
+			if revokeErr != nil {
+				return nil, revokeErr
+			}
 		}
+		return nil, revokeErr
 	}
 
 	ra.purgeOCSPCache(ctx, cert, int64(issuerID))
@@ -2212,7 +2216,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 
 	err = ra.revokeCertificate(ctx, cert.SerialNumber, issuerID, revocation.Reason(req.Code))
 	if err != nil {
-		if req.Code == ocsp.KeyCompromise {
+		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
 			err = ra.reRevokeCertificate(ctx, cert.SerialNumber, issuerID)
 			if err != nil {
 				return nil, err

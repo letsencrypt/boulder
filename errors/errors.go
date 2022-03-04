@@ -30,6 +30,7 @@ const (
 	DNS
 	BadPublicKey
 	BadCSR
+	AlreadyRevoked
 )
 
 func (ErrorType) Error() string {
@@ -137,4 +138,8 @@ func BadPublicKeyError(msg string, args ...interface{}) error {
 
 func BadCSRError(msg string, args ...interface{}) error {
 	return New(BadCSR, msg, args...)
+}
+
+func AlreadyRevokedError(msg string, args ...interface{}) error {
+	return New(AlreadyRevoked, msg, args...)
 }
