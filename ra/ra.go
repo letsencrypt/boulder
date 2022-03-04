@@ -2015,7 +2015,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
 }
@@ -2095,7 +2095,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, revokeErr
 	}
 
-	ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
 }
