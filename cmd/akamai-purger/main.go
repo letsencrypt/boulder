@@ -80,8 +80,11 @@ func (ap *akamaiPurger) purge() error {
 
 	stoppedAt, err := ap.client.Purge(urls)
 	if err != nil {
-		// Add the remaining URLs back to the queue.
 		ap.Lock()
+
+		// Add the remaining URLs back, but at the end of the queue. If somehow
+		// there's a URL which repeatedly results in error, it won't block the
+		// entire queue, only a single batch.
 		ap.toPurge = append(ap.toPurge, urls[stoppedAt:]...)
 		ap.Unlock()
 		ap.log.Errf("Failed to purge %d URLs: %s", len(urls), err)
