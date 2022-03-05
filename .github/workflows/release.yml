@@ -16,7 +16,7 @@ on:
       - release-*
 jobs:
   release:
-    # Update this when we update the version of linux used in in production.
+    # Update this when we update the version of linux used in production.
     runs-on: ubuntu-20.04
     name: release
 
@@ -24,8 +24,7 @@ jobs:
       - name: setup go
         uses: actions/setup-go@v2
         with:
-          # Update this when we update the version of linux used in in
-          # production.
+          # Update this when we update the version of linux used in production.
           go-version: 1.17.7
 
       - name: checkout
