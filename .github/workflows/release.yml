@@ -1,0 +1,53 @@
+name: release
+
+permissions:
+  contents: write
+  packages: write
+  statuses: write
+  pull-requests: read
+
+on:
+  # Allows you to run this workflow manually from the 'Actions' tab.
+  workflow_dispatch:
+
+  # Runs automatically when a tag beginning with 'release-' is pushed.
+  push:
+    tags:
+      - release-*
+jobs:
+  release:
+    # Update this when we update the version of linux used in in production.
+    runs-on: ubuntu-20.04
+    name: release
+
+    steps:
+      - name: setup go
+        uses: actions/setup-go@v2
+        with:
+          # Update this when we update the version of linux used in in
+          # production.
+          go-version: 1.17.7
+
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: authenticate
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build and release
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          # release: posts a GitHub release with the resulting artifact(s)
+          # skip-validate: skips interpretation of the tag as a semver.
+          args: release --rm-dist --skip-validate
+
+          # v0.123 is the last version that allowed you to disable semver.
+          version: 0.132
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
