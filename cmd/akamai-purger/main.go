@@ -24,12 +24,19 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// defaultQueueSize is the default akamai-purger queue size.
+const defaultQueueSize = 1000000
+
 type Config struct {
 	AkamaiPurger struct {
 		cmd.ServiceConfig
 
 		// PurgeInterval is the duration waited between purge requests.
 		PurgeInterval cmd.ConfigDuration
+
+		// MaxQueueSize is the maximum size of the purger queue. If this value
+		// isn't provided it will default to `defaultQueueSize`.
+		MaxQueueSize int
 
 		BaseURL           string
 		ClientToken       string
@@ -43,50 +50,53 @@ type Config struct {
 	Beeline cmd.BeelineConfig
 }
 
+// akamaiPurger is a mutex protected container for a gRPC server which receives
+// requests to purge the URLs of OCSP responses cached by Akamai, stores these
+// URLs in an inner slice, and dispatches them to Akamai's Fast Purge API in
+// batches.
 type akamaiPurger struct {
+	sync.Mutex
 	akamaipb.UnimplementedAkamaiPurgerServer
-	mu      sync.Mutex
-	toPurge []string
-
-	client *akamai.CachePurgeClient
-	log    blog.Logger
+	toPurge      []string
+	maxQueueSize int
+	client       *akamai.CachePurgeClient
+	log          blog.Logger
 }
 
 func (ap *akamaiPurger) len() int {
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
+	ap.Lock()
+	defer ap.Unlock()
 	return len(ap.toPurge)
 }
 
 func (ap *akamaiPurger) purge() error {
-	ap.mu.Lock()
+	ap.Lock()
 	urls := ap.toPurge[:]
 	ap.toPurge = []string{}
-	ap.mu.Unlock()
+	ap.Unlock()
 	if len(urls) == 0 {
 		return nil
 	}
 
-	err := ap.client.Purge(urls)
+	stoppedAt, err := ap.client.Purge(urls)
 	if err != nil {
-		// Add the URLs back to the queue.
-		ap.mu.Lock()
-		ap.toPurge = append(urls, ap.toPurge...)
-		ap.mu.Unlock()
+		ap.Lock()
+
+		// Add the remaining URLs back, but at the end of the queue. If somehow
+		// there's a URL which repeatedly results in error, it won't block the
+		// entire queue, only a single batch.
+		ap.toPurge = append(ap.toPurge, urls[stoppedAt:]...)
+		ap.Unlock()
 		ap.log.Errf("Failed to purge %d URLs: %s", len(urls), err)
 		return err
 	}
 	return nil
 }
 
-// maxQueueSize is used to reject Purge requests if the queue contains >= the
-// number of URLs to purge so that it can catch up.
-var maxQueueSize = 1000000
-
 func (ap *akamaiPurger) Purge(ctx context.Context, req *akamaipb.PurgeRequest) (*emptypb.Empty, error) {
-	ap.mu.Lock()
-	defer ap.mu.Unlock()
-	if len(ap.toPurge) >= maxQueueSize {
+	ap.Lock()
+	defer ap.Unlock()
+	if len(ap.toPurge) >= ap.maxQueueSize {
 		return nil, errors.New("akamai-purger queue too large")
 	}
 	ap.toPurge = append(ap.toPurge, req.Urls...)
@@ -160,6 +170,10 @@ func main() {
 		cmd.Fail("'PurgeInterval' must be > 0")
 	}
 
+	if c.AkamaiPurger.MaxQueueSize == 0 {
+		c.AkamaiPurger.MaxQueueSize = defaultQueueSize
+	}
+
 	ccu, err := akamai.NewCachePurgeClient(
 		c.AkamaiPurger.BaseURL,
 		c.AkamaiPurger.ClientToken,
@@ -174,8 +188,9 @@ func main() {
 	cmd.FailOnError(err, "Failed to setup Akamai CCU client")
 
 	ap := &akamaiPurger{
-		client: ccu,
-		log:    logger,
+		maxQueueSize: c.AkamaiPurger.MaxQueueSize,
+		client:       ccu,
+		log:          logger,
 	}
 
 	var gaugePurgeQueueLength = prometheus.NewGaugeFunc(

@@ -138,18 +138,18 @@ func TestV3Purge(t *testing.T) {
 	fc := clock.NewFake()
 	client.clk = fc
 
-	err = client.Purge([]string{"http://test.com"})
+	_, err = client.Purge([]string{"http://test.com"})
 	test.AssertNotError(t, err, "Purge failed; expected 201 response")
 
 	started := client.clk.Now()
 	as.responseCode = http.StatusInternalServerError
-	err = client.Purge([]string{"http://test.com"})
+	_, err = client.Purge([]string{"http://test.com"})
 	test.AssertError(t, err, "Purge succeeded; expected 500 response")
 	test.Assert(t, client.clk.Since(started) > (time.Second*4), "Retries should've taken at least 4.4 seconds")
 
 	started = client.clk.Now()
 	as.responseCode = http.StatusCreated
-	err = client.Purge([]string{"http:/test.com"})
+	_, err = client.Purge([]string{"http:/test.com"})
 	test.AssertError(t, err, "Purge succeeded; expected a 403 response from malformed URL")
 	test.Assert(t, client.clk.Since(started) < time.Second, "Purge should've failed out immediately")
 }
@@ -249,8 +249,21 @@ func TestBigBatchPurge(t *testing.T) {
 		urls = append(urls, fmt.Sprintf("http://test.com/%d", i))
 	}
 
-	err = client.Purge(urls)
+	stoppedAt, err := client.Purge(urls)
 	test.AssertNotError(t, err, "Purge failed with 201 response")
+	test.AssertEquals(t, stoppedAt, 250)
+
+	// Add a malformed URL.
+	urls = append(urls, "http:/test.com")
+
+	// Add 10 more valid entries.
+	for i := 0; i < 10; i++ {
+		urls = append(urls, fmt.Sprintf("http://test.com/%d", i))
+	}
+
+	stoppedAt, err = client.Purge(urls)
+	test.AssertError(t, err, "Purge succeeded with a malformed URL")
+	test.AssertEquals(t, stoppedAt, 200)
 }
 
 func TestReverseBytes(t *testing.T) {
