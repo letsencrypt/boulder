@@ -157,25 +157,25 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	// If there is no error after the DB transaction, store the OCSP
 	// response in Redis (if configured) on a best effort basis.
 	if ssa.rocspWriteClient != nil {
-		rocspCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		rocspCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Andrew Draft: TODO configurable timeout
 		go func() {
 			defer cancel()
 			shortIssuerID, err := rocsp_config.FindIssuerByID(req.IssuerID, ssa.shortIssuers)
 			if err != nil {
-				// draft: remove this error when metric is plumbed
-				ssa.log.AuditErrf("FindIssuerByID fail: %v", err)
+				ssa.redisStoreResponse.WithLabelValues("find_issuer_error").Inc()
+				// Log error if FindIssuerByID failed. This should be rare
+				// and the logged message will help identify a
+				// misconfiguration quickly.
+				ssa.log.Errf("failed to FindIssuerByID: %v", err)
 				return
-			} else {
-				ssa.log.AuditErrf("FindIssuerByID success!, issuer: %v", shortIssuerID)
 			}
-			err = ssa.rocspWriteClient.StoreResponse(rocspCtx, req.Ocsp, shortIssuerID.ShortID(), 72*time.Hour)
+			err = ssa.rocspWriteClient.StoreResponse(rocspCtx, req.Ocsp, shortIssuerID.ShortID(), 72*time.Hour) // Andrew Draft: TODO configurable TTL or based off cert expiration.
 			if err != nil {
-				// draft: remove this error when metric is plumbed
-				ssa.log.AuditErrf("StoreResponse fail: %v", err)
+				// Increment error metric. No error log here to prevent spamming syslog in case of
+				ssa.redisStoreResponse.WithLabelValues("store_response_error").Inc()
 				return
-			} else {
-				ssa.log.AuditErr("StoreResponse success!")
 			}
+			ssa.redisStoreResponse.WithLabelValues("success").Inc()
 		}()
 	}
 	return &emptypb.Empty{}, nil

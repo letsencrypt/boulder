@@ -64,6 +64,10 @@ type SQLStorageAuthority struct {
 	// transactions fail and so use this stat to maintain visibility into the rate
 	// this occurs.
 	rateLimitWriteErrors prometheus.Counter
+
+	// redisStoreResponse is a counter of OCSP responses written to redis by
+	// result.
+	redisStoreResponse prometheus.CounterVec
 }
 
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
@@ -98,6 +102,12 @@ func NewSQLStorageAuthority(
 	})
 	stats.MustRegister(rateLimitWriteErrors)
 
+	redisStoreResponse := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "redis_store_response",
+		Help: "Count of OCSP Response writes to redis",
+	}, []string{"result"})
+	stats.MustRegister(redisStoreResponse)
+
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
 		dbReadOnlyMap:        dbReadOnlyMap,
@@ -107,6 +117,7 @@ func NewSQLStorageAuthority(
 		rateLimitWriteErrors: rateLimitWriteErrors,
 		rocspWriteClient:     rocspWriteClient,
 		shortIssuers:         shortIssuers,
+		redisStoreResponse:   *redisStoreResponse,
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
