@@ -154,10 +154,15 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		return nil, overallError
 	}
 
-	// If there is no error after the DB transaction, store the OCSP
-	// response in Redis (if configured) on a best effort basis.
+	// Store the OCSP response in Redis (if configured) on a best effort
+	// basis. We don't want to fail on an error here while mysql is the
+	// source of truth.
 	if ssa.rocspWriteClient != nil {
-		rocspCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Andrew Draft: TODO configurable timeout
+		// Use a new context for the goroutine. We aren't going to wait on
+		// this goroutine, so we don't want it to be canceled when the
+		// parent function ends. The rocsp client has a configurable
+		// timeout that can be set during creation.
+		rocspCtx, cancel := context.WithCancel(context.Background())
 		go func() {
 			defer cancel()
 			shortIssuerID, err := rocsp_config.FindIssuerByID(req.IssuerID, ssa.shortIssuers)
@@ -169,9 +174,11 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 				ssa.log.Errf("failed to FindIssuerByID: %v", err)
 				return
 			}
-			err = ssa.rocspWriteClient.StoreResponse(rocspCtx, req.Ocsp, shortIssuerID.ShortID(), 72*time.Hour) // Andrew Draft: TODO configurable TTL or based off cert expiration.
+			rocspTTL := ssa.clk.Now().Sub(parsed.NotAfter)
+			err = ssa.rocspWriteClient.StoreResponse(rocspCtx, req.Ocsp, shortIssuerID.ShortID(), rocspTTL)
 			if err != nil {
-				// Increment error metric. No error log here to prevent spamming syslog in case of
+				// Increment error metric. No error log here to prevent
+				// spamming syslog in case of down cluster.
 				ssa.redisStoreResponse.WithLabelValues("store_response_error").Inc()
 				return
 			}
