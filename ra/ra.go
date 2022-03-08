@@ -2015,6 +2015,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
+	// TODO(#5979): Check this error when it can't simply be due to a full queue.
 	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
@@ -2084,7 +2085,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// Finally check the error from revocation itself. If there was an error,
 	// try to re-revoke the cert, in case the error was due to it being already
 	// revoked for some reason other than keyCompromise. Either way, return the
-	// error
+	// error.
 	if revokeErr != nil {
 		if errors.Is(revokeErr, berrors.AlreadyRevoked) {
 			revokeErr = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
@@ -2095,6 +2096,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, revokeErr
 	}
 
+	// TODO(#5979): Check this error when it can't simply be due to a full queue.
 	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
