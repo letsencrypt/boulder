@@ -35,7 +35,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -765,51 +764,13 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 }
 
-func (wfe *WebFrontEndImpl) acctHoldsAuthorizations(ctx context.Context, acctID int64, names []string) (bool, error) {
-	authzMapPB, err := wfe.sa.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
-		RegistrationID: acctID,
-		Domains:        names,
-		Now:            wfe.clk.Now().UnixNano(),
-	})
-	if err != nil {
-		return false, err
-	}
-	authzMap, err := bgrpc.PBToAuthzMap(authzMapPB)
-	if err != nil {
-		return false, err
-	}
-	if len(names) != len(authzMap) {
-		return false, nil
-	}
-	missingNames := false
-	for _, name := range names {
-		if _, present := authzMap[name]; !present {
-			missingNames = true
-		}
-	}
-	return !missingNames, nil
-}
-
-// authorizedToRevokeCert is a callback function that can be used to validate if
-// a given requester is authorized to revoke the certificate parsed out of the
-// revocation request from the inner JWS. If the requester is not authorized to
-// revoke the certificate a problem is returned. It is expected to be a closure
-// containing additional state (an account ID or key) that will be used to make
-// the decision.
-type authorizedToRevokeCert func(*x509.Certificate, revocation.Reason) *probs.ProblemDetails
-
 // processRevocation accepts the payload for a revocation request along with
 // an account ID and a callback used to decide if the requester is authorized to
 // revoke a given certificate. If the request can not  be authenticated or the
 // requester is not authorized to revoke the certificate requested a problem is
 // returned. Otherwise the certificate is marked revoked through the SA.
-func (wfe *WebFrontEndImpl) processRevocation(
-	ctx context.Context,
-	jwsBody []byte,
-	acctID int64,
-	authorizedToRevoke authorizedToRevokeCert,
-	request *http.Request,
-	logEvent *web.RequestEvent) *probs.ProblemDetails {
+func (wfe *WebFrontEndImpl) parseRevocation(
+	ctx context.Context, jwsBody []byte, logEvent *web.RequestEvent) (*x509.Certificate, revocation.Reason, *probs.ProblemDetails) {
 	// Read the revoke request from the JWS payload
 	var revokeRequest struct {
 		CertificateDER core.JSONBuffer    `json:"certificate"`
@@ -817,13 +778,13 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	}
 	err := json.Unmarshal(jwsBody, &revokeRequest)
 	if err != nil {
-		return probs.Malformed("Unable to JSON parse revoke request")
+		return nil, 0, probs.Malformed("Unable to JSON parse revoke request")
 	}
 
 	// Parse the provided certificate
 	parsedCertificate, err := x509.ParseCertificate(revokeRequest.CertificateDER)
 	if err != nil {
-		return probs.Malformed("Unable to parse certificate DER")
+		return nil, 0, probs.Malformed("Unable to parse certificate DER")
 	}
 
 	// Compute and record the serial number of the provided certificate
@@ -836,30 +797,17 @@ func (wfe *WebFrontEndImpl) processRevocation(
 	issuerNameID := issuance.GetIssuerNameID(parsedCertificate)
 	issuerCert, ok := wfe.issuerCertificates[issuerNameID]
 	if !ok || issuerCert == nil {
-		return probs.NotFound("Certificate from unrecognized issuer")
+		return nil, 0, probs.NotFound("Certificate from unrecognized issuer")
 	}
 	err = parsedCertificate.CheckSignatureFrom(issuerCert.Certificate)
 	if err != nil {
-		return probs.NotFound("No such certificate")
+		return nil, 0, probs.NotFound("No such certificate")
 	}
 	logEvent.Extra["CertificateDNSNames"] = parsedCertificate.DNSNames
 	beeline.AddFieldToTrace(ctx, "cert.dnsnames", parsedCertificate.DNSNames)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
-		return probs.Unauthorized("Certificate is expired")
-	}
-
-	// Check the certificate status for the provided certificate to see if it is
-	// already revoked
-	certStatus, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-	if err != nil || certStatus.Status == "" {
-		return probs.ServerInternal("Failed to get certificate status")
-	}
-	logEvent.Extra["CertificateStatus"] = certStatus.Status
-	beeline.AddFieldToTrace(ctx, "cert.status", certStatus.Status)
-
-	if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
-		return probs.AlreadyRevoked("Certificate already revoked")
+		return nil, 0, probs.Unauthorized("Certificate is expired")
 	}
 
 	// Verify the revocation reason supplied is allowed
@@ -870,7 +818,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 			if !ok {
 				reasonStr = "unknown"
 			}
-			return probs.BadRevocationReason(
+			return nil, 0, probs.BadRevocationReason(
 				"unsupported revocation reason code provided: %s (%d). Supported reasons: %s",
 				reasonStr,
 				*revokeRequest.Reason,
@@ -879,38 +827,7 @@ func (wfe *WebFrontEndImpl) processRevocation(
 		reason = *revokeRequest.Reason
 	}
 
-	// Validate that the requester is authenticated to revoke the given certificate
-	prob := authorizedToRevoke(parsedCertificate, reason)
-	if prob != nil {
-		return prob
-	}
-
-	// Revoke the certificate. AcctID may be 0 if there is no associated account
-	// (e.g. it was a self-authenticated JWS using the certificate public key)
-	_, err = wfe.ra.RevokeCertificateWithReg(ctx, &rapb.RevokeCertificateWithRegRequest{
-		Cert:  parsedCertificate.Raw,
-		Code:  int64(reason),
-		RegID: acctID,
-	})
-	if err != nil {
-		if errors.Is(err, berrors.Duplicate) {
-			// It is possible that between checking the certificate's status and
-			// performing the revocation, a parallel request happened and revoked the
-			// cert. In this case, just retrieve the certificate status again and
-			// return the alreadyRevoked status.
-			certStatus, err = wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-			if err != nil || certStatus.Status == "" {
-				return probs.ServerInternal("Failed to get certificate status")
-			}
-			if core.OCSPStatus(certStatus.Status) == core.OCSPStatusRevoked {
-				return probs.AlreadyRevoked("Certificate already revoked")
-			}
-		}
-		return web.ProblemDetailsForError(err, "Failed to revoke certificate")
-	}
-
-	wfe.log.Debugf("Revoked %v", serial)
-	return nil
+	return parsedCertificate, reason, nil
 }
 
 type revocationEvidence struct {
@@ -933,67 +850,36 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	if prob != nil {
 		return prob
 	}
-	// For Key ID revocations we decide if an account is able to revoke a specific
-	// certificate by checking that the account has valid authorizations for all
-	// of the names in the certificate or was the issuing account
-	authorizedToRevoke := func(parsedCertificate *x509.Certificate, reason revocation.Reason) *probs.ProblemDetails {
-		// If revocation reason is keyCompromise, reject the request.
-		if reason == revocation.Reason(ocsp.KeyCompromise) {
-			return probs.Unauthorized("Revocation with reason keyCompromise is only supported by signing with the certificate private key")
-		}
 
-		// Try to find a stored final certificate for the serial number
-		serial := core.SerialToString(parsedCertificate.SerialNumber)
-		cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
-		if errors.Is(err, berrors.NotFound) {
-			// If there was an error and it was a not found error, then maybe they're
-			// trying to revoke via the precertificate. Try to find that instead.
-			cert, err = wfe.sa.GetPrecertificate(ctx, &sapb.Serial{Serial: serial})
-			if errors.Is(err, berrors.NotFound) {
-				// If looking up a precert also returned a not found error then return
-				// a not found problem.
-				return probs.NotFound("No such certificate")
-			} else if err != nil {
-				// If there was any other error looking up the precert then return
-				// a server internal problem.
-				return probs.ServerInternal("Failed to retrieve certificate")
-			}
-		} else if err != nil {
-			// Otherwise if the err was not nil and not a not found error, return
-			// a server internal problem.
-			return probs.ServerInternal("Failed to retrieve certificate")
-		}
-		// If the cert/precert is owned by the requester then return nil, it is an
-		// authorized revocation.
-		if cert.RegistrationID == acct.ID {
-			wfe.log.AuditObject("Authorizing revocation", revocationEvidence{
-				Serial: core.SerialToString(parsedCertificate.SerialNumber),
-				Reason: reason,
-				RegID:  acct.ID,
-				Method: "owner",
-			})
-			return nil
-		}
-		// Otherwise check if the account, while not the owner, has equivalent authorizations
-		valid, err := wfe.acctHoldsAuthorizations(ctx, acct.ID, parsedCertificate.DNSNames)
-		if err != nil {
-			return probs.ServerInternal("Failed to retrieve authorizations for names in certificate")
-		}
-		// If it doesn't, return an unauthorized problem.
-		if !valid {
-			return probs.Unauthorized(
-				"The key ID specified in the revocation request does not hold valid authorizations for all names in the certificate to be revoked")
-		}
-		wfe.log.AuditObject("Authorizing revocation", revocationEvidence{
-			Serial: core.SerialToString(parsedCertificate.SerialNumber),
-			Reason: reason,
-			RegID:  acct.ID,
-			Method: "authorizations",
-		})
-		// If it does, return nil. It is an an authorized revocation.
-		return nil
+	cert, reason, prob := wfe.parseRevocation(ctx, jwsBody, logEvent)
+	if prob != nil {
+		return prob
 	}
-	return wfe.processRevocation(ctx, jwsBody, acct.ID, authorizedToRevoke, request, logEvent)
+
+	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
+		Serial: core.SerialToString(cert.SerialNumber),
+		Reason: reason,
+		RegID:  acct.ID,
+		Method: "applicant",
+	})
+
+	// The RA will confirm that the authenticated account either originally
+	// issued the certificate, or has demonstrated control over all identifiers
+	// in the certificate.
+	_, err := wfe.ra.RevokeCertByApplicant(ctx, &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  int64(reason),
+		RegID: acct.ID,
+	})
+	if err != nil {
+		prob, ok := err.(*probs.ProblemDetails)
+		if !ok {
+			return probs.ServerInternal("Failed to revoke certificate")
+		}
+		return prob
+	}
+
+	return nil
 }
 
 // revokeCertByJWK processes an outer JWS as a revocation request that is
@@ -1005,9 +891,6 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	outerJWS *jose.JSONWebSignature,
 	request *http.Request,
 	logEvent *web.RequestEvent) *probs.ProblemDetails {
-	// We maintain the requestKey as a var that is closed-over by the
-	// `authorizedToRevoke` function to use
-	var requestKey *jose.JSONWebKey
 	// For embedded JWK revocations we authenticate the outer JWS by using
 	// `validSelfAuthenticatedJWS` similar to new-reg and key rollover.
 	// We do *not* use `validSelfAuthenticatedPOST` here because we've already
@@ -1016,26 +899,42 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	if prob != nil {
 		return prob
 	}
-	requestKey = jwk
+
+	cert, reason, prob := wfe.parseRevocation(ctx, jwsBody, logEvent)
+	if prob != nil {
+		return prob
+	}
+
 	// For embedded JWK revocations we decide if a requester is able to revoke a specific
 	// certificate by checking that to-be-revoked certificate has the same public
 	// key as the JWK that was used to authenticate the request
-	authorizedToRevoke := func(parsedCertificate *x509.Certificate, reason revocation.Reason) *probs.ProblemDetails {
-		if !core.KeyDigestEquals(requestKey, parsedCertificate.PublicKey) {
-			return probs.Unauthorized(
-				"JWK embedded in revocation request must be the same public key as the cert to be revoked")
-		}
-		wfe.log.AuditObject("Authorizing revocation", revocationEvidence{
-			Serial: core.SerialToString(parsedCertificate.SerialNumber),
-			Reason: reason,
-			RegID:  0,
-			Method: "privkey",
-		})
-		return nil
+	if !core.KeyDigestEquals(jwk, cert.PublicKey) {
+		return probs.Unauthorized(
+			"JWK embedded in revocation request must be the same public key as the cert to be revoked")
 	}
-	// We use `0` as the account ID provided to `processRevocation` because this
-	// is a self-authenticated request.
-	return wfe.processRevocation(ctx, jwsBody, 0, authorizedToRevoke, request, logEvent)
+
+	wfe.log.AuditObject("Authenticated revocation", revocationEvidence{
+		Serial: core.SerialToString(cert.SerialNumber),
+		Reason: reason,
+		RegID:  0,
+		Method: "privkey",
+	})
+
+	// The RA will confirm that the authenticated account either originally
+	// issued the certificate, or has demonstrated control over all identifiers
+	// in the certificate.
+	_, err := wfe.ra.RevokeCertByKey(ctx, &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+	})
+	if err != nil {
+		prob, ok := err.(*probs.ProblemDetails)
+		if !ok {
+			return probs.ServerInternal("Failed to revoke certificate")
+		}
+		return prob
+	}
+
+	return nil
 }
 
 // RevokeCertificate is used by clients to request the revocation of a cert. The
@@ -1070,18 +969,19 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 
 	// Handle the revocation request according to how it is authenticated, or if
 	// the authentication type is unknown, error immediately
-	if authType == embeddedKeyID {
+	switch authType {
+	case embeddedKeyID:
 		prob = wfe.revokeCertByKeyID(ctx, jws, request, logEvent)
-		addRequesterHeader(response, logEvent.Requester)
-	} else if authType == embeddedJWK {
+	case embeddedJWK:
 		prob = wfe.revokeCertByJWK(ctx, jws, request, logEvent)
-	} else {
+	default:
 		prob = probs.Malformed("Malformed JWS, no KeyID or embedded JWK")
 	}
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return
 	}
+
 	response.WriteHeader(http.StatusOK)
 }
 
