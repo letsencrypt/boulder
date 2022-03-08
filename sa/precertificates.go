@@ -52,6 +52,9 @@ func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb
 		req.Serial,
 	)
 	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("serial %q not found", req.Serial)
+		}
 		return nil, err
 	}
 

@@ -1862,14 +1862,16 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
 	if err != nil {
-		return fmt.Errorf("unable to confirm that serial %q was ever issued: %w", serialString, err)
+		return berrors.NotFoundError("unable to confirm that serial %q was ever issued: %s", serialString, err)
 	}
 
 	if status.Status != string(core.OCSPStatusRevoked) {
+		// Internal server error, because we shouldn't be in the function at all
+		// unless the cert was already revoked.
 		return fmt.Errorf("unable to re-revoke serial %q which is not currently revoked", serialString)
 	}
 	if status.RevokedReason == ocsp.KeyCompromise {
-		return fmt.Errorf("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
+		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
 	}
 
 	// The new OCSP response has to be back-dated to the original date.
@@ -1943,7 +1945,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	}
 
 	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
-		return nil, fmt.Errorf("disallowed revocation reason: %d", req.Code)
+		return nil, berrors.BadRevocationReasonError(req.Code)
 	}
 
 	cert, err := x509.ParseCertificate(req.Cert)
@@ -1995,7 +1997,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		}
 		for _, name := range cert.DNSNames {
 			if _, present := m[name]; !present {
-				return nil, fmt.Errorf("requester does not control all names in cert with serial %q", serialString)
+				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
 			}
 		}
 

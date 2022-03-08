@@ -31,6 +31,7 @@ const (
 	BadPublicKey
 	BadCSR
 	AlreadyRevoked
+	BadRevocationReason
 )
 
 func (ErrorType) Error() string {
@@ -142,4 +143,8 @@ func BadCSRError(msg string, args ...interface{}) error {
 
 func AlreadyRevokedError(msg string, args ...interface{}) error {
 	return New(AlreadyRevoked, msg, args...)
+}
+
+func BadRevocationReasonError(reason int64) error {
+	return New(AlreadyRevoked, "disallowed revocation reason: %d", reason)
 }
