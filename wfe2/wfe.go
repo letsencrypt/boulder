@@ -843,7 +843,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	request *http.Request,
-	logEvent *web.RequestEvent) *probs.ProblemDetails {
+	logEvent *web.RequestEvent) error {
 	// For Key ID revocations we authenticate the outer JWS by using
 	// `validJWSForAccount` similar to other WFE endpoints
 	jwsBody, _, acct, prob := wfe.validJWSForAccount(outerJWS, request, ctx, logEvent)
@@ -872,11 +872,7 @@ func (wfe *WebFrontEndImpl) revokeCertByKeyID(
 		RegID: acct.ID,
 	})
 	if err != nil {
-		prob, ok := err.(*probs.ProblemDetails)
-		if !ok {
-			return probs.ServerInternal("Failed to revoke certificate")
-		}
-		return prob
+		return err
 	}
 
 	return nil
@@ -890,7 +886,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	request *http.Request,
-	logEvent *web.RequestEvent) *probs.ProblemDetails {
+	logEvent *web.RequestEvent) error {
 	// For embedded JWK revocations we authenticate the outer JWS by using
 	// `validSelfAuthenticatedJWS` similar to new-reg and key rollover.
 	// We do *not* use `validSelfAuthenticatedPOST` here because we've already
@@ -927,11 +923,7 @@ func (wfe *WebFrontEndImpl) revokeCertByJWK(
 		Cert: cert.Raw,
 	})
 	if err != nil {
-		prob, ok := err.(*probs.ProblemDetails)
-		if !ok {
-			return probs.ServerInternal("Failed to revoke certificate")
-		}
-		return prob
+		return err
 	}
 
 	return nil
@@ -969,16 +961,17 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 
 	// Handle the revocation request according to how it is authenticated, or if
 	// the authentication type is unknown, error immediately
+	var err error
 	switch authType {
 	case embeddedKeyID:
-		prob = wfe.revokeCertByKeyID(ctx, jws, request, logEvent)
+		err = wfe.revokeCertByKeyID(ctx, jws, request, logEvent)
 	case embeddedJWK:
-		prob = wfe.revokeCertByJWK(ctx, jws, request, logEvent)
+		err = wfe.revokeCertByJWK(ctx, jws, request, logEvent)
 	default:
-		prob = probs.Malformed("Malformed JWS, no KeyID or embedded JWK")
+		err = berrors.MalformedError("Malformed JWS, no KeyID or embedded JWK")
 	}
 	if prob != nil {
-		wfe.sendError(response, logEvent, prob, nil)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to revoke"), nil)
 		return
 	}
 
