@@ -37,20 +37,14 @@ type scStateUpdate struct {
 	err   error
 }
 
-// exitIdle contains no data and is just a signal sent on the updateCh in
-// ccBalancerWrapper to instruct the balancer to exit idle.
-type exitIdle struct{}
-
 // ccBalancerWrapper is a wrapper on top of cc for balancers.
 // It implements balancer.ClientConn interface.
 type ccBalancerWrapper struct {
-	cc          *ClientConn
-	balancerMu  sync.Mutex // synchronizes calls to the balancer
-	balancer    balancer.Balancer
-	hasExitIdle bool
-	updateCh    *buffer.Unbounded
-	closed      *grpcsync.Event
-	done        *grpcsync.Event
+	cc         *ClientConn
+	balancerMu sync.Mutex // synchronizes calls to the balancer
+	balancer   balancer.Balancer
+	scBuffer   *buffer.Unbounded
+	done       *grpcsync.Event
 
 	mu       sync.Mutex
 	subConns map[*acBalancerWrapper]struct{}
@@ -59,14 +53,12 @@ type ccBalancerWrapper struct {
 func newCCBalancerWrapper(cc *ClientConn, b balancer.Builder, bopts balancer.BuildOptions) *ccBalancerWrapper {
 	ccb := &ccBalancerWrapper{
 		cc:       cc,
-		updateCh: buffer.NewUnbounded(),
-		closed:   grpcsync.NewEvent(),
+		scBuffer: buffer.NewUnbounded(),
 		done:     grpcsync.NewEvent(),
 		subConns: make(map[*acBalancerWrapper]struct{}),
 	}
 	go ccb.watcher()
 	ccb.balancer = b.Build(ccb, bopts)
-	_, ccb.hasExitIdle = ccb.balancer.(balancer.ExitIdler)
 	return ccb
 }
 
@@ -75,72 +67,35 @@ func newCCBalancerWrapper(cc *ClientConn, b balancer.Builder, bopts balancer.Bui
 func (ccb *ccBalancerWrapper) watcher() {
 	for {
 		select {
-		case t := <-ccb.updateCh.Get():
-			ccb.updateCh.Load()
-			if ccb.closed.HasFired() {
+		case t := <-ccb.scBuffer.Get():
+			ccb.scBuffer.Load()
+			if ccb.done.HasFired() {
 				break
 			}
-			switch u := t.(type) {
-			case *scStateUpdate:
-				ccb.balancerMu.Lock()
-				ccb.balancer.UpdateSubConnState(u.sc, balancer.SubConnState{ConnectivityState: u.state, ConnectionError: u.err})
-				ccb.balancerMu.Unlock()
-			case *acBalancerWrapper:
-				ccb.mu.Lock()
-				if ccb.subConns != nil {
-					delete(ccb.subConns, u)
-					ccb.cc.removeAddrConn(u.getAddrConn(), errConnDrain)
-				}
-				ccb.mu.Unlock()
-			case exitIdle:
-				if ccb.cc.GetState() == connectivity.Idle {
-					if ei, ok := ccb.balancer.(balancer.ExitIdler); ok {
-						// We already checked that the balancer implements
-						// ExitIdle before pushing the event to updateCh, but
-						// check conditionally again as defensive programming.
-						ccb.balancerMu.Lock()
-						ei.ExitIdle()
-						ccb.balancerMu.Unlock()
-					}
-				}
-			default:
-				logger.Errorf("ccBalancerWrapper.watcher: unknown update %+v, type %T", t, t)
-			}
-		case <-ccb.closed.Done():
+			ccb.balancerMu.Lock()
+			su := t.(*scStateUpdate)
+			ccb.balancer.UpdateSubConnState(su.sc, balancer.SubConnState{ConnectivityState: su.state, ConnectionError: su.err})
+			ccb.balancerMu.Unlock()
+		case <-ccb.done.Done():
 		}
 
-		if ccb.closed.HasFired() {
-			ccb.balancerMu.Lock()
+		if ccb.done.HasFired() {
 			ccb.balancer.Close()
-			ccb.balancerMu.Unlock()
 			ccb.mu.Lock()
 			scs := ccb.subConns
 			ccb.subConns = nil
 			ccb.mu.Unlock()
-			ccb.UpdateState(balancer.State{ConnectivityState: connectivity.Connecting, Picker: nil})
-			ccb.done.Fire()
-			// Fire done before removing the addr conns.  We can safely unblock
-			// ccb.close and allow the removeAddrConns to happen
-			// asynchronously.
 			for acbw := range scs {
 				ccb.cc.removeAddrConn(acbw.getAddrConn(), errConnDrain)
 			}
+			ccb.UpdateState(balancer.State{ConnectivityState: connectivity.Connecting, Picker: nil})
 			return
 		}
 	}
 }
 
 func (ccb *ccBalancerWrapper) close() {
-	ccb.closed.Fire()
-	<-ccb.done.Done()
-}
-
-func (ccb *ccBalancerWrapper) exitIdle() bool {
-	if !ccb.hasExitIdle {
-		return false
-	}
-	ccb.updateCh.Put(exitIdle{})
-	return true
+	ccb.done.Fire()
 }
 
 func (ccb *ccBalancerWrapper) handleSubConnStateChange(sc balancer.SubConn, s connectivity.State, err error) {
@@ -154,7 +109,7 @@ func (ccb *ccBalancerWrapper) handleSubConnStateChange(sc balancer.SubConn, s co
 	if sc == nil {
 		return
 	}
-	ccb.updateCh.Put(&scStateUpdate{
+	ccb.scBuffer.Put(&scStateUpdate{
 		sc:    sc,
 		state: s,
 		err:   err,
@@ -169,8 +124,8 @@ func (ccb *ccBalancerWrapper) updateClientConnState(ccs *balancer.ClientConnStat
 
 func (ccb *ccBalancerWrapper) resolverError(err error) {
 	ccb.balancerMu.Lock()
-	defer ccb.balancerMu.Unlock()
 	ccb.balancer.ResolverError(err)
+	ccb.balancerMu.Unlock()
 }
 
 func (ccb *ccBalancerWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
@@ -195,18 +150,17 @@ func (ccb *ccBalancerWrapper) NewSubConn(addrs []resolver.Address, opts balancer
 }
 
 func (ccb *ccBalancerWrapper) RemoveSubConn(sc balancer.SubConn) {
-	// The RemoveSubConn() is handled in the run() goroutine, to avoid deadlock
-	// during switchBalancer() if the old balancer calls RemoveSubConn() in its
-	// Close().
-	ccb.updateCh.Put(sc)
-}
-
-func (ccb *ccBalancerWrapper) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
 	acbw, ok := sc.(*acBalancerWrapper)
 	if !ok {
 		return
 	}
-	acbw.UpdateAddresses(addrs)
+	ccb.mu.Lock()
+	defer ccb.mu.Unlock()
+	if ccb.subConns == nil {
+		return
+	}
+	delete(ccb.subConns, acbw)
+	ccb.cc.removeAddrConn(acbw.getAddrConn(), errConnDrain)
 }
 
 func (ccb *ccBalancerWrapper) UpdateState(s balancer.State) {
@@ -243,7 +197,7 @@ func (acbw *acBalancerWrapper) UpdateAddresses(addrs []resolver.Address) {
 	acbw.mu.Lock()
 	defer acbw.mu.Unlock()
 	if len(addrs) <= 0 {
-		acbw.ac.cc.removeAddrConn(acbw.ac, errConnDrain)
+		acbw.ac.tearDown(errConnDrain)
 		return
 	}
 	if !acbw.ac.tryUpdateAddrs(addrs) {
@@ -258,23 +212,23 @@ func (acbw *acBalancerWrapper) UpdateAddresses(addrs []resolver.Address) {
 		acbw.ac.acbw = nil
 		acbw.ac.mu.Unlock()
 		acState := acbw.ac.getState()
-		acbw.ac.cc.removeAddrConn(acbw.ac, errConnDrain)
+		acbw.ac.tearDown(errConnDrain)
 
 		if acState == connectivity.Shutdown {
 			return
 		}
 
-		newAC, err := cc.newAddrConn(addrs, opts)
+		ac, err := cc.newAddrConn(addrs, opts)
 		if err != nil {
 			channelz.Warningf(logger, acbw.ac.channelzID, "acBalancerWrapper: UpdateAddresses: failed to newAddrConn: %v", err)
 			return
 		}
-		acbw.ac = newAC
-		newAC.mu.Lock()
-		newAC.acbw = acbw
-		newAC.mu.Unlock()
+		acbw.ac = ac
+		ac.mu.Lock()
+		ac.acbw = acbw
+		ac.mu.Unlock()
 		if acState != connectivity.Idle {
-			go newAC.connect()
+			ac.connect()
 		}
 	}
 }
@@ -282,7 +236,7 @@ func (acbw *acBalancerWrapper) UpdateAddresses(addrs []resolver.Address) {
 func (acbw *acBalancerWrapper) Connect() {
 	acbw.mu.Lock()
 	defer acbw.mu.Unlock()
-	go acbw.ac.connect()
+	acbw.ac.connect()
 }
 
 func (acbw *acBalancerWrapper) getAddrConn() *addrConn {
