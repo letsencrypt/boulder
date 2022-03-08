@@ -1,6 +1,8 @@
+// +build appengine
+
 /*
  *
- * Copyright 2018 gRPC authors.
+ * Copyright 2020 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +18,14 @@
  *
  */
 
-package grpc
+package credentials
 
-// Version is the current grpc version.
-const Version = "1.36.1"
+import (
+	"crypto/tls"
+	"net/url"
+)
+
+// SPIFFEIDFromState is a no-op for appengine builds.
+func SPIFFEIDFromState(state tls.ConnectionState) *url.URL {
+	return nil
+}

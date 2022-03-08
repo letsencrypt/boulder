@@ -69,8 +69,7 @@ type writerSink struct {
 func (ws *writerSink) Write(e *pb.GrpcLogEntry) error {
 	b, err := proto.Marshal(e)
 	if err != nil {
-		grpclogLogger.Errorf("binary logging: failed to marshal proto message: %v", err)
-		return err
+		grpclogLogger.Infof("binary logging: failed to marshal proto message: %v", err)
 	}
 	hdr := make([]byte, 4)
 	binary.BigEndian.PutUint32(hdr, uint32(len(b)))
@@ -86,27 +85,24 @@ func (ws *writerSink) Write(e *pb.GrpcLogEntry) error {
 func (ws *writerSink) Close() error { return nil }
 
 type bufferedSink struct {
-	mu             sync.Mutex
-	closer         io.Closer
-	out            Sink          // out is built on buf.
-	buf            *bufio.Writer // buf is kept for flush.
-	flusherStarted bool
+	mu     sync.Mutex
+	closer io.Closer
+	out    Sink          // out is built on buf.
+	buf    *bufio.Writer // buf is kept for flush.
 
-	writeTicker *time.Ticker
-	done        chan struct{}
+	writeStartOnce sync.Once
+	writeTicker    *time.Ticker
 }
 
 func (fs *bufferedSink) Write(e *pb.GrpcLogEntry) error {
+	// Start the write loop when Write is called.
+	fs.writeStartOnce.Do(fs.startFlushGoroutine)
 	fs.mu.Lock()
-	defer fs.mu.Unlock()
-	if !fs.flusherStarted {
-		// Start the write loop when Write is called.
-		fs.startFlushGoroutine()
-		fs.flusherStarted = true
-	}
 	if err := fs.out.Write(e); err != nil {
+		fs.mu.Unlock()
 		return err
 	}
+	fs.mu.Unlock()
 	return nil
 }
 
@@ -117,12 +113,7 @@ const (
 func (fs *bufferedSink) startFlushGoroutine() {
 	fs.writeTicker = time.NewTicker(bufFlushDuration)
 	go func() {
-		for {
-			select {
-			case <-fs.done:
-				return
-			case <-fs.writeTicker.C:
-			}
+		for range fs.writeTicker.C {
 			fs.mu.Lock()
 			if err := fs.buf.Flush(); err != nil {
 				grpclogLogger.Warningf("failed to flush to Sink: %v", err)
@@ -133,12 +124,10 @@ func (fs *bufferedSink) startFlushGoroutine() {
 }
 
 func (fs *bufferedSink) Close() error {
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
 	if fs.writeTicker != nil {
 		fs.writeTicker.Stop()
 	}
-	close(fs.done)
+	fs.mu.Lock()
 	if err := fs.buf.Flush(); err != nil {
 		grpclogLogger.Warningf("failed to flush to Sink: %v", err)
 	}
@@ -148,6 +137,7 @@ func (fs *bufferedSink) Close() error {
 	if err := fs.out.Close(); err != nil {
 		grpclogLogger.Warningf("failed to close the Sink: %v", err)
 	}
+	fs.mu.Unlock()
 	return nil
 }
 
@@ -165,6 +155,5 @@ func NewBufferedSink(o io.WriteCloser) Sink {
 		closer: o,
 		out:    newWriterSink(bufW),
 		buf:    bufW,
-		done:   make(chan struct{}),
 	}
 }
