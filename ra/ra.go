@@ -1859,6 +1859,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
 	serialString := core.SerialToString(serial)
+	thisUpdate := ra.clk.Now().UnixNano()
 
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
 	if err != nil {
@@ -1889,7 +1890,8 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(ocsp.KeyCompromise),
-		Date:     status.RevokedDate,
+		Date:     thisUpdate,
+		Backdate: status.RevokedDate,
 		Response: ocspResponse.Response,
 	})
 	if err != nil {
@@ -2084,18 +2086,17 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	// Finally check the error from revocation itself. If there was an error,
-	// try to re-revoke the cert, in case the error was due to it being already
-	// revoked for some reason other than keyCompromise. Either way, return the
-	// error.
+	// Finally check the error from revocation itself. If it was an AlreadyRevoked
+	// error, try to re-revoke the cert, in case it is revoked for a reason other
+	// than keyCompromise.
 	if revokeErr != nil {
-		if errors.Is(revokeErr, berrors.AlreadyRevoked) {
-			revokeErr = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
-			if revokeErr != nil {
-				return nil, revokeErr
-			}
+		if !errors.Is(revokeErr, berrors.AlreadyRevoked) {
+			return nil, revokeErr
 		}
-		return nil, revokeErr
+		revokeErr := ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+		if revokeErr != nil {
+			return nil, revokeErr
+		}
 	}
 
 	// TODO(#5979): Check this error when it can't simply be due to a full queue.
