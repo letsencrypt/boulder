@@ -2050,7 +2050,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, errIncompleteGRPCRequest
 	}
 
-	reason := req.Code
+	var reason int64
 	if features.Enabled(features.MozRevocationReasons) {
 		// Upcoming Mozilla policy may require that a certificate be revoked with
 		// reason keyCompromise if "the CA obtains verifiable evidence that the
@@ -2058,6 +2058,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		// the certificate suffered a key compromise". Signing a JWS to an ACME
 		// server's revocation endpoint certainly counts, so override the reason.
 		reason = ocsp.KeyCompromise
+	} else {
+		if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
+			return nil, berrors.BadRevocationReasonError(req.Code)
+		}
+		reason = req.Code
 	}
 
 	cert, err := x509.ParseCertificate(req.Cert)
@@ -2097,31 +2102,31 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// to the blocked keys list is a worse failure than failing to revoke in the
 	// first place, because it means that bad-key-revoker won't revoke the cert
 	// anyway.
-	digest, err := core.KeyDigest(cert.PublicKey)
-	if err != nil {
-		return nil, err
-	}
-	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
-		KeyHash: digest[:],
-		Added:   ra.clk.Now().UnixNano(),
-		Source:  "API",
-	})
-	if err != nil {
-		return nil, err
+	if reason == ocsp.KeyCompromise {
+		digest, err := core.KeyDigest(cert.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
+			KeyHash: digest[:],
+			Added:   ra.clk.Now().UnixNano(),
+			Source:  "API",
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Finally check the error from revocation itself. If it was an AlreadyRevoked
 	// error, try to re-revoke the cert, in case it is revoked for a reason other
 	// than keyCompromise.
 	if revokeErr != nil {
-		if !errors.Is(revokeErr, berrors.AlreadyRevoked) {
+		if !errors.Is(revokeErr, berrors.AlreadyRevoked) || reason != ocsp.KeyCompromise {
 			return nil, revokeErr
 		}
-		if reason == ocsp.KeyCompromise {
-			revokeErr := ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
-			if revokeErr != nil {
-				return nil, revokeErr
-			}
+		revokeErr := ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+		if revokeErr != nil {
+			return nil, revokeErr
 		}
 	}
 
