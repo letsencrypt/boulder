@@ -70,9 +70,6 @@ func TestRevocation(t *testing.T) {
 					method: method,
 					reason: reason,
 					kind:   kind,
-					// We expect an error only for KeyCompromise requests that use auth
-					// methods other than using the certificate key itself.
-					expectError: (reason == ocsp.KeyCompromise) && (method != byKey),
 				})
 			}
 		}
@@ -129,7 +126,7 @@ func TestRevocation(t *testing.T) {
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
 
-			// Set up the account and key that we'll use to try to revoke the cert.
+			// Set up the account and key that we'll use to revoke the cert.
 			var revokeClient *client
 			var revokeKey crypto.Signer
 			switch tc.method {
@@ -150,7 +147,7 @@ func TestRevocation(t *testing.T) {
 				revokeKey = revokeClient.PrivateKey
 
 			case byKey:
-				// When revoking by key, create a branch new client and use it and
+				// When revoking by key, create a brand new client and use it with
 				// the cert's key for revocation.
 				revokeClient, err = makeClient()
 				test.AssertNotError(t, err, "creating second acme client")
@@ -168,24 +165,159 @@ func TestRevocation(t *testing.T) {
 				tc.reason,
 			)
 
-			switch tc.expectError {
-			case false:
-				test.AssertNotError(t, err, "revocation should have succeeded")
+			test.AssertNotError(t, err, "revocation should have succeeded")
 
-				// Check the OCSP response for the certificate again. It should now be
-				// revoked.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+			// Check the OCSP response for the certificate again. It should now be
+			// revoked.
+			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+		})
+	}
+}
+
+// TestDoubleRevocation verifies that a certificate can have its revocation
+// information updated only when both of the following are true:
+// a) The certificate was not initially revoked for reason keyCompromise; and
+// b) The second request is authenticated using the cert's keypair.
+// In which case the revocation reason (but not revocation date) will be
+// updated to be keyCompromise.
+func TestDoubleRevocation(t *testing.T) {
+	t.Parallel()
+	// Create a base account to use for revocation tests.
+	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+
+	type authMethod string
+	var (
+		byAccount authMethod = "byAccount"
+		byKey     authMethod = "byKey"
+	)
+
+	type testCase struct {
+		m1 authMethod
+		r1 int
+		m2 authMethod
+		r2 int
+		ee bool
+	}
+
+	testCases := []testCase{
+		{m1: byAccount, r1: 0, m2: byAccount, r2: 0, ee: true},
+		{m1: byAccount, r1: 1, m2: byAccount, r2: 1, ee: true},
+		{m1: byAccount, r1: 0, m2: byKey, r2: 1, ee: false},
+		{m1: byAccount, r1: 1, m2: byKey, r2: 1, ee: true},
+		{m1: byKey, r1: 1, m2: byKey, r2: 1, ee: true},
+	}
+
+	for i, tc := range testCases {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			t.Logf("Running case %d", i)
+			issueClient, err := makeClient()
+			test.AssertNotError(t, err, "creating acme client")
+
+			certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			test.AssertNotError(t, err, "creating random cert key")
+
+			// Try to issue a certificate for the name.
+			domain := random_domain()
+			res, err := authAndIssue(issueClient, certKey, []string{domain})
+			test.AssertNotError(t, err, "authAndIssue failed")
+			cert := res.certs[0]
+
+			t.Logf("Issuance complete")
+
+			// Initially, the cert should have a Good OCSP response.
+			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+			test.AssertNotError(t, err, "requesting OCSP for precert")
+
+			t.Logf("OCSP Good")
+
+			// Set up the account and key that we'll use to revoke the cert.
+			var revokeClient *client
+			var revokeKey crypto.Signer
+			switch tc.m1 {
+			case byAccount:
+				// When revoking by account, use the same client and key as were used
+				// for the original issuance.
+				revokeClient = issueClient
+				revokeKey = revokeClient.PrivateKey
+
+			case byKey:
+				// When revoking by key, create a brand new client and use it with
+				// the cert's key for revocation.
+				revokeClient, err = makeClient()
+				test.AssertNotError(t, err, "creating second acme client")
+				revokeKey = certKey
+
+			default:
+				t.Fatalf("unrecognized revocation method %q", tc.m1)
+			}
+
+			// Revoke the cert using the specified key and client.
+			err = revokeClient.RevokeCertificate(
+				revokeClient.Account,
+				cert,
+				revokeKey,
+				tc.r1,
+			)
+			test.AssertNotError(t, err, "initial revocation should have succeeded")
+
+			// Check the OCSP response for the certificate again. It should now be
+			// revoked.
+			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.r1)
+			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
+
+			t.Logf("Initial revocation complete")
+
+			// Set up the account and key that we'll use to *re*-revoke the cert.
+			switch tc.m2 {
+			case byAccount:
+				// When revoking by account, use the same client and key as were used
+				// for the original issuance.
+				revokeClient = issueClient
+				revokeKey = revokeClient.PrivateKey
+
+			case byKey:
+				// When revoking by key, create a brand new client and use it with
+				// the cert's key for revocation.
+				revokeClient, err = makeClient()
+				test.AssertNotError(t, err, "creating second acme client")
+				revokeKey = certKey
+
+			default:
+				t.Fatalf("unrecognized revocation method %q", tc.m2)
+			}
+
+			// Re-revoke the cert using the specified key and client.
+			err = revokeClient.RevokeCertificate(
+				revokeClient.Account,
+				cert,
+				revokeKey,
+				tc.r2,
+			)
+
+			t.Logf("Second revocation request done")
+
+			switch tc.ee {
+			case true:
+				test.AssertError(t, err, "second revocation should have failed")
+
+				// Check the OCSP response for the certificate again. It should still be
+				// revoked, with the same reason.
+				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.r1)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 
-			case true:
-				test.AssertError(t, err, "revocation should have failed")
+			case false:
+				test.AssertNotError(t, err, "second revocation should have succeeded")
 
-				// Check the OCSP response for the certificate again. It should still
-				// be good.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+				// Check the OCSP response for the certificate again. It should now be
+				// revoked with reason keyCompromise.
+				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectStatus(tc.r2)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-				test.AssertNotError(t, err, "requesting OCSP for nonrevoked cert")
+				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 			}
 		})
 	}

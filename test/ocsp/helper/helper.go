@@ -89,6 +89,14 @@ func (template Config) WithExpectStatus(status int) Config {
 	return ret
 }
 
+// WithExpectStatus returns a new Config with the given expectReason,
+// and all other fields the same as the receiver.
+func (template Config) WithExpectReason(reason int) Config {
+	ret := template
+	ret.expectReason = reason
+	return ret
+}
+
 // WithOutput returns a new Config with the given output,
 // and all other fields the same as the receiver.
 func (template Config) WithOutput(w io.Writer) Config {

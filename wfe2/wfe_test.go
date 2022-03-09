@@ -2872,11 +2872,6 @@ func TestGetOrder(t *testing.T) {
 	}
 }
 
-type mockRevocationRA struct {
-	MockRegistrationAuthority
-	shouldError error
-}
-
 func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
 	certPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	if err != nil {
