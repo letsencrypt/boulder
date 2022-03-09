@@ -674,42 +674,28 @@ def test_order_finalize_early():
     chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
         lambda: client.finalize_order(order, deadline))
 
-def test_revoke_by_account():
+def test_revoke_by_account_unspecified():
     client = chisel2.make_client()
     cert_file = temppath('test_revoke_by_account.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     reset_akamai_purges()
-    try:
-        client.revoke(josepy.ComparableX509(cert), 1)
-    except messages.Error:
-        pass  # Good, we shouldn't be able to revoke with keyCompromise
-    else:
-        raise(Exception("Revoked by account with keyCompromise"))
-
     client.revoke(josepy.ComparableX509(cert), 0)
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
 
-def test_revoke_by_issuer():
+def test_revoke_by_account_with_reason():
     client = chisel2.make_client(None)
     cert_file = temppath('test_revoke_by_issuer.pem')
     order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
     cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     reset_akamai_purges()
-    try:
-        client.revoke(josepy.ComparableX509(cert), 1)
-    except messages.Error:
-        pass  # Good, we shouldn't be able to revoke with keyCompromise
-    else:
-        raise(Exception("Revoked by issuer with keyCompromise"))
+    client.revoke(josepy.ComparableX509(cert), 1)
 
-    client.revoke(josepy.ComparableX509(cert), 0)
-
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
 def test_revoke_by_authz():
@@ -723,16 +709,11 @@ def test_revoke_by_authz():
     chisel2.auth_and_issue(domains, client=client)
 
     reset_akamai_purges()
-    try:
-        client.revoke(josepy.ComparableX509(cert), 1)
-    except messages.Error:
-        pass  # Good, we shouldn't be able to revoke with keyCompromise
-    else:
-        raise(Exception("Revoked by authz with keyCompromise"))
+    client.revoke(josepy.ComparableX509(cert), 1)
 
-    client.revoke(josepy.ComparableX509(cert), 0)
-
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    # Even though we requested reason 1 ("keyCompromise"), the result should be
+    # 5 ("cessationOfOperation") due to the authorization method.
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
     verify_akamai_purge()
 
 def test_revoke_by_privkey():
@@ -763,7 +744,7 @@ def test_revoke_by_privkey():
     revoke_client = chisel2.uninitialized_client(key=josepy.JWKRSA(key=key))
 
     reset_akamai_purges()
-    revoke_client.revoke(josepy.ComparableX509(cert), 1)
+    revoke_client.revoke(josepy.ComparableX509(cert), 0)
 
     cert_file = tempfile.NamedTemporaryFile(
         dir=tempdir, suffix='.test_revoke_by_privkey.pem',
@@ -771,7 +752,10 @@ def test_revoke_by_privkey():
     cert_file.write(OpenSSL.crypto.dump_certificate(
         OpenSSL.crypto.FILETYPE_PEM, cert).decode())
     cert_file.close()
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+
+    # Even though we requested reason 0 ("unspecified"), the result should be
+    # 1 ("keyCompromise") due to the authorization method.
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
 
 def test_sct_embedding():
