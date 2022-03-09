@@ -1,52 +1,37 @@
-name: release
-
-permissions:
-  contents: write
-  packages: write
-  statuses: write
-  pull-requests: read
-
+name: Build and Release
 on:
-  # Allows you to run this workflow manually from the 'Actions' tab.
-  workflow_dispatch:
-
   # Runs automatically when a tag beginning with 'release-' is pushed.
   push:
     tags:
       - release-*
+
 jobs:
-  release:
-    # Update this when we update the version of linux used in production.
+  gh-release:
     runs-on: ubuntu-20.04
-    name: release
+    env:
+      BOULDER_TOOLS_TAG: go1.17.7_2022-02-10
 
     steps:
-      - name: setup go
-        uses: actions/setup-go@v2
+      - uses: actions/checkout@v2
         with:
-          # Update this when we update the version of linux used in production.
-          go-version: 1.17.7
+          persist-credentials: false
 
-      - name: checkout
-        uses: actions/checkout@v2
+      - name: dockerhub login
+        uses: docker/login-action@v1.8.0
         with:
-          fetch-depth: 0
+          username: ${{ secrets.DOCKER_USERNAME}}
+          password: ${{ secrets.DOCKER_PASSWORD}}
+          logout: true
+        continue-on-error: true
 
-      - name: authenticate
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: docker-compose pull
+        run: docker-compose pull
 
       - name: build and release
-        uses: goreleaser/goreleaser-action@v2
-        with:
-          # release: posts a GitHub release with the resulting artifact(s)
-          # skip-validate: skips interpretation of the tag as a semver.
-          args: release --rm-dist --skip-validate
-
-          # v0.123 is the last version that allowed you to disable semver.
-          version: 0.132
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # https://cli.github.com/manual/gh_release_create
+        run: |
+          docker-compose run boulder ./make-deb.sh
+          tag=$(git describe --tags --abbrev=0)
+          gh release create "${tag}" *.deb
