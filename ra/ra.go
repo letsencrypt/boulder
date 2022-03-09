@@ -1949,6 +1949,15 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
 		return nil, berrors.BadRevocationReasonError(req.Code)
 	}
+	if !features.Enabled(features.MozRevocationReasons) {
+		// By our current policy, demonstrating key compromise is the only way to
+		// get a certificate revoked with reason key compromise. Upcoming Mozilla
+		// policy may require us to allow the original Subscriber to assert the
+		// keyCompromise revocation reason, even without demonstrating such.
+		if req.Code == ocsp.KeyCompromise {
+			return nil, berrors.BadRevocationReasonError(req.Code)
+		}
+	}
 
 	cert, err := x509.ParseCertificate(req.Cert)
 	if err != nil {
@@ -2003,9 +2012,14 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 			}
 		}
 
-		// Override the requested revocation reason to match the request method.
-		req.Code = ocsp.CessationOfOperation
-		logEvent.Reason = req.Code
+		if features.Enabled(features.MozRevocationReasons) {
+			// Applicants who are not the original Subscriber are not allowed to
+			// revoke for any reason other than cessationOfOperation, which covers
+			// circumstances where "the certificate subscriber no longer owns the
+			// domain names in the certificate". Override the reason code to match.
+			req.Code = ocsp.CessationOfOperation
+			logEvent.Reason = req.Code
+		}
 	}
 
 	issuerID := issuance.GetIssuerNameID(cert)
@@ -2036,6 +2050,16 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, errIncompleteGRPCRequest
 	}
 
+	reason := req.Code
+	if features.Enabled(features.MozRevocationReasons) {
+		// Upcoming Mozilla policy may require that a certificate be revoked with
+		// reason keyCompromise if "the CA obtains verifiable evidence that the
+		// certificate subscriber’s private key corresponding to the public key in
+		// the certificate suffered a key compromise". Signing a JWS to an ACME
+		// server's revocation endpoint certainly counts, so override the reason.
+		reason = ocsp.KeyCompromise
+	}
+
 	cert, err := x509.ParseCertificate(req.Cert)
 	if err != nil {
 		return nil, err
@@ -2046,7 +2070,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
 		SerialNumber: core.SerialToString(cert.SerialNumber),
-		Reason:       ocsp.KeyCompromise,
+		Reason:       reason,
 		Method:       "key",
 		RequesterID:  0,
 	}
@@ -2065,7 +2089,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		ctx,
 		cert.SerialNumber,
 		int64(issuerID),
-		revocation.Reason(ocsp.KeyCompromise),
+		revocation.Reason(reason),
 	)
 
 	// Now add the public key to the blocked keys list, and report the error if
@@ -2093,9 +2117,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		if !errors.Is(revokeErr, berrors.AlreadyRevoked) {
 			return nil, revokeErr
 		}
-		revokeErr := ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
-		if revokeErr != nil {
-			return nil, revokeErr
+		if reason == ocsp.KeyCompromise {
+			revokeErr := ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+			if revokeErr != nil {
+				return nil, revokeErr
+			}
 		}
 	}
 

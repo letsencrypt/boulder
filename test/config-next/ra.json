@@ -57,7 +57,8 @@
     "features": {
       "StoreRevokerInfo": true,
       "RestrictRSAKeySizes": true,
-      "StreamlineOrderAndAuthzs": true
+      "StreamlineOrderAndAuthzs": true,
+      "MozRevocationReasons": true
     },
     "CTLogGroups2": [
       {

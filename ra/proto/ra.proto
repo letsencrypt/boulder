@@ -44,6 +44,7 @@ message RevokeCertByApplicantRequest {
 
 message RevokeCertByKeyRequest {
   bytes cert = 1;
+  int64 code = 2;
 }
 
 message AdministrativelyRevokeCertificateRequest {
