@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 #
-# Make a Boulder Debian package at $PWD.
+# This script expects to run on Ubuntu. It installs the dependencies necessary
+# to build Boulder and produce a Debian Package. The actual build and packaging
+# is handled by a call to Make.
 #
+
+# -e Stops execution in the instance of a command or pipeline error.
+# -u Treat unset variables as an error and exit immediately.
+set -eu
 
 #
 # Setup Dependencies
@@ -31,5 +37,5 @@ sudo gem install --no-document fpm
 # it to /tmp.
 export ARCHIVEDIR="${PWD}"
 
-# Build Boulder and package and produce a Debian package.
+# Build Boulder and produce a Debian Package at $PWD.
 make deb

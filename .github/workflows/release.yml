@@ -8,24 +8,10 @@ on:
 jobs:
   gh-release:
     runs-on: ubuntu-20.04
-    env:
-      BOULDER_TOOLS_TAG: go1.17.7_2022-02-10
-
     steps:
       - uses: actions/checkout@v2
         with:
           persist-credentials: false
-
-      - name: dockerhub login
-        uses: docker/login-action@v1.8.0
-        with:
-          username: ${{ secrets.DOCKER_USERNAME}}
-          password: ${{ secrets.DOCKER_PASSWORD}}
-          logout: true
-        continue-on-error: true
-
-      - name: docker-compose pull
-        run: docker-compose pull
 
       - name: build and release
         env:
@@ -33,5 +19,4 @@ jobs:
         # https://cli.github.com/manual/gh_release_create
         run: |
           ./make-deb.sh
-          tag=$(git describe --tags --abbrev=0)
-          gh release create "${tag}" *.deb
+          gh release create "${GITHUB_REF_NAME}" *.deb
