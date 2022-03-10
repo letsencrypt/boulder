@@ -32,6 +32,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_create
         run: |
-          docker-compose run boulder ./make-deb.sh
+          ./make-deb.sh
           tag=$(git describe --tags --abbrev=0)
           gh release create "${tag}" *.deb
