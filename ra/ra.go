@@ -1973,6 +1973,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		Method:       "applicant",
 		RequesterID:  req.RegID,
 	}
+
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
 	defer func() {
 		if err != nil {
 			logEvent.Error = err.Error()
@@ -1993,7 +1997,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// authorizations for all names in the cert.
 		logEvent.Method = "control"
 
-		authzMapPB, err := ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+		var authzMapPB *sapb.Authorizations
+		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Domains:        cert.DNSNames,
 			Now:            ra.clk.Now().UnixNano(),
@@ -2079,6 +2084,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		Method:       "key",
 		RequesterID:  0,
 	}
+
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
 	defer func() {
 		if err != nil {
 			logEvent.Error = err.Error()
@@ -2103,7 +2112,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// first place, because it means that bad-key-revoker won't revoke the cert
 	// anyway.
 	if reason == ocsp.KeyCompromise {
-		digest, err := core.KeyDigest(cert.PublicKey)
+		var digest core.Sha256Digest
+		digest, err = core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return nil, err
 		}
@@ -2120,13 +2130,14 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// Finally check the error from revocation itself. If it was an AlreadyRevoked
 	// error, try to re-revoke the cert, in case it is revoked for a reason other
 	// than keyCompromise.
-	if revokeErr != nil {
-		if !errors.Is(revokeErr, berrors.AlreadyRevoked) || reason != ocsp.KeyCompromise {
-			return nil, revokeErr
+	err = revokeErr
+	if err != nil {
+		if !errors.Is(err, berrors.AlreadyRevoked) || reason != ocsp.KeyCompromise {
+			return nil, err
 		}
-		revokeErr := ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
-		if revokeErr != nil {
-			return nil, revokeErr
+		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -2243,6 +2254,10 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		AdminName:    req.AdminName,
 		SerialNumber: core.SerialToString(cert.SerialNumber),
 	}
+
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
 	defer func() {
 		if err != nil {
 			logEvent.Error = err.Error()
@@ -2262,7 +2277,8 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	if req.Code == ocsp.KeyCompromise && !req.SkipBlockKey {
-		digest, err := core.KeyDigest(cert.PublicKey)
+		var digest core.Sha256Digest
+		digest, err = core.KeyDigest(cert.PublicKey)
 		if err != nil {
 			return nil, err
 		}
