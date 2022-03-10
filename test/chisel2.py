@@ -1,12 +1,12 @@
 """
 A simple client that uses the Python ACME library to run a test issuance against
-a local Boulder server. Unlike chisel.py this version implements the most recent
-version of the ACME specification. Usage:
+a local Boulder server.
+Usage:
 
 $ virtualenv venv
 $ . venv/bin/activate
 $ pip install -r requirements.txt
-$ python chisel.py foo.com bar.com
+$ python chisel2.py foo.com bar.com
 """
 import json
 import logging
