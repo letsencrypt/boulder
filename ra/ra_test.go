@@ -3591,7 +3591,7 @@ func TestRevokerCertificateWithReg(t *testing.T) {
 	// Revoking for an unspecified reason should work but not block the key.
 	mockSA := newMockSARevocation(cert, clk)
 	ra.SA = mockSA
-	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertByApplicantRequest{
+	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.Unspecified,
 		RegID: 0,
@@ -3604,7 +3604,7 @@ func TestRevokerCertificateWithReg(t *testing.T) {
 	// Revoking for key comprommise should work and block the key.
 	mockSA = newMockSARevocation(cert, clk)
 	ra.SA = mockSA
-	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertByApplicantRequest{
+	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.KeyCompromise,
 		RegID: 0,
