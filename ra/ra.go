@@ -291,7 +291,7 @@ type certificateRevocationEvent struct {
 	// Reason is the integer representing the revocation reason used.
 	Reason int64 `json:",omitempty"`
 	// Method is the way in which revocation was requested.
-	// It will be one of the strings: "subscriber", "control", "key", or "admin".
+	// It will be one of the strings: "applicant", "subscriber", "control", "key", or "admin".
 	Method string `json:",omitempty"`
 	// RequesterID is the account ID of the requester.
 	// Will be zero for admin revocations.
