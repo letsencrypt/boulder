@@ -1,7 +1,11 @@
 version: '3'
 services:
   boulder:
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.18beta2_2022-03-08}
+    # CAUTION: Changing the Go version in this tag changes the version of Go
+    # used for release builds. make-deb.sh relies on being able to parse the
+    # version between 'BOULDER_TOOLS_TAG:-go' and '_' if you make changes to
+    # these tokens, please update this parsing logic.
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.17.7_2022-02-10}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
