@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package hnydemo;
+option go_package = "github.com/letsencrypt/boulder/cmd/crls-poc/proto";
+
+// CRLGenerator signs CRLs.
+service CRLGenerator {
+  rpc GenerateCRL(stream GenerateCRLRequest) returns (stream GenerateCRLResponse) {}
+}
+
+message GenerateCRLRequest {
+  oneof payload {
+    CRLMetadata metadata = 1;
+    CRLEntry entry = 2;
+  }
+}
+
+message CRLMetadata {
+  int64 issuerNameID = 1;
+  int64 thisUpdate = 2; // Unix timestamp (nanoseconds)
+}
+
+message CRLEntry {
+  string serial = 1;
+  int32 reason = 2;
+  int64 revokedAt = 3; // Unix timestamp (nanoseconds)
+}
+ 
+message GenerateCRLResponse {
+  bytes chunk = 1;
+}
