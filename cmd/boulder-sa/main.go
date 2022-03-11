@@ -23,13 +23,13 @@ type Config struct {
 		cmd.ServiceConfig
 		DB         cmd.DBConfig
 		ReadOnlyDB cmd.DBConfig
+		Redis      *rocsp_config.RedisConfig
+		Issuers    map[string]int
 
 		Features map[string]bool
 
 		// Max simultaneous SQL queries caused by a single RPC.
 		ParallelismPerRPC int
-		Redis             *rocsp_config.RedisConfig
-		Issuers           map[string]int
 	}
 
 	Syslog  cmd.SyslogConfig

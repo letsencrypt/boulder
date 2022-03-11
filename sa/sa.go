@@ -41,12 +41,15 @@ type SQLStorageAuthority struct {
 	sapb.UnimplementedStorageAuthorityServer
 	dbMap         *db.WrappedMap
 	dbReadOnlyMap *db.WrappedMap
-	clk           clock.Clock
-	log           blog.Logger
 
 	// Redis client for storing OCSP responses in Redis.
 	rocspWriteClient RocspWriteSource
-	shortIssuers     []rocsp_config.ShortIDIssuer
+
+	// Short issuer map used by rocsp.
+	shortIssuers []rocsp_config.ShortIDIssuer
+
+	clk clock.Clock
+	log blog.Logger
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -66,7 +69,7 @@ type SQLStorageAuthority struct {
 
 	// redisStoreResponse is a counter of OCSP responses written to redis by
 	// result.
-	redisStoreResponse prometheus.CounterVec
+	redisStoreResponse *prometheus.CounterVec
 }
 
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
@@ -110,13 +113,13 @@ func NewSQLStorageAuthority(
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
 		dbReadOnlyMap:        dbReadOnlyMap,
+		rocspWriteClient:     rocspWriteClient,
+		shortIssuers:         shortIssuers,
 		clk:                  clk,
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,
 		rateLimitWriteErrors: rateLimitWriteErrors,
-		rocspWriteClient:     rocspWriteClient,
-		shortIssuers:         shortIssuers,
-		redisStoreResponse:   *redisStoreResponse,
+		redisStoreResponse:   redisStoreResponse,
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
