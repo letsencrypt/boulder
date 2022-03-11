@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -61,7 +62,11 @@ func TestRevokeBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
+	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
+		"../../test/hierarchy/int-r3.cert.pem": 102,
+	})
+	test.AssertNotError(t, err, "error loading issuers")
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, mocks.NewRocspWritingClient(true), rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -503,8 +508,11 @@ func setup(t *testing.T) testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
+	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
+		"../../test/hierarchy/int-r3.cert.pem": 102,
+	})
+	test.AssertNotError(t, err, "error loading issuers")
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, mocks.NewRocspWritingClient(true), rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

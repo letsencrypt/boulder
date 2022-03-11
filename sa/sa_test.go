@@ -28,7 +28,9 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -65,7 +67,17 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	sa, err := NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
+	// Load the standard list of signing certificates from the hierarchy.
+	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
+		"../test/hierarchy/int-e1.cert.pem": 100,
+		"../test/hierarchy/int-e2.cert.pem": 101,
+		"../test/hierarchy/int-r3.cert.pem": 102,
+		"../test/hierarchy/int-r4.cert.pem": 103,
+	})
+	if err != nil {
+		t.Fatalf("failed to load issuers: %s", err)
+	}
+	sa, err := NewSQLStorageAuthority(dbMap, dbMap, mocks.NewRocspWritingClient(true), rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

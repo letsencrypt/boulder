@@ -13,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -159,31 +158,14 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	// source of truth.
 	if ssa.rocspWriteClient != nil {
 		// Use a new context for the goroutine. We aren't going to wait on
-		// this goroutine, so we don't want it to be canceled when the
-		// parent function ends. The rocsp client has a configurable
-		// timeout that can be set during creation.
-		rocspCtx, cancel := context.WithCancel(context.Background())
-		go func() {
-			defer cancel()
-			shortIssuerID, err := rocsp_config.FindIssuerByID(req.IssuerID, ssa.shortIssuers)
-			if err != nil {
-				ssa.redisStoreResponse.WithLabelValues("find_issuer_error").Inc()
-				// Log error if FindIssuerByID failed. This should be rare
-				// and the logged message will help identify a
-				// misconfiguration quickly.
-				ssa.log.Errf("failed to FindIssuerByID: %v", err)
-				return
-			}
-			rocspTTL := ssa.clk.Now().Sub(parsed.NotAfter)
-			err = ssa.rocspWriteClient.StoreResponse(rocspCtx, req.Ocsp, shortIssuerID.ShortID(), rocspTTL)
-			if err != nil {
-				// Increment error metric. No error log here to prevent
-				// spamming syslog in case of down cluster.
-				ssa.redisStoreResponse.WithLabelValues("store_response_error").Inc()
-				return
-			}
-			ssa.redisStoreResponse.WithLabelValues("success").Inc()
-		}()
+		// the goroutine to complete, so we don't want it to be canceled
+		// when the parent function ends. The rocsp client has a
+		// configurable timeout that can be set during creation.
+		rocspCtx := context.Background()
+		rocspTTL := ssa.clk.Now().Sub(parsed.NotAfter)
+
+		// Send the response off to redis in a goroutine.
+		go ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID, rocspTTL)
 	}
 	return &emptypb.Empty{}, nil
 }

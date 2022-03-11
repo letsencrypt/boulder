@@ -28,7 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
-	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -46,7 +45,7 @@ type SQLStorageAuthority struct {
 	log           blog.Logger
 
 	// Redis client for storing OCSP responses in Redis.
-	rocspWriteClient *rocsp.WritingClient
+	rocspWriteClient RocspWriteSource
 	shortIssuers     []rocsp_config.ShortIDIssuer
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
@@ -87,7 +86,7 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
-	rocspWriteClient *rocsp.WritingClient,
+	rocspWriteClient RocspWriteSource,
 	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,
