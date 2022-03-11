@@ -22,8 +22,6 @@ import time
 
 import startservers
 
-import chisel
-from chisel import auth_and_issue
 import v2_integration
 from helpers import *
 
