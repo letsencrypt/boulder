@@ -36,10 +36,6 @@ services:
     dns: 10.77.77.77
     ports:
       - 4001:4001 # ACMEv2
-      - 4002:4002 # OCSP
-      - 4003:4003 # OCSP
-      - 4431:4431 # ACMEv2 via HTTPS
-      - 8055:8055 # dns-test-srv updates
     depends_on:
       - bmysql
       - bredis_clusterer
