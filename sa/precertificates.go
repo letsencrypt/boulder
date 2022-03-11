@@ -165,7 +165,9 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		rocspTTL := ssa.clk.Now().Sub(parsed.NotAfter)
 
 		// Send the response off to redis in a goroutine.
-		go ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID, rocspTTL)
+		go func() {
+			_ = ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID, rocspTTL)
+		}()
 	}
 	return &emptypb.Empty{}, nil
 }
