@@ -29,7 +29,8 @@ to syslog as expected. For instance, we provide a custom logger for mysql, grpc,
 and prometheus that forwards to syslog. This is configured in StatsAndLogging in
 cmd/shell.go.
 
-There are some cases where we output to stdout:
+There are some cases where we output to stdout regardless of the JSON config
+settings:
 
  - Panics are always emitted to stdout
  - Packages that Boulder relies on may occasionally emit to stdout (though this
