@@ -65,14 +65,6 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
-		// TODO(#5851): Remove this.
-		WeakKeyFile string
-
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
-		// TODO(#5851): Remove this.
-		BlockedKeyFile string
-
 		OrderLifetime cmd.ConfigDuration
 
 		// CTLogGroups contains groupings of CT logs which we want SCTs from.
@@ -229,13 +221,6 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	if c.RA.GoodKey.WeakKeyFile == "" && c.RA.WeakKeyFile != "" {
-		c.RA.GoodKey.WeakKeyFile = c.RA.WeakKeyFile
-	}
-	if c.RA.GoodKey.BlockedKeyFile == "" && c.RA.BlockedKeyFile != "" {
-		c.RA.GoodKey.BlockedKeyFile = c.RA.BlockedKeyFile
-	}
 	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 

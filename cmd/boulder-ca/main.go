@@ -62,14 +62,6 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
-		// TODO(#5851): Remove this.
-		WeakKeyFile string
-
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
-		// TODO(#5851): Remove this.
-		BlockedKeyFile string
-
 		// Path to directory holding orphan queue files, if not provided an orphan queue
 		// is not used.
 		OrphanQueueDir string
@@ -211,13 +203,6 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := sapb.NewStorageAuthorityClient(conn)
 
-	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	if c.CA.GoodKey.WeakKeyFile == "" && c.CA.WeakKeyFile != "" {
-		c.CA.GoodKey.WeakKeyFile = c.CA.WeakKeyFile
-	}
-	if c.CA.GoodKey.BlockedKeyFile == "" && c.CA.BlockedKeyFile != "" {
-		c.CA.GoodKey.BlockedKeyFile = c.CA.BlockedKeyFile
-	}
 	kp, err := goodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
