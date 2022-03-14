@@ -1,11 +1,20 @@
 version: '3'
 services:
   boulder:
+    # CAUTION: Changing the Go version in this tag changes the version of Go
+    # used for release builds. make-deb.sh relies on being able to parse the
+    # version between 'BOULDER_TOOLS_TAG:-go' and '_' if you make changes to
+    # these tokens, please update this parsing logic.
     image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.17.7_2022-02-10}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
       GOFLAGS: -mod=vendor
+      # Go 1.18 turns off SHA-1 validation on CSRs (and certs, but that doesn't
+      # affect us). It also turns off TLS 1.0 and TLS 1.1. Temporarily go back
+      # to allowing these so we can upgrade to Go 1.18 while doing a deprecation
+      # window. These overrides will stop working in Go 1.19.
+      GODEBUG: x509sha1=1,tls10default=1
     volumes:
       - .:/go/src/github.com/letsencrypt/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
@@ -27,10 +36,6 @@ services:
     dns: 10.77.77.77
     ports:
       - 4001:4001 # ACMEv2
-      - 4002:4002 # OCSP
-      - 4003:4003 # OCSP
-      - 4431:4431 # ACMEv2 via HTTPS
-      - 8055:8055 # dns-test-srv updates
     depends_on:
       - bmysql
       - bredis_clusterer

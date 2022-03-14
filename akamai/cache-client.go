@@ -31,6 +31,17 @@ const (
 	v3PurgeTagPath  = "/ccu/v3/delete/tag/"
 )
 
+var (
+	// ErrAllRetriesFailed indicates that all purge submission attempts have
+	// failed.
+	ErrAllRetriesFailed = errors.New("all attempts to submit purge request failed")
+
+	// errFatal is returned by the purge method of CachePurgeClient to indicate
+	// that it failed for a reason that cannot be remediated by retrying the
+	// request.
+	errFatal = errors.New("fatal error")
+)
+
 type v3PurgeRequest struct {
 	Objects []string `json:"objects"`
 }
@@ -60,13 +71,6 @@ type CachePurgeClient struct {
 	purges       *prometheus.CounterVec
 	clk          clock.Clock
 }
-
-// ErrAllRetriesFailed indicates that all purge submission attempts have failed.
-var ErrAllRetriesFailed = errors.New("all attempts to submit purge request failed")
-
-// errFatal is returned by the purge method of CachePurgeClient to indicate that
-// it failed for a reason that cannot be remediated by retrying the request.
-var errFatal = errors.New("fatal error")
 
 // NewCachePurgeClient performs some basic validation of supplied configuration
 // and returns a newly constructed CachePurgeClient.
@@ -228,18 +232,44 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 		return err
 	}
 
-	// Ensure that the purge request was successful.
+	// Success for a request to purge a URL or Cache tag is 'HTTP 201'.
+	// https://techdocs.akamai.com/purge-cache/reference/delete-url
+	// https://techdocs.akamai.com/purge-cache/reference/delete-tag
+	if resp.StatusCode != http.StatusCreated {
+		switch resp.StatusCode {
+		// https://techdocs.akamai.com/purge-cache/reference/403
+		case http.StatusForbidden:
+			return fmt.Errorf("client not authorized to make requests for URL %q: %w", resp.Request.URL, errFatal)
+
+		// https://techdocs.akamai.com/purge-cache/reference/504
+		case http.StatusGatewayTimeout:
+			return fmt.Errorf("server timed out, got HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
+
+		// https://techdocs.akamai.com/purge-cache/reference/429
+		case http.StatusTooManyRequests:
+			return fmt.Errorf("exceeded request count rate limit, got HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
+
+		// https://techdocs.akamai.com/purge-cache/reference/413
+		case http.StatusRequestEntityTooLarge:
+			return fmt.Errorf("exceeded request size rate limit, got HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
+		default:
+			return fmt.Errorf("received HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
+		}
+	}
+
 	var purgeInfo purgeResponse
 	err = json.Unmarshal(respBody, &purgeInfo)
 	if err != nil {
 		return fmt.Errorf("while unmarshalling body %q from URL %q as JSON: %w", respBody, resp.Request.URL, err)
 	}
 
-	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
+	// Ensure the unmarshaled body concurs with the status of the response
+	// received.
+	if purgeInfo.HTTPStatus != http.StatusCreated {
 		if purgeInfo.HTTPStatus == http.StatusForbidden {
 			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
 		}
-		return fmt.Errorf("received HTTP %d (body %q) from URL %q", resp.StatusCode, respBody, resp.Request.URL)
+		return fmt.Errorf("unmarshaled HTTP %d (body %q) from URL %q", purgeInfo.HTTPStatus, respBody, resp.Request.URL)
 	}
 
 	cpc.log.AuditInfof("Purge request sent successfully (ID %s) (body %s). Purge expected in %ds",
@@ -275,21 +305,26 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 	return nil
 }
 
-// Purge attempts to send a purge request to the Akamai CCU API cpc.retries
-// number of times before giving up and returning ErrAllRetriesFailed.
-func (cpc *CachePurgeClient) Purge(urls []string) error {
-	for i := 0; i < len(urls); {
-		sliceEnd := i + akamaiBatchSize
-		if sliceEnd > len(urls) {
-			sliceEnd = len(urls)
+// Purge dispatches the provided urls in batched requests to the Akamai CCU API.
+// Requests will be attempted cpc.retries number of times before giving up and
+// returning ErrAllRetriesFailed and the beginning index position of the batch
+// where the failure was encountered.
+func (cpc *CachePurgeClient) Purge(urls []string) (int, error) {
+	totalURLs := len(urls)
+	for batchBegin := 0; batchBegin < totalURLs; {
+		batchEnd := batchBegin + akamaiBatchSize
+		if batchEnd > totalURLs {
+			// Avoid index out of range error.
+			batchEnd = totalURLs
 		}
-		err := cpc.purgeBatch(urls[i:sliceEnd])
+
+		err := cpc.purgeBatch(urls[batchBegin:batchEnd])
 		if err != nil {
-			return err
+			return batchBegin, err
 		}
-		i += akamaiBatchSize
+		batchBegin += akamaiBatchSize
 	}
-	return nil
+	return totalURLs, nil
 }
 
 // CheckSignature is exported for use in tests and akamai-test-srv.

@@ -20,3 +20,16 @@ linters:
     - gocritic
     - gochecknoinits
     - gochecknoglobals
+    - gomnd
+    - wsl
+    - goerr113
+    - godot
+
+issues:
+  exclude-use-default: true
+  max-per-linter: 0
+  max-same-issues: 0
+  # The following excludes are considered false-positives/known-OK.
+  exclude-rules:
+    - path: tlsalpnone.go
+      text: '`marshalling` is a misspelling of `marshaling`'

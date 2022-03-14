@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -34,9 +35,6 @@ const (
 	// maxPathSize is the maximum number of bytes we will accept in the path of a
 	// redirect URL.
 	maxPathSize = 2000
-	// whitespaceCutset is the set of characters trimmed from the right of an
-	// HTTP-01 key authorization response.
-	whitespaceCutset = "\n\r\t "
 )
 
 // preresolvedDialer is a struct type that provides a DialContext function which
@@ -505,9 +503,17 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
-		// If the response contains an HTTP 303 redirect, do not follow.
-		if req.Response.StatusCode == 303 {
-			return berrors.ConnectionFailureError("Cannot follow HTTP 303 redirects")
+		// If the response contains an HTTP 303 or any other forbidden redirect,
+		// do not follow it. The four allowed redirect status codes are defined
+		// explicitly in BRs Section 3.2.2.4.19. Although the go stdlib currently
+		// limits redirects to a set of status codes with only one additional
+		// entry (303), we capture the full list of allowed codes here in case the
+		// go stdlib expands the set of redirects it follows in the future.
+		acceptableRedirects := map[int]struct{}{
+			301: {}, 302: {}, 307: {}, 308: {},
+		}
+		if _, present := acceptableRedirects[req.Response.StatusCode]; !present {
+			return berrors.ConnectionFailureError("received disallowed redirect status code")
 		}
 
 		// Lowercase the redirect host immediately, as the dialer and redirect
@@ -607,6 +613,11 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, records, err
 	}
 
+	if httpResponse.StatusCode != 200 {
+		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
+			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
+	}
+
 	// At this point we've made a successful request (be it from a retry or
 	// otherwise) and can read and process the response body.
 	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
@@ -617,15 +628,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if err != nil {
 		return nil, records, berrors.UnauthorizedError("Error reading HTTP response body: %v", err)
 	}
+
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
 		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
-	}
-	if httpResponse.StatusCode != 200 {
-		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
 	}
 	return body, records, nil
 }
@@ -643,7 +651,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 		return validationRecords, prob
 	}
 
-	payload := strings.TrimRight(string(body), whitespaceCutset)
+	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
 	if payload != challenge.ProvidedKeyAuthorization {
 		problem := probs.Unauthorized(fmt.Sprintf("The key authorization file from the server did not match this challenge %q != %q",

@@ -1,0 +1,22 @@
+name: Build and Release
+on:
+  # Runs automatically when a tag beginning with 'release-' is pushed.
+  push:
+    tags:
+      - release-*
+
+jobs:
+  gh-release:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: build and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # https://cli.github.com/manual/gh_release_create
+        run: |
+          ./make-deb.sh
+          gh release create "${GITHUB_REF_NAME}" *.deb
