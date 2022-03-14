@@ -16,16 +16,10 @@ func (ssa *SQLStorageAuthority) storeOCSPRedis(ctx context.Context, resp []byte,
 	shortIssuerID, err := rocsp_config.FindIssuerByID(issuerID, ssa.shortIssuers)
 	if err != nil {
 		ssa.redisStoreResponse.WithLabelValues("find_issuer_error").Inc()
-		// Log error if FindIssuerByID failed. This should be rare
-		// and the logged message will help identify a
-		// misconfiguration quickly.
-		ssa.log.Errf("failed to FindIssuerByID: %v", err)
 		return err
 	}
 	err = ssa.rocspWriteClient.StoreResponse(ctx, resp, shortIssuerID.ShortID(), ttl)
 	if err != nil {
-		// Increment error metric. No error log here to prevent
-		// spamming syslog in case of down cluster.
 		ssa.redisStoreResponse.WithLabelValues("store_response_error").Inc()
 		return err
 	}
