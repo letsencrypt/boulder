@@ -10,6 +10,7 @@ service StorageAuthority {
   // Getters
   rpc GetRegistration(RegistrationID) returns (core.Registration) {}
   rpc GetRegistrationByKey(JSONWebKey) returns (core.Registration) {}
+  rpc GetSerialMetadata(Serial) returns (SerialMetadata) {}
   rpc GetCertificate(Serial) returns (core.Certificate) {}
   rpc GetPrecertificate(Serial) returns (core.Certificate) {}
   rpc GetCertificateStatus(Serial) returns (core.CertificateStatus) {}
@@ -88,6 +89,13 @@ message ValidAuthorizations {
 
 message Serial {
   string serial = 1;
+}
+
+message SerialMetadata {
+  string serial = 1;
+  int64 registrationID = 2;
+  int64 created = 3; // Unix timestamp (nanoseconds)
+  int64 expires = 4; // Unix timestamp (nanoseconds)
 }
 
 message Range {

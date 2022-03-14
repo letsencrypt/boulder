@@ -59,6 +59,19 @@ const (
 	GetAuthzUseIndex
 	// Check the failed authorization limit before doing authz reuse.
 	CheckFailedAuthorizationsFirst
+	// MozRevocationReasons causes the RA to enforce the following upcoming
+	// Mozilla policies regarding revocation:
+	// - A subscriber can request that their certificate be revoked with reason
+	//   keyCompromise, even without demonstrating that compromise at the time.
+	//   However, the cert's pubkey will not be added to the blocked keys list.
+	// - When an applicant other than the original subscriber requests that a
+	//   certificate be revoked (by demonstrating control over all names in it),
+	//   the cert will be revoked with reason cessationOfOperation, regardless of
+	//   what revocation reason they request.
+	// - When anyone requests that a certificate be revoked by signing the request
+	//   with the certificate's keypair, the cert will be revoked with reason
+	//   keyCompromise, regardless of what revocation reason they request.
+	MozRevocationReasons
 )
 
 // List of features and their default value, protected by fMu
@@ -84,6 +97,7 @@ var features = map[FeatureFlag]bool{
 	GetAuthzReadOnly:               false,
 	GetAuthzUseIndex:               false,
 	CheckFailedAuthorizationsFirst: false,
+	MozRevocationReasons:           false,
 }
 
 var fMu = new(sync.RWMutex)

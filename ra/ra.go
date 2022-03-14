@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/url"
 	"reflect"
@@ -278,6 +279,28 @@ type certificateRequestEvent struct {
 	// objects. It can be used to understand how the names in a certificate
 	// request were authorized.
 	Authorizations map[string]certificateRequestAuthz
+}
+
+// certificateRevocationEvent is a struct for holding information that is logged
+// as JSON to the audit log as the result of a revocation event.
+type certificateRevocationEvent struct {
+	ID string `json:",omitempty"`
+	// SerialNumber is the string representation of the revoked certificate's
+	// serial number.
+	SerialNumber string `json:",omitempty"`
+	// Reason is the integer representing the revocation reason used.
+	Reason int64 `json:",omitempty"`
+	// Method is the way in which revocation was requested.
+	// It will be one of the strings: "applicant", "subscriber", "control", "key", or "admin".
+	Method string `json:",omitempty"`
+	// RequesterID is the account ID of the requester.
+	// Will be zero for admin revocations.
+	RequesterID int64 `json:",omitempty"`
+	// AdminName is the name of the admin requester.
+	// Will be zero for subscriber revocations.
+	AdminName string `json:",omitempty"`
+	// Error contains any error encountered during revocation.
+	Error string `json:",omitempty"`
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
@@ -1701,9 +1724,10 @@ func revokeEvent(state, serial, cn string, names []string, revocationCode revoca
 	)
 }
 
-// revokeCertificate generates a revoked OCSP response for the given certificate, stores
+// deprecatedRevokeCertificate generates a revoked OCSP response for the given certificate, stores
 // the revocation information, and purges OCSP request URLs from Akamai.
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string, skipBlockKey bool) error {
+// DEPRECATED: Used only by RevokeCertificateWithReg, which is itself deprecated.
+func (ra *RegistrationAuthorityImpl) deprecatedRevokeCertificate(ctx context.Context, cert *x509.Certificate, reason revocation.Reason, revokedBy int64, source string, comment string, skipBlockKey bool) error {
 	serial := core.SerialToString(cert.SerialNumber)
 
 	var issuerID int64
@@ -1795,7 +1819,337 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, cert
 	return nil
 }
 
+// revokeCertificate generates a revoked OCSP response for the certificate with
+// the given serial and issuer and stores that response in the database.
+// TODO(#5152) make the issuerID argument an issuance.IssuerNameID
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID int64, reason revocation.Reason) error {
+	serialString := core.SerialToString(serial)
+	revokedAt := ra.clk.Now().UnixNano()
+
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+		Serial:    serialString,
+		IssuerID:  int64(issuerID),
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    int32(reason),
+		RevokedAt: revokedAt,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+		Serial:   serialString,
+		Reason:   int64(reason),
+		Date:     revokedAt,
+		Response: ocspResponse.Response,
+	})
+	if err != nil {
+		return err
+	}
+
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[reason]).Inc()
+	return nil
+}
+
+// updateRevocationForKeyCompromise generates a revoked OCSP response for the
+// already-revoked certificate with the given serial and issuer, and stores that
+// response in the database. This only works for certificates that were
+// previously revoked for a reason other than keyCompromise, and which are now
+// being updated to keyCompromise instead.
+// TODO(#5152) make the issuerID argument an issuance.IssuerNameID
+func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
+	serialString := core.SerialToString(serial)
+	thisUpdate := ra.clk.Now().UnixNano()
+
+	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
+	if err != nil {
+		return berrors.NotFoundError("unable to confirm that serial %q was ever issued: %s", serialString, err)
+	}
+
+	if status.Status != string(core.OCSPStatusRevoked) {
+		// Internal server error, because we shouldn't be in the function at all
+		// unless the cert was already revoked.
+		return fmt.Errorf("unable to re-revoke serial %q which is not currently revoked", serialString)
+	}
+	if status.RevokedReason == ocsp.KeyCompromise {
+		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
+	}
+
+	// The new OCSP response has to be back-dated to the original date.
+	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+		Serial:    serialString,
+		IssuerID:  int64(issuerID),
+		Status:    string(core.OCSPStatusRevoked),
+		Reason:    int32(ocsp.KeyCompromise),
+		RevokedAt: status.RevokedDate,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
+		Serial:   serialString,
+		Reason:   int64(ocsp.KeyCompromise),
+		Date:     thisUpdate,
+		Backdate: status.RevokedDate,
+		Response: ocspResponse.Response,
+	})
+	if err != nil {
+		return err
+	}
+
+	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[ocsp.KeyCompromise]).Inc()
+	return nil
+}
+
+// purgeOCSPCache makes a request to akamai-purger to purge the cache entries
+// for the given certificate.
+// TODO(#5152) make the issuerID argument an issuance.IssuerNameID
+func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x509.Certificate, issuerID int64) error {
+	issuer, ok := ra.issuersByNameID[issuance.IssuerNameID(issuerID)]
+	if !ok {
+		// TODO(#5152): Remove this fallback (which only gets used when revoking by
+		// serial, so the issuer ID had to be read from the db).
+		issuer, ok = ra.issuersByID[issuance.IssuerID(issuerID)]
+		if !ok {
+			return fmt.Errorf("unable to identify issuer of cert with serial %q", core.SerialToString(cert.SerialNumber))
+		}
+	}
+
+	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
+	if err != nil {
+		return err
+	}
+
+	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RevokeCertByApplicant revokes the certificate in question. It allows any
+// revocation reason from (0, 1, 3, 4, 5, 9), because Subscribers are allowed to
+// request any revocation reason for their own certificates. However, if the
+// requesting RegID is an account which has authorizations for all names in the
+// cert but is *not* the original subscriber, it overrides the revocation reason
+// to be 5 (cessationOfOperation), because that code is used to cover instances
+// where "the certificate subscriber no longer owns the domain names in the
+// certificate". It does not add the key to the blocked keys list, even if
+// reason 1 (keyCompromise) is requested, as it does not demonstrate said
+// compromise. It attempts to purge the certificate from the Akamai cache, but
+// it does not hard-fail if doing so is not successful, because the cache will
+// drop the old OCSP response in less than 24 hours anyway.
+func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, req *rapb.RevokeCertByApplicantRequest) (*emptypb.Empty, error) {
+	if req == nil || req.Cert == nil || req.RegID == 0 {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
+		return nil, berrors.BadRevocationReasonError(req.Code)
+	}
+	if !features.Enabled(features.MozRevocationReasons) {
+		// By our current policy, demonstrating key compromise is the only way to
+		// get a certificate revoked with reason key compromise. Upcoming Mozilla
+		// policy may require us to allow the original Subscriber to assert the
+		// keyCompromise revocation reason, even without demonstrating such.
+		if req.Code == ocsp.KeyCompromise {
+			return nil, berrors.BadRevocationReasonError(req.Code)
+		}
+	}
+
+	cert, err := x509.ParseCertificate(req.Cert)
+	if err != nil {
+		return nil, err
+	}
+
+	serialString := core.SerialToString(cert.SerialNumber)
+
+	logEvent := certificateRevocationEvent{
+		ID:           core.NewToken(),
+		SerialNumber: serialString,
+		Reason:       req.Code,
+		Method:       "applicant",
+		RequesterID:  req.RegID,
+	}
+
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
+	defer func() {
+		if err != nil {
+			logEvent.Error = err.Error()
+		}
+		ra.log.AuditObject("Revocation request:", logEvent)
+	}()
+
+	metadata, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: serialString})
+	if err != nil {
+		return nil, err
+	}
+
+	if req.RegID == metadata.RegistrationID {
+		// The requester is the original subscriber. They can revoke for any reason.
+		logEvent.Method = "subscriber"
+	} else {
+		// The requester is a different account. We need to confirm that they have
+		// authorizations for all names in the cert.
+		logEvent.Method = "control"
+
+		var authzMapPB *sapb.Authorizations
+		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
+			RegistrationID: req.RegID,
+			Domains:        cert.DNSNames,
+			Now:            ra.clk.Now().UnixNano(),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		m := make(map[string]struct{})
+		for _, authz := range authzMapPB.Authz {
+			m[authz.Domain] = struct{}{}
+		}
+		for _, name := range cert.DNSNames {
+			if _, present := m[name]; !present {
+				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
+			}
+		}
+
+		if features.Enabled(features.MozRevocationReasons) {
+			// Applicants who are not the original Subscriber are not allowed to
+			// revoke for any reason other than cessationOfOperation, which covers
+			// circumstances where "the certificate subscriber no longer owns the
+			// domain names in the certificate". Override the reason code to match.
+			req.Code = ocsp.CessationOfOperation
+			logEvent.Reason = req.Code
+		}
+	}
+
+	issuerID := issuance.GetIssuerNameID(cert)
+	err = ra.revokeCertificate(
+		ctx,
+		cert.SerialNumber,
+		int64(issuerID),
+		revocation.Reason(req.Code),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(#5979): Check this error when it can't simply be due to a full queue.
+	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+
+	return &emptypb.Empty{}, nil
+}
+
+// RevokeCertByKey revokes the certificate in question. It always uses
+// reason code 1 (keyCompromise). It ensures that they public key is added to
+// the blocked keys list, even if revocation otherwise fails. It attempts to
+// purge the certificate from the Akamai cache, but it does not hard-fail if
+// doing so is not successful, because the cache will drop the old OCSP response
+// in less than 24 hours anyway.
+func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *rapb.RevokeCertByKeyRequest) (*emptypb.Empty, error) {
+	if req == nil || req.Cert == nil {
+		return nil, errIncompleteGRPCRequest
+	}
+
+	var reason int64
+	if features.Enabled(features.MozRevocationReasons) {
+		// Upcoming Mozilla policy may require that a certificate be revoked with
+		// reason keyCompromise if "the CA obtains verifiable evidence that the
+		// certificate subscriber’s private key corresponding to the public key in
+		// the certificate suffered a key compromise". Signing a JWS to an ACME
+		// server's revocation endpoint certainly counts, so override the reason.
+		reason = ocsp.KeyCompromise
+	} else {
+		if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
+			return nil, berrors.BadRevocationReasonError(req.Code)
+		}
+		reason = req.Code
+	}
+
+	cert, err := x509.ParseCertificate(req.Cert)
+	if err != nil {
+		return nil, err
+	}
+
+	issuerID := issuance.GetIssuerNameID(cert)
+
+	logEvent := certificateRevocationEvent{
+		ID:           core.NewToken(),
+		SerialNumber: core.SerialToString(cert.SerialNumber),
+		Reason:       reason,
+		Method:       "key",
+		RequesterID:  0,
+	}
+
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
+	defer func() {
+		if err != nil {
+			logEvent.Error = err.Error()
+		}
+		ra.log.AuditObject("Revocation request:", logEvent)
+	}()
+
+	// We revoke the cert before adding it to the blocked keys list, to avoid a
+	// race between this and the bad-key-revoker. But we don't check the error on
+	// from this operation until after we add to the blocked keys list, since that
+	// add needs to happen no matter what.
+	revokeErr := ra.revokeCertificate(
+		ctx,
+		cert.SerialNumber,
+		int64(issuerID),
+		revocation.Reason(reason),
+	)
+
+	// Now add the public key to the blocked keys list, and report the error if
+	// there is one. It's okay to error out here because failing to add the key
+	// to the blocked keys list is a worse failure than failing to revoke in the
+	// first place, because it means that bad-key-revoker won't revoke the cert
+	// anyway.
+	if reason == ocsp.KeyCompromise {
+		var digest core.Sha256Digest
+		digest, err = core.KeyDigest(cert.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
+			KeyHash: digest[:],
+			Added:   ra.clk.Now().UnixNano(),
+			Source:  "API",
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Finally check the error from revocation itself. If it was an AlreadyRevoked
+	// error, try to re-revoke the cert, in case it is revoked for a reason other
+	// than keyCompromise.
+	err = revokeErr
+	if err != nil {
+		if !errors.Is(err, berrors.AlreadyRevoked) || reason != ocsp.KeyCompromise {
+			return nil, err
+		}
+		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// TODO(#5979): Check this error when it can't simply be due to a full queue.
+	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+
+	return &emptypb.Empty{}, nil
+}
+
 // RevokeCertificateWithReg terminates trust in the certificate provided.
+// DEPRECATED: use RevokeCertBySubscriber, RevokeCertByController, or
+// RevokeCertByKey instead.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil {
 		return nil, errIncompleteGRPCRequest
@@ -1809,7 +2163,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	serialString := core.SerialToString(cert.SerialNumber)
 	revocationCode := revocation.Reason(req.Code)
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "", false)
+	err = ra.deprecatedRevokeCertificate(ctx, cert, revocationCode, req.RegID, "API", "", false)
 
 	state := "Failure"
 	defer func() {
@@ -1835,9 +2189,14 @@ func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Contex
 	return &emptypb.Empty{}, nil
 }
 
-// AdministrativelyRevokeCertificate terminates trust in the certificate provided and
-// does not require the registration ID of the requester since this method is only
-// called from the admin-revoker tool.
+// AdministrativelyRevokeCertificate terminates trust in the certificate
+// provided and does not require the registration ID of the requester since this
+// method is only called from the admin-revoker tool. It trusts that the admin
+// is doing the right thing, so if the requested reason is keyCompromise, it
+// blocks the key from future issuance even though compromise has not been
+// demonstrated here. It purges the certificate from the Akamai cache, and
+// returns an error if that purge fails, since this method may be called late
+// in the BRs-mandated revocation timeframe.
 func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx context.Context, req *rapb.AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	if req == nil || req.AdminName == "" {
 		return nil, errIncompleteGRPCRequest
@@ -1846,57 +2205,99 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return nil, errIncompleteGRPCRequest
 	}
 
-	revocationCode := revocation.Reason(req.Code)
-	if revocationCode == ocsp.KeyCompromise && req.Cert == nil {
-		return nil, fmt.Errorf("cannot revoke for KeyCompromise by serial alone")
+	reasonCode := revocation.Reason(req.Code)
+	if reasonCode == ocsp.KeyCompromise && req.Cert == nil && !req.SkipBlockKey {
+		return nil, fmt.Errorf("cannot revoke and block for KeyCompromise by serial alone")
 	}
-	if req.SkipBlockKey && revocationCode != ocsp.KeyCompromise {
+	if req.SkipBlockKey && reasonCode != ocsp.KeyCompromise {
 		return nil, fmt.Errorf("cannot skip key blocking for reasons other than KeyCompromise")
 	}
 
+	if _, present := revocation.AdminAllowedReasons[reasonCode]; !present {
+		return nil, fmt.Errorf("cannot revoke for reason %d", reasonCode)
+	}
+
+	// If we don't have a real cert, we create a fake cert (containing just the
+	// serial number, which is all we need) and look up the IssuerID from the db.
+	// We could instead look up and parse the certificate itself, but we avoid
+	// that in case we are administratively revoking the certificate because it is
+	// so badly malformed that it can't be parsed.
 	var cert *x509.Certificate
-	var serialString string
+	var issuerID int64 // TODO(#5152) make this an issuance.IssuerNameID
 	var err error
-	if req.Cert != nil {
-		cert, err = x509.ParseCertificate(req.Cert)
-		if err != nil {
-			return nil, err
-		}
-		serialString = core.SerialToString(cert.SerialNumber)
-	} else {
-		serialNum, err := core.StringToSerial(req.Serial)
+	if req.Cert == nil {
+		cert = nil
+		serial, err := core.StringToSerial(req.Serial)
 		if err != nil {
 			return nil, err
 		}
 		cert = &x509.Certificate{
-			SerialNumber: serialNum,
+			SerialNumber: serial,
 		}
-		serialString = req.Serial
+
+		status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
+		if err != nil {
+			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", serial, err)
+		}
+		issuerID = status.IssuerID
+	} else {
+		cert, err = x509.ParseCertificate(req.Cert)
+		if err != nil {
+			return nil, err
+		}
+		issuerID = int64(issuance.GetIssuerNameID(cert))
 	}
 
-	state := "Failure"
+	logEvent := certificateRevocationEvent{
+		ID:           core.NewToken(),
+		Method:       "key",
+		AdminName:    req.AdminName,
+		SerialNumber: core.SerialToString(cert.SerialNumber),
+	}
+
+	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
+	// nested scope. Doing so will create a new `err` variable that is not
+	// captured by this closure.
 	defer func() {
-		// Needed:
-		//   Serial
-		//   CN
-		//   DNS names
-		//   Revocation reason
-		//   Name of admin-revoker user
-		//   Error (if there was one)
-		ra.log.AuditInfof(
-			"%s, admin-revoker user: %s",
-			revokeEvent(state, serialString, cert.Subject.CommonName, cert.DNSNames, revocationCode),
-			req.AdminName)
+		if err != nil {
+			logEvent.Error = err.Error()
+		}
+		ra.log.AuditObject("Revocation request:", logEvent)
 	}()
 
-	err = ra.revokeCertificate(ctx, cert, revocationCode, 0, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName), req.SkipBlockKey)
+	err = ra.revokeCertificate(ctx, cert.SerialNumber, issuerID, revocation.Reason(req.Code))
 	if err != nil {
-		state = fmt.Sprintf("Failure -- %s", err)
+		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
+			err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, issuerID)
+			if err != nil {
+				return nil, err
+			}
+		}
 		return nil, err
 	}
 
-	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[revocationCode]).Inc()
-	state = "Success"
+	if req.Code == ocsp.KeyCompromise && !req.SkipBlockKey {
+		var digest core.Sha256Digest
+		digest, err = core.KeyDigest(cert.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
+			KeyHash: digest[:],
+			Added:   ra.clk.Now().UnixNano(),
+			Source:  "admin-revoker",
+			Comment: fmt.Sprintf("revoked by %s", req.AdminName),
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	if err != nil {
+		return nil, err
+	}
+
 	return &emptypb.Empty{}, nil
 }
 

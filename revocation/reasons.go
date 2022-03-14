@@ -29,11 +29,23 @@ var ReasonToString = map[Reason]string{
 // UserAllowedReasons contains the subset of Reasons which users are
 // allowed to use
 var UserAllowedReasons = map[Reason]struct{}{
-	ocsp.Unspecified:          {}, // unspecified
-	ocsp.KeyCompromise:        {}, // keyCompromise
-	ocsp.AffiliationChanged:   {}, // affiliationChanged
-	ocsp.Superseded:           {}, // superseded
-	ocsp.CessationOfOperation: {}, // cessationOfOperation
+	ocsp.Unspecified:          {},
+	ocsp.KeyCompromise:        {},
+	ocsp.AffiliationChanged:   {},
+	ocsp.Superseded:           {},
+	ocsp.CessationOfOperation: {},
+}
+
+// AdminAllowedReasons contains the subset of Reasons which admins are allowed
+// to use. Reasons not found here will soon be forbidden from appearing in CRLs
+// or OCSP responses by root programs.
+var AdminAllowedReasons = map[Reason]struct{}{
+	ocsp.Unspecified:          {},
+	ocsp.KeyCompromise:        {},
+	ocsp.AffiliationChanged:   {},
+	ocsp.Superseded:           {},
+	ocsp.CessationOfOperation: {},
+	ocsp.PrivilegeWithdrawn:   {},
 }
 
 // UserAllowedReasonsMessage contains a string describing a list of user allowed

@@ -29,8 +29,7 @@ import (
 
 // StorageAuthority is a mock
 type StorageAuthority struct {
-	clk               clock.Clock
-	authorizedDomains map[string]bool
+	clk clock.Clock
 }
 
 // NewStorageAuthority creates a new mock storage authority
@@ -180,6 +179,16 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JS
 		Key:       []byte(test1KeyPublicJSON),
 		Agreement: agreementURL,
 		Status:    string(core.StatusValid),
+	}, nil
+}
+
+// GetSerialMetadata is a mock
+func (sa *StorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	return &sapb.SerialMetadata{
+		Serial:         req.Serial,
+		RegistrationID: 1,
+		Created:        sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
+		Expires:        sa.clk.Now().Add(2159 * time.Hour).UnixNano(),
 	}, nil
 }
 
@@ -424,33 +433,31 @@ func (sa *StorageAuthority) GetValidAuthorizations2(ctx context.Context, req *sa
 	now := time.Unix(0, req.Now)
 	auths := &sapb.Authorizations{}
 	for _, name := range req.Domains {
-		if sa.authorizedDomains[name] || name == "not-an-example.com" || name == "bad.example.com" {
-			exp := now.AddDate(100, 0, 0)
-			authzPB, err := bgrpc.AuthzToPB(core.Authorization{
-				Status:         core.StatusValid,
-				RegistrationID: req.RegistrationID,
-				Expires:        &exp,
-				Identifier: identifier.ACMEIdentifier{
-					Type:  "dns",
-					Value: name,
+		exp := now.AddDate(100, 0, 0)
+		authzPB, err := bgrpc.AuthzToPB(core.Authorization{
+			Status:         core.StatusValid,
+			RegistrationID: req.RegistrationID,
+			Expires:        &exp,
+			Identifier: identifier.ACMEIdentifier{
+				Type:  "dns",
+				Value: name,
+			},
+			Challenges: []core.Challenge{
+				{
+					Status:    core.StatusValid,
+					Type:      core.ChallengeTypeDNS01,
+					Token:     "exampleToken",
+					Validated: &now,
 				},
-				Challenges: []core.Challenge{
-					{
-						Status:    core.StatusValid,
-						Type:      core.ChallengeTypeDNS01,
-						Token:     "exampleToken",
-						Validated: &now,
-					},
-				},
-			})
-			if err != nil {
-				return nil, err
-			}
-			auths.Authz = append(auths.Authz, &sapb.Authorizations_MapElement{
-				Domain: name,
-				Authz:  authzPB,
-			})
+			},
+		})
+		if err != nil {
+			return nil, err
 		}
+		auths.Authz = append(auths.Authz, &sapb.Authorizations_MapElement{
+			Domain: name,
+			Authz:  authzPB,
+		})
 	}
 	return auths, nil
 }

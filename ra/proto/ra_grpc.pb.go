@@ -26,6 +26,8 @@ type RegistrationAuthorityClient interface {
 	RevokeCertificateWithReg(ctx context.Context, in *RevokeCertificateWithRegRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateAuthorization(ctx context.Context, in *proto.Authorization, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RevokeCertByApplicant(ctx context.Context, in *RevokeCertByApplicantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	RevokeCertByKey(ctx context.Context, in *RevokeCertByKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
@@ -93,6 +95,24 @@ func (c *registrationAuthorityClient) DeactivateAuthorization(ctx context.Contex
 	return out, nil
 }
 
+func (c *registrationAuthorityClient) RevokeCertByApplicant(ctx context.Context, in *RevokeCertByApplicantRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/RevokeCertByApplicant", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *registrationAuthorityClient) RevokeCertByKey(ctx context.Context, in *RevokeCertByKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/RevokeCertByKey", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *registrationAuthorityClient) AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/AdministrativelyRevokeCertificate", in, out, opts...)
@@ -130,6 +150,8 @@ type RegistrationAuthorityServer interface {
 	RevokeCertificateWithReg(context.Context, *RevokeCertificateWithRegRequest) (*emptypb.Empty, error)
 	DeactivateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
 	DeactivateAuthorization(context.Context, *proto.Authorization) (*emptypb.Empty, error)
+	RevokeCertByApplicant(context.Context, *RevokeCertByApplicantRequest) (*emptypb.Empty, error)
+	RevokeCertByKey(context.Context, *RevokeCertByKeyRequest) (*emptypb.Empty, error)
 	AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error)
 	NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
@@ -157,6 +179,12 @@ func (UnimplementedRegistrationAuthorityServer) DeactivateRegistration(context.C
 }
 func (UnimplementedRegistrationAuthorityServer) DeactivateAuthorization(context.Context, *proto.Authorization) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateAuthorization not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) RevokeCertByApplicant(context.Context, *RevokeCertByApplicantRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeCertByApplicant not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) RevokeCertByKey(context.Context, *RevokeCertByKeyRequest) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeCertByKey not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AdministrativelyRevokeCertificate not implemented")
@@ -288,6 +316,42 @@ func _RegistrationAuthority_DeactivateAuthorization_Handler(srv interface{}, ctx
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistrationAuthority_RevokeCertByApplicant_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeCertByApplicantRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).RevokeCertByApplicant(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/ra.RegistrationAuthority/RevokeCertByApplicant",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).RevokeCertByApplicant(ctx, req.(*RevokeCertByApplicantRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RegistrationAuthority_RevokeCertByKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeCertByKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).RevokeCertByKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/ra.RegistrationAuthority/RevokeCertByKey",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).RevokeCertByKey(ctx, req.(*RevokeCertByKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _RegistrationAuthority_AdministrativelyRevokeCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AdministrativelyRevokeCertificateRequest)
 	if err := dec(in); err != nil {
@@ -372,6 +436,14 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateAuthorization",
 			Handler:    _RegistrationAuthority_DeactivateAuthorization_Handler,
+		},
+		{
+			MethodName: "RevokeCertByApplicant",
+			Handler:    _RegistrationAuthority_RevokeCertByApplicant_Handler,
+		},
+		{
+			MethodName: "RevokeCertByKey",
+			Handler:    _RegistrationAuthority_RevokeCertByKey_Handler,
 		},
 		{
 			MethodName: "AdministrativelyRevokeCertificate",

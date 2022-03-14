@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -3498,20 +3499,54 @@ rA==
 type mockSARevocation struct {
 	mocks.StorageAuthority
 
-	known *corepb.CertificateStatus
-	added *sapb.AddBlockedKeyRequest
+	known   *corepb.CertificateStatus
+	blocked []*sapb.AddBlockedKeyRequest
+	revoked map[string]int64
+}
+
+func newMockSARevocation(known *x509.Certificate, clk clock.Clock) *mockSARevocation {
+	return &mockSARevocation{
+		StorageAuthority: *mocks.NewStorageAuthority(clk),
+		known: &corepb.CertificateStatus{
+			Serial:   core.SerialToString(known.SerialNumber),
+			IssuerID: int64(issuance.GetIssuerNameID(known)),
+		},
+		blocked: make([]*sapb.AddBlockedKeyRequest, 0),
+		revoked: make(map[string]int64),
+	}
 }
 
 func (msar *mockSARevocation) AddBlockedKey(_ context.Context, req *sapb.AddBlockedKeyRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	msar.added = req
+	msar.blocked = append(msar.blocked, req)
 	return &emptypb.Empty{}, nil
 }
 
 func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	if req.Serial == msar.known.Serial {
+	if msar.known != nil && req.Serial == msar.known.Serial {
 		return msar.known, nil
 	}
 	return nil, fmt.Errorf("unknown certificate status")
+}
+
+func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	if _, present := msar.revoked[req.Serial]; present {
+		return nil, berrors.AlreadyRevokedError("already revoked")
+	}
+	msar.revoked[req.Serial] = req.Reason
+	msar.known.Status = string(core.OCSPStatusRevoked)
+	return &emptypb.Empty{}, nil
+}
+
+func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	reason, present := msar.revoked[req.Serial]
+	if !present {
+		return nil, errors.New("not already revoked")
+	}
+	if present && reason == ocsp.KeyCompromise {
+		return nil, berrors.AlreadyRevokedError("already revoked for keyCompromise")
+	}
+	msar.revoked[req.Serial] = req.Reason
+	return &emptypb.Empty{}, nil
 }
 
 type mockCAOCSP struct {
@@ -3529,11 +3564,9 @@ func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.Cal
 }
 
 func TestRevokerCertificateWithReg(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	mockSA := mockSARevocation{}
-	ra.SA = &mockSA
 	ra.CA = &mockCAOCSP{}
 	ra.purger = &mockPurger{}
 
@@ -3555,39 +3588,249 @@ func TestRevokerCertificateWithReg(t *testing.T) {
 	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
 		ic.ID(): ic,
 	}
-
 	// Revoking for an unspecified reason should work but not block the key.
+	mockSA := newMockSARevocation(cert, clk)
+	ra.SA = mockSA
 	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.Unspecified,
 		RegID: 0,
 	})
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
-	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
 	// Revoking for key comprommise should work and block the key.
+	mockSA = newMockSARevocation(cert, clk)
+	ra.SA = mockSA
 	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
 		Cert:  cert.Raw,
 		Code:  ocsp.KeyCompromise,
 		RegID: 0,
 	})
 	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
-	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
-	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
-	test.AssertEquals(t, mockSA.added.Source, "API")
-	test.Assert(t, mockSA.added.Comment == "", "Comment is not empty")
+	test.AssertEquals(t, len(mockSA.blocked), 1)
+	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
+	test.AssertEquals(t, mockSA.blocked[0].Source, "API")
+	test.AssertEquals(t, len(mockSA.blocked[0].Comment), 0)
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
 }
 
-func TestAdministrativelyRevokeCertificate(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
+func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	mockSA := mockSARevocation{}
-	ra.SA = &mockSA
+	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): false})
+	defer features.Reset()
+
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	_, cert := test.ThrowAwayCert(t, 1)
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): ic,
+	}
+	ra.SA = newMockSARevocation(cert, clk)
+
+	// Revoking without a regID should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 0,
+	})
+	test.AssertError(t, err, "should have failed with no RegID")
+	test.AssertContains(t, err.Error(), "incomplete")
+
+	// Revoking for keyCompromise should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.KeyCompromise,
+		RegID: 1,
+	})
+	test.AssertError(t, err, "should have failed with bad reasonCode")
+	test.AssertContains(t, err.Error(), "disallowed revocation reason")
+
+	// Revoking for a disallowed reason should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.CertificateHold,
+		RegID: 1,
+	})
+	test.AssertError(t, err, "should have failed with bad reasonCode")
+	test.AssertContains(t, err.Error(), "disallowed revocation reason")
+
+	// Revoking with the correct regID should succeed.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 1,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+
+	// Revoking an already-revoked serial should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 1,
+	})
+	test.AssertError(t, err, "should have failed with bad reasonCode")
+	test.AssertContains(t, err.Error(), "already revoked")
+}
+
+func TestRevokeCertByApplicant_Subscriber_Moz(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): true})
+	defer features.Reset()
+
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	_, cert := test.ThrowAwayCert(t, 1)
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): ic,
+	}
+	ra.SA = newMockSARevocation(cert, clk)
+
+	// Revoking without a regID should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 0,
+	})
+	test.AssertError(t, err, "should have failed with no RegID")
+	test.AssertContains(t, err.Error(), "incomplete")
+
+	// Revoking for a disallowed reason should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.CertificateHold,
+		RegID: 1,
+	})
+	test.AssertError(t, err, "should have failed with bad reasonCode")
+	test.AssertContains(t, err.Error(), "disallowed revocation reason")
+
+	// Revoking with the correct regID should succeed.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 1,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+
+	// Revoking an already-revoked serial should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 1,
+	})
+	test.AssertError(t, err, "should have failed with bad reasonCode")
+	test.AssertContains(t, err.Error(), "already revoked")
+}
+
+func TestRevokeCertByApplicant_Controller(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): false})
+	defer features.Reset()
+
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	_, cert := test.ThrowAwayCert(t, 1)
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): ic,
+	}
+	mockSA := newMockSARevocation(cert, clk)
+	ra.SA = mockSA
+
+	// Revoking with the wrong regID should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 2,
+	})
+	test.AssertError(t, err, "should have failed with wrong RegID")
+	test.AssertContains(t, err.Error(), "requester does not control all names")
+
+	// Revoking with a different RegID that has valid authorizations should succeed.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 5,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.Unspecified))
+}
+
+func TestRevokeCertByApplicant_Controller_Moz(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): true})
+	defer features.Reset()
+
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	_, cert := test.ThrowAwayCert(t, 1)
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): ic,
+	}
+	mockSA := newMockSARevocation(cert, clk)
+	ra.SA = mockSA
+
+	// Revoking with the wrong regID should fail.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 2,
+	})
+	test.AssertError(t, err, "should have failed with wrong RegID")
+	test.AssertContains(t, err.Error(), "requester does not control all names")
+
+	// Revoking with a different RegID that has valid authorizations should succeed,
+	// but override the revocation reason to cessationOfOperation.
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 5,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.CessationOfOperation))
+}
+
+func TestRevokeCertByKey(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): false})
+	defer features.Reset()
+
 	ra.CA = &mockCAOCSP{}
 	ra.purger = &mockPurger{}
 
@@ -3609,10 +3852,155 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
 		ic.ID(): ic,
 	}
-	mockSA.known = &corepb.CertificateStatus{
-		Serial:   core.SerialToString(cert.SerialNumber),
-		IssuerID: int64(ic.NameID()),
+	mockSA := newMockSARevocation(cert, clk)
+	ra.SA = mockSA
+
+	// Revoking for a forbidden reason should fail.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.CACompromise,
+	})
+	test.AssertError(t, err, "should have failed")
+
+	// Revoking for any reason should work and preserve the requested reason.
+	// It should not block the key.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.Unspecified,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.Unspecified))
+
+	// Re-revoking for the same reason should fail.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.Unspecified,
+	})
+	test.AssertError(t, err, "should have failed")
+
+	// Re-revoking for keyCompromise should succeed, update the reason, and block
+	// the key.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.KeyCompromise,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	test.AssertEquals(t, len(mockSA.blocked), 1)
+	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
+	test.AssertEquals(t, mockSA.blocked[0].Source, "API")
+	test.AssertEquals(t, len(mockSA.blocked[0].Comment), 0)
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.KeyCompromise))
+
+	// Re-revoking should fail because it is already revoked for keyCompromise.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.Unspecified,
+	})
+	test.AssertError(t, err, "should have failed")
+
+	// Re-revoking even for keyCompromise should fail for the same reason.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.KeyCompromise,
+	})
+	test.AssertError(t, err, "should have failed")
+}
+
+func TestRevokeCertByKey_Moz(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): true})
+	defer features.Reset()
+
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+	digest, err := core.KeyDigest(k.Public())
+	test.AssertNotError(t, err, "core.KeyDigest failed")
+
+	template := x509.Certificate{SerialNumber: big.NewInt(257)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+	cert, err := x509.ParseCertificate(der)
+	test.AssertNotError(t, err, "x509.ParseCertificate failed")
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): ic,
 	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): ic,
+	}
+	mockSA := newMockSARevocation(cert, clk)
+	ra.SA = mockSA
+
+	// Revoking should work, but override the requested reason and block the key.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.Unspecified,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	test.AssertEquals(t, len(mockSA.blocked), 1)
+	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
+	test.AssertEquals(t, mockSA.blocked[0].Source, "API")
+	test.AssertEquals(t, len(mockSA.blocked[0].Comment), 0)
+	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.KeyCompromise))
+
+	// Re-revoking should fail, because it is already revoked for keyCompromise.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+	})
+	test.AssertError(t, err, "should have failed")
+
+	// Reset, revoke for some other reason, and try again.
+	mockSA.revoked = make(map[string]int64)
+	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
+		Cert:  cert.Raw,
+		Code:  ocsp.Unspecified,
+		RegID: 1,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+	})
+	test.AssertNotError(t, err, "should have succeeded")
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+	})
+	test.AssertError(t, err, "should have failed")
+}
+
+func TestAdministrativelyRevokeCertificate(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.CA = &mockCAOCSP{}
+	ra.purger = &mockPurger{}
+
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+	digest, err := core.KeyDigest(k.Public())
+	test.AssertNotError(t, err, "core.KeyDigest failed")
+
+	template := x509.Certificate{SerialNumber: big.NewInt(257)}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
+	test.AssertNotError(t, err, "x509.CreateCertificate failed")
+	cert, err := x509.ParseCertificate(der)
+	test.AssertNotError(t, err, "x509.ParseCertificate failed")
+	ic, err := issuance.NewCertificate(cert)
+	test.AssertNotError(t, err, "failed to create issuer cert")
+	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
+		ic.NameID(): ic,
+	}
+	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
+		ic.ID(): ic,
+	}
+	mockSA := newMockSARevocation(cert, clk)
+	ra.SA = mockSA
 
 	// Revoking with an empty request should fail immediately.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{})
@@ -3641,6 +4029,14 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with empty string for `AdminName`")
 
+	// Revoking for a forbidden reason should fail immediately.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Cert:      cert.Raw,
+		Code:      ocsp.CertificateHold,
+		AdminName: "root",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with forbidden revocation reason")
+
 	// Revoking a cert for an unspecified reason should work but not block the key.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
@@ -3648,37 +4044,39 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 		AdminName: "root",
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
-	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
 
 	// Revoking a serial for an unspecified reason should work but not block the key.
+	mockSA.revoked = make(map[string]int64)
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    core.SerialToString(cert.SerialNumber),
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
-	test.Assert(t, mockSA.added == nil, "blocked key was added when reason was not keyCompromise")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
 	// Revoking a cert for key compromise should work and block the key.
+	mockSA.revoked = make(map[string]int64)
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
 		Code:      ocsp.KeyCompromise,
 		AdminName: "root",
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
-	test.Assert(t, mockSA.added != nil, "blocked key was not added when reason was keyCompromise")
-	test.Assert(t, bytes.Equal(digest[:], mockSA.added.KeyHash), "key hash mismatch")
-	test.AssertEquals(t, mockSA.added.Source, "admin-revoker")
-	test.Assert(t, mockSA.added.Comment != "", "Comment is nil")
-	test.AssertEquals(t, mockSA.added.Comment, "revoked by root")
+	test.AssertEquals(t, len(mockSA.blocked), 1)
+	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
+	test.AssertEquals(t, mockSA.blocked[0].Source, "admin-revoker")
+	test.AssertEquals(t, mockSA.blocked[0].Comment, "revoked by root")
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
 
 	// Revoking a serial for key compromise should fail because we don't have the pubkey to block.
+	mockSA.revoked = make(map[string]int64)
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    core.SerialToString(cert.SerialNumber),
 		Code:      ocsp.KeyCompromise,
