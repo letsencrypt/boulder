@@ -28,8 +28,8 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -77,7 +77,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("failed to load issuers: %s", err)
 	}
-	sa, err := NewSQLStorageAuthority(dbMap, dbMap, mocks.NewRocspWritingClient(true), rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	sa, err := NewSQLStorageAuthority(dbMap, dbMap, rocsp.NewMockWriteSucceedClient(), rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

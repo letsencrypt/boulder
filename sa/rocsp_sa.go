@@ -7,12 +7,11 @@ import (
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 )
 
-type RocspWriteSource interface {
+type rocspWriter interface {
 	StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error
 }
 
-// storeOCSPRedis spawns a goroutine to store an OCSP response in a redis
-// cluster returning errors on an error channel.
+// storeOCSPRedis stores an OCSP response in a redis cluster.
 func (ssa *SQLStorageAuthority) storeOCSPRedis(ctx context.Context, resp []byte, issuerID int64, ttl time.Duration) error {
 	shortIssuerID, err := rocsp_config.FindIssuerByID(issuerID, ssa.shortIssuers)
 	if err != nil {

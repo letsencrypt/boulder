@@ -43,7 +43,7 @@ type SQLStorageAuthority struct {
 	dbReadOnlyMap *db.WrappedMap
 
 	// Redis client for storing OCSP responses in Redis.
-	rocspWriteClient RocspWriteSource
+	rocspWriteClient rocspWriter
 
 	// Short issuer map used by rocsp.
 	shortIssuers []rocsp_config.ShortIDIssuer
@@ -89,7 +89,7 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
-	rocspWriteClient RocspWriteSource,
+	rocspWriteClient rocspWriter,
 	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,

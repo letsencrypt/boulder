@@ -543,28 +543,6 @@ func (sa *StorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlocked
 	return &sapb.Exists{Exists: false}, nil
 }
 
-// RocspWritingClient is a mock
-type RocspWritingClient struct {
-	StoreReponseReturnError error
-}
-
-// StoreResponse mocks a rocsp.StoreResponse method and returns nil or an
-// error depending on the desired state.
-func (r RocspWritingClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
-	return r.StoreReponseReturnError
-}
-
-// NewRocspWritingClient returns a mock RocspWritingClient. The
-// StoreResponse method will succeed or fail based on the bool value
-// provided. Succeed (true), Fail (false)
-func NewRocspWritingClient(succeed bool) RocspWritingClient {
-	if succeed {
-		return RocspWritingClient{nil}
-	} else {
-		return RocspWritingClient{StoreReponseReturnError: fmt.Errorf("could not store response")}
-	}
-}
-
 // Publisher is a mock
 type PublisherClient struct {
 	// empty

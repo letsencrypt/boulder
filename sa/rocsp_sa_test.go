@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -32,8 +32,7 @@ func TestStoreOCSPRedisInvalidIssuer(t *testing.T) {
 func TestStoreOCSPRedisFail(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-	// sa.rocspWriteClient = rocspMockClient{StoreReponseReturnError: fmt.Errorf("could not store response")}
-	sa.rocspWriteClient = mocks.NewRocspWritingClient(false)
+	sa.rocspWriteClient = rocsp.NewMockWriteFailClient()
 	response := []byte{0, 0, 1}
 	ctx := context.Background()
 	err := sa.storeOCSPRedis(ctx, response, 58923463773186183, time.Hour)
