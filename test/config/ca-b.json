@@ -84,8 +84,11 @@
     "serialPrefix": 255,
     "maxNames": 100,
     "lifespanOCSP": "96h",
-    "weakKeyFile": "test/example-weak-keys.json",
-    "blockedKeyFile": "test/example-blocked-keys.yaml",
+    "goodkey": {
+      "weakKeyFile": "test/example-weak-keys.json",
+      "blockedKeyFile": "test/example-blocked-keys.yaml",
+      "fermatRounds": 100
+    },
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "ocspLogMaxLength": 4000,
     "ocspLogPeriod": "500ms",

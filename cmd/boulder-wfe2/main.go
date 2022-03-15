@@ -105,10 +105,6 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
-		// TODO(#5851): Remove this.
-		BlockedKeyFile string
-
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
 		StaleTimeout cmd.ConfigDuration
 
@@ -394,11 +390,6 @@ func main() {
 
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
 
-	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	// The WFE does not do weak key checking, just blocked key checking.
-	if c.WFE.GoodKey.BlockedKeyFile == "" && c.WFE.BlockedKeyFile != "" {
-		c.WFE.GoodKey.BlockedKeyFile = c.WFE.BlockedKeyFile
-	}
 	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
