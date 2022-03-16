@@ -101,8 +101,8 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &RequestEvent{
 		RealIP:    realIP,
 		Method:    r.Method,
-		UserAgent: r.Header.Get("TLS-Version"),
-		TLS:       r.Header.Get("User-Agent"),
+		TLS:       r.Header.Get("TLS-Version"),
+		UserAgent: r.Header.Get("User-Agent"),
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}),
 	}
