@@ -146,5 +146,5 @@ func AlreadyRevokedError(msg string, args ...interface{}) error {
 }
 
 func BadRevocationReasonError(reason int64) error {
-	return New(AlreadyRevoked, "disallowed revocation reason: %d", reason)
+	return New(BadRevocationReason, "disallowed revocation reason: %d", reason)
 }

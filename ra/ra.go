@@ -2132,7 +2132,12 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// than keyCompromise.
 	err = revokeErr
 	if err != nil {
-		if !errors.Is(err, berrors.AlreadyRevoked) || reason != ocsp.KeyCompromise {
+		// Immediately error out, rather than trying re-revocation, if the error was
+		// anything other than AlreadyRevoked, if the requested reason is anything
+		// other than keyCompromise, or if we're not yet using the new logic.
+		if !errors.Is(err, berrors.AlreadyRevoked) ||
+			reason != ocsp.KeyCompromise ||
+			!features.Enabled(features.MozRevocationReasons) {
 			return nil, err
 		}
 		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
