@@ -346,16 +346,67 @@ func TestMozRevocation(t *testing.T) {
 	}
 }
 
-// TestDoubleRevocation verifies that a certificate can have its revocation
+// TestDoubleRevocationOff verifies that a certificate cannot have its
+// revocation reason updated (after the first time it has been revoked)
+// for any reason.
+func TestDoubleRevocationOff(t *testing.T) {
+	t.Parallel()
+
+	// This test is gated on lacking the AllowReRevocation feature flag.
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		return
+	}
+
+	// Create a base account to use for revocation tests.
+	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+
+	client, err := makeClient()
+	test.AssertNotError(t, err, "creating acme client")
+
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "creating random cert key")
+
+	domain := random_domain()
+
+	res, err := authAndIssue(client, certKey, []string{domain})
+	test.AssertNotError(t, err, "authAndIssue failed")
+	cert := res.certs[0]
+
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
+	_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+	test.AssertNotError(t, err, "requesting OCSP for cert")
+
+	// Have the original subscriber revoke the cert for any reason.
+	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 0)
+	test.AssertNotError(t, err, "revocation should have succeeded")
+
+	// Re-revoking for the same reason should fail.
+	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 0)
+	test.AssertError(t, err, "re-revocation should have succeeded")
+
+	// Re-revoking for a different reason should fail.
+	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 3)
+	test.AssertError(t, err, "re-revocation should have succeeded")
+
+	// Re-revoking for keyCompromise should fail.
+	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 1)
+	test.AssertError(t, err, "re-revocation should have succeeded")
+
+	// Re-revoking for keyCompromise using the cert key should fail.
+	err = client.RevokeCertificate(client.Account, cert, certKey, 1)
+	test.AssertError(t, err, "re-revocation should have succeeded")
+}
+
+// TestDoubleRevocationOn verifies that a certificate can have its revocation
 // information updated only when both of the following are true:
 // a) The certificate was not initially revoked for reason keyCompromise; and
 // b) The second request is authenticated using the cert's keypair.
 // In which case the revocation reason (but not revocation date) will be
 // updated to be keyCompromise.
-func TestDoubleRevocation(t *testing.T) {
+func TestDoubleRevocationOn(t *testing.T) {
 	t.Parallel()
 
-	// This test is gated on the MozRevocationReasons feature flag.
+	// This test is gated on the AllowReRevocation feature flag.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		return
 	}
@@ -387,7 +438,6 @@ func TestDoubleRevocation(t *testing.T) {
 
 	for i, tc := range testCases {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			t.Logf("Running case %d", i)
 			issueClient, err := makeClient()
 			test.AssertNotError(t, err, "creating acme client")
 
@@ -400,14 +450,10 @@ func TestDoubleRevocation(t *testing.T) {
 			test.AssertNotError(t, err, "authAndIssue failed")
 			cert := res.certs[0]
 
-			t.Logf("Issuance complete")
-
 			// Initially, the cert should have a Good OCSP response.
 			ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for precert")
-
-			t.Logf("OCSP Good")
 
 			// Set up the account and key that we'll use to revoke the cert.
 			var revokeClient *client
@@ -445,8 +491,6 @@ func TestDoubleRevocation(t *testing.T) {
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 
-			t.Logf("Initial revocation complete")
-
 			// Set up the account and key that we'll use to *re*-revoke the cert.
 			switch tc.m2 {
 			case byAccount:
@@ -473,8 +517,6 @@ func TestDoubleRevocation(t *testing.T) {
 				revokeKey,
 				tc.r2,
 			)
-
-			t.Logf("Second revocation request done")
 
 			switch tc.ee {
 			case true:

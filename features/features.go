@@ -59,6 +59,11 @@ const (
 	GetAuthzUseIndex
 	// Check the failed authorization limit before doing authz reuse.
 	CheckFailedAuthorizationsFirst
+	// AllowReRevocation causes the RA to allow the revocation reason of an
+	// already-revoked certificate to be updated to `keyCompromise` from any
+	// other reason if that compromise is demonstrated by making the second
+	// revocation request signed by the certificate keypair.
+	AllowReRevocation
 	// MozRevocationReasons causes the RA to enforce the following upcoming
 	// Mozilla policies regarding revocation:
 	// - A subscriber can request that their certificate be revoked with reason
@@ -97,6 +102,7 @@ var features = map[FeatureFlag]bool{
 	GetAuthzReadOnly:               false,
 	GetAuthzUseIndex:               false,
 	CheckFailedAuthorizationsFirst: false,
+	AllowReRevocation:              false,
 	MozRevocationReasons:           false,
 }
 

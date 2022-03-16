@@ -2111,7 +2111,17 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// to the blocked keys list is a worse failure than failing to revoke in the
 	// first place, because it means that bad-key-revoker won't revoke the cert
 	// anyway.
-	if reason == ocsp.KeyCompromise {
+	var shouldBlock bool
+	if features.Enabled(features.AllowReRevocation) {
+		// If we're allowing re-revocation, then block the key for all keyCompromise
+		// requests, no matter whether the revocation itself succeeded or failed.
+		shouldBlock = reason == ocsp.KeyCompromise
+	} else {
+		// Otherwise, only block the key if the revocation above succeeded, or
+		// failed for a reason other than "already revoked".
+		shouldBlock = (reason == ocsp.KeyCompromise && !errors.Is(revokeErr, berrors.AlreadyRevoked))
+	}
+	if shouldBlock {
 		var digest core.Sha256Digest
 		digest, err = core.KeyDigest(cert.PublicKey)
 		if err != nil {
@@ -2137,7 +2147,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		// other than keyCompromise, or if we're not yet using the new logic.
 		if !errors.Is(err, berrors.AlreadyRevoked) ||
 			reason != ocsp.KeyCompromise ||
-			!features.Enabled(features.MozRevocationReasons) {
+			!features.Enabled(features.AllowReRevocation) {
 			return nil, err
 		}
 		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
