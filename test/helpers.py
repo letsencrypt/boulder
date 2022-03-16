@@ -120,7 +120,7 @@ def reset_akamai_purges():
     requests.post("http://localhost:6789/debug/reset-purges", data="{}")
 
 def verify_akamai_purge():
-    deadline = time.time() + 0.25
+    deadline = time.time() + 0.5
     while True:
         time.sleep(0.05)
         if time.time() > deadline:
