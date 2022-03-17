@@ -3,6 +3,10 @@
     "debugAddr": ":9666",
     "purgeRetries": 10,
     "purgeRetryBackoff": "50ms",
+    "throughput": {
+      "responsesPerBatch": 2,
+      "purgeBatchEvery": "32ms"
+    },
     "baseURL": "http://localhost:6789",
     "clientToken": "its-a-token",
     "clientSecret": "its-a-secret",
