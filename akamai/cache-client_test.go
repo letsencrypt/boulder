@@ -259,30 +259,30 @@ func TestBigBatchPurge(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 
-	var urls [][]string
+	var queueEntries [][]string
 	for i := 0; i < 250; i++ {
-		urls = append(urls, []string{fmt.Sprintf("http://test.com/%d", i)})
+		queueEntries = append(queueEntries, []string{fmt.Sprintf("http://test.com/%d", i)})
 	}
 
-	stoppedAt, err := client.Purge(urls)
+	stoppedAt, err := client.Purge(queueEntries)
 	test.AssertNotError(t, err, "Purge failed with 201 response")
 	test.AssertEquals(t, stoppedAt, 250)
 
-	// Add a malformed URL.
-	malformedURL := []string{"http:/test.com"}
-	urls = append(urls, malformedURL)
+	// Add an entry with a malformed URL.
+	entryWithMalformedURL := []string{"http:/test.com"}
+	queueEntries = append(queueEntries, entryWithMalformedURL)
 
 	// Add 10 more valid entries.
 	for i := 0; i < 10; i++ {
-		urls = append(urls, []string{fmt.Sprintf("http://test.com/%d", i)})
+		queueEntries = append(queueEntries, []string{fmt.Sprintf("http://test.com/%d", i)})
 	}
 
 	// Should stop at URL entry 250 ('http:/test.com') of 261 as this is the
 	// batch that results in errFatal.
-	stoppedAt, err = client.Purge(urls)
+	stoppedAt, err = client.Purge(queueEntries)
 	test.AssertError(t, err, "Purge succeeded with a malformed URL")
 	test.AssertErrorIs(t, err, errFatal)
-	test.AssertDeepEquals(t, urls[stoppedAt], malformedURL)
+	test.AssertDeepEquals(t, queueEntries[stoppedAt], entryWithMalformedURL)
 	test.AssertEquals(t, stoppedAt, 250)
 }
 

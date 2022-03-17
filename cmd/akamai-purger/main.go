@@ -171,9 +171,9 @@ func (c *Config) useDeprecatedSettings() {
 }
 
 // akamaiPurger is a mutex protected container for a gRPC server which receives
-// requests to purge the URLs of OCSP responses cached by Akamai, stores these
-// URLs as a slice in an inner slice, and dispatches them to Akamai's Fast Purge
-// API in batches.
+// requests to purge the URLs associated with OCSP responses cached by Akamai,
+// stores these URLs as a slice in an inner slice, and dispatches them to
+// Akamai's Fast Purge API in batches.
 type akamaiPurger struct {
 	sync.Mutex
 	akamaipb.UnimplementedAkamaiPurgerServer
@@ -194,23 +194,23 @@ func (ap *akamaiPurger) len() int {
 
 func (ap *akamaiPurger) purge() error {
 	ap.Lock()
-	entries := ap.toPurge[:]
+	queueEntries := ap.toPurge[:]
 	ap.toPurge = [][]string{}
 	ap.Unlock()
-	if len(entries) == 0 {
+	if len(queueEntries) == 0 {
 		return nil
 	}
 
-	stoppedAt, err := ap.client.Purge(entries)
+	stoppedAt, err := ap.client.Purge(queueEntries)
 	if err != nil {
 		ap.Lock()
 
-		// Add the remaining URLs back, but at the end of the queue. If somehow
+		// Add the remaining queue entries back, but at the end of the queue. If somehow
 		// there's a URL which repeatedly results in error, it won't block the
 		// entire queue, only a single batch.
-		ap.toPurge = append(ap.toPurge, entries[stoppedAt:]...)
+		ap.toPurge = append(ap.toPurge, queueEntries[stoppedAt:]...)
 		ap.Unlock()
-		ap.log.Errf("Failed to purge %d URLs: %s", len(entries), err)
+		ap.log.Errf("Failed to purge cached OCSP responses for %d certificates: %s", len(queueEntries), err)
 		return err
 	}
 	return nil
@@ -349,17 +349,17 @@ func main() {
 	scope.MustRegister(gaugePurgeQueueLength)
 
 	if manualMode {
-		purgeByTag(ccu, *tag, *tagFile, logger)
+		manualPurge(ccu, *tag, *tagFile, logger)
 	} else {
-		startAkamaiPurger(c, ap, logger, scope)
+		daemon(c, ap, logger, scope)
 	}
 }
 
-// purgeByTag is called ad-hoc to purge either a single tag, or a batch of tags,
+// manualPurge is called ad-hoc to purge either a single tag, or a batch of tags,
 // passed on the CLI. All tags will be added to a single request, please ensure
 // that you don't violate the Fast-Purge API limits for tags detailed here:
 // https://techdocs.akamai.com/purge-cache/reference/rate-limiting
-func purgeByTag(purgeClient *akamai.CachePurgeClient, tag, tagFile string, logger blog.Logger) {
+func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string, logger blog.Logger) {
 	var tags []string
 	if tag != "" {
 		tags = []string{tag}
@@ -373,8 +373,8 @@ func purgeByTag(purgeClient *akamai.CachePurgeClient, tag, tagFile string, logge
 	cmd.FailOnError(err, "Purging tags")
 }
 
-// startAkamaiPurger initializes the akamai-purger gRPC service.
-func startAkamaiPurger(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
+// daemon initializes the akamai-purger gRPC service.
+func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
 	clk := cmd.Clock()
 
 	tlsConfig, err := c.AkamaiPurger.TLS.Load()

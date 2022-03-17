@@ -186,8 +186,8 @@ func (cpc *CachePurgeClient) PurgeTags(tags []string) error {
 	return cpc.authedRequest(endpoint, purgeReq)
 }
 
-// sendPurgeRequestForURLs constructs and dispatches a request to purge a batch of URLs.
-func (cpc *CachePurgeClient) sendPurgeRequestForURLs(urls []string) error {
+// purgeURLs constructs and dispatches a request to purge a batch of URLs.
+func (cpc *CachePurgeClient) purgeURLs(urls []string) error {
 	purgeReq := v3PurgeRequest{
 		Objects: urls,
 	}
@@ -283,17 +283,17 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	return nil
 }
 
-func (cpc *CachePurgeClient) purgeURLs(responses [][]string) error {
+func (cpc *CachePurgeClient) purgeBatch(queueEntries [][]string) error {
+	var urls []string
+	for _, response := range queueEntries {
+		urls = append(urls, response...)
+	}
+
 	successful := false
 	for i := 0; i <= cpc.retries; i++ {
 		cpc.clk.Sleep(core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3))
 
-		var urls []string
-		for _, response := range responses {
-			urls = append(urls, response...)
-		}
-
-		err := cpc.sendPurgeRequestForURLs(urls)
+		err := cpc.purgeURLs(urls)
 		if err != nil {
 			if errors.Is(err, errFatal) {
 				cpc.purges.WithLabelValues("fatal failure").Inc()
@@ -316,12 +316,12 @@ func (cpc *CachePurgeClient) purgeURLs(responses [][]string) error {
 	return nil
 }
 
-// Purge dispatches the provided URLs as batched requests to the Akamai
+// Purge dispatches the provided queue entries in batched requests to the Akamai
 // Fast-Purge API. Requests will be attempted cpc.retries number of times before
 // giving up and returning ErrAllRetriesFailed and the beginning index position
 // of the batch where the failure was encountered.
-func (cpc *CachePurgeClient) Purge(entries [][]string) (int, error) {
-	totalEntries := len(entries)
+func (cpc *CachePurgeClient) Purge(queueEntries [][]string) (int, error) {
+	totalEntries := len(queueEntries)
 	for batchBegin := 0; batchBegin < totalEntries; {
 		batchEnd := batchBegin + cpc.responsesPerBatch
 		if batchEnd > totalEntries {
@@ -329,7 +329,7 @@ func (cpc *CachePurgeClient) Purge(entries [][]string) (int, error) {
 			batchEnd = totalEntries
 		}
 
-		err := cpc.purgeURLs(entries[batchBegin:batchEnd])
+		err := cpc.purgeBatch(queueEntries[batchBegin:batchEnd])
 		if err != nil {
 			return batchBegin, err
 		}
