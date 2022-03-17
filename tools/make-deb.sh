@@ -22,8 +22,8 @@ sudo apt-get install -y --no-install-recommends \
 GO_VERSION=$(grep "BOULDER_TOOLS_TAG:-" docker-compose.yml | sed -e 's/.*-go//' -e 's/_.*//')
 
 # Download and unpack our production go version.
-wget -O go.tgz "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz"
-sudo tar -C /usr/local -xzf go.tgz
+$(dirname -- "${0}")/fetch-and-verify-go.sh "${GO_VERSION}"
+sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
 # Install fpm, this is used in our Makefile to package Boulder as a deb or rpm.
