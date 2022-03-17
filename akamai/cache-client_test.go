@@ -25,10 +25,10 @@ func TestMakeAuthHeader(t *testing.T) {
 		"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=",
 		"akab-access-token-xxx-xxxxxxxxxxxxxxxx",
 		"production",
+		time.Millisecond*32,
 		0,
 		2,
 		time.Second,
-		time.Millisecond*32,
 		log,
 		stats,
 	)
@@ -131,10 +131,10 @@ func TestV3Purge(t *testing.T) {
 		"secret",
 		"accessToken",
 		"production",
+		time.Millisecond*32,
 		2,
 		3,
 		time.Second,
-		time.Millisecond*32,
 		blog.NewMock(),
 		metrics.NoopRegisterer,
 	)
@@ -170,10 +170,10 @@ func TestPurgeTags(t *testing.T) {
 		"secret",
 		"accessToken",
 		"production",
+		time.Millisecond*32,
 		2,
 		3,
 		time.Second,
-		time.Millisecond*32,
 		blog.NewMock(),
 		metrics.NoopRegisterer,
 	)
@@ -197,10 +197,10 @@ func TestNewCachePurgeClient(t *testing.T) {
 		"secret",
 		"accessToken",
 		"fake",
+		time.Millisecond*32,
 		2,
 		3,
 		time.Second,
-		time.Millisecond*32,
 		blog.NewMock(),
 		metrics.NoopRegisterer,
 	)
@@ -213,10 +213,10 @@ func TestNewCachePurgeClient(t *testing.T) {
 		"secret",
 		"accessToken",
 		"staging",
+		time.Millisecond*32,
 		2,
 		3,
 		time.Second,
-		time.Millisecond*32,
 		blog.NewMock(),
 		metrics.NoopRegisterer,
 	)
@@ -229,10 +229,10 @@ func TestNewCachePurgeClient(t *testing.T) {
 		"secret",
 		"accessToken",
 		"staging",
+		time.Millisecond*32,
 		2,
 		3,
 		time.Second,
-		time.Millisecond*32,
 		blog.NewMock(),
 		metrics.NoopRegisterer,
 	)
@@ -250,10 +250,10 @@ func TestBigBatchPurge(t *testing.T) {
 		"secret",
 		"accessToken",
 		"production",
+		time.Millisecond*32,
 		2,
 		3,
 		time.Second,
-		time.Millisecond*32,
 		log,
 		metrics.NoopRegisterer,
 	)
@@ -269,15 +269,20 @@ func TestBigBatchPurge(t *testing.T) {
 	test.AssertEquals(t, stoppedAt, 250)
 
 	// Add a malformed URL.
-	urls = append(urls, []string{"http:/test.com"})
+	malformedURL := []string{"http:/test.com"}
+	urls = append(urls, malformedURL)
 
 	// Add 10 more valid entries.
 	for i := 0; i < 10; i++ {
 		urls = append(urls, []string{fmt.Sprintf("http://test.com/%d", i)})
 	}
 
+	// Should stop at URL entry 250 ('http:/test.com') of 261 as this is the
+	// batch that results in errFatal.
 	stoppedAt, err = client.Purge(urls)
 	test.AssertError(t, err, "Purge succeeded with a malformed URL")
+	test.AssertErrorIs(t, err, errFatal)
+	test.AssertDeepEquals(t, urls[stoppedAt], malformedURL)
 	test.AssertEquals(t, stoppedAt, 250)
 }
 

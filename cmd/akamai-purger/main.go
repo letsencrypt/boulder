@@ -25,19 +25,31 @@ import (
 
 const (
 	// TODO(#6003) remove entirely.
-	DeprecatedURLBatchSize = 33
+	DeprecatedResponsesPerBatch = 33
+
+	// akamaiBytesPerResponse is the total bytes of all 3 URLs associated with a
+	// single OCSP response cached by Akamai. Each response is composed of 3
+	// URLs; the POST Cache Key URL is 61 bytes and the encoded and unencoded
+	// GET URLs are 163 bytes and 151 bytes respectively. This totals 375 bytes,
+	// which we round up to 400.
+	akamaiBytesPerResponse = 400
+
+	// defaultResponsesPerBatch is the number of responses sent in each request
+	// to the Akamai Fast-Purge API when the configuration key
+	// 'responsesPerBatch' is left unspecified in the 'throughput' mapping of
+	// the configuration file.
+	defaultResponsesPerBatch = 2
+
+	// defaultResponsesPerBatch duration waited between requests sent to the
+	// Akamai Fast-Purge API when the configuration key 'purgBatchEvery' is left
+	// unspecified in the 'throughput' mapping of the configuration file.
+	defaultPurgeBatchEvery = time.Millisecond * 32
 
 	// defaultQueueSize is the size of the queue when the configuration key
 	// 'maxQueueSize' is unspecified. A queue size of 1.25M cached OCSP
 	// responses, assuming 3 URLs per request, is about 6 hours of work using
-	// default settings.
-	defaultQueueSize         = 1250000
-	defaultResponsesPerBatch = 2
-	defaultPurgeBatchEvery   = time.Millisecond * 32
-
-	// akamaiBytesPerResponse is the total bytes of all 3 URLs of cached OCSP responses associated with
-	// each certificate.
-	akamaiBytesPerResponse = 400
+	// the default settings detailed above.
+	defaultQueueSize = 1250000
 
 	// akamaiBytesPerReqLimit is the limit of bytes allowed in a single request
 	// to the Fast-Purge API. With a limit of no more than 50,000 bytes, we
@@ -49,7 +61,7 @@ const (
 	// we're allowed to make to the Fast-Purge API.
 	akamaiAPIReqPerSecondLimit = 50
 
-	// akamaiAPIReqPerSecondLimit is the limit of URLs, sent per second, that
+	// akamaiURLsPerSecondLimit is the limit of URLs, sent per second, that
 	// we're allowed to make to the Fast-Purge API.
 	akamaiURLsPerSecondLimit = 200
 )
@@ -95,21 +107,21 @@ func (t *Throughput) validate() error {
 	// Send no more than the 50,000 bytes of objects we’re allotted per request.
 	bytesPerRequest := (t.ResponsesPerBatch * akamaiBytesPerResponse)
 	if bytesPerRequest > akamaiBytesPerReqLimit {
-		return fmt.Errorf("configuration exceeds Akamai's bytes per request limit (%d bytes) by %d",
+		return fmt.Errorf("config exceeds Akamai's bytes per request limit (%d bytes) by %d",
 			akamaiBytesPerReqLimit, bytesPerRequest-akamaiBytesPerReqLimit)
 	}
 
 	// Send no more than the 50 API requests we’re allotted each second.
 	requestsPerSecond := int(time.Second / t.PurgeBatchEvery.Duration)
 	if requestsPerSecond > akamaiAPIReqPerSecondLimit {
-		return fmt.Errorf("configuration exceeds Akamai's requests per second limit (%d requests) by %d",
+		return fmt.Errorf("config exceeds Akamai's requests per second limit (%d requests) by %d",
 			akamaiAPIReqPerSecondLimit, requestsPerSecond-akamaiAPIReqPerSecondLimit)
 	}
 
 	// Purge no more than the 200 URLs we’re allotted each second.
 	urlsPurgedPerSecond := requestsPerSecond * (t.ResponsesPerBatch * 3)
 	if urlsPurgedPerSecond > akamaiURLsPerSecondLimit {
-		return fmt.Errorf("configuration exceeds Akamai's URLs purged per second limit (%d URLs) by %d",
+		return fmt.Errorf("config exceeds Akamai's URLs per second limit (%d URLs) by %d",
 			akamaiURLsPerSecondLimit, urlsPurgedPerSecond-akamaiURLsPerSecondLimit)
 	}
 	return nil
@@ -119,8 +131,10 @@ type Config struct {
 	AkamaiPurger struct {
 		cmd.ServiceConfig
 
-		// PurgeInterval is DEPRECATED in favor of the 'PurgeBatchEvery' field
-		// of the 'Throughput' struct. TODO(#6003) remove this field.
+		// PurgeInterval is the duration waited between dispatching an Akamai
+		// purge request containing 'DepracatedResponsesPerBatch' * 3 URLs.
+		// Deprecated: TODO(#6003) this field is can be removed in favor of the
+		// 'PurgeBatchEvery' field of the 'Throughput' struct.
 		PurgeInterval cmd.ConfigDuration
 
 		// MaxQueueSize is the maximum size of the purger queue. If this value
@@ -153,7 +167,7 @@ type Config struct {
 // TODO(#6003) remove entirely.
 func (c *Config) useDeprecatedSettings() {
 	c.AkamaiPurger.Throughput.PurgeBatchEvery = c.AkamaiPurger.PurgeInterval
-	c.AkamaiPurger.Throughput.ResponsesPerBatch = DeprecatedURLBatchSize
+	c.AkamaiPurger.Throughput.ResponsesPerBatch = DeprecatedResponsesPerBatch
 }
 
 // akamaiPurger is a mutex protected container for a gRPC server which receives
@@ -310,10 +324,10 @@ func main() {
 		apc.ClientSecret,
 		apc.AccessToken,
 		apc.V3Network,
+		apc.Throughput.PurgeBatchEvery.Duration,
 		apc.Throughput.ResponsesPerBatch,
 		apc.PurgeRetries,
 		apc.PurgeRetryBackoff.Duration,
-		apc.Throughput.PurgeBatchEvery.Duration,
 		logger,
 		scope,
 	)

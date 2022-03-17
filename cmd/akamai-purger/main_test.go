@@ -15,9 +15,13 @@ func TestThroughput_validate(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-		{"deployability defaults",
+		// TODO(#6003) This test case can be removed entirely. It was added to
+		// prove that this change met our deployability guidelines. The existing
+		// test/config couldn't modified to reflect production without adding 10
+		// seconds of wait to verify_akamai_purge() in test/helpers.py.
+		{"production configuration prior to this change",
 			fields{
-				ResponsesPerBatch: 33,
+				ResponsesPerBatch: DeprecatedResponsesPerBatch,
 				PurgeBatchEvery:   10 * time.Second},
 			false,
 		},
@@ -30,19 +34,25 @@ func TestThroughput_validate(t *testing.T) {
 		{"2ms faster than optimized defaults, should succeed",
 			fields{
 				ResponsesPerBatch: defaultResponsesPerBatch,
-				PurgeBatchEvery:   30 * time.Millisecond},
+				PurgeBatchEvery:   defaultPurgeBatchEvery + 2*time.Millisecond},
 			false,
 		},
-		{"3ms faster than optimized defaults, exceed by 4 URLs",
+		{"exceeds URLs per second by 4 URLs",
 			fields{
 				ResponsesPerBatch: defaultResponsesPerBatch,
 				PurgeBatchEvery:   29 * time.Millisecond},
 			true,
 		},
-		{"exceed by 20 bytes",
+		{"exceeds bytes per second by 20 bytes",
 			fields{
 				ResponsesPerBatch: 125,
 				PurgeBatchEvery:   1 * time.Second},
+			true,
+		},
+		{"exceeds requests per second by 2 requests",
+			fields{
+				ResponsesPerBatch: 1,
+				PurgeBatchEvery:   19 * time.Millisecond},
 			true,
 		},
 	}

@@ -63,9 +63,9 @@ type CachePurgeClient struct {
 	clientSecret      string
 	accessToken       string
 	v3Network         string
+	purgeBatchEvery   time.Duration
 	responsesPerBatch int
 	retries           int
-	purgeBatchEvery   time.Duration
 	retryBackoff      time.Duration
 	log               blog.Logger
 	purgeLatency      prometheus.Histogram
@@ -81,10 +81,10 @@ func NewCachePurgeClient(
 	secret,
 	accessToken,
 	network string,
+	purgeBatchEvery time.Duration,
 	responsesPerBatch,
 	retries int,
-	backoff,
-	purgeBatchEvery time.Duration,
+	backoff time.Duration,
 	log blog.Logger, scope prometheus.Registerer,
 ) (*CachePurgeClient, error) {
 	if network != "production" && network != "staging" {
