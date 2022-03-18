@@ -8,7 +8,7 @@ things we separate all of Boulder's build dependencies into its own
 ## Setup
 
 To build boulder-tools images, you'll need a Docker set up to do cross-platform
-builds (we build for both amd64 and arm64 so developers with M1 Macs can use
+builds (we build for both amd64 and arm64 so developers with Apple silicon can use
 boulder-tools in their dev environment). On Ubuntu the setup steps are:
 
 ```
