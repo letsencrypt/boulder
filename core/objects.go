@@ -169,6 +169,10 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
+
+	// OldTLS is true if any request in the validation chain used HTTPS and negotiated
+	// a TLS version lower than 1.2.
+	OldTLS bool `json:"oldTLS,omitempty"`
 }
 
 func looksLikeKeyAuthorization(str string) error {
