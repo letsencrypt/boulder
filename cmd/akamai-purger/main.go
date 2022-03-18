@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -112,7 +113,7 @@ func (t *Throughput) validate() error {
 	}
 
 	// Send no more than the 50 API requests we’re allotted each second.
-	requestsPerSecond := int(time.Second / t.PurgeBatchEvery.Duration)
+	requestsPerSecond := int(math.Ceil(float64(time.Second) / float64(t.PurgeBatchEvery.Duration)))
 	if requestsPerSecond > akamaiAPIReqPerSecondLimit {
 		return fmt.Errorf("config exceeds Akamai's requests per second limit (%d requests) by %d",
 			akamaiAPIReqPerSecondLimit, requestsPerSecond-akamaiAPIReqPerSecondLimit)

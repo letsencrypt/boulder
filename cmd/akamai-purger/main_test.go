@@ -49,10 +49,10 @@ func TestThroughput_validate(t *testing.T) {
 				PurgeBatchEvery:   1 * time.Second},
 			true,
 		},
-		{"exceeds requests per second by 2 requests",
+		{"exceeds requests per second by 1 request",
 			fields{
 				ResponsesPerBatch: 1,
-				PurgeBatchEvery:   19 * time.Millisecond},
+				PurgeBatchEvery:   19999 * time.Microsecond},
 			true,
 		},
 	}
