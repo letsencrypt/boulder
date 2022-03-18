@@ -84,7 +84,7 @@ func NewCachePurgeClient(
 	purgeBatchEvery time.Duration,
 	responsesPerBatch,
 	retries int,
-	backoff time.Duration,
+	retryBackoff time.Duration,
 	log blog.Logger, scope prometheus.Registerer,
 ) (*CachePurgeClient, error) {
 	if network != "production" && network != "staging" {
@@ -118,10 +118,10 @@ func NewCachePurgeClient(
 		clientSecret:      secret,
 		accessToken:       accessToken,
 		v3Network:         network,
-		retries:           retries,
-		responsesPerBatch: responsesPerBatch,
-		retryBackoff:      backoff,
 		purgeBatchEvery:   purgeBatchEvery,
+		responsesPerBatch: responsesPerBatch,
+		retries:           retries,
+		retryBackoff:      retryBackoff,
 		log:               log,
 		clk:               clock.New(),
 		purgeLatency:      purgeLatency,
