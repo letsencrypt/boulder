@@ -22,6 +22,15 @@ After setup, the output of `docker buildx ls` should contain an entry like:
 cross0  unix:///var/run/docker.sock running linux/amd64, linux/386, linux/arm64, linux/riscv64, linux/ppc64le, linux/s390x, linux/mips64le, linux/mips64, linux/arm/v7, linux/arm/v6
 ```
 
+If you see an entry like:
+
+```
+cross0  unix:///var/run/docker.sock stopped
+```
+
+That's probably fine; the instance will be started when you run
+tag_and_upload.sh (which runs `docker buildx build`).
+
 ## Go Versions
 
 Rather than install multiple versions of Go within the same `boulder-tools`
