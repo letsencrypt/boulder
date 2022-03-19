@@ -51,6 +51,57 @@ function get_user_input() {
     done
 }
 
+function check_arg() {
+  if [ -z "$OPTARG" ]
+  then
+    exit_msg "No arg for --$OPT option, use: -h for help">&2
+  fi
+}
+
+function print_usage_exit() {
+  echo "$USAGE"
+  exit 0
+}
+
+USAGE="$(cat -- <<-EOM
+
+Usage:
+
+Without no options passed, this tool will execute a regular tag and release.
+
+  -f, --hotfix                        Executes release as a hotfix.
+  -c, --cherry-pick '<sha> <sha>...'  Each commit SHA will be cherry-picked, in the
+                                      order passed (only used with '--hotfix')
+  -h, --help                          Shows this help message
+
+EOM
+)"
+
+RUN=()
+COMMITS=()
+while getopts hfc:-: OPT; do
+  if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
+    OPT="${OPTARG%%=*}"       # extract long option name
+    OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
+    OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
+  fi
+  case "$OPT" in
+    f | hotfix      )  RUN+=("hotfix") ;;
+    c | cherry-pick )  check_arg; COMMITS+=(${OPTARG[@]}) ;; # multiargs have spaces, leave this unquoted 
+    h | help        )  print_usage_exit ;;
+    ??*             )    exit_msg "Illegal option --$OPT" ;;  # bad long option
+    ?               )           exit 2 ;;  # bad short option (error reported via getopts)
+  esac
+done
+shift $((OPTIND-1)) # remove parsed options and args from $@ list
+
+# Validate use of --cherry-pick is valid.
+if ! [[ "${RUN[@]}" =~ hotfix ]]
+then
+  exit_msg "Illegal option: (-c, --cherry-pick) without (-f, --hotfix)"
+fi
+exit
+
 # On EXIT, trap and print outcome.
 trap "print_outcome" EXIT
 
@@ -78,7 +129,7 @@ else
 fi
 echo "${new_tag_name}"
 
-create_branch=""
+local create_branch
 release_branch_name=$(echo "${new_tag_name}" | sed 's|release-|release-branch-|')
 get_user_input "Create hotfix release branch: ${release_branch_name}? "
 if [ "${create_branch}" = yes ]
