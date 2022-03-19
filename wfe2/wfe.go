@@ -2339,9 +2339,6 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
 	beeline.AddFieldToTrace(ctx, "csr.key_type", web.KeyTypeToString(certificateRequest.CSR.PublicKey))
 
-	// Inc CSR signature algorithm counter
-	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
-
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Csr:   rawCSR.CSR,
 		Order: order,
@@ -2354,6 +2351,9 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
+
+	// Inc CSR signature algorithm counter
+	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
 
 	orderURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, updatedOrder.Id))
