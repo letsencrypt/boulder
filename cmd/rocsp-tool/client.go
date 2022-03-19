@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"strings"
 	"sync/atomic"
@@ -14,6 +13,7 @@ import (
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
@@ -28,6 +28,7 @@ type client struct {
 	ocspGenerator capb.OCSPGeneratorClient
 	clk           clock.Clock
 	scanBatchSize int
+	logger        blog.Logger
 }
 
 // processResult represents the result of attempting to sign and store status
@@ -107,18 +108,18 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 				(errorCount < 1000 && rand.Intn(1000) < 100) ||
 				(errorCount < 100000 && rand.Intn(1000) < 10) ||
 				(rand.Intn(1000) < 1) {
-				log.Printf("error: %s", result.err)
+				cl.logger.Errf("error: %s", result.err)
 			}
 		} else {
 			successCount++
 		}
 
 		if (successCount+errorCount)%10 == 0 {
-			log.Printf("stored %d responses, %d errors", successCount, errorCount)
+			cl.logger.Infof("stored %d responses, %d errors", successCount, errorCount)
 		}
 	}
 
-	log.Printf("done. processed %d successes and %d errors\n", successCount, errorCount)
+	cl.logger.Infof("done. processed %d successes and %d errors\n", successCount, errorCount)
 	if inflightIDs.len() != 0 {
 		return fmt.Errorf("inflightIDs non-empty! has %d items, lowest %d", inflightIDs.len(), inflightIDs.min())
 	}
@@ -140,7 +141,7 @@ func (cl *client) scanFromDB(ctx context.Context, prevID int64, maxID int64, fre
 		for currentMin < maxID {
 			currentMin, err = cl.scanFromDBOneBatch(ctx, currentMin, frequency, statusesToSign, inflightIDs)
 			if err != nil {
-				log.Printf("error scanning rows: %s", err)
+				cl.logger.Infof("error scanning rows: %s", err)
 			}
 		}
 	}()
@@ -163,7 +164,7 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 	defer func() {
 		rerr := rows.Close()
 		if rerr != nil {
-			log.Printf("closing rows: %s", rerr)
+			cl.logger.Infof("closing rows: %s", rerr)
 		}
 	}()
 
@@ -183,7 +184,7 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 		// will emit about 2150 log lines. This probably strikes a good balance
 		// between too spammy and having a reasonably frequent checkpoint.
 		if scanned%100000 == 0 {
-			log.Printf("scanned %d certificateStatus rows. minimum inflight ID %d", scanned, inflightIDs.min())
+			cl.logger.Infof("scanned %d certificateStatus rows. minimum inflight ID %d", scanned, inflightIDs.min())
 		}
 		output <- status
 		previousID = status.ID
@@ -288,7 +289,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 		ttl = &ttl_temp
 	}
 
-	log.Printf("storing response for %s, generated %s, ttl %g hours",
+	cl.logger.Infof("storing response for %s, generated %s, ttl %g hours",
 		serial,
 		resp.ThisUpdate,
 		ttl.Hours(),
@@ -308,6 +309,6 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 	if err != nil {
 		return fmt.Errorf("parsing retrieved response: %w", err)
 	}
-	log.Printf("retrieved %s", helper.PrettyResponse(parsedRetrievedResponse))
+	cl.logger.Infof("retrieved %s", helper.PrettyResponse(parsedRetrievedResponse))
 	return nil
 }
