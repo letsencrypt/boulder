@@ -623,6 +623,14 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
 	}
 
+	if httpResponse.TLS != nil && httpResponse.TLS.Version < tls.VersionTLS12 {
+		oldTLS = true
+	}
+
+	if oldTLS {
+		records[len(records)-1].OldTLS = true
+	}
+
 	// At this point we've made a successful request (be it from a retry or
 	// otherwise) and can read and process the response body.
 	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
@@ -639,14 +647,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if len(body) >= maxResponseSize {
 		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
-	}
-
-	if httpResponse.TLS != nil && httpResponse.TLS.Version < tls.VersionTLS12 {
-		oldTLS = true
-	}
-
-	if oldTLS {
-		records[len(records)-1].OldTLS = true
 	}
 
 	return body, records, nil
