@@ -504,6 +504,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
+		// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
 			oldTLS = true
 		}
@@ -623,6 +624,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
 	}
 
+	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 	if httpResponse.TLS != nil && httpResponse.TLS.Version < tls.VersionTLS12 {
 		oldTLS = true
 	}
@@ -648,7 +650,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
 	}
-
 	return body, records, nil
 }
 

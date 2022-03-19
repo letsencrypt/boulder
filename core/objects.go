@@ -172,6 +172,7 @@ type ValidationRecord struct {
 
 	// OldTLS is true if any request in the validation chain used HTTPS and negotiated
 	// a TLS version lower than 1.2.
+	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 	OldTLS bool `json:"oldTLS,omitempty"`
 }
 
