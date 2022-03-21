@@ -27,6 +27,7 @@ type RequestEvent struct {
 	Code      int     `json:"-"`
 	Latency   float64 `json:"-"`
 	RealIP    string  `json:"-"`
+	TLS       string  `json:",omitempty"`
 
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
@@ -100,6 +101,7 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &RequestEvent{
 		RealIP:    realIP,
 		Method:    r.Method,
+		TLS:       r.Header.Get("TLS-Version"),
 		UserAgent: r.Header.Get("User-Agent"),
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}),
