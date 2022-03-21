@@ -494,6 +494,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// addresses explicitly, not following redirects to ports != [80,443], etc)
 	records := []core.ValidationRecord{baseRecord}
 	numRedirects := 0
+	var oldTLS bool
 	processRedirect := func(req *http.Request, via []*http.Request) error {
 		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
 		// Only process up to maxRedirect redirects
@@ -502,6 +503,11 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		}
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
+
+		// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
+			oldTLS = true
+		}
 
 		// If the response contains an HTTP 303 or any other forbidden redirect,
 		// do not follow it. The four allowed redirect status codes are defined
@@ -616,6 +622,15 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if httpResponse.StatusCode != 200 {
 		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
 			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
+	}
+
+	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+	if httpResponse.TLS != nil && httpResponse.TLS.Version < tls.VersionTLS12 {
+		oldTLS = true
+	}
+
+	if oldTLS {
+		records[len(records)-1].OldTLS = true
 	}
 
 	// At this point we've made a successful request (be it from a retry or
