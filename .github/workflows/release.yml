@@ -5,6 +5,11 @@ on:
     tags:
       - release-*
 
+permissions:
+  # Overrides the org default of 'read'. This allows us to upload and post the
+  # resulting package file as part of a release.
+  contents: write
+
 jobs:
   gh-release:
     runs-on: ubuntu-20.04
