@@ -382,19 +382,19 @@ func TestDoubleRevocationOff(t *testing.T) {
 
 	// Re-revoking for the same reason should fail.
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 0)
-	test.AssertError(t, err, "re-revocation should have succeeded")
+	test.AssertError(t, err, "re-revocation should have failed")
 
 	// Re-revoking for a different reason should fail.
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 3)
-	test.AssertError(t, err, "re-revocation should have succeeded")
+	test.AssertError(t, err, "re-revocation should have failed")
 
 	// Re-revoking for keyCompromise should fail.
 	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 1)
-	test.AssertError(t, err, "re-revocation should have succeeded")
+	test.AssertError(t, err, "re-revocation should have failed")
 
 	// Re-revoking for keyCompromise using the cert key should fail.
 	err = client.RevokeCertificate(client.Account, cert, certKey, 1)
-	test.AssertError(t, err, "re-revocation should have succeeded")
+	test.AssertError(t, err, "re-revocation should have failed")
 }
 
 // TestDoubleRevocationOn verifies that a certificate can have its revocation
@@ -421,19 +421,19 @@ func TestDoubleRevocationOn(t *testing.T) {
 	)
 
 	type testCase struct {
-		m1 authMethod
-		r1 int
-		m2 authMethod
-		r2 int
-		ee bool
+		method1     authMethod
+		reason1     int
+		method2     authMethod
+		reason2     int
+		expectError bool
 	}
 
 	testCases := []testCase{
-		{m1: byAccount, r1: 0, m2: byAccount, r2: 0, ee: true},
-		{m1: byAccount, r1: 1, m2: byAccount, r2: 1, ee: true},
-		{m1: byAccount, r1: 0, m2: byKey, r2: 1, ee: false},
-		{m1: byAccount, r1: 1, m2: byKey, r2: 1, ee: true},
-		{m1: byKey, r1: 1, m2: byKey, r2: 1, ee: true},
+		{method1: byAccount, reason1: 0, method2: byAccount, reason2: 0, expectError: true},
+		{method1: byAccount, reason1: 1, method2: byAccount, reason2: 1, expectError: true},
+		{method1: byAccount, reason1: 0, method2: byKey, reason2: 1, expectError: false},
+		{method1: byAccount, reason1: 1, method2: byKey, reason2: 1, expectError: true},
+		{method1: byKey, reason1: 1, method2: byKey, reason2: 1, expectError: true},
 	}
 
 	for i, tc := range testCases {
@@ -458,7 +458,7 @@ func TestDoubleRevocationOn(t *testing.T) {
 			// Set up the account and key that we'll use to revoke the cert.
 			var revokeClient *client
 			var revokeKey crypto.Signer
-			switch tc.m1 {
+			switch tc.method1 {
 			case byAccount:
 				// When revoking by account, use the same client and key as were used
 				// for the original issuance.
@@ -473,7 +473,7 @@ func TestDoubleRevocationOn(t *testing.T) {
 				revokeKey = certKey
 
 			default:
-				t.Fatalf("unrecognized revocation method %q", tc.m1)
+				t.Fatalf("unrecognized revocation method %q", tc.method1)
 			}
 
 			// Revoke the cert using the specified key and client.
@@ -481,18 +481,18 @@ func TestDoubleRevocationOn(t *testing.T) {
 				revokeClient.Account,
 				cert,
 				revokeKey,
-				tc.r1,
+				tc.reason1,
 			)
 			test.AssertNotError(t, err, "initial revocation should have succeeded")
 
 			// Check the OCSP response for the certificate again. It should now be
 			// revoked.
-			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.r1)
+			ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1)
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 
 			// Set up the account and key that we'll use to *re*-revoke the cert.
-			switch tc.m2 {
+			switch tc.method2 {
 			case byAccount:
 				// When revoking by account, use the same client and key as were used
 				// for the original issuance.
@@ -507,7 +507,7 @@ func TestDoubleRevocationOn(t *testing.T) {
 				revokeKey = certKey
 
 			default:
-				t.Fatalf("unrecognized revocation method %q", tc.m2)
+				t.Fatalf("unrecognized revocation method %q", tc.method2)
 			}
 
 			// Re-revoke the cert using the specified key and client.
@@ -515,16 +515,16 @@ func TestDoubleRevocationOn(t *testing.T) {
 				revokeClient.Account,
 				cert,
 				revokeKey,
-				tc.r2,
+				tc.reason2,
 			)
 
-			switch tc.ee {
+			switch tc.expectError {
 			case true:
 				test.AssertError(t, err, "second revocation should have failed")
 
 				// Check the OCSP response for the certificate again. It should still be
 				// revoked, with the same reason.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.r1)
+				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(tc.reason1)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 
@@ -533,7 +533,7 @@ func TestDoubleRevocationOn(t *testing.T) {
 
 				// Check the OCSP response for the certificate again. It should now be
 				// revoked with reason keyCompromise.
-				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectStatus(tc.r2)
+				ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectStatus(tc.reason2)
 				_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 				test.AssertNotError(t, err, "requesting OCSP for revoked cert")
 			}
