@@ -23,5 +23,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_create
         run: |
-          ./make-deb.sh
+          ./tools/make-deb.sh
           gh release create "${GITHUB_REF_NAME}" *.deb
