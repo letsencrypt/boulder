@@ -39,5 +39,9 @@
       ".hierarchy/intermediate-cert-rsa-a.pem": 3,
       ".hierarchy/intermediate-cert-rsa-b.pem": 4
     }
+  },
+  "syslog": {
+    "stdoutlevel": 6,
+    "sysloglevel": 6
   }
 }
