@@ -16,7 +16,7 @@ services:
       # window. These overrides will stop working in Go 1.19.
       GODEBUG: x509sha1=1,tls10default=1
     volumes:
-      - .:/go/src/github.com/letsencrypt/boulder:cached
+      - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
       - ./.hierarchy:/hierarchy/:cached
       - ./.softhsm-tokens/:/var/lib/softhsm/tokens/:cached
@@ -42,7 +42,7 @@ services:
       - bmysql
       - bredis_clusterer
     entrypoint: test/entrypoint.sh
-    working_dir: &boulder_working_dir /go/src/github.com/letsencrypt/boulder
+    working_dir: &boulder_working_dir /boulder
 
   bmysql:
     image: mariadb:10.5
@@ -143,7 +143,7 @@ services:
     networks:
       - bluenet
     volumes:
-      - .:/go/src/github.com/letsencrypt/boulder
+      - .:/boulder
     working_dir: *boulder_working_dir
     entrypoint: test/entrypoint-netaccess.sh
 
