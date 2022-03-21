@@ -166,11 +166,20 @@ func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock
 // Redis, updating both the metadata and response keys. ShortIssuerID is an
 // arbitrarily assigned byte that unique identifies each issuer. Must be the
 // same across OCSP components. Returns error if the OCSP response fails to
-// parse.
+// parse. If the ttl is set to -1h StoreResponse will use the
 func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
 	start := c.clk.Now()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
+
+	// Use -1h as an indicator to set redis.KeepTTL as the ttl value. If
+	// there was previously no key, then no expiration will be set on the
+	// newly created key. This is useful for some revocations where we can
+	// assume a ttl was set and it may be otherwise difficult to plumb
+	// through a ttl that matches the certificate expiration.
+	if ttl == -1*time.Hour {
+		ttl = redis.KeepTTL
+	}
 
 	resp, err := ocsp.ParseResponse(respBytes, nil)
 	if err != nil {

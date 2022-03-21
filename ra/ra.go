@@ -1781,6 +1781,7 @@ func (ra *RegistrationAuthorityImpl) deprecatedRevokeCertificate(ctx context.Con
 		Reason:   int64(reason),
 		Date:     revokedAt,
 		Response: ocspResponse.Response,
+		IssuerID: issuerID,
 	})
 	if err != nil {
 		return err
@@ -1842,6 +1843,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 		Reason:   int64(reason),
 		Date:     revokedAt,
 		Response: ocspResponse.Response,
+		IssuerID: int64(issuerID),
 	})
 	if err != nil {
 		return err
@@ -1893,6 +1895,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		Date:     thisUpdate,
 		Backdate: status.RevokedDate,
 		Response: ocspResponse.Response,
+		IssuerID: int64(issuerID),
 	})
 	if err != nil {
 		return err
