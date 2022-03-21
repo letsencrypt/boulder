@@ -12,7 +12,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/log"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
@@ -52,7 +52,7 @@ func TestGetStartingID(t *testing.T) {
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetSATestDatabase(t)()
-	sa.SetSQLDebug(dbMap, log.Get())
+	sa.SetSQLDebug(dbMap, blog.Get())
 
 	cs := core.CertificateStatus{
 		Serial:   "1337",
@@ -108,6 +108,7 @@ func TestStoreResponse(t *testing.T) {
 		db:            nil,
 		ocspGenerator: nil,
 		clk:           clk,
+		logger:        blog.NewMock(),
 	}
 
 	ttl := time.Hour
@@ -153,6 +154,7 @@ func TestLoadFromDB(t *testing.T) {
 		ocspGenerator: mockOCSPGenerator{},
 		clk:           clk,
 		scanBatchSize: 10,
+		logger:        blog.NewMock(),
 	}
 
 	speed := ProcessingSpeed{
