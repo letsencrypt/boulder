@@ -309,7 +309,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

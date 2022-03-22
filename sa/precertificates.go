@@ -152,6 +152,24 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	if overallError != nil {
 		return nil, overallError
 	}
+
+	// Store the OCSP response in Redis (if configured) on a best effort
+	// basis. We don't want to fail on an error here while mysql is the
+	// source of truth.
+	if ssa.rocspWriteClient != nil {
+		// Use a new context for the goroutine. We aren't going to wait on
+		// the goroutine to complete, so we don't want it to be canceled
+		// when the parent function ends. The rocsp client has a
+		// configurable timeout that can be set during creation.
+		rocspCtx := context.Background()
+		rocspTTL := parsed.NotAfter.Sub(ssa.clk.Now())
+
+		// Send the response off to redis in a goroutine.
+		go func() {
+			err = ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID, rocspTTL)
+			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
+		}()
+	}
 	return &emptypb.Empty{}, nil
 }
 

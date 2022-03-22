@@ -12,6 +12,8 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -21,6 +23,8 @@ type Config struct {
 		cmd.ServiceConfig
 		DB         cmd.DBConfig
 		ReadOnlyDB cmd.DBConfig
+		Redis      *rocsp_config.RedisConfig
+		Issuers    map[string]int
 
 		Features map[string]bool
 
@@ -81,11 +85,20 @@ func main() {
 
 	clk := cmd.Clock()
 
+	redisConf := c.SA.Redis
+	var rocspWriteClient *rocsp.WritingClient
+	if redisConf != nil {
+		rocspWriteClient, err = rocsp_config.MakeClient(redisConf, clk, scope)
+		cmd.FailOnError(err, "making Redis client")
+	}
+	shortIssuers, err := rocsp_config.LoadIssuers(c.SA.Issuers)
+	cmd.FailOnError(err, "loading issuers")
+
 	parallel := c.SA.ParallelismPerRPC
 	if parallel < 1 {
 		parallel = 1
 	}
-	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, clk, logger, scope, parallel)
+	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, rocspWriteClient, shortIssuers, clk, logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	tls, err := c.SA.TLS.Load()

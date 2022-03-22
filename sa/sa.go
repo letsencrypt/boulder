@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -40,8 +41,15 @@ type SQLStorageAuthority struct {
 	sapb.UnimplementedStorageAuthorityServer
 	dbMap         *db.WrappedMap
 	dbReadOnlyMap *db.WrappedMap
-	clk           clock.Clock
-	log           blog.Logger
+
+	// Redis client for storing OCSP responses in Redis.
+	rocspWriteClient rocspWriter
+
+	// Short issuer map used by rocsp.
+	shortIssuers []rocsp_config.ShortIDIssuer
+
+	clk clock.Clock
+	log blog.Logger
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -58,6 +66,10 @@ type SQLStorageAuthority struct {
 	// transactions fail and so use this stat to maintain visibility into the rate
 	// this occurs.
 	rateLimitWriteErrors prometheus.Counter
+
+	// redisStoreResponse is a counter of OCSP responses written to redis by
+	// result.
+	redisStoreResponse *prometheus.CounterVec
 }
 
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
@@ -77,6 +89,8 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
+	rocspWriteClient rocspWriter,
+	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -90,13 +104,22 @@ func NewSQLStorageAuthority(
 	})
 	stats.MustRegister(rateLimitWriteErrors)
 
+	redisStoreResponse := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "redis_store_response",
+		Help: "Count of OCSP Response writes to redis",
+	}, []string{"result"})
+	stats.MustRegister(redisStoreResponse)
+
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
 		dbReadOnlyMap:        dbReadOnlyMap,
+		rocspWriteClient:     rocspWriteClient,
+		shortIssuers:         shortIssuers,
 		clk:                  clk,
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,
 		rateLimitWriteErrors: rateLimitWriteErrors,
+		redisStoreResponse:   redisStoreResponse,
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
