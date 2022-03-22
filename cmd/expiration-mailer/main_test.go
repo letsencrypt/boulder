@@ -207,7 +207,7 @@ func TestProcessCerts(t *testing.T) {
 
 	certs := addExpiringCerts(t, testCtx)
 	log.Clear()
-	testCtx.m.processCerts(certs)
+	testCtx.m.processCerts(context.Background(), certs)
 	// Test that the lastExpirationNagSent was updated for the certificate
 	// corresponding to serial4, which is set up as "already renewed" by
 	// addExpiringCerts.
@@ -223,12 +223,12 @@ func TestFindExpiringCertificates(t *testing.T) {
 	addExpiringCerts(t, testCtx)
 
 	log.Clear()
-	err := testCtx.m.findExpiringCertificates()
+	err := testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed on no certificates")
 	test.AssertEquals(t, len(log.GetAllMatching("Searching for certificates that expire between.*")), 3)
 
 	log.Clear()
-	err = testCtx.m.findExpiringCertificates()
+	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	// Should get 001 and 003
 	test.AssertEquals(t, len(testCtx.mc.Messages), 2)
@@ -254,7 +254,7 @@ func TestFindExpiringCertificates(t *testing.T) {
 	// A consecutive run shouldn't find anything
 	testCtx.mc.Clear()
 	log.Clear()
-	err = testCtx.m.findExpiringCertificates()
+	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
 }
@@ -413,7 +413,7 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// Set the limit to 1 so we are "at capacity" with one result
 	testCtx.m.limit = 1
 
-	err := testCtx.m.findExpiringCertificates()
+	err := testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(testCtx.mc.Messages), 1)
 
@@ -427,7 +427,7 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// anything on statter to be called, and if it is then we have a test failure
 	testCtx.mc.Clear()
 	log.Clear()
-	err = testCtx.m.findExpiringCertificates()
+	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
 
@@ -653,7 +653,7 @@ func TestLifetimeOfACert(t *testing.T) {
 
 	for _, tt := range tests {
 		testCtx.fc.Add(-tt.timeLeft)
-		err = testCtx.m.findExpiringCertificates()
+		err = testCtx.m.findExpiringCertificates(context.Background())
 		test.AssertNotError(t, err, "error calling findExpiringCertificates")
 		if len(testCtx.mc.Messages) != tt.numMsgs {
 			t.Errorf(tt.context+" number of messages: expected %d, got %d", tt.numMsgs, len(testCtx.mc.Messages))
@@ -702,7 +702,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial,status, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?)", serial1String, string(core.OCSPStatusRevoked), time.Time{}, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "unable to insert CertificateStatus")
 
-	err = testCtx.m.findExpiringCertificates()
+	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "err from findExpiringCertificates")
 
 	if len(testCtx.mc.Messages) != 0 {
@@ -762,7 +762,7 @@ func TestDedupOnRegistration(t *testing.T) {
 	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial2String, time.Unix(0, 0), string(core.OCSPStatusGood), rawCertB.NotAfter, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "Couldn't add certStatusB")
 
-	err = testCtx.m.findExpiringCertificates()
+	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "error calling findExpiringCertificates")
 	if len(testCtx.mc.Messages) > 1 {
 		t.Errorf("num of messages, want %d, got %d", 1, len(testCtx.mc.Messages))

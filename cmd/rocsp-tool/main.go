@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"time"
@@ -25,6 +24,7 @@ import (
 
 type Config struct {
 	ROCSPTool struct {
+		cmd.ServiceConfig
 		Redis rocsp_config.RedisConfig
 		// Issuers is a map from filenames to short issuer IDs.
 		// Each filename must contain an issuer certificate. The short issuer
@@ -37,6 +37,7 @@ type Config struct {
 		// and the CA. Otherwise, it's optional.
 		LoadFromDB *LoadFromDBConfig
 	}
+	Syslog cmd.SyslogConfig
 }
 
 // LoadFromDBConfig provides the credentials and configuration needed to load
@@ -73,7 +74,7 @@ func init() {
 func main() {
 	err := main2()
 	if err != nil {
-		log.Fatal(err)
+		cmd.FailOnError(err, "")
 	}
 }
 
@@ -85,7 +86,6 @@ func main2() error {
 		flag.Usage()
 		os.Exit(1)
 	}
-
 	rand.Seed(time.Now().UnixNano())
 
 	var c Config
@@ -94,12 +94,16 @@ func main2() error {
 		return fmt.Errorf("reading JSON config file: %w", err)
 	}
 
+	_, logger := cmd.StatsAndLogging(c.Syslog, c.ROCSPTool.DebugAddr)
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString())
+
 	issuers, err := rocsp_config.LoadIssuers(c.ROCSPTool.Issuers)
 	if err != nil {
 		return fmt.Errorf("loading issuers: %w", err)
 	}
 	if len(issuers) == 0 {
-		return fmt.Errorf("'issuers' section of config JSON is required.")
+		return fmt.Errorf("'issuers' section of config JSON is required")
 	}
 	clk := cmd.Clock()
 	redisClient, err := rocsp_config.MakeClient(&c.ROCSPTool.Redis, clk, metrics.NoopRegisterer)
@@ -140,6 +144,7 @@ func main2() error {
 		ocspGenerator: ocspGenerator,
 		clk:           clk,
 		scanBatchSize: scanBatchSize,
+		logger:        logger,
 	}
 	switch flag.Arg(0) {
 	case "get":
@@ -150,10 +155,10 @@ func main2() error {
 			}
 			parsed, err := ocsp.ParseResponse(resp, nil)
 			if err != nil {
-				log.Printf("parsing error on %x: %s", resp, err)
+				logger.Infof("parsing error on %x: %s", resp, err)
 				continue
 			} else {
-				log.Printf("%s", helper.PrettyResponse(parsed))
+				logger.Infof("%s", helper.PrettyResponse(parsed))
 			}
 		}
 	case "store":
@@ -173,21 +178,21 @@ func main2() error {
 		results := cl.redis.ScanMetadata(ctx, "*")
 		for r := range results {
 			if r.Err != nil {
-				log.Fatalf("scanning: %s", r.Err)
+				cmd.FailOnError(err, "while scanning")
 			}
 			age := clk.Now().Sub(r.Metadata.ThisUpdate)
-			fmt.Printf("%s: %g\n", r.Serial, age.Hours())
+			logger.Infof("%s: %g\n", r.Serial, age.Hours())
 		}
 	case "scan-responses":
 		results := cl.redis.ScanResponses(ctx, "*")
 		for r := range results {
 			if r.Err != nil {
-				log.Fatalf("scanning: %s", r.Err)
+				cmd.FailOnError(err, "while scanning")
 			}
-			fmt.Printf("%s: %s\n", r.Serial, base64.StdEncoding.EncodeToString(r.Body))
+			logger.Infof("%s: %s\n", r.Serial, base64.StdEncoding.EncodeToString(r.Body))
 		}
 	default:
-		fmt.Fprintf(os.Stderr, "unrecognized subcommand %q\n", flag.Arg(0))
+		logger.Errf("unrecognized subcommand %q\n", flag.Arg(0))
 		helpExit()
 	}
 	return nil

@@ -196,9 +196,7 @@ func (m *mailer) certIsRenewed(names []string, issued time.Time) (bool, error) {
 	return present, err
 }
 
-func (m *mailer) processCerts(allCerts []core.Certificate) {
-	ctx := context.Background()
-
+func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) {
 	regIDToCerts := make(map[int64][]core.Certificate)
 
 	for _, cert := range allCerts {
@@ -279,7 +277,7 @@ func (m *mailer) processCerts(allCerts []core.Certificate) {
 	}
 }
 
-func (m *mailer) findExpiringCertificates() error {
+func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 	now := m.clk.Now()
 	// E.g. m.nagTimes = [2, 4, 8, 15] days from expiration
 	for i, expiresIn := range m.nagTimes {
@@ -297,7 +295,7 @@ func (m *mailer) findExpiringCertificates() error {
 		// sequentially fetch the certificate details. This avoids an expensive
 		// JOIN.
 		var serials []string
-		_, err := m.dbMap.Select(
+		_, err := m.dbMap.WithContext(ctx).Select(
 			&serials,
 			`SELECT
 				cs.serial
@@ -340,7 +338,7 @@ func (m *mailer) findExpiringCertificates() error {
 		var certs []core.Certificate
 		for _, serial := range serials {
 			var cert core.Certificate
-			cert, err := sa.SelectCertificate(m.dbMap, serial)
+			cert, err := sa.SelectCertificate(m.dbMap.WithContext(ctx), serial)
 			if err != nil {
 				// We can get a NoRowsErr when processing a serial number corresponding
 				// to a precertificate with no final certificate. Since this certificate
@@ -363,7 +361,7 @@ func (m *mailer) findExpiringCertificates() error {
 		}
 
 		processingStarted := m.clk.Now()
-		m.processCerts(certs)
+		m.processCerts(ctx, certs)
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
 		m.stats.processingLatency.Observe(elapsed.Seconds())
@@ -602,18 +600,32 @@ func main() {
 		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(0)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go cmd.CatchSignals(logger, func() {
+		fmt.Printf("exiting\n")
+		cancel()
+		select {} // wait for the `findExpiringCertificates` calls below to exit
+	})
+
 	if *daemon {
 		if c.Mailer.Frequency.Duration == 0 {
 			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
 			os.Exit(1)
 		}
 		t := time.NewTicker(c.Mailer.Frequency.Duration)
-		for range t.C {
-			err = m.findExpiringCertificates()
-			cmd.FailOnError(err, "expiration-mailer has failed")
+		for {
+			select {
+			case <-t.C:
+				err = m.findExpiringCertificates(ctx)
+				cmd.FailOnError(err, "expiration-mailer has failed")
+			case <-ctx.Done():
+				os.Exit(0)
+			}
 		}
 	} else {
-		err = m.findExpiringCertificates()
+		err = m.findExpiringCertificates(ctx)
 		cmd.FailOnError(err, "expiration-mailer has failed")
 	}
 }

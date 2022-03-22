@@ -5,6 +5,32 @@ the host machine, and instead use Go installed in a container. To simplify
 things we separate all of Boulder's build dependencies into its own
 `boulder-tools` Docker image.
 
+## Setup
+
+To build boulder-tools images, you'll need a Docker set up to do cross-platform
+builds (we build for both amd64 and arm64 so developers with Apple silicon can use
+boulder-tools in their dev environment). On Ubuntu the setup steps are:
+
+```
+docker buildx create --use --name=cross
+sudo sudo apt-get install qemu binfmt-support qemu-user-static
+```
+
+After setup, the output of `docker buildx ls` should contain an entry like:
+
+```
+cross0  unix:///var/run/docker.sock running linux/amd64, linux/386, linux/arm64, linux/riscv64, linux/ppc64le, linux/s390x, linux/mips64le, linux/mips64, linux/arm/v7, linux/arm/v6
+```
+
+If you see an entry like:
+
+```
+cross0  unix:///var/run/docker.sock stopped
+```
+
+That's probably fine; the instance will be started when you run
+tag_and_upload.sh (which runs `docker buildx build`).
+
 ## Go Versions
 
 Rather than install multiple versions of Go within the same `boulder-tools`

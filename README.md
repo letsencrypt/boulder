@@ -103,14 +103,11 @@ setting](https://groups.google.com/forum/#!topic/binary-transparency/f-BI4o8HZW0
 before getting a copy of Boulder to have better integrity guarantees for
 updates.
 
-Make sure you have a local copy of Boulder in your
-[`$GOPATH`](https://golang.org/doc/code.html#GOPATH), and that you are in
-that directory:
+Clone the boulder repository:
 
 ```shell
-export GOPATH=~/gopath
-git clone https://github.com/letsencrypt/boulder/ $GOPATH/src/github.com/letsencrypt/boulder
-cd $GOPATH/src/github.com/letsencrypt/boulder
+git clone https://github.com/letsencrypt/boulder/
+cd boulder
 ```
 
 Additionally, make sure you have Docker Engine 1.13.0+ and Docker Compose
@@ -163,15 +160,9 @@ To get a list of available integration tests:
 docker-compose run --use-aliases boulder ./test.sh --list-integration-tests
 ```
 
-The configuration in docker-compose.yml mounts your `$GOPATH` on top of its
-own `$GOPATH` so you can edit code on your host and it will be immediately
+The configuration in docker-compose.yml mounts your boulder checkout at
+/boulder so you can edit code on your host and it will be immediately
 reflected inside the Docker containers run with docker-compose.
-
-If docker-compose fails with an error message like "Cannot start service
-boulder: oci runtime error: no such file or directory" or "Cannot create
-container for service boulder" you should double check that your `$GOPATH`
-exists and doesn't contain any characters other than letters, numbers, `-`
-and `_`, and that it doesn't contain any dangling symlinks.
 
 If you have problems with Docker, you may want to try [removing all
 containers and

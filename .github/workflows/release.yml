@@ -5,6 +5,11 @@ on:
     tags:
       - release-*
 
+permissions:
+  # Overrides the org default of 'read'. This allows us to upload and post the
+  # resulting package file as part of a release.
+  contents: write
+
 jobs:
   gh-release:
     runs-on: ubuntu-20.04
@@ -18,5 +23,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_create
         run: |
-          ./make-deb.sh
+          ./tools/make-deb.sh
           gh release create "${GITHUB_REF_NAME}" *.deb
