@@ -87,7 +87,7 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	if err == nil {
 		t.Error("expected error shutting down akamai-purger that could not reach backend")
 	}
-	expectedOutput := "failed to purge 1 queue entries before exit: all attempts to submit purge request failed"
+	expectedOutput := "failed to purge OCSP responses for 1 certificates before exit: all attempts to submit purge request failed"
 	if !strings.Contains(outputBuffer.String(), expectedOutput) {
 		t.Errorf("akamai-purger stdout did not contain expected %q. Output was:\n%s", expectedOutput, outputBuffer.String())
 	}
@@ -119,7 +119,7 @@ func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
 	if err != nil {
 		t.Errorf("unexpected error shutting down akamai-purger: %s. Output was:\n%s", err, outputBuffer.String())
 	}
-	expectedOutput := "Shutting down; finished purging 10 queue entries."
+	expectedOutput := "Shutting down; finished purging OCSP responses for 10 certificates."
 	if !strings.Contains(outputBuffer.String(), expectedOutput) {
 		t.Errorf("akamai-purger stdout did not contain expected %q. Output was:\n%s", expectedOutput, outputBuffer.String())
 	}
