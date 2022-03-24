@@ -26,7 +26,7 @@ import (
 
 const (
 	// TODO(#6003) remove entirely.
-	DeprecatedResponsesPerBatch = 33
+	DeprecatedQueueEntriesPerBatch = 33
 
 	// akamaiBytesPerResponse is the total bytes of all 3 URLs associated with a
 	// single OCSP response cached by Akamai. Each response is composed of 3
@@ -35,21 +35,20 @@ const (
 	// which we round up to 400.
 	akamaiBytesPerResponse = 400
 
-	// defaultResponsesPerBatch is the number of responses sent in each request
-	// to the Akamai Fast-Purge API when the configuration key
-	// 'responsesPerBatch' is left unspecified in the 'throughput' mapping of
-	// the configuration file.
-	defaultResponsesPerBatch = 2
+	// urlsPerQueueEntry is the number of URLs associated with a single cached
+	// OCSP response.
+	urlsPerQueueEntry = 3
 
-	// defaultResponsesPerBatch duration waited between requests sent to the
-	// Akamai Fast-Purge API when the configuration key 'purgBatchEvery' is left
-	// unspecified in the 'throughput' mapping of the configuration file.
-	defaultPurgeBatchEvery = time.Millisecond * 32
+	// defaultQueueEntriesPerBatch is the default value for
+	// 'queueEntriesPerBatch'.
+	defaultQueueEntriesPerBatch = 2
 
-	// defaultQueueSize is the size of the queue when the configuration key
-	// 'maxQueueSize' is unspecified. A queue size of 1.25M cached OCSP
-	// responses, assuming 3 URLs per request, is about 6 hours of work using
-	// the default settings detailed above.
+	// defaultPurgeBatchInterval is the default value for 'purgeBatchInterval'.
+	defaultPurgeBatchInterval = time.Millisecond * 32
+
+	// defaultQueueSize is the default value for 'maxQueueSize'. A queue size of
+	// 1.25M cached OCSP responses, assuming 3 URLs per request, is about 6
+	// hours of work using the default settings detailed above.
 	defaultQueueSize = 1250000
 
 	// akamaiBytesPerReqLimit is the limit of bytes allowed in a single request
@@ -70,25 +69,24 @@ const (
 // Throughput is a container for all throuput related akamai-purger
 // configuration settings.
 type Throughput struct {
-
-	// ResponsesPerBatch the number of cached OCSP responses to included in each
+	// QueueEntriesPerBatch the number of cached OCSP responses to included in each
 	// purge request. One cached OCSP response is composed of 3 URLs totaling <
 	// 400 bytes. If this value isn't provided it will default to
-	// 'defaultResponsesPerBatch'.
-	ResponsesPerBatch int
+	// 'defaultQueueEntriesPerBatch'.
+	QueueEntriesPerBatch int
 
-	// PurgeBatchEvery is the duration waited between dispatching an Akamai
-	// purge request containing 'ResponsesPerBatch' * 3 URLs. If this value
-	// isn't provided it will default to 'defaultPurgeBatchEvery'.
-	PurgeBatchEvery cmd.ConfigDuration
+	// PurgeBatchInterval is the duration waited between dispatching an Akamai
+	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
+	// isn't provided it will default to 'defaultPurgeBatchInterval'.
+	PurgeBatchInterval cmd.ConfigDuration
 }
 
 func (t *Throughput) useOptimizedDefaults() {
-	if t.ResponsesPerBatch == 0 {
-		t.ResponsesPerBatch = defaultResponsesPerBatch
+	if t.QueueEntriesPerBatch == 0 {
+		t.QueueEntriesPerBatch = defaultQueueEntriesPerBatch
 	}
-	if t.PurgeBatchEvery.Duration == 0 {
-		t.PurgeBatchEvery.Duration = defaultPurgeBatchEvery
+	if t.PurgeBatchInterval.Duration == 0 {
+		t.PurgeBatchInterval.Duration = defaultPurgeBatchInterval
 	}
 }
 
@@ -97,30 +95,30 @@ func (t *Throughput) useOptimizedDefaults() {
 // documentation:
 // https://techdocs.akamai.com/purge-cache/reference/rate-limiting
 func (t *Throughput) validate() error {
-	if t.PurgeBatchEvery.Duration == 0 {
+	if t.PurgeBatchInterval.Duration == 0 {
 		// TODO(#6003) remove /'purgeInterval'.
-		return errors.New("'purgeBatchEvery'/'purgeInterval' must be > 0 nanoseconds")
+		return errors.New("'purgeBatchInterval'/'purgeInterval' must be > 0 nanoseconds")
 	}
-	if t.ResponsesPerBatch <= 0 {
-		return errors.New("'responsesPerBatch' must be > 0")
+	if t.QueueEntriesPerBatch <= 0 {
+		return errors.New("'queueEntriesPerBatch' must be > 0")
 	}
 
 	// Send no more than the 50,000 bytes of objects we’re allotted per request.
-	bytesPerRequest := (t.ResponsesPerBatch * akamaiBytesPerResponse)
+	bytesPerRequest := (t.QueueEntriesPerBatch * akamaiBytesPerResponse)
 	if bytesPerRequest > akamaiBytesPerReqLimit {
 		return fmt.Errorf("config exceeds Akamai's bytes per request limit (%d bytes) by %d",
 			akamaiBytesPerReqLimit, bytesPerRequest-akamaiBytesPerReqLimit)
 	}
 
 	// Send no more than the 50 API requests we’re allotted each second.
-	requestsPerSecond := int(math.Ceil(float64(time.Second) / float64(t.PurgeBatchEvery.Duration)))
+	requestsPerSecond := int(math.Ceil(float64(time.Second) / float64(t.PurgeBatchInterval.Duration)))
 	if requestsPerSecond > akamaiAPIReqPerSecondLimit {
 		return fmt.Errorf("config exceeds Akamai's requests per second limit (%d requests) by %d",
 			akamaiAPIReqPerSecondLimit, requestsPerSecond-akamaiAPIReqPerSecondLimit)
 	}
 
 	// Purge no more than the 200 URLs we’re allotted each second.
-	urlsPurgedPerSecond := requestsPerSecond * (t.ResponsesPerBatch * 3)
+	urlsPurgedPerSecond := requestsPerSecond * (t.QueueEntriesPerBatch * urlsPerQueueEntry)
 	if urlsPurgedPerSecond > akamaiURLsPerSecondLimit {
 		return fmt.Errorf("config exceeds Akamai's URLs per second limit (%d URLs) by %d",
 			akamaiURLsPerSecondLimit, urlsPurgedPerSecond-akamaiURLsPerSecondLimit)
@@ -133,9 +131,9 @@ type Config struct {
 		cmd.ServiceConfig
 
 		// PurgeInterval is the duration waited between dispatching an Akamai
-		// purge request containing 'DepracatedResponsesPerBatch' * 3 URLs.
+		// purge request containing 'DepracatedQueueEntriesPerBatch' * 3 URLs.
 		// Deprecated: TODO(#6003) this field is can be removed in favor of the
-		// 'PurgeBatchEvery' field of the 'Throughput' struct.
+		// `Throughput.PurgeBatchInterval`.
 		PurgeInterval cmd.ConfigDuration
 
 		// MaxQueueSize is the maximum size of the purger queue. If this value
@@ -167,8 +165,8 @@ type Config struct {
 
 // TODO(#6003) remove entirely.
 func (c *Config) useDeprecatedSettings() {
-	c.AkamaiPurger.Throughput.PurgeBatchEvery = c.AkamaiPurger.PurgeInterval
-	c.AkamaiPurger.Throughput.ResponsesPerBatch = DeprecatedResponsesPerBatch
+	c.AkamaiPurger.Throughput.PurgeBatchInterval = c.AkamaiPurger.PurgeInterval
+	c.AkamaiPurger.Throughput.QueueEntriesPerBatch = DeprecatedQueueEntriesPerBatch
 }
 
 // akamaiPurger is a mutex protected container for a gRPC server which receives
@@ -211,7 +209,7 @@ func (ap *akamaiPurger) purge() error {
 		// entire queue, only a single batch.
 		ap.toPurge = append(ap.toPurge, queueEntries[stoppedAt:]...)
 		ap.Unlock()
-		ap.log.Errf("Failed to purge cached OCSP responses for %d certificates: %s", len(queueEntries), err)
+		ap.log.Errf("Failed to purge OCSP responses for %d certificates: %s", len(queueEntries), err)
 		return err
 	}
 	return nil
@@ -325,8 +323,8 @@ func main() {
 		apc.ClientSecret,
 		apc.AccessToken,
 		apc.V3Network,
-		apc.Throughput.PurgeBatchEvery.Duration,
-		apc.Throughput.ResponsesPerBatch,
+		apc.Throughput.PurgeBatchInterval.Duration,
+		apc.Throughput.QueueEntriesPerBatch,
 		apc.PurgeRetries,
 		apc.PurgeRetryBackoff.Duration,
 		logger,
@@ -382,7 +380,7 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 	cmd.FailOnError(err, "tlsConfig config")
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)
-	ticker := time.NewTicker(c.AkamaiPurger.Throughput.PurgeBatchEvery.Duration)
+	ticker := time.NewTicker(c.AkamaiPurger.Throughput.PurgeBatchInterval.Duration)
 	go func() {
 	loop:
 		for {
@@ -399,10 +397,10 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		// in case there is anything that still needs to be purged.
 		queueLen := ap.len()
 		if queueLen > 0 {
-			logger.Infof("Shutting down; purging %d queue entries before exit.", queueLen)
+			logger.Infof("Shutting down; purging OCSP responses for %d certificates before exit.", queueLen)
 			err := ap.purge()
-			cmd.FailOnError(err, fmt.Sprintf("Shutting down; failed to purge %d queue entries before exit", queueLen))
-			logger.Infof("Shutting down; finished purging %d queue entries.", queueLen)
+			cmd.FailOnError(err, fmt.Sprintf("Shutting down; failed to purge OCSP responses for %d certificates before exit", queueLen))
+			logger.Infof("Shutting down; finished purging OCSP responses for %d certificates.", queueLen)
 		} else {
 			logger.Info("Shutting down; queue is already empty.")
 		}

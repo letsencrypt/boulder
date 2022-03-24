@@ -7,8 +7,8 @@ import (
 
 func TestThroughput_validate(t *testing.T) {
 	type fields struct {
-		ResponsesPerBatch int
-		PurgeBatchEvery   time.Duration
+		QueueEntriesPerBatch int
+		PurgeBatchInterval   time.Duration
 	}
 	tests := []struct {
 		name    string
@@ -21,47 +21,47 @@ func TestThroughput_validate(t *testing.T) {
 		// seconds of wait to verify_akamai_purge() in test/helpers.py.
 		{"production configuration prior to this change",
 			fields{
-				ResponsesPerBatch: DeprecatedResponsesPerBatch,
-				PurgeBatchEvery:   10 * time.Second},
+				QueueEntriesPerBatch: DeprecatedQueueEntriesPerBatch,
+				PurgeBatchInterval:   10 * time.Second},
 			false,
 		},
 		{"optimized defaults, should succeed",
 			fields{
-				ResponsesPerBatch: defaultResponsesPerBatch,
-				PurgeBatchEvery:   defaultPurgeBatchEvery},
+				QueueEntriesPerBatch: defaultQueueEntriesPerBatch,
+				PurgeBatchInterval:   defaultPurgeBatchInterval},
 			false,
 		},
 		{"2ms faster than optimized defaults, should succeed",
 			fields{
-				ResponsesPerBatch: defaultResponsesPerBatch,
-				PurgeBatchEvery:   defaultPurgeBatchEvery + 2*time.Millisecond},
+				QueueEntriesPerBatch: defaultQueueEntriesPerBatch,
+				PurgeBatchInterval:   defaultPurgeBatchInterval + 2*time.Millisecond},
 			false,
 		},
 		{"exceeds URLs per second by 4 URLs",
 			fields{
-				ResponsesPerBatch: defaultResponsesPerBatch,
-				PurgeBatchEvery:   29 * time.Millisecond},
+				QueueEntriesPerBatch: defaultQueueEntriesPerBatch,
+				PurgeBatchInterval:   29 * time.Millisecond},
 			true,
 		},
 		{"exceeds bytes per second by 20 bytes",
 			fields{
-				ResponsesPerBatch: 125,
-				PurgeBatchEvery:   1 * time.Second},
+				QueueEntriesPerBatch: 125,
+				PurgeBatchInterval:   1 * time.Second},
 			true,
 		},
 		{"exceeds requests per second by 1 request",
 			fields{
-				ResponsesPerBatch: 1,
-				PurgeBatchEvery:   19999 * time.Microsecond},
+				QueueEntriesPerBatch: 1,
+				PurgeBatchInterval:   19999 * time.Microsecond},
 			true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tr := &Throughput{
-				ResponsesPerBatch: tt.fields.ResponsesPerBatch,
+				QueueEntriesPerBatch: tt.fields.QueueEntriesPerBatch,
 			}
-			tr.PurgeBatchEvery.Duration = tt.fields.PurgeBatchEvery
+			tr.PurgeBatchInterval.Duration = tt.fields.PurgeBatchInterval
 			if err := tr.validate(); (err != nil) != tt.wantErr {
 				t.Errorf("Throughput.validate() error = %v, wantErr %v", err, tt.wantErr)
 			}

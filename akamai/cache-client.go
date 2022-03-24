@@ -55,22 +55,22 @@ type purgeResponse struct {
 // CachePurgeClient talks to the Akamai CCU REST API. It is safe to make
 // concurrent requests using this client.
 type CachePurgeClient struct {
-	client            *http.Client
-	apiEndpoint       string
-	apiHost           string
-	apiScheme         string
-	clientToken       string
-	clientSecret      string
-	accessToken       string
-	v3Network         string
-	purgeBatchEvery   time.Duration
-	responsesPerBatch int
-	retries           int
-	retryBackoff      time.Duration
-	log               blog.Logger
-	purgeLatency      prometheus.Histogram
-	purges            *prometheus.CounterVec
-	clk               clock.Clock
+	client               *http.Client
+	apiEndpoint          string
+	apiHost              string
+	apiScheme            string
+	clientToken          string
+	clientSecret         string
+	accessToken          string
+	v3Network            string
+	purgeBatchInterval   time.Duration
+	queueEntriesPerBatch int
+	retries              int
+	retryBackoff         time.Duration
+	log                  blog.Logger
+	purgeLatency         prometheus.Histogram
+	purges               *prometheus.CounterVec
+	clk                  clock.Clock
 }
 
 // NewCachePurgeClient performs some basic validation of supplied configuration
@@ -81,8 +81,8 @@ func NewCachePurgeClient(
 	secret,
 	accessToken,
 	network string,
-	purgeBatchEvery time.Duration,
-	responsesPerBatch,
+	purgeBatchInterval time.Duration,
+	queueEntriesPerBatch,
 	retries int,
 	retryBackoff time.Duration,
 	log blog.Logger, scope prometheus.Registerer,
@@ -110,22 +110,22 @@ func NewCachePurgeClient(
 	scope.MustRegister(purges)
 
 	return &CachePurgeClient{
-		client:            new(http.Client),
-		apiEndpoint:       endpoint.String(),
-		apiHost:           endpoint.Host,
-		apiScheme:         strings.ToLower(endpoint.Scheme),
-		clientToken:       clientToken,
-		clientSecret:      secret,
-		accessToken:       accessToken,
-		v3Network:         network,
-		purgeBatchEvery:   purgeBatchEvery,
-		responsesPerBatch: responsesPerBatch,
-		retries:           retries,
-		retryBackoff:      retryBackoff,
-		log:               log,
-		clk:               clock.New(),
-		purgeLatency:      purgeLatency,
-		purges:            purges,
+		client:               new(http.Client),
+		apiEndpoint:          endpoint.String(),
+		apiHost:              endpoint.Host,
+		apiScheme:            strings.ToLower(endpoint.Scheme),
+		clientToken:          clientToken,
+		clientSecret:         secret,
+		accessToken:          accessToken,
+		v3Network:            network,
+		purgeBatchInterval:   purgeBatchInterval,
+		queueEntriesPerBatch: queueEntriesPerBatch,
+		retries:              retries,
+		retryBackoff:         retryBackoff,
+		log:                  log,
+		clk:                  clock.New(),
+		purgeLatency:         purgeLatency,
+		purges:               purges,
 	}, nil
 }
 
@@ -323,7 +323,7 @@ func (cpc *CachePurgeClient) purgeBatch(queueEntries [][]string) error {
 func (cpc *CachePurgeClient) Purge(queueEntries [][]string) (int, error) {
 	totalEntries := len(queueEntries)
 	for batchBegin := 0; batchBegin < totalEntries; {
-		batchEnd := batchBegin + cpc.responsesPerBatch
+		batchEnd := batchBegin + cpc.queueEntriesPerBatch
 		if batchEnd > totalEntries {
 			// Avoid index out of range error.
 			batchEnd = totalEntries
@@ -333,7 +333,7 @@ func (cpc *CachePurgeClient) Purge(queueEntries [][]string) (int, error) {
 		if err != nil {
 			return batchBegin, err
 		}
-		batchBegin += cpc.responsesPerBatch
+		batchBegin += cpc.queueEntriesPerBatch
 	}
 	return totalEntries, nil
 }
@@ -387,9 +387,11 @@ func makeOCSPCacheURLs(req []byte, ocspServer string) []string {
 		// the first two uint32s in little endian order in hex of the MD5 hash
 		// of the OCSP request body.
 		//
-		// There is no public documentation of this feature. However, this entry
-		// is what triggers the Cache Behavior that allows Akamai to redirect
-		// POST based OCSP requests to the associated cached response.
+		// There is limited public documentation of this feature. However, this
+		// entry is what triggers the Akamai cache behavior that allows Akamai to
+		// identify POST based OCSP for purging. For more information, see:
+		// https://techdocs.akamai.com/property-mgr/reference/v2020-03-04-cachepost
+		// https://techdocs.akamai.com/property-mgr/docs/cache-post-responses
 		fmt.Sprintf("%s?body-md5=%x%x", ocspServer, reverseBytes(hash[0:4]), reverseBytes(hash[4:8])),
 
 		// URL (un-encoded): RFC 2560 and RFC 5019 state OCSP GET URLs 'MUST

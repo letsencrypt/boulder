@@ -4,8 +4,8 @@
     "purgeRetries": 10,
     "purgeRetryBackoff": "50ms",
     "throughput": {
-      "responsesPerBatch": 2,
-      "purgeBatchEvery": "32ms"
+      "queueEntriesPerBatch": 2,
+      "purgeBatchInterval": "32ms"
     },
     "baseURL": "http://localhost:6789",
     "clientToken": "its-a-token",
