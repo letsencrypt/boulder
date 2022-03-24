@@ -26,6 +26,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RegistrationAuthorityClient interface {
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
+	UpdateAuthorization(ctx context.Context, in *UpdateAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
 	UpdateRegistration(ctx context.Context, in *UpdateRegistrationRequest, opts ...grpc.CallOption) (*proto.Registration, error)
 	PerformValidation(ctx context.Context, in *PerformValidationRequest, opts ...grpc.CallOption) (*proto.Authorization, error)
 	DeactivateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -50,6 +51,15 @@ func NewRegistrationAuthorityClient(cc grpc.ClientConnInterface) RegistrationAut
 func (c *registrationAuthorityClient) NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error) {
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/NewRegistration", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *registrationAuthorityClient) UpdateAuthorization(ctx context.Context, in *UpdateAuthorizationRequest, opts ...grpc.CallOption) (*proto.Authorization, error) {
+	out := new(proto.Authorization)
+	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/UpdateAuthorization", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +161,7 @@ func (c *registrationAuthorityClient) GenerateOCSP(ctx context.Context, in *Gene
 // for forward compatibility
 type RegistrationAuthorityServer interface {
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
+	UpdateAuthorization(context.Context, *UpdateAuthorizationRequest) (*proto.Authorization, error)
 	UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*proto.Registration, error)
 	PerformValidation(context.Context, *PerformValidationRequest) (*proto.Authorization, error)
 	DeactivateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
@@ -171,6 +182,9 @@ type UnimplementedRegistrationAuthorityServer struct {
 
 func (UnimplementedRegistrationAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) UpdateAuthorization(context.Context, *UpdateAuthorizationRequest) (*proto.Authorization, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateAuthorization not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) UpdateRegistration(context.Context, *UpdateRegistrationRequest) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRegistration not implemented")
@@ -229,6 +243,24 @@ func _RegistrationAuthority_NewRegistration_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RegistrationAuthorityServer).NewRegistration(ctx, req.(*proto.Registration))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RegistrationAuthority_UpdateAuthorization_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateAuthorizationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).UpdateAuthorization(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/ra.RegistrationAuthority/UpdateAuthorization",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).UpdateAuthorization(ctx, req.(*UpdateAuthorizationRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -423,6 +455,10 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NewRegistration",
 			Handler:    _RegistrationAuthority_NewRegistration_Handler,
+		},
+		{
+			MethodName: "UpdateAuthorization",
+			Handler:    _RegistrationAuthority_UpdateAuthorization_Handler,
 		},
 		{
 			MethodName: "UpdateRegistration",

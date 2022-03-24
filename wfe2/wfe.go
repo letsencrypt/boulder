@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -55,16 +56,17 @@ const (
 	acctPath      = "/acme/acct/"
 	// When we moved to authzv2, we used a "-v3" suffix to avoid confusion
 	// regarding ACMEv2.
-	authzPath         = "/acme/authz-v3/"
-	challengePath     = "/acme/chall-v3/"
-	certPath          = "/acme/cert/"
-	revokeCertPath    = "/acme/revoke-cert"
-	buildIDPath       = "/build"
-	rolloverPath      = "/acme/key-change"
-	newNoncePath      = "/acme/new-nonce"
-	newOrderPath      = "/acme/new-order"
-	orderPath         = "/acme/order/"
-	finalizeOrderPath = "/acme/finalize/"
+	authzPath               = "/acme/authz-v3/"
+	challengePath           = "/acme/chall-v3/"
+	trustedJwtChallengePath = "/acme/jwt-v3/"
+	certPath                = "/acme/cert/"
+	revokeCertPath          = "/acme/revoke-cert"
+	buildIDPath             = "/build"
+	rolloverPath            = "/acme/key-change"
+	newNoncePath            = "/acme/new-nonce"
+	newOrderPath            = "/acme/new-order"
+	orderPath               = "/acme/order/"
+	finalizeOrderPath       = "/acme/finalize/"
 
 	getAPIPrefix     = "/get/"
 	getOrderPath     = getAPIPrefix + "order/"
@@ -424,6 +426,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions
 	wfe.HandleFunc(m, orderPath, wfe.GetOrder, "GET", "POST")
 	wfe.HandleFunc(m, authzPath, wfe.Authorization, "GET", "POST")
 	wfe.HandleFunc(m, challengePath, wfe.Challenge, "GET", "POST")
+	wfe.HandleFunc(m, trustedJwtChallengePath, wfe.UpdateTrustedJwt, "POST")
 	wfe.HandleFunc(m, certPath, wfe.Certificate, "GET", "POST")
 	// Boulder-specific GET-able resource endpoints
 	wfe.HandleFunc(m, getOrderPath, wfe.GetOrder, "GET")
@@ -1176,6 +1179,118 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 }
 
+// Challenge handles POST requests to challenge URLs.
+// Such requests are clients' responses to the server's challenges.
+func (wfe *WebFrontEndImpl) UpdateTrustedJwt(
+	ctx context.Context,
+	logEvent *web.RequestEvent,
+	response http.ResponseWriter,
+	request *http.Request) {
+
+	notFound := func() {
+		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
+	}
+	body, _, _, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	if prob != nil {
+		// validPOSTForAccount handles its own setting of logEvent.Errors
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+	slug := strings.Split(request.URL.Path, "/")
+	if len(slug) != 2 {
+		notFound()
+		return
+	}
+	authorizationID, err := strconv.ParseInt(slug[0], 10, 64)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid authorization ID"), nil)
+		return
+	}
+	challengeID := slug[1]
+	authzPB, err := wfe.sa.GetAuthorization2(ctx, &sapb.AuthorizationID2{Id: authorizationID})
+	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			notFound()
+		} else {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		}
+		return
+	}
+
+	// Ensure gRPC response is complete.
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
+		return
+	}
+
+	authz, err := bgrpc.PBToAuthz(authzPB)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		return
+	}
+	challengeIndex := authz.FindChallengeByStringID(challengeID)
+	if challengeIndex == -1 {
+		notFound()
+		return
+	}
+
+	if authz.Expires == nil || authz.Expires.Before(wfe.clk.Now()) {
+		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
+		return
+	}
+
+	// FIXME GB: Ensure identifier.JWT
+	challenge := &authz.Challenges[challengeIndex]
+
+	var jwtUpdateRequest struct {
+		Jwt       string `json:"jwt"`
+		PublicKey string `json:"publicKey"`
+		Token     string `json:"token"`
+	}
+
+	err = json.Unmarshal(body, &jwtUpdateRequest)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal(err.Error()), err)
+		return
+	}
+
+	_, err = wfe.validateJWTPOST(jwtUpdateRequest.Jwt)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal(err.Error()), err)
+		return
+	}
+
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal(err.Error()), err)
+		return
+	}
+
+	// TODO GB:
+	// * Store publicKey in order
+	// * validate if jwt is trusted and extract token
+
+	authz.Challenges[challengeIndex] = *challenge
+
+	authzPB, _ = bgrpc.AuthzToPB(authz)
+	authReq := &rapb.UpdateAuthorizationRequest{
+		Authz:          authzPB,
+		ChallengeIndex: int64(challengeIndex),
+	}
+	authzPB, err = wfe.ra.UpdateAuthorization(ctx, authReq)
+}
+
+func (wfe *WebFrontEndImpl) validateJWTPOST(
+	jwtToken string) (string, error) {
+	token, err := jwt.Parse(jwtToken, func(token *jwt.Token) (interface{}, error) {
+		return jwt.ParseRSAPublicKeyFromPEM([]byte("LoadPublicKeyFromConfig"))
+	})
+	if err != nil {
+		return "", err
+	}
+	claims := token.Claims.(jwt.MapClaims)
+	return claims["uziNumber"].(string), nil
+}
+
 // prepAccountForDisplay takes a core.Registration and mutates it to be ready
 // for display in a JSON response. Primarily it papers over legacy ACME v1
 // features or non-standard details internal to Boulder we don't want clients to
@@ -1616,7 +1731,6 @@ func (wfe *WebFrontEndImpl) Authorization(
 			return
 		}
 	}
-
 	authz, err := bgrpc.PBToAuthz(authzPB)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
@@ -2002,7 +2116,7 @@ type orderJSON struct {
 func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corepb.Order) orderJSON {
 	idents := make([]identifier.ACMEIdentifier, len(order.Names))
 	for i, name := range order.Names {
-		idents[i] = identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
+		idents[i] = identifier.ACMEIdentifier{Type: identifier.IdentifierType(order.TypeIdentifier), Value: name}
 	}
 	finalizeURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
@@ -2078,10 +2192,16 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	// type identifier here. Check to make sure one of the strings is
 	// short enough to meet the max CN bytes requirement.
 	names := make([]string, len(newOrderRequest.Identifiers))
+	var firstIdent identifier.IdentifierType
 	for i, ident := range newOrderRequest.Identifiers {
-		if ident.Type != identifier.DNS {
+		if firstIdent == "" || firstIdent == ident.Type {
+			firstIdent = ident.Type
+		} else {
+			wfe.sendError(response, logEvent, probs.Malformed("Only one identifier type supported"), nil)
+		}
+		if ident.Type != identifier.DNS && ident.Type != identifier.JWT {
 			wfe.sendError(response, logEvent,
-				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
+				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS and non-JWT type identifier: type %q, value %q",
 					ident.Type, ident.Value),
 				nil)
 			return
@@ -2110,6 +2230,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
+		TypeIdentifier: string(firstIdent),
 	})
 	if err != nil || order == nil || order.Id == 0 || order.CreatedNS == 0 || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
@@ -2195,7 +2316,6 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order found for account ID %d", acctID)), nil)
 		return
 	}
-
 	respObj := wfe.orderToOrderJSON(request, order)
 
 	if respObj.Status == core.StatusProcessing {

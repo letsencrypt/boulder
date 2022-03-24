@@ -10,6 +10,7 @@ require (
 	github.com/eggsampler/acme/v3 v3.4.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-sql-driver/mysql v1.5.0
+	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.1.6
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0

@@ -31,13 +31,13 @@ var ErrLinting = fmt.Errorf("failed lint(s)")
 // primary public interface of this package, but it can be inefficient; creating
 // a new signer and a new lint registry are expensive operations which
 // performance-sensitive clients may want to cache via linter.New().
-func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) ([]byte, error) {
+func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string, typeIdentifier string) ([]byte, error) {
 	linter, err := New(realIssuer, realSigner, skipLints)
 	if err != nil {
 		return nil, err
 	}
 
-	lintCertBytes, err := linter.Check(tbs, subjectPubKey)
+	lintCertBytes, err := linter.Check(tbs, subjectPubKey, typeIdentifier)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []str
 // replaced with the linter's pubkey so that it appears self-signed. It returns
 // an error if any lint fails. On success it also returns the DER bytes of the
 // linting certificate.
-func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]byte, error) {
+func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, typeIdentifier string) ([]byte, error) {
 	lintPubKey := subjectPubKey
 	selfSigned, err := core.PublicKeysEqual(subjectPubKey, l.realPubKey)
 	if err != nil {
@@ -103,7 +103,7 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]
 		lintPubKey = l.signer.Public()
 	}
 
-	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer)
+	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer, typeIdentifier)
 	if err != nil {
 		return nil, err
 	}
@@ -235,10 +235,17 @@ func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer 
 }
 
 func ProcessResultSet(lintRes *zlint.ResultSet) error {
+	lintsThatMayFailForTypeIdentifier := map[string]string{
+		"e_dnsname_not_valid_tld":     "jwt",
+		"n_san_iana_pub_suffix_empty": "jwt",
+	}
+
 	if lintRes.NoticesPresent || lintRes.WarningsPresent || lintRes.ErrorsPresent || lintRes.FatalsPresent {
 		var failedLints []string
 		for lintName, result := range lintRes.Results {
-			if result.Status > lint.Pass {
+			if result.Status > lint.Pass &&
+				// When typeIdentifier == JWT lint DNSName not valid may fail
+				!(lintsThatMayFailForTypeIdentifier[lintName] == typeIdentifier) {
 				failedLints = append(failedLints, fmt.Sprintf("%s (%s)", lintName, result.Details))
 			}
 		}

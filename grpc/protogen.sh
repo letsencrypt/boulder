@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Possible to run this script through docker:
+# docker run --rm -it -v $PWD:/defs --entrypoint=/bin/bash namely/protoc-all /defs/grpc/./protogen.sh
+
 # Should point to /path/to/boulder, given that this script
 # lives in the //grpc subdirectory of the boulder repo.
 root_dir=$(dirname $(dirname $(readlink -f "$0")))
@@ -19,5 +22,5 @@ do
   # --go-grpc_out="${proto_dir}" does the same for _grpc.pb.go
   # --go_opt=paths=source_relative derives output filenames from input filenames
   # --go-grpc_opt=paths=source_relative does the same for _grpc.pb.go
-  protoc -I "${proto_dir}" -I "${root_dir}" --go_out="${proto_dir}" --go-grpc_out="${proto_dir}" --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative "${proto_file}"
+  protoc -I "${proto_dir}" -I "${root_dir}" -I /opt/include --go_out="${proto_dir}" --go-grpc_out="${proto_dir}" --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative "${proto_file}"
 done

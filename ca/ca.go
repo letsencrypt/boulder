@@ -269,7 +269,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("no issuer found for Issuer Name %s", precert.Issuer)
 	}
 
-	issuanceReq, err := issuance.RequestFromPrecert(precert, scts)
+	issuanceReq, err := issuance.RequestFromPrecert(precert, scts, req.TypeIdentifier)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +357,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
+	if issueReq.TypeIdentifier == "jwt" {
+		// TODO GB: VerifyCSR different for this???
+	} else {
+		err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
+	}
 	if err != nil {
 		ca.log.AuditErr(err.Error())
 		// VerifyCSR returns berror instances that can be passed through as-is
@@ -407,6 +411,13 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
 		NotBefore:         validity.NotBefore,
 		NotAfter:          validity.NotAfter,
+		TypeIdentifier:    issueReq.TypeIdentifier,
+	}
+	ca.noteSignError(err)
+	if err != nil {
+		err = berrors.InternalServerError("failed to sign certificate: %s", err)
+		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
+		return nil, nil, err
 	}
 
 	lintCertBytes, issuanceToken, err := issuer.Prepare(req)

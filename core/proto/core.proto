@@ -88,7 +88,7 @@ message Registration {
 message Authorization {
   // Next unused field number: 10
   string id = 1;
-  string identifier = 2;
+  string identifier = 2; // IdentifierValue
   int64 registrationID = 3;
   string status = 4;
   int64 expiresNS = 5; // Unix timestamp (nanoseconds)
@@ -96,6 +96,7 @@ message Authorization {
   repeated core.Challenge challenges = 6;
   reserved 7; // previously ACMEv1 combinations
   reserved 8; // previously v2
+  string typeIdentifier = 9;
 }
 
 message Order {
@@ -113,6 +114,7 @@ message Order {
   int64 createdNS = 10; // Unix timestamp (nanoseconds)
   google.protobuf.Timestamp created = 13;
   repeated int64 v2Authorizations = 11;
+  string typeIdentifier = 12;
 }
 
 message CRLEntry {

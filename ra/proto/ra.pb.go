@@ -444,6 +444,7 @@ type NewOrderRequest struct {
 
 	RegistrationID int64    `protobuf:"varint,1,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
 	Names          []string `protobuf:"bytes,2,rep,name=names,proto3" json:"names,omitempty"`
+	TypeIdentifier string   `protobuf:"bytes,3,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *NewOrderRequest) Reset() {
@@ -490,6 +491,13 @@ func (x *NewOrderRequest) GetNames() []string {
 		return x.Names
 	}
 	return nil
+}
+
+func (x *NewOrderRequest) GetTypeIdentifier() string {
+	if x != nil {
+		return x.TypeIdentifier
+	}
+	return ""
 }
 
 type FinalizeOrderRequest struct {

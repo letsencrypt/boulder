@@ -166,6 +166,7 @@ CREATE TABLE `orders` (
   `certificateSerial` varchar(255) DEFAULT NULL,
   `beganProcessing` tinyint(1) NOT NULL DEFAULT 0,
   `created` datetime NOT NULL,
+  `typeIdentifier` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `reg_status_expires` (`registrationID`,`expires`),
   KEY `regID_created_idx` (`registrationID`,`created`)

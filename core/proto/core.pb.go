@@ -667,7 +667,7 @@ type Authorization struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Next unused field number: 10
+	// Next unused field number: 11
 	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Identifier     string                 `protobuf:"bytes,2,opt,name=identifier,proto3" json:"identifier,omitempty"`
 	RegistrationID int64                  `protobuf:"varint,3,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
@@ -675,6 +675,7 @@ type Authorization struct {
 	ExpiresNS      int64                  `protobuf:"varint,5,opt,name=expiresNS,proto3" json:"expiresNS,omitempty"` // Unix timestamp (nanoseconds)
 	Expires        *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=expires,proto3" json:"expires,omitempty"`
 	Challenges     []*Challenge           `protobuf:"bytes,6,rep,name=challenges,proto3" json:"challenges,omitempty"`
+	TypeIdentifier string                 `protobuf:"bytes,10,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *Authorization) Reset() {
@@ -758,12 +759,19 @@ func (x *Authorization) GetChallenges() []*Challenge {
 	return nil
 }
 
+func (x *Authorization) GetTypeIdentifier() string {
+	if x != nil {
+		return x.TypeIdentifier
+	}
+	return ""
+}
+
 type Order struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Next unused field number: 14
+	// Next unused field number: 15
 	Id                int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	RegistrationID    int64                  `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
 	ExpiresNS         int64                  `protobuf:"varint,3,opt,name=expiresNS,proto3" json:"expiresNS,omitempty"` // Unix timestamp (nanoseconds)
@@ -776,6 +784,7 @@ type Order struct {
 	CreatedNS         int64                  `protobuf:"varint,10,opt,name=createdNS,proto3" json:"createdNS,omitempty"` // Unix timestamp (nanoseconds)
 	Created           *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created,proto3" json:"created,omitempty"`
 	V2Authorizations  []int64                `protobuf:"varint,11,rep,packed,name=v2Authorizations,proto3" json:"v2Authorizations,omitempty"`
+	TypeIdentifier    string                 `protobuf:"bytes,14,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *Order) Reset() {

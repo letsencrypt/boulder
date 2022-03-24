@@ -17,6 +17,7 @@ message IssueCertificateRequest {
   int64 registrationID = 2;
   int64 orderID = 3;
   int64 issuerNameID = 4;
+  string typeIdentifier = 5;
 }
 
 message IssuePrecertificateResponse {
@@ -28,6 +29,7 @@ message IssueCertificateForPrecertificateRequest {
   repeated bytes SCTs = 2;
   int64 registrationID = 3;
   int64 orderID = 4;
+  string typeIdentifier = 5;
 }
 
 // OCSPGenerator generates OCSP. We separate this out from

@@ -437,6 +437,8 @@ func (va *ValidationAuthorityImpl) validateChallenge(ctx context.Context, identi
 		return va.validateDNS01(ctx, identifier, challenge)
 	case core.ChallengeTypeTLSALPN01:
 		return va.validateTLSALPN01(ctx, identifier, challenge)
+	case core.ChallengeTypeTrustedJWT:
+		return va.validateTrustedJWT(ctx, identifier, challenge)
 	}
 	return nil, probs.Malformed("invalid challenge type %s", challenge.Type)
 }
@@ -692,7 +694,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	localValidationLatency := time.Since(vStart)
 
 	// Check for malformed ValidationRecords
-	if !challenge.RecordsSane() && prob == nil {
+	if challenge.Type != core.ChallengeTypeTrustedJWT && !challenge.RecordsSane() && prob == nil {
 		prob = probs.ServerInternal("Records for validation failed sanity check")
 	}
 

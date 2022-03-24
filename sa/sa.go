@@ -2,6 +2,7 @@ package sa
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -492,18 +494,17 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 				return nil, err
 			}
 		}
-
 		// Second, insert the new order.
 		order := &orderModel{
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        time.Unix(0, req.NewOrder.ExpiresNS),
 			Created:        ssa.clk.Now(),
+			TypeIdentifier: req.NewOrder.TypeIdentifier,
 		}
 		err := tx.Insert(ctx, order)
 		if err != nil {
 			return nil, err
 		}
-
 		// Third, insert all of the orderToAuthz relations.
 		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"}, "")
 		if err != nil {
@@ -525,7 +526,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		if err != nil {
 			return nil, err
 		}
-
 		// Fourth, insert all of the requestedNames.
 		inserter, err = db.NewMultiInserter("requestedNames", []string{"orderID", "reversedName"}, "")
 		if err != nil {
@@ -541,7 +541,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		if err != nil {
 			return nil, err
 		}
-
 		// Fifth, insert the FQDNSet entry for the order.
 		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
 		if err != nil {
@@ -574,6 +573,10 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		res.Status = status
 
 		return res, nil
+=======
+			TypeIdentifier:  req.NewOrder.TypeIdentifier,
+		}, nil
+>>>>>>> df4fb4e25 (Initial setup to support certificate validation based on trusted jwts)
 	})
 	if err != nil {
 		return nil, err

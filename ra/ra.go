@@ -1136,7 +1136,13 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
 	}
 
-	err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
+	if req.Order.TypeIdentifier == string(identifier.JWT) {
+		// TODO GB: Verify CSR as jwt csr
+		// TODO GB: Validate public key
+	} else {
+		err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
+	}
+
 	if err != nil {
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
@@ -1222,7 +1228,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 
 	// Step 3: Issue the Certificate
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, accountID(order.RegistrationID), orderID(order.Id))
+		ctx, csr, accountID(order.RegistrationID), orderID(order.Id), order.TypeIdentifier)
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1280,7 +1286,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
 	acctID accountID,
-	oID orderID) (*x509.Certificate, error) {
+	oID orderID,
+	typeIdentifier string) (*x509.Certificate, error) {
 	if features.Enabled(features.AsyncFinalize) {
 		// If we're in async mode, use a context with a much longer timeout.
 		var cancel func()
@@ -1324,6 +1331,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		SCTs:           scts,
 		RegistrationID: int64(acctID),
 		OrderID:        int64(oID),
+		TypeIdentifier: typeIdentifier,
 	})
 	if err != nil {
 		return nil, wrapError(err, "issuing certificate for precertificate")
@@ -1770,7 +1778,6 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 func (ra *RegistrationAuthorityImpl) PerformValidation(
 	ctx context.Context,
 	req *rapb.PerformValidationRequest) (*corepb.Authorization, error) {
-
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
@@ -1862,7 +1869,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			},
 		}
 		res, err := ra.VA.PerformValidation(vaCtx, &req)
-
 		challenge := &authz.Challenges[challIndex]
 		var prob *probs.ProblemDetails
 
@@ -1889,10 +1895,9 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			challenge.ValidationRecord = records
 		}
 
-		if !challenge.RecordsSane() && prob == nil {
+		if challenge.Type != core.ChallengeTypeTrustedJWT && !challenge.RecordsSane() && prob == nil {
 			prob = probs.ServerInternal("Records for validation failed sanity check")
 		}
-
 		if prob != nil {
 			challenge.Status = core.StatusInvalid
 			challenge.Error = prob
@@ -2422,20 +2427,30 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return nil, errIncompleteGRPCRequest
 	}
 
+	var typeIdentifier identifier.IdentifierType
+	if req.TypeIdentifier == "dns" {
+		typeIdentifier = identifier.DNS
+	} else {
+		typeIdentifier = identifier.JWT
+	}
+
 	newOrder := &sapb.NewOrderRequest{
 		RegistrationID: req.RegistrationID,
 		Names:          core.UniqueLowerNames(req.Names),
+		TypeIdentifier: req.TypeIdentifier,
 	}
 
 	if len(newOrder.Names) > ra.maxNames {
 		return nil, berrors.MalformedError(
 			"Order cannot contain more than %d DNS names", ra.maxNames)
 	}
-
-	// Validate that our policy allows issuing for each of the names in the order
-	err := ra.checkOrderNames(newOrder.Names)
-	if err != nil {
-		return nil, err
+	var err error
+	if req.TypeIdentifier == "dns" {
+		// Validate that our policy allows issuing for each of the names in the order
+		err = ra.checkOrderNames(newOrder.Names)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err = wildcardOverlap(newOrder.Names)
@@ -2567,7 +2582,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	var newAuthzs []*corepb.Authorization
 	for _, name := range missingAuthzNames {
 		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, identifier.ACMEIdentifier{
-			Type:  identifier.DNS,
+			Type:  typeIdentifier,
 			Value: name,
 		})
 		if err != nil {

@@ -152,6 +152,9 @@ github.com/go-playground/universal-translator
 # github.com/go-sql-driver/mysql v1.5.0
 ## explicit; go 1.10
 github.com/go-sql-driver/mysql
+# github.com/golang-jwt/jwt v3.2.2+incompatible
+## explicit
+github.com/golang-jwt/jwt
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru

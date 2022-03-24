@@ -28,6 +28,12 @@ func TLSALPNChallenge01(token string) Challenge {
 	return newChallenge(ChallengeTypeTLSALPN01, token)
 }
 
+// TrustedJWTChallenge01 constructs a random jwt challenge. If token is empty a random token
+// will be generated, otherwise the provided token is used.
+func TrustedJWTChallenge01(token string) Challenge {
+	return newChallenge(ChallengeTypeTrustedJWT, token)
+}
+
 // NewChallenge constructs a random challenge of the given kind. It returns an
 // error if the challenge type is unrecognized. If token is empty a random token
 // will be generated, otherwise the provided token is used.
@@ -39,6 +45,8 @@ func NewChallenge(kind AcmeChallenge, token string) (Challenge, error) {
 		return DNSChallenge01(token), nil
 	case ChallengeTypeTLSALPN01:
 		return TLSALPNChallenge01(token), nil
+	case ChallengeTypeTrustedJWT:
+		return TrustedJWTChallenge01(token), nil
 	default:
 		return Challenge{}, fmt.Errorf("unrecognized challenge type %q", kind)
 	}

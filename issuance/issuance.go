@@ -546,7 +546,8 @@ type IssuanceRequest struct {
 	// precertDER is the encoded bytes of the precertificate that a
 	// final certificate is expected to correspond to. If it is non-empty,
 	// SCTList must also be non-empty.
-	precertDER []byte
+	precertDER     []byte
+	TypeIdentifier string
 }
 
 // An issuanceToken represents an assertion that Issuer.Lint has generated
@@ -619,7 +620,7 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := i.Linter.Check(template, req.PublicKey)
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey, req.TypeIdentifier)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
@@ -678,7 +679,7 @@ func containsCTPoison(extensions []pkix.Extension) bool {
 // RequestFromPrecert constructs a final certificate IssuanceRequest matching
 // the provided precertificate. It returns an error if the precertificate doesn't
 // contain the CT poison extension.
-func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTimestamp) (*IssuanceRequest, error) {
+func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTimestamp, typeIdenfier string) (*IssuanceRequest, error) {
 	if !containsCTPoison(precert.Extensions) {
 		return nil, errors.New("provided certificate doesn't contain the CT poison extension")
 	}
@@ -692,6 +693,7 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		IncludeMustStaple: ContainsMustStaple(precert.Extensions),
 		sctList:           scts,
 		precertDER:        precert.Raw,
+		TypeIdentifier:    typeIdenfier,
 	}, nil
 }
 

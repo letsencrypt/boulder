@@ -31,6 +31,7 @@ type IssueCertificateRequest struct {
 	RegistrationID int64  `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
 	OrderID        int64  `protobuf:"varint,3,opt,name=orderID,proto3" json:"orderID,omitempty"`
 	IssuerNameID   int64  `protobuf:"varint,4,opt,name=issuerNameID,proto3" json:"issuerNameID,omitempty"`
+	TypeIdentifier string `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *IssueCertificateRequest) Reset() {
@@ -93,6 +94,13 @@ func (x *IssueCertificateRequest) GetIssuerNameID() int64 {
 	return 0
 }
 
+func (x *IssueCertificateRequest) GetTypeIdentifier() string {
+	if x != nil {
+		return x.TypeIdentifier
+	}
+	return ""
+}
+
 type IssuePrecertificateResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -149,6 +157,7 @@ type IssueCertificateForPrecertificateRequest struct {
 	SCTs           [][]byte `protobuf:"bytes,2,rep,name=SCTs,proto3" json:"SCTs,omitempty"`
 	RegistrationID int64    `protobuf:"varint,3,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
 	OrderID        int64    `protobuf:"varint,4,opt,name=orderID,proto3" json:"orderID,omitempty"`
+	TypeIdentifier string   `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *IssueCertificateForPrecertificateRequest) Reset() {
@@ -209,6 +218,13 @@ func (x *IssueCertificateForPrecertificateRequest) GetOrderID() int64 {
 		return x.OrderID
 	}
 	return 0
+}
+
+func (x *IssueCertificateForPrecertificateRequest) GetTypeIdentifier() string {
+	if x != nil {
+		return x.TypeIdentifier
+	}
+	return ""
 }
 
 // Exactly one of certDER or [serial and issuerID] must be set.
