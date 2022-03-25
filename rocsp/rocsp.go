@@ -174,15 +174,6 @@ func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, sho
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	// Use -1h as an indicator to set redis.KeepTTL as the ttl value. If
-	// there was previously no key, then no expiration will be set on the
-	// newly created key. This is useful for some revocations where we can
-	// assume a ttl was set and it may be otherwise difficult to plumb
-	// through a ttl that matches the certificate expiration.
-	if ttl == -1*time.Hour {
-		ttl = redis.KeepTTL
-	}
-
 	resp, err := ocsp.ParseResponse(respBytes, nil)
 	if err != nil {
 		return fmt.Errorf("parsing %d-byte response: %w", len(respBytes), err)

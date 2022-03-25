@@ -1778,15 +1778,9 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		// configurable timeout that can be set during creation.
 		rocspCtx := context.Background()
 
-		// A ttl of -1h will cause redis to reuse the currently set ttl.
-		// If, there is no existing key in redis for this serial, the ttl
-		// will be infinite, but the oscp-updater will take care of
-		// setting it on the next update.
-		rocspTTL := -1 * time.Hour
-
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID, rocspTTL)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}
@@ -1844,15 +1838,9 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 		// configurable timeout that can be set during creation.
 		rocspCtx := context.Background()
 
-		// A ttl of -1h will cause redis to reuse the currently set ttl.
-		// If, there is no existing key in redis for this serial, the ttl
-		// will be infinite, but the ocsp-updater will take care of
-		// setting it on the next update.
-		rocspTTL := -1 * time.Hour
-
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID, rocspTTL)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}
