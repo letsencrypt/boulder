@@ -114,7 +114,11 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 			successCount++
 		}
 
-		if (successCount+errorCount)%10 == 0 {
+		total := successCount + errorCount
+		if total < 10 ||
+			(total < 1000 && rand.Intn(1000) < 100) ||
+			(total < 100000 && rand.Intn(1000) < 10) ||
+			(rand.Intn(1000) < 1) {
 			cl.logger.Infof("stored %d responses, %d errors", successCount, errorCount)
 		}
 	}
