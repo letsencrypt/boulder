@@ -16,6 +16,7 @@ type rocspWriter interface {
 func (ssa *SQLStorageAuthority) storeOCSPRedis(ctx context.Context, resp []byte, issuerID int64) error {
 	nextUpdate, err := getNextUpdate(resp)
 	if err != nil {
+		ssa.redisStoreResponse.WithLabelValues("parse_response_error").Inc()
 		return err
 	}
 	ttl := time.Until(nextUpdate)
