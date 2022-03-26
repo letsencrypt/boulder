@@ -16,7 +16,7 @@ func getOCSPResponse() ([]byte, error) {
 func TestStoreOCSPRedis(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-	response, err := getOCSPResponse() // []byte{0, 0, 1}
+	response, err := getOCSPResponse()
 	test.AssertNotError(t, err, "unexpected error")
 	ctx := context.Background()
 	err = sa.storeOCSPRedis(ctx, response, 58923463773186183)
@@ -26,7 +26,7 @@ func TestStoreOCSPRedis(t *testing.T) {
 func TestStoreOCSPRedisInvalidIssuer(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
-	response, err := getOCSPResponse() // []byte{0, 0, 1}
+	response, err := getOCSPResponse()
 	test.AssertNotError(t, err, "unexpected error")
 	ctx := context.Background()
 	// 1234 is expected to not be a valid issuerID
@@ -38,7 +38,7 @@ func TestStoreOCSPRedisFail(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 	sa.rocspWriteClient = rocsp.NewMockWriteFailClient()
-	response, err := getOCSPResponse() // []byte{0, 0, 1}
+	response, err := getOCSPResponse()
 	test.AssertNotError(t, err, "unexpected error")
 	ctx := context.Background()
 	err = sa.storeOCSPRedis(ctx, response, 58923463773186183)
