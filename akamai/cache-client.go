@@ -279,7 +279,7 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	}
 
 	cpc.log.AuditInfof("Purge request sent successfully (ID %s) (body %s). Purge expected in %ds",
-		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, reqBody)
+		purgeInfo.PurgeID, reqBody, purgeInfo.EstimatedSeconds)
 	return nil
 }
 

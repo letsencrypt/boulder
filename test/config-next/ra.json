@@ -58,6 +58,7 @@
       "StoreRevokerInfo": true,
       "RestrictRSAKeySizes": true,
       "StreamlineOrderAndAuthzs": true,
+      "AllowReRevocation": true,
       "MozRevocationReasons": true
     },
     "CTLogGroups2": [

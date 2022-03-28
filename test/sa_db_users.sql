@@ -44,6 +44,7 @@ GRANT SELECT ON requestedNames TO 'sa_ro'@'localhost';
 GRANT SELECT ON orderFqdnSets TO 'sa_ro'@'localhost';
 GRANT SELECT ON authz2 TO 'sa_ro'@'localhost';
 GRANT SELECT ON orderToAuthz2 TO 'sa_ro'@'localhost';
+GRANT SELECT ON serials TO 'sa_ro'@'localhost';
 GRANT SELECT ON precertificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'sa_ro'@'localhost';
 GRANT SELECT ON blockedKeys TO 'sa_ro'@'localhost';
