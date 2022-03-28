@@ -2500,3 +2500,77 @@ func TestHashNames(t *testing.T) {
 	h2 = HashNames([]string{"a"})
 	test.AssertByteEquals(t, h1, h2)
 }
+
+func TestIncidentsForSerial(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a disabled incident.
+	err := sa.dbMap.Insert(&incidentModel{
+		SerialTable: "incident_foo",
+		URL:         "https://example.com/foo-incident",
+		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
+		Enabled:     false,
+	})
+	test.AssertNotError(t, err, "Failed to insert disabled incident")
+
+	// No incidents are enabled, so this should return in error.
+	incidentsForSerial, err := sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
+	test.AssertErrorIs(t, err, berrors.NotFound)
+	test.Assert(t, len(incidentsForSerial) == 0, "There should be 0 incidents")
+
+	// Add an enabled incident.
+	err = sa.dbMap.Insert(&incidentModel{
+		SerialTable: "incident_bar",
+		URL:         "https://example.com/test-incident",
+		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
+		Enabled:     true,
+	})
+	test.AssertNotError(t, err, "Failed to insert enabled incident")
+
+	// Add a row to the incident table with serial '1338'.
+	affectedCertA := incidentCertModel{
+		Serial:         "1338",
+		RegistrationID: 1,
+		OrderID:        1,
+		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
+	}
+	_, err = sa.dbMap.Exec(
+		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
+			"serial, registrationID, orderID, lastNoticeSent",
+			affectedCertA.Serial,
+			affectedCertA.RegistrationID,
+			affectedCertA.OrderID,
+			affectedCertA.LastNoticeSent.Format("2006-01-02 15:04:05"),
+		),
+	)
+	test.AssertNotError(t, err, "Error while inserting row for '1338' into incident table")
+
+	// The incident table should not contain a row with serial '1337'.
+	incidentsForSerial, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
+	test.AssertErrorIs(t, err, berrors.NotFound)
+	test.Assert(t, len(incidentsForSerial) == 0, "There should be 0 incidents matching serial '1337'")
+
+	// Add a row to the incident table with serial '1337'.
+	affectedCertB := incidentCertModel{
+		Serial:         "1337",
+		RegistrationID: 2,
+		OrderID:        2,
+		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
+	}
+	_, err = sa.dbMap.Exec(
+		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
+			"serial, registrationID, orderID, lastNoticeSent",
+			affectedCertB.Serial,
+			affectedCertB.RegistrationID,
+			affectedCertB.OrderID,
+			affectedCertB.LastNoticeSent.Format("2006-01-02 15:04:05"),
+		),
+	)
+	test.AssertNotError(t, err, "Error while inserting row for '1337' into incident table")
+
+	// The incident table should now contain a row with serial '1337'.
+	incidentsForSerial, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
+	test.AssertNotError(t, err, "Failed to retrieve incidents for serial")
+	test.Assert(t, len(incidentsForSerial) == 1, "No active incidents returned")
+}

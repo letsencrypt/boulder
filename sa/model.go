@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // errBadJSON is an error type returned when a json.Unmarshal performed by the
@@ -701,4 +702,31 @@ type keyHashModel struct {
 var stringToSourceInt = map[string]int{
 	"API":           1,
 	"admin-revoker": 2,
+}
+
+// incidentModel represents a row in the 'incidents' table.
+type incidentModel struct {
+	ID          int64     `db:"id"`
+	SerialTable string    `db:"serialTable"`
+	URL         string    `db:"url"`
+	RenewBy     time.Time `db:"renewBy"`
+	Enabled     bool      `db:"enabled"`
+}
+
+func incidentModelToPB(i incidentModel) sapb.Incident {
+	return sapb.Incident{
+		Id:          i.ID,
+		SerialTable: i.SerialTable,
+		Url:         i.URL,
+		RenewBy:     i.RenewBy.UnixNano(),
+		Enabled:     i.Enabled,
+	}
+}
+
+// incidentCertModel represents a row in an 'incident' table.
+type incidentCertModel struct {
+	Serial         string    `db:"serial"`
+	RegistrationID int64     `db:"registrationID"`
+	OrderID        int64     `db:"orderID"`
+	LastNoticeSent time.Time `db:"lastNoticeSent"`
 }
