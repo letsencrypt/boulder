@@ -228,7 +228,7 @@ func (ap *akamaiPurger) Purge(ctx context.Context, req *akamaipb.PurgeRequest) (
 }
 
 func main() {
-	daemonFlags := flag.NewFlagSet("daemon", flag.ExitOnError)
+	daemonFlags := flag.NewFlagSet("daemon", flag.ContinueOnError)
 	grpcAddr := daemonFlags.String("addr", "", "gRPC listen address override")
 	debugAddr := daemonFlags.String("debug-addr", "", "Debug server address override")
 	configFile := daemonFlags.String("config", "", "File path to the configuration file for this service")
@@ -264,7 +264,11 @@ func main() {
 		}
 		configFile = manualConfigFile
 	} else {
-		_ = daemonFlags.Parse(os.Args[1:])
+		err := daemonFlags.Parse(os.Args[1:])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "OR:\n%s manual -config conf.json [-tag Foo] [-tag-file]\n", os.Args[0])
+			os.Exit(1)
+		}
 		if *configFile == "" {
 			daemonFlags.Usage()
 			os.Exit(1)
