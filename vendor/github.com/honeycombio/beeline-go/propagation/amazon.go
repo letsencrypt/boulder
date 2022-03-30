@@ -5,10 +5,6 @@ import (
 	"strings"
 )
 
-const (
-	amazonTracePropagationHTTPHeader = "X-Amzn-Trace-Id"
-)
-
 // MarshalAmazonTraceContext uses the information in prop to create a trace context header
 // in the Amazon AWS trace header format. It returns the serialized form of the trace
 // context, ready to be inserted into the headers of an outbound HTTP request.

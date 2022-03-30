@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/vmihailenco/msgpack/v4"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Response is a record of an event sent. It includes information about sending

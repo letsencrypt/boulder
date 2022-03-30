@@ -26,7 +26,7 @@ import (
 
 	"github.com/facebookgo/muster"
 	"github.com/klauspost/compress/zstd"
-	"github.com/vmihailenco/msgpack/v4"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 const (
@@ -137,13 +137,13 @@ func (h *Honeycomb) Flush() (err error) {
 	// the old one (which has a side-effect of flushing the data) and make a new
 	// one. We start the new one and swap it with the old one so that we minimize
 	// the time we hold the musterLock for.
-	m := h.muster
 	newMuster := h.createMuster()
 	err = newMuster.Start()
 	if err != nil {
 		return err
 	}
 	h.musterLock.Lock()
+	m := h.muster
 	h.muster = newMuster
 	h.musterLock.Unlock()
 	return m.Stop()
@@ -387,7 +387,14 @@ func (b *batchAgg) fireBatch(events []*Event) {
 
 		var req *http.Request
 		reqBody, zipped := buildReqReader(encEvs, !b.disableCompression)
-		req, err = http.NewRequest("POST", url.String(), reqBody)
+		if reader, ok := reqBody.(*pooledReader); ok {
+			// Pass the underlying bytes.Reader to http.Request so that
+			// GetBody and ContentLength fields are populated on Request.
+			// See https://cs.opensource.google/go/go/+/refs/tags/go1.17.5:src/net/http/request.go;l=898
+			req, err = http.NewRequest("POST", url.String(), &reader.Reader)
+		} else {
+			req, err = http.NewRequest("POST", url.String(), reqBody)
+		}
 		req.Header.Set("Content-Type", contentType)
 		if zipped {
 			req.Header.Set("Content-Encoding", "zstd")
@@ -397,6 +404,9 @@ func (b *batchAgg) fireBatch(events []*Event) {
 		req.Header.Add("X-Honeycomb-Team", writeKey)
 		// send off batch!
 		resp, err = b.httpClient.Do(req)
+		if reader, ok := reqBody.(*pooledReader); ok {
+			reader.Release()
+		}
 
 		if httpErr, ok := err.(httpError); ok && httpErr.Timeout() {
 			continue
@@ -480,7 +490,11 @@ func (b *batchAgg) fireBatch(events []*Event) {
 	if err != nil {
 		// if we can't decode the responses, just error out all of them
 		b.metrics.Increment("response_decode_errors")
-		b.enqueueErrResponses(err, events, dur/time.Duration(numEncoded))
+		b.enqueueErrResponses(fmt.Errorf(
+			"got OK HTTP response, but couldn't read response body: %v", err),
+			events,
+			dur/time.Duration(numEncoded),
+		)
 		return
 	}
 
@@ -516,12 +530,8 @@ func (b *batchAgg) encodeBatchJSON(events []*Event) ([]byte, int) {
 	bytesTotal := 1
 	// ok, we've got our array, let's populate it with JSON events
 	for i, ev := range events {
-		if !first {
-			buf.WriteByte(',')
-			bytesTotal++
-		}
-		first = false
 		evByt, err := json.Marshal(ev)
+		// check all our errors first in case we need to skip batching this event
 		if err != nil {
 			b.enqueueResponse(Response{
 				Err:      err,
@@ -541,13 +551,20 @@ func (b *batchAgg) encodeBatchJSON(events []*Event) ([]byte, int) {
 			events[i] = nil
 			continue
 		}
-		bytesTotal += len(evByt)
 
+		bytesTotal += len(evByt)
 		// count for the trailing ]
 		if bytesTotal+1 > apiMaxBatchSize {
 			b.reenqueueEvents(events[i:])
 			break
 		}
+
+		// ok, we have valid JSON and it'll fit in this batch; add ourselves a comma and the next value
+		if !first {
+			buf.WriteByte(',')
+			bytesTotal++
+		}
+		first = false
 		buf.Write(evByt)
 		numEncoded++
 	}
@@ -624,13 +641,15 @@ func (b *batchAgg) enqueueErrResponses(err error, events []*Event, duration time
 var zstdBufferPool sync.Pool
 
 type pooledReader struct {
-	*bytes.Reader
+	bytes.Reader
 	buf []byte
 }
 
-func (r *pooledReader) Close() error {
+func (r *pooledReader) Release() error {
+	// Ensure further attempts to read will return io.EOF
+	r.Reset(nil)
+	// Then reset and give up ownership of the buffer.
 	zstdBufferPool.Put(r.buf[:0])
-	r.Reader = nil
 	r.buf = nil
 	return nil
 }
@@ -655,8 +674,8 @@ func init() {
 }
 
 // buildReqReader returns an io.Reader and a boolean, indicating whether or not
-// the io.Reader is compressed.
-func buildReqReader(jsonEncoded []byte, compress bool) (io.ReadCloser, bool) {
+// the underlying bytes.Reader is compressed.
+func buildReqReader(jsonEncoded []byte, compress bool) (io.Reader, bool) {
 	if compress {
 		var buf []byte
 		if found, ok := zstdBufferPool.Get().([]byte); ok {
@@ -664,12 +683,13 @@ func buildReqReader(jsonEncoded []byte, compress bool) (io.ReadCloser, bool) {
 		}
 
 		buf = zstdEncoder.EncodeAll(jsonEncoded, buf)
-		return &pooledReader{
-			Reader: bytes.NewReader(buf),
-			buf:    buf,
-		}, true
+		reader := pooledReader{
+			buf: buf,
+		}
+		reader.Reset(reader.buf)
+		return &reader, true
 	}
-	return ioutil.NopCloser(bytes.NewReader(jsonEncoded)), false
+	return bytes.NewReader(jsonEncoded), false
 }
 
 // nower to make testing easier

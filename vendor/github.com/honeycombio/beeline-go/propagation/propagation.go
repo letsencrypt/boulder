@@ -6,9 +6,23 @@ package propagation
 
 import (
 	"fmt"
-
-	"go.opentelemetry.io/otel/trace"
 )
+
+var GlobalConfig Config
+
+type Config struct {
+	PropagateDataset bool
+}
+
+// getHeaderValue is a helper function that is guaranteed to return a string. Given a key, it
+// attempts to find the associated value in the provided header. If none is found, it returns
+// an empty string.
+func getHeaderValue(headers map[string]string, key string) string {
+	if value, ok := headers[key]; ok {
+		return value
+	}
+	return ""
+}
 
 // PropagationContext contains information about a trace that can cross process boundaries.
 // Typically this information is parsed from an incoming trace context header.
@@ -17,8 +31,8 @@ type PropagationContext struct {
 	ParentID     string
 	Dataset      string
 	TraceContext map[string]interface{}
-	TraceFlags   byte
-	TraceState   trace.TraceState
+	TraceFlags   TraceFlags
+	TraceState   TraceState
 }
 
 // hasTraceID checks that the trace ID is valid.

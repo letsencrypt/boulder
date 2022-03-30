@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"go.opentelemetry.io/otel/trace"
+	"runtime/pprof"
 	"sync"
 	"time"
 
@@ -28,6 +28,9 @@ type Config struct {
 	// PresendHook is a function to mutate spans just before they are sent to
 	// Honeycomb. See the docs for `beeline.Config` for a full description.
 	PresendHook func(map[string]interface{})
+
+	// PprofTagging controls whether span IDs should be propagated to pprof.
+	PprofTagging bool
 }
 
 // Trace holds some trace level state and the root of the span tree that will be
@@ -156,7 +159,7 @@ func (t *Trace) propagationContext() *propagation.PropagationContext {
 		TraceID:      t.traceID,
 		Dataset:      t.builder.Dataset,
 		TraceContext: localTLF,
-		TraceFlags:   trace.FlagsSampled, // TODO: set the sampled flag based on sampler decision
+		TraceFlags:   propagation.FlagsSampled, // TODO: set the sampled flag based on sampler decision
 	}
 }
 
@@ -239,6 +242,7 @@ type Span struct {
 	trace        *Trace
 	eventLock    sync.Mutex
 	sendLock     sync.RWMutex
+	oldCtx       *context.Context
 }
 
 // newSpan takes care of *some* of the initialization necessary to create a new
@@ -254,13 +258,20 @@ func newSpan() *Span {
 }
 
 // AddField adds a key/value pair to this span
+//
+// Errors are treated as a special case for convenience: if `val` is of type
+// `error` then the key is set to the error's message in the span.
 func (s *Span) AddField(key string, val interface{}) {
 	// The call to event's AddField is protected by a lock, but this is not always sufficient
 	// See send for why this lock exists
 	s.eventLock.Lock()
 	defer s.eventLock.Unlock()
 	if s.ev != nil {
-		s.ev.AddField(key, val)
+		if err, ok := val.(error); ok {
+			s.ev.AddField(key, err.Error())
+		} else {
+			s.ev.AddField(key, val)
+		}
 	}
 }
 
@@ -371,6 +382,10 @@ func (s *Span) sendLocked() {
 		s.parent.removeChildSpan(s)
 	}
 
+	// Restore pprof labels from before this span was created, if any were saved.
+	if s.oldCtx != nil {
+		pprof.SetGoroutineLabels(*s.oldCtx)
+	}
 }
 
 // IsAsync reveals whether the span is asynchronous (true) or synchronous (false).
