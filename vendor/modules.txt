@@ -67,6 +67,9 @@ github.com/google/certificate-transparency-go/x509/pkix
 # github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 ## explicit
 github.com/grpc-ecosystem/go-grpc-prometheus
+# github.com/hashicorp/go-syslog v1.0.0
+## explicit
+github.com/hashicorp/go-syslog
 # github.com/honeycombio/beeline-go v1.1.1
 ## explicit; go 1.14
 github.com/honeycombio/beeline-go

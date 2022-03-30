@@ -11,6 +11,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
+	github.com/hashicorp/go-syslog v1.0.0
 	github.com/honeycombio/beeline-go v1.1.1
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548

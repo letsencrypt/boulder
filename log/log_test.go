@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	gsyslog "github.com/hashicorp/go-syslog"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -21,7 +22,7 @@ const syslogLevel = 7
 func setup(t *testing.T) *impl {
 	// Write all logs to UDP on a high port so as to not bother the system
 	// which is running the test
-	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	writer, err := gsyslog.DialLogger("udp", "127.0.0.1:65530", gsyslog.LOG_INFO, "LOCAL0", "")
 	test.AssertNotError(t, err, "Could not construct syslog object")
 
 	logger, err := New(writer, stdoutLevel, syslogLevel)
@@ -86,7 +87,7 @@ func TestEmitEmpty(t *testing.T) {
 func ExampleLogger() {
 	// Write all logs to UDP on a high port so as to not bother the system
 	// which is running the test
-	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	writer, err := gsyslog.DialLogger("udp", "127.0.0.1:65530", gsyslog.LOG_INFO, "LOCAL0", "")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestTransmission(t *testing.T) {
 	}()
 
 	fmt.Printf("Going to %s\n", l.LocalAddr().String())
-	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	writer, err := gsyslog.DialLogger("udp", l.LocalAddr().String(), gsyslog.LOG_INFO, "LOCAL0", "")
 	test.AssertNotError(t, err, "Failed to find connect to log server")
 
 	impl, err := New(writer, stdoutLevel, syslogLevel)
@@ -260,7 +261,7 @@ func TestSyslogLevels(t *testing.T) {
 	}()
 
 	fmt.Printf("Going to %s\n", l.LocalAddr().String())
-	writer, err := syslog.Dial("udp", l.LocalAddr().String(), syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	writer, err := gsyslog.DialLogger("udp", l.LocalAddr().String(), gsyslog.LOG_INFO, "LOCAL0", "")
 	test.AssertNotError(t, err, "Failed to find connect to log server")
 
 	// create a logger with syslog level debug
