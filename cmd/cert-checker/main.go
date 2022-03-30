@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log/syslog"
 	"os"
 	"reflect"
 	"regexp"
@@ -15,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	gsyslog "github.com/hashicorp/go-syslog"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	zX509 "github.com/zmap/zcrypto/x509"
@@ -365,7 +365,7 @@ func main() {
 	err = features.Set(config.CertChecker.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
+	syslogger, err := gsyslog.DialLogger("", "", gsyslog.LOG_INFO, "LOCAL0", "")
 	cmd.FailOnError(err, "Failed to dial syslog")
 
 	logger, err := blog.New(syslogger, 0, 0)

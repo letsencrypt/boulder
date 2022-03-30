@@ -6,7 +6,6 @@ import (
 	"expvar"
 	"fmt"
 	"log"
-	"log/syslog"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -20,6 +19,7 @@ import (
 	"google.golang.org/grpc/grpclog"
 
 	"github.com/go-sql-driver/mysql"
+	gsyslog "github.com/hashicorp/go-syslog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -151,13 +151,14 @@ func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, 
 
 func NewLogger(logConf SyslogConfig) blog.Logger {
 	tag := path.Base(os.Args[0])
-	syslogger, err := syslog.Dial(
+	syslogger, err := gsyslog.DialLogger(
 		"",
 		"",
-		syslog.LOG_INFO, // default, not actually used
+		gsyslog.LOG_INFO, // default, not actually used
+		"LOCAL0",
 		tag)
 	FailOnError(err, "Could not connect to Syslog")
-	syslogLevel := int(syslog.LOG_INFO)
+	syslogLevel := int(gsyslog.LOG_INFO)
 	if logConf.SyslogLevel != 0 {
 		syslogLevel = logConf.SyslogLevel
 	}
