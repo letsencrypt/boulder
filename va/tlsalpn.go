@@ -245,17 +245,22 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		return validationRecords, probs.Unauthorized(errText)
 	}
 
-	hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
+	badCertErr := func(msg string) *probs.ProblemDetails {
+		hostPort := net.JoinHostPort(validationRecords[0].AddressUsed.String(), validationRecords[0].Port)
+
+		return probs.Unauthorized(fmt.Sprintf(
+			"Incorrect validation certificate for %s challenge. "+
+				"Requested %s from %s. "+
+				"%s",
+			challenge.Type, identifier.Value, hostPort, msg,
+		))
+	}
 
 	// The certificate must be self-signed.
 	err := cert.CheckSignature(cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature)
 	if err != nil || !bytes.Equal(cert.RawSubject, cert.RawIssuer) {
-		errText := fmt.Sprintf(
-			"Incorrect validation certificate for %s challenge. "+
-				"Requested %s from %s. "+
-				"Received certificate which is not self-signed.",
-			challenge.Type, identifier.Value, hostPort)
-		return validationRecords, probs.Unauthorized(errText)
+		return validationRecords, badCertErr(
+			"Received certificate which is not self-signed.")
 	}
 
 	// The certificate must have the subjectAltName and acmeIdentifier
@@ -265,27 +270,17 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 	}
 	err = checkAcceptableExtensions(cert.Extensions, allowedOIDs)
 	if err != nil {
-		errText := fmt.Sprintf(
-			"Incorrect validation certificate for %s challenge. "+
-				"Requested %s from %s. "+
-				"Received certificate with unexpected extensions. "+
-				"Got error: %q",
-			challenge.Type, identifier.Value, hostPort, err)
-		return validationRecords, probs.Unauthorized(errText)
+		return validationRecords, badCertErr(
+			fmt.Sprintf("Received certificate with unexpected extensions: %q", err))
 	}
 
 	// The certificate returned must have a subjectAltName extension containing
 	// only the dNSName being validated and no other entries.
 	err = checkExpectedSAN(cert, identifier)
 	if err != nil {
-		names := certAltNames(cert)
-		errText := fmt.Sprintf(
-			"Incorrect validation certificate for %s challenge. "+
-				"Requested %s from %s. "+
-				"Received certificate with unexpected identifiers: %q. "+
-				"Got error: %q",
-			challenge.Type, identifier.Value, hostPort, strings.Join(names, ", "), err)
-		return validationRecords, probs.Unauthorized(errText)
+		names := strings.Join(certAltNames(cert), ", ")
+		return validationRecords, badCertErr(
+			fmt.Sprintf("Received certificate with unexpected identifiers (%q): %q", names, err))
 	}
 
 	// Verify key authorization in acmeValidation extension
@@ -294,30 +289,26 @@ func (va *ValidationAuthorityImpl) validateTLSALPN01(ctx context.Context, identi
 		if IdPeAcmeIdentifier.Equal(ext.Id) {
 			va.metrics.tlsALPNOIDCounter.WithLabelValues(IdPeAcmeIdentifier.String()).Inc()
 			if !ext.Critical {
-				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"acmeValidationV1 extension not critical", core.ChallengeTypeTLSALPN01)
-				return validationRecords, probs.Unauthorized(errText)
+				return validationRecords, badCertErr(
+					"Received certificate with acmeValidationV1 extension that is not Critical.")
 			}
 			var extValue []byte
 			rest, err := asn1.Unmarshal(ext.Value, &extValue)
 			if err != nil || len(rest) > 0 || len(h) != len(extValue) {
-				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
-				return validationRecords, probs.Unauthorized(errText)
+				return validationRecords, badCertErr(
+					"Received certificate with malformed acmeValidationV1 extension value.")
 			}
 			if subtle.ConstantTimeCompare(h[:], extValue) != 1 {
-				errText := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-					"Expected acmeValidationV1 extension value %s for this challenge but got %s",
-					core.ChallengeTypeTLSALPN01, hex.EncodeToString(h[:]), hex.EncodeToString(extValue))
-				return validationRecords, probs.Unauthorized(errText)
+				return validationRecords, badCertErr(fmt.Sprintf(
+					"Received certificate with acmeValidationV1 extension value %s but expected %s.",
+					hex.EncodeToString(extValue),
+					hex.EncodeToString(h[:]),
+				))
 			}
 			return validationRecords, nil
 		}
 	}
 
-	errText := fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Missing acmeValidationV1 extension.",
-		core.ChallengeTypeTLSALPN01)
-	return validationRecords, probs.Unauthorized(errText)
+	return validationRecords, badCertErr(
+		"Received certificate with no acmeValidationV1 extension.")
 }
