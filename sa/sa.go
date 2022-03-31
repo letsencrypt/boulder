@@ -2089,8 +2089,8 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	var incidentsForSerial []sapb.Incident
 	for _, i := range activeIncidents {
 		var count int
-		err := ssa.dbMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = %s",
-			i.SerialTable, req.Serial))
+		err := ssa.dbMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
+			i.SerialTable), req.Serial)
 		if err != nil {
 			if db.IsNoRows(err) {
 				continue
