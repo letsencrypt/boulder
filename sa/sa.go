@@ -1767,6 +1767,24 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 	if rows == 0 {
 		return nil, berrors.AlreadyRevokedError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
 	}
+
+	// Store the OCSP response in Redis (if configured) on a best effort
+	// basis. We don't want to fail on an error here while mysql is the
+	// source of truth.
+	if ssa.rocspWriteClient != nil {
+		// Use a new context for the goroutine. We aren't going to wait on
+		// the goroutine to complete, so we don't want it to be canceled
+		// when the parent function ends. The rocsp client has a
+		// configurable timeout that can be set during creation.
+		rocspCtx := context.Background()
+
+		// Send the response off to redis in a goroutine.
+		go func() {
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
+		}()
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -1809,6 +1827,24 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 		// to already be revoked for a different reason, and to have a matching date.
 		return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
 	}
+
+	// Store the OCSP response in Redis (if configured) on a best effort
+	// basis. We don't want to fail on an error here while mysql is the
+	// source of truth.
+	if ssa.rocspWriteClient != nil {
+		// Use a new context for the goroutine. We aren't going to wait on
+		// the goroutine to complete, so we don't want it to be canceled
+		// when the parent function ends. The rocsp client has a
+		// configurable timeout that can be set during creation.
+		rocspCtx := context.Background()
+
+		// Send the response off to redis in a goroutine.
+		go func() {
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
+		}()
+	}
+
 	return &emptypb.Empty{}, nil
 }
 

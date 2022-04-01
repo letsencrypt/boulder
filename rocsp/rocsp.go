@@ -162,11 +162,11 @@ func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock
 	return &WritingClient{NewClient(rdb, timeout, clk, stats), storeResponseLatency}
 }
 
-// StoreResponse parses the given bytes as an OCSP response, and stores it into
-// Redis, updating both the metadata and response keys. ShortIssuerID is an
-// arbitrarily assigned byte that unique identifies each issuer. Must be the
-// same across OCSP components. Returns error if the OCSP response fails to
-// parse.
+// StoreResponse parses the given bytes as an OCSP response, and stores it
+// into Redis, updating both the metadata and response keys. ShortIssuerID
+// is an arbitrarily assigned byte that unique identifies each issuer.
+// Must be the same across OCSP components. Returns error if the OCSP
+// response fails to parse.
 func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
 	start := c.clk.Now()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)

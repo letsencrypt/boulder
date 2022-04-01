@@ -162,11 +162,10 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		// when the parent function ends. The rocsp client has a
 		// configurable timeout that can be set during creation.
 		rocspCtx := context.Background()
-		rocspTTL := parsed.NotAfter.Sub(ssa.clk.Now())
 
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID, rocspTTL)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}
