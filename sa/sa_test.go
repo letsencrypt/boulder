@@ -9,9 +9,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/big"
 	"math/bits"
+	mrand "math/rand"
 	"net"
 	"reflect"
 	"sync"
@@ -35,6 +37,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -2529,7 +2532,7 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to insert enabled incident")
 
 	// Add a row to the incident table with serial '1338'.
-	affectedCertA := incidentCertModel{
+	affectedCertA := incidentSerialModel{
 		Serial:         "1338",
 		RegistrationID: 1,
 		OrderID:        1,
@@ -2552,7 +2555,7 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.Assert(t, len(incidentsForSerial) == 0, "There should be 0 incidents matching serial '1337'")
 
 	// Add a row to the incident table with serial '1337'.
-	affectedCertB := incidentCertModel{
+	affectedCertB := incidentSerialModel{
 		Serial:         "1337",
 		RegistrationID: 2,
 		OrderID:        2,
@@ -2573,4 +2576,100 @@ func TestIncidentsForSerial(t *testing.T) {
 	incidentsForSerial, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
 	test.AssertNotError(t, err, "Failed to retrieve incidents for serial")
 	test.Assert(t, len(incidentsForSerial) == 1, "No active incidents returned")
+}
+
+type inmemSA struct {
+	sapb.StorageAuthorityClient
+	Impl *SQLStorageAuthority
+}
+
+type sfiData struct {
+	serial *sapb.IncidentSerial
+	err    error
+}
+
+type sfiClient struct {
+	// grpc.ClientStream is embedded to meet the
+	// StorageAuthority_SerialsForIncidentClient interface.
+	grpc.ClientStream
+	sfiChan <-chan sfiData
+}
+
+// Recv receives a single serial from the server.
+func (c sfiClient) Recv() (*sapb.IncidentSerial, error) {
+	sfiData := <-c.sfiChan
+	return sfiData.serial, sfiData.err
+}
+
+type sfiServer struct {
+	// grpc.ServerStream is embedded to meet the
+	// StorageAuthority_SerialsForIncidentServer interface.
+	grpc.ServerStream
+	sfiChan chan<- sfiData
+}
+
+// Send sends a single serial to the client.
+func (s sfiServer) Send(serial *sapb.IncidentSerial) error {
+	s.sfiChan <- sfiData{serial, nil}
+	return nil
+}
+
+func (s sfiServer) sendErrAndClose(err error) error {
+	s.sfiChan <- sfiData{nil, err}
+	close(s.sfiChan)
+	return nil
+}
+
+func makeinmemSAGRPCStreamAdapter() (sfiClient, sfiServer) {
+	sfiDataChan := make(chan sfiData)
+	return sfiClient{sfiChan: sfiDataChan}, sfiServer{sfiChan: sfiDataChan}
+}
+
+func (s inmemSA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
+	client, server := makeinmemSAGRPCStreamAdapter()
+	go func() {
+		err := s.Impl.SerialsForIncident(req, server)
+		if err != nil {
+			server.sendErrAndClose(err)
+		} else {
+			server.sendErrAndClose(io.EOF)
+		}
+	}()
+	return client, nil
+}
+
+func TestSerialsForIncident(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a rows to the incident table.
+	for _, i := range []string{"1335", "1336", "1337", "1338"} {
+		mrand.Seed(time.Now().Unix())
+		randInt := func() int64 { return mrand.Int63() }
+		_, err := sa.dbMap.Exec(
+			fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
+				"serial, registrationID, orderID, lastNoticeSent",
+				i,
+				randInt(),
+				randInt(),
+				sa.clk.Now().Add(time.Hour*24*7).Format("2006-01-02 15:04:05"),
+			),
+		)
+		test.AssertNotError(t, err, fmt.Sprintf("Error while inserting row for '%s' into incident table", i))
+	}
+	isa := inmemSA{Impl: sa}
+	client, err := isa.SerialsForIncident(
+		context.Background(), &sapb.SerialsForIncidentRequest{
+			IncidentTable: "incident_foo"})
+	test.AssertNotError(t, err, "Error getting serials for incident")
+	for {
+		serial, err := client.Recv()
+
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		t.Log(serial.Serial + ">")
+	}
 }

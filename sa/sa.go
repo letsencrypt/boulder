@@ -2107,3 +2107,19 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	}
 	return incidentsForSerial, nil
 }
+
+func (ssa *SQLStorageAuthority) SerialsForIncident(in *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
+	for i := 0; i < 5; i++ {
+		resp := sapb.IncidentSerial{
+			Serial:         "1337",
+			RegistrationID: 2,
+			OrderID:        3,
+			LastNoticeSent: ssa.clk.Now().Unix(),
+		}
+		err := stream.Send(&resp)
+		if err != nil {
+			fmt.Printf("send error %v\n", err)
+		}
+	}
+	return nil
+}
