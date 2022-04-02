@@ -2108,18 +2108,34 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	return incidentsForSerial, nil
 }
 
-func (ssa *SQLStorageAuthority) SerialsForIncident(in *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
-	for i := 0; i < 5; i++ {
-		resp := sapb.IncidentSerial{
-			Serial:         "1337",
-			RegistrationID: 2,
-			OrderID:        3,
-			LastNoticeSent: ssa.clk.Now().Unix(),
-		}
-		err := stream.Send(&resp)
+func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
+	rows, err := ssa.dbMap.Db.Query(fmt.Sprintf("SELECT * FROM %s", req.IncidentTable))
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		var serial string
+		var regID int64
+		var orderID int64
+		var lastNoticeSent time.Time
+		err := rows.Scan(&serial, &regID, &orderID, &lastNoticeSent)
 		if err != nil {
-			fmt.Printf("send error %v\n", err)
+			return err
 		}
+		resp := sapb.IncidentSerial{
+			Serial:         serial,
+			RegistrationID: regID,
+			OrderID:        orderID,
+			LastNoticeSent: lastNoticeSent.UnixNano(),
+		}
+		err = stream.Send(&resp)
+		return err
+	}
+
+	err = rows.Close()
+	if err != nil {
+		return err
 	}
 	return nil
 }

@@ -2642,7 +2642,20 @@ func TestSerialsForIncident(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// Add a rows to the incident table.
+	// Attempt to query incident serials which don't exist.
+	isa := inmemSA{Impl: sa}
+	client, err := isa.SerialsForIncident(
+		context.Background(), &sapb.SerialsForIncidentRequest{
+			IncidentTable: "incident_foo"})
+
+	// Should only get io.EOF error.
+	for {
+		_, err := client.Recv()
+		test.AssertError(t, err, "Error getting serials for incident")
+		break
+	}
+
+	// Add a incident serial rows to the incident table.
 	for _, i := range []string{"1335", "1336", "1337", "1338"} {
 		mrand.Seed(time.Now().Unix())
 		randInt := func() int64 { return mrand.Int63() }
@@ -2657,19 +2670,29 @@ func TestSerialsForIncident(t *testing.T) {
 		)
 		test.AssertNotError(t, err, fmt.Sprintf("Error while inserting row for '%s' into incident table", i))
 	}
-	isa := inmemSA{Impl: sa}
-	client, err := isa.SerialsForIncident(
+
+	// Attempt to query incident serials which now exist.
+	client, err = isa.SerialsForIncident(
 		context.Background(), &sapb.SerialsForIncidentRequest{
 			IncidentTable: "incident_foo"})
 	test.AssertNotError(t, err, "Error getting serials for incident")
+
+	// Ensure that we receive all four serials.
 	for {
 		serial, err := client.Recv()
-
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			t.Fatal(err)
+			test.AssertNotError(t, err, "Error receiving serial")
 		}
-		t.Log(serial.Serial + ">")
+		switch serial.Serial {
+		case "1335":
+		case "1336":
+		case "1337":
+		case "1338":
+		default:
+			t.Errorf("Unexpected serial: %s", serial.Serial)
+		}
+
 	}
 }
