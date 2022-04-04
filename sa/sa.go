@@ -2108,6 +2108,7 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	return incidentsForSerial, nil
 }
 
+// SerialsForIncident returns a stream of serials impacted by a given incident.
 func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
 	rows, err := ssa.dbMap.Db.Query(fmt.Sprintf("SELECT * FROM %s", req.IncidentTable))
 	if err != nil {
