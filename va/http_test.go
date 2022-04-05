@@ -1441,7 +1441,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
-	test.AssertDeepEquals(t, err, probs.ConnectionFailure("Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD"))
+	test.AssertDeepEquals(t, err, probs.ConnectionFailure(`Fetching http://invalid.invalid/path: [127.0.0.1]: Invalid hostname in redirect target, must end in IANA registered TLD`))
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
@@ -1459,7 +1459,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
 	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		"Fetching http://other.valid.com:8080/path: Invalid port in redirect target. "+
+		`Fetching http://other.valid.com:8080/path: [127.0.0.1]: Invalid port in redirect target. `+
 			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
 
 	// This case will redirect from a valid host to a host that is throwing

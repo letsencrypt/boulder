@@ -653,10 +653,11 @@ func TestMultiVAPolicy(t *testing.T) {
 func TestDetailedError(t *testing.T) {
 	cases := []struct {
 		err      error
+		ip       net.IP
 		expected string
 	}{
 		{
-			&net.OpError{
+			err: &net.OpError{
 				Op:  "dial",
 				Net: "tcp",
 				Err: &os.SyscallError{
@@ -664,10 +665,11 @@ func TestDetailedError(t *testing.T) {
 					Err:     syscall.ECONNREFUSED,
 				},
 			},
-			"Connection refused",
+			ip:       net.ParseIP("192.168.1.1"),
+			expected: "[192.168.1.1]: Connection refused",
 		},
 		{
-			&net.OpError{
+			err: &net.OpError{
 				Op:  "dial",
 				Net: "tcp",
 				Err: &os.SyscallError{
@@ -675,11 +677,12 @@ func TestDetailedError(t *testing.T) {
 					Err:     syscall.ECONNRESET,
 				},
 			},
-			"Connection reset by peer",
+			ip:       nil,
+			expected: "Connection reset by peer",
 		},
 	}
 	for _, tc := range cases {
-		actual := detailedError(tc.err).Detail
+		actual := detailedError(tc.err, tc.ip).Detail
 		if actual != tc.expected {
 			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
 		}

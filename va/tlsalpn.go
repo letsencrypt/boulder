@@ -69,7 +69,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(ctx context.Context,
 		},
 	}
 	if err != nil {
-		return nil, nil, validationRecords, detailedError(err)
+		return nil, nil, validationRecords, detailedError(err, nil)
 	}
 	thisRecord := &validationRecords[0]
 
@@ -132,7 +132,12 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err)
-		return nil, nil, detailedError(err)
+		host, _, err := net.SplitHostPort(hostPort)
+		if err != nil {
+			return nil, nil, detailedError(err, nil)
+		}
+		return nil, nil, detailedError(err, net.ParseIP(host))
+
 	}
 	// close errors are not important here
 	defer func() {

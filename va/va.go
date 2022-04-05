@@ -256,18 +256,23 @@ type verificationRequestEvent struct {
 // tries to unwrap known Go error types and present something a little more
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
-func detailedError(err error) *probs.ProblemDetails {
+func detailedError(err error, targetIP net.IP) *probs.ProblemDetails {
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
-		prob := detailedError(urlErr.Err)
+		prob := detailedError(urlErr.Err, targetIP)
 		prob.Detail = fmt.Sprintf("Fetching %s: %s", urlErr.URL, prob.Detail)
 		return prob
 	}
 
 	var tlsErr tls.RecordHeaderError
 	if errors.As(err, &tlsErr) && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
-		return probs.Malformed("Server only speaks HTTP, not TLS")
+		switch targetIP {
+		case nil:
+			return probs.Malformed("Server only speaks HTTP, not TLS")
+		default:
+			return probs.Malformed(fmt.Sprintf("[%s]: Server only speaks HTTP, not TLS", targetIP))
+		}
 	}
 
 	var netOpErr *net.OpError
@@ -275,30 +280,70 @@ func detailedError(err error) *probs.ProblemDetails {
 		if fmt.Sprintf("%T", netOpErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
-			return probs.TLSError(netOpErr.Error())
+			switch targetIP {
+			case nil:
+				return probs.TLSError(netOpErr.Error())
+			default:
+				return probs.TLSError(fmt.Sprintf("[%s]: %s", targetIP, netOpErr.Error()))
+			}
 		} else if netOpErr.Timeout() && netOpErr.Op == "dial" {
-			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+			switch targetIP {
+			case nil:
+				return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+			default:
+				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Timeout during connect (likely firewall problem)", targetIP))
+			}
 		} else if netOpErr.Timeout() {
-			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
+			switch targetIP {
+			case nil:
+				return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
+			default:
+				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Timeout during %s (your server may be slow or overloaded)", targetIP, netOpErr.Op))
+			}
 		}
 	}
 	var syscallErr *os.SyscallError
 	if errors.As(err, &syscallErr) {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
-			return probs.ConnectionFailure("Connection refused")
+			switch targetIP {
+			case nil:
+				return probs.ConnectionFailure("Connection refused")
+			default:
+				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Connection refused", targetIP))
+			}
 		case syscall.ENETUNREACH:
-			return probs.ConnectionFailure("Network unreachable")
+			switch targetIP {
+			case nil:
+				return probs.ConnectionFailure("Network unreachable")
+			default:
+				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Network unreachable", targetIP))
+			}
 		case syscall.ECONNRESET:
-			return probs.ConnectionFailure("Connection reset by peer")
+			switch targetIP {
+			case nil:
+				return probs.ConnectionFailure("Connection reset by peer")
+			default:
+				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Connection reset by peer", targetIP))
+			}
 		}
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
+		switch targetIP {
+		case nil:
+			return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
+		default:
+			return probs.ConnectionFailure(fmt.Sprintf("[%s]: Timeout after connect (your server may be slow or overloaded)", targetIP))
+		}
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {
-		return probs.ConnectionFailure(err.Error())
+		switch targetIP {
+		case nil:
+			return probs.ConnectionFailure(err.Error())
+		default:
+			return probs.ConnectionFailure(fmt.Sprintf("[%s]: %s", targetIP, err.Error()))
+		}
 	}
 	if errors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
@@ -308,10 +353,19 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
-		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
+		switch targetIP {
+		case nil:
+			return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
+		default:
+			return probs.ConnectionFailure(fmt.Sprintf("[%s]: Server is speaking HTTP/2 over HTTP", targetIP))
+		}
 	}
-
-	return probs.ConnectionFailure("Error getting validation data")
+	switch targetIP {
+	case nil:
+		return probs.ConnectionFailure("Error getting validation data")
+	default:
+		return probs.ConnectionFailure(fmt.Sprintf("[%s]: Error getting validation data", targetIP))
+	}
 }
 
 // validate performs a challenge validation and, in parallel,
