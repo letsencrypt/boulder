@@ -25,8 +25,6 @@ func TestMakeAuthHeader(t *testing.T) {
 		"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=",
 		"akab-access-token-xxx-xxxxxxxxxxxxxxxx",
 		"production",
-		time.Millisecond*32,
-		0,
 		2,
 		time.Second,
 		log,
@@ -131,8 +129,6 @@ func TestV3Purge(t *testing.T) {
 		"secret",
 		"accessToken",
 		"production",
-		time.Millisecond*32,
-		2,
 		3,
 		time.Second,
 		blog.NewMock(),
@@ -142,19 +138,19 @@ func TestV3Purge(t *testing.T) {
 	fc := clock.NewFake()
 	client.clk = fc
 
-	_, err = client.Purge([][]string{{"http://test.com"}})
+	err = client.Purge([]string{"http://test.com"})
 	test.AssertNotError(t, err, "Purge failed; expected 201 response")
 
 	started := client.clk.Now()
 	as.responseCode = http.StatusInternalServerError
-	_, err = client.Purge([][]string{{"http://test.com"}})
+	err = client.Purge([]string{"http://test.com"})
 	test.AssertError(t, err, "Purge succeeded; expected 500 response")
 	t.Log(client.clk.Since(started))
 	test.Assert(t, client.clk.Since(started) > (time.Second*4), "Retries should've taken at least 4.4 seconds")
 
 	started = client.clk.Now()
 	as.responseCode = http.StatusCreated
-	_, err = client.Purge([][]string{{"http:/test.com"}})
+	err = client.Purge([]string{"http:/test.com"})
 	test.AssertError(t, err, "Purge succeeded; expected a 403 response from malformed URL")
 	test.Assert(t, client.clk.Since(started) < time.Second, "Purge should've failed out immediately")
 }
@@ -170,8 +166,6 @@ func TestPurgeTags(t *testing.T) {
 		"secret",
 		"accessToken",
 		"production",
-		time.Millisecond*32,
-		2,
 		3,
 		time.Second,
 		blog.NewMock(),
@@ -197,8 +191,6 @@ func TestNewCachePurgeClient(t *testing.T) {
 		"secret",
 		"accessToken",
 		"fake",
-		time.Millisecond*32,
-		2,
 		3,
 		time.Second,
 		blog.NewMock(),
@@ -213,8 +205,6 @@ func TestNewCachePurgeClient(t *testing.T) {
 		"secret",
 		"accessToken",
 		"staging",
-		time.Millisecond*32,
-		2,
 		3,
 		time.Second,
 		blog.NewMock(),
@@ -229,8 +219,6 @@ func TestNewCachePurgeClient(t *testing.T) {
 		"secret",
 		"accessToken",
 		"staging",
-		time.Millisecond*32,
-		2,
 		3,
 		time.Second,
 		blog.NewMock(),
@@ -250,8 +238,6 @@ func TestBigBatchPurge(t *testing.T) {
 		"secret",
 		"accessToken",
 		"production",
-		time.Millisecond*32,
-		2,
 		3,
 		time.Second,
 		log,
@@ -259,31 +245,13 @@ func TestBigBatchPurge(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "Failed to create CachePurgeClient")
 
-	var queueEntries [][]string
+	var urls []string
 	for i := 0; i < 250; i++ {
-		queueEntries = append(queueEntries, []string{fmt.Sprintf("http://test.com/%d", i)})
+		urls = append(urls, fmt.Sprintf("http://test.com/%d", i))
 	}
 
-	stoppedAt, err := client.Purge(queueEntries)
-	test.AssertNotError(t, err, "Purge failed with 201 response")
-	test.AssertEquals(t, stoppedAt, 250)
-
-	// Add an entry with a malformed URL.
-	entryWithMalformedURL := []string{"http:/test.com"}
-	queueEntries = append(queueEntries, entryWithMalformedURL)
-
-	// Add 10 more valid entries.
-	for i := 0; i < 10; i++ {
-		queueEntries = append(queueEntries, []string{fmt.Sprintf("http://test.com/%d", i)})
-	}
-
-	// Should stop at URL entry 250 ('http:/test.com') of 261 as this is the
-	// batch that results in errFatal.
-	stoppedAt, err = client.Purge(queueEntries)
-	test.AssertError(t, err, "Purge succeeded with a malformed URL")
-	test.AssertErrorIs(t, err, errFatal)
-	test.AssertDeepEquals(t, queueEntries[stoppedAt], entryWithMalformedURL)
-	test.AssertEquals(t, stoppedAt, 250)
+	err = client.Purge(urls)
+	test.AssertNotError(t, err, "Purge failed.")
 }
 
 func TestReverseBytes(t *testing.T) {
