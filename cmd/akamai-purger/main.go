@@ -215,15 +215,19 @@ func (ap *akamaiPurger) purge() error {
 	return nil
 }
 
-// Purge is an exported gRPC method which receives purge requests and appends
-// them to the queue.
+// Purge is an exported gRPC method which receives purge requests containing
+// URLs and prepends them to the purger queue.
 func (ap *akamaiPurger) Purge(ctx context.Context, req *akamaipb.PurgeRequest) (*emptypb.Empty, error) {
 	ap.Lock()
 	defer ap.Unlock()
-	if len(ap.toPurge) >= ap.maxQueueSize {
-		return nil, errors.New("akamai-purger queue too large")
+	queueLength := len(ap.toPurge)
+	if queueLength >= ap.maxQueueSize {
+		// Drop the oldest entry from the queue to make room for the new
+		// request.
+		ap.toPurge = ap.toPurge[:queueLength-1]
 	}
-	ap.toPurge = append(ap.toPurge, req.Urls)
+	// Add the entry from the new request to the front of the queue.
+	ap.toPurge = append([][]string{req.Urls}, ap.toPurge...)
 	return &emptypb.Empty{}, nil
 }
 

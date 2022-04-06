@@ -1,8 +1,15 @@
 package notmain
 
 import (
+	"context"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/letsencrypt/boulder/akamai"
+	"github.com/letsencrypt/boulder/akamai/proto"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestThroughput_validate(t *testing.T) {
@@ -67,4 +74,33 @@ func TestThroughput_validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAkamaiPurgerQueue(t *testing.T) {
+	ap := &akamaiPurger{
+		maxQueueSize: 250,
+		client:       &akamai.CachePurgeClient{},
+		log:          blog.NewMock(),
+	}
+
+	// Add 250 entries to fill the queue.
+	for i := 0; i < 250; i++ {
+		req := proto.PurgeRequest{Urls: []string{fmt.Sprintf("http://test.com/%d", i)}}
+		_, err := ap.Purge(context.Background(), &req)
+		test.AssertNotError(t, err, fmt.Sprintf("Purge failed for entry %d.", i))
+	}
+
+	// Add another entry to the queue and call purge.
+	req := proto.PurgeRequest{Urls: []string{"http://test.com/251"}}
+	_, err := ap.Purge(context.Background(), &req)
+	test.AssertNotError(t, err, "Purge failed.")
+
+	// Verify that the queue is full.
+	test.AssertEquals(t, len(ap.toPurge), 250)
+
+	// Verify that the first entry in the queue is the one we just added.
+	test.AssertEquals(t, ap.toPurge[0][0], "http://test.com/251")
+
+	// Verify that the last entry in the queue is the second entry we added.
+	test.AssertEquals(t, ap.toPurge[249][0], "http://test.com/1")
 }
