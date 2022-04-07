@@ -2649,10 +2649,11 @@ func TestSerialsForIncident(t *testing.T) {
 		IncidentTable: "incident_foo"})
 	test.AssertNotError(t, err, "Error calling SerialsForIncident")
 
-	// Should only get io.EOF error.
+	// Should only get `io.EOF` error as there are no rows in the requested
+	// incident table.
 	for {
 		_, err := client.Recv()
-		test.AssertError(t, err, "Error getting serials for incident")
+		test.AssertError(t, err, "Expected io.EOF error")
 		test.AssertErrorIs(t, err, io.EOF)
 		break
 	}
@@ -2673,28 +2674,37 @@ func TestSerialsForIncident(t *testing.T) {
 		test.AssertNotError(t, err, fmt.Sprintf("Error while inserting row for '%s' into incident table", i))
 	}
 
-	// Attempt to query incident serials which now exist.
+	// Attempt to query for the rows we just added.
 	client, err = isa.SerialsForIncident(
 		context.Background(), &sapb.SerialsForIncidentRequest{
 			IncidentTable: "incident_foo"})
 	test.AssertNotError(t, err, "Error getting serials for incident")
 
-	// Ensure that we receive all four serials.
+	// Ensure that we receive all four of the expected serials.
+	var received int
 	for {
 		serial, err := client.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			test.AssertNotError(t, err, "Error receiving serial")
+		if err != nil {
+			// An `io.EOF` error is expected when we've received all four
+			// serials.
+			if errors.Is(err, io.EOF) {
+				// Ensure that we received all four.
+				test.AssertEquals(t, received, 4)
+				break
+			}
+			test.AssertNotError(t, err, "Received error other than io.EOF")
 		}
 		switch serial.Serial {
 		case "1335":
+			received++
 		case "1336":
+			received++
 		case "1337":
+			received++
 		case "1338":
+			received++
 		default:
 			t.Errorf("Unexpected serial: %s", serial.Serial)
 		}
-
 	}
 }

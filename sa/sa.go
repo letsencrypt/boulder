@@ -2107,7 +2107,8 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 	return &sapb.Exists{Exists: true}, nil
 }
 
-// IncidentsForSerial returns a list of active incidents for `req.Serial`.
+// IncidentsForSerial queries each active incident table and returns every
+// incident that currently impacts `req.Serial`.
 func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sapb.Serial) ([]sapb.Incident, error) {
 	if req == nil {
 		return nil, errIncompleteRequest
@@ -2144,7 +2145,12 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	return incidentsForSerial, nil
 }
 
-// SerialsForIncident returns a stream of serials impacted by a given incident.
+// SerialsForIncident queries the provided incident table and returns the
+// resulting rows as a stream of `*sapb.IncidentSerial`s. The caller receives
+// this stream of serials by iterating over the `Recv()` method of the returned
+// streaming client. An `io.EOF` error signals that there are no more serials to
+// send. If the incident table in question contains zero rows, only an `io.EOF`
+// error is returned.
 func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
 	rows, err := ssa.dbMap.Db.Query(fmt.Sprintf("SELECT * FROM %s", req.IncidentTable))
 	if err != nil {
