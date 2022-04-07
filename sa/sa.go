@@ -2152,10 +2152,11 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 // send. If the incident table in question contains zero rows, only an `io.EOF`
 // error is returned.
 func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
-	rows, err := ssa.dbMap.Db.Query(fmt.Sprintf("SELECT * FROM %s", req.IncidentTable))
+	rows, err := ssa.dbMap.Db.QueryContext(stream.Context(), fmt.Sprintf("SELECT * FROM %s", req.IncidentTable))
 	if err != nil {
 		return err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var serial string
@@ -2178,7 +2179,7 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 		}
 	}
 
-	err = rows.Close()
+	err = rows.Err()
 	if err != nil {
 		return err
 	}

@@ -2606,6 +2606,7 @@ type sfiServer struct {
 	// grpc.ServerStream is embedded to meet the
 	// StorageAuthority_SerialsForIncidentServer interface.
 	grpc.ServerStream
+	context context.Context
 	sfiChan chan<- sfiData
 }
 
@@ -2615,19 +2616,24 @@ func (s sfiServer) Send(serial *sapb.IncidentSerial) error {
 	return nil
 }
 
+// Context returns the context originally passed by the client.
+func (s sfiServer) Context() context.Context {
+	return s.context
+}
+
 func (s sfiServer) sendErrAndClose(err error) error {
 	s.sfiChan <- sfiData{nil, err}
 	close(s.sfiChan)
 	return nil
 }
 
-func makeinmemSAGRPCStreamAdapter() (sfiClient, sfiServer) {
+func makeinmemSAGRPCStreamAdapter(ctx context.Context) (sfiClient, sfiServer) {
 	sfiDataChan := make(chan sfiData)
-	return sfiClient{sfiChan: sfiDataChan}, sfiServer{sfiChan: sfiDataChan}
+	return sfiClient{sfiChan: sfiDataChan}, sfiServer{sfiChan: sfiDataChan, context: ctx}
 }
 
 func (s inmemSA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
-	client, server := makeinmemSAGRPCStreamAdapter()
+	client, server := makeinmemSAGRPCStreamAdapter(ctx)
 	go func() {
 		err := s.Impl.SerialsForIncident(req, server)
 		if err != nil {
