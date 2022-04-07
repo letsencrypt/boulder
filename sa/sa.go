@@ -2106,3 +2106,40 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 
 	return &sapb.Exists{Exists: true}, nil
 }
+
+// IncidentsForSerial returns a list of active incidents for `req.Serial`.
+func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sapb.Serial) ([]sapb.Incident, error) {
+	if req == nil {
+		return nil, errIncompleteRequest
+	}
+
+	var activeIncidents []incidentModel
+	_, err := ssa.dbMap.Select(&activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("no active incidents found")
+		}
+		return nil, err
+	}
+
+	var incidentsForSerial []sapb.Incident
+	for _, i := range activeIncidents {
+		var count int
+		err := ssa.dbMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
+			i.SerialTable), req.Serial)
+		if err != nil {
+			if db.IsNoRows(err) {
+				continue
+			}
+			return nil, err
+		}
+		if count > 0 {
+			incidentsForSerial = append(incidentsForSerial, incidentModelToPB(i))
+		}
+
+	}
+	if len(incidentsForSerial) == 0 {
+		return nil, berrors.NotFoundError("no active incidents found for serial %q", req.Serial)
+	}
+	return incidentsForSerial, nil
+}

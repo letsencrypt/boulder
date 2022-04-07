@@ -271,3 +271,11 @@ message AddBlockedKeyRequest {
 message KeyBlockedRequest {
   bytes keyHash = 1;
 }
+
+message Incident {
+  int64 id = 1;
+  string serialTable = 2;
+  string url = 3;
+  int64 renewBy = 4; // Unix timestamp (nanoseconds)
+  bool enabled = 5;
+}
