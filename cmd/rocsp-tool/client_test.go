@@ -111,8 +111,7 @@ func TestStoreResponse(t *testing.T) {
 		logger:        blog.NewMock(),
 	}
 
-	ttl := time.Hour
-	err = cl.storeResponse(context.Background(), response, &ttl)
+	err = cl.storeResponse(context.Background(), response)
 	test.AssertNotError(t, err, "storing response")
 }
 

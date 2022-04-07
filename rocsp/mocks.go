@@ -3,7 +3,6 @@ package rocsp
 import (
 	"context"
 	"fmt"
-	"time"
 )
 
 // MockWriteClient is a mock
@@ -13,7 +12,7 @@ type MockWriteClient struct {
 
 // StoreResponse mocks a rocsp.StoreResponse method and returns nil or an
 // error depending on the desired state.
-func (r MockWriteClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
+func (r MockWriteClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error {
 	return r.StoreReponseReturnError
 }
 

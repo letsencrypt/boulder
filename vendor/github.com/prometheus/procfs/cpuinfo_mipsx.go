@@ -12,8 +12,8 @@
 // limitations under the License.
 
 // +build linux
-// +build arm64
+// +build mips mipsle mips64 mips64le
 
 package procfs
 
-var parseCPUInfo = parseCPUInfoARM
+var parseCPUInfo = parseCPUInfoMips

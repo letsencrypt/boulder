@@ -447,12 +447,9 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	expectedDigest := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
 	badDigest := sha256.Sum256([]byte(chall2.ProvidedKeyAuthorization))
 
-	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Expected acmeValidationV1 extension value %s for this challenge but got %s",
-		core.ChallengeTypeTLSALPN01,
-		hex.EncodeToString(expectedDigest[:]),
-		hex.EncodeToString(badDigest[:])))
+	test.AssertContains(t, prob.Detail, string(core.ChallengeTypeTLSALPN01))
+	test.AssertContains(t, prob.Detail, hex.EncodeToString(expectedDigest[:]))
+	test.AssertContains(t, prob.Detail, hex.EncodeToString(badDigest[:]))
 }
 
 func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
@@ -515,9 +512,6 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 		},
 	}
 
-	malformedMsg := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-		"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
-
 	for _, badExt := range badExtensions {
 		template.ExtraExtensions = []pkix.Extension{badExt}
 		certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
@@ -538,9 +532,9 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 			continue
 		}
 		test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-		test.AssertEquals(t, prob.Detail, malformedMsg)
+		test.AssertContains(t, prob.Detail, string(core.ChallengeTypeTLSALPN01))
+		test.AssertContains(t, prob.Detail, "malformed acmeValidationV1 extension value")
 	}
-
 }
 
 func TestTLSALPN01TLSVersion(t *testing.T) {

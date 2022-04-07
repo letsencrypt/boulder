@@ -35,7 +35,7 @@ type ocspDb interface {
 }
 
 type rocspClientInterface interface {
-	StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error
+	StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error
 }
 
 // failCounter provides a concurrent safe counter.
@@ -353,13 +353,12 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 		ctx2, cancel := context.WithTimeout(context.Background(), updater.redisTimeout+time.Second)
 		go func() {
 			defer cancel()
-			ttl := status.NotAfter.Sub(updater.clk.Now())
 			shortIssuerID, err := rocsp_config.FindIssuerByID(status.IssuerID, updater.issuers)
 			if err != nil {
 				updater.storedRedisCounter.WithLabelValues("missing issuer").Inc()
 				return
 			}
-			err = updater.rocspClient.StoreResponse(ctx2, status.OCSPResponse, shortIssuerID.ShortID(), ttl)
+			err = updater.rocspClient.StoreResponse(ctx2, status.OCSPResponse, shortIssuerID.ShortID())
 			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					updater.storedRedisCounter.WithLabelValues("canceled").Inc()

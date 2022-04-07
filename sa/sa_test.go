@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -2644,14 +2645,15 @@ func TestSerialsForIncident(t *testing.T) {
 
 	// Attempt to query incident serials which don't exist.
 	isa := inmemSA{Impl: sa}
-	client, err := isa.SerialsForIncident(
-		context.Background(), &sapb.SerialsForIncidentRequest{
-			IncidentTable: "incident_foo"})
+	client, err := isa.SerialsForIncident(context.Background(), &sapb.SerialsForIncidentRequest{
+		IncidentTable: "incident_foo"})
+	test.AssertNotError(t, err, "Error calling SerialsForIncident")
 
 	// Should only get io.EOF error.
 	for {
 		_, err := client.Recv()
 		test.AssertError(t, err, "Error getting serials for incident")
+		test.AssertErrorIs(t, err, io.EOF)
 		break
 	}
 
@@ -2680,7 +2682,7 @@ func TestSerialsForIncident(t *testing.T) {
 	// Ensure that we receive all four serials.
 	for {
 		serial, err := client.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			test.AssertNotError(t, err, "Error receiving serial")

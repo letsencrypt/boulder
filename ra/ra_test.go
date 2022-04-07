@@ -3872,6 +3872,19 @@ func TestRevokeCertByKey(t *testing.T) {
 	test.AssertEquals(t, len(mockSA.blocked), 0)
 	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.Unspecified))
 
+	// Re-revoking for any reason should fail, because it isn't enabled.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+		Code: ocsp.KeyCompromise,
+	})
+	test.AssertError(t, err, "should have failed")
+
+	// Enable re-revocation.
+	_ = features.Set(map[string]bool{
+		features.MozRevocationReasons.String(): false,
+		features.AllowReRevocation.String():    true,
+	})
+
 	// Re-revoking for the same reason should fail.
 	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
@@ -3950,13 +3963,26 @@ func TestRevokeCertByKey_Moz(t *testing.T) {
 	test.AssertEquals(t, len(mockSA.blocked[0].Comment), 0)
 	test.AssertEquals(t, mockSA.revoked[core.SerialToString(cert.SerialNumber)], int64(ocsp.KeyCompromise))
 
+	// Re-revoking should fail, because re-revocation is not allowed.
+	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
+		Cert: cert.Raw,
+	})
+	test.AssertError(t, err, "should have failed")
+
+	// Enable re-revocation.
+	_ = features.Set(map[string]bool{
+		features.MozRevocationReasons.String(): true,
+		features.AllowReRevocation.String():    true,
+	})
+
 	// Re-revoking should fail, because it is already revoked for keyCompromise.
 	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
 	})
 	test.AssertError(t, err, "should have failed")
 
-	// Reset, revoke for some other reason, and try again.
+	// Reset and have the Subscriber revoke for a different reason.
+	// Then re-revoking using the key should work.
 	mockSA.revoked = make(map[string]int64)
 	_, err = ra.RevokeCertByApplicant(context.Background(), &rapb.RevokeCertByApplicantRequest{
 		Cert:  cert.Raw,
@@ -3968,10 +3994,6 @@ func TestRevokeCertByKey_Moz(t *testing.T) {
 		Cert: cert.Raw,
 	})
 	test.AssertNotError(t, err, "should have succeeded")
-	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
-		Cert: cert.Raw,
-	})
-	test.AssertError(t, err, "should have failed")
 }
 
 func TestAdministrativelyRevokeCertificate(t *testing.T) {
