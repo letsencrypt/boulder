@@ -218,15 +218,13 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
-		// ttl is the lifetime of the certificate
-		ttl := cl.clk.Now().Sub(status.NotAfter)
 		issuer, err := rocsp_config.FindIssuerByID(status.IssuerID, cl.issuers)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
 
-		err = cl.redis.StoreResponse(ctx, result.Response, issuer.ShortID(), ttl)
+		err = cl.redis.StoreResponse(ctx, result.Response, issuer.ShortID())
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
@@ -250,7 +248,7 @@ func (cl *client) storeResponsesFromFiles(ctx context.Context, files []string) e
 		if err != nil {
 			return fmt.Errorf("reading response file %q: %w", respFile, err)
 		}
-		err = cl.storeResponse(ctx, respBytes, nil)
+		err = cl.storeResponse(ctx, respBytes)
 		if err != nil {
 			return err
 		}
@@ -258,7 +256,7 @@ func (cl *client) storeResponsesFromFiles(ctx context.Context, files []string) e
 	return nil
 }
 
-func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time.Duration) error {
+func (cl *client) storeResponse(ctx context.Context, respBytes []byte) error {
 	resp, err := ocsp.ParseResponse(respBytes, nil)
 	if err != nil {
 		return fmt.Errorf("parsing response: %w", err)
@@ -283,23 +281,13 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 		}
 	}
 
-	// Note: Here we set the TTL to slightly more than the lifetime of the
-	// OCSP response. In ocsp-updater we'll want to set it to the lifetime
-	// of the certificate, so that the metadata field doesn't fall out of
-	// storage even if we are down for days. However, in this tool we don't
-	// have the full certificate, so this will do.
-	if ttl == nil {
-		ttl_temp := resp.NextUpdate.Sub(cl.clk.Now()) + time.Hour
-		ttl = &ttl_temp
-	}
-
 	cl.logger.Infof("storing response for %s, generated %s, ttl %g hours",
 		serial,
 		resp.ThisUpdate,
-		ttl.Hours(),
+		time.Until(resp.NextUpdate).Hours(),
 	)
 
-	err = cl.redis.StoreResponse(ctx, respBytes, issuer.ShortID(), *ttl)
+	err = cl.redis.StoreResponse(ctx, respBytes, issuer.ShortID())
 	if err != nil {
 		return fmt.Errorf("storing response: %w", err)
 	}

@@ -247,6 +247,7 @@ message RevokeCertificateRequest {
   int64 date = 3; // Unix timestamp (nanoseconds)
   int64 backdate = 5; // Unix timestamp (nanoseconds)
   bytes response = 4;
+  int64 issuerID = 6;
 }
 
 message FinalizeAuthorizationRequest {

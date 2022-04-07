@@ -40,6 +40,10 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.BadPublicKey(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.BadCSR:
 		outProb = probs.BadCSR(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.AlreadyRevoked:
+		outProb = probs.AlreadyRevoked(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.BadRevocationReason:
+		outProb = probs.BadRevocationReason(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.
