@@ -168,8 +168,8 @@ func (c *Config) useDeprecatedSettings() {
 	c.AkamaiPurger.Throughput.QueueEntriesPerBatch = DeprecatedQueueEntriesPerBatch
 }
 
-// CachePurgeClient is testing interface.
-type CachePurgeClient interface {
+// cachePurgeClient is testing interface.
+type cachePurgeClient interface {
 	Purge(urls []string) error
 }
 
@@ -186,7 +186,7 @@ type akamaiPurger struct {
 	toPurge         [][]string
 	maxStackSize    int
 	entriesPerBatch int
-	client          CachePurgeClient
+	client          cachePurgeClient
 	log             blog.Logger
 }
 
@@ -205,15 +205,6 @@ func (ap *akamaiPurger) purgeBatch(batch [][]string) error {
 
 	err := ap.client.Purge(urls)
 	if err != nil {
-		ap.Lock()
-		defer ap.Unlock()
-		if len(ap.toPurge) >= ap.maxStackSize {
-			// Drop the oldest entry from the bottom of the stack to make room.
-			ap.toPurge = ap.toPurge[len(batch):]
-		}
-		// Add the entries from the failed batch to the bottom of the stack to
-		// avoid blocking.
-		ap.toPurge = append(batch, ap.toPurge...)
 		ap.log.Errf("Failed to purge OCSP responses for %d certificates: %s", len(batch), err)
 		return err
 	}

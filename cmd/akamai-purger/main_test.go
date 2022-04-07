@@ -113,8 +113,7 @@ func TestAkamaiPurgerQueue(t *testing.T) {
 	// Verify that the last entry in the stack is the second entry we added.
 	test.AssertEquals(t, ap.toPurge[0][0], "http://test.com/1")
 
-	expectBottomAfterFailure := ap.toPurge[len(ap.toPurge)-ap.entriesPerBatch][0]
-	expectTopAfterFailure := ap.toPurge[len(ap.toPurge)-(ap.entriesPerBatch+1)][0]
+	expectedTopEntryAfterFailure := ap.toPurge[len(ap.toPurge)-(ap.entriesPerBatch+1)][0]
 
 	// Fail to purge a batch of entries from the stack.
 	batch := ap.takeBatch()
@@ -123,16 +122,12 @@ func TestAkamaiPurgerQueue(t *testing.T) {
 	err = ap.purgeBatch(batch)
 	test.AssertError(t, err, "Mock should have failed to purge.")
 
-	// Verify that the stack is still full.
-	test.AssertEquals(t, len(ap.toPurge), 250)
+	// Verify that the stack is no longer full.
+	test.AssertEquals(t, len(ap.toPurge), 248)
 
 	// The first entry of the next batch should be on the top after the failed
 	// purge.
-	test.AssertEquals(t, ap.toPurge[len(ap.toPurge)-1][0], expectTopAfterFailure)
-
-	// The firtst entry of the batch we failed to purge should be on the bottom
-	// of the stack.
-	test.AssertEquals(t, ap.toPurge[0][0], expectBottomAfterFailure)
+	test.AssertEquals(t, ap.toPurge[len(ap.toPurge)-1][0], expectedTopEntryAfterFailure)
 }
 
 func TestAkamaiPurgerQueueWithOneEntry(t *testing.T) {
@@ -157,7 +152,6 @@ func TestAkamaiPurgerQueueWithOneEntry(t *testing.T) {
 	err = ap.purgeBatch(batch)
 	test.AssertError(t, err, "Mock should have failed to purge.")
 
-	// Verify that the stack still contains our singular entry.
-	test.AssertEquals(t, len(ap.toPurge), 1)
-	test.AssertDeepEquals(t, ap.toPurge, [][]string{{"http://test.com/0"}})
+	// Verify that the stack no longer contains our entry.
+	test.AssertEquals(t, len(ap.toPurge), 0)
 }
