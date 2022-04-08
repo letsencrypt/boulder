@@ -287,7 +287,6 @@ func detailedError(err error) *probs.ProblemDetails {
 		detailedErr.Detail = fmt.Sprintf("%s: %s", ipErr.ip, detailedErr.Detail)
 		return detailedErr
 	}
-
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {

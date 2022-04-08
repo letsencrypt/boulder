@@ -182,7 +182,6 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("Validation should've failed")
 	}
-
 	// Check that the TLS connection doesn't return before a timeout, and times
 	// out after the expected time
 	took := time.Since(started)
