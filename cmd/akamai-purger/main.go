@@ -39,9 +39,8 @@ const (
 	// OCSP response.
 	urlsPerQueueEntry = 3
 
-	// defaultQueueEntriesPerBatch is the default value for
-	// 'queueEntriesPerBatch'.
-	defaultQueueEntriesPerBatch = 2
+	// defaultEntriesPerBatch is the default value for 'queueEntriesPerBatch'.
+	defaultEntriesPerBatch = 2
 
 	// defaultPurgeBatchInterval is the default value for 'purgeBatchInterval'.
 	defaultPurgeBatchInterval = time.Millisecond * 32
@@ -83,7 +82,7 @@ type Throughput struct {
 
 func (t *Throughput) useOptimizedDefaults() {
 	if t.QueueEntriesPerBatch == 0 {
-		t.QueueEntriesPerBatch = defaultQueueEntriesPerBatch
+		t.QueueEntriesPerBatch = defaultEntriesPerBatch
 	}
 	if t.PurgeBatchInterval.Duration == 0 {
 		t.PurgeBatchInterval.Duration = defaultPurgeBatchInterval
@@ -136,7 +135,7 @@ type Config struct {
 		// `Throughput.PurgeBatchInterval`.
 		PurgeInterval cmd.ConfigDuration
 
-		// MaxQueueSize is the maximum size of the purger queue. If this value
+		// MaxQueueSize is the maximum size of the purger stack. If this value
 		// isn't provided it will default to `defaultQueueSize`.
 		MaxQueueSize int
 
@@ -151,7 +150,7 @@ type Config struct {
 		Throughput Throughput
 
 		// PurgeRetries is the maximum number of attempts that will be made to purge a
-		// batch of URLs before the batch is added back to the queue.
+		// batch of URLs before the batch is added back to the stack.
 		PurgeRetries int
 
 		// PurgeRetryBackoff is the base duration that will be waited before
@@ -169,20 +168,26 @@ func (c *Config) useDeprecatedSettings() {
 	c.AkamaiPurger.Throughput.QueueEntriesPerBatch = DeprecatedQueueEntriesPerBatch
 }
 
+// cachePurgeClient is testing interface.
+type cachePurgeClient interface {
+	Purge(urls []string) error
+}
+
 // akamaiPurger is a mutex protected container for a gRPC server which receives
-// requests to purge the URLs associated with OCSP responses cached by Akamai,
-// stores these URLs as a slice in an inner slice, and dispatches them to
-// Akamai's Fast Purge API in batches.
+// requests containing a slice of URLs associated with an OCSP response cached
+// by Akamai. This slice of URLs is stored on a stack, and dispatched in batches
+// to Akamai's Fast Purge API at regular intervals.
 type akamaiPurger struct {
 	sync.Mutex
 	akamaipb.UnimplementedAkamaiPurgerServer
 
-	// toPurge functions as a queue where each entry contains the three OCSP response URLs
-	// associated with a given certificate.
-	toPurge      [][]string
-	maxQueueSize int
-	client       *akamai.CachePurgeClient
-	log          blog.Logger
+	// toPurge functions as a stack where each entry contains the three OCSP
+	// response URLs associated with a given certificate.
+	toPurge         [][]string
+	maxStackSize    int
+	entriesPerBatch int
+	client          cachePurgeClient
+	log             blog.Logger
 }
 
 func (ap *akamaiPurger) len() int {
@@ -191,38 +196,55 @@ func (ap *akamaiPurger) len() int {
 	return len(ap.toPurge)
 }
 
-func (ap *akamaiPurger) purge() error {
-	ap.Lock()
-	queueEntries := ap.toPurge[:]
-	ap.toPurge = [][]string{}
-	ap.Unlock()
-	if len(queueEntries) == 0 {
-		return nil
+func (ap *akamaiPurger) purgeBatch(batch [][]string) error {
+	// Flatten the batch of stack entries into a single slice of URLs.
+	var urls []string
+	for _, url := range batch {
+		urls = append(urls, url...)
 	}
 
-	stoppedAt, err := ap.client.Purge(queueEntries)
+	err := ap.client.Purge(urls)
 	if err != nil {
-		ap.Lock()
-
-		// Add the remaining queue entries back, but at the end of the queue. If somehow
-		// there's a URL which repeatedly results in error, it won't block the
-		// entire queue, only a single batch.
-		ap.toPurge = append(ap.toPurge, queueEntries[stoppedAt:]...)
-		ap.Unlock()
-		ap.log.Errf("Failed to purge OCSP responses for %d certificates: %s", len(queueEntries), err)
+		ap.log.Errf("Failed to purge OCSP responses for %d certificates: %s", len(batch), err)
 		return err
 	}
 	return nil
 }
 
-// Purge is an exported gRPC method which receives purge requests and appends
-// them to the queue.
+func (ap *akamaiPurger) takeBatch() [][]string {
+	ap.Lock()
+	defer ap.Unlock()
+	stackSize := len(ap.toPurge)
+
+	// If the stack is empty, return immediately.
+	if stackSize <= 0 {
+		return nil
+	}
+
+	// If the stack contains less than a full batch, set the batch size to the
+	// current stack size.
+	batchSize := ap.entriesPerBatch
+	if stackSize < batchSize {
+		batchSize = stackSize
+	}
+
+	batchBegin := stackSize - batchSize
+	batch := ap.toPurge[batchBegin:]
+	ap.toPurge = ap.toPurge[:batchBegin]
+	return batch
+}
+
+// Purge is an exported gRPC method which receives purge requests containing
+// URLs and prepends them to the purger stack.
 func (ap *akamaiPurger) Purge(ctx context.Context, req *akamaipb.PurgeRequest) (*emptypb.Empty, error) {
 	ap.Lock()
 	defer ap.Unlock()
-	if len(ap.toPurge) >= ap.maxQueueSize {
-		return nil, errors.New("akamai-purger queue too large")
+	stackSize := len(ap.toPurge)
+	if stackSize >= ap.maxStackSize {
+		// Drop the oldest entry from the bottom of the stack to make room.
+		ap.toPurge = ap.toPurge[1:]
 	}
+	// Add the entry from the new request to the top of the stack.
 	ap.toPurge = append(ap.toPurge, req.Urls)
 	return &emptypb.Empty{}, nil
 }
@@ -327,8 +349,6 @@ func main() {
 		apc.ClientSecret,
 		apc.AccessToken,
 		apc.V3Network,
-		apc.Throughput.PurgeBatchInterval.Duration,
-		apc.Throughput.QueueEntriesPerBatch,
 		apc.PurgeRetries,
 		apc.PurgeRetryBackoff.Duration,
 		logger,
@@ -337,9 +357,10 @@ func main() {
 	cmd.FailOnError(err, "Failed to setup Akamai CCU client")
 
 	ap := &akamaiPurger{
-		maxQueueSize: apc.MaxQueueSize,
-		client:       ccu,
-		log:          logger,
+		maxStackSize:    apc.MaxQueueSize,
+		entriesPerBatch: apc.Throughput.QueueEntriesPerBatch,
+		client:          ccu,
+		log:             logger,
 	}
 
 	var gaugePurgeQueueLength = prometheus.NewGaugeFunc(
@@ -390,7 +411,11 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		for {
 			select {
 			case <-ticker.C:
-				_ = ap.purge()
+				batch := ap.takeBatch()
+				if batch == nil {
+					continue
+				}
+				_ = ap.purgeBatch(batch)
 			case <-stop:
 				break loop
 			}
@@ -399,12 +424,13 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		// As we may have missed a tick by calling ticker.Stop() and
 		// writing to the stop channel call ap.purge one last time just
 		// in case there is anything that still needs to be purged.
-		queueLen := ap.len()
-		if queueLen > 0 {
-			logger.Infof("Shutting down; purging OCSP responses for %d certificates before exit.", queueLen)
-			err := ap.purge()
-			cmd.FailOnError(err, fmt.Sprintf("Shutting down; failed to purge OCSP responses for %d certificates before exit", queueLen))
-			logger.Infof("Shutting down; finished purging OCSP responses for %d certificates.", queueLen)
+		stackLen := ap.len()
+		if stackLen > 0 {
+			logger.Infof("Shutting down; purging OCSP responses for %d certificates before exit.", stackLen)
+			batch := ap.takeBatch()
+			err := ap.purgeBatch(batch)
+			cmd.FailOnError(err, fmt.Sprintf("Shutting down; failed to purge OCSP responses for %d certificates before exit", stackLen))
+			logger.Infof("Shutting down; finished purging OCSP responses for %d certificates.", stackLen)
 		} else {
 			logger.Info("Shutting down; queue is already empty.")
 		}
@@ -426,7 +452,7 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 
 		// Stop the ticker and signal that we want to shutdown by writing to the
 		// stop channel. We wait 15 seconds for any remaining URLs to be emptied
-		// from the current queue, if we pass that deadline we exit early.
+		// from the current stack, if we pass that deadline we exit early.
 		ticker.Stop()
 		stop <- true
 		select {
@@ -440,7 +466,7 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 
 	// When we get a SIGTERM, we will exit from grpcSrv.Serve as soon as all
 	// extant RPCs have been processed, but we want the process to stick around
-	// while we still have a goroutine purging the last elements from the queue.
+	// while we still have a goroutine purging the last elements from the stack.
 	// Once that's done, CatchSignals will call os.Exit().
 	select {}
 }
