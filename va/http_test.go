@@ -1452,7 +1452,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
 	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		`127.0.0.1: Fetching http://other.valid.com:8080/path: Invalid port in redirect target. `+
+		"127.0.0.1: Fetching http://other.valid.com:8080/path: Invalid port in redirect target. "+
 			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
 
 	// This case will redirect from a valid host to a host that is throwing
