@@ -890,7 +890,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/redir-bad-host",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching https://127.0.0.1: Invalid host in redirect target " +
+				"127.0.0.1: Fetching https://127.0.0.1: Invalid host in redirect target " +
 					`"127.0.0.1". Only domain names are supported, not IP addresses`),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -923,8 +923,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/bad-status-code",
 			ExpectedProblem: probs.Unauthorized(
-				"Invalid response from http://example.com/bad-status-code " +
-					"[127.0.0.1]: 410"),
+				"127.0.0.1: Invalid response from http://example.com/bad-status-code: 410"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -956,8 +955,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/resp-too-big",
 			ExpectedProblem: probs.Unauthorized(fmt.Sprintf(
-				"Invalid response from http://example.com/resp-too-big "+
-					"[127.0.0.1]: %q", expectedTruncatedResp.String(),
+				"127.0.0.1: Invalid response from http://example.com/resp-too-big: %q", expectedTruncatedResp.String(),
 			)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -1052,8 +1050,7 @@ func TestFetchHTTP(t *testing.T) {
 			Path: "/printf-verbs",
 			ExpectedProblem: &probs.ProblemDetails{
 				Type: probs.UnauthorizedProblem,
-				Detail: fmt.Sprintf("Invalid response from "+
-					"http://example.com/printf-verbs [127.0.0.1]: %q",
+				Detail: fmt.Sprintf("127.0.0.1: Invalid response from http://example.com/printf-verbs: %q",
 					("%2F.well-known%2F" + expectedTruncatedResp.String())[:maxResponseSize]),
 				HTTPStatus: http.StatusForbidden,
 			},
@@ -1464,7 +1461,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	test.AssertNotNil(t, prob, "Problem Details should not be nil")
 	test.AssertDeepEquals(t, prob,
 		probs.Unauthorized(
-			fmt.Sprintf("Invalid response from http://other.valid.com:%d/500 [127.0.0.1]: 500",
+			fmt.Sprintf("127.0.0.1: Invalid response from http://other.valid.com:%d/500: 500",
 				va.httpPort)))
 }
 
@@ -1541,7 +1538,7 @@ func TestLimitedReader(t *testing.T) {
 	_, prob := va.validateChallenge(ctx, dnsi("localhost"), chall)
 
 	test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-	test.Assert(t, strings.HasPrefix(prob.Detail, "Invalid response from "),
+	test.Assert(t, strings.HasPrefix(prob.Detail, "127.0.0.1: Invalid response from "),
 		"Expected failure due to truncation")
 
 	if !utf8.ValidString(prob.Detail) {

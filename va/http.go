@@ -311,8 +311,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
 		return "", 0, berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. "+
-				"Only domain names are supported, not IP addresses", reqHost)
+			"Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -627,8 +626,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 
 	if httpResponse.StatusCode != 200 {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode))
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %d",
+			records[len(records)-1].URL, httpResponse.StatusCode))
 	}
 
 	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
@@ -654,8 +653,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body)))
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
+			records[len(records)-1].URL, replaceInvalidUTF8(body)))
 	}
 	return body, records, nil
 }

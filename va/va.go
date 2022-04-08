@@ -251,9 +251,8 @@ type verificationRequestEvent struct {
 	Error             string `json:",omitempty"`
 }
 
-// ipError is a sentinel error type used to pass though the IP address of the
-// remote host when an error occurs during HTTP-01 and TLS-ALPN domain
-// validation.
+// ipError is an error type used to pass though the IP address of the remote
+// host when an error occurs during HTTP-01 and TLS-ALPN domain validation.
 type ipError struct {
 	ip  net.IP
 	err error
@@ -266,7 +265,7 @@ func (i ipError) Unwrap() error {
 
 // Error returns a string representation of the error.
 func (i ipError) Error() string {
-	return i.err.Error()
+	return fmt.Sprintf("%s: %s", i.ip, i.err)
 }
 
 // detailedError returns a ProblemDetails corresponding to an error
@@ -278,9 +277,10 @@ func detailedError(err error) *probs.ProblemDetails {
 	var ipErr ipError
 	if errors.As(err, &ipErr) {
 		detailedErr := detailedError(ipErr.err)
-		// Some detailed errors already contain the IP address. When this is the case,
-		// we don't want to add it again.
-		if ipErr.ip == nil || strings.Contains(detailedErr.Detail, ipErr.ip.String()) {
+		var netErr net.Error
+		// If the underlying error is a `net.Error`, there's no need to prepend
+		// the IP address to the message.
+		if ipErr.ip == nil || errors.Is(ipErr.err, netErr) {
 			return detailedErr
 		}
 		// Prefix the error message with the IP address of the remote host.
