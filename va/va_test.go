@@ -657,6 +657,20 @@ func TestDetailedError(t *testing.T) {
 		expected string
 	}{
 		{
+			err: ipError{
+				ip: net.ParseIP("192.168.1.1"),
+				err: &net.OpError{
+					Op:  "dial",
+					Net: "tcp",
+					Err: &os.SyscallError{
+						Syscall: "getsockopt",
+						Err:     syscall.ECONNREFUSED,
+					},
+				},
+			},
+			expected: "192.168.1.1: Connection refused",
+		},
+		{
 			err: &net.OpError{
 				Op:  "dial",
 				Net: "tcp",
@@ -665,8 +679,7 @@ func TestDetailedError(t *testing.T) {
 					Err:     syscall.ECONNREFUSED,
 				},
 			},
-			ip:       net.ParseIP("192.168.1.1"),
-			expected: "[192.168.1.1]: Connection refused",
+			expected: "Connection refused",
 		},
 		{
 			err: &net.OpError{
@@ -682,7 +695,7 @@ func TestDetailedError(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		actual := detailedError(tc.err, tc.ip).Detail
+		actual := detailedError(tc.err).Detail
 		if actual != tc.expected {
 			t.Errorf("Wrong detail for %v. Got %q, expected %q", tc.err, actual, tc.expected)
 		}

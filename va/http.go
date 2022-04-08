@@ -396,10 +396,10 @@ func (va *ValidationAuthorityImpl) fetchHTTP(
 	ctx context.Context,
 	host string,
 	path string) ([]byte, []core.ValidationRecord, *probs.ProblemDetails) {
-	body, records, targetIP, err := va.processHTTPValidation(ctx, host, path)
+	body, records, err := va.processHTTPValidation(ctx, host, path)
 	if err != nil {
 		// Use detailedError to convert the error into a problem
-		return body, records, detailedError(err, targetIP)
+		return body, records, detailedError(err)
 	}
 	return body, records, nil
 }
@@ -426,12 +426,18 @@ func fallbackErr(err error) bool {
 func (va *ValidationAuthorityImpl) processHTTPValidation(
 	ctx context.Context,
 	host string,
-	path string) ([]byte, []core.ValidationRecord, net.IP, error) {
+	path string) ([]byte, []core.ValidationRecord, error) {
 
 	// Create a target for the host, port and path with no query parameters
 	target, err := va.newHTTPValidationTarget(ctx, host, va.httpPort, path, "")
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
+	}
+
+	// newIPError wraps an error and the IP of the remote host in an IPError so
+	// we can display the IP in the problem details returned to the client.
+	newIPError := func(target *httpValidationTarget, err error) ipError {
+		return ipError{ip: target.cur, err: err}
 	}
 
 	// Create an initial GET Request
@@ -442,7 +448,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
 	if err != nil {
-		return nil, nil, target.cur, err
+		return nil, nil, newIPError(target, err)
 	}
 
 	// Add a context to the request. Shave some time from the
@@ -455,7 +461,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// are so common (and because it might fix a flaky build).
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		return nil, nil, nil, fmt.Errorf("processHTTPValidation had no deadline")
+		return nil, nil, fmt.Errorf("processHTTPValidation had no deadline")
 	} else {
 		deadline = deadline.Add(-200 * time.Millisecond)
 	}
@@ -479,7 +485,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Set up the initial validation request and a base validation record
 	dialer, baseRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 	if err != nil {
-		return nil, []core.ValidationRecord{}, target.cur, err
+		return nil, []core.ValidationRecord{}, newIPError(target, err)
 	}
 
 	// Build a transport for this validation that will use the preresolvedDialer's
@@ -591,9 +597,9 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if err != nil && fallbackErr(err) {
 		// Try to advance to another IP. If there was an error advancing we don't
 		// have a fallback address to use and must return the original error.
-		ipErr := target.nextIP()
-		if ipErr != nil {
-			return nil, records, target.cur, err
+		nextIPErr := target.nextIP()
+		if nextIPErr != nil {
+			return nil, records, newIPError(target, err)
 		}
 
 		// setup another validation to retry the target with the new IP and append
@@ -601,7 +607,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		retryDialer, retryRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 		records = append(records, retryRecord)
 		if err != nil {
-			return nil, records, target.cur, err
+			return nil, records, newIPError(target, err)
 		}
 		va.metrics.http01Fallbacks.Inc()
 		// Replace the transport's dialer with the preresolvedDialer for the retry
@@ -613,16 +619,16 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// If the retry still failed there isn't anything more to do, return the
 		// error immediately.
 		if err != nil {
-			return nil, records, target.cur, err
+			return nil, records, newIPError(target, err)
 		}
 	} else if err != nil {
 		// if the error was not a fallbackErr then return immediately.
-		return nil, records, target.cur, err
+		return nil, records, newIPError(target, err)
 	}
 
 	if httpResponse.StatusCode != 200 {
-		return nil, records, target.cur, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
+			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode))
 	}
 
 	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
@@ -642,16 +648,16 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		err = closeErr
 	}
 	if err != nil {
-		return nil, records, target.cur, berrors.UnauthorizedError("Error reading HTTP response body: %v", err)
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
 	}
 
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, records, target.cur, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
+			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body)))
 	}
-	return body, records, target.cur, nil
+	return body, records, nil
 }
 
 func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident identifier.ACMEIdentifier, challenge core.Challenge) ([]core.ValidationRecord, *probs.ProblemDetails) {

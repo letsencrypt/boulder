@@ -822,7 +822,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/timeout",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching http://example.com/timeout: [127.0.0.1]: " +
+				"127.0.0.1: Fetching http://example.com/timeout: " +
 					"Timeout after connect (your server may be slow or overloaded)"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -839,7 +839,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/loop",
 			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
-				"Fetching http://example.com:%d/loop: [127.0.0.1]: Redirect loop detected", httpPort)),
+				"127.0.0.1: Fetching http://example.com:%d/loop: Redirect loop detected", httpPort)),
 			ExpectedRecords: expectedLoopRecords,
 		},
 		{
@@ -847,7 +847,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/max-redirect/0",
 			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
-				"Fetching http://example.com:%d/max-redirect/12: [127.0.0.1]: Too many redirects", httpPort)),
+				"127.0.0.1: Fetching http://example.com:%d/max-redirect/12: Too many redirects", httpPort)),
 			ExpectedRecords: expectedTooManyRedirRecords,
 		},
 		{
@@ -855,7 +855,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/redir-bad-proto",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching gopher://example.com: [127.0.0.1]: Invalid protocol scheme in " +
+				"127.0.0.1: Fetching gopher://example.com: Invalid protocol scheme in " +
 					`redirect target. Only "http" and "https" protocol schemes ` +
 					`are supported, not "gopher"`),
 			ExpectedRecords: []core.ValidationRecord{
@@ -873,7 +873,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/redir-bad-port",
 			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
-				"Fetching https://example.com:1987: [127.0.0.1]: Invalid port in redirect target. "+
+				"127.0.0.1: Fetching https://example.com:1987: Invalid port in redirect target. "+
 					"Only ports %d and 443 are supported, not 1987", httpPort)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -890,7 +890,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/redir-bad-host",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching https://127.0.0.1: [127.0.0.1]: Invalid host in redirect target " +
+				"Fetching https://127.0.0.1: Invalid host in redirect target " +
 					`"127.0.0.1". Only domain names are supported, not IP addresses`),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -907,7 +907,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/redir-path-too-long",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching https://example.com/this-is-too-long-01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: [127.0.0.1]: Redirect target too long"),
+				"127.0.0.1: Fetching https://example.com/this-is-too-long-01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: Redirect target too long"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -940,7 +940,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "example.com",
 			Path: "/303-see-other",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching http://example.org/303-see-other: [127.0.0.1]: received disallowed redirect status code"),
+				"127.0.0.1: Fetching http://example.org/303-see-other: received disallowed redirect status code"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "example.com",
@@ -974,7 +974,7 @@ func TestFetchHTTP(t *testing.T) {
 			Host: "ipv6.localhost",
 			Path: "/ok",
 			ExpectedProblem: probs.ConnectionFailure(
-				"Fetching http://ipv6.localhost/ok: [::1]: Error getting validation data"),
+				"::1: Fetching http://ipv6.localhost/ok: Error getting validation data"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					Hostname:          "ipv6.localhost",
@@ -1342,7 +1342,7 @@ func TestHTTPTimeout(t *testing.T) {
 		t.Fatalf("HTTP connection didn't timeout after %s", timeout)
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	test.AssertEquals(t, prob.Detail, "Fetching http://localhost/.well-known/acme-challenge/wait-long: [127.0.0.1]: Timeout after connect (your server may be slow or overloaded)")
+	test.AssertEquals(t, prob.Detail, "127.0.0.1: Fetching http://localhost/.well-known/acme-challenge/wait-long: Timeout after connect (your server may be slow or overloaded)")
 }
 
 // dnsMockReturnsUnroutable is a DNSClient mock that always returns an
@@ -1434,7 +1434,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
-	test.AssertDeepEquals(t, err, probs.ConnectionFailure(`Fetching http://invalid.invalid/path: [127.0.0.1]: Invalid hostname in redirect target, must end in IANA registered TLD`))
+	test.AssertDeepEquals(t, err, probs.ConnectionFailure(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD`))
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)
@@ -1452,7 +1452,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, prob = va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertNotNil(t, prob, "Problem details for pathRedirectInvalidPort should not be nil")
 	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		`Fetching http://other.valid.com:8080/path: [127.0.0.1]: Invalid port in redirect target. `+
+		`127.0.0.1: Fetching http://other.valid.com:8080/path: Invalid port in redirect target. `+
 			"Only ports %d and %d are supported, not 8080", va.httpPort, va.httpsPort))
 
 	// This case will redirect from a valid host to a host that is throwing

@@ -251,28 +251,54 @@ type verificationRequestEvent struct {
 	Error             string `json:",omitempty"`
 }
 
+// ipError is a sentinel error type used to pass though the IP address of the
+// remote host when an error occurs during HTTP-01 and TLS-ALPN domain
+// validation.
+type ipError struct {
+	ip  net.IP
+	err error
+}
+
+// Unwrap returns the underlying error.
+func (i ipError) Unwrap() error {
+	return i.err
+}
+
+// Error returns a string representation of the error.
+func (i ipError) Error() string {
+	return i.err.Error()
+}
+
 // detailedError returns a ProblemDetails corresponding to an error
 // that occurred during HTTP-01 or TLS-ALPN domain validation. Specifically it
 // tries to unwrap known Go error types and present something a little more
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
-func detailedError(err error, targetIP net.IP) *probs.ProblemDetails {
+func detailedError(err error) *probs.ProblemDetails {
+	var ipErr ipError
+	if errors.As(err, &ipErr) {
+		detailedErr := detailedError(ipErr.err)
+		// Some detailed errors already contain the IP address. When this is the case,
+		// we don't want to add it again.
+		if ipErr.ip == nil || strings.Contains(detailedErr.Detail, ipErr.ip.String()) {
+			return detailedErr
+		}
+		// Prefix the error message with the IP address of the remote host.
+		detailedErr.Detail = fmt.Sprintf("%s: %s", ipErr.ip, detailedErr.Detail)
+		return detailedErr
+	}
+
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
-		prob := detailedError(urlErr.Err, targetIP)
+		prob := detailedError(urlErr.Err)
 		prob.Detail = fmt.Sprintf("Fetching %s: %s", urlErr.URL, prob.Detail)
 		return prob
 	}
 
 	var tlsErr tls.RecordHeaderError
 	if errors.As(err, &tlsErr) && bytes.Equal(tlsErr.RecordHeader[:], badTLSHeader) {
-		switch targetIP {
-		case nil:
-			return probs.Malformed("Server only speaks HTTP, not TLS")
-		default:
-			return probs.Malformed(fmt.Sprintf("[%s]: Server only speaks HTTP, not TLS", targetIP))
-		}
+		return probs.Malformed("Server only speaks HTTP, not TLS")
 	}
 
 	var netOpErr *net.OpError
@@ -280,70 +306,30 @@ func detailedError(err error, targetIP net.IP) *probs.ProblemDetails {
 		if fmt.Sprintf("%T", netOpErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
-			switch targetIP {
-			case nil:
-				return probs.TLSError(netOpErr.Error())
-			default:
-				return probs.TLSError(fmt.Sprintf("[%s]: %s", targetIP, netOpErr.Error()))
-			}
+			return probs.TLSError(netOpErr.Error())
 		} else if netOpErr.Timeout() && netOpErr.Op == "dial" {
-			switch targetIP {
-			case nil:
-				return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
-			default:
-				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Timeout during connect (likely firewall problem)", targetIP))
-			}
+			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
 		} else if netOpErr.Timeout() {
-			switch targetIP {
-			case nil:
-				return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
-			default:
-				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Timeout during %s (your server may be slow or overloaded)", targetIP, netOpErr.Op))
-			}
+			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
 		}
 	}
 	var syscallErr *os.SyscallError
 	if errors.As(err, &syscallErr) {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
-			switch targetIP {
-			case nil:
-				return probs.ConnectionFailure("Connection refused")
-			default:
-				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Connection refused", targetIP))
-			}
+			return probs.ConnectionFailure("Connection refused")
 		case syscall.ENETUNREACH:
-			switch targetIP {
-			case nil:
-				return probs.ConnectionFailure("Network unreachable")
-			default:
-				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Network unreachable", targetIP))
-			}
+			return probs.ConnectionFailure("Network unreachable")
 		case syscall.ECONNRESET:
-			switch targetIP {
-			case nil:
-				return probs.ConnectionFailure("Connection reset by peer")
-			default:
-				return probs.ConnectionFailure(fmt.Sprintf("[%s]: Connection reset by peer", targetIP))
-			}
+			return probs.ConnectionFailure("Connection reset by peer")
 		}
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		switch targetIP {
-		case nil:
-			return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
-		default:
-			return probs.ConnectionFailure(fmt.Sprintf("[%s]: Timeout after connect (your server may be slow or overloaded)", targetIP))
-		}
+		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {
-		switch targetIP {
-		case nil:
-			return probs.ConnectionFailure(err.Error())
-		default:
-			return probs.ConnectionFailure(fmt.Sprintf("[%s]: %s", targetIP, err.Error()))
-		}
+		return probs.ConnectionFailure(err.Error())
 	}
 	if errors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
@@ -353,19 +339,9 @@ func detailedError(err error, targetIP net.IP) *probs.ProblemDetails {
 	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
-		switch targetIP {
-		case nil:
-			return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
-		default:
-			return probs.ConnectionFailure(fmt.Sprintf("[%s]: Server is speaking HTTP/2 over HTTP", targetIP))
-		}
+		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
 	}
-	switch targetIP {
-	case nil:
-		return probs.ConnectionFailure("Error getting validation data")
-	default:
-		return probs.ConnectionFailure(fmt.Sprintf("[%s]: Error getting validation data", targetIP))
-	}
+	return probs.ConnectionFailure("Error getting validation data")
 }
 
 // validate performs a challenge validation and, in parallel,
