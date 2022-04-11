@@ -23,6 +23,10 @@ services:
     networks:
       bluenet:
         ipv4_address: 10.77.77.77
+        aliases:
+          # This is used by TestOldTLS in va/http_test.go
+          # TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+          - example.com
       rednet:
         ipv4_address: 10.88.88.88
       redisnet:

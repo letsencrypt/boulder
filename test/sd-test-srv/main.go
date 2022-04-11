@@ -58,13 +58,6 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 				A:   net.ParseIP("10.88.88.88"),
 				Hdr: hdr,
 			})
-		} else if qname == "example.com" {
-			// This is used by TestOldTLS in va/http_test.go
-			// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
-			m.Answer = append(m.Answer, &dns.A{
-				A:   net.ParseIP("127.0.0.1"),
-				Hdr: hdr,
-			})
 		} else {
 			m.Rcode = dns.RcodeServerFailure
 		}
