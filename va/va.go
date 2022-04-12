@@ -277,10 +277,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	var ipErr ipError
 	if errors.As(err, &ipErr) {
 		detailedErr := detailedError(ipErr.err)
-		var netErr net.Error
-		// If the underlying error is a `net.Error`, there's no need to prepend
-		// the IP address to the message.
-		if ipErr.ip == nil || errors.Is(ipErr.err, netErr) {
+		if ipErr.ip == nil {
 			return detailedErr
 		}
 		// Prefix the error message with the IP address of the remote host.
