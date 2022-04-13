@@ -2697,19 +2697,20 @@ func TestSerialsForIncident(t *testing.T) {
 
 	_, err = client.Recv()
 	test.AssertError(t, err, "Expected error for malformed table name")
-	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.AssertEquals(t, err.Error(), "malformed table name \"incidesnt_Baz\"")
 
 	// Request serials from another malformed incident table name.
+	longTableName := "incident_l" + strings.Repeat("o", 1000) + "ng"
 	client, err = isa.SerialsForIncident(context.Background(),
 		&sapb.SerialsForIncidentRequest{
-			IncidentTable: "incident_l" + strings.Repeat("o", 1000) + "ng",
+			IncidentTable: longTableName,
 		},
 	)
 	test.AssertNotError(t, err, "Error calling SerialsForIncident")
 
 	_, err = client.Recv()
 	test.AssertError(t, err, "Expected error for long table name.")
-	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.AssertEquals(t, err.Error(), fmt.Sprintf("malformed table name %q", longTableName))
 
 	// Request serials for an incident table which doesn't exists.
 	client, err = isa.SerialsForIncident(context.Background(),

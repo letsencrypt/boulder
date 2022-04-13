@@ -2161,22 +2161,22 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 
 	// Check that `req.IncidentTable` is a valid incident table name.
 	if !validIncidentTableRegexp.MatchString(req.IncidentTable) {
-		return berrors.MalformedError("requested table name is malformed")
+		return fmt.Errorf("malformed table name %q", req.IncidentTable)
 	}
 
 	// Retrieve the `*gorp.TableMap` for the incident table.
 	tableMap, err := ssa.dbMap.TableFor(reflect.TypeOf(incidentSerialModel{}), false)
 	if err != nil {
 		// This should never happen, the schema is always added at startup.
-		return berrors.InternalServerError(
+		return fmt.Errorf(
 			"while retrieving table map for incident table %q: %s", req.IncidentTable, err)
 	}
 
 	// Use the `*gorp.TableMap` to construct a list of the expected column names
 	// for an incident table.
 	var modelColumns []string
-	for _, i := range tableMap.Columns {
-		modelColumns = append(modelColumns, i.ColumnName)
+	for _, column := range tableMap.Columns {
+		modelColumns = append(modelColumns, column.ColumnName)
 	}
 
 	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(modelColumns, ", "), req.IncidentTable)
