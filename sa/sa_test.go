@@ -2661,9 +2661,8 @@ func makeGRPCStreamAdapter(ctx context.Context) sfiGRPCAdapter {
 // `sa.SQLStorageAuthority`'s `SerialsForIncident` method. A server which
 // implements the `sapb.StorageAuthority_SerialsForIncidentServer` interface is
 // passed to the inner server. A client which implements the
-// `sapb.StorageAuthority_SerialsForIncidentClient` is returned to the caller.
-// To receive the stream of responses, iterate over `Recv` method of the
-// returned client until an io.EOF is returned.
+// `sapb.StorageAuthority_SerialsForIncidentClient` interface is returned to the
+// caller.
 func (s inMemSA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
 	adapter := makeGRPCStreamAdapter(ctx)
 	go func() {
