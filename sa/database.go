@@ -264,8 +264,6 @@ func initTables(dbMap *gorp.DbMap) {
 	regTable.SetVersionCol("LockCol")
 	regTable.ColMap("Key").SetNotNull(true)
 	regTable.ColMap("KeySHA256").SetNotNull(true).SetUnique(true)
-	dbMap.AddTableWithName(authzModel{}, "authz").SetKeys(false, "ID")
-	dbMap.AddTableWithName(challModel{}, "challenges").SetKeys(true, "ID")
 	dbMap.AddTableWithName(issuedNameModel{}, "issuedNames").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.Certificate{}, "certificates").SetKeys(true, "ID")
 	dbMap.AddTableWithName(core.CertificateStatus{}, "certificateStatus").SetKeys(true, "ID")
