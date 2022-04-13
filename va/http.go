@@ -311,8 +311,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
 		return "", 0, berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. "+
-				"Only domain names are supported, not IP addresses", reqHost)
+			"Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -434,6 +433,13 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, nil, err
 	}
 
+	// newIPError implements the error interface. It wraps an error and the IP
+	// of the remote host in an IPError so we can display the IP in the problem
+	// details returned to the client.
+	newIPError := func(target *httpValidationTarget, err error) error {
+		return ipError{ip: target.cur, err: err}
+	}
+
 	// Create an initial GET Request
 	initialURL := url.URL{
 		Scheme: "http",
@@ -442,7 +448,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, newIPError(target, err)
 	}
 
 	// Add a context to the request. Shave some time from the
@@ -479,7 +485,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Set up the initial validation request and a base validation record
 	dialer, baseRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 	if err != nil {
-		return nil, []core.ValidationRecord{}, err
+		return nil, []core.ValidationRecord{}, newIPError(target, err)
 	}
 
 	// Build a transport for this validation that will use the preresolvedDialer's
@@ -591,8 +597,9 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if err != nil && fallbackErr(err) {
 		// Try to advance to another IP. If there was an error advancing we don't
 		// have a fallback address to use and must return the original error.
-		if ipErr := target.nextIP(); ipErr != nil {
-			return nil, records, err
+		advanceTargetIPErr := target.nextIP()
+		if advanceTargetIPErr != nil {
+			return nil, records, newIPError(target, err)
 		}
 
 		// setup another validation to retry the target with the new IP and append
@@ -600,7 +607,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		retryDialer, retryRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 		records = append(records, retryRecord)
 		if err != nil {
-			return nil, records, err
+			return nil, records, newIPError(target, err)
 		}
 		va.metrics.http01Fallbacks.Inc()
 		// Replace the transport's dialer with the preresolvedDialer for the retry
@@ -612,16 +619,16 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// If the retry still failed there isn't anything more to do, return the
 		// error immediately.
 		if err != nil {
-			return nil, records, err
+			return nil, records, newIPError(target, err)
 		}
 	} else if err != nil {
 		// if the error was not a fallbackErr then return immediately.
-		return nil, records, err
+		return nil, records, newIPError(target, err)
 	}
 
 	if httpResponse.StatusCode != 200 {
-		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %d",
+			records[len(records)-1].URL, httpResponse.StatusCode))
 	}
 
 	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
@@ -641,14 +648,14 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		err = closeErr
 	}
 	if err != nil {
-		return nil, records, berrors.UnauthorizedError("Error reading HTTP response body: %v", err)
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
 	}
 
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
+			records[len(records)-1].URL, replaceInvalidUTF8(body)))
 	}
 	return body, records, nil
 }

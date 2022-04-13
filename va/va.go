@@ -251,12 +251,40 @@ type verificationRequestEvent struct {
 	Error             string `json:",omitempty"`
 }
 
+// ipError is an error type used to pass though the IP address of the remote
+// host when an error occurs during HTTP-01 and TLS-ALPN domain validation.
+type ipError struct {
+	ip  net.IP
+	err error
+}
+
+// Unwrap returns the underlying error.
+func (i ipError) Unwrap() error {
+	return i.err
+}
+
+// Error returns a string representation of the error.
+func (i ipError) Error() string {
+	return fmt.Sprintf("%s: %s", i.ip, i.err)
+}
+
 // detailedError returns a ProblemDetails corresponding to an error
 // that occurred during HTTP-01 or TLS-ALPN domain validation. Specifically it
 // tries to unwrap known Go error types and present something a little more
 // meaningful. It additionally handles `berrors.ConnectionFailure` errors by
 // passing through the detailed message.
 func detailedError(err error) *probs.ProblemDetails {
+	var ipErr ipError
+	if errors.As(err, &ipErr) {
+		detailedErr := detailedError(ipErr.err)
+		if ipErr.ip == nil {
+			// This should never happen.
+			return detailedErr
+		}
+		// Prefix the error message with the IP address of the remote host.
+		detailedErr.Detail = fmt.Sprintf("%s: %s", ipErr.ip, detailedErr.Detail)
+		return detailedErr
+	}
 	// net/http wraps net.OpError in a url.Error. Unwrap them.
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
@@ -310,7 +338,6 @@ func detailedError(err error) *probs.ProblemDetails {
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
 		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
 	}
-
 	return probs.ConnectionFailure("Error getting validation data")
 }
 

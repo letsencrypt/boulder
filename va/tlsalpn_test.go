@@ -198,7 +198,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 		t.Fatalf("Connection should've timed out")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "Timeout during read (your server may be slow or overloaded)"
+	expected := "127.0.0.1: Timeout during read (your server may be slow or overloaded)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
@@ -247,7 +247,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 		t.Fatalf("Connection should've timed out")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "Timeout during connect (likely firewall problem)"
+	expected := "198.51.100.1: Timeout during connect (likely firewall problem)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
@@ -266,7 +266,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "Connection refused"
+	expected := "127.0.0.1: Connection refused"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
