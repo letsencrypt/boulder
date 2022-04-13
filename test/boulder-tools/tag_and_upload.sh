@@ -7,7 +7,7 @@ cd $(dirname $0)
 DATESTAMP=$(date +%Y-%m-%d)
 DOCKER_REPO="letsencrypt/boulder-tools"
 
-GO_VERSIONS=( "1.17.7" "1.18" )
+GO_VERSIONS=( "1.17.9" "1.18.1" )
 
 echo "Please login to allow push to DockerHub"
 docker login
