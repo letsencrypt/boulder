@@ -36,7 +36,7 @@ import (
 
 var (
 	errIncompleteRequest     = errors.New("incomplete gRPC request message")
-	validIncidentTableRegexp = regexp.MustCompile(`(?m)^incident_[0-9a-zA-Z_]{1,100}$`)
+	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
 type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
