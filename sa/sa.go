@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -35,7 +36,7 @@ import (
 
 var (
 	errIncompleteRequest     = errors.New("incomplete gRPC request message")
-	validIncidentTableRegexp = regexp.MustCompile(`(?m)^incident_[a-zA-Z_]{1,91}$`)
+	validIncidentTableRegexp = regexp.MustCompile(`(?m)^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
 type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
@@ -2150,11 +2151,9 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 }
 
 // SerialsForIncident queries the provided incident table and returns the
-// resulting rows as a stream of `*sapb.IncidentSerial`s. The caller receives
-// this stream of serials by iterating over the `Recv()` method of the returned
-// streaming client. An `io.EOF` error signals that there are no more serials to
-// send. If the incident table in question contains zero rows, only an `io.EOF`
-// error is returned.
+// resulting rows as a stream of `*sapb.IncidentSerial`s. An `io.EOF` error
+// signals that there are no more serials to send. If the incident table in
+// question contains zero rows, only an `io.EOF` error is returned.
 func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
 	if req.IncidentTable == "" {
 		return errIncompleteRequest
@@ -2162,12 +2161,26 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 
 	// Check that `req.IncidentTable` is a valid incident table name.
 	if !validIncidentTableRegexp.MatchString(req.IncidentTable) {
-		return berrors.InternalServerError("requested table name is malformed")
+		return berrors.MalformedError("requested table name is malformed")
 	}
 
-	modelColumns := incidentSerialModel{}.columns()
+	// Retrieve the `*gorp.TableMap` for the incident table.
+	tableMap, err := ssa.dbMap.TableFor(reflect.TypeOf(incidentSerialModel{}), false)
+	if err != nil {
+		// This should never happen, the schema is always added at startup.
+		return berrors.InternalServerError(
+			"while retrieving table map for incident table %q: %s", req.IncidentTable, err)
+	}
+
+	// Use the `*gorp.TableMap` to construct a list of the expected column names
+	// for an incident table.
+	var modelColumns []string
+	for _, i := range tableMap.Columns {
+		modelColumns = append(modelColumns, i.ColumnName)
+	}
+
 	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(modelColumns, ", "), req.IncidentTable)
-	rows, err := ssa.dbMap.Db.QueryContext(stream.Context(), query)
+	rows, err := ssa.dbMap.WithContext(stream.Context()).Query(query)
 	if err != nil {
 		return err
 	}
@@ -2182,7 +2195,7 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 	}
 	for i, modelColumn := range dbColumns {
 		if modelColumns[i] != modelColumn {
-			return berrors.InternalServerError("table %q has column %q, expected %q",
+			return berrors.InternalServerError("incident table %q has column %q. Expected %q",
 				req.IncidentTable, modelColumns[i], modelColumn)
 		}
 	}
@@ -2190,17 +2203,19 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 	for rows.Next() {
 		// Scan the row into the model. Note: the fields must be passed in the
 		// same order as the columns returned by the query above.
-		var i incidentSerialModel
-		err := rows.Scan(&i.Serial, &i.RegistrationID, &i.OrderID, &i.LastNoticeSent)
+		var ism incidentSerialModel
+		err := rows.Scan(&ism.Serial, &ism.RegistrationID, &ism.OrderID, &ism.LastNoticeSent)
 		if err != nil {
 			return err
 		}
 
-		err = stream.Send(&sapb.IncidentSerial{
-			Serial:         i.Serial,
-			RegistrationID: i.RegistrationID,
-			OrderID:        i.OrderID,
-			LastNoticeSent: i.LastNoticeSent.UnixNano()})
+		err = stream.Send(
+			&sapb.IncidentSerial{
+				Serial:         ism.Serial,
+				RegistrationID: ism.RegistrationID,
+				OrderID:        ism.OrderID,
+				LastNoticeSent: ism.LastNoticeSent.UnixNano(),
+			})
 		if err != nil {
 			return err
 		}
