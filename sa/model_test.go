@@ -146,40 +146,6 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
 }
 
-// TestModelToChallengeBadJSON tests that converting a challenge model with an
-// invalid validation error field or validation record field produces the
-// expected bad JSON error.
-func TestModelToChallengeBadJSON(t *testing.T) {
-	badJSON := []byte(`{`)
-
-	testCases := []struct {
-		Name  string
-		Model *challModel
-	}{
-		{
-			Name: "Bad error field",
-			Model: &challModel{
-				Error: badJSON,
-			},
-		},
-		{
-			Name: "Bad validation record field",
-			Model: &challModel{
-				ValidationRecord: badJSON,
-			},
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.Name, func(t *testing.T) {
-			_, err := modelToChallenge(tc.Model)
-			test.AssertError(t, err, "expected error from modelToChallenge")
-			var badJSONErr errBadJSON
-			test.AssertErrorWraps(t, err, &badJSONErr)
-			test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
-		})
-	}
-}
-
 // TestModelToOrderBADJSON tests that converting an order model with an invalid
 // validation error JSON field to an Order produces the expected bad JSON error.
 func TestModelToOrderBadJSON(t *testing.T) {
