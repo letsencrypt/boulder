@@ -278,6 +278,7 @@ func detailedError(err error) *probs.ProblemDetails {
 	if errors.As(err, &ipErr) {
 		detailedErr := detailedError(ipErr.err)
 		if ipErr.ip == nil {
+			// This should never happen.
 			return detailedErr
 		}
 		// Prefix the error message with the IP address of the remote host.

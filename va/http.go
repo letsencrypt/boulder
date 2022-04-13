@@ -433,9 +433,10 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, nil, err
 	}
 
-	// newIPError wraps an error and the IP of the remote host in an IPError so
-	// we can display the IP in the problem details returned to the client.
-	newIPError := func(target *httpValidationTarget, err error) ipError {
+	// newIPError implements the error interface. It wraps an error and the IP
+	// of the remote host in an IPError so we can display the IP in the problem
+	// details returned to the client.
+	newIPError := func(target *httpValidationTarget, err error) error {
 		return ipError{ip: target.cur, err: err}
 	}
 
@@ -596,8 +597,8 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if err != nil && fallbackErr(err) {
 		// Try to advance to another IP. If there was an error advancing we don't
 		// have a fallback address to use and must return the original error.
-		nextIPErr := target.nextIP()
-		if nextIPErr != nil {
+		advanceTargetIPErr := target.nextIP()
+		if advanceTargetIPErr != nil {
 			return nil, records, newIPError(target, err)
 		}
 
