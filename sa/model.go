@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -723,10 +724,26 @@ func incidentModelToPB(i incidentModel) sapb.Incident {
 	}
 }
 
-// incidentSerialModel represents a row in an 'incident' table.
+// incidentSerialModel represents a row in an 'incident' table. The fields must
+// match the order of the columns in the 'incident' table schema.
 type incidentSerialModel struct {
 	Serial         string    `db:"serial"`
 	RegistrationID int64     `db:"registrationID"`
 	OrderID        int64     `db:"orderID"`
 	LastNoticeSent time.Time `db:"lastNoticeSent"`
+}
+
+// columns returns a slice of incident table column names. This is used for
+// constructing SQL queries.
+func (i incidentSerialModel) columns() []string {
+	var fields []string
+	t := reflect.TypeOf(i)
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		dbTag := f.Tag.Get("db")
+		if dbTag != "" {
+			fields = append(fields, dbTag)
+		}
+	}
+	return fields
 }

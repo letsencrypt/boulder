@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +33,10 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-var errIncompleteRequest = errors.New("incomplete gRPC request message")
+var (
+	errIncompleteRequest     = errors.New("incomplete gRPC request message")
+	validIncidentTableRegexp = regexp.MustCompile(`(?m)^incident_[a-zA-Z_]{1,91}$`)
+)
 
 type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
 
@@ -2152,28 +2156,51 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 // send. If the incident table in question contains zero rows, only an `io.EOF`
 // error is returned.
 func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
-	rows, err := ssa.dbMap.Db.QueryContext(stream.Context(), fmt.Sprintf("SELECT * FROM %s", req.IncidentTable))
+	if req.IncidentTable == "" {
+		return errIncompleteRequest
+	}
+
+	// Check that `req.IncidentTable` is a valid incident table name.
+	if !validIncidentTableRegexp.MatchString(req.IncidentTable) {
+		return berrors.InternalServerError("requested table name is malformed")
+	}
+
+	modelColumns := incidentSerialModel{}.columns()
+	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(modelColumns, ", "), req.IncidentTable)
+	rows, err := ssa.dbMap.Db.QueryContext(stream.Context(), query)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	for rows.Next() {
-		var serial string
-		var regID int64
-		var orderID int64
-		var lastNoticeSent time.Time
+	// Ensure that the columns in the model match the columns returned from the
+	// query. A mismatch indicates that the query returned a column that is
+	// either not in the model or not in the expected order.
+	dbColumns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	for i, modelColumn := range dbColumns {
+		if modelColumns[i] != modelColumn {
+			return berrors.InternalServerError("table %q has column %q, expected %q",
+				req.IncidentTable, modelColumns[i], modelColumn)
+		}
+	}
 
-		err := rows.Scan(&serial, &regID, &orderID, &lastNoticeSent)
+	for rows.Next() {
+		// Scan the row into the model. Note: the fields must be passed in the
+		// same order as the columns returned by the query above.
+		var i incidentSerialModel
+		err := rows.Scan(&i.Serial, &i.RegistrationID, &i.OrderID, &i.LastNoticeSent)
 		if err != nil {
 			return err
 		}
 
 		err = stream.Send(&sapb.IncidentSerial{
-			Serial:         serial,
-			RegistrationID: regID,
-			OrderID:        orderID,
-			LastNoticeSent: lastNoticeSent.UnixNano()})
+			Serial:         i.Serial,
+			RegistrationID: i.RegistrationID,
+			OrderID:        i.OrderID,
+			LastNoticeSent: i.LastNoticeSent.UnixNano()})
 		if err != nil {
 			return err
 		}

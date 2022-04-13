@@ -17,10 +17,12 @@ import (
 	mrand "math/rand"
 	"net"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -2579,38 +2581,50 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.Assert(t, len(incidentsForSerial) == 1, "No active incidents returned")
 }
 
-type inmemSA struct {
+// inMemSA implements the `sapb.StorageAuthorityClient` interface and acts as a
+// wrapper for an inner `sa.SQLStorageAuthority` (which in turn meets the
+// `sapb.StorageAuthorityServer` interface). Only streaming RPCs used by SA unit
+// tests need to be implemented.
+type inMemSA struct {
 	sapb.StorageAuthorityClient
 	Impl *SQLStorageAuthority
 }
 
+// sfiData represents a single response from `sa.SerialsForIncident` containing
+// either an error or an `*sapb.IncidentSerial`.
 type sfiData struct {
 	serial *sapb.IncidentSerial
 	err    error
 }
 
+// sfiClient implements the `sapb.StorageAuthority_SerialsForIncidentClient`
+// interface. It receives serials passed by the `sfiServer`, via a channel.
 type sfiClient struct {
 	// grpc.ClientStream is embedded to meet the
-	// StorageAuthority_SerialsForIncidentClient interface.
+	// `StorageAuthority_SerialsForIncidentClient` interface. It's expected to
+	// be nil, so calling methods on it will result in a panic.
 	grpc.ClientStream
 	sfiChan <-chan sfiData
 }
 
-// Recv receives a single serial from the server.
+// Recv receives a single serial, passed by the `sfiServer`, via a channel.
 func (c sfiClient) Recv() (*sapb.IncidentSerial, error) {
 	sfiData := <-c.sfiChan
 	return sfiData.serial, sfiData.err
 }
 
+// sfiServer implements the `sapb.StorageAuthority_SerialsForIncidentServer`
+// interface. It sends serials to the `sfiClient` via a channel.
 type sfiServer struct {
 	// grpc.ServerStream is embedded to meet the
-	// StorageAuthority_SerialsForIncidentServer interface.
+	// `StorageAuthority_SerialsForIncidentServer` interface. It's expected to
+	// be nil, so calling methods on it will result in a panic.
 	grpc.ServerStream
 	context context.Context
 	sfiChan chan<- sfiData
 }
 
-// Send sends a single serial to the client.
+// Send passes a single serial to be received by the `sfiClient` via a channel.
 func (s sfiServer) Send(serial *sapb.IncidentSerial) error {
 	s.sfiChan <- sfiData{serial, nil}
 	return nil
@@ -2621,51 +2635,123 @@ func (s sfiServer) Context() context.Context {
 	return s.context
 }
 
-func (s sfiServer) sendErrAndClose(err error) error {
-	s.sfiChan <- sfiData{nil, err}
-	close(s.sfiChan)
-	return nil
+// sfiGRPCAdapter replicates a gRPC stream by using a channel to pass data
+// between the client and server.
+type sfiGRPCAdapter struct {
+	client  sapb.StorageAuthority_SerialsForIncidentClient
+	server  sapb.StorageAuthority_SerialsForIncidentServer
+	sfiChan chan sfiData
 }
 
-func makeinmemSAGRPCStreamAdapter(ctx context.Context) (sfiClient, sfiServer) {
-	sfiDataChan := make(chan sfiData)
-	return sfiClient{sfiChan: sfiDataChan}, sfiServer{sfiChan: sfiDataChan, context: ctx}
+func makeGRPCStreamAdapter(ctx context.Context) sfiGRPCAdapter {
+	sfiChan := make(chan sfiData)
+	return sfiGRPCAdapter{
+		client: sfiClient{
+			sfiChan: sfiChan,
+		},
+		server: sfiServer{
+			context: ctx,
+			sfiChan: sfiChan,
+		},
+		sfiChan: sfiChan,
+	}
 }
 
-func (s inmemSA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
-	client, server := makeinmemSAGRPCStreamAdapter(ctx)
+// SerialsForIncident proxies a request to and responses from the inner
+// `sa.SQLStorageAuthority`'s `SerialsForIncident` method. A server which
+// implements the `sapb.StorageAuthority_SerialsForIncidentServer` interface is
+// passed to the inner server. A client which implements the
+// `sapb.StorageAuthority_SerialsForIncidentClient` is returned to the caller.
+// To receive the stream of responses, iterate over `Recv` method of the
+// returned client until an io.EOF is returned.
+func (s inMemSA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
+	adapter := makeGRPCStreamAdapter(ctx)
 	go func() {
-		err := s.Impl.SerialsForIncident(req, server)
+		// Pass the adapter's server implementation to the inner method.
+		// Responses from the inner method will be sent via the adapter's
+		// channel by calling `Send`.
+		err := s.Impl.SerialsForIncident(req, adapter.server)
 		if err != nil {
-			server.sendErrAndClose(err)
-		} else {
-			server.sendErrAndClose(io.EOF)
+			// Pass any errors returned by the inner method to the client via
+			// the adapter's channel.
+			adapter.sfiChan <- sfiData{nil, err}
 		}
+		// Send an `io.EOF` to signal the (successful) end of the stream.
+		adapter.sfiChan <- sfiData{nil, io.EOF}
+		close(adapter.sfiChan)
 	}()
-	return client, nil
+	return adapter.client, nil
 }
 
 func TestSerialsForIncident(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
+	isa := inMemSA{Impl: sa}
 	defer cleanUp()
 
-	// Attempt to query incident serials which don't exist.
-	isa := inmemSA{Impl: sa}
-	client, err := isa.SerialsForIncident(context.Background(), &sapb.SerialsForIncidentRequest{
-		IncidentTable: "incident_foo"})
+	// Request serials from a malformed incident table name.
+	client, err := isa.SerialsForIncident(context.Background(),
+		&sapb.SerialsForIncidentRequest{
+			IncidentTable: "incidesnt_Baz",
+		},
+	)
 	test.AssertNotError(t, err, "Error calling SerialsForIncident")
 
-	// Should only get `io.EOF` error as there are no rows in the requested
-	// incident table.
-	for {
-		_, err := client.Recv()
-		test.AssertError(t, err, "Expected io.EOF error")
-		test.AssertErrorIs(t, err, io.EOF)
-		break
-	}
+	_, err = client.Recv()
+	test.AssertError(t, err, "Expected error for malformed table name")
 
-	// Add a incident serial rows to the incident table.
-	for _, i := range []string{"1335", "1336", "1337", "1338"} {
+	// Request serials from another malformed incident table name.
+	client, err = isa.SerialsForIncident(context.Background(),
+		&sapb.SerialsForIncidentRequest{
+			IncidentTable: "incident_" + strings.Repeat("Test", 92),
+		},
+	)
+	test.AssertNotError(t, err, "Error calling SerialsForIncident")
+
+	_, err = client.Recv()
+	test.AssertError(t, err, "Expected error for long table name.")
+
+	// Request serials for an incident table which doesn't exists.
+	client, err = isa.SerialsForIncident(context.Background(),
+		&sapb.SerialsForIncidentRequest{
+			IncidentTable: "incident_baz",
+		},
+	)
+	test.AssertNotError(t, err, "Error calling SerialsForIncident")
+
+	// We don't expect to have permissions to access to a non-existent table.
+	_, err = client.Recv()
+	var mysqlErr *mysql.MySQLError
+
+	// Assert that the error is a MySQL error so we can inspect the error code.
+	if errors.As(err, &mysqlErr) {
+		// We expect the error code to be 1142 (ER_TABLEACCESS_DENIED_ERROR):
+		// https://mariadb.com/kb/en/mariadb-error-codes/
+		test.AssertEquals(t, mysqlErr.Number, uint16(1142))
+	} else {
+		test.AssertError(t, err, "Expected MySQL Error 1142 (ER_TABLEACCESS_DENIED_ERROR) from Recv()")
+	}
+	test.AssertError(t, err, "Expected MySQL error")
+
+	// Request serials from table 'incident_foo', which we expect to exist but
+	// be empty.
+	client, err = isa.SerialsForIncident(context.Background(),
+		&sapb.SerialsForIncidentRequest{
+			IncidentTable: "incident_foo",
+		},
+	)
+	test.AssertNotError(t, err, "Error calling SerialsForIncident")
+
+	// Should only receive an `io.EOF` error as there are no rows in the
+	// requested incident table.
+	_, err = client.Recv()
+	test.AssertError(t, err, "Expected io.EOF error")
+	test.AssertErrorIs(t, err, io.EOF)
+
+	// Add 4 rows of incident serials to 'incident_foo'.
+	expectedSerials := map[string]bool{
+		"1335": true, "1336": true, "1337": true, "1338": true,
+	}
+	for i := range expectedSerials {
 		mrand.Seed(time.Now().Unix())
 		randInt := func() int64 { return mrand.Int63() }
 		_, err := sa.dbMap.Exec(
@@ -2680,37 +2766,29 @@ func TestSerialsForIncident(t *testing.T) {
 		test.AssertNotError(t, err, fmt.Sprintf("Error while inserting row for '%s' into incident table", i))
 	}
 
-	// Attempt to query for the rows we just added.
-	client, err = isa.SerialsForIncident(
-		context.Background(), &sapb.SerialsForIncidentRequest{
-			IncidentTable: "incident_foo"})
+	// Request all 4 serials from the incident table we just added entries to.
+	client, err = isa.SerialsForIncident(context.Background(),
+		&sapb.SerialsForIncidentRequest{
+			IncidentTable: "incident_foo",
+		})
 	test.AssertNotError(t, err, "Error getting serials for incident")
 
-	// Ensure that we receive all four of the expected serials.
-	var received int
+	// Ensure that we receive all 4 rows of serials.
+	receivedSerials := make(map[string]bool)
 	for {
 		serial, err := client.Recv()
 		if err != nil {
-			// An `io.EOF` error is expected when we've received all four
-			// serials.
+			// An `io.EOF` error is expected when the stream is closed.
 			if errors.Is(err, io.EOF) {
-				// Ensure that we received all four.
-				test.AssertEquals(t, received, 4)
+				// Ensure that we received all four serials.
+				test.AssertDeepEquals(t, receivedSerials, expectedSerials)
 				break
 			}
 			test.AssertNotError(t, err, "Received error other than io.EOF")
 		}
-		switch serial.Serial {
-		case "1335":
-			received++
-		case "1336":
-			received++
-		case "1337":
-			received++
-		case "1338":
-			received++
-		default:
-			t.Errorf("Unexpected serial: %s", serial.Serial)
+		if receivedSerials[serial.Serial] == true {
+			t.Errorf("Received serial %q more than once.", serial.Serial)
 		}
+		receivedSerials[serial.Serial] = true
 	}
 }
