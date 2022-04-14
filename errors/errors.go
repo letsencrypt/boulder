@@ -22,7 +22,7 @@ import (
 // BoulderError wrapping one of these types.
 type ErrorType int
 
-// These numeric constants are used when sending berrors through
+// These numeric constants are used when sending berrors through gRPC.
 const (
 	// InternalServer is deprecated. Instead, pass a plain Go error. That will get
 	// turned into a probs.InternalServerError by the WFE.
