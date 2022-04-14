@@ -31,6 +31,7 @@ service StorageAuthority {
   rpc CountInvalidAuthorizations2(CountInvalidAuthorizationsRequest) returns (Count) {}
   rpc GetValidAuthorizations2(GetValidAuthorizationsRequest) returns (Authorizations) {}
   rpc KeyBlocked(KeyBlockedRequest) returns (Exists) {}
+  rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   // Adders
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc UpdateRegistration(core.Registration) returns (google.protobuf.Empty) {}
@@ -278,4 +279,15 @@ message Incident {
   string url = 3;
   int64 renewBy = 4; // Unix timestamp (nanoseconds)
   bool enabled = 5;
+}
+
+message SerialsForIncidentRequest {
+  string incidentTable = 1;
+}
+
+message IncidentSerial {
+  string serial = 1;
+  int64 registrationID = 2;
+  int64 orderID = 3;
+  int64 lastNoticeSent = 4; // Unix timestamp (nanoseconds)
 }

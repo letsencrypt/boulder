@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -32,7 +34,10 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-var errIncompleteRequest = errors.New("incomplete gRPC request message")
+var (
+	errIncompleteRequest     = errors.New("incomplete gRPC request message")
+	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
+)
 
 type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
 
@@ -2107,7 +2112,8 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 	return &sapb.Exists{Exists: true}, nil
 }
 
-// IncidentsForSerial returns a list of active incidents for `req.Serial`.
+// IncidentsForSerial queries each active incident table and returns every
+// incident that currently impacts `req.Serial`.
 func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sapb.Serial) ([]sapb.Incident, error) {
 	if req == nil {
 		return nil, errIncompleteRequest
@@ -2142,4 +2148,82 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 		return nil, berrors.NotFoundError("no active incidents found for serial %q", req.Serial)
 	}
 	return incidentsForSerial, nil
+}
+
+// SerialsForIncident queries the provided incident table and returns the
+// resulting rows as a stream of `*sapb.IncidentSerial`s. An `io.EOF` error
+// signals that there are no more serials to send. If the incident table in
+// question contains zero rows, only an `io.EOF` error is returned.
+func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
+	if req.IncidentTable == "" {
+		return errIncompleteRequest
+	}
+
+	// Check that `req.IncidentTable` is a valid incident table name.
+	if !validIncidentTableRegexp.MatchString(req.IncidentTable) {
+		return fmt.Errorf("malformed table name %q", req.IncidentTable)
+	}
+
+	// Retrieve the `*gorp.TableMap` for the incident table.
+	tableMap, err := ssa.dbMap.TableFor(reflect.TypeOf(incidentSerialModel{}), false)
+	if err != nil {
+		// This should never happen, the schema is always added at startup.
+		return fmt.Errorf(
+			"while retrieving table map for incident table %q: %s", req.IncidentTable, err)
+	}
+
+	// Use the `*gorp.TableMap` to construct a list of the expected column names
+	// for an incident table.
+	var modelColumns []string
+	for _, column := range tableMap.Columns {
+		modelColumns = append(modelColumns, column.ColumnName)
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(modelColumns, ", "), req.IncidentTable)
+	rows, err := ssa.dbMap.WithContext(stream.Context()).Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Ensure that the columns in the model match the columns returned from the
+	// query. A mismatch indicates that the query returned a column that is
+	// either not in the model or not in the expected order.
+	dbColumns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	for i, modelColumn := range dbColumns {
+		if modelColumns[i] != modelColumn {
+			return fmt.Errorf("incident table %q has column %q. Expected %q",
+				req.IncidentTable, modelColumns[i], modelColumn)
+		}
+	}
+
+	for rows.Next() {
+		// Scan the row into the model. Note: the fields must be passed in the
+		// same order as the columns returned by the query above.
+		var ism incidentSerialModel
+		err := rows.Scan(&ism.Serial, &ism.RegistrationID, &ism.OrderID, &ism.LastNoticeSent)
+		if err != nil {
+			return err
+		}
+
+		err = stream.Send(
+			&sapb.IncidentSerial{
+				Serial:         ism.Serial,
+				RegistrationID: ism.RegistrationID,
+				OrderID:        ism.OrderID,
+				LastNoticeSent: ism.LastNoticeSent.UnixNano(),
+			})
+		if err != nil {
+			return err
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return err
+	}
+	return nil
 }

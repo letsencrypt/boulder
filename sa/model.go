@@ -671,8 +671,8 @@ func incidentModelToPB(i incidentModel) sapb.Incident {
 	}
 }
 
-// incidentCertModel represents a row in an 'incident' table.
-type incidentCertModel struct {
+// incidentSerialModel represents a row in an 'incident_*' table.
+type incidentSerialModel struct {
 	Serial         string    `db:"serial"`
 	RegistrationID int64     `db:"registrationID"`
 	OrderID        int64     `db:"orderID"`

@@ -44,6 +44,7 @@ type StorageAuthorityClient interface {
 	CountInvalidAuthorizations2(ctx context.Context, in *CountInvalidAuthorizationsRequest, opts ...grpc.CallOption) (*Count, error)
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
+	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
 	// Adders
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -263,6 +264,38 @@ func (c *storageAuthorityClient) KeyBlocked(ctx context.Context, in *KeyBlockedR
 	return out, nil
 }
 
+func (c *storageAuthorityClient) SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error) {
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[0], "/sa.StorageAuthority/SerialsForIncident", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &storageAuthoritySerialsForIncidentClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type StorageAuthority_SerialsForIncidentClient interface {
+	Recv() (*IncidentSerial, error)
+	grpc.ClientStream
+}
+
+type storageAuthoritySerialsForIncidentClient struct {
+	grpc.ClientStream
+}
+
+func (x *storageAuthoritySerialsForIncidentClient) Recv() (*IncidentSerial, error) {
+	m := new(IncidentSerial)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *storageAuthorityClient) NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error) {
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/NewRegistration", in, out, opts...)
@@ -462,6 +495,7 @@ type StorageAuthorityServer interface {
 	CountInvalidAuthorizations2(context.Context, *CountInvalidAuthorizationsRequest) (*Count, error)
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
 	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
+	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
 	// Adders
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
 	UpdateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
@@ -551,6 +585,9 @@ func (UnimplementedStorageAuthorityServer) GetValidAuthorizations2(context.Conte
 }
 func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method KeyBlocked not implemented")
+}
+func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error {
+	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
 }
 func (UnimplementedStorageAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
@@ -998,6 +1035,27 @@ func _StorageAuthority_KeyBlocked_Handler(srv interface{}, ctx context.Context, 
 		return srv.(StorageAuthorityServer).KeyBlocked(ctx, req.(*KeyBlockedRequest))
 	}
 	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_SerialsForIncident_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SerialsForIncidentRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityServer).SerialsForIncident(m, &storageAuthoritySerialsForIncidentServer{stream})
+}
+
+type StorageAuthority_SerialsForIncidentServer interface {
+	Send(*IncidentSerial) error
+	grpc.ServerStream
+}
+
+type storageAuthoritySerialsForIncidentServer struct {
+	grpc.ServerStream
+}
+
+func (x *storageAuthoritySerialsForIncidentServer) Send(m *IncidentSerial) error {
+	return x.ServerStream.SendMsg(m)
 }
 
 func _StorageAuthority_NewRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1510,6 +1568,12 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_AddBlockedKey_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "SerialsForIncident",
+			Handler:       _StorageAuthority_SerialsForIncident_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "sa.proto",
 }

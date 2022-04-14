@@ -21,6 +21,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -450,6 +451,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 type testCtx struct {
 	revoker revoker
 	ssa     sapb.StorageAuthorityClient
+	dbMap   *db.WrappedMap
 	cleanUp func()
 	issuer  *issuance.Certificate
 	signer  crypto.Signer
@@ -549,6 +551,7 @@ func setup(t *testing.T) testCtx {
 	return testCtx{
 		revoker: revoker{rac, isa.SA{Impl: ssa}, dbMap, fc, log},
 		ssa:     isa.SA{Impl: ssa},
+		dbMap:   dbMap,
 		cleanUp: cleanUp,
 		issuer:  issuer,
 		signer:  signer,
