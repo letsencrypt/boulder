@@ -2195,7 +2195,7 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 	}
 	for i, modelColumn := range dbColumns {
 		if modelColumns[i] != modelColumn {
-			return berrors.InternalServerError("incident table %q has column %q. Expected %q",
+			return fmt.Errorf("incident table %q has column %q. Expected %q",
 				req.IncidentTable, modelColumns[i], modelColumn)
 		}
 	}
