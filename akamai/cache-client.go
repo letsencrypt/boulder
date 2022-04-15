@@ -55,22 +55,20 @@ type purgeResponse struct {
 // CachePurgeClient talks to the Akamai CCU REST API. It is safe to make
 // concurrent requests using this client.
 type CachePurgeClient struct {
-	client               *http.Client
-	apiEndpoint          string
-	apiHost              string
-	apiScheme            string
-	clientToken          string
-	clientSecret         string
-	accessToken          string
-	v3Network            string
-	purgeBatchInterval   time.Duration
-	queueEntriesPerBatch int
-	retries              int
-	retryBackoff         time.Duration
-	log                  blog.Logger
-	purgeLatency         prometheus.Histogram
-	purges               *prometheus.CounterVec
-	clk                  clock.Clock
+	client       *http.Client
+	apiEndpoint  string
+	apiHost      string
+	apiScheme    string
+	clientToken  string
+	clientSecret string
+	accessToken  string
+	v3Network    string
+	retries      int
+	retryBackoff time.Duration
+	log          blog.Logger
+	purgeLatency prometheus.Histogram
+	purges       *prometheus.CounterVec
+	clk          clock.Clock
 }
 
 // NewCachePurgeClient performs some basic validation of supplied configuration
@@ -81,8 +79,6 @@ func NewCachePurgeClient(
 	secret,
 	accessToken,
 	network string,
-	purgeBatchInterval time.Duration,
-	queueEntriesPerBatch,
 	retries int,
 	retryBackoff time.Duration,
 	log blog.Logger, scope prometheus.Registerer,
@@ -110,22 +106,20 @@ func NewCachePurgeClient(
 	scope.MustRegister(purges)
 
 	return &CachePurgeClient{
-		client:               new(http.Client),
-		apiEndpoint:          endpoint.String(),
-		apiHost:              endpoint.Host,
-		apiScheme:            strings.ToLower(endpoint.Scheme),
-		clientToken:          clientToken,
-		clientSecret:         secret,
-		accessToken:          accessToken,
-		v3Network:            network,
-		purgeBatchInterval:   purgeBatchInterval,
-		queueEntriesPerBatch: queueEntriesPerBatch,
-		retries:              retries,
-		retryBackoff:         retryBackoff,
-		log:                  log,
-		clk:                  clock.New(),
-		purgeLatency:         purgeLatency,
-		purges:               purges,
+		client:       new(http.Client),
+		apiEndpoint:  endpoint.String(),
+		apiHost:      endpoint.Host,
+		apiScheme:    strings.ToLower(endpoint.Scheme),
+		clientToken:  clientToken,
+		clientSecret: secret,
+		accessToken:  accessToken,
+		v3Network:    network,
+		retries:      retries,
+		retryBackoff: retryBackoff,
+		log:          log,
+		clk:          clock.New(),
+		purgeLatency: purgeLatency,
+		purges:       purges,
 	}, nil
 }
 
@@ -283,12 +277,10 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 	return nil
 }
 
-func (cpc *CachePurgeClient) purgeBatch(queueEntries [][]string) error {
-	var urls []string
-	for _, response := range queueEntries {
-		urls = append(urls, response...)
-	}
-
+// Purge dispatches the provided URLs in a request to the Akamai Fast-Purge API.
+// The request will be attempted cpc.retries number of times before giving up
+// and returning ErrAllRetriesFailed.
+func (cpc *CachePurgeClient) Purge(urls []string) error {
 	successful := false
 	for i := 0; i <= cpc.retries; i++ {
 		cpc.clk.Sleep(core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3))
@@ -314,28 +306,6 @@ func (cpc *CachePurgeClient) purgeBatch(queueEntries [][]string) error {
 
 	cpc.purges.WithLabelValues("success").Inc()
 	return nil
-}
-
-// Purge dispatches the provided queue entries in batched requests to the Akamai
-// Fast-Purge API. Requests will be attempted cpc.retries number of times before
-// giving up and returning ErrAllRetriesFailed and the beginning index position
-// of the batch where the failure was encountered.
-func (cpc *CachePurgeClient) Purge(queueEntries [][]string) (int, error) {
-	totalEntries := len(queueEntries)
-	for batchBegin := 0; batchBegin < totalEntries; {
-		batchEnd := batchBegin + cpc.queueEntriesPerBatch
-		if batchEnd > totalEntries {
-			// Avoid index out of range error.
-			batchEnd = totalEntries
-		}
-
-		err := cpc.purgeBatch(queueEntries[batchBegin:batchEnd])
-		if err != nil {
-			return batchBegin, err
-		}
-		batchBegin += cpc.queueEntriesPerBatch
-	}
-	return totalEntries, nil
 }
 
 // CheckSignature is exported for use in tests and akamai-test-srv.

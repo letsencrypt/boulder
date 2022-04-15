@@ -45,7 +45,7 @@ func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPReques
 type noopROCSP struct {
 }
 
-func (noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte, _ time.Duration) error {
+func (noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte) error {
 	return nil
 }
 
@@ -167,7 +167,6 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 type rocspStorage struct {
 	shortIDIssuer byte
 	response      []byte
-	ttl           time.Duration
 }
 
 type recordingROCSP struct {
@@ -182,13 +181,12 @@ func (rr *recordingROCSP) get() []rocspStorage {
 	return append(ret, rr.storage...)
 }
 
-func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
+func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error {
 	rr.Lock()
 	defer rr.Unlock()
 	rr.storage = append(rr.storage, rocspStorage{
 		shortIDIssuer: shortIssuerID,
 		response:      respBytes,
-		ttl:           ttl,
 	})
 	return nil
 }

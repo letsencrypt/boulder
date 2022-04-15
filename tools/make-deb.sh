@@ -27,7 +27,7 @@ sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
 
 # Install fpm, this is used in our Makefile to package Boulder as a deb or rpm.
-sudo gem install --no-document fpm
+sudo gem install --no-document -v 1.14.0 fpm
 
 #
 # Build

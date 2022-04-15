@@ -54,7 +54,7 @@ go clean -modcache
 
 pip3 install -r /tmp/requirements.txt
 
-gem install --no-document fpm
+gem install --no-document -v 1.14.0 fpm
 
 apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf automake
 apt-get clean -y

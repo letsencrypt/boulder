@@ -239,6 +239,11 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, req *sapb.Se
 	}
 }
 
+// SerialsForIncident is a mock
+func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
+	return nil, nil
+}
+
 // AddPrecertificate is a mock
 func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (empty *emptypb.Empty, err error) {
 	return

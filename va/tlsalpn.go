@@ -132,7 +132,15 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err)
+		host, _, splitErr := net.SplitHostPort(hostPort)
+		if splitErr == nil && net.ParseIP(host) != nil {
+			// Wrap the validation error and the IP of the remote host in an
+			// IPError so we can display the IP in the problem details returned
+			// to the client.
+			return nil, nil, detailedError(ipError{net.ParseIP(host), err})
+		}
 		return nil, nil, detailedError(err)
+
 	}
 	// close errors are not important here
 	defer func() {

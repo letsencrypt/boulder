@@ -166,8 +166,9 @@ func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock
 // into Redis, updating both the metadata and response keys. ShortIssuerID
 // is an arbitrarily assigned byte that unique identifies each issuer.
 // Must be the same across OCSP components. Returns error if the OCSP
-// response fails to parse.
-func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
+// response fails to parse. The expiration time (ttl) of the Redis key is
+// set to OCSP response `NextUpdate`.
+func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error {
 	start := c.clk.Now()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -187,6 +188,9 @@ func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte, sho
 		ShortIssuerID: shortIssuerID,
 	}
 	metadataValue := metadataStruct.Marshal()
+
+	// Set the ttl duration to the response `NextUpdate - now()`
+	ttl := time.Until(resp.NextUpdate)
 
 	err = c.rdb.Watch(ctx, func(tx *redis.Tx) error {
 		err := tx.Set(ctx, responseKey, respBytes, ttl).Err()

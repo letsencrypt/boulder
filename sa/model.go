@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // errBadJSON is an error type returned when a json.Unmarshal performed by the
@@ -224,25 +225,6 @@ type regModel struct {
 	Status    string `db:"status"`
 }
 
-// challModel is the description of a core.Challenge in the database
-//
-// The Validation field is a stub; the column is only there for backward compatibility.
-type challModel struct {
-	ID              int64  `db:"id"`
-	AuthorizationID string `db:"authorizationID"`
-
-	Type             core.AcmeChallenge `db:"type"`
-	Status           core.AcmeStatus    `db:"status"`
-	Error            []byte             `db:"error"`
-	Token            string             `db:"token"`
-	KeyAuthorization string             `db:"keyAuthorization"`
-	ValidationRecord []byte             `db:"validationRecord"`
-	AttemptedAt      time.Time          `db:"attemptedAt"`
-
-	// TODO(#1818): Remove, this field is unused, but is kept temporarily to avoid a database migration.
-	Validated bool `db:"validated"`
-}
-
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
 	// for the sake of the `Key` field, we do need to do the conversion in order
@@ -316,39 +298,6 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		CreatedAt:       reg.CreatedAt.UTC().UnixNano(),
 		Status:          reg.Status,
 	}, nil
-}
-
-func modelToChallenge(cm *challModel) (core.Challenge, error) {
-	c := core.Challenge{
-		Type:                     cm.Type,
-		Status:                   cm.Status,
-		Token:                    cm.Token,
-		ProvidedKeyAuthorization: cm.KeyAuthorization,
-		Validated:                &cm.AttemptedAt,
-	}
-	if len(cm.Error) > 0 {
-		var problem probs.ProblemDetails
-		err := json.Unmarshal(cm.Error, &problem)
-		if err != nil {
-			return core.Challenge{}, badJSONError(
-				"failed to unmarshal challenge model's error",
-				cm.Error,
-				err)
-		}
-		c.Error = &problem
-	}
-	if len(cm.ValidationRecord) > 0 {
-		var vr []core.ValidationRecord
-		err := json.Unmarshal(cm.ValidationRecord, &vr)
-		if err != nil {
-			return core.Challenge{}, badJSONError(
-				"failed to unmarshal challenge model's validation record",
-				cm.ValidationRecord,
-				err)
-		}
-		c.ValidationRecord = vr
-	}
-	return c, nil
 }
 
 type recordedSerialModel struct {
@@ -701,4 +650,31 @@ type keyHashModel struct {
 var stringToSourceInt = map[string]int{
 	"API":           1,
 	"admin-revoker": 2,
+}
+
+// incidentModel represents a row in the 'incidents' table.
+type incidentModel struct {
+	ID          int64     `db:"id"`
+	SerialTable string    `db:"serialTable"`
+	URL         string    `db:"url"`
+	RenewBy     time.Time `db:"renewBy"`
+	Enabled     bool      `db:"enabled"`
+}
+
+func incidentModelToPB(i incidentModel) sapb.Incident {
+	return sapb.Incident{
+		Id:          i.ID,
+		SerialTable: i.SerialTable,
+		Url:         i.URL,
+		RenewBy:     i.RenewBy.UnixNano(),
+		Enabled:     i.Enabled,
+	}
+}
+
+// incidentSerialModel represents a row in an 'incident_*' table.
+type incidentSerialModel struct {
+	Serial         string    `db:"serial"`
+	RegistrationID int64     `db:"registrationID"`
+	OrderID        int64     `db:"orderID"`
+	LastNoticeSent time.Time `db:"lastNoticeSent"`
 }

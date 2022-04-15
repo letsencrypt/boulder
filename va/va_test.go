@@ -653,10 +653,25 @@ func TestMultiVAPolicy(t *testing.T) {
 func TestDetailedError(t *testing.T) {
 	cases := []struct {
 		err      error
+		ip       net.IP
 		expected string
 	}{
 		{
-			&net.OpError{
+			err: ipError{
+				ip: net.ParseIP("192.168.1.1"),
+				err: &net.OpError{
+					Op:  "dial",
+					Net: "tcp",
+					Err: &os.SyscallError{
+						Syscall: "getsockopt",
+						Err:     syscall.ECONNREFUSED,
+					},
+				},
+			},
+			expected: "192.168.1.1: Connection refused",
+		},
+		{
+			err: &net.OpError{
 				Op:  "dial",
 				Net: "tcp",
 				Err: &os.SyscallError{
@@ -664,10 +679,10 @@ func TestDetailedError(t *testing.T) {
 					Err:     syscall.ECONNREFUSED,
 				},
 			},
-			"Connection refused",
+			expected: "Connection refused",
 		},
 		{
-			&net.OpError{
+			err: &net.OpError{
 				Op:  "dial",
 				Net: "tcp",
 				Err: &os.SyscallError{
@@ -675,7 +690,8 @@ func TestDetailedError(t *testing.T) {
 					Err:     syscall.ECONNRESET,
 				},
 			},
-			"Connection reset by peer",
+			ip:       nil,
+			expected: "Connection reset by peer",
 		},
 	}
 	for _, tc := range cases {

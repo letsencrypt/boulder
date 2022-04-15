@@ -45,7 +45,7 @@ func TestSetAndGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	var shortIssuerID byte = 99
-	err = client.StoreResponse(context.Background(), response, byte(shortIssuerID), time.Hour)
+	err = client.StoreResponse(context.Background(), response, byte(shortIssuerID))
 	if err != nil {
 		t.Fatalf("storing response: %s", err)
 	}
