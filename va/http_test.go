@@ -3,9 +3,11 @@ package va
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	mrand "math/rand"
 	"net"
 	"net/http"
@@ -20,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -1543,5 +1546,104 @@ func TestLimitedReader(t *testing.T) {
 
 	if !utf8.ValidString(prob.Detail) {
 		t.Errorf("Problem Detail contained an invalid UTF-8 string")
+	}
+}
+
+// oldTLSRedirectSrv returns a pair of *httptest.Servers. The first one is
+// plaintext and redirects all URLs to the second one. The second one is HTTPS
+// and supports a max TLS version of 1.1.
+// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+func oldTLSRedirectSrv(t *testing.T, token string) (*httptest.Server, *httptest.Server) {
+	var port int
+	m := http.NewServeMux()
+	addrs, err := net.LookupHost("example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addrs) < 1 || addrs[0] != "127.0.0.1" {
+		t.Fatalf("this test requires example.com to resolve to 127.0.0.1 but it resolved to %s", addrs[0])
+	}
+	m.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, fmt.Sprintf("https://example.com:%d%s", port, r.URL.Path), http.StatusMovedPermanently)
+	})
+
+	server := httptest.NewUnstartedServer(m)
+	server.Start()
+
+	httpsMux := http.NewServeMux()
+	httpsMux.HandleFunc("/.well-known/acme-challenge/", func(w http.ResponseWriter, r *http.Request) {
+		pathComponents := strings.Split(r.URL.Path, "/")
+		if len(pathComponents) < 4 || pathComponents[3] != token {
+			http.NotFound(w, r)
+			return
+		}
+
+		ch := core.Challenge{Token: token}
+		keyAuthz, _ := ch.ExpectedKeyAuthorization(accountKey)
+		fmt.Fprint(w, keyAuthz)
+	})
+	httpsServer := httptest.NewUnstartedServer(httpsMux)
+	httpsServer.TLS = &tls.Config{
+		MaxVersion: tls.VersionTLS11,
+	}
+	httpsServer.StartTLS()
+
+	port = getPort(httpsServer)
+
+	return server, httpsServer
+}
+
+// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+func TestOldTLS(t *testing.T) {
+	features.Reset()
+
+	chall := httpChallenge()
+	server, httpsServer := oldTLSRedirectSrv(t, chall.Token)
+	startURL := server.URL
+
+	// Check that the HTTP servers are running as expected
+	c := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	resp, err := c.Get(startURL + "/.well-known/acme-challenge/" + chall.Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), chall.Token) {
+		t.Fatal("response did not contain token")
+	}
+	if resp.TLS == nil {
+		t.Fatal("request did not redirect to HTTPS")
+	}
+	if resp.TLS.Version > tls.VersionTLS11 {
+		t.Fatalf("HTTPS request negotiated TLS version 0x%x (test expected 1.1). Try setting GODEBUG=tls10default=1",
+			resp.TLS.Version)
+	}
+
+	// The real test
+	va, _ := setup(server, 0, "", nil)
+	va.httpsPort = getPort(httpsServer)
+
+	_, prob := va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob != nil {
+		t.Errorf("(OldTLSOutbound == true) expected success, got %s", prob)
+	}
+
+	err = features.Set(map[string]bool{"OldTLSOutbound": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, prob = va.validateHTTP01(ctx, dnsi("localhost"), chall)
+	if prob == nil {
+		t.Error("(OldTLSOutbound == false) expected fail, got success")
 	}
 }

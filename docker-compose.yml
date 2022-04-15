@@ -27,6 +27,10 @@ services:
         ipv4_address: 10.88.88.88
       redisnet:
         ipv4_address: 10.33.33.33
+    extra_hosts:
+      # This is used by TestOldTLS in va/http_test.go
+      # TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+      - "example.com:127.0.0.1"
     # Use sd-test-srv as a backup to Docker's embedded DNS server
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
     # If there's a name Docker's DNS server doesn't know about, it will

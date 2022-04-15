@@ -3545,3 +3545,29 @@ func TestARI(t *testing.T) {
 	test.AssertEquals(t, resp.Code, 404)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
 }
+
+// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+func TestOldTLSInbound(t *testing.T) {
+	features.Reset()
+
+	wfe, _ := setupWFE(t)
+	req := &http.Request{
+		URL:    &url.URL{Path: "/directory"},
+		Method: "GET",
+		Header: http.Header(map[string][]string{
+			http.CanonicalHeaderKey("TLS-Version"): {"TLSv1"},
+		}),
+	}
+	responseWriter := httptest.NewRecorder()
+	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+
+	err := features.Set(map[string]bool{"OldTLSInbound": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	responseWriter = httptest.NewRecorder()
+	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+}

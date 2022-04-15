@@ -17,6 +17,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -634,6 +635,12 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 	if httpResponse.TLS != nil && httpResponse.TLS.Version < tls.VersionTLS12 {
 		oldTLS = true
+		if !features.Enabled(features.OldTLSOutbound) {
+			return nil, records, berrors.MalformedError(
+				"validation attempt was redirected to an HTTPS server that doesn't " +
+					"support TLSv1.2 or better. See " +
+					"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144")
+		}
 	}
 
 	if oldTLS {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
@@ -213,5 +214,48 @@ func TestNormalizeCSR(t *testing.T) {
 			test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
 			test.AssertDeepEquals(t, c.expectedNames, c.csr.DNSNames)
 		})
+	}
+}
+
+func TestSHA1Deprecation(t *testing.T) {
+	features.Reset()
+
+	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+
+	makeAndVerifyCsr := func(alg x509.SignatureAlgorithm) error {
+		csrBytes, err := x509.CreateCertificateRequest(rand.Reader,
+			&x509.CertificateRequest{
+				DNSNames:           []string{"example.com"},
+				SignatureAlgorithm: alg,
+				PublicKey:          &private.PublicKey,
+			}, private)
+		if err != nil {
+			t.Fatal(err)
+		}
+		csr, err := x509.ParseCertificateRequest(csrBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return VerifyCSR(context.Background(), csr, 100, testingPolicy, &mockPA{})
+	}
+
+	err = makeAndVerifyCsr(x509.SHA256WithRSA)
+	if err != nil {
+		t.Fatalf("expected no error from VerifyCSR on a CSR signed with SHA256, got %s", err)
+	}
+	err = features.Set(map[string]bool{"SHA1CSRs": true})
+	test.AssertNotError(t, err, "setting feature")
+	err = makeAndVerifyCsr(x509.SHA1WithRSA)
+	if err != nil {
+		t.Fatalf("(SHA1CSR == true) expected no error from VerifyCSR on a CSR signed with SHA1, got %s (maybe set GODEBUG=x509sha1=1)", err)
+	}
+
+	err = features.Set(map[string]bool{"SHA1CSRs": false})
+	test.AssertNotError(t, err, "setting feature")
+	t.Logf("enabled %t\n", features.Enabled(features.SHA1CSRs))
+	err = makeAndVerifyCsr(x509.SHA1WithRSA)
+	if err == nil {
+		t.Fatalf("(SHA1CSR == false) expected error from VerifyCSR on a CSR signed with SHA1, got none")
 	}
 }
