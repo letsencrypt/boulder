@@ -1,17 +1,13 @@
 package notmain
 
 import (
-	"io/ioutil"
 	"strings"
 	"testing"
 )
 
 func TestCheckOutputFileSucceeds(t *testing.T) {
-	dir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = checkOutputFile(dir+"/example", "foo")
+	dir := t.TempDir()
+	err := checkOutputFile(dir+"/example", "foo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,12 +24,9 @@ func TestCheckOutputFileEmpty(t *testing.T) {
 }
 
 func TestCheckOutputFileExists(t *testing.T) {
-	dir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatal(err)
-	}
+	dir := t.TempDir()
 	filename := dir + "/example"
-	err = writeFile(filename, []byte("hi"))
+	err := writeFile(filename, []byte("hi"))
 	if err != nil {
 		t.Fatal(err)
 	}

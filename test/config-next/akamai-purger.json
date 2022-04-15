@@ -1,9 +1,12 @@
 {
   "akamaiPurger": {
     "debugAddr": ":9666",
-    "purgeInterval": "1ms",
     "purgeRetries": 10,
     "purgeRetryBackoff": "50ms",
+    "throughput": {
+      "queueEntriesPerBatch": 2,
+      "purgeBatchInterval": "32ms"
+    },
     "baseURL": "http://localhost:6789",
     "clientToken": "its-a-token",
     "clientSecret": "its-a-secret",

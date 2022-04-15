@@ -389,7 +389,6 @@ func main() {
 	// Validate PA config and set defaults if needed.
 	cmd.FailOnError(config.PA.CheckChallenges(), "Invalid PA configuration")
 
-	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
 	if config.CertChecker.GoodKey.WeakKeyFile != "" {
 		cmd.Fail("cert-checker does not support checking against weak key files")
 	}
@@ -450,7 +449,7 @@ func main() {
 	wg.Wait()
 	fmt.Fprintf(
 		os.Stderr,
-		"# Finished processing certificates, sample: %d, good: %d, bad: %d\n",
+		"# Finished processing certificates, report length: %d, good: %d, bad: %d\n",
 		len(checker.issuedReport.Entries),
 		checker.issuedReport.GoodCerts,
 		checker.issuedReport.BadCerts,

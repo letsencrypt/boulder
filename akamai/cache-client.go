@@ -25,9 +25,20 @@ import (
 )
 
 const (
+	timestampFormat = "20060102T15:04:05-0700"
 	v3PurgePath     = "/ccu/v3/delete/url/"
 	v3PurgeTagPath  = "/ccu/v3/delete/tag/"
-	timestampFormat = "20060102T15:04:05-0700"
+)
+
+var (
+	// ErrAllRetriesFailed indicates that all purge submission attempts have
+	// failed.
+	ErrAllRetriesFailed = errors.New("all attempts to submit purge request failed")
+
+	// errFatal is returned by the purge method of CachePurgeClient to indicate
+	// that it failed for a reason that cannot be remediated by retrying the
+	// request.
+	errFatal = errors.New("fatal error")
 )
 
 type v3PurgeRequest struct {
@@ -41,8 +52,8 @@ type purgeResponse struct {
 	PurgeID          string `json:"purgeId"`
 }
 
-// CachePurgeClient talks to the Akamai CCU REST API. It is safe to make concurrent
-// purge requests.
+// CachePurgeClient talks to the Akamai CCU REST API. It is safe to make
+// concurrent requests using this client.
 type CachePurgeClient struct {
 	client       *http.Client
 	apiEndpoint  string
@@ -60,61 +71,49 @@ type CachePurgeClient struct {
 	clk          clock.Clock
 }
 
-// errFatal is used by CachePurgeClient.purge to indicate that it failed for a
-// reason that cannot be remediated by retrying a purge request
-type errFatal string
-
-func (e errFatal) Error() string { return string(e) }
-
-var (
-	// ErrAllRetriesFailed lets the caller of Purge to know if all the purge submission
-	// attempts failed
-	ErrAllRetriesFailed = errors.New("All attempts to submit purge request failed")
-)
-
-// NewCachePurgeClient constructs a new CachePurgeClient
+// NewCachePurgeClient performs some basic validation of supplied configuration
+// and returns a newly constructed CachePurgeClient.
 func NewCachePurgeClient(
-	endpoint,
+	baseURL,
 	clientToken,
-	clientSecret,
-	accessToken string,
-	v3Network string,
+	secret,
+	accessToken,
+	network string,
 	retries int,
 	retryBackoff time.Duration,
-	log blog.Logger,
-	stats prometheus.Registerer,
+	log blog.Logger, scope prometheus.Registerer,
 ) (*CachePurgeClient, error) {
+	if network != "production" && network != "staging" {
+		return nil, fmt.Errorf("'V3Network' must be \"staging\" or \"production\", got %q", network)
+	}
+
+	endpoint, err := url.Parse(strings.TrimSuffix(baseURL, "/"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse 'BaseURL' as a URL: %s", err)
+	}
+
 	purgeLatency := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "ccu_purge_latency",
 		Help:    "Histogram of latencies of CCU purges",
 		Buckets: metrics.InternetFacingBuckets,
 	})
-	stats.MustRegister(purgeLatency)
+	scope.MustRegister(purgeLatency)
+
 	purges := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ccu_purges",
 		Help: "A counter of CCU purges labelled by the result",
 	}, []string{"type"})
-	stats.MustRegister(purges)
+	scope.MustRegister(purges)
 
-	endpoint = strings.TrimSuffix(endpoint, "/")
-	apiURL, err := url.Parse(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	// The network string must be either "production" or "staging".
-	if v3Network != "production" && v3Network != "staging" {
-		return nil, fmt.Errorf(
-			"Invalid CCU v3 network: %q. Must be \"staging\" or \"production\"", v3Network)
-	}
 	return &CachePurgeClient{
 		client:       new(http.Client),
-		apiEndpoint:  endpoint,
-		apiHost:      apiURL.Host,
-		apiScheme:    strings.ToLower(apiURL.Scheme),
+		apiEndpoint:  endpoint.String(),
+		apiHost:      endpoint.Host,
+		apiScheme:    strings.ToLower(endpoint.Scheme),
 		clientToken:  clientToken,
-		clientSecret: clientSecret,
+		clientSecret: secret,
 		accessToken:  accessToken,
-		v3Network:    v3Network,
+		v3Network:    network,
 		retries:      retries,
 		retryBackoff: retryBackoff,
 		log:          log,
@@ -124,13 +123,13 @@ func NewCachePurgeClient(
 	}, nil
 }
 
-// Akamai uses a special authorization header to identify clients to their EdgeGrid
-// APIs, their docs (https://developer.akamai.com/introduction/Client_Auth.html)
-// provide a  description of the required generation process.
-func (cpc *CachePurgeClient) constructAuthHeader(body []byte, apiPath string, nonce string) (string, error) {
+// makeAuthHeader constructs a special Akamai authorization header. This header
+// is used to identify clients to Akamai's EdgeGrid APIs. For a more detailed
+// description of the generation process see their docs:
+// https://developer.akamai.com/introduction/Client_Auth.html
+func (cpc *CachePurgeClient) makeAuthHeader(body []byte, apiPath string, nonce string) (string, error) {
 	// The akamai API is very time sensitive (recommending reliance on a stratum 2
-	// or better time source) and, although it doesn't say it anywhere, really wants
-	// the timestamp to be in the UTC timezone for some reason.
+	// or better time source). Additionally, timestamps MUST be in UTC.
 	timestamp := cpc.clk.Now().UTC().Format(timestampFormat)
 	header := fmt.Sprintf(
 		"EG1-HMAC-SHA256 client_token=%s;access_token=%s;timestamp=%s;nonce=%s;",
@@ -146,12 +145,12 @@ func (cpc *CachePurgeClient) constructAuthHeader(body []byte, apiPath string, no
 		cpc.apiScheme,
 		cpc.apiHost,
 		apiPath,
-		"", // We don't need to send any signed headers for a purge so this can be blank
+		// Signed headers are not required for this request type.
+		"",
 		base64.StdEncoding.EncodeToString(bodyHash[:]),
 		header,
 	)
-
-	cpc.log.Debugf("To-be-signed Akamai EdgeGrid authentication: %q", tbs)
+	cpc.log.Debugf("To-be-signed Akamai EdgeGrid authentication %q", tbs)
 
 	h := hmac.New(sha256.New, signingKey(cpc.clientSecret, timestamp))
 	h.Write([]byte(tbs))
@@ -172,6 +171,7 @@ func signingKey(clientSecret string, timestamp string) []byte {
 	return key
 }
 
+// PurgeTags constructs and dispatches a request to purge a batch of Tags.
 func (cpc *CachePurgeClient) PurgeTags(tags []string) error {
 	purgeReq := v3PurgeRequest{
 		Objects: tags,
@@ -180,9 +180,8 @@ func (cpc *CachePurgeClient) PurgeTags(tags []string) error {
 	return cpc.authedRequest(endpoint, purgeReq)
 }
 
-// purge actually sends the individual requests to the Akamai endpoint and checks
-// if they are successful
-func (cpc *CachePurgeClient) purge(urls []string) error {
+// purgeURLs constructs and dispatches a request to purge a batch of URLs.
+func (cpc *CachePurgeClient) purgeURLs(urls []string) error {
 	purgeReq := v3PurgeRequest{
 		Objects: urls,
 	}
@@ -190,89 +189,105 @@ func (cpc *CachePurgeClient) purge(urls []string) error {
 	return cpc.authedRequest(endpoint, purgeReq)
 }
 
-// POST to the given URL with the body that results from json.Marshal'ing `body`,
-// using the Akamai authentication mechanism.
-func (cpc *CachePurgeClient) authedRequest(target string, requestBody interface{}) error {
-	reqJSON, err := json.Marshal(requestBody)
+// authedRequest POSTs the JSON marshaled purge request to the provided endpoint
+// along with an Akamai authorization header.
+func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest) error {
+	reqBody, err := json.Marshal(body)
 	if err != nil {
-		return errFatal(err.Error())
-	}
-	req, err := http.NewRequest(
-		"POST",
-		target,
-		bytes.NewBuffer(reqJSON),
-	)
-	if err != nil {
-		return errFatal(err.Error())
+		return fmt.Errorf("%s: %w", err, errFatal)
 	}
 
-	parsedTarget, err := url.Parse(target)
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(reqBody))
 	if err != nil {
-		return errFatal(fmt.Sprintf("parsing url %q: %s", target, err))
+		return fmt.Errorf("%s: %w", err, errFatal)
 	}
 
-	// Create authorization header for request
-	authHeader, err := cpc.constructAuthHeader(
-		reqJSON,
-		parsedTarget.Path,
-		core.RandomString(16),
-	)
+	endpointURL, err := url.Parse(endpoint)
 	if err != nil {
-		return errFatal(err.Error())
+		return fmt.Errorf("while parsing %q as URL: %s: %w", endpoint, err, errFatal)
 	}
-	req.Header.Set("Authorization", authHeader)
+
+	authorization, err := cpc.makeAuthHeader(reqBody, endpointURL.Path, core.RandomString(16))
+	if err != nil {
+		return fmt.Errorf("%s: %w", err, errFatal)
+	}
+	req.Header.Set("Authorization", authorization)
 	req.Header.Set("Content-Type", "application/json")
+	cpc.log.Debugf("POSTing to endpoint %q (header %q) (body %q)", endpoint, authorization, reqBody)
 
-	cpc.log.Debugf("POSTing to %s with Authorization %s: %s",
-		target, authHeader, reqJSON)
-
-	s := cpc.clk.Now()
+	start := cpc.clk.Now()
 	resp, err := cpc.client.Do(req)
-	cpc.purgeLatency.Observe(cpc.clk.Since(s).Seconds())
+	cpc.purgeLatency.Observe(cpc.clk.Since(start).Seconds())
 	if err != nil {
-		return err
+		return fmt.Errorf("while POSTing to endpoint %q: %w", endpointURL, err)
 	}
+	defer resp.Body.Close()
+
 	if resp.Body == nil {
-		return fmt.Errorf("No response body")
+		return fmt.Errorf("response body was empty from URL %q", resp.Request.URL)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		_ = resp.Body.Close()
-		return err
-	}
-	err = resp.Body.Close()
+
+	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
 
-	// Check purge was successful
-	var purgeInfo purgeResponse
-	err = json.Unmarshal(body, &purgeInfo)
-	if err != nil {
-		return fmt.Errorf("response to %s: json.Unmarshal(%q): %w", target, body, err)
-	}
-	if purgeInfo.HTTPStatus != http.StatusCreated || resp.StatusCode != http.StatusCreated {
-		if purgeInfo.HTTPStatus == http.StatusForbidden {
-			return errFatal("Unauthorized to purge URLs")
+	// Success for a request to purge a URL or Cache tag is 'HTTP 201'.
+	// https://techdocs.akamai.com/purge-cache/reference/delete-url
+	// https://techdocs.akamai.com/purge-cache/reference/delete-tag
+	if resp.StatusCode != http.StatusCreated {
+		switch resp.StatusCode {
+		// https://techdocs.akamai.com/purge-cache/reference/403
+		case http.StatusForbidden:
+			return fmt.Errorf("client not authorized to make requests for URL %q: %w", resp.Request.URL, errFatal)
+
+		// https://techdocs.akamai.com/purge-cache/reference/504
+		case http.StatusGatewayTimeout:
+			return fmt.Errorf("server timed out, got HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
+
+		// https://techdocs.akamai.com/purge-cache/reference/429
+		case http.StatusTooManyRequests:
+			return fmt.Errorf("exceeded request count rate limit, got HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
+
+		// https://techdocs.akamai.com/purge-cache/reference/413
+		case http.StatusRequestEntityTooLarge:
+			return fmt.Errorf("exceeded request size rate limit, got HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
+		default:
+			return fmt.Errorf("received HTTP %d (body %q) for URL %q", resp.StatusCode, respBody, resp.Request.URL)
 		}
-		return fmt.Errorf("Unexpected HTTP status code '%d': %s", resp.StatusCode, string(body))
 	}
 
-	cpc.log.AuditInfof("Sent successful purge request purgeID: %s, purge expected in: %ds, for request body: %s",
-		purgeInfo.PurgeID, purgeInfo.EstimatedSeconds, reqJSON)
+	var purgeInfo purgeResponse
+	err = json.Unmarshal(respBody, &purgeInfo)
+	if err != nil {
+		return fmt.Errorf("while unmarshalling body %q from URL %q as JSON: %w", respBody, resp.Request.URL, err)
+	}
 
+	// Ensure the unmarshaled body concurs with the status of the response
+	// received.
+	if purgeInfo.HTTPStatus != http.StatusCreated {
+		if purgeInfo.HTTPStatus == http.StatusForbidden {
+			return fmt.Errorf("client not authorized to make requests to URL %q: %w", resp.Request.URL, errFatal)
+		}
+		return fmt.Errorf("unmarshaled HTTP %d (body %q) from URL %q", purgeInfo.HTTPStatus, respBody, resp.Request.URL)
+	}
+
+	cpc.log.AuditInfof("Purge request sent successfully (ID %s) (body %s). Purge expected in %ds",
+		purgeInfo.PurgeID, reqBody, purgeInfo.EstimatedSeconds)
 	return nil
 }
 
-func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
+// Purge dispatches the provided URLs in a request to the Akamai Fast-Purge API.
+// The request will be attempted cpc.retries number of times before giving up
+// and returning ErrAllRetriesFailed.
+func (cpc *CachePurgeClient) Purge(urls []string) error {
 	successful := false
 	for i := 0; i <= cpc.retries; i++ {
 		cpc.clk.Sleep(core.RetryBackoff(i, cpc.retryBackoff, time.Minute, 1.3))
 
-		err := cpc.purge(urls)
+		err := cpc.purgeURLs(urls)
 		if err != nil {
-			var errorFatal errFatal
-			if errors.As(err, &errorFatal) {
+			if errors.Is(err, errFatal) {
 				cpc.purges.WithLabelValues("fatal failure").Inc()
 				return err
 			}
@@ -293,26 +308,7 @@ func (cpc *CachePurgeClient) purgeBatch(urls []string) error {
 	return nil
 }
 
-var akamaiBatchSize = 100
-
-// Purge attempts to send a purge request to the Akamai CCU API cpc.retries number
-//  of times before giving up and returning ErrAllRetriesFailed
-func (cpc *CachePurgeClient) Purge(urls []string) error {
-	for i := 0; i < len(urls); {
-		sliceEnd := i + akamaiBatchSize
-		if sliceEnd > len(urls) {
-			sliceEnd = len(urls)
-		}
-		err := cpc.purgeBatch(urls[i:sliceEnd])
-		if err != nil {
-			return err
-		}
-		i += akamaiBatchSize
-	}
-	return nil
-}
-
-// CheckSignature is used for tests, it exported so that it can be used in akamai-test-srv
+// CheckSignature is exported for use in tests and akamai-test-srv.
 func CheckSignature(secret string, url string, r *http.Request, body []byte) error {
 	bodyHash := sha256.Sum256(body)
 	bodyHashB64 := base64.StdEncoding.EncodeToString(bodyHash[:])
@@ -337,7 +333,7 @@ func CheckSignature(secret string, url string, r *http.Request, body []byte) err
 	h.Write(input)
 	expectedSignature := base64.StdEncoding.EncodeToString(h.Sum(nil))
 	if signature != expectedSignature {
-		return fmt.Errorf("Wrong signature %q in %q. Expected %q\n",
+		return fmt.Errorf("expected signature %q, got %q in %q",
 			signature, authorization, expectedSignature)
 	}
 	return nil
@@ -350,26 +346,37 @@ func reverseBytes(b []byte) []byte {
 	return b
 }
 
-func generateOCSPCacheKeys(req []byte, ocspServer string) []string {
+// makeOCSPCacheURLs constructs the 3 URLs associated with each cached OCSP
+// response.
+func makeOCSPCacheURLs(req []byte, ocspServer string) []string {
 	hash := md5.Sum(req)
 	encReq := base64.StdEncoding.EncodeToString(req)
 	return []string{
-		// Generate POST key, format is the URL that was POST'd to with a query string with
-		// the parameter 'body-md5' and the value of the first two uint32s in little endian
-		// order in hex of the MD5 hash of the OCSP request body.
+		// POST Cache Key: the format of this entry is the URL that was POSTed
+		// to with a query string with the parameter 'body-md5' and the value of
+		// the first two uint32s in little endian order in hex of the MD5 hash
+		// of the OCSP request body.
 		//
-		// There is no public documentation of this feature that has been published by Akamai
-		// as far as we are aware.
+		// There is limited public documentation of this feature. However, this
+		// entry is what triggers the Akamai cache behavior that allows Akamai to
+		// identify POST based OCSP for purging. For more information, see:
+		// https://techdocs.akamai.com/property-mgr/reference/v2020-03-04-cachepost
+		// https://techdocs.akamai.com/property-mgr/docs/cache-post-responses
 		fmt.Sprintf("%s?body-md5=%x%x", ocspServer, reverseBytes(hash[0:4]), reverseBytes(hash[4:8])),
-		// RFC 2560 and RFC 5019 state OCSP GET URLs 'MUST properly url-encode the base64
-		// encoded' request but a large enough portion of tools do not properly do this
-		// (~10% of GET requests we receive) such that we must purge both the encoded
-		// and un-encoded URLs.
+
+		// URL (un-encoded): RFC 2560 and RFC 5019 state OCSP GET URLs 'MUST
+		// properly url-encode the base64 encoded' request but a large enough
+		// portion of tools do not properly do this (~10% of GET requests we
+		// receive) such that we must purge both the encoded and un-encoded
+		// URLs.
 		//
 		// Due to Akamai proxy/cache behavior which collapses '//' -> '/' we also
 		// collapse double slashes in the un-encoded URL so that we properly purge
 		// what is stored in the cache.
 		fmt.Sprintf("%s%s", ocspServer, strings.Replace(encReq, "//", "/", -1)),
+
+		// URL (encoded): this entry is the url-encoded GET URL used to request
+		// OCSP as specified in RFC 2560 and RFC 5019.
 		fmt.Sprintf("%s%s", ocspServer, url.QueryEscape(encReq)),
 	}
 }
@@ -384,13 +391,14 @@ func GeneratePurgeURLs(cert, issuer *x509.Certificate) ([]string, error) {
 		return nil, err
 	}
 
-	// Create a GET and special Akamai POST style OCSP url for each endpoint in cert.OCSPServer
+	// Create a GET and special Akamai POST style OCSP url for each endpoint in
+	// cert.OCSPServer.
 	urls := []string{}
 	for _, ocspServer := range cert.OCSPServer {
 		if !strings.HasSuffix(ocspServer, "/") {
 			ocspServer += "/"
 		}
-		urls = append(urls, generateOCSPCacheKeys(req, ocspServer)...)
+		urls = append(urls, makeOCSPCacheURLs(req, ocspServer)...)
 	}
 	return urls, nil
 }

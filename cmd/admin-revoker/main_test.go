@@ -21,12 +21,15 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/rocsp"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -61,7 +64,11 @@ func TestRevokeBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
+	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
+		"../../test/hierarchy/int-r3.cert.pem": 102,
+	})
+	test.AssertNotError(t, err, "error loading issuers")
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, rocsp.NewMockWriteSucceedClient(), rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -444,6 +451,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 type testCtx struct {
 	revoker revoker
 	ssa     sapb.StorageAuthorityClient
+	dbMap   *db.WrappedMap
 	cleanUp func()
 	issuer  *issuance.Certificate
 	signer  crypto.Signer
@@ -503,8 +511,11 @@ func setup(t *testing.T) testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
+	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
+		"../../test/hierarchy/int-r3.cert.pem": 102,
+	})
+	test.AssertNotError(t, err, "error loading issuers")
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, rocsp.NewMockWriteSucceedClient(), rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -540,6 +551,7 @@ func setup(t *testing.T) testCtx {
 	return testCtx{
 		revoker: revoker{rac, isa.SA{Impl: ssa}, dbMap, fc, log},
 		ssa:     isa.SA{Impl: ssa},
+		dbMap:   dbMap,
 		cleanUp: cleanUp,
 		issuer:  issuer,
 		signer:  signer,

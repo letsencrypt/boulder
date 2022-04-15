@@ -29,6 +29,25 @@
         "wfe.boulder"
       ]
     },
+    "redis": {
+      "username": "boulder-sa",
+      "passwordFile": "test/secrets/sa_redis_password",
+      "addrs": [
+        "10.33.33.7:4218"
+      ],
+      "timeout": "5s",
+      "tls": {
+        "caCertFile": "test/redis-tls/minica.pem",
+        "certFile": "test/redis-tls/boulder/cert.pem",
+        "keyFile": "test/redis-tls/boulder/key.pem"
+      }
+    },
+    "issuers": {
+      ".hierarchy/intermediate-cert-ecdsa-a.pem": 1,
+      ".hierarchy/intermediate-cert-ecdsa-b.pem": 2,
+      ".hierarchy/intermediate-cert-rsa-a.pem": 3,
+      ".hierarchy/intermediate-cert-rsa-b.pem": 4
+    },
     "features": {
       "FasterNewOrdersRateLimit": true,
       "StoreRevokerInfo": true,

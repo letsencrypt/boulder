@@ -225,6 +225,53 @@ func TestReadRecipientListWithNoHeaderOrRecords(t *testing.T) {
 	test.AssertErrorIs(t, err, io.EOF)
 }
 
+func TestMakeMessageBody(t *testing.T) {
+	emailTemplate := `{{range . }}
+{{ .Data.date }}
+{{ .Data.domainName }}
+{{end}}`
+
+	m := &mailer{
+		log:           blog.UseMock(),
+		mailer:        &mocks.Mailer{},
+		emailTemplate: template.Must(template.New("email").Parse(emailTemplate)),
+		sleepInterval: 0,
+		targetRange:   interval{end: "\xFF"},
+		clk:           newFakeClock(t),
+		recipients:    nil,
+		dbMap:         mockEmailResolver{},
+	}
+
+	recipients := []recipient{
+		{id: 10, Data: map[string]string{"date": "2018-11-21", "domainName": "example.com"}},
+		{id: 23, Data: map[string]string{"date": "2018-11-22", "domainName": "example.net"}},
+	}
+
+	expectedMessageBody := `
+2018-11-21
+example.com
+
+2018-11-22
+example.net
+`
+
+	// Ensure that a very basic template with 2 recipients can be successfully
+	// executed.
+	messageBody, err := m.makeMessageBody(recipients)
+	test.AssertNotError(t, err, "failed to execute a valid template")
+	test.AssertEquals(t, messageBody, expectedMessageBody)
+
+	// With no recipients we should get an empty body error.
+	recipients = []recipient{}
+	_, err = m.makeMessageBody(recipients)
+	test.AssertError(t, err, "should have errored on empty body")
+
+	// With a missing key we should get an informative templating error.
+	recipients = []recipient{{id: 10, Data: map[string]string{"domainName": "example.com"}}}
+	_, err = m.makeMessageBody(recipients)
+	test.AssertEquals(t, err.Error(), "template: email:2:8: executing \"email\" at <.Data.date>: map has no entry for key \"date\"")
+}
+
 func TestSleepInterval(t *testing.T) {
 	const sleepLen = 10
 	mc := &mocks.Mailer{}

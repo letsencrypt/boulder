@@ -15,7 +15,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -46,7 +45,7 @@ func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPReques
 type noopROCSP struct {
 }
 
-func (noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte, _ time.Duration) error {
+func (noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte) error {
 	return nil
 }
 
@@ -63,7 +62,7 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	sa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, fc, log, metrics.NoopRegisterer, 1)
+	sa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Failed to create SA")
 
 	updater, err := New(
@@ -75,14 +74,13 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 		nil,
 		strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"),
 		&mockOCSP{},
-		Config{
-			OldOCSPBatchSize:         1,
-			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
-			SignFailureBackoffFactor: 1.5,
-			SignFailureBackoffMax: cmd.ConfigDuration{
-				Duration: time.Minute,
-			},
-		},
+		1,
+		time.Second,
+		time.Minute,
+		1.5,
+		0,
+		0,
+		0,
 		blog.NewMock(),
 	)
 	test.AssertNotError(t, err, "Failed to create newUpdater")
@@ -169,7 +167,6 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 type rocspStorage struct {
 	shortIDIssuer byte
 	response      []byte
-	ttl           time.Duration
 }
 
 type recordingROCSP struct {
@@ -184,13 +181,12 @@ func (rr *recordingROCSP) get() []rocspStorage {
 	return append(ret, rr.storage...)
 }
 
-func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte, ttl time.Duration) error {
+func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error {
 	rr.Lock()
 	defer rr.Unlock()
 	rr.storage = append(rr.storage, rocspStorage{
 		shortIDIssuer: shortIssuerID,
 		response:      respBytes,
-		ttl:           ttl,
 	})
 	return nil
 }
@@ -716,14 +712,13 @@ func mkNewUpdaterWithStrings(t *testing.T, shards []string) (*OCSPUpdater, error
 		nil,
 		shards,
 		&mockOCSP{},
-		Config{
-			OldOCSPBatchSize:         1,
-			OldOCSPWindow:            cmd.ConfigDuration{Duration: time.Second},
-			SignFailureBackoffFactor: 1.5,
-			SignFailureBackoffMax: cmd.ConfigDuration{
-				Duration: time.Minute,
-			},
-		},
+		1,
+		time.Second,
+		time.Minute,
+		1.5,
+		0,
+		0,
+		0,
 		blog.NewMock(),
 	)
 	return updater, err

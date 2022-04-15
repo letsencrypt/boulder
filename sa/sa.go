@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 
@@ -27,10 +30,14 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-var errIncompleteRequest = errors.New("incomplete gRPC request message")
+var (
+	errIncompleteRequest     = errors.New("incomplete gRPC request message")
+	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
+)
 
 type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
 
@@ -39,8 +46,15 @@ type SQLStorageAuthority struct {
 	sapb.UnimplementedStorageAuthorityServer
 	dbMap         *db.WrappedMap
 	dbReadOnlyMap *db.WrappedMap
-	clk           clock.Clock
-	log           blog.Logger
+
+	// Redis client for storing OCSP responses in Redis.
+	rocspWriteClient rocspWriter
+
+	// Short issuer map used by rocsp.
+	shortIssuers []rocsp_config.ShortIDIssuer
+
+	clk clock.Clock
+	log blog.Logger
 
 	// For RPCs that generate multiple, parallelizable SQL queries, this is the
 	// max parallelism they will use (to avoid consuming too many MariaDB
@@ -57,6 +71,10 @@ type SQLStorageAuthority struct {
 	// transactions fail and so use this stat to maintain visibility into the rate
 	// this occurs.
 	rateLimitWriteErrors prometheus.Counter
+
+	// redisStoreResponse is a counter of OCSP responses written to redis by
+	// result.
+	redisStoreResponse *prometheus.CounterVec
 }
 
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
@@ -76,6 +94,8 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
+	rocspWriteClient rocspWriter,
+	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,
 	stats prometheus.Registerer,
@@ -89,13 +109,22 @@ func NewSQLStorageAuthority(
 	})
 	stats.MustRegister(rateLimitWriteErrors)
 
+	redisStoreResponse := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "redis_store_response",
+		Help: "Count of OCSP Response writes to redis",
+	}, []string{"result"})
+	stats.MustRegister(redisStoreResponse)
+
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
 		dbReadOnlyMap:        dbReadOnlyMap,
+		rocspWriteClient:     rocspWriteClient,
+		shortIssuers:         shortIssuers,
 		clk:                  clk,
 		log:                  logger,
 		parallelismPerRPC:    parallelismPerRPC,
 		rateLimitWriteErrors: rateLimitWriteErrors,
+		redisStoreResponse:   redisStoreResponse,
 	}
 
 	ssa.countCertificatesByName = ssa.countCertificates
@@ -1380,7 +1409,7 @@ func (ssa *SQLStorageAuthority) getAuthorizationStatuses(ctx context.Context, id
 	allAuthzValidity := make([]authzValidity, len(validityInfo))
 	for i, info := range validityInfo {
 		allAuthzValidity[i] = authzValidity{
-			Status:  uintToStatus[info.Status],
+			Status:  string(uintToStatus[info.Status]),
 			Expires: info.Expires,
 		}
 	}
@@ -1621,7 +1650,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 	authzModelMap := make(map[string]authzModel)
 	for _, am := range authzModels {
 		existing, present := authzModelMap[am.IdentifierValue]
-		if !present || uintToStatus[existing.Status] == string(core.StatusPending) && uintToStatus[am.Status] == string(core.StatusValid) {
+		if !present || uintToStatus[existing.Status] == core.StatusPending && uintToStatus[am.Status] == core.StatusValid {
 			authzModelMap[am.IdentifierValue] = am
 		}
 	}
@@ -1682,7 +1711,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		attemptedTime = &val
 	}
 	params := map[string]interface{}{
-		"status":           statusToUint[req.Status],
+		"status":           statusToUint[core.AcmeStatus(req.Status)],
 		"attempted":        challTypeToUint[req.Attempted],
 		"attemptedAt":      attemptedTime,
 		"validationRecord": vrJSON,
@@ -1741,10 +1770,86 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		return nil, err
 	}
 	if rows == 0 {
-		// InternalServerError because we expected this certificate status to exist and
-		// not be revoked.
-		return nil, berrors.InternalServerError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+		return nil, berrors.AlreadyRevokedError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
 	}
+
+	// Store the OCSP response in Redis (if configured) on a best effort
+	// basis. We don't want to fail on an error here while mysql is the
+	// source of truth.
+	if ssa.rocspWriteClient != nil {
+		// Use a new context for the goroutine. We aren't going to wait on
+		// the goroutine to complete, so we don't want it to be canceled
+		// when the parent function ends. The rocsp client has a
+		// configurable timeout that can be set during creation.
+		rocspCtx := context.Background()
+
+		// Send the response off to redis in a goroutine.
+		go func() {
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
+		}()
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+// UpdateRevokedCertificate stores new revocation information about an
+// already-revoked certificate. It will only store this information if the
+// cert is already revoked, if the new revocation reason is `KeyCompromise`,
+// and if the revokedDate is identical to the current revokedDate.
+func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+	if req.Serial == "" || req.Date == 0 || req.Backdate == 0 || req.Response == nil {
+		return nil, errIncompleteRequest
+	}
+	if req.Reason != ocsp.KeyCompromise {
+		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
+	}
+	thisUpdate := time.Unix(0, req.Date)
+	revokedDate := time.Unix(0, req.Backdate)
+	res, err := ssa.dbMap.Exec(
+		`UPDATE certificateStatus SET
+				revokedReason = ?,
+				ocspLastUpdated = ?,
+				ocspResponse = ?
+			WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
+		revocation.Reason(ocsp.KeyCompromise),
+		thisUpdate,
+		req.Response,
+		req.Serial,
+		string(core.OCSPStatusRevoked),
+		revocation.Reason(ocsp.KeyCompromise),
+		revokedDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		// InternalServerError because we expected this certificate status to exist,
+		// to already be revoked for a different reason, and to have a matching date.
+		return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
+	}
+
+	// Store the OCSP response in Redis (if configured) on a best effort
+	// basis. We don't want to fail on an error here while mysql is the
+	// source of truth.
+	if ssa.rocspWriteClient != nil {
+		// Use a new context for the goroutine. We aren't going to wait on
+		// the goroutine to complete, so we don't want it to be canceled
+		// when the parent function ends. The rocsp client has a
+		// configurable timeout that can be set during creation.
+		rocspCtx := context.Background()
+
+		// Send the response off to redis in a goroutine.
+		go func() {
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
+		}()
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -2005,4 +2110,120 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 	}
 
 	return &sapb.Exists{Exists: true}, nil
+}
+
+// IncidentsForSerial queries each active incident table and returns every
+// incident that currently impacts `req.Serial`.
+func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sapb.Serial) ([]sapb.Incident, error) {
+	if req == nil {
+		return nil, errIncompleteRequest
+	}
+
+	var activeIncidents []incidentModel
+	_, err := ssa.dbMap.Select(&activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("no active incidents found")
+		}
+		return nil, err
+	}
+
+	var incidentsForSerial []sapb.Incident
+	for _, i := range activeIncidents {
+		var count int
+		err := ssa.dbMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
+			i.SerialTable), req.Serial)
+		if err != nil {
+			if db.IsNoRows(err) {
+				continue
+			}
+			return nil, err
+		}
+		if count > 0 {
+			incidentsForSerial = append(incidentsForSerial, incidentModelToPB(i))
+		}
+
+	}
+	if len(incidentsForSerial) == 0 {
+		return nil, berrors.NotFoundError("no active incidents found for serial %q", req.Serial)
+	}
+	return incidentsForSerial, nil
+}
+
+// SerialsForIncident queries the provided incident table and returns the
+// resulting rows as a stream of `*sapb.IncidentSerial`s. An `io.EOF` error
+// signals that there are no more serials to send. If the incident table in
+// question contains zero rows, only an `io.EOF` error is returned.
+func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthority_SerialsForIncidentServer) error {
+	if req.IncidentTable == "" {
+		return errIncompleteRequest
+	}
+
+	// Check that `req.IncidentTable` is a valid incident table name.
+	if !validIncidentTableRegexp.MatchString(req.IncidentTable) {
+		return fmt.Errorf("malformed table name %q", req.IncidentTable)
+	}
+
+	// Retrieve the `*gorp.TableMap` for the incident table.
+	tableMap, err := ssa.dbMap.TableFor(reflect.TypeOf(incidentSerialModel{}), false)
+	if err != nil {
+		// This should never happen, the schema is always added at startup.
+		return fmt.Errorf(
+			"while retrieving table map for incident table %q: %s", req.IncidentTable, err)
+	}
+
+	// Use the `*gorp.TableMap` to construct a list of the expected column names
+	// for an incident table.
+	var modelColumns []string
+	for _, column := range tableMap.Columns {
+		modelColumns = append(modelColumns, column.ColumnName)
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(modelColumns, ", "), req.IncidentTable)
+	rows, err := ssa.dbMap.WithContext(stream.Context()).Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	// Ensure that the columns in the model match the columns returned from the
+	// query. A mismatch indicates that the query returned a column that is
+	// either not in the model or not in the expected order.
+	dbColumns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+	for i, modelColumn := range dbColumns {
+		if modelColumns[i] != modelColumn {
+			return fmt.Errorf("incident table %q has column %q. Expected %q",
+				req.IncidentTable, modelColumns[i], modelColumn)
+		}
+	}
+
+	for rows.Next() {
+		// Scan the row into the model. Note: the fields must be passed in the
+		// same order as the columns returned by the query above.
+		var ism incidentSerialModel
+		err := rows.Scan(&ism.Serial, &ism.RegistrationID, &ism.OrderID, &ism.LastNoticeSent)
+		if err != nil {
+			return err
+		}
+
+		err = stream.Send(
+			&sapb.IncidentSerial{
+				Serial:         ism.Serial,
+				RegistrationID: ism.RegistrationID,
+				OrderID:        ism.OrderID,
+				LastNoticeSent: ism.LastNoticeSent.UnixNano(),
+			})
+		if err != nil {
+			return err
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return err
+	}
+	return nil
 }

@@ -1,7 +1,7 @@
 {
   "akamaiPurger": {
     "debugAddr": ":9666",
-    "purgeInterval": "1ms",
+    "purgeInterval": "800ms",
     "purgeRetries": 10,
     "purgeRetryBackoff": "50ms",
     "baseURL": "http://localhost:6789",

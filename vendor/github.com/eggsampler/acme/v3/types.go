@@ -2,6 +2,7 @@ package acme
 
 import (
 	"crypto"
+	"encoding/json"
 	"net/http"
 	"time"
 )
@@ -93,6 +94,25 @@ type Account struct {
 	// Thumbprint is the SHA-256 digest JWK_Thumbprint of the account key.
 	// See https://tools.ietf.org/html/rfc8555#section-8.1
 	Thumbprint string `json:"-"`
+
+	// ExternalAccountBinding is populated when using the NewAcctOptExternalAccountBinding option for NewAccountOption
+	// and is otherwise empty. Not populated when account is fetched or created otherwise.
+	ExternalAccountBinding ExternalAccountBinding `json:"-"`
+}
+
+// ExternalAccountBinding holds the key identifier and mac key provided for use in servers that support/require
+// external account binding.
+// The MacKey is a base64url-encoded string.
+// Algorithm is a "MAC-based algorithm" as per RFC8555. Typically this is either,
+//  - "HS256" for HashFunc: crypto.SHA256
+//  - "HS384" for HashFunc: crypto.SHA384
+//  - "HS512" for HashFunc: crypto.SHA512
+// However this is dependant on the acme server in question and is provided here to give more options for future compatibility.
+type ExternalAccountBinding struct {
+	KeyIdentifier string      `json:"-"`
+	MacKey        string      `json:"-"`
+	Algorithm     string      `json:"-"`
+	HashFunc      crypto.Hash `json:"-"`
 }
 
 // Identifier object used in order and authorization objects
@@ -160,4 +180,13 @@ type OrderList struct {
 	// Order list pagination, url to next orders.
 	// Provided by the rel="next" Link http header
 	Next string `json:"-"`
+}
+
+// NewAccountRequest object used for submitting a request for a new account.
+// Primarily used with NewAccountOptionFunc
+type NewAccountRequest struct {
+	OnlyReturnExisting     bool            `json:"onlyReturnExisting"`
+	TermsOfServiceAgreed   bool            `json:"termsOfServiceAgreed"`
+	Contact                []string        `json:"contact,omitempty"`
+	ExternalAccountBinding json.RawMessage `json:"externalAccountBinding"`
 }

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"strings"
 	"sync/atomic"
@@ -14,6 +13,7 @@ import (
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
@@ -28,6 +28,7 @@ type client struct {
 	ocspGenerator capb.OCSPGeneratorClient
 	clk           clock.Clock
 	scanBatchSize int
+	logger        blog.Logger
 }
 
 // processResult represents the result of attempting to sign and store status
@@ -107,18 +108,22 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 				(errorCount < 1000 && rand.Intn(1000) < 100) ||
 				(errorCount < 100000 && rand.Intn(1000) < 10) ||
 				(rand.Intn(1000) < 1) {
-				log.Printf("error: %s", result.err)
+				cl.logger.Errf("error: %s", result.err)
 			}
 		} else {
 			successCount++
 		}
 
-		if (successCount+errorCount)%10 == 0 {
-			log.Printf("stored %d responses, %d errors", successCount, errorCount)
+		total := successCount + errorCount
+		if total < 10 ||
+			(total < 1000 && rand.Intn(1000) < 100) ||
+			(total < 100000 && rand.Intn(1000) < 10) ||
+			(rand.Intn(1000) < 1) {
+			cl.logger.Infof("stored %d responses, %d errors", successCount, errorCount)
 		}
 	}
 
-	log.Printf("done. processed %d successes and %d errors\n", successCount, errorCount)
+	cl.logger.Infof("done. processed %d successes and %d errors\n", successCount, errorCount)
 	if inflightIDs.len() != 0 {
 		return fmt.Errorf("inflightIDs non-empty! has %d items, lowest %d", inflightIDs.len(), inflightIDs.min())
 	}
@@ -140,7 +145,7 @@ func (cl *client) scanFromDB(ctx context.Context, prevID int64, maxID int64, fre
 		for currentMin < maxID {
 			currentMin, err = cl.scanFromDBOneBatch(ctx, currentMin, frequency, statusesToSign, inflightIDs)
 			if err != nil {
-				log.Printf("error scanning rows: %s", err)
+				cl.logger.Infof("error scanning rows: %s", err)
 			}
 		}
 	}()
@@ -163,7 +168,7 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 	defer func() {
 		rerr := rows.Close()
 		if rerr != nil {
-			log.Printf("closing rows: %s", rerr)
+			cl.logger.Infof("closing rows: %s", rerr)
 		}
 	}()
 
@@ -183,7 +188,7 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 		// will emit about 2150 log lines. This probably strikes a good balance
 		// between too spammy and having a reasonably frequent checkpoint.
 		if scanned%100000 == 0 {
-			log.Printf("scanned %d certificateStatus rows. minimum inflight ID %d", scanned, inflightIDs.min())
+			cl.logger.Infof("scanned %d certificateStatus rows. minimum inflight ID %d", scanned, inflightIDs.min())
 		}
 		output <- status
 		previousID = status.ID
@@ -213,15 +218,13 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
-		// ttl is the lifetime of the certificate
-		ttl := cl.clk.Now().Sub(status.NotAfter)
 		issuer, err := rocsp_config.FindIssuerByID(status.IssuerID, cl.issuers)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
 
-		err = cl.redis.StoreResponse(ctx, result.Response, issuer.ShortID(), ttl)
+		err = cl.redis.StoreResponse(ctx, result.Response, issuer.ShortID())
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
@@ -245,7 +248,7 @@ func (cl *client) storeResponsesFromFiles(ctx context.Context, files []string) e
 		if err != nil {
 			return fmt.Errorf("reading response file %q: %w", respFile, err)
 		}
-		err = cl.storeResponse(ctx, respBytes, nil)
+		err = cl.storeResponse(ctx, respBytes)
 		if err != nil {
 			return err
 		}
@@ -253,7 +256,7 @@ func (cl *client) storeResponsesFromFiles(ctx context.Context, files []string) e
 	return nil
 }
 
-func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time.Duration) error {
+func (cl *client) storeResponse(ctx context.Context, respBytes []byte) error {
 	resp, err := ocsp.ParseResponse(respBytes, nil)
 	if err != nil {
 		return fmt.Errorf("parsing response: %w", err)
@@ -278,23 +281,13 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 		}
 	}
 
-	// Note: Here we set the TTL to slightly more than the lifetime of the
-	// OCSP response. In ocsp-updater we'll want to set it to the lifetime
-	// of the certificate, so that the metadata field doesn't fall out of
-	// storage even if we are down for days. However, in this tool we don't
-	// have the full certificate, so this will do.
-	if ttl == nil {
-		ttl_temp := resp.NextUpdate.Sub(cl.clk.Now()) + time.Hour
-		ttl = &ttl_temp
-	}
-
-	log.Printf("storing response for %s, generated %s, ttl %g hours",
+	cl.logger.Infof("storing response for %s, generated %s, ttl %g hours",
 		serial,
 		resp.ThisUpdate,
-		ttl.Hours(),
+		time.Until(resp.NextUpdate).Hours(),
 	)
 
-	err = cl.redis.StoreResponse(ctx, respBytes, issuer.ShortID(), *ttl)
+	err = cl.redis.StoreResponse(ctx, respBytes, issuer.ShortID())
 	if err != nil {
 		return fmt.Errorf("storing response: %w", err)
 	}
@@ -308,6 +301,6 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte, ttl *time
 	if err != nil {
 		return fmt.Errorf("parsing retrieved response: %w", err)
 	}
-	log.Printf("retrieved %s", helper.PrettyResponse(parsedRetrievedResponse))
+	cl.logger.Infof("retrieved %s", helper.PrettyResponse(parsedRetrievedResponse))
 	return nil
 }

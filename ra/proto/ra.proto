@@ -13,6 +13,8 @@ service RegistrationAuthority {
   rpc RevokeCertificateWithReg(RevokeCertificateWithRegRequest) returns (google.protobuf.Empty) {}
   rpc DeactivateRegistration(core.Registration) returns (google.protobuf.Empty) {}
   rpc DeactivateAuthorization(core.Authorization) returns (google.protobuf.Empty) {}
+  rpc RevokeCertByApplicant(RevokeCertByApplicantRequest) returns (google.protobuf.Empty) {}
+  rpc RevokeCertByKey(RevokeCertByKeyRequest) returns (google.protobuf.Empty) {}
   rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc NewOrder(NewOrderRequest) returns (core.Order) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Order) {}
@@ -38,6 +40,17 @@ message RevokeCertificateWithRegRequest {
   bytes cert = 1;
   int64 code = 2;
   int64 regID = 3;
+}
+
+message RevokeCertByApplicantRequest {
+  bytes cert = 1;
+  int64 code = 2;
+  int64 regID = 3;
+}
+
+message RevokeCertByKeyRequest {
+  bytes cert = 1;
+  int64 code = 2;
 }
 
 message AdministrativelyRevokeCertificateRequest {

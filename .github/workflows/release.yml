@@ -1,0 +1,27 @@
+name: Build and Release
+on:
+  # Runs automatically when a tag beginning with 'release-' is pushed.
+  push:
+    tags:
+      - release-*
+
+permissions:
+  # Overrides the org default of 'read'. This allows us to upload and post the
+  # resulting package file as part of a release.
+  contents: write
+
+jobs:
+  gh-release:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          persist-credentials: false
+
+      - name: build and release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # https://cli.github.com/manual/gh_release_create
+        run: |
+          ./tools/make-deb.sh
+          gh release create "${GITHUB_REF_NAME}" *.deb

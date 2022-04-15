@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -34,9 +35,6 @@ const (
 	// maxPathSize is the maximum number of bytes we will accept in the path of a
 	// redirect URL.
 	maxPathSize = 2000
-	// whitespaceCutset is the set of characters trimmed from the right of an
-	// HTTP-01 key authorization response.
-	whitespaceCutset = "\n\r\t "
 )
 
 // preresolvedDialer is a struct type that provides a DialContext function which
@@ -313,8 +311,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
 		return "", 0, berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. "+
-				"Only domain names are supported, not IP addresses", reqHost)
+			"Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -436,6 +433,13 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		return nil, nil, err
 	}
 
+	// newIPError implements the error interface. It wraps an error and the IP
+	// of the remote host in an IPError so we can display the IP in the problem
+	// details returned to the client.
+	newIPError := func(target *httpValidationTarget, err error) error {
+		return ipError{ip: target.cur, err: err}
+	}
+
 	// Create an initial GET Request
 	initialURL := url.URL{
 		Scheme: "http",
@@ -444,7 +448,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 	initialReq, err := http.NewRequest("GET", initialURL.String(), nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, newIPError(target, err)
 	}
 
 	// Add a context to the request. Shave some time from the
@@ -481,7 +485,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// Set up the initial validation request and a base validation record
 	dialer, baseRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 	if err != nil {
-		return nil, []core.ValidationRecord{}, err
+		return nil, []core.ValidationRecord{}, newIPError(target, err)
 	}
 
 	// Build a transport for this validation that will use the preresolvedDialer's
@@ -496,6 +500,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// addresses explicitly, not following redirects to ports != [80,443], etc)
 	records := []core.ValidationRecord{baseRecord}
 	numRedirects := 0
+	var oldTLS bool
 	processRedirect := func(req *http.Request, via []*http.Request) error {
 		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
 		// Only process up to maxRedirect redirects
@@ -505,9 +510,22 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
-		// If the response contains an HTTP 303 redirect, do not follow.
-		if req.Response.StatusCode == 303 {
-			return berrors.ConnectionFailureError("Cannot follow HTTP 303 redirects")
+		// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
+			oldTLS = true
+		}
+
+		// If the response contains an HTTP 303 or any other forbidden redirect,
+		// do not follow it. The four allowed redirect status codes are defined
+		// explicitly in BRs Section 3.2.2.4.19. Although the go stdlib currently
+		// limits redirects to a set of status codes with only one additional
+		// entry (303), we capture the full list of allowed codes here in case the
+		// go stdlib expands the set of redirects it follows in the future.
+		acceptableRedirects := map[int]struct{}{
+			301: {}, 302: {}, 307: {}, 308: {},
+		}
+		if _, present := acceptableRedirects[req.Response.StatusCode]; !present {
+			return berrors.ConnectionFailureError("received disallowed redirect status code")
 		}
 
 		// Lowercase the redirect host immediately, as the dialer and redirect
@@ -579,8 +597,9 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	if err != nil && fallbackErr(err) {
 		// Try to advance to another IP. If there was an error advancing we don't
 		// have a fallback address to use and must return the original error.
-		if ipErr := target.nextIP(); ipErr != nil {
-			return nil, records, err
+		advanceTargetIPErr := target.nextIP()
+		if advanceTargetIPErr != nil {
+			return nil, records, newIPError(target, err)
 		}
 
 		// setup another validation to retry the target with the new IP and append
@@ -588,7 +607,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		retryDialer, retryRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
 		records = append(records, retryRecord)
 		if err != nil {
-			return nil, records, err
+			return nil, records, newIPError(target, err)
 		}
 		va.metrics.http01Fallbacks.Inc()
 		// Replace the transport's dialer with the preresolvedDialer for the retry
@@ -600,11 +619,25 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// If the retry still failed there isn't anything more to do, return the
 		// error immediately.
 		if err != nil {
-			return nil, records, err
+			return nil, records, newIPError(target, err)
 		}
 	} else if err != nil {
 		// if the error was not a fallbackErr then return immediately.
-		return nil, records, err
+		return nil, records, newIPError(target, err)
+	}
+
+	if httpResponse.StatusCode != 200 {
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %d",
+			records[len(records)-1].URL, httpResponse.StatusCode))
+	}
+
+	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+	if httpResponse.TLS != nil && httpResponse.TLS.Version < tls.VersionTLS12 {
+		oldTLS = true
+	}
+
+	if oldTLS {
+		records[len(records)-1].OldTLS = true
 	}
 
 	// At this point we've made a successful request (be it from a retry or
@@ -615,17 +648,14 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		err = closeErr
 	}
 	if err != nil {
-		return nil, records, berrors.UnauthorizedError("Error reading HTTP response body: %v", err)
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
 	}
+
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %q",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, replaceInvalidUTF8(body))
-	}
-	if httpResponse.StatusCode != 200 {
-		return nil, records, berrors.UnauthorizedError("Invalid response from %s [%s]: %d",
-			records[len(records)-1].URL, records[len(records)-1].AddressUsed, httpResponse.StatusCode)
+		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
+			records[len(records)-1].URL, replaceInvalidUTF8(body)))
 	}
 	return body, records, nil
 }
@@ -643,7 +673,7 @@ func (va *ValidationAuthorityImpl) validateHTTP01(ctx context.Context, ident ide
 		return validationRecords, prob
 	}
 
-	payload := strings.TrimRight(string(body), whitespaceCutset)
+	payload := strings.TrimRightFunc(string(body), unicode.IsSpace)
 
 	if payload != challenge.ProvidedKeyAuthorization {
 		problem := probs.Unauthorized(fmt.Sprintf("The key authorization file from the server did not match this challenge %q != %q",

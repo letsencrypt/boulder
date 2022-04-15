@@ -198,7 +198,7 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 		t.Fatalf("Connection should've timed out")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "Timeout during read (your server may be slow or overloaded)"
+	expected := "127.0.0.1: Timeout during read (your server may be slow or overloaded)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
@@ -247,7 +247,7 @@ func TestTLSALPN01DialTimeout(t *testing.T) {
 		t.Fatalf("Connection should've timed out")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "Timeout during connect (likely firewall problem)"
+	expected := "198.51.100.1: Timeout during connect (likely firewall problem)"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
@@ -266,7 +266,7 @@ func TestTLSALPN01Refused(t *testing.T) {
 		t.Fatalf("Server's down; expected refusal. Where did we connect?")
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
-	expected := "Connection refused"
+	expected := "127.0.0.1: Connection refused"
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
@@ -447,12 +447,9 @@ func TestValidateTLSALPN01BadChallenge(t *testing.T) {
 	expectedDigest := sha256.Sum256([]byte(chall.ProvidedKeyAuthorization))
 	badDigest := sha256.Sum256([]byte(chall2.ProvidedKeyAuthorization))
 
-	test.AssertEquals(t, prob.Detail, fmt.Sprintf(
-		"Incorrect validation certificate for %s challenge. "+
-			"Expected acmeValidationV1 extension value %s for this challenge but got %s",
-		core.ChallengeTypeTLSALPN01,
-		hex.EncodeToString(expectedDigest[:]),
-		hex.EncodeToString(badDigest[:])))
+	test.AssertContains(t, prob.Detail, string(core.ChallengeTypeTLSALPN01))
+	test.AssertContains(t, prob.Detail, hex.EncodeToString(expectedDigest[:]))
+	test.AssertContains(t, prob.Detail, hex.EncodeToString(badDigest[:]))
 }
 
 func TestValidateTLSALPN01BrokenSrv(t *testing.T) {
@@ -478,12 +475,7 @@ func TestValidateTLSALPN01UnawareSrv(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("TLS ALPN validation should have failed.")
 	}
-	// In go1.16 it makes the connection but shouldn't be able to complete it;
-	// in go1.17 the stdlib refuses to handshake when there is no overlap in
-	// negotiated TLS application protocols.
-	go116ok := prob.Type == probs.UnauthorizedProblem
-	go117ok := prob.Type == probs.TLSProblem
-	test.Assert(t, go116ok != go117ok, "Only one of go1.16 or go1.17 should pass")
+	test.AssertEquals(t, prob.Type, probs.TLSProblem)
 }
 
 // TestValidateTLSALPN01BadUTFSrv tests that validating TLS-ALPN-01 against
@@ -520,9 +512,6 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 		},
 	}
 
-	malformedMsg := fmt.Sprintf("Incorrect validation certificate for %s challenge. "+
-		"Malformed acmeValidationV1 extension value", core.ChallengeTypeTLSALPN01)
-
 	for _, badExt := range badExtensions {
 		template.ExtraExtensions = []pkix.Extension{badExt}
 		certBytes, _ := x509.CreateCertificate(rand.Reader, template, template, &TheKey.PublicKey, &TheKey)
@@ -543,9 +532,9 @@ func TestValidateTLSALPN01MalformedExtnValue(t *testing.T) {
 			continue
 		}
 		test.AssertEquals(t, prob.Type, probs.UnauthorizedProblem)
-		test.AssertEquals(t, prob.Detail, malformedMsg)
+		test.AssertContains(t, prob.Detail, string(core.ChallengeTypeTLSALPN01))
+		test.AssertContains(t, prob.Detail, "malformed acmeValidationV1 extension value")
 	}
-
 }
 
 func TestTLSALPN01TLSVersion(t *testing.T) {

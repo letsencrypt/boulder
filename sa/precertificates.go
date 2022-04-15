@@ -33,6 +33,39 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
+// GetSerialMetadata returns metadata stored alongside the serial number,
+// such as the RegID whose certificate request created that serial, and when
+// the certificate with that serial will expire.
+func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
+	if req == nil || req.Serial == "" {
+		return nil, errIncompleteRequest
+	}
+
+	if !core.ValidSerial(req.Serial) {
+		return nil, fmt.Errorf("invalid serial %q", req.Serial)
+	}
+
+	recordedSerial := recordedSerialModel{}
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&recordedSerial,
+		"SELECT * FROM serials WHERE serial = ?",
+		req.Serial,
+	)
+	if err != nil {
+		if db.IsNoRows(err) {
+			return nil, berrors.NotFoundError("serial %q not found", req.Serial)
+		}
+		return nil, err
+	}
+
+	return &sapb.SerialMetadata{
+		Serial:         recordedSerial.Serial,
+		RegistrationID: recordedSerial.RegistrationID,
+		Created:        recordedSerial.Created.UnixNano(),
+		Expires:        recordedSerial.Expires.UnixNano(),
+	}, nil
+}
+
 // AddPrecertificate writes a record of a precertificate generation to the DB.
 // Note: this is not idempotent: it does not protect against inserting the same
 // certificate multiple times. Calling code needs to first insert the cert's
@@ -118,6 +151,23 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	})
 	if overallError != nil {
 		return nil, overallError
+	}
+
+	// Store the OCSP response in Redis (if configured) on a best effort
+	// basis. We don't want to fail on an error here while mysql is the
+	// source of truth.
+	if ssa.rocspWriteClient != nil {
+		// Use a new context for the goroutine. We aren't going to wait on
+		// the goroutine to complete, so we don't want it to be canceled
+		// when the parent function ends. The rocsp client has a
+		// configurable timeout that can be set during creation.
+		rocspCtx := context.Background()
+
+		// Send the response off to redis in a goroutine.
+		go func() {
+			err = ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID)
+			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
+		}()
 	}
 	return &emptypb.Empty{}, nil
 }

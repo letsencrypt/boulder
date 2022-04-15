@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -942,9 +941,7 @@ func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertific
 // uses the `queueSA` mock, which allows us to flip on and off a "fail" bit that
 // decides whether it errors in response to storage requests.
 func TestPrecertOrphanQueue(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "orphan-queue-tmp")
-	defer os.Remove(tmpDir)
-	test.AssertNotError(t, err, "Failed to create temp directory")
+	tmpDir := t.TempDir()
 	orphanQueue, err := goque.OpenQueue(tmpDir)
 	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
 
@@ -1008,9 +1005,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 }
 
 func TestOrphanQueue(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "orphan-queue-tmp")
-	defer os.Remove(tmpDir)
-	test.AssertNotError(t, err, "Failed to create temp directory")
+	tmpDir := t.TempDir()
 	orphanQueue, err := goque.OpenQueue(tmpDir)
 	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
 

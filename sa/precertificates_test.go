@@ -2,6 +2,7 @@ package sa
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"testing"
@@ -26,6 +27,77 @@ func findIssuedName(dbMap db.OneSelector, name string) (string, error) {
 		LIMIT 1`,
 		ReverseName(name))
 	return issuedNamesSerial, err
+}
+
+func TestAddSerial(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+	serial, testCert := test.ThrowAwayCert(t, 1)
+
+	_, err := sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		RegID:   reg.Id,
+		Created: testCert.NotBefore.UnixNano(),
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without serial should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		Created: testCert.NotBefore.UnixNano(),
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without regid should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without created should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: testCert.NotBefore.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without expires should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: testCert.NotBefore.UnixNano(),
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertNotError(t, err, "adding serial should have succeeded")
+}
+
+func TestGetSerialMetadata(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+	serial, _ := test.ThrowAwayCert(t, 1)
+
+	_, err := sa.GetSerialMetadata(context.Background(), &sapb.Serial{Serial: serial})
+	test.AssertError(t, err, "getting nonexistent serial should have failed")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: clk.Now().UnixNano(),
+		Expires: clk.Now().Add(time.Hour).UnixNano(),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
+
+	m, err := sa.GetSerialMetadata(context.Background(), &sapb.Serial{Serial: serial})
+
+	test.AssertNotError(t, err, "getting serial should have succeeded")
+	test.AssertEquals(t, m.Serial, serial)
+	test.AssertEquals(t, m.RegistrationID, reg.Id)
+	test.AssertEquals(t, time.Unix(0, m.Created).UTC(), clk.Now())
+	test.AssertEquals(t, time.Unix(0, m.Expires).UTC(), clk.Now().Add(time.Hour))
 }
 
 func TestAddPrecertificate(t *testing.T) {

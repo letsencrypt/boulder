@@ -10,7 +10,6 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 	"math/big"
-	"os"
 	"path"
 	"strings"
 	"testing"
@@ -44,9 +43,7 @@ func setupCtx() pkcs11helpers.MockCtx {
 }
 
 func TestGenerateKeyRSA(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "ceremony-testing-rsa")
-	test.AssertNotError(t, err, "Failed to create temporary directory")
-	defer os.RemoveAll(tmp)
+	tmp := t.TempDir()
 
 	ctx := setupCtx()
 	rsaPriv, err := rsa.GenerateKey(rand.Reader, 1024)
@@ -93,9 +90,7 @@ func setECGenerateFuncs(ctx *pkcs11helpers.MockCtx) {
 }
 
 func TestGenerateKeyEC(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "ceremony-testing-ec")
-	test.AssertNotError(t, err, "Failed to create temporary directory")
-	defer os.RemoveAll(tmp)
+	tmp := t.TempDir()
 
 	ctx := setupCtx()
 	setECGenerateFuncs(&ctx)
@@ -134,16 +129,14 @@ func setFindObjectsFuncs(label string, ctx *pkcs11helpers.MockCtx) {
 }
 
 func TestGenerateKeySlotHasSomethingWithLabel(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "ceremony-testing-slot-has-something")
-	test.AssertNotError(t, err, "Failed to create temporary directory")
-	defer os.RemoveAll(tmp)
+	tmp := t.TempDir()
 
 	ctx := setupCtx()
 	label := "someLabel"
 	setFindObjectsFuncs(label, &ctx)
 	keyPath := path.Join(tmp, "should-not-exist.pem")
 	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
-	_, err = generateKey(s, label, keyPath, keyGenConfig{
+	_, err := generateKey(s, label, keyPath, keyGenConfig{
 		Type:       "ecdsa",
 		ECDSACurve: "P-256",
 	})
@@ -152,16 +145,14 @@ func TestGenerateKeySlotHasSomethingWithLabel(t *testing.T) {
 }
 
 func TestGenerateKeySlotHasSomethingWithDifferentLabel(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "ceremony-testing-slot-has-something")
-	test.AssertNotError(t, err, "Failed to create temporary directory")
-	defer os.RemoveAll(tmp)
+	tmp := t.TempDir()
 
 	ctx := setupCtx()
 	setECGenerateFuncs(&ctx)
 	setFindObjectsFuncs("someLabel", &ctx)
 	keyPath := path.Join(tmp, "should-not-exist.pem")
 	s := &pkcs11helpers.Session{Module: &ctx, Session: 0}
-	_, err = generateKey(s, "someOtherLabel", keyPath, keyGenConfig{
+	_, err := generateKey(s, "someOtherLabel", keyPath, keyGenConfig{
 		Type:       "ecdsa",
 		ECDSACurve: "P-256",
 	})

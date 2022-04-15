@@ -65,14 +65,6 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.WeakKeyFile instead.
-		// TODO(#5851): Remove this.
-		WeakKeyFile string
-
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
-		// TODO(#5851): Remove this.
-		BlockedKeyFile string
-
 		OrderLifetime cmd.ConfigDuration
 
 		// CTLogGroups contains groupings of CT logs which we want SCTs from.
@@ -211,25 +203,24 @@ func main() {
 	}
 	ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
 
-	// TODO(patf): remove once RA.authorizationLifetimeDays is deployed
-	authorizationLifetime := 300 * 24 * time.Hour
-	if c.RA.AuthorizationLifetimeDays != 0 {
-		authorizationLifetime = time.Duration(c.RA.AuthorizationLifetimeDays) * 24 * time.Hour
+	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
+	// or completed validation MUST be obtained no more than 398 days prior
+	// to issuing the Certificate". If unconfigured or the configured value is
+	// greater than 397 days, bail out.
+	if c.RA.AuthorizationLifetimeDays <= 0 || c.RA.AuthorizationLifetimeDays > 397 {
+		cmd.Fail("authorizationLifetimeDays value must be greater than 0 and less than 398")
 	}
+	authorizationLifetime := time.Duration(c.RA.AuthorizationLifetimeDays) * 24 * time.Hour
 
-	// TODO(patf): remove once RA.pendingAuthorizationLifetimeDays is deployed
-	pendingAuthorizationLifetime := 7 * 24 * time.Hour
-	if c.RA.PendingAuthorizationLifetimeDays != 0 {
-		pendingAuthorizationLifetime = time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
+	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
+	// NOT be used for more than 30 days from its creation". If unconfigured
+	// or the configured value pendingAuthorizationLifetimeDays is greater
+	// than 29 days, bail out.
+	if c.RA.PendingAuthorizationLifetimeDays <= 0 || c.RA.PendingAuthorizationLifetimeDays > 29 {
+		cmd.Fail("pendingAuthorizationLifetimeDays value must be greater than 0 and less than 30")
 	}
+	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	if c.RA.GoodKey.WeakKeyFile == "" && c.RA.WeakKeyFile != "" {
-		c.RA.GoodKey.WeakKeyFile = c.RA.WeakKeyFile
-	}
-	if c.RA.GoodKey.BlockedKeyFile == "" && c.RA.BlockedKeyFile != "" {
-		c.RA.GoodKey.BlockedKeyFile = c.RA.BlockedKeyFile
-	}
 	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 

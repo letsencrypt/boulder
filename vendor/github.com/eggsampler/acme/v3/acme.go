@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -20,7 +21,10 @@ const (
 	// LetsEncryptStaging holds the staging directory url
 	LetsEncryptStaging = "https://acme-staging-v02.api.letsencrypt.org/directory"
 
-	userAgentString = "eggsampler-acme/1.0 Go-http-client/1.1"
+	// ZeroSSLProduction holds the ZeroSSL directory url
+	ZeroSSLProduction = "https://acme.zerossl.com/v2/DV90"
+
+	userAgentString = "eggsampler-acme/v3 Go-http-client/1.1"
 )
 
 // NewClient creates a new acme client given a valid directory url.
@@ -163,13 +167,13 @@ func (c Client) nonce() (string, error) {
 
 // Helper function to perform an http post request and read the body.
 // Will attempt to retry if error is badNonce
-func (c Client) postRaw(retryCount int, requestURL, keyID string, privateKey crypto.Signer, payload interface{}, expectedStatus []int) (*http.Response, []byte, error) {
+func (c Client) postRaw(retryCount int, requestURL, kid string, privateKey crypto.Signer, payload interface{}, expectedStatus []int) (*http.Response, []byte, error) {
 	nonce, err := c.nonce()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	data, err := jwsEncodeJSON(payload, privateKey, requestURL, keyID, nonce)
+	data, err := jwsEncodeJSON(payload, privateKey, keyID(kid), nonce, requestURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("acme: error encoding json payload: %v", err)
 	}
@@ -198,7 +202,7 @@ func (c Client) postRaw(retryCount int, requestURL, keyID string, privateKey cry
 		}
 		if strings.HasSuffix(prob.Type, ":badNonce") {
 			// only retry if error is badNonce
-			return c.postRaw(retryCount+1, requestURL, keyID, privateKey, payload, expectedStatus)
+			return c.postRaw(retryCount+1, requestURL, kid, privateKey, payload, expectedStatus)
 		}
 		return resp, nil, err
 	}
@@ -216,6 +220,12 @@ func (c Client) post(requestURL, keyID string, privateKey crypto.Signer, payload
 	resp, body, err := c.postRaw(0, requestURL, keyID, privateKey, payload, expectedStatus)
 	if err != nil {
 		return resp, err
+	}
+
+	if _, b := os.LookupEnv("ACME_DEBUG_POST"); b {
+		fmt.Println()
+		fmt.Println(string(body))
+		fmt.Println()
 	}
 
 	if len(body) > 0 && out != nil {
@@ -250,4 +260,38 @@ func fetchLink(resp *http.Response, wantedLink string) string {
 		}
 	}
 	return ""
+}
+
+// FetchRaw is a helper function to assist with POST-AS-GET requests
+func (c Client) Fetch(account Account, requestURL string, result interface{}, expectedStatus ...int) error {
+	if len(expectedStatus) == 0 {
+		expectedStatus = []int{http.StatusOK}
+	}
+	_, err := c.post(requestURL, account.URL, account.PrivateKey, "", result, expectedStatus...)
+
+	return err
+}
+
+// Fetches all http Link header from a http response
+func fetchLinks(resp *http.Response, wantedLink string) []string {
+	if resp == nil {
+		return nil
+	}
+	linkHeader := resp.Header["Link"]
+	if len(linkHeader) == 0 {
+		return nil
+	}
+	var links []string
+	for _, l := range linkHeader {
+		matches := regLink.FindAllStringSubmatch(l, -1)
+		for _, m := range matches {
+			if len(m) != 3 {
+				continue
+			}
+			if m[2] == wantedLink {
+				links = append(links, m[1])
+			}
+		}
+	}
+	return links
 }

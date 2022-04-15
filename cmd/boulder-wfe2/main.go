@@ -105,10 +105,6 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		// WeakKeyFile is DEPRECATED. Populate GoodKey.BlockedKeyFile instead.
-		// TODO(#5851): Remove this.
-		BlockedKeyFile string
-
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
 		StaleTimeout cmd.ConfigDuration
 
@@ -394,11 +390,6 @@ func main() {
 
 	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
 
-	// TODO(#5851): Remove these fallbacks when the old config keys are gone.
-	// The WFE does not do weak key checking, just blocked key checking.
-	if c.WFE.GoodKey.BlockedKeyFile == "" && c.WFE.BlockedKeyFile != "" {
-		c.WFE.GoodKey.BlockedKeyFile = c.WFE.BlockedKeyFile
-	}
 	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
@@ -406,15 +397,23 @@ func main() {
 		c.WFE.StaleTimeout.Duration = time.Minute * 10
 	}
 
-	authorizationLifetime := 30 * (24 * time.Hour)
-	if c.WFE.AuthorizationLifetimeDays != 0 {
-		authorizationLifetime = time.Duration(c.WFE.AuthorizationLifetimeDays) * (24 * time.Hour)
+	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
+	// or completed validation MUST be obtained no more than 398 days prior
+	// to issuing the Certificate". If unconfigured or the configured value is
+	// greater than 397 days, bail out.
+	if c.WFE.AuthorizationLifetimeDays <= 0 || c.WFE.AuthorizationLifetimeDays > 397 {
+		cmd.Fail("authorizationLifetimeDays value must be greater than 0 and less than 398")
 	}
+	authorizationLifetime := time.Duration(c.WFE.AuthorizationLifetimeDays) * 24 * time.Hour
 
-	pendingAuthorizationLifetime := 7 * (24 * time.Hour)
-	if c.WFE.PendingAuthorizationLifetimeDays != 0 {
-		pendingAuthorizationLifetime = time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * (24 * time.Hour)
+	// The Baseline Requirements v1.8.1 state that validation tokens "MUST
+	// NOT be used for more than 30 days from its creation". If unconfigured
+	// or the configured value pendingAuthorizationLifetimeDays is greater
+	// than 29 days, bail out.
+	if c.WFE.PendingAuthorizationLifetimeDays <= 0 || c.WFE.PendingAuthorizationLifetimeDays > 29 {
+		cmd.Fail("pendingAuthorizationLifetimeDays value must be greater than 0 and less than 30")
 	}
+	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
 	var accountGetter wfe2.AccountGetter
 	if c.WFE.AccountCache != nil {
