@@ -1613,7 +1613,11 @@ func TestOldTLS(t *testing.T) {
 
 	// Check that the HTTP servers are running as expected
 	c := http.Client{
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true
+			},
+		},
 	}
 	resp, err := c.Get(startURL + "/.well-known/acme-challenge/" + chall.Token)
 	if err != nil {
