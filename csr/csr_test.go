@@ -245,18 +245,14 @@ func TestSHA1Deprecation(t *testing.T) {
 		t.Fatalf("expected no error from VerifyCSR on a CSR signed with SHA256, got %s", err)
 	}
 	err = features.Set(map[string]bool{"SHA1CSRs": true})
-	if err != nil {
-		t.Fatal(err)
-	}
+	test.AssertNotError(t, err, "setting feature")
 	err = makeAndVerifyCsr(x509.SHA1WithRSA)
 	if err != nil {
 		t.Fatalf("(SHA1CSR == true) expected no error from VerifyCSR on a CSR signed with SHA1, got %s (maybe set GODEBUG=x509sha1=1)", err)
 	}
 
 	err = features.Set(map[string]bool{"SHA1CSRs": false})
-	if err != nil {
-		t.Fatal(err)
-	}
+	test.AssertNotError(t, err, "setting feature")
 	t.Logf("enabled %t\n", features.Enabled(features.SHA1CSRs))
 	err = makeAndVerifyCsr(x509.SHA1WithRSA)
 	if err == nil {
