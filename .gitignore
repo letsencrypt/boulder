@@ -43,3 +43,10 @@ tags
 # Terraform
 *.terraform*
 *.tfstate*
+
+# Control Plane
+test/control-plane/tls/*
+test/control-plane/*.csr
+test/control-plane/*.pem
+test/control-plane/*.key
+test/control-plane/*.crt
