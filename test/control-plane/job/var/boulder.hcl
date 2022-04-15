@@ -18,8 +18,8 @@ va-remote-config = <<-EOF
       "issuerDomain": "happy-hacker-ca.invalid",
       "tls": {
         "caCertfile": "{{ env "NOMAD_SECRETS_DIR" }}/va/ca-cert.pem",
-        "certFile": "{{ env "NOMAD_SECRETS_DIR" }}/va.boulder/cert.pem",
-        "keyFile": "{{ env "NOMAD_SECRETS_DIR" }}/va.boulder/key.pem"
+        "certFile": "{{ env "NOMAD_SECRETS_DIR" }}/va/cert.pem",
+        "keyFile": "{{ env "NOMAD_SECRETS_DIR" }}/va/key.pem"
       },
       "grpc": {
         "address": ":{{ env "NOMAD_PORT_grpc" }}",

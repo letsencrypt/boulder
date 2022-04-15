@@ -45,8 +45,9 @@ tags
 *.tfstate*
 
 # Control Plane
-test/control-plane/tls/*
-test/control-plane/*.csr
-test/control-plane/*.pem
-test/control-plane/*.key
-test/control-plane/*.crt
+test/control-plane/config/var/tls/*
+test/control-plane/config/var/*.csr
+test/control-plane/config/var/*.pem
+test/control-plane/config/var/*.key
+test/control-plane/config/var/*.crt
+test/control-plane/vault_audit.log

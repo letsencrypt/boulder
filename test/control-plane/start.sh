@@ -6,7 +6,7 @@ set -m
 function no_ctrlc() {
     echo
     prettyRed "Cleaning up and exiting..."
-    rm -rf config/var/*.csr config/var/*.crt config/var/*.pem
+    rm -rf config/var/*.csr config/var/*.crt config/var/*.pem vault_audit.log
     
     prettyRed "Stopping Vault..."
     killall vault
@@ -33,8 +33,8 @@ pretty "Starting Vault Server"
 
 command vault server -dev -config="config/vault.conf.hcl" &>/dev/null &
 sleep 1
-VAULT_TOKEN=$(cat ~/.vault-token)
-VAULT_ADDR='http://127.0.0.1:8200'
+export VAULT_TOKEN=$(cat ~/.vault-token)
+export VAULT_ADDR='http://127.0.0.1:8200'
 
 
 pretty "Logging into Vault"
@@ -88,14 +88,34 @@ command consul agent -dev -datacenter dev-general &>/dev/null &
 
 pretty "Starting Nomad Server"
 command sudo nomad agent -dev -dc dev-general \
- -log-level DEBUG -vault-enabled -vault-token="${VAULT_TOKEN}" -vault-address="${VAULT_ADDRESS}" -vault-create-from-role="root" &
+ -log-level DEBUG -vault-token="${VAULT_TOKEN}" -config="config/nomad.conf.hcl" &
 
 
 vault write boulder_int/roles/boulder \
   allowed_domains="boulder" \
+  allowed_common_names=["va.boulder"] \
+  allowed_names=["va.boulder"] \
   allow_subdomains=true \
+  generate_lease=true
+
+vault policy write boulder vault/int_boulder.policy.hcl
+
+
+vault write /auth/token/roles/nomad-cluster \
+  allowed_domains="boulder" \
+  allowed_common_names=["va.boulder"] \
+  allowed_names=["va.boulder"] \
   generate_lease=true \
-  max_ttl="720h"
+  max_ttl="720h" \
+  token_explicit_max_ttl=0 \
+  name="nomad-cluster" \
+  orphan=true \
+  token_period=259200 \
+  renewable=true
+
+vault policy write nomad-cluster vault/boulder.policy.hcl
+
+vault audit enable file file_path=vault_audit.log
 
 pretty "Vault Root Token:"
 echo "${VAULT_TOKEN}"
