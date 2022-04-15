@@ -1605,7 +1605,7 @@ func TestOldTLS(t *testing.T) {
 	c := http.Client{
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true
+				InsecureSkipVerify: true,
 			},
 		},
 	}
