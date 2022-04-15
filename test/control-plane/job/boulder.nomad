@@ -14,7 +14,7 @@ job "boulder" {
   datacenters = ["dev-general"]
   type        = "service"
 
-  group "boulder-mysql" {
+  group "mysql" {
     count = 1
     network {
       port "db" {
@@ -65,7 +65,7 @@ job "boulder" {
   }
 
   group "remote-va" {
-    count = 4
+    count = 1
     network {
       port "debug" {}
       port "http" {}
@@ -92,9 +92,10 @@ job "boulder" {
         destination = "${NOMAD_ALLOC_DIR}/data/remote-va.json"
         change_mode = "restart"
       }
+      # https://www.vaultproject.io/api-docs/secret/pki#parameters-13
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "common_name=va.boulder" "alt_names=va.boulder" "format=pem" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=1m" }}
 {{ .Data.certificate }}
 {{ end }}
 EOH
@@ -104,7 +105,7 @@ EOH
 
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "common_name=va.boulder" "alt_names=va.boulder" "format=pem" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=1m" }}
 {{ .Data.private_key }}{{ end }}
 EOH
         destination = "${NOMAD_SECRETS_DIR}/va/key.pem"
@@ -113,7 +114,7 @@ EOH
 
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "common_name=va.boulder" "alt_names=va.boulder" "format=pem" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=1m" }}
 {{ .Data.issuing_ca }}{{ end }}
 EOH
         destination = "${NOMAD_SECRETS_DIR}/va/ca-cert.pem"
@@ -125,32 +126,62 @@ EOH
     }
   }
 
-  // group "sa" {
-  //   count = 1
-  //   network {
-  //     port "debug" {}
-  //     port "grpc" {}
-  //   }
-  //   task "server" {
-  //     driver = "raw_exec"
-  //     service {
-  //       name = "sa"
-  //       port = "grpc"
-  //     }
-  //     config {
-  //       command = "${var.boulder-dir}/bin/boulder-sa"
-  //       args = [
-  //         "--config", "${NOMAD_ALLOC_DIR}/data/sa.json"
-  //       ]
-  //     }
-  //     template {
-  //       data        = var.sa-config
-  //       destination = "${NOMAD_ALLOC_DIR}/data/sa.json"
-  //       change_mode = "restart"
-  //     }
-  //     env {
-  //       BOULDER_DIR = "${var.boulder-dir}"
-  //     }
-  //   }
-  // }
+  group "sa" {
+    count = 1
+    network {
+      port "debug" {}
+      port "grpc" {}
+    }
+    task "server" {
+      driver = "raw_exec"
+      service {
+        name = "sa"
+        port = "grpc"
+      }
+      vault {
+        policies = ["nomad-cluster"]
+      }
+      config {
+        command = "${var.boulder-dir}/bin/boulder-sa"
+        args = [
+          "--config", "${NOMAD_ALLOC_DIR}/data/sa.json"
+        ]
+      }
+      template {
+        data        = var.sa-config
+        destination = "${NOMAD_ALLOC_DIR}/data/sa.json"
+        change_mode = "restart"
+      }
+      env {
+        BOULDER_DIR = "${var.boulder-dir}"
+      }
+      template {
+        data        = <<EOH
+{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=1m" }}
+{{ .Data.certificate }}
+{{ end }}
+EOH
+        destination = "${NOMAD_SECRETS_DIR}/sa/cert.pem"
+        change_mode = "restart"
+      }
+
+      template {
+        data        = <<EOH
+{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=1m" }}
+{{ .Data.private_key }}{{ end }}
+EOH
+        destination = "${NOMAD_SECRETS_DIR}/sa/key.pem"
+        change_mode = "restart"
+      }
+
+      template {
+        data        = <<EOH
+{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=1m" }}
+{{ .Data.issuing_ca }}{{ end }}
+EOH
+        destination = "${NOMAD_SECRETS_DIR}/sa/ca-cert.pem"
+        change_mode = "restart"
+      }
+    }
+  }
 }

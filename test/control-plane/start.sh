@@ -42,6 +42,10 @@ pretty "Logging into Vault"
 vault login -method=token "${VAULT_TOKEN}" &>/dev/null
 
 
+pretty "Enabling Vault Audit Logging"
+vault audit enable file file_path=vault_audit.log
+
+
 pretty "Enabling PKI Secrets Engines"
 
 #  Configure Boulder Root CA PKI Engine
@@ -82,29 +86,20 @@ pretty "Deploying Intermediate CA Certificates to Vault"
 vault write boulder_int/intermediate/set-signed certificate=@config/var/boulder_int.cert.pem
 
 
-pretty "Starting Consul Server"
-command consul agent -dev -datacenter dev-general &>/dev/null &
+pretty "Writing Vault Roles and Policies"
 
-
-pretty "Starting Nomad Server"
-command sudo nomad agent -dev -dc dev-general \
- -log-level DEBUG -vault-token="${VAULT_TOKEN}" -config="config/nomad.conf.hcl" &
-
-
+# Boulder PKI Role
+# https://www.vaultproject.io/api-docs/secret/pki
 vault write boulder_int/roles/boulder \
   allowed_domains="boulder" \
-  allowed_common_names=["va.boulder"] \
-  allowed_names=["va.boulder"] \
   allow_subdomains=true \
+  require_cn=false \
   generate_lease=true
 
 vault policy write boulder vault/int_boulder.policy.hcl
 
-
+# Nomad-Cluster Role
 vault write /auth/token/roles/nomad-cluster \
-  allowed_domains="boulder" \
-  allowed_common_names=["va.boulder"] \
-  allowed_names=["va.boulder"] \
   generate_lease=true \
   max_ttl="720h" \
   token_explicit_max_ttl=0 \
@@ -115,10 +110,18 @@ vault write /auth/token/roles/nomad-cluster \
 
 vault policy write nomad-cluster vault/boulder.policy.hcl
 
-vault audit enable file file_path=vault_audit.log
 
 pretty "Vault Root Token:"
 echo "${VAULT_TOKEN}"
+
+
+pretty "Starting Consul Server"
+command consul agent -dev -datacenter dev-general &>/dev/null &
+
+
+pretty "Starting Nomad Server"
+command sudo nomad agent -dev -dc dev-general \
+  -vault-token="${VAULT_TOKEN}" -config="config/nomad.conf.hcl" &>/dev/null &
 
 
 pretty "Waiting for ctrl+c to exit..."

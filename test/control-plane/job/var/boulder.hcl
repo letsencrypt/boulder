@@ -17,7 +17,7 @@ va-remote-config = <<-EOF
       ],
       "issuerDomain": "happy-hacker-ca.invalid",
       "tls": {
-        "caCertfile": "{{ env "NOMAD_SECRETS_DIR" }}/va/ca-cert.pem",
+        "caCertFile": "{{ env "NOMAD_SECRETS_DIR" }}/va/ca-cert.pem",
         "certFile": "{{ env "NOMAD_SECRETS_DIR" }}/va/cert.pem",
         "keyFile": "{{ env "NOMAD_SECRETS_DIR" }}/va/key.pem"
       },
@@ -64,9 +64,9 @@ sa-config = <<-EOF
       "ParallelismPerRPC": 20,
       "debugAddr": ":{{ env "NOMAD_PORT_debug" }}",
       "tls": {
-        "caCertFile": "{{ env "BOULDER_DIR" }}/test/grpc-creds/minica.pem",
-        "certFile": "{{ env "BOULDER_DIR" }}/test/grpc-creds/sa.boulder/cert.pem",
-        "keyFile": "{{ env "BOULDER_DIR" }}/test/grpc-creds/sa.boulder/key.pem"
+        "caCertFile": "{{ env "NOMAD_SECRETS_DIR" }}/sa/ca-cert.pem",
+        "certFile": "{{ env "NOMAD_SECRETS_DIR" }}/sa/cert.pem",
+        "keyFile": "{{ env "NOMAD_SECRETS_DIR" }}/sa/key.pem"
       },
       "grpc": {
         "address": ":{{ env "NOMAD_PORT_grpc" }}",
