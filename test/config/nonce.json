@@ -12,6 +12,7 @@
         },
         "debugAddr": ":8111",
         "grpc": {
+            "maxConnectionAge": "30s",
             "address": ":9101",
             "clientNames": [
                 "health-checker.boulder",
