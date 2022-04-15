@@ -637,7 +637,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		oldTLS = true
 		if !features.Enabled(features.OldTLSOutbound) {
 			return nil, records, berrors.MalformedError(
-				"validation hit a redirect to an HTTPS server that doesn't " +
+				"validation attempt was redirected to an HTTPS server that doesn't " +
 					"support TLSv1.2 or better. See " +
 					"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144")
 		}
