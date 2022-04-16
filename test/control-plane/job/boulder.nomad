@@ -25,6 +25,10 @@ job "boulder" {
       min_healthy_time = "1s"
     }
     task "mariadb" {
+      resources {
+        cpu    = 100
+        memory = 100
+      }
       driver = "docker"
       service {
         name = "boulder-mysql"
@@ -73,6 +77,10 @@ job "boulder" {
       port "grpc" {}
     }
     task "server" {
+      resources {
+        cpu    = 100
+        memory = 100
+      }
       driver = "raw_exec"
       service {
         name = "remote-va"
@@ -133,6 +141,10 @@ EOH
       port "grpc" {}
     }
     task "server" {
+      resources {
+        cpu    = 100
+        memory = 100
+      }
       driver = "raw_exec"
       service {
         name = "sa"
