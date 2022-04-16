@@ -95,7 +95,7 @@ job "boulder" {
       # https://www.vaultproject.io/api-docs/secret/pki#parameters-13
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=1m" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=72h" }}
 {{ .Data.certificate }}
 {{ end }}
 EOH
@@ -105,7 +105,7 @@ EOH
 
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=1m" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=72h" }}
 {{ .Data.private_key }}{{ end }}
 EOH
         destination = "${NOMAD_SECRETS_DIR}/va/key.pem"
@@ -114,7 +114,7 @@ EOH
 
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=1m" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=72h" }}
 {{ .Data.issuing_ca }}{{ end }}
 EOH
         destination = "${NOMAD_SECRETS_DIR}/va/ca-cert.pem"
@@ -157,7 +157,7 @@ EOH
       }
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=1m" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=72h" }}
 {{ .Data.certificate }}
 {{ end }}
 EOH
@@ -167,7 +167,7 @@ EOH
 
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=1m" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=72h" }}
 {{ .Data.private_key }}{{ end }}
 EOH
         destination = "${NOMAD_SECRETS_DIR}/sa/key.pem"
@@ -176,7 +176,7 @@ EOH
 
       template {
         data        = <<EOH
-{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=1m" }}
+{{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=72h" }}
 {{ .Data.issuing_ca }}{{ end }}
 EOH
         destination = "${NOMAD_SECRETS_DIR}/sa/ca-cert.pem"
