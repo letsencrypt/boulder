@@ -35,8 +35,8 @@
    "stdoutlevel": 6,
    "sysloglevel": 6
  },
-  "beeline": {
-      "mute": true,
-      "dataset": "Test"
-  }
+ "beeline": {
+    "mute": true,
+    "dataset": "Test"
+ }
 }
