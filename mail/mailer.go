@@ -184,7 +184,7 @@ func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
 	}
 }
 
-func (c *connImpl) generateMessage(to []string, subject, body string) ([]byte, error) {
+func (c config) generateMessage(to []string, subject, body string) ([]byte, error) {
 	mid := c.csprgSource.generate()
 	now := c.clk.Now().UTC()
 	addrs := []string{}
