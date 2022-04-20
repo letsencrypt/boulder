@@ -139,8 +139,9 @@ func init() {
 }
 
 // Set accepts a list of features and whether they should
-// be enabled or disabled, it will return a error if passed
-// a feature name that it doesn't know
+// be enabled or disabled. In the presence of unrecognized
+// flags, it will return an error or not depending on the
+// value of AllowUnrecognizedFeatures.
 func Set(featureSet map[string]bool) error {
 	fMu.Lock()
 	defer fMu.Unlock()
