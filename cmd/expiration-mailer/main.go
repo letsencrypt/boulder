@@ -30,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
@@ -69,7 +68,7 @@ type mailerStats struct {
 	processingLatency prometheus.Histogram
 }
 
-func (m *mailer) sendNags(conn mail.Conn, contacts []string, certs []*x509.Certificate) error {
+func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Certificate) error {
 	if len(contacts) == 0 {
 		return nil
 	}
@@ -248,7 +247,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 	wg.Wait()
 }
 
-func (m *mailer) sendToOneRegID(ctx context.Context, conn mail.Conn, regID int64, certs []core.Certificate) error {
+func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int64, certs []core.Certificate) error {
 	reg, err := m.rs.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 	if err != nil {
 		m.stats.errorCount.With(prometheus.Labels{"type": "GetRegistration"}).Inc()
