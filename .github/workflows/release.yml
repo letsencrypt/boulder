@@ -1,4 +1,6 @@
-# Build the Boulder .deb package on every PR, push to main, and tag push. On tag pushes, additionally create a release with the resulting .deb.
+# Build the Boulder Debian package on every PR, push to main, and tag push. On
+# tag pushes, additionally create a GitHub release and with the resulting Debian
+# package.
 name: Build release
 on:
   push:
