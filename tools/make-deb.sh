@@ -39,3 +39,6 @@ export ARCHIVEDIR="${PWD}"
 
 # Build Boulder and produce a Debian Package at $PWD.
 make deb
+
+# Rename .deb to a predictable path.
+mv boulder-*.deb boulder.deb
