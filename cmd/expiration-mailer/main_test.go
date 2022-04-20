@@ -128,7 +128,9 @@ func TestSendNags(t *testing.T) {
 		DNSNames: []string{"example.com"},
 	}
 
-	err := m.sendNags([]string{emailA}, []*x509.Certificate{cert})
+	conn, err := m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = m.sendNags(conn, []string{emailA}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -138,7 +140,9 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags([]string{emailA, emailB}, []*x509.Certificate{cert})
+	conn, err = m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = m.sendNags(conn, []string{emailA, emailB}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -153,7 +157,9 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[1])
 
 	mc.Clear()
-	err = m.sendNags([]string{}, []*x509.Certificate{cert})
+	conn, err = m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = m.sendNags(conn, []string{}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
