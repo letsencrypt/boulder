@@ -264,7 +264,7 @@ func rstHandler(rstFirst int) connHandler {
 	}
 }
 
-func setup(t *testing.T) (*MailerImpl, *net.TCPListener, func()) {
+func setup(t *testing.T) (*mailerImpl, *net.TCPListener, func()) {
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 
