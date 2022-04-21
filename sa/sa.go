@@ -725,7 +725,6 @@ func (ssa *SQLStorageAuthority) checkFQDNSetExists(selector oneSelectorFunc, nam
 		&exists,
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? LIMIT 1)`,
 		namehash,
-		namehash,
 	)
 	return exists, err
 }
