@@ -220,10 +220,10 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 		parallelSends = 1
 	}
 
-	for i := uint(0); i < parallelSends; i++ {
+	for senderNum := uint(0); senderNum < parallelSends; senderNum++ {
 		conn, err := m.mailer.Connect()
 		if err != nil {
-			m.log.AuditErrf("connecting parallel sender %d: %s", i, err)
+			m.log.AuditErrf("connecting parallel sender %d: %s", senderNum, err)
 			close(workChan)
 			return
 		}
@@ -241,7 +241,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 		}(conn, workChan)
 
 		// For politeness' sake, don't open more than 1 new connection per
-		// second
+		// second.
 		time.Sleep(time.Second)
 	}
 	for regID, certs := range regIDToCerts {
