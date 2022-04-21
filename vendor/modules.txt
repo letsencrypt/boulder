@@ -109,7 +109,7 @@ github.com/letsencrypt/pkcs11key/v4
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 ## explicit
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.45
+# github.com/miekg/dns v1.1.48
 ## explicit; go 1.14
 github.com/miekg/dns
 # github.com/miekg/pkcs11 v1.1.1
