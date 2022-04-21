@@ -50,7 +50,8 @@ type Mailer interface {
 }
 
 // Conn is an interface that allows sending mail. When you are done with a
-// Conn, call Close().
+// Conn, call Close(). Implementations are not required to be safe for
+// concurrent use.
 type Conn interface {
 	SendMail([]string, string, string) error
 	Close() error
