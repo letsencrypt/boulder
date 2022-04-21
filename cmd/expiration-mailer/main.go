@@ -54,7 +54,7 @@ type mailer struct {
 	emailTemplate   *template.Template
 	subjectTemplate *template.Template
 	nagTimes        []time.Duration
-	parallelSends   int
+	parallelSends   uint
 	limit           int
 	clk             clock.Clock
 	stats           mailerStats
@@ -219,7 +219,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 		parallelSends = 1
 	}
 
-	for i := 0; i < parallelSends; i++ {
+	for i := uint(0); i < parallelSends; i++ {
 		wg.Add(1)
 		go func(ch <-chan work) {
 			conn, err := m.mailer.Connect()
@@ -437,7 +437,7 @@ type Config struct {
 		Frequency cmd.ConfigDuration
 
 		// How many parallel goroutines should process each batch of emails
-		ParallelSends int
+		ParallelSends uint
 
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig

@@ -43,11 +43,14 @@ func (s realSource) generate() *big.Int {
 	return randInt
 }
 
-// Mailer provides the interface for a mailer
+// Mailer is an interface that allows creating Conns. Implementations must
+// be safe for concurrent use.
 type Mailer interface {
 	Connect() (Conn, error)
 }
 
+// Conn is an interface that allows sending mail. When you are done with a
+// Conn, call Close().
 type Conn interface {
 	SendMail([]string, string, string) error
 	Close() error
@@ -60,9 +63,9 @@ type connImpl struct {
 	client smtpClient
 }
 
-// MailerImpl defines a mail transfer agent to use for sending mail. It is not
-// safe for concurrent access.
-type MailerImpl struct {
+// mailerImpl defines a mail transfer agent to use for sending mail. It is
+// safe for concurrent us.
+type mailerImpl struct {
 	config
 }
 
@@ -139,7 +142,7 @@ func New(
 	logger blog.Logger,
 	stats prometheus.Registerer,
 	reconnectBase time.Duration,
-	reconnectMax time.Duration) *MailerImpl {
+	reconnectMax time.Duration) *mailerImpl {
 
 	sendMailAttempts := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "send_mail_attempts",
@@ -147,7 +150,7 @@ func New(
 	}, []string{"result", "error"})
 	stats.MustRegister(sendMailAttempts)
 
-	return &MailerImpl{
+	return &mailerImpl{
 		config: config{
 			dialer: &dialerImpl{
 				username: username,
@@ -169,8 +172,8 @@ func New(
 
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
-func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
-	return &MailerImpl{
+func NewDryRun(from mail.Address, logger blog.Logger) *mailerImpl {
+	return &mailerImpl{
 		config: config{
 			dialer:      dryRunClient{logger},
 			from:        from,
@@ -244,7 +247,7 @@ func (c *connImpl) reconnect() {
 
 // Connect opens a connection to the specified mail server. It must be called
 // before SendMail.
-func (m *MailerImpl) Connect() (Conn, error) {
+func (m *mailerImpl) Connect() (Conn, error) {
 	client, err := m.dialer.Dial()
 	if err != nil {
 		return nil, err

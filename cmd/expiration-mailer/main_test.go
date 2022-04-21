@@ -223,6 +223,22 @@ func TestProcessCerts(t *testing.T) {
 	}
 }
 
+func TestProcessCertsParallel(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+
+	testCtx.m.parallelSends = 10
+	certs := addExpiringCerts(t, testCtx)
+	log.Clear()
+	testCtx.m.processCerts(context.Background(), certs)
+	// Test that the lastExpirationNagSent was updated for the certificate
+	// corresponding to serial4, which is set up as "already renewed" by
+	// addExpiringCerts.
+	if len(log.GetAllMatching("DEBUG: SQL:  UPDATE certificateStatus .*2006-01-02 15:04:05.999999999.*\"000000000000000000000000000000001339\"")) != 1 {
+		t.Errorf("Expected an update to certificateStatus, got these log lines:\n%s",
+			strings.Join(log.GetAllMatching(".*"), "\n"))
+	}
+}
+
 func TestFindExpiringCertificates(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 
