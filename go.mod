@@ -16,7 +16,7 @@ require (
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 	github.com/letsencrypt/challtestsrv v1.2.1
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
-	github.com/miekg/dns v1.1.45
+	github.com/miekg/dns v1.1.48
 	github.com/miekg/pkcs11 v1.1.1
 	github.com/prometheus/client_golang v1.12.1
 	github.com/prometheus/client_model v0.2.0
@@ -29,7 +29,7 @@ require (
 	golang.org/x/text v0.3.6
 	google.golang.org/grpc v1.36.1
 	google.golang.org/protobuf v1.28.0
-	gopkg.in/square/go-jose.v2 v2.4.1
+	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
