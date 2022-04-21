@@ -214,31 +214,35 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 	var wg sync.WaitGroup
 	workChan := make(chan work)
+
 	parallelSends := m.parallelSends
 	if parallelSends == 0 {
 		parallelSends = 1
 	}
 
 	for i := uint(0); i < parallelSends; i++ {
-		wg.Add(1)
-		go func(ch <-chan work) {
-			conn, err := m.mailer.Connect()
-			if err != nil {
-				m.log.AuditErrf("Error connecting to send nag emails: %s", err)
-				return
-			}
-			defer func() {
-				_ = conn.Close()
-			}()
+		conn, err := m.mailer.Connect()
+		if err != nil {
+			m.log.AuditErrf("connecting parallel sender %d: %s", i, err)
+			close(workChan)
+			return
+		}
 
+		wg.Add(1)
+		go func(conn bmail.Conn, ch <-chan work) {
+			defer wg.Done()
 			for w := range ch {
 				err := m.sendToOneRegID(ctx, conn, w.regID, w.certs)
 				if err != nil {
 					m.log.AuditErr(err.Error())
 				}
 			}
-			wg.Done()
-		}(workChan)
+			conn.Close()
+		}(conn, workChan)
+
+		// For politeness' sake, don't open more than 1 new connection per
+		// second
+		time.Sleep(time.Second)
 	}
 	for regID, certs := range regIDToCerts {
 		workChan <- work{regID, certs}

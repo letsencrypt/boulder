@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
@@ -226,7 +228,7 @@ func TestProcessCerts(t *testing.T) {
 func TestProcessCertsParallel(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
 
-	testCtx.m.parallelSends = 10
+	testCtx.m.parallelSends = 2
 	certs := addExpiringCerts(t, testCtx)
 	log.Clear()
 	testCtx.m.processCerts(context.Background(), certs)
@@ -237,6 +239,21 @@ func TestProcessCertsParallel(t *testing.T) {
 		t.Errorf("Expected an update to certificateStatus, got these log lines:\n%s",
 			strings.Join(log.GetAllMatching(".*"), "\n"))
 	}
+}
+
+type erroringMailClient struct{}
+
+func (e erroringMailClient) Connect() (bmail.Conn, error) {
+	return nil, errors.New("whoopsie-doo")
+}
+
+func TestProcessCertsConnectError(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+
+	testCtx.m.mailer = erroringMailClient{}
+	certs := addExpiringCerts(t, testCtx)
+	// Checking that this terminates rather than deadlocks
+	testCtx.m.processCerts(context.Background(), certs)
 }
 
 func TestFindExpiringCertificates(t *testing.T) {
