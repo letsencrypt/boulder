@@ -188,8 +188,6 @@ func (m *mailer) certIsRenewed(names []string, issued time.Time) (bool, error) {
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
 		namehash,
 		issued,
-		namehash,
-		issued,
 	)
 	return present, err
 }
