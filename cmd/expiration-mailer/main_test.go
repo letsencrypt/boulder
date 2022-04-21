@@ -231,7 +231,14 @@ func TestFindExpiringCertificates(t *testing.T) {
 	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	// Should get 001 and 003
-	test.AssertEquals(t, len(testCtx.mc.Messages), 2)
+	if len(testCtx.mc.Messages) != 2 {
+		builder := new(strings.Builder)
+		for _, m := range testCtx.mc.Messages {
+			fmt.Fprintf(builder, "%s\n", m)
+		}
+		t.Fatalf("Expected two messages when finding expiring certificates, got:\n%s",
+			builder.String())
+	}
 
 	test.AssertEquals(t, mocks.MailerMessage{
 		To: emailARaw,
@@ -298,7 +305,8 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: serial1,
 	}
-	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
+	certDerA, err := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, &testKey)
+	test.AssertNotError(t, err, "creating cert A")
 	certA := &core.Certificate{
 		RegistrationID: regA.Id,
 		Serial:         serial1String,
@@ -315,7 +323,8 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DNSNames:     []string{"example-b.com"},
 		SerialNumber: serial2,
 	}
-	certDerB, _ := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
+	certDerB, err := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, &testKey)
+	test.AssertNotError(t, err, "creating cert B")
 	certB := &core.Certificate{
 		RegistrationID: regA.Id,
 		Serial:         serial2String,
@@ -332,7 +341,8 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DNSNames:     []string{"example-c.com", "another.example-c.com"},
 		SerialNumber: serial3,
 	}
-	certDerC, _ := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
+	certDerC, err := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, &testKey)
+	test.AssertNotError(t, err, "creating cert C")
 	certC := &core.Certificate{
 		RegistrationID: regB.Id,
 		Serial:         serial3String,
@@ -349,7 +359,8 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 		DNSNames:     []string{"example-d.com"},
 		SerialNumber: serial4,
 	}
-	certDerD, _ := x509.CreateCertificate(rand.Reader, &rawCertD, &rawCertD, &testKey.PublicKey, &testKey)
+	certDerD, err := x509.CreateCertificate(rand.Reader, &rawCertD, &rawCertD, &testKey.PublicKey, &testKey)
+	test.AssertNotError(t, err, "creating cert D")
 	certD := &core.Certificate{
 		RegistrationID: regC.Id,
 		Serial:         serial4String,

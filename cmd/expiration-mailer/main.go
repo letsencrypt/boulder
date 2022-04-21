@@ -185,11 +185,7 @@ func (m *mailer) certIsRenewed(names []string, issued time.Time) (bool, error) {
 	var present bool
 	err := m.dbMap.SelectOne(
 		&present,
-		// TODO(#5670): Remove this OR when the partitioning is fixed.
-		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)
-		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? AND issued > ? LIMIT 1)`,
-		namehash,
-		issued,
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
 		namehash,
 		issued,
 	)
