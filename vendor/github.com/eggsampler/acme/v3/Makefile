@@ -1,14 +1,15 @@
 
 .PHONY: test examples clean test_full pebble pebble_setup pebble_start pebble_wait pebble_stop boulder boulder_setup boulder_start boulder_stop
 
-
+# some variables for path injection, if already set will not override
 GOPATH ?= $(HOME)/go
 BOULDER_PATH ?= $(GOPATH)/src/github.com/letsencrypt/boulder
 PEBBLE_PATH ?= $(GOPATH)/src/github.com/letsencrypt/pebble
 TEST_PATH ?= github.com/eggsampler/acme/v3
 
 
-# tests the code against a running ca instance
+# tests the code against an already running ca instance
+# to actually do a test against pebble or boulder, including , see the 'pebble' or 'boulder' targets
 test:
 	-go clean -testcache
 	go test -v -race -coverprofile=coverage.out -covermode=atomic $(TEST_PATH)
@@ -24,6 +25,7 @@ clean:
 test_full: clean examples pebble pebble_stop boulder boulder_stop
 
 
+# sets up & runs pebble (in docker), tests, then stops pebble
 pebble: pebble_setup pebble_start pebble_wait test pebble_stop
 
 pebble_setup:
@@ -45,6 +47,7 @@ pebble_stop:
 	docker-compose -f $(PEBBLE_PATH)/docker-compose.yml down
 
 
+# sets up & runs boulder (in docker), tests, then stops boulder
 boulder: boulder_setup boulder_start boulder_wait test boulder_stop
 
 # NB: this edits docker-compose.yml
@@ -53,7 +56,6 @@ boulder_setup:
 	-git clone --depth 1 https://github.com/letsencrypt/boulder.git $(BOULDER_PATH)
 	(cd $(BOULDER_PATH); git checkout -f main && git reset --hard HEAD && git pull -q)
 	make boulder_stop
-	rm -rf $(BOULDER_PATH)/temp
 
 # runs an instance of boulder
 boulder_start:

@@ -3,9 +3,13 @@ package acme
 import (
 	"crypto"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 )
+
+// ErrUnsupportedKey is returned when an unsupported key type is encountered.
+var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
 
 // Different possible challenge types provided by an ACME server.
 // See https://tools.ietf.org/html/rfc8555#section-9.7.8

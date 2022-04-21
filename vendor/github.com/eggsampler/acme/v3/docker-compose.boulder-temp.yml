@@ -1,5 +1,5 @@
 version: '3'
 services:
   boulder:
-    volumes:
-      - ./temp:/tmp
+    ports:
+      - "8055:8055"

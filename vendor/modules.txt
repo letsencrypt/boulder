@@ -10,7 +10,7 @@ github.com/cespare/xxhash/v2
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 ## explicit
 github.com/dgryski/go-rendezvous
-# github.com/eggsampler/acme/v3 v3.2.1
+# github.com/eggsampler/acme/v3 v3.3.0
 ## explicit; go 1.11
 github.com/eggsampler/acme/v3
 # github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a
@@ -109,7 +109,7 @@ github.com/letsencrypt/pkcs11key/v4
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 ## explicit
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.45
+# github.com/miekg/dns v1.1.48
 ## explicit; go 1.14
 github.com/miekg/dns
 # github.com/miekg/pkcs11 v1.1.1
