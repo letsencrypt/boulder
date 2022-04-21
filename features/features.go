@@ -89,8 +89,8 @@ const (
 	// SHA1CSRs controls whether the /acme/finalize endpoint rejects CSRs that
 	// are self-signed using SHA1.
 	SHA1CSRs
-	// Internal to the features package: if true, skip error when unrecognized
-	// feature flag names are passed.
+	// AllowUnrecognizedFeatures is internal to the features package: if true,
+	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
 )
 
