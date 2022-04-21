@@ -75,13 +75,11 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 			Class:  dns.ClassINET,
 			Ttl:    0,
 		}
-		// These two hardcoded IPs correspond to the configured addresses for boulder
-		// in docker-compose.yml. In our Docker setup, boulder is present on two
-		// networks, rednet and bluenet, with a different IP address on each. This
-		// allows us to test load balance across gRPC backends.
-		// These two hardcoded names:port combos correspond to the configured names
-		// in docker-compose.yml, which in turn point to the local IPs on which our
-		// local resolver runs.
+		// A SRV record contains host:port combinations. The hosts in turn will be
+		// looked up in a subsequent query. These will resolve to 10.77.77.77:8053
+		// and 10.77.77.77:8054, respectively. The former will have challtestsrv
+		// listening on it. The latter doesn't have anything listening on it, but
+		// that's fine; the VA will just retry on a working port.
 		m.Answer = append(m.Answer, &dns.SRV{
 			Target: "dns1.boulder.",
 			Port:   8053,

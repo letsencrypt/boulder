@@ -14,7 +14,11 @@
       "fermatRounds": 100
     },
     "orderLifetime": "168h",
-    "issuerCertPath":  "/hierarchy/intermediate-cert-rsa-a.pem",
+    "issuerCerts": [
+      "/hierarchy/intermediate-cert-rsa-a.pem",
+      "/hierarchy/intermediate-cert-rsa-b.pem",
+      "/hierarchy/intermediate-cert-ecdsa-a.pem"
+    ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/ra.boulder/cert.pem",
@@ -41,6 +45,7 @@
       "timeout": "15s"
     },
     "grpc": {
+      "maxConnectionAge": "30s",
       "address": ":9094",
       "clientNames": [
         "admin-revoker.boulder",
