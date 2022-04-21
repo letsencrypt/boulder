@@ -27,7 +27,9 @@ func TestAllowUnrecognizedFeatures(t *testing.T) {
 		"AllowUnrecognizedFeatures": false,
 	})
 	test.AssertError(t, err, "expected error when disallowing unrecognized features")
-	test.AssertEquals(t, err.Error(), "unrecognized feature flag names: Z4lG0, Zombo")
+	test.AssertContains(t, err.Error(), "unrecognized feature flag names: ")
+	test.AssertContains(t, err.Error(), "Z4lG0")
+	test.AssertContains(t, err.Error(), "Zombo")
 }
 
 func TestFeatures(t *testing.T) {
