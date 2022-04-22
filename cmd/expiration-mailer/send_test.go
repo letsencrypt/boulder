@@ -33,7 +33,9 @@ func TestSendEarliestCertInfo(t *testing.T) {
 		serial2,
 	)
 
-	err := ctx.m.sendNags([]string{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
+	conn, err := ctx.m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = ctx.m.sendNags(conn, []string{email1, email2}, []*x509.Certificate{rawCertA, rawCertB})
 	if err != nil {
 		t.Fatal(err)
 	}
