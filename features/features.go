@@ -4,6 +4,7 @@ package features
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -88,6 +89,9 @@ const (
 	// SHA1CSRs controls whether the /acme/finalize endpoint rejects CSRs that
 	// are self-signed using SHA1.
 	SHA1CSRs
+	// AllowUnrecognizedFeatures is internal to the features package: if true,
+	// skip error when unrecognized feature flag names are passed.
+	AllowUnrecognizedFeatures
 )
 
 // List of features and their default value, protected by fMu
@@ -118,6 +122,7 @@ var features = map[FeatureFlag]bool{
 	OldTLSOutbound:                 true,
 	OldTLSInbound:                  true,
 	SHA1CSRs:                       true,
+	AllowUnrecognizedFeatures:      false,
 }
 
 var fMu = new(sync.RWMutex)
@@ -134,17 +139,24 @@ func init() {
 }
 
 // Set accepts a list of features and whether they should
-// be enabled or disabled, it will return a error if passed
-// a feature name that it doesn't know
+// be enabled or disabled. In the presence of unrecognized
+// flags, it will return an error or not depending on the
+// value of AllowUnrecognizedFeatures.
 func Set(featureSet map[string]bool) error {
 	fMu.Lock()
 	defer fMu.Unlock()
+	var unknown []string
 	for n, v := range featureSet {
 		f, present := nameToFeature[n]
-		if !present {
-			return fmt.Errorf("feature '%s' doesn't exist", n)
+		if present {
+			features[f] = v
+		} else {
+			unknown = append(unknown, n)
 		}
-		features[f] = v
+	}
+	if len(unknown) > 0 && !features[AllowUnrecognizedFeatures] {
+		return fmt.Errorf("unrecognized feature flag names: %s",
+			strings.Join(unknown, ", "))
 	}
 	return nil
 }
