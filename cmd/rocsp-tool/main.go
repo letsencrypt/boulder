@@ -24,8 +24,8 @@ import (
 
 type Config struct {
 	ROCSPTool struct {
-		cmd.ServiceConfig
-		Redis rocsp_config.RedisConfig
+		DebugAddr string
+		Redis     rocsp_config.RedisConfig
 		// Issuers is a map from filenames to short issuer IDs.
 		// Each filename must contain an issuer certificate. The short issuer
 		// IDs are arbitrarily assigned and must be consistent across OCSP
