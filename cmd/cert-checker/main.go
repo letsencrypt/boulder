@@ -119,7 +119,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	}
 
 	initialID, err := c.dbMap.SelectInt(
-		"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
+		"SELECT IFNULL(MIN(id), 0) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
 	if err != nil {
@@ -368,8 +368,12 @@ func main() {
 	syslogger, err := syslog.Dial("", "", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
 	cmd.FailOnError(err, "Failed to dial syslog")
 
-	logger, err := blog.New(syslogger, 0, 0)
-	cmd.FailOnError(err, "Failed to construct logger")
+	syslogLevel := int(syslog.LOG_INFO)
+	if config.Syslog.SyslogLevel != 0 {
+		syslogLevel = config.Syslog.SyslogLevel
+	}
+	logger, err := blog.New(syslogger, config.Syslog.StdoutLevel, syslogLevel)
+	cmd.FailOnError(err, "Could not connect to Syslog")
 
 	err = blog.Set(logger)
 	cmd.FailOnError(err, "Failed to set audit logger")
