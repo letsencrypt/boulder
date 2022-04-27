@@ -167,6 +167,7 @@ EOH
       env {
         BOULDER_DIR = "${var.boulder-dir}"
       }
+      # https://www.vaultproject.io/api-docs/secret/pki#parameters-13
       template {
         data        = <<EOH
 {{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=72h" }}
