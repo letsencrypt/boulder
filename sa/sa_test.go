@@ -2645,9 +2645,8 @@ func TestSerialsForIncident(t *testing.T) {
 	// be empty.
 	stream := make(chan *sapb.IncidentSerial)
 	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
-	var goerr error
 	go func() {
-		goerr = sa.SerialsForIncident(
+		err = sa.SerialsForIncident(
 			&sapb.SerialsForIncidentRequest{
 				IncidentTable: "incident_foo",
 			},
@@ -2658,7 +2657,7 @@ func TestSerialsForIncident(t *testing.T) {
 	for range stream {
 		t.Fatal("No serials should have been written to this stream")
 	}
-	test.AssertNotError(t, goerr, "Error calling SerialsForIncident on empty table")
+	test.AssertNotError(t, err, "Error calling SerialsForIncident on empty table")
 
 	// Add 4 rows of incident serials to 'incident_foo'.
 	expectedSerials := map[string]bool{
@@ -2683,7 +2682,7 @@ func TestSerialsForIncident(t *testing.T) {
 	stream = make(chan *sapb.IncidentSerial)
 	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
 	go func() {
-		goerr = sa.SerialsForIncident(
+		err = sa.SerialsForIncident(
 			&sapb.SerialsForIncidentRequest{
 				IncidentTable: "incident_foo",
 			},
@@ -2701,5 +2700,5 @@ func TestSerialsForIncident(t *testing.T) {
 		}
 		receivedSerials[serial.Serial] = true
 	}
-	test.AssertNotError(t, goerr, "Error getting serials for incident")
+	test.AssertNotError(t, err, "Error getting serials for incident")
 }
