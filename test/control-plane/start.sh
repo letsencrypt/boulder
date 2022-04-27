@@ -142,7 +142,7 @@ vault policy write nomad-cluster vault/boulder.policy.hcl
 
 # Consul PKI Role
 vault write consul_int/roles/consul \
-    allowed_domains="consul" \
+    allowed_domains="dev-general.consul" \
     allow_subdomains=true \
     generate_lease=true \
     max_ttl="720h"
@@ -207,20 +207,20 @@ template {
 
   # This is the optional command to run when the template is rendered. The
   # command will only run if the resulting template changes.
-  # command     = "sh -c 'date && consul reload'"
+  command     = "sh -c 'date && consul reload -ca-file ./config/var/consul-ca.crt -client-cert ./config/var/consul-agent.crt -client-key ./config/var/consul-agent.key'"
 }
 
 template {
   source      = "./config/template/consul-agent.key.tpl"
   destination = "./config/var/consul-agent.key"
   perms       = 0700
-  # command     = "sh -c 'date && consul reload'"
+  command     = "sh -c 'date && consul reload -ca-file ./config/var/consul-ca.crt -client-cert ./config/var/consul-agent.crt -client-key ./config/var/consul-agent.key'"
 }
 
 template {
   source      = "./config/template/consul-ca.crt.tpl"
   destination = "./config/var/consul-ca.crt"
-  # command     = "sh -c 'date && consul reload'"
+  command     = "sh -c 'date && consul reload -ca-file ./config/var/consul-ca.crt -client-cert ./config/var/consul-agent.crt -client-key ./config/var/consul-agent.key'"
 }
 EOF
 
