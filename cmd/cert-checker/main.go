@@ -119,11 +119,15 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	}
 
 	initialID, err := c.dbMap.SelectInt(
-		"SELECT IFNULL(MIN(id), 0) FROM certificates WHERE issued >= :issued AND expires >= :now",
+		"SELECT IFNULL(MIN(id), -1) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
 	if err != nil {
 		return err
+	}
+	if initialID == -1 {
+		// a nil response was returned by the DB, so return error and fail
+		return fmt.Errorf("The SELECT query resulted in a nil respone from the DB.")
 	}
 	if initialID > 0 {
 		// decrement the initial ID so that we select below as we aren't using >=
