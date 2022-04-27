@@ -2645,19 +2645,20 @@ func TestSerialsForIncident(t *testing.T) {
 	// be empty.
 	stream := make(chan *sapb.IncidentSerial)
 	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
+	var goerr error
 	go func() {
-		for _ = range stream {
-			t.Fatal("No serials should have been written to this stream")
-		}
+		goerr = sa.SerialsForIncident(
+			&sapb.SerialsForIncidentRequest{
+				IncidentTable: "incident_foo",
+			},
+			mockServerStream,
+		)
+		close(stream) // Let our main test thread continue.
 	}()
-	err = sa.SerialsForIncident(
-		&sapb.SerialsForIncidentRequest{
-			IncidentTable: "incident_foo",
-		},
-		mockServerStream,
-	)
-	test.AssertNotError(t, err, "Error calling SerialsForIncident on empty table")
-	close(stream) // Let our reading goroutine exit and clean up.
+	for range stream {
+		t.Fatal("No serials should have been written to this stream")
+	}
+	test.AssertNotError(t, goerr, "Error calling SerialsForIncident on empty table")
 
 	// Add 4 rows of incident serials to 'incident_foo'.
 	expectedSerials := map[string]bool{
@@ -2682,23 +2683,23 @@ func TestSerialsForIncident(t *testing.T) {
 	stream = make(chan *sapb.IncidentSerial)
 	mockServerStream = mockSerialsForIncidentServerStream{output: stream}
 	go func() {
-		receivedSerials := make(map[string]bool)
-		for serial := range stream {
-			if len(receivedSerials) > 4 {
-				t.Fatal("Received too many serials")
-			}
-			if _, ok := receivedSerials[serial.Serial]; ok {
-				t.Fatalf("Received serial %q more than once", serial.Serial)
-			}
-			receivedSerials[serial.Serial] = true
-		}
+		goerr = sa.SerialsForIncident(
+			&sapb.SerialsForIncidentRequest{
+				IncidentTable: "incident_foo",
+			},
+			mockServerStream,
+		)
+		close(stream)
 	}()
-	err = sa.SerialsForIncident(
-		&sapb.SerialsForIncidentRequest{
-			IncidentTable: "incident_foo",
-		},
-		mockServerStream,
-	)
-	test.AssertNotError(t, err, "Error getting serials for incident")
-	close(stream) // Let our reading goroutine exit and clean up.
+	receivedSerials := make(map[string]bool)
+	for serial := range stream {
+		if len(receivedSerials) > 4 {
+			t.Fatal("Received too many serials")
+		}
+		if _, ok := receivedSerials[serial.Serial]; ok {
+			t.Fatalf("Received serial %q more than once", serial.Serial)
+		}
+		receivedSerials[serial.Serial] = true
+	}
+	test.AssertNotError(t, goerr, "Error getting serials for incident")
 }
