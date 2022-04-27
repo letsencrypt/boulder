@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"database/sql"
 	"encoding/asn1"
 	"encoding/pem"
 	"io/ioutil"
@@ -380,8 +381,12 @@ type mismatchedCountDB struct{}
 // `getCerts` calls `SelectInt` first to determine how many rows there are
 // matching the `getCertsCountQuery` criteria. For this mock we return
 // a non-zero number
-func (db mismatchedCountDB) SelectInt(_ string, _ ...interface{}) (int64, error) {
-	return 99999, nil
+func (db mismatchedCountDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
+	return sql.NullInt64{
+			Int64: 99999,
+			Valid: true,
+		},
+		nil
 }
 
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
@@ -420,6 +425,31 @@ func TestGetCertsEmptyResults(t *testing.T) {
 	batchSize = 3
 	err = checker.getCerts(false)
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
+}
+
+// create emptyDB for testing that null response from mariadb are handled properly
+type emptyDB struct{}
+
+// set SelectNullInt to respond with false to reflect the empty DB response
+func (db emptyDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
+	return sql.NullInt64{Valid: false},
+		nil
+}
+
+// define Select so the compiler is happy. Not used.
+func (db emptyDB) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
+	return nil, nil
+}
+
+// check that a NULL response from the DB will be handled correctly
+func TestGetCertsNullResults(t *testing.T) {
+	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	test.AssertNotError(t, err, "Couldn't connect to database")
+	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
+	checker.dbMap = emptyDB{}
+
+	err = checker.getCerts(false)
+	test.AssertError(t, err, "Failed to handle NULL DB response")
 }
 
 func TestSaveReport(t *testing.T) {

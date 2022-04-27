@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -80,7 +81,7 @@ type reportEntry struct {
 // out the saDbMap implementation.
 type certDB interface {
 	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectInt(query string, args ...interface{}) (int64, error)
+	SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error)
 }
 
 type certChecker struct {
@@ -118,17 +119,20 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		args["now"] = c.clock.Now()
 	}
 
-	initialID, err := c.dbMap.SelectInt(
-		"SELECT IFNULL(MIN(id), -1) FROM certificates WHERE issued >= :issued AND expires >= :now",
+	sni, err := c.dbMap.SelectNullInt(
+		"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
 		args,
 	)
 	if err != nil {
 		return err
 	}
-	if initialID == -1 {
+	if !sni.Valid {
 		// a nil response was returned by the DB, so return error and fail
-		return fmt.Errorf("The SELECT query resulted in a nil respone from the DB.")
+		return fmt.Errorf("The SELECT query resulted in a NULL response from the DB.")
 	}
+
+	initialID := sni.Int64
+
 	if initialID > 0 {
 		// decrement the initial ID so that we select below as we aren't using >=
 		initialID -= 1
