@@ -449,7 +449,7 @@ func TestGetCertsNullResults(t *testing.T) {
 	checker.dbMap = emptyDB{}
 
 	err = checker.getCerts(false)
-	test.AssertError(t, err, "Failed to handle NULL DB response")
+	test.AssertError(t, err, "Should have gotten error from empty DB")
 }
 
 func TestSaveReport(t *testing.T) {
