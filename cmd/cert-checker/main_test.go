@@ -428,7 +428,9 @@ func TestGetCertsEmptyResults(t *testing.T) {
 }
 
 // create emptyDB for testing that null response from mariadb are handled properly
-type emptyDB struct{}
+type emptyDB struct{
+	certDB
+}
 
 // set SelectNullInt to respond with false to reflect the empty DB response
 func (db emptyDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
