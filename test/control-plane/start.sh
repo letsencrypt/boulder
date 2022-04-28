@@ -151,17 +151,6 @@ vault write consul_int/roles/consul \
     max_ttl="720h"
 
 pretty "Setup consul-template"
-tee config/var/reload-consul.sh <<EOF
-#!/usr/bin/env bash
-
-consul reload \
-  -ca-file="./config/var/consul-agent-ca.crt" \
-  -client-cert="./config/var/consul-agent.crt" \
-  -client-key="./config/var/consul-agent.key" \
-  -http-addr="https://localhost:8501"
-EOF
-
-chmod a+x config/var/reload-consul.sh
 
 tee config/var/template-consul-tls-config.hcl <<EOF
 vault {
@@ -174,21 +163,21 @@ template {
   source      = "./config/template/consul-agent.crt.tpl"
   destination = "./config/var/consul-agent.crt"
   perms       = 0700
-  #command     = "./config/var/reload-consul.sh"
+  #command     = "sudo pkill -HUP consul nomad"
 }
 
 template {
   source      = "./config/template/consul-agent.key.tpl"
   destination = "./config/var/consul-agent.key"
   perms       = 0700
-  #command     = "./config/var/reload-consul.sh"
+  #command     = "sudo pkill -HUP consul nomad"
 }
 
 template {
   source      = "./config/template/consul-ca.crt.tpl"
   destination = "./config/var/consul-agent-ca.crt"
   perms       = 0700
-  #command     = "./config/var/reload-consul.sh"
+  #command     = "sudo pkill -HUP consul nomad"
 }
 EOF
 
@@ -208,19 +197,19 @@ vault write consul_int/roles/consul \
 
 vault policy write consul-tls consul-tls-policy.hcl
 
-TLS_TOKEN=$(vault token create -policy="consul-tls" -period=24h -orphan -format="json" | jq -r .auth.client_token)
+CONSUL_TLS_TOKEN=$(vault token create -policy="consul-tls" -period=24h -orphan -format="json" | jq -r .auth.client_token)
 
-pretty "Vault Root Token:"
-echo "${TLS_TOKEN}"
+pretty "Consul TLS Token:"
+echo "${CONSUL_TLS_TOKEN}"
 
 pretty "Templating Consul TLS Certs"
 
-consul-template -vault-token="${TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" -once
+consul-template -vault-token="${CONSUL_TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" -once
 
 pretty "Starting Consul Server"
 command consul agent -dev -config-format=hcl -config-file="./config/consul.conf.hcl" &>/dev/null &
 
-pretty "Waiting for Consul to Start"
+pretty "Wait for Consul to Start"
 while true
 do
   resp=$(curl -k -sw '%{http_code}' https://localhost:8501/v1/agent/checks | tail -1 | xargs)
@@ -229,18 +218,32 @@ do
     echo "Consul agent is running."
     break
   else
-    echo "Consul agent is not running."
+    echo "Waiting for Consul agent to start..."
     sleep 1
   fi
 done
-
-pretty "Starting Consul-Template: Consul TLS"
-command consul-template -vault-token="${TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" -log-level=TRACE &
 
 pretty "Starting Nomad Server"
 command sudo nomad agent -dev -dc dev-general \
   -vault-token="${VAULT_TOKEN}" -config="config/nomad.conf.hcl" &>/dev/null &
 
+pretty "Wait for Nomad to Start"
+while true
+do
+  resp=$(curl -k -sw '%{http_code}' http://127.0.0.1:4646/v1/agent/members | grep -o 200)
+  if [ "$resp" = "200" ]
+  then
+    echo "Nomad agent is running."
+    break
+  else
+    echo "Waiting for Nomad agent to start..."
+    sleep 1
+  fi
+done
+
+pretty "Starting Consul-Template: Consul TLS"
+sed -i '' 's|#command|command|g' ./config/var/template-consul-tls-config.hcl
+command consul-template -vault-token="${CONSUL_TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" &>/dev/null &
 
 pretty "Vault Root Token:"
 echo "${VAULT_TOKEN}"
