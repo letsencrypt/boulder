@@ -7,7 +7,7 @@ vault {
 consul {
   address   = "localhost:8501"
   ssl       = true
-  ca_file   = "./config/var/consul-ca.crt"
+  ca_file   = "./config/var/consul-agent-ca.crt"
   cert_file = "./config/var/consul-agent.crt"
   key_file  = "./config/var/consul-agent.key"
 }

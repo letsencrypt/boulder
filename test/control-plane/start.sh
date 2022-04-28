@@ -14,6 +14,9 @@ function no_ctrlc() {
     prettyRed "Stopping Consul..."
     killall consul
 
+    prettyRed "Stopping Consul-Template..."
+    killall consul-template -9
+
     prettyRed "Stopping Nomad..."
     sudo killall nomad
     
@@ -147,94 +150,92 @@ vault write consul_int/roles/consul \
     generate_lease=true \
     max_ttl="720h"
 
-
-# pretty "Issue Server Certificates"
-
-# Issue Consul Server Certificate
-# vault write consul_int/issue/consul \
-#   common_name="dev-general.consul" ttl="24h" | tee config/var/consul-certs.txt
-
-# Issue Consul Server Certificate
-# vault write consul_int/issue/consul \
-#   common_name="server1.dev-general.consul" ttl="24h" | tee config/var/consul-server-certs.txt
-
-# Nomad PKI Policy
-# tee config/var/consul-tls-policy.hcl <<EOF
-# path "nomad_int/issue/consul" {
-#   capabilities = ["update"]
-# }
-# EOF
-
-# vault policy write consul-tls-policy config/var/consul-tls-policy.hcl
-
-# Generate Nomad TLS Token
-# VAULT_NOMAD_TLS_TOKEN=$(vault token create -policy="tls-policy" -period=24h -orphan | grep 'token' | sed 's|token                ||')
-
 pretty "Setup consul-template"
+tee config/var/reload-consul.sh <<EOF
+#!/usr/bin/env bash
+
+consul reload \
+  -ca-file="./config/var/consul-agent-ca.crt" \
+  -client-cert="./config/var/consul-agent.crt" \
+  -client-key="./config/var/consul-agent.key" \
+  -http-addr="https://localhost:8501"
+EOF
+
+chmod a+x config/var/reload-consul.sh
+
 tee config/var/template-consul-tls-config.hcl <<EOF
-# This denotes the start of the configuration section for Vault. All values
-# contained in this section pertain to Vault.
 vault {
-  # This is the address of the Vault leader. The protocol (http(s)) portion
-  # of the address is required.
   address      = "http://localhost:8200"
-
-  # This value can also be specified via the environment variable VAULT_TOKEN.
-  # token        = "root"
-
   unwrap_token = false
-
-  renew_token  = false
+  renew_token  = true
 }
 
-# This block defines the configuration for a template. Unlike other blocks,
-# this block may be specified multiple times to configure multiple templates.
 template {
-  # This is the source file on disk to use as the input template. This is often
-  # called the "consul-template template".
   source      = "./config/template/consul-agent.crt.tpl"
-
-  # This is the destination path on disk where the source template will render.
-  # If the parent directories do not exist, consul-template will attempt to
-  # create them, unless create_dest_dirs is false.
   destination = "./config/var/consul-agent.crt"
-
-  # This is the permission to render the file. If this option is left
-  # unspecified, consul-template will attempt to match the permissions of the
-  # file that already exists at the destination path. If no file exists at that
-  # path, the permissions are 0644.
   perms       = 0700
-
-  # This is the optional command to run when the template is rendered. The
-  # command will only run if the resulting template changes.
-  command     = "sh -c 'date && consul reload -ca-file ./config/var/consul-ca.crt -client-cert ./config/var/consul-agent.crt -client-key ./config/var/consul-agent.key'"
+  #command     = "./config/var/reload-consul.sh"
 }
 
 template {
   source      = "./config/template/consul-agent.key.tpl"
   destination = "./config/var/consul-agent.key"
   perms       = 0700
-  command     = "sh -c 'date && consul reload -ca-file ./config/var/consul-ca.crt -client-cert ./config/var/consul-agent.crt -client-key ./config/var/consul-agent.key'"
+  #command     = "./config/var/reload-consul.sh"
 }
 
 template {
   source      = "./config/template/consul-ca.crt.tpl"
-  destination = "./config/var/consul-ca.crt"
-  command     = "sh -c 'date && consul reload -ca-file ./config/var/consul-ca.crt -client-cert ./config/var/consul-agent.crt -client-key ./config/var/consul-agent.key'"
+  destination = "./config/var/consul-agent-ca.crt"
+  perms       = 0700
+  #command     = "./config/var/reload-consul.sh"
 }
 EOF
 
-# pretty "Vault Root Token:"
-# echo "${VAULT_NOMAD_TLS_TOKEN}"
+# Consul PKI Policy
+tee consul-tls-policy.hcl <<EOF
+path "consul_int/issue/consul" {
+  capabilities = ["read", "create", "update", "delete"]
+}
+EOF
 
-command consul-template -config="./config/var/template-consul-tls-config.hcl" &>/dev/null &
+# Consul PKI Role
+vault write consul_int/roles/consul \
+    allowed_domains="dev-general.consul" \
+    allow_subdomains=true \
+    generate_lease=true \
+    max_ttl="720h"
 
-pretty "Waiting 5 seconds for consul-template to provision Consul certificates..."
-sleep 5
+vault policy write consul-tls consul-tls-policy.hcl
+
+TLS_TOKEN=$(vault token create -policy="consul-tls" -period=24h -orphan -format="json" | jq -r .auth.client_token)
+
+pretty "Vault Root Token:"
+echo "${TLS_TOKEN}"
+
+pretty "Templating Consul TLS Certs"
+
+consul-template -vault-token="${TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" -once
 
 pretty "Starting Consul Server"
 command consul agent -dev -config-format=hcl -config-file="./config/consul.conf.hcl" &>/dev/null &
 
+pretty "Waiting for Consul to Start"
+while true
+do
+  resp=$(curl -k -sw '%{http_code}' https://localhost:8501/v1/agent/checks | tail -1 | xargs)
+  if [ "$resp" = "200" ]
+  then
+    echo "Consul agent is running."
+    break
+  else
+    echo "Consul agent is not running."
+    sleep 1
+  fi
+done
+
+pretty "Starting Consul-Template: Consul TLS"
+command consul-template -vault-token="${TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" -log-level=TRACE &
 
 pretty "Starting Nomad Server"
 command sudo nomad agent -dev -dc dev-general \
