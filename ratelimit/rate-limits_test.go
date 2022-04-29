@@ -29,13 +29,14 @@ func TestNotEnabled(t *testing.T) {
 
 func TestGetThreshold(t *testing.T) {
 	policy := RateLimitPolicy{
-		Threshold: 1,
+		Threshold: 2,
 		Overrides: map[string]int64{
-			"key": 2,
+			"key": 3,
 			"baz": 99,
+			"bar": 1,
 		},
 		RegistrationOverrides: map[int64]int64{
-			101: 3,
+			101: 4,
 		},
 	}
 
@@ -50,11 +51,17 @@ func TestGetThreshold(t *testing.T) {
 			Name:     "No key or reg overrides",
 			Key:      "foo",
 			RegID:    11,
-			Expected: 1,
+			Expected: 2,
 		},
 		{
 			Name:     "Key override, no reg override",
 			Key:      "key",
+			RegID:    11,
+			Expected: 3,
+		},
+		{
+			Name:     "Key override, but smaller than default",
+			Key:      "bar",
 			RegID:    11,
 			Expected: 2,
 		},
@@ -62,13 +69,13 @@ func TestGetThreshold(t *testing.T) {
 			Name:     "No key override, reg override",
 			Key:      "foo",
 			RegID:    101,
-			Expected: 3,
+			Expected: 4,
 		},
 		{
 			Name:     "Key override, larger reg override",
 			Key:      "foo",
 			RegID:    101,
-			Expected: 3,
+			Expected: 4,
 		},
 		{
 			Name:     "Key override, smaller reg override",
