@@ -65,8 +65,8 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 	}, nil
 }
 
-// initialize is used in unit tests and called by Get before the logger
-// is fully set up
+// initialize is used in unit tests and called by `Get` before the logger
+// is fully set up.
 func initialize() {
 	const defaultPriority = syslog.LOG_INFO | syslog.LOG_LOCAL0
 	syslogger, err := syslog.Dial("", "", defaultPriority, "test")
