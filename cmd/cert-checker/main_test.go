@@ -427,18 +427,23 @@ func TestGetCertsEmptyResults(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 }
 
-// create emptyDB for testing that null response from mariadb are handled properly
+// emptyDB is a certDB object with methods used for testing that 'null'
+// responses received from the database are handled properly.
 type emptyDB struct {
 	certDB
 }
 
-// set SelectNullInt to respond with false to reflect the empty DB response
+// SelectNullInt is a method that returns a false sql.NullInt64 struct to
+// mock a null DB response
 func (db emptyDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
 	return sql.NullInt64{Valid: false},
 		nil
 }
 
-// check that a NULL response from the DB will be handled correctly
+// TestGetCertsNullResults tests that a null response from the database will
+// be handled properly. It uses the emptyDB above to mock the response
+// expected if the DB finds no certificates to match the SELECT query and
+// should return an error.
 func TestGetCertsNullResults(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")

@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/syslog"
@@ -128,11 +129,10 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	}
 	if !sni.Valid {
 		// a nil response was returned by the DB, so return error and fail
-		return fmt.Errorf("The SELECT query resulted in a NULL response from the DB.")
+		return errors.New("the SELECT query resulted in a NULL response from the DB")
 	}
 
 	initialID := sni.Int64
-
 	if initialID > 0 {
 		// decrement the initial ID so that we select below as we aren't using >=
 		initialID -= 1
