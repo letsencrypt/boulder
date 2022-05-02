@@ -66,7 +66,7 @@ services:
         driver: none
 
   bredis_1:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -75,7 +75,7 @@ services:
           ipv4_address: 10.33.33.2
 
   bredis_2:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -84,7 +84,7 @@ services:
           ipv4_address: 10.33.33.3
 
   bredis_3:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -93,7 +93,7 @@ services:
           ipv4_address: 10.33.33.4
 
   bredis_4:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -102,7 +102,7 @@ services:
           ipv4_address: 10.33.33.5
 
   bredis_5:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -111,7 +111,7 @@ services:
           ipv4_address: 10.33.33.6
 
   bredis_6:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -120,7 +120,7 @@ services:
           ipv4_address: 10.33.33.7
 
   bredis_clusterer:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
       - ./cluster/:/cluster/:cached
