@@ -154,12 +154,12 @@ func (m *mailer) run() error {
 	m.log.Infof("Address %q was associated with the most recipients (%d)",
 		mostRecipients, mostRecipientsLen)
 
-	conn, err := m.mailer.Connect()
+	err = m.mailer.Connect()
 	if err != nil {
 		return err
 	}
 
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = m.mailer.Close() }()
 
 	startTime := m.clk.Now()
 	sortedAddresses := sortAddresses(addressToRecipient)
@@ -186,7 +186,7 @@ func (m *mailer) run() error {
 			continue
 		}
 
-		err = conn.SendMail([]string{address}, m.subject, messageBody)
+		err = m.mailer.SendMail([]string{address}, m.subject, messageBody)
 		if err != nil {
 			var badAddrErr bmail.BadAddressSMTPError
 			if errors.As(err, &badAddrErr) {

@@ -22,7 +22,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
-	"github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -564,15 +563,6 @@ type Mailer struct {
 	Messages []MailerMessage
 }
 
-var _ mail.Mailer = &Mailer{}
-
-// mockMailerConn is a mock that satisfies the mail.Conn interface
-type mockMailerConn struct {
-	parent *Mailer
-}
-
-var _ mail.Conn = &mockMailerConn{}
-
 // MailerMessage holds the captured emails from SendMail()
 type MailerMessage struct {
 	To      string
@@ -586,9 +576,9 @@ func (m *Mailer) Clear() {
 }
 
 // SendMail is a mock
-func (m *mockMailerConn) SendMail(to []string, subject, msg string) error {
+func (m *Mailer) SendMail(to []string, subject, msg string) error {
 	for _, rcpt := range to {
-		m.parent.Messages = append(m.parent.Messages, MailerMessage{
+		m.Messages = append(m.Messages, MailerMessage{
 			To:      rcpt,
 			Subject: subject,
 			Body:    msg,
@@ -598,13 +588,13 @@ func (m *mockMailerConn) SendMail(to []string, subject, msg string) error {
 }
 
 // Close is a mock
-func (m *mockMailerConn) Close() error {
+func (m *Mailer) Close() error {
 	return nil
 }
 
 // Connect is a mock
-func (m *Mailer) Connect() (mail.Conn, error) {
-	return &mockMailerConn{parent: m}, nil
+func (m *Mailer) Connect() error {
+	return nil
 }
 
 // SAWithFailedChallenges is a mocks.StorageAuthority that has
