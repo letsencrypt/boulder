@@ -398,7 +398,11 @@ type Config struct {
 		// Path to a text/template email template
 		EmailTemplate string
 
+		// How often to process a batch of certificates
 		Frequency cmd.ConfigDuration
+
+		// How many parallel goroutines should process each batch of emails
+		ParallelSends uint
 
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
