@@ -14,7 +14,6 @@
     "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
     "debugAddr": ":8008",
-    "parallelSends": 10,
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
       "certFile": "test/grpc-creds/expiration-mailer.boulder/cert.pem",
