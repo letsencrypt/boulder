@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -562,7 +561,6 @@ func (*PublisherClient) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.R
 
 // Mailer is a mock
 type Mailer struct {
-	sync.Mutex
 	Messages []MailerMessage
 }
 
@@ -584,15 +582,11 @@ type MailerMessage struct {
 
 // Clear removes any previously recorded messages
 func (m *Mailer) Clear() {
-	m.Lock()
-	defer m.Unlock()
 	m.Messages = nil
 }
 
 // SendMail is a mock
 func (m *mockMailerConn) SendMail(to []string, subject, msg string) error {
-	m.parent.Lock()
-	defer m.parent.Unlock()
 	for _, rcpt := range to {
 		m.parent.Messages = append(m.parent.Messages, MailerMessage{
 			To:      rcpt,
