@@ -33,8 +33,7 @@ func (ts *TemporalSet) Setup() error {
 		return errors.New("temporal set contains no shards")
 	}
 	for i := range ts.Shards {
-		if ts.Shards[i].WindowEnd.Before(ts.Shards[i].WindowStart) ||
-			ts.Shards[i].WindowEnd.Equal(ts.Shards[i].WindowStart) {
+		if !ts.Shards[i].WindowEnd.After(ts.Shards[i].WindowStart) {
 			return errors.New("WindowStart must be before WindowEnd")
 		}
 	}

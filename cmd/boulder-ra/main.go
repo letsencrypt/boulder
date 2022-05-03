@@ -2,7 +2,6 @@ package notmain
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"time"
 
@@ -72,7 +71,20 @@ type Config struct {
 		// in a group and the first SCT returned will be used. This allows
 		// us to comply with Chrome CT policy which requires one SCT from a
 		// Google log and one SCT from any other log included in their policy.
+		// DEPRECATED: Use CTLogOperatorGroups instead.
+		// TODO(#5938): Remove this.
 		CTLogGroups2 []ctconfig.CTGroup
+		// CTLogStagger is the amount of time that the RA will allow to pass between
+		// attempting to submit precertificates to various CT log operator groups.
+		CTLogStagger cmd.ConfigDuration
+		// CTLogOperatorGroups contains groupings of CT logs organized by what
+		// organization operates them. When we submit precerts to logs in order to
+		// get SCTs, we will submit the cert to one randomly-chosen log from each
+		// group, and use the SCTs from the first two groups which reply.
+		// This allows us to comply with various CT policies that require (for certs
+		// with short lifetimes like ours) two SCTs from logs run by different
+		// operators.
+		CTLogOperatorGroups []ctconfig.CTGroup
 		// InformationalCTLogs are a set of CT logs we will always submit to
 		// but won't ever use the SCTs from. This may be because we want to
 		// test them or because they are not yet approved by a browser/root
@@ -161,7 +173,6 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := pubpb.NewPublisherClient(conn)
@@ -184,15 +195,17 @@ func main() {
 	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
 	// environment Boulder is built for. Exit early if there is no CTLogGroups2
 	// configured.
-	if len(c.RA.CTLogGroups2) == 0 {
-		cmd.Fail("CTLogGroups2 must not be empty")
+	if len(c.RA.CTLogGroups2) == 0 && len(c.RA.CTLogOperatorGroups) == 0 {
+		cmd.Fail("Must configure either CTLogGroups2 or CTLogOperatorGroups")
+	}
+	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogOperatorGroups) != 0 {
+		cmd.Fail("Configure only CTLogGroups2 or CTLogOperatorGroups, not both")
 	}
 
-	for i, g := range c.RA.CTLogGroups2 {
+	for _, g := range append(c.RA.CTLogGroups2, c.RA.CTLogOperatorGroups...) {
 		// Exit early if any of the log groups specify no logs
 		if len(g.Logs) == 0 {
-			cmd.Fail(
-				fmt.Sprintf("CTLogGroups2 index %d specifies no logs", i))
+			cmd.Fail("Encountered empty CT log group")
 		}
 		for _, l := range g.Logs {
 			if l.TemporalSet != nil {
@@ -201,7 +214,8 @@ func main() {
 			}
 		}
 	}
-	ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
+	ctp, err := ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.CTLogOperatorGroups, c.RA.InformationalCTLogs, c.RA.CTLogStagger.Duration, logger, scope)
+	cmd.FailOnError(err, "Failed to create a CTPolicy")
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
 	// or completed validation MUST be obtained no more than 398 days prior

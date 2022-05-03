@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/canceled"
@@ -18,22 +19,28 @@ import (
 // CTPolicy is used to hold information about SCTs required from various
 // groupings
 type CTPolicy struct {
-	pub           pubpb.PublisherClient
-	groups        []ctconfig.CTGroup
-	informational []ctconfig.LogDescription
-	finalLogs     []ctconfig.LogDescription
-	log           blog.Logger
+	pub pubpb.PublisherClient
+	// TODO(#5938): Fully replace `groups` with `operatorGroups`.
+	groups         []ctconfig.CTGroup
+	operatorGroups []ctconfig.CTGroup
+	informational  []ctconfig.LogDescription
+	finalLogs      []ctconfig.LogDescription
+	stagger        time.Duration
+	log            blog.Logger
 
 	winnerCounter *prometheus.CounterVec
 }
 
 // New creates a new CTPolicy struct
-func New(pub pubpb.PublisherClient,
+func New(
+	pub pubpb.PublisherClient,
 	groups []ctconfig.CTGroup,
+	operatorGroups []ctconfig.CTGroup,
 	informational []ctconfig.LogDescription,
+	stagger time.Duration,
 	log blog.Logger,
 	stats prometheus.Registerer,
-) *CTPolicy {
+) (*CTPolicy, error) {
 	var finalLogs []ctconfig.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
@@ -58,13 +65,15 @@ func New(pub pubpb.PublisherClient,
 	stats.MustRegister(winnerCounter)
 
 	return &CTPolicy{
-		pub:           pub,
-		groups:        groups,
-		informational: informational,
-		finalLogs:     finalLogs,
-		log:           log,
-		winnerCounter: winnerCounter,
-	}
+		pub:            pub,
+		groups:         groups,
+		operatorGroups: operatorGroups,
+		stagger:        stagger,
+		informational:  informational,
+		finalLogs:      finalLogs,
+		log:            log,
+		winnerCounter:  winnerCounter,
+	}, nil
 }
 
 type result struct {
@@ -137,9 +146,24 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group ctconfig
 	return nil, errors.New("all submissions failed")
 }
 
-// GetSCTs attempts to retrieve a SCT from each configured grouping of logs and returns
-// the set of SCTs to the caller.
+// GetSCTs attempts to retrieve two SCTs from the configured log groups and
+// returns the set of SCTs to the caller.
 func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
+	if len(ctp.operatorGroups) != 0 {
+		return ctp.getOperatorSCTs(ctx, cert, expiration)
+	}
+	return ctp.getGoogleSCTs(ctx, cert, expiration)
+}
+
+// getGoogleSCTs retrieves exactly one SCT from each of the configured log
+// groups. It expects that there are exactly 2 such groups, and that one of
+// those groups contains only logs operated by Google. As such, it enforces
+// Google's *old* CT Policy, which required that certs have two SCTs, one of
+// which was from a Google log.
+// DEPRECATED: Google no longer enforces the "one Google, one non-Google" log
+// policy. Use getOperatorSCTs instead.
+// TODO(#5938): Remove this after the configured groups have been rearranged.
+func (ctp *CTPolicy) getGoogleSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
 	results := make(chan result, len(ctp.groups))
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -153,29 +177,8 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 			results <- result{sct: sct}
 		}(i, g)
 	}
-	isPrecert := true
-	for _, log := range ctp.informational {
-		go func(l ctconfig.LogDescription) {
-			// We use a context.Background() here instead of subCtx because these
-			// submissions are running in a goroutine and we don't want them to be
-			// cancelled when the caller of CTPolicy.GetSCTs returns and cancels
-			// its RPC context.
-			uri, key, err := l.Info(expiration)
-			if err != nil {
-				ctp.log.Errf("unable to get log info: %s", err)
-				return
-			}
-			_, err = ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
-				LogURL:       uri,
-				LogPublicKey: key,
-				Der:          cert,
-				Precert:      isPrecert,
-			})
-			if err != nil {
-				ctp.log.Warningf("ct submission to informational log %q failed: %s", uri, err)
-			}
-		}(log)
-	}
+
+	go ctp.submitPrecertInformational(cert, expiration)
 
 	var ret core.SCTDERs
 	for i := 0; i < len(ctp.groups); i++ {
@@ -189,6 +192,107 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 		ret = append(ret, res.sct)
 	}
 	return ret, nil
+}
+
+// getOperatorSCTs retrieves exactly two SCTs from the total collection of
+// configured log groups, with at most one SCT coming from each group. It
+// expects that all logs run by a single operator (e.g. Google) are in the same
+// group, to guarantee that SCTs from logs in different groups do not end up
+// coming from the same operator. As such, it enforces Google's current CT
+// Policy, which requires that certs have two SCTs from logs run by different
+// operators.
+// TODO(#5938): Inline this into GetSCTs when getGoogleSCTs is removed.
+func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
+	// We'll cancel this sub-context when we have the two SCTs we need, to cause
+	// any other ongoing submission attempts to quit.
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results := make(chan result, len(ctp.operatorGroups))
+
+	// Kick off a collection of goroutines to try to submit the precert to each
+	// log operator group. Randomize the order of the groups so that we're not
+	// always trying to submit to the same two operators.
+	for i, groupIdx := range rand.Perm(len(ctp.operatorGroups)) {
+		operatorGroup := ctp.operatorGroups[groupIdx]
+		i := i
+
+		go func() {
+			// If this goroutine isn't for one of the first two groups chosen, sleep a
+			// little bit to stagger our requests to the later groups.
+			if i > 1 {
+				time.Sleep(time.Duration(i) * ctp.stagger)
+			}
+
+			// Quit if the context has errored out, most likely because two other
+			// logs from other operator groups returned SCTs already and the context
+			// has been canceled.
+			if subCtx.Err() != nil {
+				return
+			}
+
+			sct, err := ctp.race(subCtx, cert, operatorGroup, expiration)
+			if err != nil {
+				if !canceled.Is(err) {
+					ctp.log.Warningf("ct submission to group %q failed: %s", operatorGroup.Name, err)
+				}
+			}
+
+			results <- result{sct: sct, err: err}
+		}()
+	}
+
+	go ctp.submitPrecertInformational(cert, expiration)
+
+	// Finally, collect SCTs and/or errors from our results channel.
+	scts := make(core.SCTDERs, 0)
+	errs := make([]string, 0)
+	for i := 0; i < len(ctp.operatorGroups); i++ {
+		select {
+		case <-ctx.Done():
+			// We timed out (the calling function returned and canceled our context)
+			// before getting two SCTs.
+			return nil, berrors.MissingSCTsError("failed to get 2 SCTs before ctx finished: %s", ctx.Err())
+		case res := <-results:
+			if res.err != nil {
+				errs = append(errs, res.err.Error())
+				continue
+			}
+			scts = append(scts, res.sct)
+			if len(scts) >= 2 {
+				return scts, nil
+			}
+		}
+	}
+
+	// If we made it to the end of that loop, that means we never got two SCTs
+	// to return. Error out instead.
+	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got errors: %s", strings.Join(errs, "; "))
+}
+
+func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration time.Time) {
+	for _, log := range ctp.informational {
+		go func(l ctconfig.LogDescription) {
+			// We use a context.Background() here instead of a context from the parent
+			// because these submissions are running in a goroutine and we don't want
+			// them to be cancelled when the caller of CTPolicy.GetSCTs returns and
+			// cancels its RPC context.
+			uri, key, err := l.Info(expiration)
+			if err != nil {
+				ctp.log.Errf("unable to get log info: %s", err)
+				return
+			}
+			_, err = ctp.pub.SubmitToSingleCTWithResult(context.Background(), &pubpb.Request{
+				LogURL:       uri,
+				LogPublicKey: key,
+				Der:          cert,
+				Precert:      true,
+			})
+			if err != nil {
+				ctp.log.Warningf("ct submission to informational log %q failed: %s", uri, err)
+			}
+		}(log)
+	}
 }
 
 // SubmitFinalCert submits finalized certificates created from precertificates
