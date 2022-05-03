@@ -121,7 +121,7 @@ git push origin "release-branch-$(date +%F)" "release-$(date +%F)a"
 
 ## Deploying Releases
 
-When doing a release, Ops' tooling will check that:
+When doing a release, SRE's tooling will check that:
 
 1. GitHub shows that tests have passed for the commit at the planned release
    tag.

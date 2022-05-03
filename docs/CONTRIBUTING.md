@@ -384,6 +384,12 @@ various elements in the RFC are implemented. Some of these fully conformant
 decisions are listed in [ACME implementation details
 doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-implementation_details.md).
 
+## Code of Conduct
+
+The code of conduct for everyone participating in this community in any capacity
+is available for reference
+[on the community forum](https://community.letsencrypt.org/guidelines).
+
 ## Problems or questions?
 
 The best place to ask dev related questions is on the [Community
