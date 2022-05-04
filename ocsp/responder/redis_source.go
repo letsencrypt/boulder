@@ -25,6 +25,8 @@ func NewRedisSource(client *rocsp.Client, stats prometheus.Registerer, log blog.
 		Name: "ocsp_redis_responses",
 		Help: "Count of OCSP requests/responses by action taken by the redisSource",
 	}, []string{"result"})
+	stats.MustRegister(counter)
+
 	return &redisSource{
 		client:  client,
 		counter: counter,
