@@ -1299,7 +1299,42 @@ def test_ocsp():
     # checking OCSP until we either see a good response or we timeout (5s).
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
-def test_ct_submission():
+# TODO(#5938): Remove _operator suffix from this test and make it unconditional.
+def test_ct_submission_operator():
+    if not CONFIG_NEXT:
+        return
+
+    hostname = random_domain()
+
+    chisel2.auth_and_issue([hostname])
+
+    # These should correspond to the configured logs in ra.json.
+    log_groups = [
+        ["http://boulder:4500/submissions"],
+        ["http://boulder:4501/submissions"],
+        ["http://boulder:4510/submissions", "http://boulder:4511/submissions"],
+    ]
+
+    total_count = 0
+    for i in range(len(log_groups)):
+        group_count = 0
+        for j in range(len(log_groups[i])):
+            log = log_groups[i][j]
+            count = int(requests.get(log + "?hostnames=%s" % hostname).text)
+            if count > 1:
+                raise(Exception("Got %d submissions for log %s, expected at most 1" % count, log))
+            group_count += count
+        if group_count > 1:
+            raise(Exception("Got %d submissions for log group %d, expected at most 1" % group_count, i))
+        total_count += group_count
+    if total_count != 2:
+        raise(Exception("Got %d total submissions, expected exactly 2" % total_count))
+
+# TODO(#5938): Remove this test.
+def test_ct_submission_google():
+    if CONFIG_NEXT:
+        return
+
     hostname = random_domain()
 
     # These should correspond to the configured logs in ra.json.
