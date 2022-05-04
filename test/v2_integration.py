@@ -1315,6 +1315,13 @@ def test_ct_submission_operator():
         ["http://boulder:4510/submissions", "http://boulder:4511/submissions"],
     ]
 
+    # We'd like to enforce strict limits here (exactly 1 submission per group,
+    # exactly two submissions overall) but the async nature of the race system
+    # means we can't -- a slowish submission to one log in a group could trigger
+    # a very fast submission to a different log in the same group, and then both
+    # submissions could succeed at the same time. Although the Go code will only
+    # use one of the SCTs, both logs will still have been submitted to, and it
+    # will show up here.
     total_count = 0
     for i in range(len(log_groups)):
         group_count = 0
@@ -1324,11 +1331,11 @@ def test_ct_submission_operator():
             if count > 1:
                 raise(Exception("Got %d submissions for log %s, expected at most 1" % count, log))
             group_count += count
-        if group_count > 1:
-            raise(Exception("Got %d submissions for log group %d, expected at most 1" % group_count, i))
+        if group_count > len(log_groups[i]):
+            raise(Exception("Got %d submissions for log group %d, expected at most %d" % group_count, len(log_groups[i])))
         total_count += group_count
-    if total_count != 2:
-        raise(Exception("Got %d total submissions, expected exactly 2" % total_count))
+    if total_count < 2:
+        raise(Exception("Got %d total submissions, expected at least 2" % total_count))
 
 # TODO(#5938): Remove this test.
 def test_ct_submission_google():
