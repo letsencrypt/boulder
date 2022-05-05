@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -114,6 +115,10 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*
 
 // MakeReadClient produces a *rocsp.Client from a config.
 func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*rocsp.Client, error) {
+	if len(c.Addrs) == 0 {
+		return nil, errors.New("redis config's 'addrs' field was empty")
+	}
+
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)
