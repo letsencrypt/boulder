@@ -11,9 +11,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"fmt"
 	"io/ioutil"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -769,4 +771,8 @@ func TestLoadChain_InvalidSig(t *testing.T) {
 		"../test/test-ca-cross.pem",
 	})
 	test.AssertError(t, err, "Should reject invalid signature")
+	test.Assert(t, strings.Contains(err.Error(), "test-ca-cross.pem"),
+		fmt.Sprintf("Expected error to mention filename, got: %s", err))
+	test.Assert(t, strings.Contains(err.Error(), "signature from \"CN=happy hacker fake CA\""),
+		fmt.Sprintf("Expected error to mention subject, got: %s", err))
 }
