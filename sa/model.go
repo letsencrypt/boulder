@@ -241,15 +241,14 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 
 	// We don't want to write literal JSON "null" strings into the database if the
 	// list of contact addresses is empty. Replace any possibly-`nil` slice with
-	// an empty slice instead. We don't need to reference reg.ContactPresent,
-	// because we're going to write the whole object to the database anyway.
-	contact := reg.Contact
-	if len(contact) == 0 {
-		contact = []string{}
-	}
-	jsonContact, err := json.Marshal(contact)
-	if err != nil {
-		return nil, err
+	// an empty slice instead. We don't need to check reg.ContactPresent, because
+	// we're going to write the whole object to the database anyway.
+	jsonContact := []byte("[]")
+	if len(reg.Contact) != 0 {
+		jsonContact, err = json.Marshal(reg.Contact)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// For some reason we use different serialization formats for InitialIP
