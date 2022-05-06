@@ -239,6 +239,15 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		return nil, err
 	}
 
+	// We don't want to write literal JSON "null" strings into the database if the
+	// list of contact addresses is empty. Replace any possibly-`nil` slice with
+	// an empty slice instead. We don't need to reference reg.ContactPresent,
+	// because we're going to write the whole object to the database anyway.
+	contact := reg.Contact
+	if len(contact) == 0 {
+		contact = []string{}
+	}
+
 	// For some reason we use different serialization formats for InitialIP
 	// in database models and in protobufs, despite the fact that both formats
 	// are just []byte.
@@ -260,7 +269,7 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		ID:        reg.Id,
 		Key:       reg.Key,
 		KeySHA256: sha,
-		Contact:   reg.Contact,
+		Contact:   contact,
 		Agreement: reg.Agreement,
 		InitialIP: []byte(initialIP.To16()),
 		CreatedAt: createdAt,
