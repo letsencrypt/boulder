@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/base64"
 	"io/ioutil"
 	"math/big"
 	"os"
@@ -537,7 +538,11 @@ func TestIssue(t *testing.T) {
 			linter, err := linter.New(
 				issuerCert.Certificate,
 				issuerSigner,
-				[]string{"w_ct_sct_policy_count_unsatisfied", "n_subject_common_name_included"},
+				[]string{
+					"w_ct_sct_policy_count_unsatisfied",
+					"e_scts_from_same_operator",
+					"n_subject_common_name_included",
+				},
 			)
 			test.AssertNotError(t, err, "failed to create linter")
 			signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
@@ -573,7 +578,10 @@ func TestIssueRSA(t *testing.T) {
 	linter, err := linter.New(
 		issuerCert.Certificate,
 		issuerSigner,
-		[]string{"w_ct_sct_policy_count_unsatisfied"},
+		[]string{
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_scts_from_same_operator",
+		},
 	)
 	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
@@ -604,7 +612,10 @@ func TestIssueCTPoison(t *testing.T) {
 	linter, err := linter.New(
 		issuerCert.Certificate,
 		issuerSigner,
-		[]string{"w_ct_sct_policy_count_unsatisfied"},
+		[]string{
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_scts_from_same_operator",
+		},
 	)
 	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
@@ -636,19 +647,30 @@ func TestIssueSCTList(t *testing.T) {
 	linter, err := linter.New(
 		issuerCert.Certificate,
 		issuerSigner,
-		[]string{"w_ct_sct_policy_count_unsatisfied"},
+		[]string{},
 	)
 	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
+	logID1, err := base64.StdEncoding.DecodeString("KXm+8J45OSHwVnOfY6V35b5XfZxgCvj5TV0mXCVdx4Q=")
+	test.AssertNotError(t, err, "failed to decode ct log ID")
+	logID2, err := base64.StdEncoding.DecodeString("36Veq2iCTx9sre64X04+WurNohKkal6OOxLAIERcKnM=")
+	test.AssertNotError(t, err, "failed to decode ct log ID")
 	certBytes, err := signer.Issue(&IssuanceRequest{
 		PublicKey: pk.Public(),
 		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:  []string{"example.com"},
 		SCTList: []ct.SignedCertificateTimestamp{
-			{},
+			{
+				SCTVersion: ct.V1,
+				LogID:      ct.LogID{KeyID: *(*[32]byte)(logID1)},
+			},
+			{
+				SCTVersion: ct.V1,
+				LogID:      ct.LogID{KeyID: *(*[32]byte)(logID2)},
+			},
 		},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
@@ -662,8 +684,16 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
 	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, SCT list
 	test.AssertDeepEquals(t, cert.Extensions[8], pkix.Extension{
-		Id:    sctListOID,
-		Value: []byte{4, 51, 0, 49, 0, 47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+		Id: sctListOID,
+		Value: []byte{
+			4, 100, 0, 98, 0, 47, 0, 41, 121, 190, 240, 158, 57, 57, 33,
+			240, 86, 115, 159, 99, 165, 119, 229, 190, 87, 125, 156, 96, 10, 248, 249,
+			77, 93, 38, 92, 37, 93, 199, 132, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 47, 0, 223, 165, 94, 171, 104, 130, 79,
+			31, 108, 173, 238, 184, 95, 78, 62, 90, 234, 205, 162, 18, 164, 106, 94,
+			142, 59, 18, 192, 32, 68, 92, 42, 115, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 0, 0,
+		},
 	})
 }
 
@@ -673,7 +703,10 @@ func TestIssueMustStaple(t *testing.T) {
 	linter, err := linter.New(
 		issuerCert.Certificate,
 		issuerSigner,
-		[]string{"w_ct_sct_policy_count_unsatisfied"},
+		[]string{
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_scts_from_same_operator",
+		},
 	)
 	test.AssertNotError(t, err, "failed to create linter")
 	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
@@ -716,7 +749,7 @@ func TestIssueBadLint(t *testing.T) {
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertError(t, err, "Issue didn't fail")
-	test.AssertEquals(t, err.Error(), "tbsCertificate linting failed: failed lints: w_ct_sct_policy_count_unsatisfied")
+	test.AssertContains(t, err.Error(), "tbsCertificate linting failed: failed lints")
 }
 
 func TestLoadChain_Valid(t *testing.T) {

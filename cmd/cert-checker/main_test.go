@@ -582,6 +582,7 @@ func TestIgnoredLint(t *testing.T) {
 		"zlint error: e_sub_cert_aia_does_not_contain_ocsp_url",
 		"zlint info: n_subject_common_name_included",
 		"zlint info: w_ct_sct_policy_count_unsatisfied Certificate had 0 embedded SCTs. Browser policy may require 2 for this certificate.",
+		"zlint error: e_scts_from_same_operator Certificate had too few embedded SCTs; browser policy requires 2.",
 	}
 	sort.Strings(expectedProblems)
 
@@ -589,7 +590,7 @@ func TestIgnoredLint(t *testing.T) {
 	// expected zlint problems.
 	_, problems := checker.checkCert(cert, nil)
 	sort.Strings(problems)
-	test.Assert(t, reflect.DeepEqual(problems, expectedProblems), "problems did not match expected")
+	test.AssertDeepEquals(t, problems, expectedProblems)
 
 	// Check the certificate again with an ignore map that excludes the affected
 	// lints. This should return no problems.
@@ -597,6 +598,7 @@ func TestIgnoredLint(t *testing.T) {
 		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
 		"n_subject_common_name_included":           true,
 		"w_ct_sct_policy_count_unsatisfied":        true,
+		"e_scts_from_same_operator":                true,
 	})
 	test.AssertEquals(t, len(problems), 0)
 }
