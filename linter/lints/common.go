@@ -18,6 +18,7 @@ const (
 	LetsEncryptCPSIntermediate lint.LintSource = "LECPSIntermediate"
 	LetsEncryptCPSRoot         lint.LintSource = "LECPSRoot"
 	LetsEncryptCPSSubscriber   lint.LintSource = "LECPSSubscriber"
+	ChromeCTPolicy             lint.LintSource = "ChromeCT"
 )
 
 var (
