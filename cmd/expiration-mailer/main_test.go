@@ -6,7 +6,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
 	"net"
@@ -109,11 +108,8 @@ func TestSendNags(t *testing.T) {
 
 	cert := &x509.Certificate{
 		SerialNumber: big.NewInt(0x0304),
-		Subject: pkix.Name{
-			CommonName: "happy",
-		},
-		NotAfter: fc.Now().AddDate(0, 0, 2),
-		DNSNames: []string{"example.com"},
+		NotAfter:     fc.Now().AddDate(0, 0, 2),
+		DNSNames:     []string{"example.com"},
 	}
 
 	err := m.sendNags([]string{emailA}, []*x509.Certificate{cert})
@@ -285,9 +281,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 
 	// Expires in <1d, last nag was the 4d nag
 	rawCertA := x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "happy A",
-		},
 		NotAfter:     ctx.fc.Now().Add(23 * time.Hour),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: serial1,
@@ -303,9 +296,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 
 	// Expires in 3d, already sent 4d nag at 4.5d
 	rawCertB := x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "happy B",
-		},
 		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-b.com"},
 		SerialNumber: serial2,
@@ -321,9 +311,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 
 	// Expires in 7d and change, no nag sent at all yet
 	rawCertC := x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "happy C",
-		},
 		NotAfter:     ctx.fc.Now().Add((7*24 + 1) * time.Hour),
 		DNSNames:     []string{"example-c.com", "another.example-c.com"},
 		SerialNumber: serial3,
@@ -339,9 +326,6 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 
 	// Expires in 3d, renewed
 	rawCertD := x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "happy D",
-		},
 		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
 		DNSNames:     []string{"example-d.com"},
 		SerialNumber: serial4,
@@ -521,9 +505,6 @@ func TestCertIsRenewed(t *testing.T) {
 		testData.stringSerial = core.SerialToString(testData.Serial)
 
 		rawCert := x509.Certificate{
-			Subject: pkix.Name{
-				CommonName: testData.DNS[0],
-			},
 			NotBefore:    testData.NotBefore,
 			NotAfter:     testData.NotAfter,
 			DNSNames:     testData.DNS,
@@ -574,10 +555,6 @@ func TestLifetimeOfACert(t *testing.T) {
 	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{emailA})
 	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "happy A",
-		},
-
 		NotAfter:     testCtx.fc.Now(),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: serial1,
@@ -659,10 +636,6 @@ func TestDontFindRevokedCert(t *testing.T) {
 	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{"mailto:one@mail.com"})
 	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := x509.Certificate{
-		Subject: pkix.Name{
-			CommonName: "happy A",
-		},
-
 		NotAfter:     testCtx.fc.Now().Add(expiresIn),
 		DNSNames:     []string{"example-a.com"},
 		SerialNumber: serial1,
