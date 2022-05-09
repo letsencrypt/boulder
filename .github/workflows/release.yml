@@ -45,9 +45,9 @@ jobs:
         with:
           name: boulder deb
       - name: rename
-        run: mv boulder.deb boulder-1.0.0-$(git rev-parse --short HEAD).x86_64.deb
+        run: mv boulder.deb boulder-1.0.0-$(git rev-parse --short=8 HEAD).x86_64.deb
       - name: push release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_create
-        run: gh release create "${GITHUB_REF_NAME}" boulder-1.0.0-$(git rev-parse --short HEAD).x86_64.deb
+        run: gh release create "${GITHUB_REF_NAME}" boulder-1.0.0-$(git rev-parse --short=8 HEAD).x86_64.deb
