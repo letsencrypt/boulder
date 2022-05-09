@@ -266,34 +266,35 @@ func TestFindExpiringCertificates(t *testing.T) {
 	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
 }
 
+func makeRegistration(sac sapb.StorageAuthorityClient, id int64, jsonKey []byte, contacts []string) (*corepb.Registration, error) {
+	var ip [4]byte
+	_, err := rand.Reader.Read(ip[:])
+	if err != nil {
+		return nil, err
+	}
+	ipText, err := net.IP(ip[:]).MarshalText()
+	if err != nil {
+		return nil, fmt.Errorf("formatting IP address: %s", err)
+	}
+	reg, err := sac.NewRegistration(context.Background(), &corepb.Registration{
+		Id:        id,
+		Contact:   contacts,
+		Key:       jsonKey,
+		InitialIP: ipText,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("storing registration: %s", err)
+	}
+	return reg, nil
+}
+
 func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	// Add some expiring certificates and registrations
-	ipA, _ := net.ParseIP("2.3.2.3").MarshalText()
-	regA := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{emailA},
-		Key:       jsonKeyA,
-		InitialIP: ipA,
-	}
-	regB := &corepb.Registration{
-		Id:        2,
-		Contact:   []string{emailB},
-		Key:       jsonKeyB,
-		InitialIP: ipA,
-	}
-	ipC, _ := net.ParseIP("210.3.2.3").MarshalText()
-	regC := &corepb.Registration{
-		Id:        3,
-		Contact:   []string{emailB},
-		Key:       jsonKeyC,
-		InitialIP: ipC,
-	}
-	bg := context.Background()
-	regA, err := ctx.ssa.NewRegistration(bg, regA)
+	regA, err := makeRegistration(ctx.ssa, 1, jsonKeyA, []string{emailA})
 	test.AssertNotError(t, err, "Couldn't store regA")
-	regB, err = ctx.ssa.NewRegistration(bg, regB)
+	regB, err := makeRegistration(ctx.ssa, 2, jsonKeyB, []string{emailB})
 	test.AssertNotError(t, err, "Couldn't store regB")
-	regC, err = ctx.ssa.NewRegistration(bg, regC)
+	regC, err := makeRegistration(ctx.ssa, 3, jsonKeyC, []string{emailB})
 	test.AssertNotError(t, err, "Couldn't store regC")
 
 	// Expires in <1d, last nag was the 4d nag
@@ -584,15 +585,7 @@ func TestLifetimeOfACert(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 	defer testCtx.cleanUp()
 
-	ipA, err := net.ParseIP("1.2.2.1").MarshalText()
-	test.AssertNotError(t, err, "Couldn't create initialIP")
-	regA := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{emailA},
-		Key:       jsonKeyA,
-		InitialIP: ipA,
-	}
-	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
+	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{emailA})
 	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
@@ -677,17 +670,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 	expiresIn := 24 * time.Hour
 	testCtx := setup(t, []time.Duration{expiresIn})
 
-	emailA := "mailto:one@mail.com"
-
-	ipA, err := net.ParseIP("1.2.2.1").MarshalText()
-	test.AssertNotError(t, err, "Couldn't create initialIP")
-	regA := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{emailA},
-		Key:       jsonKeyA,
-		InitialIP: ipA,
-	}
-	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
+	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{"mailto:one@mail.com"})
 	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := x509.Certificate{
 		Subject: pkix.Name{
@@ -725,15 +708,7 @@ func TestDedupOnRegistration(t *testing.T) {
 	expiresIn := 96 * time.Hour
 	testCtx := setup(t, []time.Duration{expiresIn})
 
-	ipA, err := net.ParseIP("1.2.2.1").MarshalText()
-	test.AssertNotError(t, err, "Couldn't create initialIP")
-	regA := &corepb.Registration{
-		Id:        1,
-		Contact:   []string{emailA},
-		Key:       jsonKeyA,
-		InitialIP: ipA,
-	}
-	regA, err = testCtx.ssa.NewRegistration(ctx, regA)
+	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{emailA})
 	test.AssertNotError(t, err, "Couldn't store regA")
 	rawCertA := newX509Cert("happy A",
 		testCtx.fc.Now().Add(72*time.Hour),
