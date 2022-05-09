@@ -160,11 +160,8 @@ func TestSendNags(t *testing.T) {
 }
 
 var serial1 = big.NewInt(0x1336)
-var serial1String = core.SerialToString(serial1)
 var serial2 = big.NewInt(0x1337)
-var serial2String = core.SerialToString(serial2)
 var serial3 = big.NewInt(0x1338)
-var serial3String = core.SerialToString(serial3)
 var serial4 = big.NewInt(0x1339)
 var serial4String = core.SerialToString(serial4)
 var serial5 = big.NewInt(0x1340)
@@ -539,7 +536,7 @@ func TestCertIsRenewed(t *testing.T) {
 			Expires: testData.NotAfter,
 		}
 
-		insertCertificate(cert, time.Time{})
+		err = insertCertificate(cert, time.Time{})
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
 
 		err = setupDBMap.Insert(fqdnStatus)
