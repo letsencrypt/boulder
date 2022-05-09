@@ -270,6 +270,25 @@ func makeRegistration(sac sapb.StorageAuthorityClient, id int64, jsonKey []byte,
 	return reg, nil
 }
 
+func makeCertificate(regID int64, serial *big.Int, dnsNames []string, expires time.Duration, fc clock.FakeClock) (*core.Certificate, error) {
+	// Expires in <1d, last nag was the 4d nag
+	template := &x509.Certificate{
+		NotAfter:     fc.Now().Add(expires),
+		DNSNames:     dnsNames,
+		SerialNumber: serial,
+	}
+	certDer, err := x509.CreateCertificate(rand.Reader, template, template, &testKey.PublicKey, testKey)
+	if err != nil {
+		return nil, err
+	}
+	return &core.Certificate{
+		RegistrationID: regID,
+		Serial:         core.SerialToString(template.SerialNumber),
+		Expires:        template.NotAfter,
+		DER:            certDer,
+	}, nil
+}
+
 func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	// Add some expiring certificates and registrations
 	regA, err := makeRegistration(ctx.ssa, 1, jsonKeyA, []string{emailA})
@@ -280,72 +299,50 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	test.AssertNotError(t, err, "Couldn't store regC")
 
 	// Expires in <1d, last nag was the 4d nag
-	rawCertA := x509.Certificate{
-		NotAfter:     ctx.fc.Now().Add(23 * time.Hour),
-		DNSNames:     []string{"example-a.com"},
-		SerialNumber: serial1,
-	}
-	certDerA, err := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, testKey)
+	certA, err := makeCertificate(
+		regA.Id,
+		serial1,
+		[]string{"example-a.com"},
+		23*time.Hour,
+		ctx.fc)
 	test.AssertNotError(t, err, "creating cert A")
-	certA := &core.Certificate{
-		RegistrationID: regA.Id,
-		Serial:         serial1String,
-		Expires:        rawCertA.NotAfter,
-		DER:            certDerA,
-	}
 
 	// Expires in 3d, already sent 4d nag at 4.5d
-	rawCertB := x509.Certificate{
-		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
-		DNSNames:     []string{"example-b.com"},
-		SerialNumber: serial2,
-	}
-	certDerB, err := x509.CreateCertificate(rand.Reader, &rawCertB, &rawCertB, &testKey.PublicKey, testKey)
+	certB, err := makeCertificate(
+		regA.Id,
+		serial2,
+		[]string{"example-b.com"},
+		72*time.Hour,
+		ctx.fc)
 	test.AssertNotError(t, err, "creating cert B")
-	certB := &core.Certificate{
-		RegistrationID: regA.Id,
-		Serial:         serial2String,
-		Expires:        rawCertB.NotAfter,
-		DER:            certDerB,
-	}
 
 	// Expires in 7d and change, no nag sent at all yet
-	rawCertC := x509.Certificate{
-		NotAfter:     ctx.fc.Now().Add((7*24 + 1) * time.Hour),
-		DNSNames:     []string{"example-c.com", "another.example-c.com"},
-		SerialNumber: serial3,
-	}
-	certDerC, err := x509.CreateCertificate(rand.Reader, &rawCertC, &rawCertC, &testKey.PublicKey, testKey)
+	certC, err := makeCertificate(
+		regB.Id,
+		serial3,
+		[]string{"example-c.com", "another.example-c.com"},
+		(7*24+1)*time.Hour,
+		ctx.fc)
 	test.AssertNotError(t, err, "creating cert C")
-	certC := &core.Certificate{
-		RegistrationID: regB.Id,
-		Serial:         serial3String,
-		Expires:        rawCertC.NotAfter,
-		DER:            certDerC,
-	}
 
 	// Expires in 3d, renewed
-	rawCertD := x509.Certificate{
-		NotAfter:     ctx.fc.Now().AddDate(0, 0, 3),
-		DNSNames:     []string{"example-d.com"},
-		SerialNumber: serial4,
-	}
-	certDerD, err := x509.CreateCertificate(rand.Reader, &rawCertD, &rawCertD, &testKey.PublicKey, testKey)
+	certDNames := []string{"example-d.com"}
+	certD, err := makeCertificate(
+		regC.Id,
+		serial4,
+		certDNames,
+		72*time.Hour,
+		ctx.fc)
 	test.AssertNotError(t, err, "creating cert D")
-	certD := &core.Certificate{
-		RegistrationID: regC.Id,
-		Serial:         serial4String,
-		Expires:        rawCertD.NotAfter,
-		DER:            certDerD,
-	}
+
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: sa.HashNames(rawCertD.DNSNames),
+		SetHash: sa.HashNames(certDNames),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: sa.HashNames(rawCertD.DNSNames),
+		SetHash: sa.HashNames(certDNames),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -361,13 +358,13 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	test.AssertNotError(t, err, "Couldn't add certC")
 	err = setupDBMap.Insert(certD)
 	test.AssertNotError(t, err, "Couldn't add certD")
-	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial1String, ctx.fc.Now().AddDate(0, 0, -3), string(core.OCSPStatusGood), rawCertA.NotAfter, time.Time{}, time.Time{}, 0)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial1String, ctx.fc.Now().AddDate(0, 0, -3), string(core.OCSPStatusGood), certA.Expires, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "Couldn't add certStatusA")
-	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial2String, ctx.fc.Now().Add(-36*time.Hour), string(core.OCSPStatusGood), rawCertB.NotAfter, time.Time{}, time.Time{}, 0)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial2String, ctx.fc.Now().Add(-36*time.Hour), string(core.OCSPStatusGood), certB.Expires, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "Couldn't add certStatusB")
-	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial3String, string(core.OCSPStatusGood), rawCertC.NotAfter, time.Time{}, time.Time{}, time.Time{}, 0)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial3String, string(core.OCSPStatusGood), certC.Expires, time.Time{}, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "Couldn't add certStatusC")
-	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial4String, string(core.OCSPStatusGood), rawCertD.NotAfter, time.Time{}, time.Time{}, time.Time{}, 0)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial4String, string(core.OCSPStatusGood), certD.Expires, time.Time{}, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "Couldn't add certStatusD")
 	err = setupDBMap.Insert(fqdnStatusD)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
@@ -510,6 +507,7 @@ func TestCertIsRenewed(t *testing.T) {
 			DNSNames:     testData.DNS,
 			SerialNumber: testData.Serial,
 		}
+		// Can't use makeCertificate here because we also care about NotBefore
 		certDer, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		if err != nil {
 			t.Fatal(err)
@@ -554,24 +552,20 @@ func TestLifetimeOfACert(t *testing.T) {
 
 	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{emailA})
 	test.AssertNotError(t, err, "Couldn't store regA")
-	rawCertA := x509.Certificate{
-		NotAfter:     testCtx.fc.Now(),
-		DNSNames:     []string{"example-a.com"},
-		SerialNumber: serial1,
-	}
-	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, testKey)
-	certA := &core.Certificate{
-		RegistrationID: regA.Id,
-		Serial:         serial1String,
-		Expires:        rawCertA.NotAfter,
-		DER:            certDerA,
-	}
+
+	certA, err := makeCertificate(
+		regA.Id,
+		serial1,
+		[]string{"example-a.com"},
+		0,
+		testCtx.fc)
+	test.AssertNotError(t, err, "making certificate")
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	err = setupDBMap.Insert(certA)
 	test.AssertNotError(t, err, "unable to insert Certificate")
-	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial1String, string(core.OCSPStatusGood), rawCertA.NotAfter, time.Time{}, time.Time{}, time.Time{}, 0)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, status, notAfter, lastExpirationNagSent, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial1String, string(core.OCSPStatusGood), certA.Expires, time.Time{}, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "unable to insert CertificateStatus")
 
 	type lifeTest struct {
@@ -635,18 +629,13 @@ func TestDontFindRevokedCert(t *testing.T) {
 
 	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{"mailto:one@mail.com"})
 	test.AssertNotError(t, err, "Couldn't store regA")
-	rawCertA := x509.Certificate{
-		NotAfter:     testCtx.fc.Now().Add(expiresIn),
-		DNSNames:     []string{"example-a.com"},
-		SerialNumber: serial1,
-	}
-	certDerA, _ := x509.CreateCertificate(rand.Reader, &rawCertA, &rawCertA, &testKey.PublicKey, testKey)
-	certA := &core.Certificate{
-		RegistrationID: regA.Id,
-		Serial:         serial1String,
-		Expires:        rawCertA.NotAfter,
-		DER:            certDerA,
-	}
+	certA, err := makeCertificate(
+		regA.Id,
+		serial1,
+		[]string{"example-a.com"},
+		expiresIn,
+		testCtx.fc)
+	test.AssertNotError(t, err, "making certificate")
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
@@ -669,32 +658,21 @@ func TestDedupOnRegistration(t *testing.T) {
 
 	regA, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{emailA})
 	test.AssertNotError(t, err, "Couldn't store regA")
-	rawCertA := newX509Cert("happy A",
-		testCtx.fc.Now().Add(72*time.Hour),
-		[]string{"example-a.com", "shared-example.com"},
+	certA, err := makeCertificate(
+		regA.Id,
 		serial1,
-	)
+		[]string{"example-a.com", "shared-example.com"},
+		72*time.Hour,
+		testCtx.fc)
+	test.AssertNotError(t, err, "making certificate")
 
-	certDerA, _ := x509.CreateCertificate(rand.Reader, rawCertA, rawCertA, &testKey.PublicKey, testKey)
-	certA := &core.Certificate{
-		RegistrationID: regA.Id,
-		Serial:         serial1String,
-		Expires:        rawCertA.NotAfter,
-		DER:            certDerA,
-	}
-
-	rawCertB := newX509Cert("happy B",
-		testCtx.fc.Now().Add(48*time.Hour),
-		[]string{"example-b.com", "shared-example.com"},
+	certB, err := makeCertificate(
+		regA.Id,
 		serial2,
-	)
-	certDerB, _ := x509.CreateCertificate(rand.Reader, rawCertB, rawCertB, &testKey.PublicKey, testKey)
-	certB := &core.Certificate{
-		RegistrationID: regA.Id,
-		Serial:         serial2String,
-		Expires:        rawCertB.NotAfter,
-		DER:            certDerB,
-	}
+		[]string{"example-b.com", "shared-example.com"},
+		48*time.Hour,
+		testCtx.fc)
+	test.AssertNotError(t, err, "making certificate")
 
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
@@ -702,9 +680,9 @@ func TestDedupOnRegistration(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't add certA")
 	err = setupDBMap.Insert(certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial1String, time.Unix(0, 0), string(core.OCSPStatusGood), rawCertA.NotAfter, time.Time{}, time.Time{}, 0)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial1String, time.Unix(0, 0), string(core.OCSPStatusGood), certA.Expires, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "Couldn't add certStatusA")
-	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial2String, time.Unix(0, 0), string(core.OCSPStatusGood), rawCertB.NotAfter, time.Time{}, time.Time{}, 0)
+	_, err = setupDBMap.Exec("INSERT INTO certificateStatus (serial, lastExpirationNagSent, status, notAfter, ocspLastUpdated, revokedDate, revokedReason) VALUES (?,?,?,?,?,?,?)", serial2String, time.Unix(0, 0), string(core.OCSPStatusGood), certB.Expires, time.Time{}, time.Time{}, 0)
 	test.AssertNotError(t, err, "Couldn't add certStatusB")
 
 	err = testCtx.m.findExpiringCertificates(context.Background())
@@ -723,7 +701,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
 			domains,
-			rawCertB.NotAfter.Format(time.RFC822Z)),
+			certB.Expires.Format(time.RFC822Z)),
 	}
 	test.AssertEquals(t, expected, testCtx.mc.Messages[0])
 }
