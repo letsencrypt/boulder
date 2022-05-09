@@ -12,6 +12,12 @@ on:
 
 jobs:
   build-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        GO_VERSION:
+          - 1.17.9
+          - 1.18.1
     runs-on: ubuntu-20.04
     permissions:
       contents: read
@@ -20,34 +26,44 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: build deb
+      # This step will create an output called `filename` which contains the
+      # path of the produced .deb file.
+      - name: Build .deb
+        id: build
+        env:
+          GO_VERSION: ${{ matrix.GO_VERSION }}
         run: ./tools/make-deb.sh
 
-      - name: upload deb
+      # Because each copy of this job (one for each entry in the matrix) uploads
+      # to the same artifact name, all of the files will live side-by-side in
+      # the same artifact, and can be downloaded as a single unit.
+      - name: Upload .deb
         uses: actions/upload-artifact@v3
         with:
-          name: boulder deb
-          path: boulder.deb
+          name: boulder_debs
+          path: ${{ steps.build.outputs.filename }}
 
   push-release:
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    # if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     needs: build-release
     runs-on: ubuntu-20.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v2
-        with:
-          persist-credentials: false
-
-      - name: Download release artifact
+      - name: Download .debs
+        id: download
         uses: actions/download-artifact@v3
         with:
-          name: boulder deb
-      - name: rename
-        run: mv boulder.deb boulder-1.0.0-$(git rev-parse --short=8 HEAD).x86_64.deb
-      - name: push release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # https://cli.github.com/manual/gh_release_create
-        run: gh release create "${GITHUB_REF_NAME}" boulder-1.0.0-$(git rev-parse --short=8 HEAD).x86_64.deb
+          name: boulder_debs
+
+      - name: Echo output
+        run: echo ${{ steps.download.outputs.download-path }}
+
+      - name: List files
+        run: ls -laR
+
+      # - name: Create release
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   # https://cli.github.com/manual/gh_release_create
+      #   run: gh release create "${GITHUB_REF_NAME}" "boulder deb/*"
