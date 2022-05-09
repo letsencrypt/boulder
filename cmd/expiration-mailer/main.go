@@ -59,11 +59,13 @@ type mailer struct {
 }
 
 type mailerStats struct {
-	nagsAtCapacity    *prometheus.GaugeVec
-	errorCount        *prometheus.CounterVec
-	renewalCount      *prometheus.CounterVec
-	sendLatency       prometheus.Histogram
-	processingLatency prometheus.Histogram
+	nagsAtCapacity                    *prometheus.GaugeVec
+	errorCount                        *prometheus.CounterVec
+	sendLatency                       prometheus.Histogram
+	processingLatency                 prometheus.Histogram
+	certificatesExamined              prometheus.Counter
+	certificatesAlreadyRenewed        prometheus.Counter
+	certificatesPerAccountNeedingMail prometheus.Histogram
 }
 
 func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
@@ -179,11 +181,11 @@ func (m *mailer) updateCertStatus(serial string) error {
 	return err
 }
 
-func (m *mailer) certIsRenewed(names []string, issued time.Time) (bool, error) {
+func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.Time) (bool, error) {
 	namehash := sa.HashNames(names)
 
 	var present bool
-	err := m.dbMap.SelectOne(
+	err := m.dbMap.WithContext(ctx).SelectOne(
 		&present,
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
 		namehash,
@@ -228,13 +230,13 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 				continue
 			}
 
-			renewed, err := m.certIsRenewed(parsedCert.DNSNames, parsedCert.NotBefore)
+			renewed, err := m.certIsRenewed(ctx, parsedCert.DNSNames, parsedCert.NotBefore)
 			if err != nil {
 				m.log.AuditErrf("expiration-mailer: error fetching renewal state: %v", err)
 				// assume not renewed
 			} else if renewed {
 				m.log.Debugf("Cert %s is already renewed", cert.Serial)
-				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
+				m.stats.certificatesAlreadyRenewed.Add(1)
 				err := m.updateCertStatus(cert.Serial)
 				if err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
@@ -245,6 +247,8 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 			parsedCerts = append(parsedCerts, parsedCert)
 		}
+
+		m.stats.certificatesPerAccountNeedingMail.Observe(float64(len(parsedCerts)))
 
 		if len(parsedCerts) == 0 {
 			// all certificates are renewed
@@ -313,6 +317,9 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 			m.log.AuditErrf("expiration-mailer: Error loading certificate serials: %s", err)
 			return err
 		}
+		m.log.Debugf("found %d certificates", len(serials))
+
+		m.stats.certificatesExamined.Add(float64(len(serials)))
 
 		// If the number of rows was exactly `m.limit` rows we need to increment
 		// a stat indicating that this nag group is at capacity based on the
@@ -341,6 +348,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 				// is not being used by a subscriber, we don't send expiration email about
 				// it.
 				if db.IsNoRows(err) {
+					m.log.Infof("no rows for serial %q", serial)
 					continue
 				}
 				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
@@ -435,14 +443,6 @@ func initStats(stats prometheus.Registerer) mailerStats {
 		[]string{"type"})
 	stats.MustRegister(errorCount)
 
-	renewalCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renewals",
-			Help: "Number of messages skipped for being renewals",
-		},
-		nil)
-	stats.MustRegister(renewalCount)
-
 	sendLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "send_latency",
@@ -455,16 +455,40 @@ func initStats(stats prometheus.Registerer) mailerStats {
 		prometheus.HistogramOpts{
 			Name:    "processing_latency",
 			Help:    "Time the mailer takes processing certificates in seconds",
-			Buckets: []float64{1, 15, 30, 60, 75, 90, 120},
+			Buckets: []float64{30, 60, 75, 90, 120, 600, 3600},
 		})
 	stats.MustRegister(processingLatency)
 
+	certificatesExamined := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "certificates_examined",
+			Help: "Number of certificates looked at that are potentially due for an expiration mail",
+		})
+	stats.MustRegister(certificatesExamined)
+
+	certificatesAlreadyRenewed := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "certificates_already_renewed",
+			Help: "Number of certificates from certificates_examined that were ignored because they were already renewed",
+		})
+	stats.MustRegister(certificatesAlreadyRenewed)
+
+	accountsNeedingMail := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "certificates_per_account_needing_mail",
+			Help:    "After ignoring certificates_already_renewed and grouping the remaining certificates by account, how many accounts needed to get an email; grouped by how many certificates each account needed",
+			Buckets: []float64{0, 1, 2, 100, 1000, 10000, 100000},
+		})
+	stats.MustRegister(accountsNeedingMail)
+
 	return mailerStats{
-		nagsAtCapacity:    nagsAtCapacity,
-		errorCount:        errorCount,
-		renewalCount:      renewalCount,
-		sendLatency:       sendLatency,
-		processingLatency: processingLatency,
+		nagsAtCapacity:                    nagsAtCapacity,
+		errorCount:                        errorCount,
+		sendLatency:                       sendLatency,
+		processingLatency:                 processingLatency,
+		certificatesExamined:              certificatesExamined,
+		certificatesAlreadyRenewed:        certificatesAlreadyRenewed,
+		certificatesPerAccountNeedingMail: accountsNeedingMail,
 	}
 }
 

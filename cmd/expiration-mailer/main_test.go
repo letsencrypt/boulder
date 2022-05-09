@@ -569,7 +569,7 @@ func TestCertIsRenewed(t *testing.T) {
 	}
 
 	for _, testData := range testCerts {
-		renewed, err := testCtx.m.certIsRenewed(testData.DNS, testData.NotBefore)
+		renewed, err := testCtx.m.certIsRenewed(context.Background(), testData.DNS, testData.NotBefore)
 		if err != nil {
 			t.Errorf("error checking renewal state for %s: %v", testData.stringSerial, err)
 			continue
