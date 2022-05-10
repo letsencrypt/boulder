@@ -196,6 +196,43 @@ func TestProcessCerts(t *testing.T) {
 	}
 }
 
+// There's an account with an expiring certificate but no email address. We shouldn't examine
+// that certificate repeatedly; we should mark it as if it had an email sent already.
+func TestNoContactNotRenewed(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+
+	reg, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, nil)
+	test.AssertNotError(t, err, "Couldn't store regA")
+
+	cert, err := makeCertificate(
+		reg.Id,
+		serial1,
+		[]string{"example-a.com"},
+		23*time.Hour,
+		testCtx.fc)
+	test.AssertNotError(t, err, "creating cert A")
+
+	err = insertCertificate(cert, time.Time{})
+	test.AssertNotError(t, err, "inserting certificate")
+
+	log.Clear()
+	err = testCtx.m.findExpiringCertificates(context.Background())
+	test.AssertNotError(t, err, "finding expired certificates")
+
+	// We should have sent no mail, because there was no contact address
+	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
+
+	// We should have examined exactly one certificate
+	certsExamined := testCtx.m.stats.certificatesExamined
+	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
+
+	// Run findExpiringCertificates again. The count of examined certificates
+	// should not increase again.
+	err = testCtx.m.findExpiringCertificates(context.Background())
+	test.AssertNotError(t, err, "finding expired certificates")
+	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
+}
+
 func TestFindExpiringCertificates(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24, time.Hour * 24 * 4, time.Hour * 24 * 7})
 

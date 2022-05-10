@@ -151,8 +151,8 @@ func AssertNotContains(t *testing.T, haystack string, needle string) {
 	}
 }
 
-// AssertMetricEquals determines whether the value held by a prometheus Collector
-// (e.g. Gauge, Counter, CounterVec, etc) is equal to the expected integer.
+// AssertMetricWithLabelsEquals determines whether the value held by a prometheus Collector
+// (e.g. Gauge, Counter, CounterVec, etc) is equal to the expected float64.
 // In order to make useful assertions about just a subset of labels (e.g. for a
 // CounterVec with fields "host" and "valid", being able to assert that two
 // "valid": "true" increments occurred, without caring which host was tagged in

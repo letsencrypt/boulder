@@ -255,7 +255,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			continue
 		}
 
-		if reg.Contact == nil {
+		if len(reg.Contact) == 0 {
 			continue
 		}
 
