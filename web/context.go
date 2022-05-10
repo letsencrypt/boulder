@@ -27,8 +27,8 @@ type RequestEvent struct {
 	Code      int     `json:"-"`
 	Latency   float64 `json:"-"`
 	RealIP    string  `json:"-"`
-	TLS       string  `json:",omitempty"`
 
+	TLS            string   `json:",omitempty"`
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
 	Error          string   `json:",omitempty"`
@@ -50,10 +50,21 @@ type RequestEvent struct {
 
 	// For challenge POSTs, the challenge type.
 	ChallengeType string `json:",omitempty"`
+
+	// If true, the log event will not be emitted at all. Can only be set by
+	// calling .Suppress(); automatically unset by adding an internal error.
+	suppressed bool `json:"-"`
 }
 
 func (e *RequestEvent) AddError(msg string, args ...interface{}) {
 	e.InternalErrors = append(e.InternalErrors, fmt.Sprintf(msg, args...))
+	e.suppressed = false
+}
+
+func (e *RequestEvent) Suppress() {
+	if len(e.InternalErrors) == 0 {
+		e.suppressed = true
+	}
 }
 
 type WFEHandlerFunc func(context.Context, *RequestEvent, http.ResponseWriter, *http.Request)
@@ -148,6 +159,9 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (th *TopHandler) logEvent(logEvent *RequestEvent) {
+	if logEvent.suppressed {
+		return
+	}
 	var msg string
 	jsonEvent, err := json.Marshal(logEvent)
 	if err != nil {

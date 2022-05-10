@@ -543,6 +543,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		return
 	}
 
+	logEvent.Suppress()
 	response.Write(relDir)
 }
 
