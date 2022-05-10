@@ -487,7 +487,7 @@ func TestECDSAAllowList(t *testing.T) {
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
 	ca, _ := issueCertificateSubTestSetup(t)
-	contents := makeECDSAAllowListBytes(int64(arbitraryRegID))
+	contents := makeECDSAAllowListBytes(arbitraryRegID)
 	err := ca.ecdsaAllowList.Update(contents)
 	if err != nil {
 		t.Errorf("%s %s", yamlLoadErrMsg, err)

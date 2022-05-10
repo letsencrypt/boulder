@@ -148,7 +148,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JS
 		return &corepb.Registration{Id: 5}, berrors.NotFoundError("reg not found")
 	}
 
-	if bytes.Equal(req.Jwk, []byte(test5KeyPublicJSON)) {
+	if bytes.Equal(req.Jwk, test5KeyPublicJSON) {
 		// No key found
 		return &corepb.Registration{Id: 5}, berrors.NotFoundError("reg not found")
 	}

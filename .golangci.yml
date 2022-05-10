@@ -10,6 +10,7 @@ linters:
     - misspell
     - staticcheck
     - stylecheck
+    - unconvert
     - unused
 linters-settings:
   errcheck:
