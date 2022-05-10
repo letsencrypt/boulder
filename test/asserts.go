@@ -161,6 +161,7 @@ func AssertNotContains(t *testing.T, haystack string, needle string) {
 // Only works for simple metrics (Counters and Gauges), or for the *count*
 // (not value) of data points in a Histogram.
 func AssertMetricWithLabelsEquals(t *testing.T, c prometheus.Collector, l prometheus.Labels, expected float64) {
+	t.Helper()
 	ch := make(chan prometheus.Metric)
 	done := make(chan struct{})
 	go func() {
