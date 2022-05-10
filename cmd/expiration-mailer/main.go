@@ -37,7 +37,6 @@ import (
 )
 
 const (
-	defaultNagCheckInterval  = 24 * time.Hour
 	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
 )
 
@@ -399,9 +398,8 @@ type Config struct {
 
 		CertLimit int
 		NagTimes  []string
-		// How much earlier (than configured nag intervals) to
-		// send reminders, to account for the expected delay
-		// before the next expiration-mailer invocation.
+
+		// Deprecated: https://github.com/letsencrypt/boulder/issues/6097
 		NagCheckInterval string
 		// Path to a text/template email template
 		EmailTemplate string
@@ -583,15 +581,6 @@ func main() {
 		*reconnBase,
 		*reconnMax)
 
-	nagCheckInterval := defaultNagCheckInterval
-	if s := c.Mailer.NagCheckInterval; s != "" {
-		nagCheckInterval, err = time.ParseDuration(s)
-		if err != nil {
-			logger.AuditErrf("Failed to parse NagCheckInterval string %q: %s", s, err)
-			return
-		}
-	}
-
 	var nags durationSlice
 	for _, nagDuration := range c.Mailer.NagTimes {
 		dur, err := time.ParseDuration(nagDuration)
@@ -599,7 +588,10 @@ func main() {
 			logger.AuditErrf("Failed to parse nag duration string [%s]: %s", nagDuration, err)
 			return
 		}
-		nags = append(nags, dur+nagCheckInterval)
+		// Add some padding to the nag times so we send _before_ the configured
+		// time rather than after. See https://github.com/letsencrypt/boulder/pull/1029
+		adjustedInterval := dur + c.Mailer.Frequency.Duration
+		nags = append(nags, adjustedInterval)
 	}
 	// Make sure durations are sorted in increasing order
 	sort.Sort(nags)
