@@ -69,9 +69,6 @@ type mailerStats struct {
 }
 
 func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
-	if len(contacts) == 0 {
-		return nil
-	}
 	if len(certs) == 0 {
 		return errors.New("no certs given to send nags for")
 	}
@@ -252,10 +249,6 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 		if len(parsedCerts) == 0 {
 			// all certificates are renewed
-			continue
-		}
-
-		if len(reg.Contact) == 0 {
 			continue
 		}
 
