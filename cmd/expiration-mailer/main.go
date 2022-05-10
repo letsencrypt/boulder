@@ -352,7 +352,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 					continue
 				}
 				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
-				return err
+				continue
 			}
 			certs = append(certs, cert)
 		}
