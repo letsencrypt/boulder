@@ -270,6 +270,14 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 	}
 }
 
+// findExpiringCertificates finds certificates that might need an expiration mail, filters them,
+// groups by account, sends mail, and updates their status in the DB so we don't examine them again.
+//
+// Invariant: findExpiringCertificates should examine each certificate at most N times, where
+// N is the number of reminders. For every certificate examined (barring errors), this function
+// should update the lastExpirationNagSent field of certificateStatus, so it does not need to
+// examine the same certificate again on the next go-round. This ensures we make forward progress
+// and don't clog up the window of certificates to be examined.
 func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 	now := m.clk.Now()
 	// E.g. m.nagTimes = [2, 4, 8, 15] days from expiration
