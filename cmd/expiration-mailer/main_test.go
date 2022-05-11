@@ -409,7 +409,8 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	// The "48h0m0s" nag group should have its prometheus stat incremented once.
 	// Note: this is not the 24h0m0s nag as you would expect sending time.Hour
 	// * 24 to setup() for the nag duration. This is because all of the nags are
-	// offset by Frequency, which is 24hrs.
+	// offset by 24 hours in this test file's setup() function, to mimic a 24h
+	// setting for the "Frequency" field in the JSON config.
 	test.AssertEquals(t, countGroupsAtCapacity("48h0m0s", testCtx.m.stats.nagsAtCapacity), 1)
 
 	// A consecutive run shouldn't find anything

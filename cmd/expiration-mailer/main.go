@@ -621,14 +621,13 @@ func main() {
 	defer cancel()
 
 	go cmd.CatchSignals(logger, func() {
-		fmt.Printf("exiting\n")
 		cancel()
 		select {} // wait for the `findExpiringCertificates` calls below to exit
 	})
 
 	if *daemon {
 		if c.Mailer.Frequency.Duration == 0 {
-			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
+			fmt.Fprintln(os.Stderr, "mailer.Frequency is not set in the JSON config")
 			os.Exit(1)
 		}
 		t := time.NewTicker(c.Mailer.Frequency.Duration)
