@@ -43,7 +43,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		if p.HTTPStatus != c.statusCode {
 			t.Errorf("Incorrect status code for %s. Expected %d, got %d", reflect.TypeOf(c.err).Name(), c.statusCode, p.HTTPStatus)
 		}
-		if probs.ProblemType(p.Type) != c.problem {
+		if p.Type != c.problem {
 			t.Errorf("Expected problem urn %#v, got %#v", c.problem, p.Type)
 		}
 		if p.Detail != c.detail {

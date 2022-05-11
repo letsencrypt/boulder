@@ -1103,7 +1103,7 @@ func TestFetchHTTPInvalidUTF8(t *testing.T) {
 	// before the error is marshalled for grpc. This tests that the
 	// invalid string "f\xffoo" is expected to be converted to
 	// "f\ufffdoo".
-	test.AssertContains(t, string(prob.Detail), expectedResult)
+	test.AssertContains(t, prob.Detail, expectedResult)
 }
 
 // All paths that get assigned to tokens MUST be valid tokens
