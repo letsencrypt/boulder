@@ -43,16 +43,15 @@ func TestMux(t *testing.T) {
 	h := mux("/foobar/", src, time.Second, metrics.NoopRegisterer, blog.NewMock())
 
 	type muxTest struct {
-		method       string
-		path         string
-		reqBody      []byte
-		respBody     []byte
-		expectedType string
+		method   string
+		path     string
+		reqBody  []byte
+		respBody []byte
 	}
 	mts := []muxTest{
-		{"POST", "/foobar/", reqBytes, respBytes, "Success"},
-		{"GET", "/", nil, nil, ""},
-		{"GET", "/foobar/MFMwUTBPME0wSzAJBgUrDgMCGgUABBR+5mrncpqz/PiiIGRsFqEtYHEIXQQUqEpqYwR93brm0Tm3pkVl7/Oo7KECEgO/AC2R1FW8hePAj4xp//8Jhw==", nil, respBytes, "Success"},
+		{"POST", "/foobar/", reqBytes, respBytes},
+		{"GET", "/", nil, nil},
+		{"GET", "/foobar/MFMwUTBPME0wSzAJBgUrDgMCGgUABBR+5mrncpqz/PiiIGRsFqEtYHEIXQQUqEpqYwR93brm0Tm3pkVl7/Oo7KECEgO/AC2R1FW8hePAj4xp//8Jhw==", nil, respBytes},
 	}
 	for i, mt := range mts {
 		w := httptest.NewRecorder()

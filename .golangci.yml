@@ -10,6 +10,7 @@ linters:
     - ineffassign
     - misspell
     - staticcheck
+    - structcheck
     - stylecheck
     - unconvert
     - unused
