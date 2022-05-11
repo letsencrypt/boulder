@@ -301,7 +301,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	response.Header().Add("Last-Modified", ocspResponse.ThisUpdate.Format(time.RFC1123))
 	response.Header().Add("Expires", ocspResponse.NextUpdate.Format(time.RFC1123))
 	now := rs.clk.Now()
-	maxAge := 0
+	var maxAge int
 	if now.Before(ocspResponse.NextUpdate) {
 		maxAge = int(ocspResponse.NextUpdate.Sub(now) / time.Second)
 	} else {

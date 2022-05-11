@@ -2,7 +2,6 @@ linters:
   disable-all: true
   enable:
     - deadcode
-    - errcheck
     - gofmt
     - gosec
     - gosimple
@@ -16,6 +15,7 @@ linters:
     - unconvert
     - unused
     - varcheck
+    - wastedassign
 linters-settings:
   errcheck:
     ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write

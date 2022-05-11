@@ -2244,11 +2244,11 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	var issuerID int64 // TODO(#5152) make this an issuance.IssuerNameID
 	var err error
 	if req.Cert == nil {
-		cert = nil
 		serial, err := core.StringToSerial(req.Serial)
 		if err != nil {
 			return nil, err
 		}
+
 		cert = &x509.Certificate{
 			SerialNumber: serial,
 		}
