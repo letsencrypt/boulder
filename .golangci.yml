@@ -2,6 +2,7 @@ linters:
   disable-all: true
   enable:
     - deadcode
+    # TODO(#6105): add 'gci' linter
     - gofmt
     - gosec
     - gosimple
@@ -13,6 +14,7 @@ linters:
     - stylecheck
     - typecheck
     - unconvert
+    # TODO(#6104): Enable 'unparam' linter
     - unused
     - varcheck
     - wastedassign
