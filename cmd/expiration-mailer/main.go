@@ -379,7 +379,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		processingStarted := m.clk.Now()
 		err = m.processCerts(ctx, certs)
 		if err != nil {
-			m.log.AuditErrf("%s", err)
+			m.log.AuditErr(err.Error())
 		}
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
