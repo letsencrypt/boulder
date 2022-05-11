@@ -399,8 +399,9 @@ type Config struct {
 		CertLimit int
 		NagTimes  []string
 
-		// Deprecated: https://github.com/letsencrypt/boulder/issues/6097
+		// TODO(#6097): Remove this
 		NagCheckInterval string
+
 		// Path to a text/template email template
 		EmailTemplate string
 
