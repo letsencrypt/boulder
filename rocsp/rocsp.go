@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -90,7 +91,8 @@ type Client struct {
 }
 
 // NewClient creates a Client. The timeout applies to all requests, though a shorter timeout can be
-// applied on a per-request basis using context.Context.
+// applied on a per-request basis using context.Context. rdb.Options().Addrs must have at least one
+// entry.
 func NewClient(
 	rdb *redis.ClusterClient,
 	timeout time.Duration,
@@ -99,7 +101,13 @@ func NewClient(
 ) *Client {
 	dbc := metricsCollector{rdb: rdb}
 
-	labels := prometheus.Labels{"address": rdb.Options().Addrs[0], "user": rdb.Options().Username}
+	if len(rdb.Options().Addrs) == 0 {
+		return nil
+	}
+	labels := prometheus.Labels{
+		"addresses": strings.Join(rdb.Options().Addrs, ", "),
+		"user":      rdb.Options().Username,
+	}
 	dbc.hits = prometheus.NewDesc(
 		"redis_hits",
 		"Number of times free connection was found in the pool.",
