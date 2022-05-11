@@ -12,6 +12,7 @@ linters:
     - staticcheck
     - structcheck
     - stylecheck
+    - typecheck
     - unconvert
     - unused
 linters-settings:
