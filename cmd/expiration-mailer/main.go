@@ -174,9 +174,9 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	return nil
 }
 
-func (m *mailer) updateCertStatus(serial string) error {
-	_, err := m.dbMap.Exec(
-		"UPDATE certificateStatus SET lastExpirationNagSent = ?  WHERE serial = ?",
+func (m *mailer) updateCertStatus(ctx context.Context, serial string) error {
+	_, err := m.dbMap.WithContext(ctx).Exec(
+		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial = ?",
 		m.clk.Now(), serial)
 	return err
 }
@@ -194,7 +194,7 @@ func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.
 	return present, err
 }
 
-func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) {
+func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) error {
 	regIDToCerts := make(map[int64][]core.Certificate)
 
 	for _, cert := range allCerts {
@@ -205,14 +205,16 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 	err := m.mailer.Connect()
 	if err != nil {
-		m.log.AuditErrf("Error connecting to send nag emails: %s", err)
-		return
+		return fmt.Errorf("connecting to SMTP server: %w", err)
 	}
 	defer func() {
 		_ = m.mailer.Close()
 	}()
 
 	for regID, certs := range regIDToCerts {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		reg, err := m.rs.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 		if err != nil {
 			m.log.AuditErrf("Error fetching registration %d: %s", regID, err)
@@ -222,6 +224,9 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 		parsedCerts := []*x509.Certificate{}
 		for _, cert := range certs {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			parsedCert, err := x509.ParseCertificate(cert.DER)
 			if err != nil {
 				// TODO(#1420): tell registration about this error
@@ -237,7 +242,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			} else if renewed {
 				m.log.Debugf("Cert %s is already renewed", cert.Serial)
 				m.stats.certificatesAlreadyRenewed.Add(1)
-				err := m.updateCertStatus(cert.Serial)
+				err := m.updateCertStatus(ctx, cert.Serial)
 				if err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
 					m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -266,8 +271,11 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			continue
 		}
 		for _, cert := range parsedCerts {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			serial := core.SerialToString(cert.SerialNumber)
-			err = m.updateCertStatus(serial)
+			err = m.updateCertStatus(ctx, serial)
 			if err != nil {
 				m.log.AuditErrf("Error updating certificate status for %s: %s", serial, err)
 				m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -275,6 +283,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			}
 		}
 	}
+	return nil
 }
 
 func (m *mailer) findExpiringCertificates(ctx context.Context) error {
@@ -340,6 +349,9 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		// certificate status rows
 		var certs []core.Certificate
 		for _, serial := range serials {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			var cert core.Certificate
 			cert, err := sa.SelectCertificate(m.dbMap.WithContext(ctx), serial)
 			if err != nil {
@@ -365,7 +377,10 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		}
 
 		processingStarted := m.clk.Now()
-		m.processCerts(ctx, certs)
+		err = m.processCerts(ctx, certs)
+		if err != nil {
+			m.log.AuditErr(err.Error())
+		}
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
 		m.stats.processingLatency.Observe(elapsed.Seconds())
