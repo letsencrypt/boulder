@@ -16,6 +16,10 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+// RequestEvent is a structured record of the metadata we care about for a
+// single web request. It is generated when a request is received, passed to
+// the request handler which can populate its fields as appropriate, and then
+// logged when the request completes.
 type RequestEvent struct {
 	// These fields are not rendered in JSON; instead, they are rendered
 	// whitespace-separated ahead of the JSON. This saves bytes in the logs since
@@ -51,16 +55,23 @@ type RequestEvent struct {
 	// For challenge POSTs, the challenge type.
 	ChallengeType string `json:",omitempty"`
 
-	// If true, the log event will not be emitted at all. Can only be set by
+	// suppressed controls whether this event will be logged when the request
+	// completes. If true, no log line will be emitted. Can only be set by
 	// calling .Suppress(); automatically unset by adding an internal error.
 	suppressed bool `json:"-"`
 }
 
+// AddError formats the given message with the given args and appends it to the
+// list of internal errors that have occurred as part of handling this event.
+// If the RequestEvent has been suppressed, this un-suppresses it.
 func (e *RequestEvent) AddError(msg string, args ...interface{}) {
 	e.InternalErrors = append(e.InternalErrors, fmt.Sprintf(msg, args...))
 	e.suppressed = false
 }
 
+// Suppress causes the RequestEvent to not be logged at all when the request
+// is complete. This is a no-op if an internal error has been added to the event
+// (logging errors takes precedence over suppressing output).
 func (e *RequestEvent) Suppress() {
 	if len(e.InternalErrors) == 0 {
 		e.suppressed = true
