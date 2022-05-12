@@ -53,7 +53,10 @@ type RedisConfig struct {
 	WriteTimeout cmd.ConfigDuration
 
 	// Maximum number of socket connections.
-	// Default is 10 connections per every CPU as reported by runtime.NumCPU.
+	// Default is 5 connections per every CPU as reported by runtime.NumCPU.
+	// If this is set to an explicit value, that's not multiplied by NumCPU.
+	// PoolSize applies per cluster node and not for the whole cluster.
+	// https://pkg.go.dev/github.com/go-redis/redis#ClusterOptions
 	PoolSize int
 	// Minimum number of idle connections which is useful when establishing
 	// new connection is slow.
