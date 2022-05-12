@@ -86,7 +86,6 @@ type Client struct {
 	rdb        *redis.ClusterClient
 	timeout    time.Duration
 	clk        clock.Clock
-	rdc        metricsCollector
 	getLatency *prometheus.HistogramVec
 }
 
@@ -99,8 +98,6 @@ func NewClient(
 	clk clock.Clock,
 	stats prometheus.Registerer,
 ) *Client {
-	dbc := metricsCollector{rdb: rdb}
-
 	if len(rdb.Options().Addrs) == 0 {
 		return nil
 	}
@@ -108,7 +105,7 @@ func NewClient(
 		"addresses": strings.Join(rdb.Options().Addrs, ", "),
 		"user":      rdb.Options().Username,
 	}
-	stats.MustRegister(newMetricsCollector(labels))
+	stats.MustRegister(newMetricsCollector(rdb, labels))
 	getLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "rocsp_get_latency",
@@ -122,7 +119,6 @@ func NewClient(
 		rdb:        rdb,
 		timeout:    timeout,
 		clk:        clk,
-		rdc:        dbc,
 		getLatency: getLatency,
 	}
 }
