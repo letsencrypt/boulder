@@ -12,7 +12,9 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-type sctsFromSameOperator struct{}
+type sctsFromSameOperator struct {
+	logList loglist.LogList
+}
 
 func init() {
 	lint.RegisterLint(&lint.Lint{
@@ -26,7 +28,8 @@ func init() {
 }
 
 func NewSCTsFromSameOperator() lint.LintInterface {
-	return &sctsFromSameOperator{}
+	list, _ := loglist.New()
+	return &sctsFromSameOperator{logList: list}
 }
 
 func (l *sctsFromSameOperator) CheckApplies(c *x509.Certificate) bool {
@@ -34,6 +37,13 @@ func (l *sctsFromSameOperator) CheckApplies(c *x509.Certificate) bool {
 }
 
 func (l *sctsFromSameOperator) Execute(c *x509.Certificate) *lint.LintResult {
+	if len(l.logList) == 0 {
+		return &lint.LintResult{
+			Status:  lint.NE,
+			Details: "Failed to load log list, unable to check Certificate SCTs.",
+		}
+	}
+
 	if len(c.SignedCertificateTimestampList) < 2 {
 		return &lint.LintResult{
 			Status:  lint.Error,
@@ -53,17 +63,9 @@ func (l *sctsFromSameOperator) Execute(c *x509.Certificate) *lint.LintResult {
 		}
 	}
 
-	ll, err := loglist.New()
-	if err != nil {
-		return &lint.LintResult{
-			Status:  lint.NE,
-			Details: "Failed to load log list, unable to check Certificate SCTs.",
-		}
-	}
-
 	operatorNames := make(map[string]struct{})
 	for logID := range logIDs {
-		operator, err := ll.GroupForLogID(logID.Base64String())
+		operator, err := l.logList.OperatorForLogID(logID.Base64String())
 		if err != nil {
 			// This certificate *may* have more than 2 SCTs, so missing one now isn't
 			// a problem.
