@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
@@ -22,7 +23,7 @@ type CTPolicy struct {
 	pub pubpb.PublisherClient
 	// TODO(#5938): Fully replace `groups` with `operatorGroups`.
 	groups         []ctconfig.CTGroup
-	operatorGroups []ctconfig.CTGroup
+	operatorGroups loglist.LogList
 	informational  []ctconfig.LogDescription
 	finalLogs      []ctconfig.LogDescription
 	stagger        time.Duration
@@ -35,7 +36,7 @@ type CTPolicy struct {
 func New(
 	pub pubpb.PublisherClient,
 	groups []ctconfig.CTGroup,
-	operatorGroups []ctconfig.CTGroup,
+	operatorGroups loglist.LogList,
 	informational []ctconfig.LogDescription,
 	stagger time.Duration,
 	log blog.Logger,
@@ -86,6 +87,7 @@ type result struct {
 // once it has the first SCT it cancels all of the other submissions and returns.
 // It allows up to len(group)-1 of the submissions to fail as we only care about
 // getting a single SCT.
+// TODO(#5938): Remove this when it becomes dead code.
 func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group ctconfig.CTGroup, expiration time.Time) ([]byte, error) {
 	results := make(chan result, len(group.Logs))
 	isPrecert := true
@@ -210,36 +212,53 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 
 	results := make(chan result, len(ctp.operatorGroups))
 
+	// This closure will be called in parallel once for each operator group.
+	getOne := func(i int, g string) {
+		// If this goroutine isn't for one of the first two groups chosen, sleep a
+		// little bit to stagger our requests to the later groups.
+		if i > 1 {
+			time.Sleep(time.Duration(i) * ctp.stagger)
+		}
+
+		// Quit if the context has errored out, most likely because two other
+		// logs from other operator groups returned SCTs already and the context
+		// has been canceled.
+		if subCtx.Err() != nil {
+			return
+		}
+
+		// Pick a random log from among those in the group. In practice, very few
+		// operator groups have more than one log, so this loses little flexibility.
+		uri, key, err := ctp.operatorGroups.PickOne(g, expiration)
+		if err != nil {
+			ctp.log.Errf("unable to get log info: %s", err)
+			return
+		}
+
+		sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
+			LogURL:       uri,
+			LogPublicKey: key,
+			Der:          cert,
+			Precert:      true,
+		})
+		if err != nil {
+			// Only log the error if it is not a result of the context being canceled
+			if !canceled.Is(err) {
+				ctp.log.Warningf("ct submission to %q (%q) failed: %s", g, uri, err)
+			}
+
+			results <- result{err: err}
+			return
+		}
+
+		results <- result{sct: sct.Sct}
+	}
+
 	// Kick off a collection of goroutines to try to submit the precert to each
 	// log operator group. Randomize the order of the groups so that we're not
 	// always trying to submit to the same two operators.
-	for i, groupIdx := range rand.Perm(len(ctp.operatorGroups)) {
-		operatorGroup := ctp.operatorGroups[groupIdx]
-		i := i
-
-		go func() {
-			// If this goroutine isn't for one of the first two groups chosen, sleep a
-			// little bit to stagger our requests to the later groups.
-			if i > 1 {
-				time.Sleep(time.Duration(i) * ctp.stagger)
-			}
-
-			// Quit if the context has errored out, most likely because two other
-			// logs from other operator groups returned SCTs already and the context
-			// has been canceled.
-			if subCtx.Err() != nil {
-				return
-			}
-
-			sct, err := ctp.race(subCtx, cert, operatorGroup, expiration)
-			if err != nil {
-				if !canceled.Is(err) {
-					ctp.log.Warningf("ct submission to group %q failed: %s", operatorGroup.Name, err)
-				}
-			}
-
-			results <- result{sct: sct, err: err}
-		}()
+	for i, group := range ctp.operatorGroups.Permute() {
+		go getOne(i, group)
 	}
 
 	go ctp.submitPrecertInformational(cert, expiration)
@@ -267,7 +286,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 
 	// If we made it to the end of that loop, that means we never got two SCTs
 	// to return. Error out instead.
-	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got errors: %s", strings.Join(errs, "; "))
+	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got error(s): %s", strings.Join(errs, "; "))
 }
 
 func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration time.Time) {

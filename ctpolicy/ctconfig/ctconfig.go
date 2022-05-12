@@ -80,10 +80,32 @@ func (ld LogDescription) Info(exp time.Time) (string, string, error) {
 	return shard.URI, shard.Key, nil
 }
 
+// CTGroup represents a group of CT Logs. Although capable of holding logs
+// grouped by any arbitrary feature, is today primarily used to hold logs which
+// are all operated by the same legal entity.
 type CTGroup struct {
 	Name string
 	Logs []LogDescription
 	// How long to wait for one log to accept a certificate before moving on to
 	// the next.
+	// TODO(#5938): Remove this when CTLogGroups2 is removed from the RA.
 	Stagger cmd.ConfigDuration
+}
+
+// CTConfig is the top-level config object expected to be embedded in an
+// executable's JSON config struct.
+type CTConfig struct {
+	// The list of CT logs that we submit to.
+	Logs []LogID
+	// How long to wait for a log from one operator group to accept a certificate
+	// before attempting submission to a log run by a different operator instead.
+	Stagger cmd.ConfigDuration
+}
+
+// LogID holds enough information to uniquely identify a CT Log: its log_id
+// (the base64-encoding of the SHA-256 hash of its public key) and its human-
+// readable name/description.
+type LogID struct {
+	Name string
+	ID   string
 }

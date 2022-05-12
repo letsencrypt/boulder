@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -139,34 +141,25 @@ func TestGetOperatorSCTs(t *testing.T) {
 	testCases := []struct {
 		name       string
 		mock       pubpb.PublisherClient
-		groups     []ctconfig.CTGroup
+		groups     loglist.LogList
 		ctx        context.Context
 		result     core.SCTDERs
-		errRegexp  *regexp.Regexp
+		expectErr  string
 		berrorType *berrors.ErrorType
 	}{
 		{
 			name: "basic success case",
 			mock: &mockPub{},
-			groups: []ctconfig.CTGroup{
-				{
-					Name: "a",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-						{URI: "ghi", Key: "jkl"},
-					},
+			groups: loglist.LogList{
+				"OperA": {
+					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
 				},
-				{
-					Name: "b",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-					},
+				"OperB": {
+					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
 				},
-				{
-					Name: "c",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-					},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
 				},
 			},
 			ctx:    context.Background(),
@@ -175,57 +168,39 @@ func TestGetOperatorSCTs(t *testing.T) {
 		{
 			name: "basic failure case",
 			mock: &alwaysFail{},
-			groups: []ctconfig.CTGroup{
-				{
-					Name: "a",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-						{URI: "ghi", Key: "jkl"},
-					},
+			groups: loglist.LogList{
+				"OperA": {
+					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
 				},
-				{
-					Name: "b",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-					},
+				"OperB": {
+					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
 				},
-				{
-					Name: "c",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-					},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
 				},
 			},
 			ctx:        context.Background(),
-			errRegexp:  regexp.MustCompile("failed to get 2 SCTs, got errors"),
+			expectErr:  "failed to get 2 SCTs, got error(s):",
 			berrorType: &missingSCTErr,
 		},
 		{
 			name: "parent context timeout failure case",
 			mock: &alwaysFail{},
-			groups: []ctconfig.CTGroup{
-				{
-					Name: "a",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-						{URI: "ghi", Key: "jkl"},
-					},
+			groups: loglist.LogList{
+				"OperA": {
+					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
 				},
-				{
-					Name: "b",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-					},
+				"OperB": {
+					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
 				},
-				{
-					Name: "c",
-					Logs: []ctconfig.LogDescription{
-						{URI: "abc", Key: "def"},
-					},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
 				},
 			},
 			ctx:       expired,
-			errRegexp: regexp.MustCompile("failed to get 2 SCTs before ctx finished"),
+			expectErr: "failed to get 2 SCTs before ctx finished",
 		},
 	}
 
@@ -236,9 +211,9 @@ func TestGetOperatorSCTs(t *testing.T) {
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
-			} else if tc.errRegexp != nil {
-				if !tc.errRegexp.MatchString(err.Error()) {
-					t.Errorf("Error %q did not match expected regexp %q", err, tc.errRegexp)
+			} else if tc.expectErr != "" {
+				if !strings.Contains(err.Error(), tc.expectErr) {
+					t.Errorf("Error %q did not match expected %q", err, tc.expectErr)
 				}
 				if tc.berrorType != nil {
 					test.AssertErrorIs(t, err, *tc.berrorType)

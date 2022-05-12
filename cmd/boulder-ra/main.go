@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -74,17 +75,15 @@ type Config struct {
 		// DEPRECATED: Use CTLogOperatorGroups instead.
 		// TODO(#5938): Remove this.
 		CTLogGroups2 []ctconfig.CTGroup
-		// CTLogStagger is the amount of time that the RA will allow to pass between
-		// attempting to submit precertificates to various CT log operator groups.
-		CTLogStagger cmd.ConfigDuration
-		// CTLogOperatorGroups contains groupings of CT logs organized by what
-		// organization operates them. When we submit precerts to logs in order to
-		// get SCTs, we will submit the cert to one randomly-chosen log from each
-		// group, and use the SCTs from the first two groups which reply.
-		// This allows us to comply with various CT policies that require (for certs
-		// with short lifetimes like ours) two SCTs from logs run by different
-		// operators.
-		CTLogOperatorGroups []ctconfig.CTGroup
+		// CTLogs contains groupings of CT logs organized by what organization
+		// operates them. When we submit precerts to logs in order to get SCTs, we
+		// will submit the cert to one randomly-chosen log from each group, and use
+		// the SCTs from the first two groups which reply. This allows us to comply
+		// with various CT policies that require (for certs with short lifetimes
+		// like ours) two SCTs from logs run by different operators. It also holds
+		// a `Stagger` value controlling how long we wait for one operator group
+		// to respond before trying a different one.
+		CTLogs ctconfig.CTConfig
 		// InformationalCTLogs are a set of CT logs we will always submit to
 		// but won't ever use the SCTs from. This may be because we want to
 		// test them or because they are not yet approved by a browser/root
@@ -192,30 +191,36 @@ func main() {
 	}
 
 	// Boulder's components assume that there will always be CT logs configured.
-	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
-	// environment Boulder is built for. Exit early if there is no CTLogGroups2
-	// configured.
-	if len(c.RA.CTLogGroups2) == 0 && len(c.RA.CTLogOperatorGroups) == 0 {
-		cmd.Fail("Must configure either CTLogGroups2 or CTLogOperatorGroups")
-	}
-	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogOperatorGroups) != 0 {
-		cmd.Fail("Configure only CTLogGroups2 or CTLogOperatorGroups, not both")
-	}
-
-	for _, g := range append(c.RA.CTLogGroups2, c.RA.CTLogOperatorGroups...) {
-		// Exit early if any of the log groups specify no logs
-		if len(g.Logs) == 0 {
-			cmd.Fail("Encountered empty CT log group")
-		}
-		for _, l := range g.Logs {
-			if l.TemporalSet != nil {
-				err := l.Setup()
-				cmd.FailOnError(err, "Failed to setup a temporal log set")
+	// Issuing a certificate without SCTs embedded is a misissuance event in the
+	// environment Boulder is built for. Exit early if no groups are configured.
+	var ctp *ctpolicy.CTPolicy
+	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogs.Logs) != 0 {
+		cmd.Fail("Configure only CTLogGroups2 or CTLogs, not both")
+	} else if len(c.RA.CTLogGroups2) > 0 {
+		for _, g := range c.RA.CTLogGroups2 {
+			// Exit early if any of the log groups specify no logs
+			if len(g.Logs) == 0 {
+				cmd.Fail("Encountered empty CT log group")
+			}
+			for _, l := range g.Logs {
+				if l.TemporalSet != nil {
+					err := l.Setup()
+					cmd.FailOnError(err, "Failed to setup a temporal log set")
+				}
 			}
 		}
+
+		ctp, err = ctpolicy.New(pubc, c.RA.CTLogGroups2, nil, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
+		cmd.FailOnError(err, "Failed to create a CTPolicy")
+	} else if len(c.RA.CTLogs.Logs) > 0 {
+		operatorGroups, err := loglist.NewFromLogIDs(c.RA.CTLogs.Logs)
+		cmd.FailOnError(err, "Failed to load log list")
+
+		ctp, err = ctpolicy.New(pubc, nil, operatorGroups, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
+		cmd.FailOnError(err, "Failed to create a CTPolicy")
+	} else {
+		cmd.Fail("Must configure either CTLogGroups2 or CTLogs")
 	}
-	ctp, err := ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.CTLogOperatorGroups, c.RA.InformationalCTLogs, c.RA.CTLogStagger.Duration, logger, scope)
-	cmd.FailOnError(err, "Failed to create a CTPolicy")
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
 	// or completed validation MUST be obtained no more than 398 days prior
