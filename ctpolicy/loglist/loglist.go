@@ -49,7 +49,8 @@ func New() (LogList, error) {
 	result := make(LogList)
 	for _, op := range logList.Operators {
 		group := make(operatorGroup)
-		for _, log := range op.Logs {
+		for i := range op.Logs {
+			log := op.Logs[i]
 			group[log.LogId] = &log
 		}
 		result[op.Name] = group
@@ -79,7 +80,8 @@ func NewFromLogIDs(ids []ctconfig.LogID) (LogList, error) {
 	result := make(LogList)
 	for _, op := range logList.Operators {
 		group := make(operatorGroup)
-		for _, log := range op.Logs {
+		for i := range op.Logs {
+			log := op.Logs[i]
 			for _, id := range ids {
 				if log.LogId == id.ID && *log.Description == id.Name {
 					group[log.LogId] = &log

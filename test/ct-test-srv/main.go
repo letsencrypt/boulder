@@ -36,7 +36,6 @@ type integrationSrv struct {
 	rejected       []string
 	key            *ecdsa.PrivateKey
 	flakienessRate int
-	latencyItem    int
 	userAgent      string
 }
 
