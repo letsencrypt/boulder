@@ -46,3 +46,32 @@ func (dbc metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	writeGauge(dbc.idleConns, float64(stats.IdleConns))
 	writeGauge(dbc.staleConns, float64(stats.StaleConns))
 }
+
+func newMetricsCollector(labels prometheus.Labels) metricsCollector {
+	return metricsCollector{
+		hits: prometheus.NewDesc(
+			"redis_connection_pool_hits",
+			"Number of times free connection was found in the pool.",
+			nil, labels),
+		misses: prometheus.NewDesc(
+			"redis_redis_connection_pool_misses",
+			"Number of times free connection was NOT found in the pool.",
+			nil, labels),
+		timeouts: prometheus.NewDesc(
+			"redis_connection_pool_timeouts",
+			"Number of times a wait timeout occurred.",
+			nil, labels),
+		totalConns: prometheus.NewDesc(
+			"redis_connection_pool_total_conns",
+			"Number of total connections in the pool.",
+			nil, labels),
+		idleConns: prometheus.NewDesc(
+			"redis_connection_pool_idle_conns",
+			"Number of idle connections in the pool.",
+			nil, labels),
+		staleConns: prometheus.NewDesc(
+			"redis_connection_pool_stale_conns",
+			"Number of stale connections removed from the pool.",
+			nil, labels),
+	}
+}
