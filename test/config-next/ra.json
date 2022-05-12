@@ -61,66 +61,51 @@
       "AllowReRevocation": true,
       "MozRevocationReasons": true
     },
-    "CTLogStagger": "500ms",
-    "CTLogOperatorGroups": [
-      {
-        "name": "a",
-        "stagger": "500ms",
-        "logs": [
-          {
-            "uri": "http://boulder:4500",
-            "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q==",
-            "submitFinalCert": false
-          }
-        ]
-      },
-      {
-        "name": "b",
-        "stagger": "500ms",
-        "logs": [
-          {
-            "uri": "http://boulder:4501",
-            "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA==",
-            "submitFinalCert": false
-          }
-        ]
-      },
-      {
-        "name": "c",
-        "stagger": "500ms",
-        "logs": [
-          {
-            "uri": "http://boulder:4510",
-            "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEyw1HymhJkuxSIgt3gqW3sVXqMqB3EFsXcMfPFo0vYwjNiRmCJDXKsR0Flp7MAK+wc3X/7Hpc8liUbMhPet7tEA==",
-            "submitFinalCert": true
-          },
-          {
-            "name": "temporal test set",
-            "shards": [
-              {
-                "uri": "http://boulder:4511",
-                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
-                "windowStart": "2006-01-02T15:04:05Z",
-                "windowEnd": "2017-01-02T15:04:05Z"
-              },
-              {
-                "uri": "http://boulder:4511",
-                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
-                "windowStart": "2017-01-02T15:04:05Z",
-                "windowEnd": "2022-01-02T15:04:05Z"
-              },
-              {
-                "uri": "http://boulder:4511",
-                "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
-                "windowStart": "2022-01-02T15:04:05Z",
-                "windowEnd": "2050-01-02T15:04:05Z"
-              }
-            ],
-            "submitFinalCert": true
-          }
-        ]
-      }
-    ],
+    "CTLogs": {
+      "Stagger": "500ms",
+      "Logs": [
+        {
+          "name": "A1 Current",
+          "id": "OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM="
+        },
+        {
+          "name": "A1 Future",
+          "id": "2OHE0zamM5iS1NRFWJf9N6CWxdJ93je+leBX371vC+k="
+        },
+        {
+          "name": "A2 Past",
+          "id": "z7banNzwEtmRiittSviBYKjWmVltXNBhLfudmDXIcoU="
+        },
+        {
+          "name": "A2 Current",
+          "id": "HRrTQca8iy14Qbrw6/itgVzVWTcaENF3tWnJP743pq8="
+        },
+        {
+          "name": "B1",
+          "id": "UtToynGEyMkkXDMQei8Ll54oMwWHI0IieDEKs12/Td4="
+        },
+        {
+          "name": "B2",
+          "id": "EOPWVkKfDlS3lQe5brFUMsEYAJ8I7uZr7z55geKzv7c="
+        },
+        {
+          "name": "C1",
+          "id": "Oqk/Tv0cUSnEJ4bZa0eprm3IQQ4XgNcv20/bXixlxnQ="
+        },
+        {
+          "name": "D1",
+          "id": "e90gTyc4KkZpHv2pgeSOS224Md6/21UmWIxRF9mXveI="
+        },
+        {
+          "name": "E1",
+          "id": "ck+wYNY31I+5XBC7htsdNdYVjOSm4YgnDxlzO9PouwQ="
+        },
+        {
+          "name": "F1",
+          "id": "FWPcPPStmIK3l/jogz7yLYUtafS44cpLs6hQ3HrjdUQ="
+        }
+      ]
+    },
     "InformationalCTLogs": [
       {
         "uri": "http://boulder:4512",

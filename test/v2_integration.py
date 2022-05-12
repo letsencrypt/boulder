@@ -1310,9 +1310,12 @@ def test_ct_submission_operator():
 
     # These should correspond to the configured logs in ra.json.
     log_groups = [
-        ["http://boulder:4500/submissions"],
-        ["http://boulder:4501/submissions"],
-        ["http://boulder:4510/submissions", "http://boulder:4511/submissions"],
+        ["http://boulder:4600/submissions", "http://boulder:4601/submissions", "http://boulder:4602/submissions", "http://boulder:4603/submissions"],
+        ["http://boulder:4604/submissions", "http://boulder:4605/submissions"],
+        ["http://boulder:4606/submissions"],
+        ["http://boulder:4607/submissions"],
+        ["http://boulder:4608/submissions"],
+        ["http://boulder:4609/submissions"],
     ]
 
     # We'd like to enforce strict limits here (exactly 1 submission per group,
