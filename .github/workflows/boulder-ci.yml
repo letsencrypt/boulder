@@ -17,6 +17,9 @@ on:
   workflow_dispatch:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  contents: read
+
 jobs:
   #  Main test jobs. This looks like a single job, but the matrix
   #  items will multiply it. For example every entry in the
@@ -102,6 +105,8 @@ jobs:
   # one static job name that can be used to determine success of the job
   # in GitHub branch protection.
   boulder_ci_test_matrix_status:
+    permissions:
+      contents: none
     if: ${{ always() }}
     runs-on: ubuntu-latest
     name: Boulder CI Test Matrix

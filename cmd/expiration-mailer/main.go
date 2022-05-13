@@ -37,7 +37,6 @@ import (
 )
 
 const (
-	defaultNagCheckInterval  = 24 * time.Hour
 	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
 )
 
@@ -171,9 +170,9 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	return nil
 }
 
-func (m *mailer) updateCertStatus(serial string) error {
-	_, err := m.dbMap.Exec(
-		"UPDATE certificateStatus SET lastExpirationNagSent = ?  WHERE serial = ?",
+func (m *mailer) updateCertStatus(ctx context.Context, serial string) error {
+	_, err := m.dbMap.WithContext(ctx).Exec(
+		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial = ?",
 		m.clk.Now(), serial)
 	return err
 }
@@ -191,7 +190,7 @@ func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.
 	return present, err
 }
 
-func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) {
+func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) error {
 	regIDToCerts := make(map[int64][]core.Certificate)
 
 	for _, cert := range allCerts {
@@ -202,14 +201,16 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 	err := m.mailer.Connect()
 	if err != nil {
-		m.log.AuditErrf("Error connecting to send nag emails: %s", err)
-		return
+		return fmt.Errorf("connecting to SMTP server: %w", err)
 	}
 	defer func() {
 		_ = m.mailer.Close()
 	}()
 
 	for regID, certs := range regIDToCerts {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		reg, err := m.rs.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 		if err != nil {
 			m.log.AuditErrf("Error fetching registration %d: %s", regID, err)
@@ -219,6 +220,9 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 		parsedCerts := []*x509.Certificate{}
 		for _, cert := range certs {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			parsedCert, err := x509.ParseCertificate(cert.DER)
 			if err != nil {
 				// TODO(#1420): tell registration about this error
@@ -234,7 +238,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			} else if renewed {
 				m.log.Debugf("Cert %s is already renewed", cert.Serial)
 				m.stats.certificatesAlreadyRenewed.Add(1)
-				err := m.updateCertStatus(cert.Serial)
+				err := m.updateCertStatus(ctx, cert.Serial)
 				if err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
 					m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -259,8 +263,11 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			continue
 		}
 		for _, cert := range parsedCerts {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			serial := core.SerialToString(cert.SerialNumber)
-			err = m.updateCertStatus(serial)
+			err = m.updateCertStatus(ctx, serial)
 			if err != nil {
 				m.log.AuditErrf("Error updating certificate status for %s: %s", serial, err)
 				m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -268,6 +275,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			}
 		}
 	}
+	return nil
 }
 
 // findExpiringCertificates finds certificates that might need an expiration mail, filters them,
@@ -341,6 +349,9 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		// certificate status rows
 		var certs []core.Certificate
 		for _, serial := range serials {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			var cert core.Certificate
 			cert, err := sa.SelectCertificate(m.dbMap.WithContext(ctx), serial)
 			if err != nil {
@@ -353,7 +364,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 					continue
 				}
 				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
-				return err
+				continue
 			}
 			certs = append(certs, cert)
 		}
@@ -366,7 +377,10 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		}
 
 		processingStarted := m.clk.Now()
-		m.processCerts(ctx, certs)
+		err = m.processCerts(ctx, certs)
+		if err != nil {
+			m.log.AuditErr(err.Error())
+		}
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
 		m.stats.processingLatency.Observe(elapsed.Seconds())
@@ -400,10 +414,10 @@ type Config struct {
 
 		CertLimit int
 		NagTimes  []string
-		// How much earlier (than configured nag intervals) to
-		// send reminders, to account for the expected delay
-		// before the next expiration-mailer invocation.
+
+		// TODO(#6097): Remove this
 		NagCheckInterval string
+
 		// Path to a text/template email template
 		EmailTemplate string
 
@@ -584,15 +598,6 @@ func main() {
 		*reconnBase,
 		*reconnMax)
 
-	nagCheckInterval := defaultNagCheckInterval
-	if s := c.Mailer.NagCheckInterval; s != "" {
-		nagCheckInterval, err = time.ParseDuration(s)
-		if err != nil {
-			logger.AuditErrf("Failed to parse NagCheckInterval string %q: %s", s, err)
-			return
-		}
-	}
-
 	var nags durationSlice
 	for _, nagDuration := range c.Mailer.NagTimes {
 		dur, err := time.ParseDuration(nagDuration)
@@ -600,7 +605,10 @@ func main() {
 			logger.AuditErrf("Failed to parse nag duration string [%s]: %s", nagDuration, err)
 			return
 		}
-		nags = append(nags, dur+nagCheckInterval)
+		// Add some padding to the nag times so we send _before_ the configured
+		// time rather than after. See https://github.com/letsencrypt/boulder/pull/1029
+		adjustedInterval := dur + c.Mailer.Frequency.Duration
+		nags = append(nags, adjustedInterval)
 	}
 	// Make sure durations are sorted in increasing order
 	sort.Sort(nags)
@@ -629,14 +637,13 @@ func main() {
 	defer cancel()
 
 	go cmd.CatchSignals(logger, func() {
-		fmt.Printf("exiting\n")
 		cancel()
 		select {} // wait for the `findExpiringCertificates` calls below to exit
 	})
 
 	if *daemon {
 		if c.Mailer.Frequency.Duration == 0 {
-			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
+			fmt.Fprintln(os.Stderr, "mailer.Frequency is not set in the JSON config")
 			os.Exit(1)
 		}
 		t := time.NewTicker(c.Mailer.Frequency.Duration)

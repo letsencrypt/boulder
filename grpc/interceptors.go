@@ -22,7 +22,6 @@ const (
 	returnOverhead         = 20 * time.Millisecond
 	meaningfulWorkOverhead = 100 * time.Millisecond
 	clientRequestTimeKey   = "client-request-time"
-	serverLatencyKey       = "server-latency"
 )
 
 // NoCancelInterceptor is a gRPC interceptor that creates a new context,

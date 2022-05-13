@@ -280,7 +280,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// one we need to make sure its a valid port. If there isn't one we need to
 	// pick the port based on the reqScheme default port.
 	reqHost := req.URL.Host
-	reqPort := 0
+	var reqPort int
 	if h, p, err := net.SplitHostPort(reqHost); err == nil {
 		reqHost = h
 		reqPort, err = strconv.Atoi(p)
