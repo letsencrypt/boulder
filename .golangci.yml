@@ -2,7 +2,7 @@ linters:
   disable-all: true
   enable:
     - deadcode
-    # TODO(#6105): add 'gci' linter
+    - gci
     - gofmt
     - gosec
     - gosimple
@@ -21,6 +21,11 @@ linters:
 linters-settings:
   errcheck:
     ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write
+  gci:
+    sections:
+      - standard # The standard library
+      - default # All other imported (vendored) dependencies
+      - prefix(github.com/letsencrypt/boulder) # All repo-local packages
   gosimple:
     # S1029: Range over the string directly
     checks: ["all", "-S1029"]
