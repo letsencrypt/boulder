@@ -226,11 +226,15 @@ func TestNoContactCertIsNotRenewed(t *testing.T) {
 	certsExamined := testCtx.m.stats.certificatesExamined
 	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
 
+	certsAlreadyRenewed := testCtx.m.stats.certificatesAlreadyRenewed
+	test.AssertMetricWithLabelsEquals(t, certsAlreadyRenewed, prometheus.Labels{}, 0.0)
+
 	// Run findExpiringCertificates again. The count of examined certificates
 	// should not increase again.
 	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "finding expired certificates")
 	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
+	test.AssertMetricWithLabelsEquals(t, certsAlreadyRenewed, prometheus.Labels{}, 0.0)
 }
 
 // An account with no contact info has a certificate that is expiring but has been renewed.
@@ -271,11 +275,15 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	certsExamined := testCtx.m.stats.certificatesExamined
 	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
 
+	certsAlreadyRenewed := testCtx.m.stats.certificatesAlreadyRenewed
+	test.AssertMetricWithLabelsEquals(t, certsAlreadyRenewed, prometheus.Labels{}, 1.0)
+
 	// Run findExpiringCertificates again. The count of examined certificates
 	// should not increase again.
 	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "finding expired certificates")
 	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
+	test.AssertMetricWithLabelsEquals(t, certsAlreadyRenewed, prometheus.Labels{}, 1.0)
 }
 
 func TestFindExpiringCertificates(t *testing.T) {
