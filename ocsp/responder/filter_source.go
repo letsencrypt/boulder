@@ -9,11 +9,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
 type responderID struct {

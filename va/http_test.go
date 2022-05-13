@@ -16,8 +16,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/core"
@@ -26,9 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/dns"
-
-	"testing"
 )
 
 func httpChallenge() core.Challenge {

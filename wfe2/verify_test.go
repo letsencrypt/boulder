@@ -12,6 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -20,10 +24,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
-	"github.com/prometheus/client_golang/prometheus"
-
-	"google.golang.org/grpc"
-	"gopkg.in/square/go-jose.v2"
 )
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the

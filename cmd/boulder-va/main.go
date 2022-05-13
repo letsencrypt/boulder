@@ -5,10 +5,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"

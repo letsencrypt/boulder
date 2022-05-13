@@ -15,11 +15,12 @@ import (
 	"os"
 	"time"
 
+	"golang.org/x/crypto/ocsp"
+	"gopkg.in/yaml.v2"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
-	"golang.org/x/crypto/ocsp"
-	"gopkg.in/yaml.v2"
 )
 
 const configDateLayout = "2006-01-02 15:04:05"

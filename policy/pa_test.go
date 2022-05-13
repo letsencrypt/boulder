@@ -5,12 +5,13 @@ import (
 	"os"
 	"testing"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
-	"gopkg.in/yaml.v2"
 )
 
 var enabledChallenges = map[core.AcmeChallenge]bool{

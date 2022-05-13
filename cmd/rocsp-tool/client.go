@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"golang.org/x/crypto/ocsp"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -18,7 +20,6 @@ import (
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
-	"golang.org/x/crypto/ocsp"
 )
 
 type client struct {

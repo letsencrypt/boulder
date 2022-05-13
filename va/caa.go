@@ -6,12 +6,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/miekg/dns"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/miekg/dns"
 )
 
 type caaParams struct {

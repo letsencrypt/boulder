@@ -25,10 +25,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/letsencrypt/challtestsrv"
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test/load-generator/acme"
-	"github.com/letsencrypt/challtestsrv"
 )
 
 // account is an ACME v2 account resource. It does not have a `jose.Signer`

@@ -6,8 +6,9 @@ import (
 	"io/ioutil"
 	"regexp"
 
-	blog "github.com/letsencrypt/boulder/log"
 	"golang.org/x/crypto/ocsp"
+
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // inMemorySource wraps a map from serialNumber to Response and just looks up

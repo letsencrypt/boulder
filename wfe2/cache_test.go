@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/grpc"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
 )
 
 type recordingBackend struct {

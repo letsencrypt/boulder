@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	gorp "github.com/go-gorp/gorp/v3"
-
 	"github.com/go-sql-driver/mysql"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"

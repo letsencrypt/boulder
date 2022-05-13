@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	prom "github.com/prometheus/client_golang/prometheus"
 	promhttp "github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/letsencrypt/boulder/test/ocsp/helper"
 )
 
 var listenAddress = flag.String("listen", ":8080", "Port to listen on")

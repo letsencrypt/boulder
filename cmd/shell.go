@@ -17,12 +17,11 @@ import (
 	"syscall"
 	"time"
 
-	"google.golang.org/grpc/grpclog"
-
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"google.golang.org/grpc/grpclog"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"

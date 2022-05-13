@@ -6,13 +6,14 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // CTPolicy is used to hold information about SCTs required from various

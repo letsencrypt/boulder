@@ -3,9 +3,10 @@ package ca
 import (
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestNewECDSAAllowListFromFile(t *testing.T) {

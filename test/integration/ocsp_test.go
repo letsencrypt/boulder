@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
-	"golang.org/x/crypto/ocsp"
 )
 
 // TODO(#5172): Fill out these test stubs.

@@ -11,13 +11,13 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/titanous/rocacheck"
+	"google.golang.org/grpc"
+
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/grpc"
-
-	"github.com/titanous/rocacheck"
 )
 
 // To generate, run: primes 2 752 | tr '\n' ,

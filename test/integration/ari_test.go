@@ -13,10 +13,11 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
-	"golang.org/x/crypto/ocsp"
 )
 
 func TestARI(t *testing.T) {

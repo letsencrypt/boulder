@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -26,7 +28,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/grpc"
 )
 
 var usageString = `

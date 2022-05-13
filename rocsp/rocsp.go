@@ -10,9 +10,10 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 var ErrRedisNotFound = errors.New("redis key not found")

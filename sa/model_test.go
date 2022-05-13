@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/db"
-	"github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/probs"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/db"
+	"github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 

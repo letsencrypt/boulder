@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"

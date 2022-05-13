@@ -17,11 +17,12 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
 const (

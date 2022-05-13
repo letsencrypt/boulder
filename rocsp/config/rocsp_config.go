@@ -10,11 +10,12 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/rocsp"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
 // RedisConfig contains the configuration needed to act as a Redis client.

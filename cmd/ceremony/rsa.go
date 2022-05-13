@@ -6,8 +6,9 @@ import (
 	"log"
 	"math/big"
 
-	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
+
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
 // rsaArgs constructs the private and public key template attributes sent to the

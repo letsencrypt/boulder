@@ -4,9 +4,10 @@ import (
 	"flag"
 	"io/ioutil"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer"
-	"gopkg.in/yaml.v2"
 )
 
 func main() {

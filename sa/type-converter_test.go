@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"
-
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 const JWK1JSON = `{

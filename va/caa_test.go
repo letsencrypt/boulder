@@ -14,10 +14,9 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
-
-	blog "github.com/letsencrypt/boulder/log"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 

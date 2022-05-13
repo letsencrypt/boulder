@@ -17,9 +17,10 @@ import (
 	"time"
 
 	"github.com/eggsampler/acme/v3"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
-	"golang.org/x/crypto/ocsp"
 )
 
 // isPrecert returns true if the provided cert has an extension with the OID

@@ -14,11 +14,12 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/dns"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const dnsLoopbackAddr = "127.0.0.1:4053"

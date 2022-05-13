@@ -25,13 +25,14 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/pkcs11key/v4"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/privatekey"
-	"github.com/letsencrypt/pkcs11key/v4"
-	"golang.org/x/crypto/ocsp"
 )
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.

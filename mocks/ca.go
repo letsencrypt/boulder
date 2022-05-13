@@ -6,9 +6,10 @@ import (
 	"encoding/pem"
 	"fmt"
 
+	"google.golang.org/grpc"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	"google.golang.org/grpc"
 )
 
 // MockCA is a mock of a CA that always returns the cert from PEM in response to

@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ocsp"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/crypto/ocsp"
 )
 
 func serial(t *testing.T) []byte {

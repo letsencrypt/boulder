@@ -9,6 +9,9 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -19,8 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
 )
 
 func makeClient() (*rocsp.WritingClient, clock.Clock) {

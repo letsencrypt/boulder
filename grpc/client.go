@@ -8,14 +8,14 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
-	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
-
 	// Import for its init function, which causes clients to rely on the
 	// Health Service for load-balancing.
 	_ "google.golang.org/grpc/health"
+
+	"github.com/letsencrypt/boulder/cmd"
+	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 )
 
 // ClientSetup creates a gRPC TransportCredentials that presents

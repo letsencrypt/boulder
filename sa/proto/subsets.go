@@ -5,9 +5,10 @@ package proto
 import (
 	context "context"
 
-	proto "github.com/letsencrypt/boulder/core/proto"
 	grpc "google.golang.org/grpc"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+
+	proto "github.com/letsencrypt/boulder/core/proto"
 )
 
 // StorageAuthorityGetterClient is a read-only subset of the sapb.StorageAuthorityClient interface

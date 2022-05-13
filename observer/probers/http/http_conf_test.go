@@ -4,9 +4,10 @@ import (
 	"reflect"
 	"testing"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/letsencrypt/boulder/test"
-	"gopkg.in/yaml.v2"
 )
 
 func TestHTTPConf_MakeProber(t *testing.T) {

@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
+	"gopkg.in/yaml.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -21,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
-	"gopkg.in/yaml.v2"
 )
 
 // AuthorityImpl enforces CA policy decisions.

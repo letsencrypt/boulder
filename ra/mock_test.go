@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	grpc "google.golang.org/grpc"
+
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	grpc "google.golang.org/grpc"
 )
 
 type mockInvalidAuthorizationsAuthority struct {

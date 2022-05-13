@@ -5,8 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/test"
 	"golang.org/x/crypto/ocsp"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestLoadIssuers(t *testing.T) {

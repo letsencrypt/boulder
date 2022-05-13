@@ -8,9 +8,9 @@ import (
 	"errors"
 	"io/ioutil"
 
-	"github.com/letsencrypt/boulder/core"
-
 	yaml "gopkg.in/yaml.v2"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // blockedKeys is a type for maintaining a map of SHA256 hashes

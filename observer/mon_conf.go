@@ -5,9 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
-	"gopkg.in/yaml.v2"
 )
 
 // MonConf is exported to receive YAML configuration in `ObsConf`.

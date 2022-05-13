@@ -6,9 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/miekg/dns"
 	"gopkg.in/yaml.v2"
+
+	"github.com/letsencrypt/boulder/observer/probers"
 )
 
 var (

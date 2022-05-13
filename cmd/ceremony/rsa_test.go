@@ -8,9 +8,10 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/miekg/pkcs11"
+
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/pkcs11"
 )
 
 func TestRSAPub(t *testing.T) {

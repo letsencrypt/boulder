@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
-	"github.com/jmhodges/clock"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/identifier"

@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
+
+	"github.com/letsencrypt/boulder/pkcs11helpers"
 )
 
 type hsmRandReader struct {

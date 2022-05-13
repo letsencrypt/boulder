@@ -6,8 +6,9 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 var (

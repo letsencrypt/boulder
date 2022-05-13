@@ -21,6 +21,7 @@ import (
 
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"

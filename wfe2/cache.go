@@ -8,11 +8,12 @@ import (
 
 	"github.com/golang/groupcache/lru"
 	"github.com/jmhodges/clock"
-	corepb "github.com/letsencrypt/boulder/core/proto"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+
+	corepb "github.com/letsencrypt/boulder/core/proto"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // AccountGetter represents the ability to get an account by ID - either from the SA

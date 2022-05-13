@@ -18,6 +18,10 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
+	"gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -29,9 +33,6 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-	"gopkg.in/square/go-jose.v2"
 )
 
 var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"

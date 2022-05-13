@@ -23,6 +23,10 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmhodges/clock"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	jose "gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -38,9 +42,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 var log = blog.UseMock()

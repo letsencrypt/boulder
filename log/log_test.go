@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/test"
 )
 

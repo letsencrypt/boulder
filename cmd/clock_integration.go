@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+
 	blog "github.com/letsencrypt/boulder/log"
 )
 

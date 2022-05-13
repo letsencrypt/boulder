@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/honeycombio/beeline-go"
+
 	"github.com/letsencrypt/boulder/core"
 )
 

@@ -3,11 +3,11 @@ package ra
 import (
 	"context"
 
-	"github.com/letsencrypt/boulder/ra"
-	rapb "github.com/letsencrypt/boulder/ra/proto"
-
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/letsencrypt/boulder/ra"
+	rapb "github.com/letsencrypt/boulder/ra/proto"
 )
 
 // RA meets the `rapb.RegistrationAuthorityClient` interface and acts as a

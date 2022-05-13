@@ -20,8 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/pkcs11key/v4"
+
+	"github.com/letsencrypt/boulder/issuance"
 )
 
 var template = `[AUDIT] Failed RPC to store at SA, orphaning precertificate: serial=[%x] cert=[%x] err=[sa.StorageAuthority.AddCertificate timed out after 5000 ms], issuerID=[1], regID=[1], orderID=[1]

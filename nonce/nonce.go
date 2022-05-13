@@ -26,8 +26,9 @@ import (
 	"sync"
 	"time"
 
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/prometheus/client_golang/prometheus"
+
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
 const (

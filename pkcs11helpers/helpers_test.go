@@ -14,8 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/pkcs11"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestGetECDSAPublicKey(t *testing.T) {

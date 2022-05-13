@@ -7,12 +7,13 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/crypto/ocsp"
 )
 
 func TestNewFilter(t *testing.T) {

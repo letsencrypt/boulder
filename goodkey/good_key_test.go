@@ -10,10 +10,11 @@ import (
 	"math/big"
 	"testing"
 
+	"google.golang.org/grpc"
+
 	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
 )
 
 var testingPolicy = &KeyPolicy{

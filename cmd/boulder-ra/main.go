@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/honeycombio/beeline-go"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/honeycombio/beeline-go"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"

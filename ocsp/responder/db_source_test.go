@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/go-gorp/gorp/v3"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/crypto/ocsp"
 )
 
 // To mock out WithContext, we need to be able to return objects that satisfy

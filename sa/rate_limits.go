@@ -5,9 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+
 	"github.com/letsencrypt/boulder/db"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
 )
 
 // baseDomain returns the eTLD+1 of a domain name for the purpose of rate

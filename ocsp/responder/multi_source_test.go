@@ -5,10 +5,11 @@ import (
 	"errors"
 	"testing"
 
+	"golang.org/x/crypto/ocsp"
+
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/crypto/ocsp"
 )
 
 type succeedSource struct {

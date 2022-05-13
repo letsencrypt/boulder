@@ -1,9 +1,8 @@
 package probs
 
 import (
-	"testing"
-
 	"net/http"
+	"testing"
 
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/test"

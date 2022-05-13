@@ -12,9 +12,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/miekg/pkcs11"
+
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/miekg/pkcs11"
 )
 
 // samplePubkey returns a slice of bytes containing an encoded

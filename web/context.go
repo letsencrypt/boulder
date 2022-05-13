@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/honeycombio/beeline-go"
+
 	blog "github.com/letsencrypt/boulder/log"
 )
 
