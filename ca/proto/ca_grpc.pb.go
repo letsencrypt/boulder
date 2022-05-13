@@ -4,12 +4,10 @@ package proto
 
 import (
 	context "context"
-
+	proto "github.com/letsencrypt/boulder/core/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-
-	proto "github.com/letsencrypt/boulder/core/proto"
 )
 
 // This is a compile-time assertion to ensure that this generated file
