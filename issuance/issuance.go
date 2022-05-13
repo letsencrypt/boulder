@@ -722,16 +722,19 @@ func LoadChain(certFiles []string) ([]*Certificate, error) {
 	for i := 0; i < len(certs)-1; i++ {
 		err = certs[i].CheckSignatureFrom(certs[i+1].Certificate)
 		if err != nil {
-			return nil, fmt.Errorf("failed to verify chain: %w", err)
+			return nil, fmt.Errorf("failed to verify signature from %q to %q (%q to %q): %w",
+				certs[i+1].Subject, certs[i].Subject, certFiles[i+1], certFiles[i], err)
 		}
 		chain[i] = certs[i]
 	}
 
 	// Verify that the last cert is self-signed.
-	err = certs[len(certs)-1].CheckSignatureFrom(certs[len(certs)-1].Certificate)
+	lastCert := certs[len(certs)-1]
+	err = lastCert.CheckSignatureFrom(lastCert.Certificate)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"final cert in chain must be a self-signed (used only for validation): %w", err)
+			"final cert in chain (%q; %q) must be self-signed (used only for validation): %w",
+			lastCert.Subject, certFiles[len(certFiles)-1], err)
 	}
 
 	return chain, nil

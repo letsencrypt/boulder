@@ -566,7 +566,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// Most rate limits have a key for overrides, but there is no meaningful key
 	// here.
 	noKey := ""
-	if count.Count >= int64(limit.GetThreshold(noKey, regID)) {
+	if count.Count >= limit.GetThreshold(noKey, regID) {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
 		return berrors.RateLimitError("too many failed authorizations recently")
 	}
@@ -998,7 +998,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	}
 
 	// Parse the issued certificate to get the serial
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.DER))
+	parsedCertificate, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
 		// Fail the order with a server internal error. The certificate we failed
 		// to parse was from our own CA. Bad news!
@@ -1199,7 +1199,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, wrapError(err, "issuing certificate for precertificate")
 	}
 
-	parsedCertificate, err := x509.ParseCertificate([]byte(cert.Der))
+	parsedCertificate, err := x509.ParseCertificate(cert.Der)
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
@@ -1829,7 +1829,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    serialString,
-		IssuerID:  int64(issuerID),
+		IssuerID:  issuerID,
 		Status:    string(core.OCSPStatusRevoked),
 		Reason:    int32(reason),
 		RevokedAt: revokedAt,
@@ -1843,7 +1843,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 		Reason:   int64(reason),
 		Date:     revokedAt,
 		Response: ocspResponse.Response,
-		IssuerID: int64(issuerID),
+		IssuerID: issuerID,
 	})
 	if err != nil {
 		return err
@@ -1880,7 +1880,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	// The new OCSP response has to be back-dated to the original date.
 	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    serialString,
-		IssuerID:  int64(issuerID),
+		IssuerID:  issuerID,
 		Status:    string(core.OCSPStatusRevoked),
 		Reason:    int32(ocsp.KeyCompromise),
 		RevokedAt: status.RevokedDate,
@@ -1895,7 +1895,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		Date:     thisUpdate,
 		Backdate: status.RevokedDate,
 		Response: ocspResponse.Response,
-		IssuerID: int64(issuerID),
+		IssuerID: issuerID,
 	})
 	if err != nil {
 		return err
@@ -2244,11 +2244,11 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	var issuerID int64 // TODO(#5152) make this an issuance.IssuerNameID
 	var err error
 	if req.Cert == nil {
-		cert = nil
 		serial, err := core.StringToSerial(req.Serial)
 		if err != nil {
 			return nil, err
 		}
+
 		cert = &x509.Certificate{
 			SerialNumber: serial,
 		}
@@ -2311,7 +2311,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		}
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	err = ra.purgeOCSPCache(ctx, cert, issuerID)
 	if err != nil {
 		return nil, err
 	}

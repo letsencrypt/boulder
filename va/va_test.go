@@ -507,7 +507,7 @@ func TestMultiVA(t *testing.T) {
 			} else if res.Problems != nil {
 				// That result should match expected.
 				test.AssertEquals(t, res.Problems.ProblemType, string(tc.ExpectedProb.Type))
-				test.AssertEquals(t, res.Problems.Detail, string(tc.ExpectedProb.Detail))
+				test.AssertEquals(t, res.Problems.Detail, tc.ExpectedProb.Detail)
 			}
 
 			if tc.ExpectedLog != "" {

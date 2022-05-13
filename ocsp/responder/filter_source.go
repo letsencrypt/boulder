@@ -37,6 +37,7 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 	if len(issuerCerts) < 1 {
 		return nil, errors.New("Filter must include at least 1 issuer cert")
 	}
+
 	issuersByNameId := make(map[issuance.IssuerNameID]responderID)
 	for _, issuerCert := range issuerCerts {
 		keyHash := issuerCert.KeyHash()
@@ -47,10 +48,13 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 		}
 		issuersByNameId[issuerCert.NameID()] = rid
 	}
+
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_filter_responses",
 		Help: "Count of OCSP requests/responses by action taken by the filter",
 	}, []string{"result"})
+	stats.MustRegister(counter)
+
 	return &filterSource{
 		wrapped:        wrapped,
 		hashAlgorithm:  crypto.SHA1,

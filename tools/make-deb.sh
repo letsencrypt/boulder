@@ -18,10 +18,8 @@ sudo apt-get install -y --no-install-recommends \
   ruby-dev \
   gcc
 
-# Parse our production Go version from our docker-compose file.
-GO_VERSION=$(grep "BOULDER_TOOLS_TAG:-" docker-compose.yml | sed -e 's/.*-go//' -e 's/_.*//')
-
-# Download and unpack our production go version.
+# Download and unpack our production go version. Ensure that $GO_VERSION is
+# already set in the environment (e.g. by the github actions release workflow).
 $(dirname -- "${0}")/fetch-and-verify-go.sh "${GO_VERSION}"
 sudo tar -C /usr/local -xzf go.tar.gz
 export PATH=/usr/local/go/bin:$PATH
@@ -37,8 +35,12 @@ sudo gem install --no-document -v 1.14.0 fpm
 # it to /tmp.
 export ARCHIVEDIR="${PWD}"
 
+# Set $VERSION to be a simulacrum of what is set in other build environments.
+export VERSION="${GO_VERSION}.$(date +%s)"
+
 # Build Boulder and produce a Debian Package at $PWD.
 make deb
 
-# Rename .deb to a predictable path.
-mv boulder-*.deb boulder.deb
+# We expect the final filename produced by `make deb` to be consistent.
+# Print it so that the github action can grab it as an output.
+echo ::set-output name=filename::boulder-${VERSION}-$(git rev-parse --short=8 HEAD).x86_64.deb

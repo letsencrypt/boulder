@@ -96,22 +96,6 @@ var (
 
 	// OIDExtensionSCTList is defined in RFC 6962 s3.3.
 	OIDExtensionSCTList = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 11129, 2, 4, 2}
-
-	// The "certificate-for-precertificate" tests use the precertificate from a
-	// previous "precertificate" test, in order to verify that the CA is
-	// stateless with respect to these two operations, since a separate CA
-	// object instance will be used for generating each. Consequently, the
-	// "precertificate" tests must be before the "certificate-for-precertificate"
-	// tests in this list, and we cannot run these sub-tests concurrently.
-	//
-	// In order to test the case where the same CA object is used for issuing
-	// both the precertificate and the certificate, we'd need to contort
-	// |TestIssueCertificate| quite a bit, and since it isn't clear that that
-	// would be useful, we've avoided adding that case, at least for now.
-	issuanceModes = []IssuanceMode{
-		{name: "precertificate", issueCertificateForPrecertificate: false},
-		{name: "certificate-for-precertificate", issueCertificateForPrecertificate: true},
-	}
 )
 
 const arbitraryRegID int64 = 1001
@@ -317,14 +301,8 @@ type TestCertificateIssuance struct {
 	ca      *certificateAuthorityImpl
 	sa      *mockSA
 	req     *x509.CertificateRequest
-	mode    IssuanceMode
 	certDER []byte
 	cert    *x509.Certificate
-}
-
-type IssuanceMode struct {
-	name                              string
-	issueCertificateForPrecertificate bool
 }
 
 func TestIssuePrecertificate(t *testing.T) {
@@ -345,14 +323,14 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		// The loop through |issuanceModes| must be inside the loop through
+		// The loop through the issuance modes must be inside the loop through
 		// |testCases| because the "certificate-for-precertificate" tests use
 		// the precertificates previously generated from the preceding
-		// "precertificate" test. See also the comment above |issuanceModes|.
-		for _, mode := range issuanceModes {
+		// "precertificate" test.
+		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
 			ca, sa := issueCertificateSubTestSetup(t)
 
-			t.Run(fmt.Sprintf("%s - %s", mode.name, testCase.name), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
 				test.AssertNotError(t, err, "Certificate request failed to parse")
 
@@ -378,7 +356,6 @@ func TestIssuePrecertificate(t *testing.T) {
 					ca:      ca,
 					sa:      sa,
 					req:     req,
-					mode:    mode,
 					certDER: certDER,
 					cert:    cert,
 				}
@@ -487,7 +464,7 @@ func TestECDSAAllowList(t *testing.T) {
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
 	ca, _ := issueCertificateSubTestSetup(t)
-	contents := makeECDSAAllowListBytes(int64(arbitraryRegID))
+	contents := makeECDSAAllowListBytes(arbitraryRegID)
 	err := ca.ecdsaAllowList.Update(contents)
 	if err != nil {
 		t.Errorf("%s %s", yamlLoadErrMsg, err)

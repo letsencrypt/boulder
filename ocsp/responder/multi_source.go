@@ -26,6 +26,8 @@ func NewMultiSource(primary, secondary Source, stats prometheus.Registerer, log 
 		Name: "ocsp_multiplex_responses",
 		Help: "Count of OCSP requests/responses by action taken by the multiSource",
 	}, []string{"result"})
+	stats.MustRegister(counter)
+
 	return &multiSource{
 		primary:   primary,
 		secondary: secondary,

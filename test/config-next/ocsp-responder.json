@@ -11,6 +11,7 @@
         "10.33.33.7:4218"
       ],
       "timeout": "5s",
+      "poolSize": 100,
       "tls": {
         "caCertFile": "test/redis-tls/minica.pem",
         "certFile": "test/redis-tls/boulder/cert.pem",

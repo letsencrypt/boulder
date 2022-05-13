@@ -33,6 +33,8 @@ func NewDbSource(dbMap dbSelector, stats prometheus.Registerer, log blog.Logger)
 		Name: "ocsp_db_responses",
 		Help: "Count of OCSP requests/responses by action taken by the dbSource",
 	}, []string{"result"})
+	stats.MustRegister(counter)
+
 	return &dbSource{
 		dbMap:   dbMap,
 		counter: counter,

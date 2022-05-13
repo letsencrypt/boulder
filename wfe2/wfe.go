@@ -821,7 +821,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	reason := revocation.Reason(0)
 	if revokeRequest.Reason != nil {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
-			reasonStr, ok := revocation.ReasonToString[revocation.Reason(*revokeRequest.Reason)]
+			reasonStr, ok := revocation.ReasonToString[*revokeRequest.Reason]
 			if !ok {
 				reasonStr = "unknown"
 			}
@@ -1504,7 +1504,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		logEvent.DNSName = authzPB.Identifier
 		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
 	}
-	logEvent.Status = string(authzPB.Status)
+	logEvent.Status = authzPB.Status
 	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
@@ -2309,7 +2309,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// This is a very simple renewal calculation: Calculate a point 2/3rds of the
 	// way through the validity period, then give a 2-day window around that.
 	validity := time.Unix(0, cert.Expires).Add(time.Second).Sub(time.Unix(0, cert.Issued))
-	renewalOffset := time.Duration(int64(0.33 * float64(validity.Seconds())))
+	renewalOffset := time.Duration(int64(0.33 * validity.Seconds()))
 	idealRenewal := time.Unix(0, cert.Expires).UTC().Add(-renewalOffset)
 	ri := core.RenewalInfo{
 		SuggestedWindow: core.SuggestedWindow{
@@ -2341,5 +2341,5 @@ func extractRequesterIP(req *http.Request) (net.IP, error) {
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	return web.RelativeEndpoint(request, authzPath+authz.ID)
 }

@@ -165,12 +165,6 @@ ycBzDV9u6cX9qNLc9Bn5DAumz7Zp2AuA+Q==
 -----END EC PRIVATE KEY-----
 `
 
-	testE2KeyPublicJSON = `{
-    "kty":"EC",
-    "crv":"P-256",
-    "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
-    "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
-  }`
 	testE2KeyPrivatePEM = `
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIFRcPxQ989AY6se2RyIoF1ll9O6gHev4oY15SWJ+Jf5eoAoGCCqGSM49
