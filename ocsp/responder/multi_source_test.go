@@ -47,7 +47,7 @@ func TestSecondaryTimeout(t *testing.T) {
 	src, err := NewMultiSource(&succeedSource{}, &timeoutSource{ch: ch}, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	starting_goroutines := runtime.NumGoroutine()
