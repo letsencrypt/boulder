@@ -92,6 +92,11 @@ const (
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
+
+	// ExpirationMailerDontLookTwice enables a bug fix in expiration-mailer
+	// speeds up expiration-mailer processing by ensuring processed items
+	// get marked done.
+	ExpirationMailerDontLookTwice
 )
 
 // List of features and their default value, protected by fMu
@@ -123,6 +128,7 @@ var features = map[FeatureFlag]bool{
 	OldTLSInbound:                  true,
 	SHA1CSRs:                       true,
 	AllowUnrecognizedFeatures:      false,
+	ExpirationMailerDontLookTwice:  false,
 }
 
 var fMu = new(sync.RWMutex)
