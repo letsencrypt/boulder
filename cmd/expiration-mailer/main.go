@@ -264,7 +264,7 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 		// TODO(#6121): Remove this
 		if !features.Enabled(features.ExpirationMailerDontLookTwice) {
-			if reg.Contact == nil {
+			if len(reg.Contact) == 0 {
 				continue
 			}
 		}
