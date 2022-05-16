@@ -312,20 +312,22 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, err
 	}
 
+	names := strings.Join(issuanceReq.DNSNames, ", ")
+
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
-		serialHex, req.RegistrationID, strings.Join(issuanceReq.DNSNames, ", "), hex.EncodeToString(precert.Raw))
+		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
 	certDER, err := issuer.Issue(issuanceReq)
 	if err != nil {
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
-			serialHex, req.RegistrationID, strings.Join(precert.DNSNames, ", "), err)
+			serialHex, req.RegistrationID, names, err)
 		return nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s]",
-		serialHex, req.RegistrationID, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(certDER))
+		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
 
 	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, int64(issuer.Cert.NameID()))
 	if err != nil {
