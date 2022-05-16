@@ -3,7 +3,9 @@ package responder
 import (
 	"context"
 	"errors"
+	"runtime"
 	"testing"
+	"time"
 
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -28,6 +30,40 @@ type failSource struct{}
 
 func (src *failSource) Response(context.Context, *ocsp.Request) (*Response, error) {
 	return nil, errors.New("failure")
+}
+
+// timeoutSource is a Source that will not return until its chan is closed.
+type timeoutSource struct {
+	ch <-chan struct{}
+}
+
+func (src *timeoutSource) Response(context.Context, *ocsp.Request) (*Response, error) {
+	<-src.ch
+	return nil, errors.New("failure")
+}
+
+func TestSecondaryTimeout(t *testing.T) {
+	ch := make(chan struct{})
+	src, err := NewMultiSource(&succeedSource{}, &timeoutSource{ch: ch}, metrics.NoopRegisterer, blog.NewMock())
+	test.AssertNotError(t, err, "failed to create multiSource")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	starting_goroutines := runtime.NumGoroutine()
+
+	for i := 0; i < 1000; i++ {
+		_, err = src.Response(ctx, &ocsp.Request{})
+		test.AssertNotError(t, err, "unexpected error")
+	}
+
+	close(ch)
+	// Wait for the goroutines to exit
+	time.Sleep(40 * time.Millisecond)
+	goroutine_diff := runtime.NumGoroutine() - starting_goroutines
+	if goroutine_diff > 0 {
+		t.Fatalf("expected no lingering goroutines. found %d", goroutine_diff)
+	}
 }
 
 func TestBothGood(t *testing.T) {

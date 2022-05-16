@@ -23,7 +23,10 @@
       "timeout": "15s"
     },
     "SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
-    "frequency": "1h"
+    "frequency": "1h",
+    "features": {
+      "ExpirationMailerDontLookTwice": true
+    }
   },
 
   "syslog": {
