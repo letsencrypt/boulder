@@ -191,8 +191,9 @@ func main() {
 	}
 
 	// Boulder's components assume that there will always be CT logs configured.
-	// Issuing a certificate without SCTs embedded is a misissuance event in the
-	// environment Boulder is built for. Exit early if no groups are configured.
+	// Issuing a certificate without SCTs embedded is a misissuance event as per
+	// our CPS 4.4.2, which declares we will always include at least two SCTs.
+	// Exit early if no groups are configured.
 	var ctp *ctpolicy.CTPolicy
 	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogs.Logs) != 0 {
 		cmd.Fail("Configure only CTLogGroups2 or CTLogs, not both")
@@ -210,14 +211,12 @@ func main() {
 			}
 		}
 
-		ctp, err = ctpolicy.New(pubc, c.RA.CTLogGroups2, nil, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
-		cmd.FailOnError(err, "Failed to create a CTPolicy")
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, nil, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 	} else if len(c.RA.CTLogs.Logs) > 0 {
-		operatorGroups, err := loglist.NewFromLogIDs(c.RA.CTLogs.Logs)
+		operatorGroups, err := loglist.New(c.RA.CTLogs.Logs)
 		cmd.FailOnError(err, "Failed to load log list")
 
-		ctp, err = ctpolicy.New(pubc, nil, operatorGroups, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
-		cmd.FailOnError(err, "Failed to create a CTPolicy")
+		ctp = ctpolicy.New(pubc, nil, operatorGroups, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 	} else {
 		cmd.Fail("Must configure either CTLogGroups2 or CTLogs")
 	}

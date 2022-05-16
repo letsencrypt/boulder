@@ -117,8 +117,7 @@ func TestGetGoogleSCTs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp, err := New(tc.mock, tc.groups, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-			test.AssertNotError(t, err, "failed to create test ctpolicy")
+			ctp := New(tc.mock, tc.groups, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
@@ -206,8 +205,7 @@ func TestGetOperatorSCTs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp, err := New(tc.mock, nil, tc.groups, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-			test.AssertNotError(t, err, "failed to create test ctpolicy")
+			ctp := New(tc.mock, nil, tc.groups, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
@@ -242,7 +240,7 @@ func (sp *slowPublisher) SubmitToSingleCTWithResult(_ context.Context, req *pubp
 }
 
 func TestGetSCTsMetrics(t *testing.T) {
-	ctp, err := New(&failOne{badURL: "abc"}, []ctconfig.CTGroup{
+	ctp := New(&failOne{badURL: "abc"}, []ctconfig.CTGroup{
 		{
 			Name: "a",
 			Logs: []ctconfig.LogDescription{
@@ -258,8 +256,7 @@ func TestGetSCTsMetrics(t *testing.T) {
 			},
 		},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "failed to create test ctpolicy")
-	_, err = ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
+	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"log": "ghi", "group": "a"}, 1)
 	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"log": "ghi", "group": "b"}, 1)
@@ -268,7 +265,7 @@ func TestGetSCTsMetrics(t *testing.T) {
 func TestGetSCTsFailMetrics(t *testing.T) {
 	// When an entire log group fails, we should increment the "winner of SCT
 	// race" stat for that group under the fictional log "all_failed".
-	ctp, err := New(&failOne{badURL: "abc"}, []ctconfig.CTGroup{
+	ctp := New(&failOne{badURL: "abc"}, []ctconfig.CTGroup{
 		{
 			Name: "a",
 			Logs: []ctconfig.LogDescription{
@@ -276,8 +273,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 			},
 		},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "failed to create test ctpolicy")
-	_, err = ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
+	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
 	}
@@ -287,7 +283,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	ctp, err = New(&slowPublisher{}, []ctconfig.CTGroup{
+	ctp = New(&slowPublisher{}, []ctconfig.CTGroup{
 		{
 			Name: "a",
 			Logs: []ctconfig.LogDescription{
@@ -295,7 +291,6 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 			},
 		},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "failed to create test ctpolicy")
 	_, err = ctp.GetSCTs(ctx, []byte{0}, time.Time{})
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
@@ -315,7 +310,7 @@ func (ce *countEm) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Reques
 
 func TestStagger(t *testing.T) {
 	countingPub := &countEm{}
-	ctp, err := New(countingPub, []ctconfig.CTGroup{
+	ctp := New(countingPub, []ctconfig.CTGroup{
 		{
 			Name:    "a",
 			Stagger: cmd.ConfigDuration{Duration: 500 * time.Millisecond},
@@ -325,8 +320,7 @@ func TestStagger(t *testing.T) {
 			},
 		},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "failed to create test ctpolicy")
-	_, err = ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
+	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	if countingPub.count != 1 {
 		t.Errorf("wrong number of requests to publisher. got %d, expected 1", countingPub.count)

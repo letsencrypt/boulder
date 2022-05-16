@@ -33,10 +33,10 @@ type integrationSrv struct {
 	// path where all CT servers fail.
 	rejectHosts map[string]bool
 	// A list of entries that we rejected based on rejectHosts.
-	rejected       []string
-	key            *ecdsa.PrivateKey
-	flakienessRate int
-	userAgent      string
+	rejected      []string
+	key           *ecdsa.PrivateKey
+	flakinessRate int
+	userAgent     string
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, output interface{}) error {
@@ -159,7 +159,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 	is.submissions[hostnames]++
 	is.Unlock()
 
-	if is.flakienessRate != 0 && rand.Intn(is.flakienessRate) < is.flakienessRate {
+	if is.flakinessRate != 0 && rand.Intn(is.flakinessRate) < is.flakinessRate {
 		time.Sleep(10 * time.Second)
 	}
 
@@ -214,11 +214,11 @@ func runPersonality(p Personality) {
 		log.Fatal(err)
 	}
 	is := integrationSrv{
-		key:            key,
-		flakienessRate: p.FlakinessRate,
-		submissions:    make(map[string]int64),
-		rejectHosts:    make(map[string]bool),
-		userAgent:      p.UserAgent,
+		key:           key,
+		flakinessRate: p.FlakinessRate,
+		submissions:   make(map[string]int64),
+		rejectHosts:   make(map[string]bool),
+		userAgent:     p.UserAgent,
 	}
 	m := http.NewServeMux()
 	m.HandleFunc("/submissions", is.getSubmissions)

@@ -1299,7 +1299,7 @@ def test_ocsp():
     # checking OCSP until we either see a good response or we timeout (5s).
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
-# TODO(#5938): Remove _operator suffix from this test and make it unconditional.
+# TODO(#5938): Remove _operator suffix from this test and remove CONFIG_NEXT check.
 def test_ct_submission_operator():
     if not CONFIG_NEXT:
         return

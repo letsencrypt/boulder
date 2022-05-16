@@ -28,7 +28,7 @@ func init() {
 }
 
 func NewSCTsFromSameOperator() lint.LintInterface {
-	list, _ := loglist.New()
+	list, _ := loglist.New(nil)
 	return &sctsFromSameOperator{logList: list}
 }
 

@@ -347,8 +347,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		Status:    string(core.StatusValid),
 	})
 
-	ctp, err := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, nil, 0, log, metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "Couldn't create minimal ctpolicy")
+	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
@@ -3160,9 +3159,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	_, ssa, ra, _, cleanup := initAuthorities(t)
 	defer cleanup()
 
-	ctp, err := ctpolicy.New(&timeoutPub{}, []ctconfig.CTGroup{{}}, nil, nil, 0, log, metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "failed to create minimal ctpolicy")
-	ra.ctpolicy = ctp
+	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, []ctconfig.CTGroup{{}}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	// Create valid authorizations for not-example.com and www.not-example.com
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)

@@ -3,6 +3,7 @@ package ctpolicy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"strings"
 	"time"
@@ -41,7 +42,7 @@ func New(
 	stagger time.Duration,
 	log blog.Logger,
 	stats prometheus.Registerer,
-) (*CTPolicy, error) {
+) *CTPolicy {
 	var finalLogs []ctconfig.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
@@ -74,7 +75,7 @@ func New(
 		finalLogs:      finalLogs,
 		log:            log,
 		winnerCounter:  winnerCounter,
-	}, nil
+	}
 }
 
 type result struct {
@@ -210,29 +211,24 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	results := make(chan result, len(ctp.operatorGroups))
-
 	// This closure will be called in parallel once for each operator group.
-	getOne := func(i int, g string) {
-		// If this goroutine isn't for one of the first two groups chosen, sleep a
-		// little bit to stagger our requests to the later groups.
-		if i > 1 {
-			time.Sleep(time.Duration(i) * ctp.stagger)
-		}
-
-		// Quit if the context has errored out, most likely because two other
-		// logs from other operator groups returned SCTs already and the context
-		// has been canceled.
-		if subCtx.Err() != nil {
-			return
+	getOne := func(i int, g string) ([]byte, error) {
+		// Sleep a little bit to stagger our requests to the later groups. Use `i-1`
+		// to compute the stagger duration so that the first two groups (indices 0
+		// and 1) get negative or zero (i.e. instant) sleep durations. If the context
+		// gets cancelled (most likely because two other logs from other operator
+		// groups returned SCTs already) before the sleep is complete, quit instead.
+		select {
+		case <-subCtx.Done():
+			return nil, subCtx.Err()
+		case <-time.After(time.Duration(i-1) * ctp.stagger):
 		}
 
 		// Pick a random log from among those in the group. In practice, very few
 		// operator groups have more than one log, so this loses little flexibility.
 		uri, key, err := ctp.operatorGroups.PickOne(g, expiration)
 		if err != nil {
-			ctp.log.Errf("unable to get log info: %s", err)
-			return
+			return nil, fmt.Errorf("unable to get log info: %w", err)
 		}
 
 		sct, err := ctp.pub.SubmitToSingleCTWithResult(ctx, &pubpb.Request{
@@ -242,23 +238,28 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 			Precert:      true,
 		})
 		if err != nil {
-			// Only log the error if it is not a result of the context being canceled
-			if !canceled.Is(err) {
-				ctp.log.Warningf("ct submission to %q (%q) failed: %s", g, uri, err)
-			}
-
-			results <- result{err: err}
-			return
+			return nil, fmt.Errorf("ct submission to %q (%q) failed: %w", g, uri, err)
 		}
 
-		results <- result{sct: sct.Sct}
+		return sct.Sct, nil
 	}
+
+	// Ensure that this channel has a buffer equal to the number of goroutines
+	// we're kicking off, so that they're all guaranteed to be able to write to
+	// it and exit without blocking and leaking.
+	results := make(chan result, len(ctp.operatorGroups))
 
 	// Kick off a collection of goroutines to try to submit the precert to each
 	// log operator group. Randomize the order of the groups so that we're not
 	// always trying to submit to the same two operators.
 	for i, group := range ctp.operatorGroups.Permute() {
-		go getOne(i, group)
+		go func(i int, g string) {
+			sctDER, err := getOne(i, g)
+			if canceled.Is(err) {
+				return
+			}
+			results <- result{sct: sctDER, err: err}
+		}(i, group)
 	}
 
 	go ctp.submitPrecertInformational(cert, expiration)
