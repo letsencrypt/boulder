@@ -23,4 +23,4 @@ curl https://www.gstatic.com/ct/log_list/v3/log_list_schema.json >| ${gen_dir}/l
 
 gojsonschema -p generated ${gen_dir}/log_list_schema.json >| ${gen_dir}/schema.go
 
-curl https://www.gstatic.com/ct/log_list/v3/log_list.json >| ${gen_dir}/log_list.json
+curl https://www.gstatic.com/ct/log_list/v3/all_logs_list.json >| ${gen_dir}/log_list.json

@@ -1318,6 +1318,14 @@ def test_ct_submission_operator():
         ["http://boulder:4609/submissions"],
     ]
 
+    # These should correspond to the logs with `submitFinal` in ra.json.
+    final_logs = [
+        "http://boulder:4600/submissions",
+        "http://boulder:4601/submissions",
+        "http://boulder:4606/submissions",
+        "http://boulder:4609/submissions",
+     ]
+
     # We'd like to enforce strict limits here (exactly 1 submission per group,
     # exactly two submissions overall) but the async nature of the race system
     # means we can't -- a slowish submission to one log in a group could trigger
@@ -1331,11 +1339,12 @@ def test_ct_submission_operator():
         for j in range(len(log_groups[i])):
             log = log_groups[i][j]
             count = int(requests.get(log + "?hostnames=%s" % hostname).text)
-            if count > 1:
-                raise(Exception("Got %d submissions for log %s, expected at most 1" % count, log))
+            threshold = 1
+            if log in final_logs:
+                threshold += 1
+            if count > threshold:
+                raise(Exception("Got %d submissions for log %s, expected at most %d" % (count, log, threshold)))
             group_count += count
-        if group_count > len(log_groups[i]):
-            raise(Exception("Got %d submissions for log group %d, expected at most %d" % group_count, len(log_groups[i])))
         total_count += group_count
     if total_count < 2:
         raise(Exception("Got %d total submissions, expected at least 2" % total_count))

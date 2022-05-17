@@ -211,12 +211,25 @@ func main() {
 			}
 		}
 
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, nil, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, nil, nil, nil, c.RA.CTLogs.Stagger.Duration, logger, scope)
 	} else if len(c.RA.CTLogs.Logs) > 0 {
-		operatorGroups, err := loglist.New(c.RA.CTLogs.Logs)
+		logList, err := loglist.New(c.RA.CTLogs.Logs, loglist.Issuance)
 		cmd.FailOnError(err, "Failed to load log list")
 
-		ctp = ctpolicy.New(pubc, nil, operatorGroups, c.RA.InformationalCTLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
+		infoLogList, err := loglist.New(c.RA.CTLogs.InfoLogs, loglist.Informational)
+		cmd.FailOnError(err, "Failed to load informational log list")
+
+		finalLogIDs := make([]ctconfig.LogID, 0)
+		for _, id := range append(c.RA.CTLogs.Logs, c.RA.CTLogs.InfoLogs...) {
+			if id.SubmitFinal {
+				finalLogIDs = append(finalLogIDs, id)
+			}
+		}
+
+		finalLogList, err := loglist.New(finalLogIDs, loglist.Informational)
+		cmd.FailOnError(err, "Failed to load final log list")
+
+		ctp = ctpolicy.New(pubc, nil, nil, logList, infoLogList, finalLogList, c.RA.CTLogs.Stagger.Duration, logger, scope)
 	} else {
 		cmd.Fail("Must configure either CTLogGroups2 or CTLogs")
 	}

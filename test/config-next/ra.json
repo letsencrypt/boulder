@@ -66,11 +66,13 @@
       "Logs": [
         {
           "name": "A1 Current",
-          "id": "OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM="
+          "id": "OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM=",
+          "submitFinal": true
         },
         {
           "name": "A1 Future",
-          "id": "2OHE0zamM5iS1NRFWJf9N6CWxdJ93je+leBX371vC+k="
+          "id": "2OHE0zamM5iS1NRFWJf9N6CWxdJ93je+leBX371vC+k=",
+          "submitFinal": true
         },
         {
           "name": "A2 Past",
@@ -90,7 +92,8 @@
         },
         {
           "name": "C1",
-          "id": "Oqk/Tv0cUSnEJ4bZa0eprm3IQQ4XgNcv20/bXixlxnQ="
+          "id": "Oqk/Tv0cUSnEJ4bZa0eprm3IQQ4XgNcv20/bXixlxnQ=",
+          "submitFinal": true
         },
         {
           "name": "D1",
@@ -99,20 +102,16 @@
         {
           "name": "E1",
           "id": "ck+wYNY31I+5XBC7htsdNdYVjOSm4YgnDxlzO9PouwQ="
-        },
+        }
+      ],
+      "InfoLogs": [
         {
           "name": "F1",
-          "id": "FWPcPPStmIK3l/jogz7yLYUtafS44cpLs6hQ3HrjdUQ="
+          "id": "FWPcPPStmIK3l/jogz7yLYUtafS44cpLs6hQ3HrjdUQ=",
+          "submitFinal": true
         }
       ]
-    },
-    "InformationalCTLogs": [
-      {
-        "uri": "http://boulder:4512",
-        "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
-        "submitFinalCert": true
-      }
-    ]
+    }
   },
 
   "pa": {

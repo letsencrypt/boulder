@@ -13,7 +13,7 @@ import (
 )
 
 type sctsFromSameOperator struct {
-	logList loglist.LogList
+	logList loglist.List
 }
 
 func init() {
@@ -28,7 +28,7 @@ func init() {
 }
 
 func NewSCTsFromSameOperator() lint.LintInterface {
-	list, _ := loglist.New(nil)
+	list, _ := loglist.New(nil, loglist.Validation)
 	return &sctsFromSameOperator{logList: list}
 }
 

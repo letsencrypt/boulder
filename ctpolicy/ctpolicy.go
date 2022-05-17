@@ -22,14 +22,16 @@ import (
 // groupings
 type CTPolicy struct {
 	pub pubpb.PublisherClient
-	// TODO(#5938): Fully replace `groups` with `operatorGroups`.
-	groups         []ctconfig.CTGroup
-	operatorGroups loglist.LogList
-	informational  []ctconfig.LogDescription
-	finalLogs      []ctconfig.LogDescription
-	stagger        time.Duration
-	log            blog.Logger
+	// TODO(#5938): Remove groups, informational, and final
+	groups        []ctconfig.CTGroup
+	informational []ctconfig.LogDescription
+	final         []ctconfig.LogDescription
+	logs          loglist.List
+	infoLogs      loglist.List
+	finalLogs     loglist.List
+	stagger       time.Duration
 
+	log           blog.Logger
 	winnerCounter *prometheus.CounterVec
 }
 
@@ -37,23 +39,25 @@ type CTPolicy struct {
 func New(
 	pub pubpb.PublisherClient,
 	groups []ctconfig.CTGroup,
-	operatorGroups loglist.LogList,
 	informational []ctconfig.LogDescription,
+	logs loglist.List,
+	infoLogs loglist.List,
+	finalLogs loglist.List,
 	stagger time.Duration,
 	log blog.Logger,
 	stats prometheus.Registerer,
 ) *CTPolicy {
-	var finalLogs []ctconfig.LogDescription
+	var final []ctconfig.LogDescription
 	for _, group := range groups {
 		for _, log := range group.Logs {
 			if log.SubmitFinalCert {
-				finalLogs = append(finalLogs, log)
+				final = append(final, log)
 			}
 		}
 	}
 	for _, log := range informational {
 		if log.SubmitFinalCert {
-			finalLogs = append(finalLogs, log)
+			final = append(final, log)
 		}
 	}
 
@@ -67,14 +71,16 @@ func New(
 	stats.MustRegister(winnerCounter)
 
 	return &CTPolicy{
-		pub:            pub,
-		groups:         groups,
-		operatorGroups: operatorGroups,
-		stagger:        stagger,
-		informational:  informational,
-		finalLogs:      finalLogs,
-		log:            log,
-		winnerCounter:  winnerCounter,
+		pub:           pub,
+		groups:        groups,
+		informational: informational,
+		final:         final,
+		logs:          logs,
+		infoLogs:      infoLogs,
+		finalLogs:     finalLogs,
+		stagger:       stagger,
+		log:           log,
+		winnerCounter: winnerCounter,
 	}
 }
 
@@ -152,7 +158,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group ctconfig
 // GetSCTs attempts to retrieve two SCTs from the configured log groups and
 // returns the set of SCTs to the caller.
 func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
-	if len(ctp.operatorGroups) != 0 {
+	if len(ctp.logs) != 0 {
 		return ctp.getOperatorSCTs(ctx, cert, expiration)
 	}
 	return ctp.getGoogleSCTs(ctx, cert, expiration)
@@ -215,8 +221,8 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 	getOne := func(i int, g string) ([]byte, error) {
 		// Sleep a little bit to stagger our requests to the later groups. Use `i-1`
 		// to compute the stagger duration so that the first two groups (indices 0
-		// and 1) get negative or zero (i.e. instant) sleep durations. If the context
-		// gets cancelled (most likely because two other logs from other operator
+		// and 1) get negative or zero (i.e. instant) sleep durations. If the
+		// context gets cancelled (most likely because two logs from other operator
 		// groups returned SCTs already) before the sleep is complete, quit instead.
 		select {
 		case <-subCtx.Done():
@@ -226,7 +232,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 
 		// Pick a random log from among those in the group. In practice, very few
 		// operator groups have more than one log, so this loses little flexibility.
-		uri, key, err := ctp.operatorGroups.PickOne(g, expiration)
+		uri, key, err := ctp.logs.PickOne(g, expiration)
 		if err != nil {
 			return nil, fmt.Errorf("unable to get log info: %w", err)
 		}
@@ -247,17 +253,14 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 	// Ensure that this channel has a buffer equal to the number of goroutines
 	// we're kicking off, so that they're all guaranteed to be able to write to
 	// it and exit without blocking and leaking.
-	results := make(chan result, len(ctp.operatorGroups))
+	results := make(chan result, len(ctp.logs))
 
 	// Kick off a collection of goroutines to try to submit the precert to each
 	// log operator group. Randomize the order of the groups so that we're not
 	// always trying to submit to the same two operators.
-	for i, group := range ctp.operatorGroups.Permute() {
+	for i, group := range ctp.logs.Permute() {
 		go func(i int, g string) {
 			sctDER, err := getOne(i, g)
-			if canceled.Is(err) {
-				return
-			}
 			results <- result{sct: sctDER, err: err}
 		}(i, group)
 	}
@@ -267,7 +270,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 	// Finally, collect SCTs and/or errors from our results channel.
 	scts := make(core.SCTDERs, 0)
 	errs := make([]string, 0)
-	for i := 0; i < len(ctp.operatorGroups); i++ {
+	for i := 0; i < len(ctp.logs); i++ {
 		select {
 		case <-ctx.Done():
 			// We timed out (the calling function returned and canceled our context)
@@ -290,6 +293,37 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got error(s): %s", strings.Join(errs, "; "))
 }
 
+// submitAllBestEffort submits the given certificate or precertificate to every
+// log ("informational" for precerts, "final" for certs) configured in the policy.
+// It does not wait for these submission to complete, nor tracks their success.
+func (ctp *CTPolicy) submitAllBestEffort(blob []byte, precert bool, expiration time.Time) {
+	logs := ctp.finalLogs
+	if precert {
+		logs = ctp.infoLogs
+	}
+
+	for _, group := range logs {
+		for _, log := range group {
+			go func(log loglist.Log) {
+				_, err := ctp.pub.SubmitToSingleCTWithResult(
+					context.Background(),
+					&pubpb.Request{
+						LogURL:       log.Url,
+						LogPublicKey: log.Key,
+						Der:          blob,
+						Precert:      precert,
+					},
+				)
+				if err != nil {
+					ctp.log.Warningf("ct submission of cert to log %q failed: %s", log.Url, err)
+				}
+			}(log)
+		}
+	}
+
+}
+
+// TODO(#5938): Remove this when it becomes dead code.
 func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration time.Time) {
 	for _, log := range ctp.informational {
 		go func(l ctconfig.LogDescription) {
@@ -318,7 +352,13 @@ func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration ti
 // SubmitFinalCert submits finalized certificates created from precertificates
 // to any configured logs
 func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
-	for _, log := range ctp.finalLogs {
+	if len(ctp.logs) != 0 {
+		ctp.submitAllBestEffort(cert, false, expiration)
+		return
+	}
+
+	// TODO(#5938): Remove this when it becomes dead code.
+	for _, log := range ctp.final {
 		go func(l ctconfig.LogDescription) {
 			uri, key, err := l.Info(expiration)
 			if err != nil {

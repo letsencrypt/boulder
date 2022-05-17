@@ -95,17 +95,22 @@ type CTGroup struct {
 // CTConfig is the top-level config object expected to be embedded in an
 // executable's JSON config struct.
 type CTConfig struct {
-	// The list of CT logs that we submit to.
-	Logs []LogID
 	// How long to wait for a log from one operator group to accept a certificate
 	// before attempting submission to a log run by a different operator instead.
 	Stagger cmd.ConfigDuration
+	// The list of CT logs that we submit to in order to get SCTs.
+	Logs []LogID
+	// The list of CT logs that we best-effort submit to for the sake of wider
+	// log inclusion, and for exercising logs that are not yet qualified/usable.
+	InfoLogs []LogID
 }
 
 // LogID holds enough information to uniquely identify a CT Log: its log_id
 // (the base64-encoding of the SHA-256 hash of its public key) and its human-
-// readable name/description.
+// readable name/description. This is used to extract other log parameters
+// (such as its URL and public key) from the Chrome Log List.
 type LogID struct {
-	Name string
-	ID   string
+	Name        string
+	ID          string
+	SubmitFinal bool
 }
