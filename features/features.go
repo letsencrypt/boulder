@@ -65,24 +65,30 @@ const (
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
+
+	// ExpirationMailerDontLookTwice enables a bug fix in expiration-mailer
+	// speeds up expiration-mailer processing by ensuring processed items
+	// get marked done.
+	ExpirationMailerDontLookTwice
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                    false,
-	CAAValidationMethods:      false,
-	CAAAccountURI:             false,
-	EnforceMultiVA:            false,
-	MultiVAFullResults:        false,
-	MandatoryPOSTAsGET:        false,
-	ECDSAForAll:               false,
-	ServeRenewalInfo:          false,
-	AllowReRevocation:         false,
-	MozRevocationReasons:      false,
-	OldTLSOutbound:            true,
-	OldTLSInbound:             true,
-	SHA1CSRs:                  true,
-	AllowUnrecognizedFeatures: false,
+	unused:                        false,
+	CAAValidationMethods:          false,
+	CAAAccountURI:                 false,
+	EnforceMultiVA:                false,
+	MultiVAFullResults:            false,
+	MandatoryPOSTAsGET:            false,
+	ECDSAForAll:                   false,
+	ServeRenewalInfo:              false,
+	AllowReRevocation:             false,
+	MozRevocationReasons:          false,
+	OldTLSOutbound:                true,
+	OldTLSInbound:                 true,
+	SHA1CSRs:                      true,
+	AllowUnrecognizedFeatures:     false,
+	ExpirationMailerDontLookTwice: false,
 }
 
 var fMu = new(sync.RWMutex)

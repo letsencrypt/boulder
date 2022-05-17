@@ -22,11 +22,12 @@ func _() {
 	_ = x[OldTLSInbound-11]
 	_ = x[SHA1CSRs-12]
 	_ = x[AllowUnrecognizedFeatures-13]
+	_ = x[ExpirationMailerDontLookTwice-14]
 }
 
-const _FeatureFlag_name = "unusedCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowReRevocationMozRevocationReasonsOldTLSOutboundOldTLSInboundSHA1CSRsAllowUnrecognizedFeatures"
+const _FeatureFlag_name = "unusedCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowReRevocationMozRevocationReasonsOldTLSOutboundOldTLSInboundSHA1CSRsAllowUnrecognizedFeaturesExpirationMailerDontLookTwice"
 
-var _FeatureFlag_index = [...]uint8{0, 6, 26, 39, 53, 71, 89, 100, 116, 133, 153, 167, 180, 188, 213}
+var _FeatureFlag_index = [...]uint8{0, 6, 26, 39, 53, 71, 89, 100, 116, 133, 153, 167, 180, 188, 213, 242}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
