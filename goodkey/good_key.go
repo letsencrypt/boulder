@@ -13,7 +13,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"google.golang.org/grpc"
 
@@ -294,23 +293,8 @@ func (policy *KeyPolicy) goodKeyRSA(key *rsa.PublicKey) (err error) {
 	// Modulus must be >= 2048 bits and <= 4096 bits
 	modulus := key.N
 	modulusBitLen := modulus.BitLen()
-	if features.Enabled(features.RestrictRSAKeySizes) {
-		if !acceptableRSAKeySizes[modulusBitLen] {
-			return badKey("key size not supported: %d", modulusBitLen)
-		}
-	} else {
-		const maxKeySize = 4096
-		if modulusBitLen < 2048 {
-			return badKey("key too small: %d", modulusBitLen)
-		}
-		if modulusBitLen > maxKeySize {
-			return badKey("key too large: %d > %d", modulusBitLen, maxKeySize)
-		}
-		// Bit lengths that are not a multiple of 8 may cause problems on some
-		// client implementations.
-		if modulusBitLen%8 != 0 {
-			return badKey("key length wasn't a multiple of 8: %d", modulusBitLen)
-		}
+	if !acceptableRSAKeySizes[modulusBitLen] {
+		return badKey("key size not supported: %d", modulusBitLen)
 	}
 
 	// Rather than support arbitrary exponents, which significantly increases

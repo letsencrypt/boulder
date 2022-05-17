@@ -25,7 +25,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -574,28 +573,7 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.Count
 		return nil, errIncompleteRequest
 	}
 
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
-		&count,
-		`SELECT count(1) FROM orders
-		WHERE registrationID = :acctID AND
-		created >= :earliest AND
-		created < :latest`,
-		map[string]interface{}{
-			"acctID":   req.AccountID,
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: count}, nil
+	return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
 }
 
 // HashNames returns a hash of the names requested. This is intended for use
@@ -883,12 +861,10 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrder
 		return nil, fmt.Errorf("shouldn't happen: casting error in NewOrder")
 	}
 
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		// Increment the order creation count
-		err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
-		if err != nil {
-			return nil, err
-		}
+	// Increment the order creation count
+	err = addNewOrdersRateLimit(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+	if err != nil {
+		return nil, err
 	}
 
 	res := &corepb.Order{
@@ -1039,12 +1015,10 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, fmt.Errorf("casting error in NewOrderAndAuthzs")
 	}
 
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		// Increment the order creation count
-		err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
-		if err != nil {
-			return nil, err
-		}
+	// Increment the order creation count
+	err = addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+	if err != nil {
+		return nil, err
 	}
 
 	// Calculate the order status before returning it. Since it may have reused all
@@ -1596,11 +1570,6 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
-	useIndex := ""
-	if features.Enabled(features.GetAuthzUseIndex) {
-		useIndex = "USE INDEX (regID_identifier_status_expires_idx)"
-	}
-
 	qmarks := make([]string, len(req.Domains))
 	for i, n := range req.Domains {
 		qmarks[i] = "?"
@@ -1609,21 +1578,17 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
-			%s
+			USE INDEX (regID_identifier_status_expires_idx)
 			WHERE registrationID = ? AND
 			status IN (?,?) AND
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		useIndex,
 		strings.Join(qmarks, ","),
 	)
 
-	dbMap := ssa.dbMap
-	if features.Enabled(features.GetAuthzReadOnly) {
-		dbMap = ssa.dbReadOnlyMap
-	}
+	dbMap := ssa.dbReadOnlyMap
 	_, err := dbMap.Select(
 		&authzModels,
 		query,
@@ -2046,8 +2011,6 @@ func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
 	return db.Insert(khm)
 }
 
-var blockedKeysColumns = "keyHash, added, source, comment"
-
 // AddBlockedKey adds a key hash to the blockedKeys table
 func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.KeyHash, req.Added, req.Source) {
@@ -2057,21 +2020,15 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	if !ok {
 		return nil, errors.New("unknown source")
 	}
-	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
-	vals := []interface{}{
+	_, err := ssa.dbMap.Exec(
+		`INSERT INTO blockedKeys
+			(keyHash, added, source, comment, revokedBy)
+			VALUES (?, ?, ?, ?, ?)`,
 		req.KeyHash,
 		time.Unix(0, req.Added),
 		sourceInt,
 		req.Comment,
-	}
-	if features.Enabled(features.StoreRevokerInfo) && req.RevokedBy != 0 {
-		cols += ", revokedBy"
-		qs += ", ?"
-		vals = append(vals, req.RevokedBy)
-	}
-	_, err := ssa.dbMap.Exec(
-		fmt.Sprintf("INSERT INTO blockedKeys (%s) VALUES (%s)", cols, qs),
-		vals...,
+		req.RevokedBy,
 	)
 	if err != nil {
 		if db.IsDuplicate(err) {

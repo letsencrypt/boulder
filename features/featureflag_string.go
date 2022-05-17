@@ -9,37 +9,24 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[unused-0]
-	_ = x[PrecertificateRevocation-1]
-	_ = x[StripDefaultSchemePort-2]
-	_ = x[NonCFSSLSigner-3]
-	_ = x[StoreIssuerInfo-4]
-	_ = x[StreamlineOrderAndAuthzs-5]
-	_ = x[V1DisableNewValidations-6]
-	_ = x[CAAValidationMethods-7]
-	_ = x[CAAAccountURI-8]
-	_ = x[EnforceMultiVA-9]
-	_ = x[MultiVAFullResults-10]
-	_ = x[MandatoryPOSTAsGET-11]
-	_ = x[AllowV1Registration-12]
-	_ = x[StoreRevokerInfo-13]
-	_ = x[RestrictRSAKeySizes-14]
-	_ = x[FasterNewOrdersRateLimit-15]
-	_ = x[ECDSAForAll-16]
-	_ = x[ServeRenewalInfo-17]
-	_ = x[GetAuthzReadOnly-18]
-	_ = x[GetAuthzUseIndex-19]
-	_ = x[CheckFailedAuthorizationsFirst-20]
-	_ = x[AllowReRevocation-21]
-	_ = x[MozRevocationReasons-22]
-	_ = x[OldTLSOutbound-23]
-	_ = x[OldTLSInbound-24]
-	_ = x[SHA1CSRs-25]
-	_ = x[AllowUnrecognizedFeatures-26]
+	_ = x[CAAValidationMethods-1]
+	_ = x[CAAAccountURI-2]
+	_ = x[EnforceMultiVA-3]
+	_ = x[MultiVAFullResults-4]
+	_ = x[MandatoryPOSTAsGET-5]
+	_ = x[ECDSAForAll-6]
+	_ = x[ServeRenewalInfo-7]
+	_ = x[AllowReRevocation-8]
+	_ = x[MozRevocationReasons-9]
+	_ = x[OldTLSOutbound-10]
+	_ = x[OldTLSInbound-11]
+	_ = x[SHA1CSRs-12]
+	_ = x[AllowUnrecognizedFeatures-13]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstAllowReRevocationMozRevocationReasonsOldTLSOutboundOldTLSInboundSHA1CSRsAllowUnrecognizedFeatures"
+const _FeatureFlag_name = "unusedCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowReRevocationMozRevocationReasonsOldTLSOutboundOldTLSInboundSHA1CSRsAllowUnrecognizedFeatures"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 148, 161, 175, 193, 211, 230, 246, 265, 289, 300, 316, 332, 348, 378, 395, 415, 429, 442, 450, 475}
+var _FeatureFlag_index = [...]uint8{0, 6, 26, 39, 53, 71, 89, 100, 116, 133, 153, 167, 180, 188, 213}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
