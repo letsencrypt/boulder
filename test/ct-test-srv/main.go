@@ -159,7 +159,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 	is.submissions[hostnames]++
 	is.Unlock()
 
-	if is.flakinessRate != 0 && rand.Intn(is.flakinessRate) < is.flakinessRate {
+	if is.flakinessRate != 0 && rand.Intn(100) < is.flakinessRate {
 		time.Sleep(10 * time.Second)
 	}
 
