@@ -265,7 +265,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 		}(i, group)
 	}
 
-	go ctp.submitPrecertInformational(cert, expiration)
+	go ctp.submitAllBestEffort(cert, true, expiration)
 
 	// Finally, collect SCTs and/or errors from our results channel.
 	scts := make(core.SCTDERs, 0)
@@ -296,7 +296,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 // submitAllBestEffort submits the given certificate or precertificate to every
 // log ("informational" for precerts, "final" for certs) configured in the policy.
 // It does not wait for these submission to complete, nor tracks their success.
-func (ctp *CTPolicy) submitAllBestEffort(blob []byte, precert bool, expiration time.Time) {
+func (ctp *CTPolicy) submitAllBestEffort(blob []byte, precert bool, expiry time.Time) {
 	logs := ctp.finalLogs
 	if precert {
 		logs = ctp.infoLogs
@@ -304,6 +304,10 @@ func (ctp *CTPolicy) submitAllBestEffort(blob []byte, precert bool, expiration t
 
 	for _, group := range logs {
 		for _, log := range group {
+			if log.StartInclusive.After(expiry) || log.EndExclusive.Equal(expiry) || log.EndExclusive.Before(expiry) {
+				continue
+			}
+
 			go func(log loglist.Log) {
 				_, err := ctp.pub.SubmitToSingleCTWithResult(
 					context.Background(),

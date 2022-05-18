@@ -72,7 +72,7 @@ type Config struct {
 		// in a group and the first SCT returned will be used. This allows
 		// us to comply with Chrome CT policy which requires one SCT from a
 		// Google log and one SCT from any other log included in their policy.
-		// DEPRECATED: Use CTLogOperatorGroups instead.
+		// DEPRECATED: Use CTLogs instead.
 		// TODO(#5938): Remove this.
 		CTLogGroups2 []ctconfig.CTGroup
 		// CTLogs contains groupings of CT logs organized by what organization

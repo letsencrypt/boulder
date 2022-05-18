@@ -71,8 +71,8 @@ type OperatorGroup map[string]Log
 type Log struct {
 	Url            string
 	Key            string
-	startInclusive time.Time
-	endExclusive   time.Time
+	StartInclusive time.Time
+	EndExclusive   time.Time
 }
 
 // contains is a simple helper to see if a log with the given ID is in the
@@ -154,8 +154,8 @@ func newHelper(base *embedOnce, ids []ctconfig.LogID, p purpose) (List, error) {
 					return nil, fmt.Errorf("failed to parse log %q end timestamp: %w", log.Url, err)
 				}
 
-				info.startInclusive = startInclusive
-				info.endExclusive = endExclusive
+				info.StartInclusive = startInclusive
+				info.EndExclusive = endExclusive
 			}
 
 			group[log.LogId] = info
@@ -205,12 +205,12 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 
 	candidates := make([]Log, 0)
 	for _, log := range group {
-		if log.startInclusive.IsZero() || log.endExclusive.IsZero() {
+		if log.StartInclusive.IsZero() || log.EndExclusive.IsZero() {
 			candidates = append(candidates, log)
 			continue
 		}
 
-		if (log.startInclusive.Equal(expiry) || log.startInclusive.Before(expiry)) && log.endExclusive.After(expiry) {
+		if (log.StartInclusive.Equal(expiry) || log.StartInclusive.Before(expiry)) && log.EndExclusive.After(expiry) {
 			candidates = append(candidates, log)
 		}
 	}
