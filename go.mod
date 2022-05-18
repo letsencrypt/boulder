@@ -1,6 +1,6 @@
 module github.com/letsencrypt/boulder
 
-go 1.17
+go 1.18
 
 require (
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
