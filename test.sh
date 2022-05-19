@@ -262,7 +262,6 @@ STAGE="gomod-vendor"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Go Mod Vendor"
   go mod vendor
-  run_and_expect_silence git config --global safe.directory "$(pwd)"
   run_and_expect_silence git diff --exit-code .
 fi
 
@@ -284,7 +283,6 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   go install ./probs
   go install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
-  run_and_expect_silence git config --global safe.directory "$(pwd)"
   run_and_expect_silence git diff --exit-code .
 fi
 

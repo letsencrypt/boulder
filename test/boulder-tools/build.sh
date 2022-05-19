@@ -59,4 +59,8 @@ gem install --no-document -v 1.14.2 fpm
 apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf automake
 apt-get clean -y
 
+# Tell git to trust the directory where the boulder repo volume is mounted
+# by docker-compose.
+git config --global --add safe.directory /boulder
+
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
