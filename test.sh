@@ -262,7 +262,8 @@ STAGE="gomod-vendor"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Go Mod Vendor"
   go mod vendor
-  run_and_expect_silence git -c safe.directory="$(pwd)" diff --exit-code .
+  run_and_expect_silence git config --global safe.directory "$(pwd)"
+  run_and_expect_silence git diff --exit-code .
 fi
 
 # Run generate to make sure all our generated code can be re-generated with
@@ -282,10 +283,9 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   #     github.com/letsencrypt/boulder/probs)
   go install ./probs
   go install ./vendor/google.golang.org/grpc/codes
-  pwd
-  ls -la
   run_and_expect_silence go generate ./...
-  run_and_expect_silence git -c safe.directory="$(pwd)" diff --exit-code .
+  run_and_expect_silence git config --global safe.directory "$(pwd)"
+  run_and_expect_silence git diff --exit-code .
 fi
 
 STAGE="make-artifacts"
