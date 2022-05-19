@@ -157,20 +157,20 @@ def install(race_detection):
     # so that it allows to Go compiler to run git commands in order to embed
     # VCS information in the resulting binary.
     try:
-        subprocess.check_call(['git', 'config', '--global', '--add', 'safe.directory', os.getcwd()])
+        subprocess.check_call(["git", "config", "--global", "--add", "safe.directory", os.getcwd()])
     except subprocess.CalledProcessError as e:
         print("Failed to set git safe.directory (see CVE-2022-24765)")
         print(e.output)
-        print("Continuing anyway, just in case build works anyway")
+        print("Continuing, just in case the build works anyway")
 
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
-    cmd = "/usr/bin/make GO_BUILD_FLAGS='-tags \"integration\"'  "
+    go_build_flags='-tags "integration"'
     if race_detection:
-        cmd = "/usr/bin/make GO_BUILD_FLAGS='-race -tags \"integration\"'"
+        go_build_flags += ' -race'
 
-    return subprocess.call(cmd, shell=True) == 0
+    return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
 
 def run(cmd, fakeclock):
     e = os.environ.copy()
