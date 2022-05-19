@@ -153,16 +153,6 @@ def setupHierarchy():
 
 
 def install(race_detection):
-    # Tell git that the current working directory (the boulder repo) is safe
-    # so that it allows to Go compiler to run git commands in order to embed
-    # VCS information in the resulting binary.
-    try:
-        subprocess.check_call(["git", "config", "--global", "--add", "safe.directory", os.getcwd()])
-    except subprocess.CalledProcessError as e:
-        print("Failed to set git safe.directory (see CVE-2022-24765)")
-        print(e.output)
-        print("Continuing, just in case the build works anyway")
-
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
