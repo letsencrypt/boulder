@@ -3,9 +3,9 @@ log_level              = "INFO"
 verify_incoming        = false
 verify_outgoing        = true
 verify_server_hostname = true
-ca_file                = "./config/var/consul-agent-ca.crt"
 cert_file              = "./config/var/consul-agent.crt"
 key_file               = "./config/var/consul-agent.key"
+ca_file                = "./config/var/consul-agent-ca.crt"
 auto_encrypt {
   allow_tls = true
 }

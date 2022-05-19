@@ -1,14 +1,6 @@
-variable "va-remote-config" {
-  type = string
-}
-
-variable "sa-config" {
-  type = string
-}
-
-variable "boulder-dir" {
-  type = string
-}
+variable "va-remote-config" { type = string }
+variable "sa-config" { type = string }
+variable "boulder-dir" { type = string }
 
 job "boulder" {
   datacenters = ["dev-general"]
@@ -21,19 +13,20 @@ job "boulder" {
         static = 3306
       }
     }
-    update {
-      min_healthy_time = "1s"
-    }
+
     task "mariadb" {
       resources {
-        cpu    = 100
+        cpu    = 10
         memory = 100
       }
-      driver = "docker"
       service {
         name = "boulder-mysql"
         port = "db"
       }
+      env {
+        MYSQL_ALLOW_EMPTY_PASSWORD = "yes"
+      }
+      driver = "docker"
       config {
         image   = "mariadb:10.5"
         ports   = ["db"]
@@ -45,25 +38,23 @@ job "boulder" {
           "--log-queries-not-using-indexes=ON",
         ]
       }
-      env {
-        MYSQL_ALLOW_EMPTY_PASSWORD = "yes"
-      }
     }
+
     task "provision-mariadb" {
-      driver = "raw_exec"
       lifecycle {
         hook    = "poststart"
         sidecar = false
       }
+      env {
+        MYSQL_CONTAINER = 1
+      }
+      driver = "raw_exec"
       config {
         command = "sh"
         args = [
           "-c",
           "sleep 5 && ${var.boulder-dir}/test/wait-for-it.sh boulder-mysql 3306 && ${var.boulder-dir}/test/create_db.sh"
         ]
-      }
-      env {
-        MYSQL_CONTAINER = 1
       }
     }
   }
@@ -76,21 +67,18 @@ job "boulder" {
       port "https" {}
       port "grpc" {}
     }
+
     task "server" {
       resources {
-        cpu    = 100
+        cpu    = 10
         memory = 100
       }
-      driver = "raw_exec"
       service {
         name = "remote-va"
         port = "grpc"
       }
-      config {
-        command = "${var.boulder-dir}/bin/boulder-remoteva"
-        args = [
-          "--config", "${NOMAD_ALLOC_DIR}/data/remote-va.json"
-        ]
+      env {
+        BOULDER_DIR = "${var.boulder-dir}"
       }
       vault {
         policies = ["nomad-cluster"]
@@ -110,7 +98,6 @@ EOH
         destination = "${NOMAD_SECRETS_DIR}/va/cert.pem"
         change_mode = "restart"
       }
-
       template {
         data        = <<EOH
 {{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=72h" }}
@@ -119,7 +106,6 @@ EOH
         destination = "${NOMAD_SECRETS_DIR}/va/key.pem"
         change_mode = "restart"
       }
-
       template {
         data        = <<EOH
 {{ with secret "boulder_int/issue/boulder" "alt_names=va.boulder" "format=pem" "ttl=72h" }}
@@ -128,8 +114,12 @@ EOH
         destination = "${NOMAD_SECRETS_DIR}/va/ca-cert.pem"
         change_mode = "restart"
       }
-      env {
-        BOULDER_DIR = "${var.boulder-dir}"
+      driver = "raw_exec"
+      config {
+        command = "${var.boulder-dir}/bin/boulder-remoteva"
+        args = [
+          "--config", "${NOMAD_ALLOC_DIR}/data/remote-va.json"
+        ]
       }
     }
   }
@@ -140,24 +130,18 @@ EOH
       port "debug" {}
       port "grpc" {}
     }
+
     task "server" {
       resources {
-        cpu    = 100
+        cpu    = 10
         memory = 100
       }
-      driver = "raw_exec"
       service {
         name = "sa"
         port = "grpc"
       }
       vault {
         policies = ["nomad-cluster"]
-      }
-      config {
-        command = "${var.boulder-dir}/bin/boulder-sa"
-        args = [
-          "--config", "${NOMAD_ALLOC_DIR}/data/sa.json"
-        ]
       }
       template {
         data        = var.sa-config
@@ -177,7 +161,6 @@ EOH
         destination = "${NOMAD_SECRETS_DIR}/sa/cert.pem"
         change_mode = "restart"
       }
-
       template {
         data        = <<EOH
 {{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=72h" }}
@@ -186,7 +169,6 @@ EOH
         destination = "${NOMAD_SECRETS_DIR}/sa/key.pem"
         change_mode = "restart"
       }
-
       template {
         data        = <<EOH
 {{ with secret "boulder_int/issue/boulder" "alt_names=sa.boulder" "format=pem" "ttl=72h" }}
@@ -194,6 +176,13 @@ EOH
 EOH
         destination = "${NOMAD_SECRETS_DIR}/sa/ca-cert.pem"
         change_mode = "restart"
+      }
+      driver = "raw_exec"
+      config {
+        command = "${var.boulder-dir}/bin/boulder-sa"
+        args = [
+          "--config", "${NOMAD_ALLOC_DIR}/data/sa.json"
+        ]
       }
     }
   }
