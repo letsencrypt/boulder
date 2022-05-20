@@ -3,7 +3,8 @@ name: Update PSL
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 1 * *'
+    # Run monthly at a random (https://xkcd.com/221/) time.
+    - cron: '46 8 1 * *'
 
 jobs:
   create-pr:
@@ -44,5 +45,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               head: '${{ steps.branch.outputs.name }}',
-              base: 'main'
+              base: '${{ github.event.repository.default_branch }}'
             })
