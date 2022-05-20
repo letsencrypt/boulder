@@ -15,12 +15,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      # This is the real username and email used by github-actions elsewhere.
       - run: git config user.name "github-actions[bot]"
       - run: git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-      - name: branchname
+      - run: echo ::set-output name=name::update-psl-$(date +%F)
         id: branch
-        run: echo ::set-output name=name::update-psl-$(date +%F)
 
       - run: git checkout -b ${{ steps.branch.outputs.name }}
 
@@ -28,9 +28,8 @@ jobs:
       - run: go mod vendor
       - run: go mod tidy
 
-      - name: diff
+      - run: git diff --numstat vendor/github.com/weppos/publicsuffix-go/publicsuffix/rules.go | awk '{ print "::set-output name=body::" $1 " additions and " $2 " removals." }'
         id: diff
-        run: git diff --numstat vendor/github.com/weppos/publicsuffix-go/publicsuffix/rules.go | awk '{ print "::set-output name=body::" $1 " additions and " $2 " removals." }'
 
       - run: git add vendor go.mod go.sum
       - run: git commit -m "Update Public Suffix List"
