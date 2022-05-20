@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version fd5650 (Sun Mar 27 15:19:06 2022)"
+const defaultListVersion = "PSL version a7c03b (Tue Apr 12 18:31:21 2022)"
 
-func DefaultRules() [9333]Rule {
+func DefaultRules() [9360]Rule {
 	return r
 }
 
-var r = [9333]Rule{
+var r = [9360]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -8748,6 +8748,7 @@ var r = [9333]Rule{
 	{1, "azure-mobile.net", 2, true},
 	{1, "cloudapp.net", 2, true},
 	{1, "azurestaticapps.net", 2, true},
+	{1, "1.azurestaticapps.net", 3, true},
 	{1, "centralus.azurestaticapps.net", 3, true},
 	{1, "eastasia.azurestaticapps.net", 3, true},
 	{1, "eastus2.azurestaticapps.net", 3, true},
@@ -9044,6 +9045,31 @@ var r = [9333]Rule{
 	{1, "sandcats.io", 2, true},
 	{1, "logoip.de", 2, true},
 	{1, "logoip.com", 2, true},
+	{1, "fr-par-1.baremetal.scw.cloud", 4, true},
+	{1, "fr-par-2.baremetal.scw.cloud", 4, true},
+	{1, "nl-ams-1.baremetal.scw.cloud", 4, true},
+	{1, "fnc.fr-par.scw.cloud", 4, true},
+	{1, "functions.fnc.fr-par.scw.cloud", 5, true},
+	{1, "k8s.fr-par.scw.cloud", 4, true},
+	{1, "nodes.k8s.fr-par.scw.cloud", 5, true},
+	{1, "s3.fr-par.scw.cloud", 4, true},
+	{1, "s3-website.fr-par.scw.cloud", 4, true},
+	{1, "whm.fr-par.scw.cloud", 4, true},
+	{1, "priv.instances.scw.cloud", 4, true},
+	{1, "pub.instances.scw.cloud", 4, true},
+	{1, "k8s.scw.cloud", 3, true},
+	{1, "k8s.nl-ams.scw.cloud", 4, true},
+	{1, "nodes.k8s.nl-ams.scw.cloud", 5, true},
+	{1, "s3.nl-ams.scw.cloud", 4, true},
+	{1, "s3-website.nl-ams.scw.cloud", 4, true},
+	{1, "whm.nl-ams.scw.cloud", 4, true},
+	{1, "k8s.pl-waw.scw.cloud", 4, true},
+	{1, "nodes.k8s.pl-waw.scw.cloud", 5, true},
+	{1, "s3.pl-waw.scw.cloud", 4, true},
+	{1, "s3-website.pl-waw.scw.cloud", 4, true},
+	{1, "scalebook.scw.cloud", 3, true},
+	{1, "smartlabeling.scw.cloud", 3, true},
+	{1, "dedibox.fr", 2, true},
 	{1, "schokokeks.net", 2, true},
 	{1, "gov.scot", 2, true},
 	{1, "service.gov.scot", 3, true},
@@ -9135,19 +9161,20 @@ var r = [9333]Rule{
 	{2, "s5y.io", 3, true},
 	{2, "sensiosite.cloud", 3, true},
 	{1, "syncloud.it", 2, true},
-	{1, "diskstation.me", 2, true},
 	{1, "dscloud.biz", 2, true},
-	{1, "dscloud.me", 2, true},
-	{1, "dscloud.mobi", 2, true},
+	{1, "direct.quickconnect.cn", 3, true},
 	{1, "dsmynas.com", 2, true},
-	{1, "dsmynas.net", 2, true},
-	{1, "dsmynas.org", 2, true},
 	{1, "familyds.com", 2, true},
-	{1, "familyds.net", 2, true},
-	{1, "familyds.org", 2, true},
+	{1, "diskstation.me", 2, true},
+	{1, "dscloud.me", 2, true},
 	{1, "i234.me", 2, true},
 	{1, "myds.me", 2, true},
 	{1, "synology.me", 2, true},
+	{1, "dscloud.mobi", 2, true},
+	{1, "dsmynas.net", 2, true},
+	{1, "familyds.net", 2, true},
+	{1, "dsmynas.org", 2, true},
+	{1, "familyds.org", 2, true},
 	{1, "vpnplus.to", 2, true},
 	{1, "direct.quickconnect.to", 3, true},
 	{1, "tabitorder.co.il", 3, true},
