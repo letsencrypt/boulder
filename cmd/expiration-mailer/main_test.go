@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -21,6 +22,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
+	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/sa"
@@ -113,7 +115,9 @@ func TestSendNags(t *testing.T) {
 		DNSNames:     []string{"example.com"},
 	}
 
-	err := m.sendNags([]string{emailA}, []*x509.Certificate{cert})
+	conn, err := m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = m.sendNags(conn, []string{emailA}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -123,7 +127,9 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[0])
 
 	mc.Clear()
-	err = m.sendNags([]string{emailA, emailB}, []*x509.Certificate{cert})
+	conn, err = m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = m.sendNags(conn, []string{emailA, emailB}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Failed to send warning messages")
 	test.AssertEquals(t, len(mc.Messages), 2)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -138,7 +144,9 @@ func TestSendNags(t *testing.T) {
 	}, mc.Messages[1])
 
 	mc.Clear()
-	err = m.sendNags([]string{}, []*x509.Certificate{cert})
+	conn, err = m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = m.sendNags(conn, []string{}, []*x509.Certificate{cert})
 	test.AssertNotError(t, err, "Not an error to pass no email contacts")
 	test.AssertEquals(t, len(mc.Messages), 0)
 
@@ -289,6 +297,37 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	test.AssertNotError(t, err, "finding expired certificates")
 	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
 	test.AssertMetricWithLabelsEquals(t, certsAlreadyRenewed, prometheus.Labels{}, 1.0)
+}
+
+func TestProcessCertsParallel(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+
+	testCtx.m.parallelSends = 2
+	certs := addExpiringCerts(t, testCtx)
+	log.Clear()
+	testCtx.m.processCerts(context.Background(), certs)
+	// Test that the lastExpirationNagSent was updated for the certificate
+	// corresponding to serial4, which is set up as "already renewed" by
+	// addExpiringCerts.
+	if len(log.GetAllMatching("DEBUG: SQL:  UPDATE certificateStatus .*2006-01-02 15:04:05.999999999.*\"000000000000000000000000000000001339\"")) != 1 {
+		t.Errorf("Expected an update to certificateStatus, got these log lines:\n%s",
+			strings.Join(log.GetAllMatching(".*"), "\n"))
+	}
+}
+
+type erroringMailClient struct{}
+
+func (e erroringMailClient) Connect() (bmail.Conn, error) {
+	return nil, errors.New("whoopsie-doo")
+}
+
+func TestProcessCertsConnectError(t *testing.T) {
+	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+
+	testCtx.m.mailer = erroringMailClient{}
+	certs := addExpiringCerts(t, testCtx)
+	// Checking that this terminates rather than deadlocks
+	testCtx.m.processCerts(context.Background(), certs)
 }
 
 func TestFindExpiringCertificates(t *testing.T) {
