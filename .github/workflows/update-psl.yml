@@ -1,0 +1,48 @@
+name: Update PSL
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 1 * *'
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: 'go.mod'
+
+      - run: git config user.name "github-actions[bot]"
+      - run: git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+      - name: branchname
+        id: branch
+        run: echo ::set-output name=name::update-psl-$(date +%F)
+
+      - run: git checkout -b ${{ steps.branch.outputs.name }}
+
+      - run: go get "github.com/weppos/publicsuffix-go@master"
+      - run: go mod vendor
+      - run: go mod tidy
+
+      - name: diff
+        id: diff
+        run: git diff --numstat vendor/github.com/weppos/publicsuffix-go/publicsuffix/rules.go | awk '{ print "::set-output name=body::" $1 " additions and " $2 " removals." }'
+
+      - run: git add vendor go.mod go.sum
+      - run: git commit -m "Update Public Suffix List"
+      - run: git push origin ${{ steps.branch.outputs.name }}
+      
+      - uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.pulls.create({
+              title: 'Update Public Suffix List',
+              body: '${{ steps.diff.outputs.body }}',
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: '${{ steps.branch.outputs.name }}',
+              base: 'main'
+            })
