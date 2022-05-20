@@ -504,7 +504,9 @@ func TestMultiVA(t *testing.T) {
 			res, _ := localVA.PerformValidation(ctx, req)
 			if res.Problems == nil && tc.ExpectedProb != nil {
 				t.Errorf("expected prob %v, got nil", tc.ExpectedProb)
-			} else if res.Problems != nil {
+			} else if res.Problems != nil && tc.ExpectedProb == nil {
+				t.Errorf("expected no prob, got %v", res.Problems)
+			} else if res.Problems != nil && tc.ExpectedProb != nil {
 				// That result should match expected.
 				test.AssertEquals(t, res.Problems.ProblemType, string(tc.ExpectedProb.Type))
 				test.AssertEquals(t, res.Problems.Detail, tc.ExpectedProb.Detail)
