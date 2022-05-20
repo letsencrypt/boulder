@@ -514,7 +514,9 @@ func TestMultiVA(t *testing.T) {
 
 			if tc.ExpectedLog != "" {
 				lines := mockLog.GetAllMatching(tc.ExpectedLog)
-				test.AssertEquals(t, len(lines), 1)
+				if len(lines) != 1 {
+					t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLog)
+				}
 			}
 		})
 	}
