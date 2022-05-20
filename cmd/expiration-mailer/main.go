@@ -258,40 +258,47 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 }
 
 func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int64, certs []core.Certificate) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	reg, err := m.rs.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 	if err != nil {
 		m.stats.errorCount.With(prometheus.Labels{"type": "GetRegistration"}).Inc()
-		return fmt.Errorf("fetching registration %d: %w", regID, err)
-	}
-
-	if reg.Contact == nil {
-		return nil
+		return fmt.Errorf("Error fetching registration %d: %s", regID, err)
 	}
 
 	parsedCerts := []*x509.Certificate{}
 	for _, cert := range certs {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		parsedCert, err := x509.ParseCertificate(cert.DER)
 		if err != nil {
-			m.stats.errorCount.With(prometheus.Labels{"type": "ParseCertificate"}).Inc()
 			// TODO(#1420): tell registration about this error
-			return fmt.Errorf("parsing certificate %s: %w", cert.Serial, err)
+			m.log.AuditErrf("Error parsing certificate %s: %s", cert.Serial, err)
+			m.stats.errorCount.With(prometheus.Labels{"type": "ParseCertificate"}).Inc()
+			continue
 		}
 
 		renewed, err := m.certIsRenewed(ctx, parsedCert.DNSNames, parsedCert.NotBefore)
 		if err != nil {
-			return fmt.Errorf("expiration-mailer: error fetching renewal state: %w", err)
+			m.log.AuditErrf("expiration-mailer: error fetching renewal state: %v", err)
+			// assume not renewed
 		} else if renewed {
+			m.log.Debugf("Cert %s is already renewed", cert.Serial)
 			m.stats.certificatesAlreadyRenewed.Add(1)
 			err := m.updateCertStatus(ctx, cert.Serial)
 			if err != nil {
+				m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
 				m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
-				return fmt.Errorf("updating certificate status for %s: %w", cert.Serial, err)
 			}
 			continue
 		}
 
 		parsedCerts = append(parsedCerts, parsedCert)
 	}
+
+	m.stats.certificatesPerAccountNeedingMail.Observe(float64(len(parsedCerts)))
 
 	if len(parsedCerts) == 0 {
 		// all certificates are renewed
@@ -308,16 +315,16 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 	err = m.sendNags(conn, reg.Contact, parsedCerts)
 	if err != nil {
 		m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
-		return fmt.Errorf("sending nag emails: %w", err)
+		return fmt.Errorf("Error sending nag emails: %s", err)
 	}
 	for _, cert := range parsedCerts {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		serial := core.SerialToString(cert.SerialNumber)
 		err = m.updateCertStatus(ctx, serial)
 		if err != nil {
-			// Don't return immediately; we'd like to at least try and update the status for
-			// all certificates, even if one of them experienced an error (which might have
-			// been intermittent)
-			m.log.AuditErrf("updating certificate status for %s: %s", serial, err)
+			m.log.AuditErrf("Error updating certificate status for %s: %s", serial, err)
 			m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
 			continue
 		}
