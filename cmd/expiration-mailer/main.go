@@ -315,7 +315,7 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 	err = m.sendNags(conn, reg.Contact, parsedCerts)
 	if err != nil {
 		m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
-		return fmt.Errorf("Error sending nag emails: %s", err)
+		return fmt.Errorf("sending nag emails: %s", err)
 	}
 	for _, cert := range parsedCerts {
 		if ctx.Err() != nil {
