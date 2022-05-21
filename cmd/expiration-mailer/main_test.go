@@ -338,6 +338,8 @@ func TestFindExpiringCertificates(t *testing.T) {
 	err = testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
 	test.AssertEquals(t, len(testCtx.mc.Messages), 0)
+	test.AssertMetricWithLabelsEquals(t, testCtx.m.stats.sendDelay, prometheus.Labels{"nag_group": "48h0m0s"}, 90000)
+	test.AssertMetricWithLabelsEquals(t, testCtx.m.stats.sendDelay, prometheus.Labels{"nag_group": "192h0m0s"}, 82800)
 }
 
 func makeRegistration(sac sapb.StorageAuthorityClient, id int64, jsonKey []byte, contacts []string) (*corepb.Registration, error) {

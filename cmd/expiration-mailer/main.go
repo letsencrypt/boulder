@@ -58,6 +58,7 @@ type mailer struct {
 }
 
 type mailerStats struct {
+	sendDelay                         *prometheus.GaugeVec
 	nagsAtCapacity                    *prometheus.GaugeVec
 	errorCount                        *prometheus.CounterVec
 	sendLatency                       prometheus.Histogram
@@ -389,6 +390,12 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 			continue // nothing to do
 		}
 
+		// Report the send delay metric. Note: this is the worst-case send delay
+		// of any certificate in this batch because it's based on the first (oldest).
+		sendDelay := expiresIn - certs[0].Expires.Sub(m.clk.Now())
+		m.stats.sendDelay.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(
+			float64(sendDelay.Truncate(time.Second).Seconds()))
+
 		processingStarted := m.clk.Now()
 		err = m.processCerts(ctx, certs)
 		if err != nil {
@@ -455,6 +462,14 @@ type Config struct {
 }
 
 func initStats(stats prometheus.Registerer) mailerStats {
+	sendDelay := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "send_delay",
+			Help: "For the last batch of certificates, difference between the idealized send time and actual send time. Will always be nonzero, bigger numbers are worse",
+		},
+		[]string{"nag_group"})
+	stats.MustRegister(sendDelay)
+
 	nagsAtCapacity := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "nags_at_capacity",
@@ -510,6 +525,7 @@ func initStats(stats prometheus.Registerer) mailerStats {
 	stats.MustRegister(accountsNeedingMail)
 
 	return mailerStats{
+		sendDelay:                         sendDelay,
 		nagsAtCapacity:                    nagsAtCapacity,
 		errorCount:                        errorCount,
 		sendLatency:                       sendLatency,
