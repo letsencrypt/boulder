@@ -1,3 +1,5 @@
+
+
 vault {
   enabled          = true
   address          = "http://127.0.0.1:8200"
@@ -10,4 +12,8 @@ consul {
   ca_file   = "./config/var/consul-agent-ca.crt"
   cert_file = "./config/var/consul-agent.crt"
   key_file  = "./config/var/consul-agent.key"
+}
+
+acl {
+  enabled = true
 }

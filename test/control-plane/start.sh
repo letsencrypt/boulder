@@ -230,8 +230,10 @@ command sudo nomad agent -dev -dc dev-general \
 pretty "Wait for Nomad to Start"
 while true
 do
-  resp=$(curl -k -sw '%{http_code}' http://127.0.0.1:4646/v1/agent/members | grep -o 200)
-  if [ "$resp" = "200" ]
+  # Nomad will return a 403 on all endpoints once it's ready to have ACLs
+  # bootstrapped.
+  resp=$(curl -k -sw '%{http_code}' http://127.0.0.1:4646/v1/agent/members | grep -o 403)
+  if [ "$resp" = "403" ]
   then
     echo "Nomad agent is running."
     break
@@ -241,12 +243,18 @@ do
   fi
 done
 
+pretty "Bootstrapping Nomad ACLs"
+NOMAD_TOKEN=$(nomad acl bootstrap -json | jq -r ".SecretID")
+
 pretty "Starting Consul-Template: Consul TLS"
 sed -i '' 's|#command|command|g' ./config/var/template-consul-tls-config.hcl
 command consul-template -vault-token="${CONSUL_TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" &>/dev/null &
 
-pretty "Vault Root Token:"
-echo "${VAULT_TOKEN}"
+pretty "Vault Root Token (run once before using vault CLI commands):"
+echo "export VAULT_TOKEN=\"${VAULT_TOKEN}\""
+
+pretty "Nomad Management Token (run once before using nomad CLI commands):"
+echo "export NOMAD_TOKEN=\"${NOMAD_TOKEN}\""
 
 pretty "Waiting for ctrl+c to exit..."
 trap no_ctrlc EXIT
