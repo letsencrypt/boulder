@@ -158,6 +158,8 @@ func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...g
 var caKey crypto.Signer
 var caCert *issuance.Certificate
 var caCert2 *issuance.Certificate
+var caLinter *linter.Linter
+var caLinter2 *linter.Linter
 var ctx = context.Background()
 
 func init() {
@@ -173,6 +175,8 @@ func init() {
 	if err != nil {
 		panic(fmt.Sprintf("Unable to parse %q: %s", caCertFile2, err))
 	}
+	caLinter, _ = linter.New(caCert.Certificate, caKey, []string{"n_subject_common_name_included"})
+	caLinter2, _ = linter.New(caCert2.Certificate, caKey, []string{"n_subject_common_name_included"})
 }
 
 func setup(t *testing.T) *testCtx {
@@ -208,22 +212,20 @@ func setup(t *testing.T) *testCtx {
 		)
 		return res
 	}
-	boulderLinter, _ := linter.New(caCert.Certificate, caKey, []string{"n_subject_common_name_included"})
-	boulderLinter2, _ := linter.New(caCert2.Certificate, caKey, []string{"n_subject_common_name_included"})
 	boulderIssuers := []*issuance.Issuer{
 		// Must list ECDSA-only issuer first, so it is the default for ECDSA.
 		{
 			Cert:    caCert2,
 			Signer:  caKey,
 			Profile: boulderProfile(false, true),
-			Linter:  boulderLinter2,
+			Linter:  caLinter2,
 			Clk:     fc,
 		},
 		{
 			Cert:    caCert,
 			Signer:  caKey,
 			Profile: boulderProfile(true, true),
-			Linter:  boulderLinter,
+			Linter:  caLinter,
 			Clk:     fc,
 		},
 	}

@@ -156,11 +156,11 @@ def install(race_detection):
     # Pass empty BUILD_TIME and BUILD_ID flags to avoid constantly invalidating the
     # build cache with new BUILD_TIMEs, or invalidating it on merges with a new
     # BUILD_ID.
-    cmd = "/usr/bin/make GO_BUILD_FLAGS='-tags \"integration\"'  "
+    go_build_flags='-tags "integration"'
     if race_detection:
-        cmd = "/usr/bin/make GO_BUILD_FLAGS='-race -tags \"integration\"'"
+        go_build_flags += ' -race'
 
-    return subprocess.call(cmd, shell=True) == 0
+    return subprocess.call(["/usr/bin/make", "GO_BUILD_FLAGS=%s" % go_build_flags]) == 0
 
 def run(cmd, fakeclock):
     e = os.environ.copy()
