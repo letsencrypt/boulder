@@ -221,12 +221,6 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 	}
 
 	for senderNum := uint(0); senderNum < parallelSends; senderNum++ {
-		// For politeness' sake, don't open more than 1 new connection per
-		// second.
-		if senderNum > 0 {
-			time.Sleep(time.Second)
-		}
-
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
