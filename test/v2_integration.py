@@ -1542,23 +1542,37 @@ def test_caa_extensions():
     chisel2.expect_problem("urn:ietf:params:acme:error:caa", lambda: chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"]))
     chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"], client=client)
 
+def test_new_account():
+    """
+    Test creating new accounts with no email, empty email, one email, and a
+    tuple of multiple emails.
+    """
+    for contact in (None, (), ("mailto:single@chisel.com",), ("mailto:one@chisel.com", "mailto:two@chisel.com")):
+        # We don't use `chisel2.make_client` or `messages.NewRegistration.from_data`
+        # here because they do too much client-side processing to make the
+        # contact addresses look "nice".
+        client = chisel2.uninitialized_client()
+        result = client.new_account(messages.NewRegistration(contact=contact, terms_of_service_agreed=True))
+        actual = result.body.contact
+        if contact is not None and contact != actual:
+            raise(Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
+
 def test_account_update():
     """
     Create a new ACME client/account with one contact email. Then update the
     account to a different contact emails.
     """
-    emails=("initial-email@not-example.com", "updated-email@not-example.com", "another-update@not-example.com")
-    client = chisel2.make_client(email=emails[0])
-
-    for email in emails[1:]:
-        result = chisel2.update_email(client, email=email)
-        # We expect one contact in the result
-        if len(result.body.contact) != 1:
-            raise(Exception("\nUpdate account failed: expected one contact in result, got 0"))
-        # We expect it to be the email we just updated to
-        actual = result.body.contact[0]
-        if actual != "mailto:"+email:
-            raise(Exception("\nUpdate account failed: expected contact %s, got %s" % (email, actual)))
+    for contact in (None, (), ("mailto:single@chisel.com",), ("mailto:one@chisel.com", "mailto:two@chisel.com")):
+        # We don't use `chisel2.update_email` or `messages.NewRegistration.from_data`
+        # here because they do too much client-side processing to make the
+        # contact addresses look "nice".
+        print()
+        client = chisel2.make_client()
+        update = client.net.account.update(body=client.net.account.body.update(contact=contact))
+        result = client.update_registration(update)
+        actual = result.body.contact
+        if contact is not None and contact != actual:
+            raise(Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
 
 def test_renewal_exemption():
     """

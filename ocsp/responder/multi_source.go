@@ -26,6 +26,8 @@ func NewMultiSource(primary, secondary Source, stats prometheus.Registerer, log 
 		Name: "ocsp_multiplex_responses",
 		Help: "Count of OCSP requests/responses by action taken by the multiSource",
 	}, []string{"result"})
+	stats.MustRegister(counter)
+
 	return &multiSource{
 		primary:   primary,
 		secondary: secondary,
@@ -107,7 +109,10 @@ type responseResult struct {
 // getResponse provides a thin wrapper around an underlying Source's Response
 // method, calling it in a goroutine and passing the result back on a channel.
 func getResponse(ctx context.Context, src Source, req *ocsp.Request) chan responseResult {
-	responseChan := make(chan responseResult)
+	// Use a buffer so the following goroutine can exit as soon as it's done,
+	// rather than blocking on a reader (which would introduce a risk that the
+	// nother ever reads, leaking the goroutine).
+	responseChan := make(chan responseResult, 1)
 
 	go func() {
 		defer close(responseChan)

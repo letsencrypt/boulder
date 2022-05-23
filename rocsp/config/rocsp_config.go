@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -52,7 +53,10 @@ type RedisConfig struct {
 	WriteTimeout cmd.ConfigDuration
 
 	// Maximum number of socket connections.
-	// Default is 10 connections per every CPU as reported by runtime.NumCPU.
+	// Default is 5 connections per every CPU as reported by runtime.NumCPU.
+	// If this is set to an explicit value, that's not multiplied by NumCPU.
+	// PoolSize applies per cluster node and not for the whole cluster.
+	// https://pkg.go.dev/github.com/go-redis/redis#ClusterOptions
 	PoolSize int
 	// Minimum number of idle connections which is useful when establishing
 	// new connection is slow.
@@ -114,6 +118,10 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*
 
 // MakeReadClient produces a *rocsp.Client from a config.
 func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*rocsp.Client, error) {
+	if len(c.Addrs) == 0 {
+		return nil, errors.New("redis config's 'addrs' field was empty")
+	}
+
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)

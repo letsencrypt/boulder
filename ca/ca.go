@@ -31,15 +31,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-// Metrics for CA statistics
-const (
-	csrExtensionCategory          = "category"
-	csrExtensionBasic             = "basic"
-	csrExtensionTLSFeature        = "tls-feature"
-	csrExtensionTLSFeatureInvalid = "tls-feature-invalid"
-	csrExtensionOther             = "other"
-)
-
 type certificateType string
 
 const (
@@ -78,7 +69,6 @@ type certificateAuthorityImpl struct {
 	clk                clock.Clock
 	log                blog.Logger
 	signatureCount     *prometheus.CounterVec
-	csrExtensionCount  *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
 	signErrorCount     *prometheus.CounterVec
@@ -144,14 +134,6 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	csrExtensionCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "csr_extensions",
-			Help: "Number of CSRs with extensions of the given category",
-		},
-		[]string{csrExtensionCategory})
-	stats.MustRegister(csrExtensionCount)
-
 	orphanCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "orphans",
@@ -181,7 +163,6 @@ func NewCertificateAuthorityImpl(
 		orphanQueue:        orphanQueue,
 		log:                logger,
 		signatureCount:     signatureCount,
-		csrExtensionCount:  csrExtensionCount,
 		orphanCount:        orphanCount,
 		adoptedOrphanCount: adoptedOrphanCount,
 		signErrorCount:     signErrorCount,
@@ -330,18 +311,29 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		return nil, err
 	}
+
+	names := strings.Join(issuanceReq.DNSNames, ", ")
+
+	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
+		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
+
 	certDER, err := issuer.Issue(issuanceReq)
 	if err != nil {
-		return nil, err
+		ca.noteSignError(err)
+		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
+			serialHex, req.RegistrationID, names, err)
+		return nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
+
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
-	ca.log.AuditInfof("Signing success: serial=[%s] regID=[%d] names=[%s] csr=[%s] certificate=[%s]",
-		serialHex, req.RegistrationID, strings.Join(precert.DNSNames, ", "), hex.EncodeToString(req.DER),
-		hex.EncodeToString(certDER))
+	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s]",
+		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
+
 	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, int64(issuer.Cert.NameID()))
 	if err != nil {
 		return nil, err
 	}
+
 	return &corepb.Certificate{
 		RegistrationID: req.RegistrationID,
 		Serial:         core.SerialToString(precert.SerialNumber),
@@ -435,8 +427,9 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, nil, err
 	}
 
-	ca.log.AuditInfof("Signing: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
+	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
+
 	certDER, err := issuer.Issue(&issuance.IssuanceRequest{
 		PublicKey:         csr.PublicKey,
 		Serial:            serialBigInt.Bytes(),
@@ -447,17 +440,16 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotBefore:         validity.NotBefore,
 		NotAfter:          validity.NotAfter,
 	})
-	ca.noteSignError(err)
 	if err != nil {
-		err = berrors.InternalServerError("failed to sign certificate: %s", err)
-		ca.log.AuditErrf("Signing failed: serial=[%s] err=[%v]", serialHex, err)
-		return nil, nil, nil, err
+		ca.noteSignError(err)
+		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
+			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
+		return nil, nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
-	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 
-	ca.log.AuditInfof("Signing success: serial=[%s] regID=[%d] names=[%s] csr=[%s] precertificate=[%s]",
-		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw),
-		hex.EncodeToString(certDER))
+	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
+	ca.log.AuditInfof("Signing precert success: serial=[%s] regID=[%d] names=[%s] precertificate=[%s]",
+		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER))
 
 	return certDER, ocspResp, issuer, nil
 }

@@ -212,11 +212,11 @@ type issuedNameModel struct {
 
 // regModel is the description of a core.Registration in the database before
 type regModel struct {
-	ID        int64    `db:"id"`
-	Key       []byte   `db:"jwk"`
-	KeySHA256 string   `db:"jwk_sha256"`
-	Contact   []string `db:"contact"`
-	Agreement string   `db:"agreement"`
+	ID        int64  `db:"id"`
+	Key       []byte `db:"jwk"`
+	KeySHA256 string `db:"jwk_sha256"`
+	Contact   string `db:"contact"`
+	Agreement string `db:"agreement"`
 	// InitialIP is stored as sixteen binary bytes, regardless of whether it
 	// represents a v4 or v6 IP address.
 	InitialIP []byte    `db:"initialIp"`
@@ -237,6 +237,18 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	sha, err := core.KeyDigestB64(jwk.Key)
 	if err != nil {
 		return nil, err
+	}
+
+	// We don't want to write literal JSON "null" strings into the database if the
+	// list of contact addresses is empty. Replace any possibly-`nil` slice with
+	// an empty JSON array. We don't need to check reg.ContactPresent, because
+	// we're going to write the whole object to the database anyway.
+	jsonContact := []byte("[]")
+	if len(reg.Contact) != 0 {
+		jsonContact, err = json.Marshal(reg.Contact)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// For some reason we use different serialization formats for InitialIP
@@ -260,7 +272,7 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		ID:        reg.Id,
 		Key:       reg.Key,
 		KeySHA256: sha,
-		Contact:   reg.Contact,
+		Contact:   string(jsonContact),
 		Agreement: reg.Agreement,
 		InitialIP: []byte(initialIP.To16()),
 		CreatedAt: createdAt,
@@ -273,11 +285,16 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
-	var contact []string
+	contact := []string{}
 	contactsPresent := false
-	if len(reg.Contact) != 0 {
-		contact = reg.Contact
-		contactsPresent = true
+	if len(reg.Contact) > 0 {
+		err := json.Unmarshal([]byte(reg.Contact), &contact)
+		if err != nil {
+			return nil, err
+		}
+		if len(contact) > 0 {
+			contactsPresent = true
+		}
 	}
 
 	// For some reason we use different serialization formats for InitialIP

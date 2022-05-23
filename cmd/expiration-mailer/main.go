@@ -37,7 +37,6 @@ import (
 )
 
 const (
-	defaultNagCheckInterval  = 24 * time.Hour
 	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
 )
 
@@ -59,16 +58,22 @@ type mailer struct {
 }
 
 type mailerStats struct {
-	nagsAtCapacity    *prometheus.GaugeVec
-	errorCount        *prometheus.CounterVec
-	renewalCount      *prometheus.CounterVec
-	sendLatency       prometheus.Histogram
-	processingLatency prometheus.Histogram
+	sendDelay                         *prometheus.GaugeVec
+	nagsAtCapacity                    *prometheus.GaugeVec
+	errorCount                        *prometheus.CounterVec
+	sendLatency                       prometheus.Histogram
+	processingLatency                 prometheus.Histogram
+	certificatesExamined              prometheus.Counter
+	certificatesAlreadyRenewed        prometheus.Counter
+	certificatesPerAccountNeedingMail prometheus.Histogram
 }
 
 func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
-	if len(contacts) == 0 {
-		return nil
+	// TODO(#6121): Remove this
+	if !features.Enabled(features.ExpirationMailerDontLookTwice) {
+		if len(contacts) == 0 {
+			return nil
+		}
 	}
 	if len(certs) == 0 {
 		return errors.New("no certs given to send nags for")
@@ -172,31 +177,27 @@ func (m *mailer) sendNags(contacts []string, certs []*x509.Certificate) error {
 	return nil
 }
 
-func (m *mailer) updateCertStatus(serial string) error {
-	_, err := m.dbMap.Exec(
-		"UPDATE certificateStatus SET lastExpirationNagSent = ?  WHERE serial = ?",
+func (m *mailer) updateCertStatus(ctx context.Context, serial string) error {
+	_, err := m.dbMap.WithContext(ctx).Exec(
+		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial = ?",
 		m.clk.Now(), serial)
 	return err
 }
 
-func (m *mailer) certIsRenewed(names []string, issued time.Time) (bool, error) {
+func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.Time) (bool, error) {
 	namehash := sa.HashNames(names)
 
 	var present bool
-	err := m.dbMap.SelectOne(
+	err := m.dbMap.WithContext(ctx).SelectOne(
 		&present,
-		// TODO(#5670): Remove this OR when the partitioning is fixed.
-		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)
-		OR EXISTS (SELECT id FROM fqdnSets_old WHERE setHash = ? AND issued > ? LIMIT 1)`,
-		namehash,
-		issued,
+		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
 		namehash,
 		issued,
 	)
 	return present, err
 }
 
-func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) {
+func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) error {
 	regIDToCerts := make(map[int64][]core.Certificate)
 
 	for _, cert := range allCerts {
@@ -207,14 +208,16 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 	err := m.mailer.Connect()
 	if err != nil {
-		m.log.AuditErrf("Error connecting to send nag emails: %s", err)
-		return
+		return fmt.Errorf("connecting to SMTP server: %w", err)
 	}
 	defer func() {
 		_ = m.mailer.Close()
 	}()
 
 	for regID, certs := range regIDToCerts {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		reg, err := m.rs.GetRegistration(ctx, &sapb.RegistrationID{Id: regID})
 		if err != nil {
 			m.log.AuditErrf("Error fetching registration %d: %s", regID, err)
@@ -224,6 +227,9 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 
 		parsedCerts := []*x509.Certificate{}
 		for _, cert := range certs {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			parsedCert, err := x509.ParseCertificate(cert.DER)
 			if err != nil {
 				// TODO(#1420): tell registration about this error
@@ -232,14 +238,14 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 				continue
 			}
 
-			renewed, err := m.certIsRenewed(parsedCert.DNSNames, parsedCert.NotBefore)
+			renewed, err := m.certIsRenewed(ctx, parsedCert.DNSNames, parsedCert.NotBefore)
 			if err != nil {
 				m.log.AuditErrf("expiration-mailer: error fetching renewal state: %v", err)
 				// assume not renewed
 			} else if renewed {
 				m.log.Debugf("Cert %s is already renewed", cert.Serial)
-				m.stats.renewalCount.With(prometheus.Labels{}).Inc()
-				err := m.updateCertStatus(cert.Serial)
+				m.stats.certificatesAlreadyRenewed.Add(1)
+				err := m.updateCertStatus(ctx, cert.Serial)
 				if err != nil {
 					m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
 					m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -250,13 +256,18 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			parsedCerts = append(parsedCerts, parsedCert)
 		}
 
+		m.stats.certificatesPerAccountNeedingMail.Observe(float64(len(parsedCerts)))
+
 		if len(parsedCerts) == 0 {
 			// all certificates are renewed
 			continue
 		}
 
-		if reg.Contact == nil {
-			continue
+		// TODO(#6121): Remove this
+		if !features.Enabled(features.ExpirationMailerDontLookTwice) {
+			if len(reg.Contact) == 0 {
+				continue
+			}
 		}
 
 		err = m.sendNags(reg.Contact, parsedCerts)
@@ -266,8 +277,11 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			continue
 		}
 		for _, cert := range parsedCerts {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			serial := core.SerialToString(cert.SerialNumber)
-			err = m.updateCertStatus(serial)
+			err = m.updateCertStatus(ctx, serial)
 			if err != nil {
 				m.log.AuditErrf("Error updating certificate status for %s: %s", serial, err)
 				m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -275,8 +289,17 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			}
 		}
 	}
+	return nil
 }
 
+// findExpiringCertificates finds certificates that might need an expiration mail, filters them,
+// groups by account, sends mail, and updates their status in the DB so we don't examine them again.
+//
+// Invariant: findExpiringCertificates should examine each certificate at most N times, where
+// N is the number of reminders. For every certificate examined (barring errors), this function
+// should update the lastExpirationNagSent field of certificateStatus, so it does not need to
+// examine the same certificate again on the next go-round. This ensures we make forward progress
+// and don't clog up the window of certificates to be examined.
 func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 	now := m.clk.Now()
 	// E.g. m.nagTimes = [2, 4, 8, 15] days from expiration
@@ -317,6 +340,9 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 			m.log.AuditErrf("expiration-mailer: Error loading certificate serials: %s", err)
 			return err
 		}
+		m.log.Debugf("found %d certificates", len(serials))
+
+		m.stats.certificatesExamined.Add(float64(len(serials)))
 
 		// If the number of rows was exactly `m.limit` rows we need to increment
 		// a stat indicating that this nag group is at capacity based on the
@@ -337,6 +363,9 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		// certificate status rows
 		var certs []core.Certificate
 		for _, serial := range serials {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			var cert core.Certificate
 			cert, err := sa.SelectCertificate(m.dbMap.WithContext(ctx), serial)
 			if err != nil {
@@ -345,10 +374,11 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 				// is not being used by a subscriber, we don't send expiration email about
 				// it.
 				if db.IsNoRows(err) {
+					m.log.Infof("no rows for serial %q", serial)
 					continue
 				}
 				m.log.AuditErrf("expiration-mailer: Error loading cert %q: %s", cert.Serial, err)
-				return err
+				continue
 			}
 			certs = append(certs, cert)
 		}
@@ -360,8 +390,17 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 			continue // nothing to do
 		}
 
+		// Report the send delay metric. Note: this is the worst-case send delay
+		// of any certificate in this batch because it's based on the first (oldest).
+		sendDelay := expiresIn - certs[0].Expires.Sub(m.clk.Now())
+		m.stats.sendDelay.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(
+			float64(sendDelay.Truncate(time.Second).Seconds()))
+
 		processingStarted := m.clk.Now()
-		m.processCerts(ctx, certs)
+		err = m.processCerts(ctx, certs)
+		if err != nil {
+			m.log.AuditErr(err.Error())
+		}
 		processingEnded := m.clk.Now()
 		elapsed := processingEnded.Sub(processingStarted)
 		m.stats.processingLatency.Observe(elapsed.Seconds())
@@ -395,14 +434,18 @@ type Config struct {
 
 		CertLimit int
 		NagTimes  []string
-		// How much earlier (than configured nag intervals) to
-		// send reminders, to account for the expected delay
-		// before the next expiration-mailer invocation.
+
+		// TODO(#6097): Remove this
 		NagCheckInterval string
+
 		// Path to a text/template email template
 		EmailTemplate string
 
+		// How often to process a batch of certificates
 		Frequency cmd.ConfigDuration
+
+		// How many parallel goroutines should process each batch of emails
+		ParallelSends uint
 
 		TLS       cmd.TLSConfig
 		SAService *cmd.GRPCClientConfig
@@ -419,6 +462,14 @@ type Config struct {
 }
 
 func initStats(stats prometheus.Registerer) mailerStats {
+	sendDelay := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "send_delay",
+			Help: "For the last batch of certificates, difference between the idealized send time and actual send time. Will always be nonzero, bigger numbers are worse",
+		},
+		[]string{"nag_group"})
+	stats.MustRegister(sendDelay)
+
 	nagsAtCapacity := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "nags_at_capacity",
@@ -435,14 +486,6 @@ func initStats(stats prometheus.Registerer) mailerStats {
 		[]string{"type"})
 	stats.MustRegister(errorCount)
 
-	renewalCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "renewals",
-			Help: "Number of messages skipped for being renewals",
-		},
-		nil)
-	stats.MustRegister(renewalCount)
-
 	sendLatency := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "send_latency",
@@ -455,16 +498,41 @@ func initStats(stats prometheus.Registerer) mailerStats {
 		prometheus.HistogramOpts{
 			Name:    "processing_latency",
 			Help:    "Time the mailer takes processing certificates in seconds",
-			Buckets: []float64{1, 15, 30, 60, 75, 90, 120},
+			Buckets: []float64{30, 60, 75, 90, 120, 600, 3600},
 		})
 	stats.MustRegister(processingLatency)
 
+	certificatesExamined := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "certificates_examined",
+			Help: "Number of certificates looked at that are potentially due for an expiration mail",
+		})
+	stats.MustRegister(certificatesExamined)
+
+	certificatesAlreadyRenewed := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "certificates_already_renewed",
+			Help: "Number of certificates from certificates_examined that were ignored because they were already renewed",
+		})
+	stats.MustRegister(certificatesAlreadyRenewed)
+
+	accountsNeedingMail := prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "certificates_per_account_needing_mail",
+			Help:    "After ignoring certificates_already_renewed and grouping the remaining certificates by account, how many accounts needed to get an email; grouped by how many certificates each account needed",
+			Buckets: []float64{0, 1, 2, 100, 1000, 10000, 100000},
+		})
+	stats.MustRegister(accountsNeedingMail)
+
 	return mailerStats{
-		nagsAtCapacity:    nagsAtCapacity,
-		errorCount:        errorCount,
-		renewalCount:      renewalCount,
-		sendLatency:       sendLatency,
-		processingLatency: processingLatency,
+		sendDelay:                         sendDelay,
+		nagsAtCapacity:                    nagsAtCapacity,
+		errorCount:                        errorCount,
+		sendLatency:                       sendLatency,
+		processingLatency:                 processingLatency,
+		certificatesExamined:              certificatesExamined,
+		certificatesAlreadyRenewed:        certificatesAlreadyRenewed,
+		certificatesPerAccountNeedingMail: accountsNeedingMail,
 	}
 }
 
@@ -559,15 +627,6 @@ func main() {
 		*reconnBase,
 		*reconnMax)
 
-	nagCheckInterval := defaultNagCheckInterval
-	if s := c.Mailer.NagCheckInterval; s != "" {
-		nagCheckInterval, err = time.ParseDuration(s)
-		if err != nil {
-			logger.AuditErrf("Failed to parse NagCheckInterval string %q: %s", s, err)
-			return
-		}
-	}
-
 	var nags durationSlice
 	for _, nagDuration := range c.Mailer.NagTimes {
 		dur, err := time.ParseDuration(nagDuration)
@@ -575,7 +634,10 @@ func main() {
 			logger.AuditErrf("Failed to parse nag duration string [%s]: %s", nagDuration, err)
 			return
 		}
-		nags = append(nags, dur+nagCheckInterval)
+		// Add some padding to the nag times so we send _before_ the configured
+		// time rather than after. See https://github.com/letsencrypt/boulder/pull/1029
+		adjustedInterval := dur + c.Mailer.Frequency.Duration
+		nags = append(nags, adjustedInterval)
 	}
 	// Make sure durations are sorted in increasing order
 	sort.Sort(nags)
@@ -604,14 +666,13 @@ func main() {
 	defer cancel()
 
 	go cmd.CatchSignals(logger, func() {
-		fmt.Printf("exiting\n")
 		cancel()
 		select {} // wait for the `findExpiringCertificates` calls below to exit
 	})
 
 	if *daemon {
 		if c.Mailer.Frequency.Duration == 0 {
-			fmt.Fprintln(os.Stderr, "mailer.runPeriod is not set")
+			fmt.Fprintln(os.Stderr, "mailer.Frequency is not set in the JSON config")
 			os.Exit(1)
 		}
 		t := time.NewTicker(c.Mailer.Frequency.Duration)

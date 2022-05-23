@@ -6,6 +6,32 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestAllowUnrecognizedFeatures(t *testing.T) {
+	features = map[FeatureFlag]bool{
+		unused:                    false,
+		AllowUnrecognizedFeatures: false,
+	}
+	nameToFeature = map[string]FeatureFlag{
+		"unused":                    unused,
+		"AllowUnrecognizedFeatures": AllowUnrecognizedFeatures,
+	}
+	err := Set(map[string]bool{
+		"Z4lG0":                     true,
+		"AllowUnrecognizedFeatures": true,
+	})
+	test.AssertNotError(t, err, "expected no error when setting an unrecognized feature")
+
+	err = Set(map[string]bool{
+		"Z4lG0":                     true,
+		"Zombo":                     true,
+		"AllowUnrecognizedFeatures": false,
+	})
+	test.AssertError(t, err, "expected error when disallowing unrecognized features")
+	test.AssertContains(t, err.Error(), "unrecognized feature flag names: ")
+	test.AssertContains(t, err.Error(), "Z4lG0")
+	test.AssertContains(t, err.Error(), "Zombo")
+}
+
 func TestFeatures(t *testing.T) {
 	features = map[FeatureFlag]bool{
 		unused: false,

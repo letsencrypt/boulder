@@ -48,7 +48,7 @@ func TestAcmeIdentifierBadJSON(t *testing.T) {
 	test.AssertError(t, err, "expected error from scanner.Binder")
 	var badJSONErr errBadJSON
 	test.AssertErrorWraps(t, err, &badJSONErr)
-	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
+	test.AssertEquals(t, string(badJSONErr.json), badJSON)
 }
 
 func TestJSONWebKey(t *testing.T) {
@@ -85,7 +85,7 @@ func TestJSONWebKeyBadJSON(t *testing.T) {
 	test.AssertError(t, err, "expected error from scanner.Binder")
 	var badJSONErr errBadJSON
 	test.AssertErrorWraps(t, err, &badJSONErr)
-	test.AssertEquals(t, string(badJSONErr.json), string(badJSON))
+	test.AssertEquals(t, string(badJSONErr.json), badJSON)
 }
 
 func TestAcmeStatus(t *testing.T) {

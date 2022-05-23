@@ -173,7 +173,7 @@ func (c Client) postRaw(retryCount int, requestURL, kid string, privateKey crypt
 		return nil, nil, err
 	}
 
-	data, err := jwsEncodeJSON(payload, privateKey, keyID(kid), nonce, requestURL)
+	data, err := jwsEncodeJSON(payload, privateKey, KeyID(kid), nonce, requestURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("acme: error encoding json payload: %v", err)
 	}

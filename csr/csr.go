@@ -9,6 +9,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 )
@@ -60,6 +61,9 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return berrors.InternalServerError("error checking key validity: %s", err)
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
+		return unsupportedSigAlg
+	}
+	if !features.Enabled(features.SHA1CSRs) && csr.SignatureAlgorithm == x509.SHA1WithRSA {
 		return unsupportedSigAlg
 	}
 	err = csr.CheckSignature()

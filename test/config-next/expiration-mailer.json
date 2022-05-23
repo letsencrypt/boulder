@@ -11,7 +11,6 @@
     },
     "certLimit": 100000,
     "nagTimes": ["480h", "240h"],
-    "nagCheckInterval": "24h",
     "emailTemplate": "test/example-expiration-template",
     "debugAddr": ":8008",
     "tls": {
@@ -24,7 +23,10 @@
       "timeout": "15s"
     },
     "SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
-    "frequency": "1h"
+    "frequency": "1h",
+    "features": {
+      "ExpirationMailerDontLookTwice": true
+    }
   },
 
   "syslog": {

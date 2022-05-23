@@ -165,12 +165,6 @@ ycBzDV9u6cX9qNLc9Bn5DAumz7Zp2AuA+Q==
 -----END EC PRIVATE KEY-----
 `
 
-	testE2KeyPublicJSON = `{
-    "kty":"EC",
-    "crv":"P-256",
-    "x":"S8FOmrZ3ywj4yyFqt0etAD90U-EnkNaOBSLfQmf7pNg",
-    "y":"vMvpDyqFDRHjGfZ1siDOm5LS6xNdR5xTpyoQGLDOX2Q"
-  }`
 	testE2KeyPrivatePEM = `
 -----BEGIN EC PRIVATE KEY-----
 MHcCAQEEIFRcPxQ989AY6se2RyIoF1ll9O6gHev4oY15SWJ+Jf5eoAoGCCqGSM49
@@ -3544,4 +3538,30 @@ func TestARI(t *testing.T) {
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 404)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
+}
+
+// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+func TestOldTLSInbound(t *testing.T) {
+	features.Reset()
+
+	wfe, _ := setupWFE(t)
+	req := &http.Request{
+		URL:    &url.URL{Path: "/directory"},
+		Method: "GET",
+		Header: http.Header(map[string][]string{
+			http.CanonicalHeaderKey("TLS-Version"): {"TLSv1"},
+		}),
+	}
+	responseWriter := httptest.NewRecorder()
+	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
+
+	err := features.Set(map[string]bool{"OldTLSInbound": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	responseWriter = httptest.NewRecorder()
+	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
 }

@@ -17,6 +17,9 @@ on:
   workflow_dispatch:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  contents: read
+
 jobs:
   #  Main test jobs. This looks like a single job, but the matrix
   #  items will multiply it. For example every entry in the
@@ -33,8 +36,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.17.9_2022-04-12
-          - go1.18.1_2022-04-12
+          - go1.18.1_2022-05-19
         # Tests command definitions. Use the entire docker-compose command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -102,6 +104,8 @@ jobs:
   # one static job name that can be used to determine success of the job
   # in GitHub branch protection.
   boulder_ci_test_matrix_status:
+    permissions:
+      contents: none
     if: ${{ always() }}
     runs-on: ubuntu-latest
     name: Boulder CI Test Matrix

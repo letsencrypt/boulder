@@ -5,7 +5,7 @@ services:
     # used for release builds. make-deb.sh relies on being able to parse the
     # numeric version between 'go' and the underscore-prefixed date. If you make
     # changes to these tokens, please update this parsing logic.
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.17.9_2022-04-12}
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.18.1_2022-05-19}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
@@ -27,6 +27,10 @@ services:
         ipv4_address: 10.88.88.88
       redisnet:
         ipv4_address: 10.33.33.33
+    extra_hosts:
+      # This is used by TestOldTLS in va/http_test.go
+      # TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
+      - "example.com:127.0.0.1"
     # Use sd-test-srv as a backup to Docker's embedded DNS server
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
     # If there's a name Docker's DNS server doesn't know about, it will
@@ -62,7 +66,7 @@ services:
         driver: none
 
   bredis_1:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -71,7 +75,7 @@ services:
           ipv4_address: 10.33.33.2
 
   bredis_2:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -80,7 +84,7 @@ services:
           ipv4_address: 10.33.33.3
 
   bredis_3:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -89,7 +93,7 @@ services:
           ipv4_address: 10.33.33.4
 
   bredis_4:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -98,7 +102,7 @@ services:
           ipv4_address: 10.33.33.5
 
   bredis_5:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -107,7 +111,7 @@ services:
           ipv4_address: 10.33.33.6
 
   bredis_6:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
     command: redis-server /test/redis.config
@@ -116,7 +120,7 @@ services:
           ipv4_address: 10.33.33.7
 
   bredis_clusterer:
-    image: redis:latest
+    image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
       - ./cluster/:/cluster/:cached

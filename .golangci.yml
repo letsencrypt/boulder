@@ -1,7 +1,8 @@
 linters:
   disable-all: true
   enable:
-    - errcheck
+    - deadcode
+    # TODO(#6105): add 'gci' linter
     - gofmt
     - gosec
     - gosimple
@@ -9,8 +10,14 @@ linters:
     - ineffassign
     - misspell
     - staticcheck
+    - structcheck
     - stylecheck
+    - typecheck
+    - unconvert
+    # TODO(#6104): Enable 'unparam' linter
     - unused
+    - varcheck
+    - wastedassign
 linters-settings:
   errcheck:
     ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write

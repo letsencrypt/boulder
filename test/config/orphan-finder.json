@@ -6,7 +6,6 @@
     "/hierarchy/intermediate-cert-ecdsa-a.pem"
   ],
 
-
   "syslog": {
     "stdoutlevel": 7,
     "sysloglevel": 7

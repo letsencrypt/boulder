@@ -3,7 +3,6 @@ package wfe2
 import (
 	"context"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -232,6 +231,13 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
 				beeline.AddFieldToTrace(ctx, "slug", request.URL.Path)
+			}
+			if !features.Enabled(features.OldTLSInbound) {
+				tls := request.Header.Get("TLS-Version")
+				if tls == "TLSv1" || tls == "TLSv1.1" {
+					wfe.sendError(response, logEvent, probs.Malformed("upgrade your ACME client to support TLSv1.2 or better"), nil)
+					return
+				}
 			}
 			if request.Method != "GET" || pattern == newNoncePath {
 				// Historically we did not return a error to the client
@@ -536,6 +542,7 @@ func (wfe *WebFrontEndImpl) Directory(
 		return
 	}
 
+	logEvent.Suppress()
 	response.Write(relDir)
 }
 
@@ -814,7 +821,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	reason := revocation.Reason(0)
 	if revokeRequest.Reason != nil {
 		if _, present := revocation.UserAllowedReasons[*revokeRequest.Reason]; !present {
-			reasonStr, ok := revocation.ReasonToString[revocation.Reason(*revokeRequest.Reason)]
+			reasonStr, ok := revocation.ReasonToString[*revokeRequest.Reason]
 			if !ok {
 				reasonStr = "unknown"
 			}
@@ -978,19 +985,6 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	}
 
 	response.WriteHeader(http.StatusOK)
-}
-
-func (wfe *WebFrontEndImpl) logCsr(request *http.Request, cr core.CertificateRequest, account core.Registration) {
-	var csrLog = struct {
-		ClientAddr string
-		CSR        string
-		Requester  int64
-	}{
-		ClientAddr: web.GetClientAddr(request),
-		CSR:        hex.EncodeToString(cr.Bytes),
-		Requester:  account.ID,
-	}
-	wfe.log.AuditObject("Certificate request", csrLog)
 }
 
 // Challenge handles POST requests to challenge URLs.
@@ -1497,7 +1491,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		logEvent.DNSName = authzPB.Identifier
 		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
 	}
-	logEvent.Status = string(authzPB.Status)
+	logEvent.Status = authzPB.Status
 	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
@@ -1957,7 +1951,8 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	return respObj
 }
 
-// NewOrder is used by clients to create a new order object from a CSR
+// NewOrder is used by clients to create a new order object and a set of
+// authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
 	ctx context.Context,
 	logEvent *web.RequestEvent,
@@ -2221,18 +2216,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	certificateRequest := core.CertificateRequest{Bytes: rawCSR.CSR}
-	certificateRequest.CSR = csr
-	wfe.logCsr(request, certificateRequest, *acct)
-
-	logEvent.Extra["CSRDNSNames"] = certificateRequest.CSR.DNSNames
-	beeline.AddFieldToTrace(ctx, "csr.dnsnames", certificateRequest.CSR.DNSNames)
-	logEvent.Extra["CSREmailAddresses"] = certificateRequest.CSR.EmailAddresses
-	beeline.AddFieldToTrace(ctx, "csr.email_addrs", certificateRequest.CSR.EmailAddresses)
-	logEvent.Extra["CSRIPAddresses"] = certificateRequest.CSR.IPAddresses
-	beeline.AddFieldToTrace(ctx, "csr.ip_addrs", certificateRequest.CSR.IPAddresses)
-	logEvent.Extra["KeyType"] = web.KeyTypeToString(certificateRequest.CSR.PublicKey)
-	beeline.AddFieldToTrace(ctx, "csr.key_type", web.KeyTypeToString(certificateRequest.CSR.PublicKey))
+	logEvent.Extra["CSRDNSNames"] = csr.DNSNames
+	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
+	logEvent.Extra["CSREmailAddresses"] = csr.EmailAddresses
+	beeline.AddFieldToTrace(ctx, "csr.email_addrs", csr.EmailAddresses)
+	logEvent.Extra["CSRIPAddresses"] = csr.IPAddresses
+	beeline.AddFieldToTrace(ctx, "csr.ip_addrs", csr.IPAddresses)
+	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
+	beeline.AddFieldToTrace(ctx, "csr.key_type", web.KeyTypeToString(csr.PublicKey))
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Csr:   rawCSR.CSR,
@@ -2248,7 +2239,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	// Inc CSR signature algorithm counter
-	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": certificateRequest.CSR.SignatureAlgorithm.String()}).Inc()
+	wfe.stats.csrSignatureAlgs.With(prometheus.Labels{"type": csr.SignatureAlgorithm.String()}).Inc()
 
 	orderURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, updatedOrder.Id))
@@ -2302,7 +2293,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// This is a very simple renewal calculation: Calculate a point 2/3rds of the
 	// way through the validity period, then give a 2-day window around that.
 	validity := time.Unix(0, cert.Expires).Add(time.Second).Sub(time.Unix(0, cert.Issued))
-	renewalOffset := time.Duration(int64(0.33 * float64(validity.Seconds())))
+	renewalOffset := time.Duration(int64(0.33 * validity.Seconds()))
 	idealRenewal := time.Unix(0, cert.Expires).UTC().Add(-renewalOffset)
 	ri := core.RenewalInfo{
 		SuggestedWindow: core.SuggestedWindow{
@@ -2334,5 +2325,5 @@ func extractRequesterIP(req *http.Request) (net.IP, error) {
 }
 
 func urlForAuthz(authz core.Authorization, request *http.Request) string {
-	return web.RelativeEndpoint(request, authzPath+string(authz.ID))
+	return web.RelativeEndpoint(request, authzPath+authz.ID)
 }

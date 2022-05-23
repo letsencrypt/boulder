@@ -1,10 +1,10 @@
 module github.com/letsencrypt/boulder
 
-go 1.17
+go 1.18
 
 require (
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
-	github.com/eggsampler/acme/v3 v3.2.1
+	github.com/eggsampler/acme/v3 v3.3.0
 	github.com/go-gorp/gorp/v3 v3.0.2
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.5.0
@@ -16,7 +16,7 @@ require (
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 	github.com/letsencrypt/challtestsrv v1.2.1
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
-	github.com/miekg/dns v1.1.45
+	github.com/miekg/dns v1.1.48
 	github.com/miekg/pkcs11 v1.1.1
 	github.com/prometheus/client_golang v1.12.1
 	github.com/prometheus/client_model v0.2.0
@@ -29,7 +29,7 @@ require (
 	golang.org/x/text v0.3.6
 	google.golang.org/grpc v1.36.1
 	google.golang.org/protobuf v1.28.0
-	gopkg.in/square/go-jose.v2 v2.4.1
+	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 

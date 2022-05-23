@@ -8,10 +8,7 @@
       "tlsPort": 5001
     },
     "dnsTries": 3,
-    "dnsResolvers": [
-      "127.0.0.1:8053",
-      "127.0.0.1:8054"
-    ],
+    "dnsResolver": "boulder",
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
@@ -19,6 +16,7 @@
       "keyFile": "test/grpc-creds/va.boulder/key.pem"
     },
     "grpc": {
+      "maxConnectionAge": "30s",
       "address": ":9092",
       "clientNames": [
         "health-checker.boulder",

@@ -20,6 +20,8 @@ import (
 //    internal error.
 //  - Prefixes the Type field of the ProblemDetails with a namespace.
 //  - Sends an HTTP response containing the error and an error code to the user.
+// The internal error (ierr) may be nil if no information beyond the
+// ProblemDetails is needed for internal debugging.
 func SendError(
 	log blog.Logger,
 	namespace string,

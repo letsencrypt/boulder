@@ -306,22 +306,10 @@ ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
 
 # Release Process
 
-The current Boulder release process is described in the [boulder release process
-repository](https://github.com/letsencrypt/boulder-release-process). It includes
-[an example](https://github.com/letsencrypt/boulder-release-process#example) git
-history showing a regular release being tagged, a hotfix being tagged from
-a clean main, and a hotfix being tagged from a release branch because main
-was dirty.
-
-Previously we used dedicated
-[`staging`](https://github.com/letsencrypt/boulder/tree/staging) and
-[`release`](https://github.com/letsencrypt/boulder/tree/release) branches. This
-had several downsides and we frequently forgot to merge staging to release once
-code had been shipped to production. We do not use the `staging` and `release`
-branches anymore. Releases tagged from prior to Feb 1st 2017 are also outdated
-artifacts of old process (e.g. the
-[`hotfixes-2017-02-01`](https://github.com/letsencrypt/boulder/releases/tag/hotfixes%2F2017-02-01)
-tag).
+The current Boulder release process is described in
+[release.md](https://github.com/letsencrypt/boulder/docs/release.md). New
+releases are tagged weekly, and artifacts are automatically produced for each
+release by GitHub Actions.
 
 # Dependencies
 
@@ -395,6 +383,12 @@ The ACME specification allows developers to make certain decisions as to how
 various elements in the RFC are implemented. Some of these fully conformant
 decisions are listed in [ACME implementation details
 doc](https://github.com/letsencrypt/boulder/blob/main/docs/acme-implementation_details.md).
+
+## Code of Conduct
+
+The code of conduct for everyone participating in this community in any capacity
+is available for reference
+[on the community forum](https://community.letsencrypt.org/guidelines).
 
 ## Problems or questions?
 
