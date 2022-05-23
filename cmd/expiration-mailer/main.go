@@ -212,15 +212,30 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 		regIDToCerts[cert.RegistrationID] = cs
 	}
 
-	var wg sync.WaitGroup
-	workChan := make(chan work)
-
 	parallelSends := m.parallelSends
 	if parallelSends == 0 {
 		parallelSends = 1
 	}
 
+	var wg sync.WaitGroup
+	workChan := make(chan work, len(regIDToCerts))
+
+	// Populate the work chan on a goroutine so work is available as soon
+	// as one of the sender routines starts.
+	go func(ch chan<- work) {
+		for regID, certs := range regIDToCerts {
+			ch <- work{regID, certs}
+		}
+		close(workChan)
+	}(workChan)
+
 	for senderNum := uint(0); senderNum < parallelSends; senderNum++ {
+		// For politeness' sake, don't open more than 1 new connection per
+		// second.
+		if senderNum > 0 {
+			time.Sleep(time.Second)
+		}
+
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -228,7 +243,6 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 		conn, err := m.mailer.Connect()
 		if err != nil {
 			m.log.AuditErrf("connecting parallel sender %d: %s", senderNum, err)
-			close(workChan)
 			return err
 		}
 		wg.Add(1)
@@ -243,10 +257,6 @@ func (m *mailer) processCerts(ctx context.Context, allCerts []core.Certificate) 
 			conn.Close()
 		}(conn, workChan)
 	}
-	for regID, certs := range regIDToCerts {
-		workChan <- work{regID, certs}
-	}
-	close(workChan)
 	wg.Wait()
 	return nil
 }
