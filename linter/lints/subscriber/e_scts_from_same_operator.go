@@ -28,8 +28,7 @@ func init() {
 }
 
 func NewSCTsFromSameOperator() lint.LintInterface {
-	list, _ := loglist.New(nil, loglist.Validation)
-	return &sctsFromSameOperator{logList: list}
+	return &sctsFromSameOperator{logList: loglist.GetLintList()}
 }
 
 func (l *sctsFromSameOperator) CheckApplies(c *x509.Certificate) bool {

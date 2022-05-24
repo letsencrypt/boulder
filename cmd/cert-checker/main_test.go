@@ -26,6 +26,7 @@ import (
 	"github.com/jmhodges/clock"
 
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/goodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -526,6 +527,8 @@ func TestIgnoredLint(t *testing.T) {
 		saCleanup()
 	}()
 
+	err = loglist.InitLintList("../../test/ct-test-srv/log_list.json")
+	test.AssertNotError(t, err, "failed to load ct log list")
 	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations)
 	serial := big.NewInt(1337)

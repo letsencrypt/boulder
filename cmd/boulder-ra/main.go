@@ -195,7 +195,7 @@ func main() {
 	// our CPS 4.4.2, which declares we will always include at least two SCTs.
 	// Exit early if no groups are configured.
 	var ctp *ctpolicy.CTPolicy
-	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogs.Logs) != 0 {
+	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogs.SCTLogs) != 0 {
 		cmd.Fail("Configure only CTLogGroups2 or CTLogs, not both")
 	} else if len(c.RA.CTLogGroups2) > 0 {
 		for _, g := range c.RA.CTLogGroups2 {
@@ -212,24 +212,20 @@ func main() {
 		}
 
 		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, nil, nil, nil, c.RA.CTLogs.Stagger.Duration, logger, scope)
-	} else if len(c.RA.CTLogs.Logs) > 0 {
-		logList, err := loglist.New(c.RA.CTLogs.Logs, loglist.Issuance)
-		cmd.FailOnError(err, "Failed to load log list")
+	} else if len(c.RA.CTLogs.SCTLogs) > 0 {
+		allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
+		cmd.FailOnError(err, "Failed to parse log list")
 
-		infoLogList, err := loglist.New(c.RA.CTLogs.InfoLogs, loglist.Informational)
-		cmd.FailOnError(err, "Failed to load informational log list")
+		sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance)
+		cmd.FailOnError(err, "Failed to load SCT logs")
 
-		finalLogIDs := make([]ctconfig.LogID, 0)
-		for _, id := range append(c.RA.CTLogs.Logs, c.RA.CTLogs.InfoLogs...) {
-			if id.SubmitFinal {
-				finalLogIDs = append(finalLogIDs, id)
-			}
-		}
+		infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational)
+		cmd.FailOnError(err, "Failed to load informational logs")
 
-		finalLogList, err := loglist.New(finalLogIDs, loglist.Informational)
-		cmd.FailOnError(err, "Failed to load final log list")
+		finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
+		cmd.FailOnError(err, "Failed to load final logs")
 
-		ctp = ctpolicy.New(pubc, nil, nil, logList, infoLogList, finalLogList, c.RA.CTLogs.Stagger.Duration, logger, scope)
+		ctp = ctpolicy.New(pubc, nil, nil, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 	} else {
 		cmd.Fail("Must configure either CTLogGroups2 or CTLogs")
 	}

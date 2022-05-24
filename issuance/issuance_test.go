@@ -24,6 +24,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/test"
@@ -646,6 +647,8 @@ func TestIssueCTPoison(t *testing.T) {
 func TestIssueSCTList(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
+	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
+	test.AssertNotError(t, err, "failed to load log list")
 	linter, err := linter.New(
 		issuerCert.Certificate,
 		issuerSigner,
@@ -656,9 +659,9 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
-	logID1, err := base64.StdEncoding.DecodeString("KXm+8J45OSHwVnOfY6V35b5XfZxgCvj5TV0mXCVdx4Q=")
+	logID1, err := base64.StdEncoding.DecodeString("OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM=")
 	test.AssertNotError(t, err, "failed to decode ct log ID")
-	logID2, err := base64.StdEncoding.DecodeString("36Veq2iCTx9sre64X04+WurNohKkal6OOxLAIERcKnM=")
+	logID2, err := base64.StdEncoding.DecodeString("UtToynGEyMkkXDMQei8Ll54oMwWHI0IieDEKs12/Td4=")
 	test.AssertNotError(t, err, "failed to decode ct log ID")
 	certBytes, err := signer.Issue(&IssuanceRequest{
 		PublicKey: pk.Public(),
@@ -688,13 +691,12 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertDeepEquals(t, cert.Extensions[8], pkix.Extension{
 		Id: sctListOID,
 		Value: []byte{
-			4, 100, 0, 98, 0, 47, 0, 41, 121, 190, 240, 158, 57, 57, 33,
-			240, 86, 115, 159, 99, 165, 119, 229, 190, 87, 125, 156, 96, 10, 248, 249,
-			77, 93, 38, 92, 37, 93, 199, 132, 0, 0, 0, 0, 0, 0, 0, 0,
-			0, 0, 0, 0, 0, 0, 0, 47, 0, 223, 165, 94, 171, 104, 130, 79,
-			31, 108, 173, 238, 184, 95, 78, 62, 90, 234, 205, 162, 18, 164, 106, 94,
-			142, 59, 18, 192, 32, 68, 92, 42, 115, 0, 0, 0, 0, 0, 0, 0,
-			0, 0, 0, 0, 0, 0, 0,
+			4, 100, 0, 98, 0, 47, 0, 56, 152, 140, 148, 208, 53, 152, 195, 147, 45,
+			223, 233, 35, 186, 186, 242, 122, 66, 14, 185, 108, 65, 225, 90, 168, 12,
+			26, 176, 252, 4, 189, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 47,
+			0, 82, 212, 232, 202, 113, 132, 200, 201, 36, 92, 51, 16, 122, 47, 11,
+			151, 158, 40, 51, 5, 135, 35, 66, 34, 120, 49, 10, 179, 93, 191, 77, 222,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		},
 	})
 }

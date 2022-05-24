@@ -61,55 +61,28 @@
       "AllowReRevocation": true,
       "MozRevocationReasons": true
     },
-    "CTLogs": {
-      "Stagger": "500ms",
-      "Logs": [
-        {
-          "name": "A1 Current",
-          "id": "OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM=",
-          "submitFinal": true
-        },
-        {
-          "name": "A1 Future",
-          "id": "2OHE0zamM5iS1NRFWJf9N6CWxdJ93je+leBX371vC+k=",
-          "submitFinal": true
-        },
-        {
-          "name": "A2 Past",
-          "id": "z7banNzwEtmRiittSviBYKjWmVltXNBhLfudmDXIcoU="
-        },
-        {
-          "name": "A2 Current",
-          "id": "HRrTQca8iy14Qbrw6/itgVzVWTcaENF3tWnJP743pq8="
-        },
-        {
-          "name": "B1",
-          "id": "UtToynGEyMkkXDMQei8Ll54oMwWHI0IieDEKs12/Td4="
-        },
-        {
-          "name": "B2",
-          "id": "EOPWVkKfDlS3lQe5brFUMsEYAJ8I7uZr7z55geKzv7c="
-        },
-        {
-          "name": "C1",
-          "id": "Oqk/Tv0cUSnEJ4bZa0eprm3IQQ4XgNcv20/bXixlxnQ=",
-          "submitFinal": true
-        },
-        {
-          "name": "D1",
-          "id": "e90gTyc4KkZpHv2pgeSOS224Md6/21UmWIxRF9mXveI="
-        },
-        {
-          "name": "E1",
-          "id": "ck+wYNY31I+5XBC7htsdNdYVjOSm4YgnDxlzO9PouwQ="
-        }
+    "ctLogs": {
+      "stagger": "500ms",
+      "logListFile": "test/ct-test-srv/log_list.json",
+      "sctLogs": [
+        "A1 Current",
+        "A1 Future",
+        "A2 Past",
+        "A2 Current",
+        "B1",
+        "B2",
+        "C1",
+        "D1",
+        "E1"
       ],
-      "InfoLogs": [
-        {
-          "name": "F1",
-          "id": "FWPcPPStmIK3l/jogz7yLYUtafS44cpLs6hQ3HrjdUQ=",
-          "submitFinal": true
-        }
+      "infoLogs": [
+        "F1"
+      ],
+      "finalLogs": [
+        "A1 Current",
+        "A1 Future",
+        "C1",
+        "F1"
       ]
     }
   },

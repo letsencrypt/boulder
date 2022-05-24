@@ -98,11 +98,17 @@ type CTConfig struct {
 	// How long to wait for a log from one operator group to accept a certificate
 	// before attempting submission to a log run by a different operator instead.
 	Stagger cmd.ConfigDuration
-	// The list of CT logs that we submit to in order to get SCTs.
-	Logs []LogID
-	// The list of CT logs that we best-effort submit to for the sake of wider
+	// Path to a JSON log list file on disk. The log list must conform to Google's
+	// schema: https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
+	LogListFile string
+	// The list of CT log names that we submit to in order to get SCTs.
+	SCTLogs []string
+	// The list of CT log names that we best-effort submit to for the sake of wider
 	// log inclusion, and for exercising logs that are not yet qualified/usable.
-	InfoLogs []LogID
+	InfoLogs []string
+	// The list of CT log names that we submit final certificates to. May include
+	// duplicates from the two lists above.
+	FinalLogs []string
 }
 
 // LogID holds enough information to uniquely identify a CT Log: its log_id
