@@ -244,7 +244,48 @@ do
 done
 
 pretty "Bootstrapping Nomad ACLs"
-NOMAD_TOKEN=$(nomad acl bootstrap -json | jq -r ".SecretID")
+export NOMAD_TOKEN=$(nomad acl bootstrap -json | jq -r ".SecretID")
+
+# https://learn.hashicorp.com/tutorials/nomad/access-control-policies
+tee config/var/nomad_sre_policy.hcl <<EOF
+namespace "*" {
+  policy = "write"
+  # Disallow access to execute shell commands from the web UI.
+  deny = ["alloc-exec", "alloc-node-exec"]
+}
+node {
+  policy = "write"
+}
+agent {
+  policy = "write"
+}
+host_volume "*" {
+  policy = "write"
+}
+plugin {
+  policy = "read"
+}
+EOF
+
+tee config/var/nomad_ro_policy.hcl <<EOF
+namespace "*" {
+  policy = "read"
+}
+node {
+  policy = "read"
+}
+agent {
+  policy = "read"
+}
+plugin {
+  policy = "read"
+}
+EOF
+
+pretty "Applying Nomad ACL Policies"
+# https://www.nomadproject.io/docs/commands/acl/policy-apply
+nomad acl policy apply sre "./config/var/nomad_sre_policy.hcl"
+nomad acl policy apply ro "./config/var/nomad_ro_policy.hcl"
 
 pretty "Starting Consul-Template: Consul TLS"
 sed -i '' 's|#command|command|g' ./config/var/template-consul-tls-config.hcl
@@ -252,10 +293,16 @@ command consul-template -vault-token="${CONSUL_TLS_TOKEN}" -config="./config/var
 
 pretty "Vault Root Token (run once before using vault CLI commands):"
 echo "export VAULT_TOKEN=\"${VAULT_TOKEN}\""
-
+echo
 pretty "Nomad Management Token (run once before using nomad CLI commands):"
 echo "export NOMAD_TOKEN=\"${NOMAD_TOKEN}\""
-
+echo
+pretty "To issue an 'sre' Nomad ACL token, run:"
+echo "nomad acl token create -type=\"client\" -policy=\"sre\""
+echo
+pretty "To issue a 'read-only' Nomad ACL token, run:"
+echo "nomad acl token create -type=\"client\" -policy=\"ro\""
+echo
 pretty "Waiting for ctrl+c to exit..."
 trap no_ctrlc EXIT
 while true
