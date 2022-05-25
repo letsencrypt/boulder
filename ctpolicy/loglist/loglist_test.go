@@ -167,41 +167,41 @@ func TestPermute(t *testing.T) {
 }
 
 func TestPickOne(t *testing.T) {
-	dateA := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	dateB := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
-	dateC := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
+	date0 := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	date1 := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
+	date2 := time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	input := List{
 		"Operator A": {
 			"ID A1": Log{Name: "Log A1"},
 		},
 	}
-	_, _, err := input.PickOne("Operator B", dateA)
+	_, _, err := input.PickOne("Operator B", date0)
 	test.AssertError(t, err, "should have failed to find operator")
 
 	input = List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", StartInclusive: dateA, EndExclusive: dateB},
+			"ID A1": Log{Name: "Log A1", StartInclusive: date0, EndExclusive: date1},
 		},
 	}
-	_, _, err = input.PickOne("Operator A", dateC)
+	_, _, err = input.PickOne("Operator A", date2)
 	test.AssertError(t, err, "should have failed to find log")
-	_, _, err = input.PickOne("Operator A", dateB)
+	_, _, err = input.PickOne("Operator A", date1)
 	test.AssertError(t, err, "should have failed to find log")
-	_, _, err = input.PickOne("Operator A", dateA)
+	_, _, err = input.PickOne("Operator A", date0)
 	test.AssertNotError(t, err, "should have found a log")
-	_, _, err = input.PickOne("Operator A", dateA.Add(time.Hour))
+	_, _, err = input.PickOne("Operator A", date0.Add(time.Hour))
 	test.AssertNotError(t, err, "should have found a log")
 
 	input = List{
 		"Operator A": {
-			"ID A1": Log{Name: "Log A1", StartInclusive: dateA, EndExclusive: dateB, Key: "KA1", Url: "UA1"},
-			"ID A2": Log{Name: "Log A2", StartInclusive: dateB, EndExclusive: dateC, Key: "KA2", Url: "UA2"},
-			"ID B1": Log{Name: "Log B1", StartInclusive: dateA, EndExclusive: dateB, Key: "KB1", Url: "UB1"},
-			"ID B2": Log{Name: "Log B2", StartInclusive: dateB, EndExclusive: dateC, Key: "KB2", Url: "UB2"},
+			"ID A1": Log{Name: "Log A1", StartInclusive: date0, EndExclusive: date1, Key: "KA1", Url: "UA1"},
+			"ID A2": Log{Name: "Log A2", StartInclusive: date1, EndExclusive: date2, Key: "KA2", Url: "UA2"},
+			"ID B1": Log{Name: "Log B1", StartInclusive: date0, EndExclusive: date1, Key: "KB1", Url: "UB1"},
+			"ID B2": Log{Name: "Log B2", StartInclusive: date1, EndExclusive: date2, Key: "KB2", Url: "UB2"},
 		},
 	}
-	url, key, err := input.PickOne("Operator A", dateA.Add(time.Hour))
+	url, key, err := input.PickOne("Operator A", date0.Add(time.Hour))
 	test.AssertNotError(t, err, "should have found a log")
 	test.AssertSliceContains(t, []string{"UA1", "UB1"}, url)
 	test.AssertSliceContains(t, []string{"KA1", "KB1"}, key)

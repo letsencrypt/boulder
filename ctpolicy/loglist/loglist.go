@@ -39,7 +39,7 @@ const Validation purpose = "lint"
 type List map[string]OperatorGroup
 
 // OperatorGroup represents a group of logs which are all run by the same
-// operator organization. It provies constant-time lookup of logs within the
+// operator organization. It provides constant-time lookup of logs within the
 // group by their unique ID.
 type OperatorGroup map[string]Log
 
