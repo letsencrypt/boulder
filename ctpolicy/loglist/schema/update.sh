@@ -1,4 +1,6 @@
-#!/bin/sh
+#!/usr/bin/env bash
+
+set -e
 
 # This script updates the log list JSON Schema and the Go structs generated
 # from that schema.
@@ -9,12 +11,14 @@
 # regenerating these files will be quick and easy.
 
 # This script expects github.com/atombender/go-jsonschema to be installed:
-# $ go install github.com/atombender/go-jsonschema/cmd/gojsonschema@latest
+if ! command -v gojsonschema
+then
+    echo "Install gojsonschema, then re-run this script:"
+    echo "go install github.com/atombender/go-jsonschema/cmd/gojsonschema@latest"
+fi
 
-set -e
+this_dir=$(dirname $(readlink -f "${0}"))
 
-this_dir=$(dirname $(readlink -f "$0"))
+curl https://www.gstatic.com/ct/log_list/v3/log_list_schema.json >| "${this_dir}"/log_list_schema.json
 
-curl https://www.gstatic.com/ct/log_list/v3/log_list_schema.json >| ${this_dir}/log_list_schema.json
-
-gojsonschema -p schema ${gen_dir}/log_list_schema.json >| ${this_dir}/schema.go
+gojsonschema -p schema "${this_dir}"/log_list_schema.json >| "${this_dir}"/schema.go
