@@ -439,7 +439,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		// of any certificate in this batch because it's based on the first (oldest).
 		sendDelay := expiresIn - certs[0].Expires.Sub(m.clk.Now())
 		m.stats.sendDelay.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(
-			float64(sendDelay.Truncate(time.Second).Seconds()))
+			sendDelay.Truncate(time.Second).Seconds())
 
 		processingStarted := m.clk.Now()
 		err = m.processCerts(ctx, certs)
