@@ -465,6 +465,8 @@ github.com/vmihailenco/tagparser v0.1.1/go.mod h1:OeAg3pn3UbLjkWt+rN9oFYB6u/cQgq
 github.com/weppos/publicsuffix-go v0.15.1-0.20210807195340-dc689ff0bb59/go.mod h1:HYux0V0Zi04bHNwOHy4cXJVz/TQjYonnF6aoYhj+3QE=
 github.com/weppos/publicsuffix-go v0.15.1-0.20220329081811-9a40b608a236 h1:vMJBP3PQViZsF6cOINtvyMC8ptpLsyJ4EwyFnzuWNxc=
 github.com/weppos/publicsuffix-go v0.15.1-0.20220329081811-9a40b608a236/go.mod h1:HYux0V0Zi04bHNwOHy4cXJVz/TQjYonnF6aoYhj+3QE=
+github.com/weppos/publicsuffix-go v0.15.1-0.20220413065649-906f534b73a4 h1:yjlKwqH2cVMLWnKXtpTIIJ1Rq9fEGqcUh6ukfJAGTo4=
+github.com/weppos/publicsuffix-go v0.15.1-0.20220413065649-906f534b73a4/go.mod h1:HYux0V0Zi04bHNwOHy4cXJVz/TQjYonnF6aoYhj+3QE=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
