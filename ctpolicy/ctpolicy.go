@@ -295,7 +295,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 
 // submitAllBestEffort submits the given certificate or precertificate to every
 // log ("informational" for precerts, "final" for certs) configured in the policy.
-// It does not wait for these submission to complete, nor tracks their success.
+// It neither waits for these submission to complete, nor tracks their success.
 func (ctp *CTPolicy) submitAllBestEffort(blob []byte, precert bool, expiry time.Time) {
 	logs := ctp.finalLogs
 	if precert {

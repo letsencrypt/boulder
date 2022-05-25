@@ -31,11 +31,7 @@ func InitLintList(path string) error {
 		lintlist.list = l
 	})
 
-	if lintlist.err != nil {
-		return lintlist.err
-	}
-
-	return nil
+	return lintlist.err
 }
 
 // GetLintList returns the log list initialized by InitLintList.

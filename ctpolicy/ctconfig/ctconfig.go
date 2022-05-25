@@ -106,7 +106,7 @@ type CTConfig struct {
 	SCTLogs []string
 	// InfoLogs is a list of CT log names to submit precerts to on a best-effort
 	// basis. Logs are included here for the sake of wider distribution of our
-	// precerts, and to exercising logs that in the qualification process.
+	// precerts, and to exercise logs that in the qualification process.
 	InfoLogs []string
 	// FinalLogs is a list of CT log names to submit final certificates to.
 	// This may include duplicates from the lists above, to submit both precerts
