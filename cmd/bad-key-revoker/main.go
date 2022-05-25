@@ -194,12 +194,12 @@ var maxSerials = 100
 // sendMessage sends a single email to the provided address with the revoked
 // serials
 func (bkr *badKeyRevoker) sendMessage(addr string, serials []string) error {
-	err := bkr.mailer.Connect()
+	conn, err := bkr.mailer.Connect()
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_ = bkr.mailer.Close()
+		_ = conn.Close()
 	}()
 	mutSerials := make([]string, len(serials))
 	copy(mutSerials, serials)
@@ -213,7 +213,7 @@ func (bkr *badKeyRevoker) sendMessage(addr string, serials []string) error {
 	if err != nil {
 		return err
 	}
-	err = bkr.mailer.SendMail([]string{addr}, bkr.emailSubject, message.String())
+	err = conn.SendMail([]string{addr}, bkr.emailSubject, message.String())
 	if err != nil {
 		return err
 	}

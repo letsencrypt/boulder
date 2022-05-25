@@ -180,7 +180,7 @@ func check(lintCert *zlintx509.Certificate, lints lint.Registry) error {
 		var failedLints []string
 		for lintName, result := range lintRes.Results {
 			if result.Status > lint.Pass {
-				failedLints = append(failedLints, lintName)
+				failedLints = append(failedLints, fmt.Sprintf("%s (%s)", lintName, result.Details))
 			}
 		}
 		return fmt.Errorf("failed lints: %s", strings.Join(failedLints, ", "))

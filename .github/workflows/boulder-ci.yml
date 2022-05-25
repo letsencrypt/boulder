@@ -40,7 +40,7 @@ jobs:
         # Tests command definitions. Use the entire docker-compose command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
-          - "./t.sh --generate --make-artifacts"
+          - "./t.sh --lints --generate --make-artifacts"
           - "./t.sh --integration"
           # Testing Config Changes:
           # Config changes that have landed in main but not yet been applied to
@@ -69,7 +69,7 @@ jobs:
     # Sequence of tasks that will be executed as part of the job.
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           persist-credentials: false
 

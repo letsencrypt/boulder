@@ -151,6 +151,17 @@ func AssertNotContains(t *testing.T, haystack string, needle string) {
 	}
 }
 
+// AssertSliceContains determines if needle can be found in haystack
+func AssertSliceContains[T comparable](t *testing.T, haystack []T, needle T) {
+	t.Helper()
+	for _, item := range haystack {
+		if item == needle {
+			return
+		}
+	}
+	t.Fatalf("Slice %v does not contain %v", haystack, needle)
+}
+
 // AssertMetricWithLabelsEquals determines whether the value held by a prometheus Collector
 // (e.g. Gauge, Counter, CounterVec, etc) is equal to the expected float64.
 // In order to make useful assertions about just a subset of labels (e.g. for a

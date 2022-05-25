@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -83,6 +84,11 @@ type Config struct {
 		// Path of a YAML file containing the list of int64 RegIDs
 		// allowed to request ECDSA issuance
 		ECDSAAllowListFilename string
+
+		// CTLogListFile is the path to a JSON file on disk containing the set of
+		// all logs trusted by Chrome. The file must match the v3 log list schema:
+		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
+		CTLogListFile string
 
 		Features map[string]bool
 	}
@@ -188,6 +194,13 @@ func main() {
 	}
 	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
+
+	// Do this before creating the issuers to ensure the log list is loaded before
+	// the linters are initialized.
+	if c.CA.CTLogListFile != "" {
+		err = loglist.InitLintList(c.CA.CTLogListFile)
+		cmd.FailOnError(err, "Failed to load CT Log List")
+	}
 
 	var boulderIssuers []*issuance.Issuer
 	boulderIssuers, err = loadBoulderIssuers(c.CA.Issuance.Profile, c.CA.Issuance.Issuers, c.CA.Issuance.IgnoredLints)

@@ -43,20 +43,37 @@ func (s realSource) generate() *big.Int {
 	return randInt
 }
 
-// Mailer provides the interface for a mailer
+// Mailer is an interface that allows creating Conns. Implementations must
+// be safe for concurrent use.
 type Mailer interface {
+	Connect() (Conn, error)
+}
+
+// Conn is an interface that allows sending mail. When you are done with a
+// Conn, call Close(). Implementations are not required to be safe for
+// concurrent use.
+type Conn interface {
 	SendMail([]string, string, string) error
-	Connect() error
 	Close() error
 }
 
-// MailerImpl defines a mail transfer agent to use for sending mail. It is not
-// safe for concurrent access.
-type MailerImpl struct {
+// connImpl represents a single connection to a mail server. It is not safe
+// for concurrent use.
+type connImpl struct {
+	config
+	client smtpClient
+}
+
+// mailerImpl defines a mail transfer agent to use for sending mail. It is
+// safe for concurrent us.
+type mailerImpl struct {
+	config
+}
+
+type config struct {
 	log              blog.Logger
 	dialer           dialer
 	from             mail.Address
-	client           smtpClient
 	clk              clock.Clock
 	csprgSource      idGenerator
 	reconnectBase    time.Duration
@@ -126,7 +143,7 @@ func New(
 	logger blog.Logger,
 	stats prometheus.Registerer,
 	reconnectBase time.Duration,
-	reconnectMax time.Duration) *MailerImpl {
+	reconnectMax time.Duration) *mailerImpl {
 
 	sendMailAttempts := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "send_mail_attempts",
@@ -134,42 +151,46 @@ func New(
 	}, []string{"result", "error"})
 	stats.MustRegister(sendMailAttempts)
 
-	return &MailerImpl{
-		dialer: &dialerImpl{
-			username: username,
-			password: password,
-			server:   server,
-			port:     port,
-			rootCAs:  rootCAs,
+	return &mailerImpl{
+		config: config{
+			dialer: &dialerImpl{
+				username: username,
+				password: password,
+				server:   server,
+				port:     port,
+				rootCAs:  rootCAs,
+			},
+			log:              logger,
+			from:             from,
+			clk:              clock.New(),
+			csprgSource:      realSource{},
+			reconnectBase:    reconnectBase,
+			reconnectMax:     reconnectMax,
+			sendMailAttempts: sendMailAttempts,
 		},
-		log:              logger,
-		from:             from,
-		clk:              clock.New(),
-		csprgSource:      realSource{},
-		reconnectBase:    reconnectBase,
-		reconnectMax:     reconnectMax,
-		sendMailAttempts: sendMailAttempts,
 	}
 }
 
 // New constructs a Mailer suitable for doing a dry run. It simply logs each
 // command that would have been run, at debug level.
-func NewDryRun(from mail.Address, logger blog.Logger) *MailerImpl {
-	return &MailerImpl{
-		dialer:      dryRunClient{logger},
-		from:        from,
-		clk:         clock.New(),
-		csprgSource: realSource{},
-		sendMailAttempts: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "send_mail_attempts",
-			Help: "A counter of send mail attempts labelled by result",
-		}, []string{"result", "error"}),
+func NewDryRun(from mail.Address, logger blog.Logger) *mailerImpl {
+	return &mailerImpl{
+		config: config{
+			dialer:      dryRunClient{logger},
+			from:        from,
+			clk:         clock.New(),
+			csprgSource: realSource{},
+			sendMailAttempts: prometheus.NewCounterVec(prometheus.CounterOpts{
+				Name: "send_mail_attempts",
+				Help: "A counter of send mail attempts labelled by result",
+			}, []string{"result", "error"}),
+		},
 	}
 }
 
-func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte, error) {
-	mid := m.csprgSource.generate()
-	now := m.clk.Now().UTC()
+func (c config) generateMessage(to []string, subject, body string) ([]byte, error) {
+	mid := c.csprgSource.generate()
+	now := c.clk.Now().UTC()
 	addrs := []string{}
 	for _, a := range to {
 		if !core.IsASCII(a) {
@@ -179,10 +200,10 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	}
 	headers := []string{
 		fmt.Sprintf("To: %s", strings.Join(addrs, ", ")),
-		fmt.Sprintf("From: %s", m.from.String()),
+		fmt.Sprintf("From: %s", c.from.String()),
 		fmt.Sprintf("Subject: %s", subject),
 		fmt.Sprintf("Date: %s", now.Format(time.RFC822)),
-		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), m.from.Address),
+		fmt.Sprintf("Message-Id: <%s.%s.%s>", now.Format("20060102T150405"), mid.String(), c.from.Address),
 		"MIME-Version: 1.0",
 		"Content-Type: text/plain; charset=UTF-8",
 		"Content-Transfer-Encoding: quoted-printable",
@@ -208,31 +229,31 @@ func (m *MailerImpl) generateMessage(to []string, subject, body string) ([]byte,
 	)), nil
 }
 
-func (m *MailerImpl) reconnect() {
+func (c *connImpl) reconnect() {
 	for i := 0; ; i++ {
-		sleepDuration := core.RetryBackoff(i, m.reconnectBase, m.reconnectMax, 2)
-		m.log.Infof("sleeping for %s before reconnecting mailer", sleepDuration)
-		m.clk.Sleep(sleepDuration)
-		m.log.Info("attempting to reconnect mailer")
-		err := m.Connect()
+		sleepDuration := core.RetryBackoff(i, c.reconnectBase, c.reconnectMax, 2)
+		c.log.Infof("sleeping for %s before reconnecting mailer", sleepDuration)
+		c.clk.Sleep(sleepDuration)
+		c.log.Info("attempting to reconnect mailer")
+		client, err := c.dialer.Dial()
 		if err != nil {
-			m.log.Warningf("reconnect error: %s", err)
+			c.log.Warningf("reconnect error: %s", err)
 			continue
 		}
+		c.client = client
 		break
 	}
-	m.log.Info("reconnected successfully")
+	c.log.Info("reconnected successfully")
 }
 
 // Connect opens a connection to the specified mail server. It must be called
 // before SendMail.
-func (m *MailerImpl) Connect() error {
+func (m *mailerImpl) Connect() (Conn, error) {
 	client, err := m.dialer.Dial()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	m.client = client
-	return nil
+	return &connImpl{m.config, client}, nil
 }
 
 type dialerImpl struct {
@@ -265,43 +286,43 @@ func (di *dialerImpl) Dial() (smtpClient, error) {
 // argument as an error. If the reset command also errors, it combines both
 // errors and returns them. Without this we would get `nested MAIL command`.
 // https://github.com/letsencrypt/boulder/issues/3191
-func (m *MailerImpl) resetAndError(err error) error {
+func (c *connImpl) resetAndError(err error) error {
 	if err == io.EOF {
 		return err
 	}
-	if err2 := m.client.Reset(); err2 != nil {
+	if err2 := c.client.Reset(); err2 != nil {
 		return fmt.Errorf("%s (also, on sending RSET: %s)", err, err2)
 	}
 	return err
 }
 
-func (m *MailerImpl) sendOne(to []string, subject, msg string) error {
-	if m.client == nil {
+func (c *connImpl) sendOne(to []string, subject, msg string) error {
+	if c.client == nil {
 		return errors.New("call Connect before SendMail")
 	}
-	body, err := m.generateMessage(to, subject, msg)
+	body, err := c.generateMessage(to, subject, msg)
 	if err != nil {
 		return err
 	}
-	if err = m.client.Mail(m.from.String()); err != nil {
+	if err = c.client.Mail(c.from.String()); err != nil {
 		return err
 	}
 	for _, t := range to {
-		if err = m.client.Rcpt(t); err != nil {
-			return m.resetAndError(err)
+		if err = c.client.Rcpt(t); err != nil {
+			return c.resetAndError(err)
 		}
 	}
-	w, err := m.client.Data()
+	w, err := c.client.Data()
 	if err != nil {
-		return m.resetAndError(err)
+		return c.resetAndError(err)
 	}
 	_, err = w.Write(body)
 	if err != nil {
-		return m.resetAndError(err)
+		return c.resetAndError(err)
 	}
 	err = w.Close()
 	if err != nil {
-		return m.resetAndError(err)
+		return c.resetAndError(err)
 	}
 	return nil
 }
@@ -336,34 +357,34 @@ var badAddressErrorCodes = map[int]bool{
 
 // SendMail sends an email to the provided list of recipients. The email body
 // is simple text.
-func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
+func (c *connImpl) SendMail(to []string, subject, msg string) error {
 	var protoErr *textproto.Error
 	for {
-		err := m.sendOne(to, subject, msg)
+		err := c.sendOne(to, subject, msg)
 		if err == nil {
 			// If the error is nil, we sent the mail without issue. nice!
 			break
 		} else if err == io.EOF {
-			m.sendMailAttempts.WithLabelValues("failure", "EOF").Inc()
+			c.sendMailAttempts.WithLabelValues("failure", "EOF").Inc()
 			// If the error is an EOF, we should try to reconnect on a backoff
 			// schedule, sleeping between attempts.
-			m.reconnect()
+			c.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
 		} else if errors.Is(err, syscall.ECONNRESET) {
-			m.sendMailAttempts.WithLabelValues("failure", "TCP RST").Inc()
+			c.sendMailAttempts.WithLabelValues("failure", "TCP RST").Inc()
 			// If the error is `syscall.ECONNRESET`, we should try to reconnect on a backoff
 			// schedule, sleeping between attempts.
-			m.reconnect()
+			c.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
 		} else if errors.Is(err, syscall.EPIPE) {
 			// EPIPE also seems to be a common way to signal TCP RST.
-			m.sendMailAttempts.WithLabelValues("failure", "EPIPE").Inc()
-			m.reconnect()
+			c.sendMailAttempts.WithLabelValues("failure", "EPIPE").Inc()
+			c.reconnect()
 			continue
 		} else if errors.As(err, &protoErr) && protoErr.Code == 421 {
-			m.sendMailAttempts.WithLabelValues("failure", "SMTP 421").Inc()
+			c.sendMailAttempts.WithLabelValues("failure", "SMTP 421").Inc()
 			/*
 			 *  If the error is an instance of `textproto.Error` with a SMTP error code,
 			 *  and that error code is 421 then treat this as a reconnect-able event.
@@ -379,28 +400,30 @@ func (m *MailerImpl) SendMail(to []string, subject, msg string) error {
 			 *
 			 * [0] - https://github.com/letsencrypt/boulder/issues/2249
 			 */
-			m.reconnect()
+			c.reconnect()
 			// After reconnecting, loop around and try `sendOne` again.
 			continue
 		} else if errors.As(err, &protoErr) && badAddressErrorCodes[protoErr.Code] {
-			m.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
+			c.sendMailAttempts.WithLabelValues("failure", fmt.Sprintf("SMTP %d", protoErr.Code)).Inc()
 			return BadAddressSMTPError{fmt.Sprintf("%d: %s", protoErr.Code, protoErr.Msg)}
 		} else {
 			// If it wasn't an EOF error or a recoverable SMTP error it is unexpected and we
 			// return from SendMail() with the error
-			m.sendMailAttempts.WithLabelValues("failure", "unexpected").Inc()
+			c.sendMailAttempts.WithLabelValues("failure", "unexpected").Inc()
 			return err
 		}
 	}
 
-	m.sendMailAttempts.WithLabelValues("success", "").Inc()
+	c.sendMailAttempts.WithLabelValues("success", "").Inc()
 	return nil
 }
 
 // Close closes the connection.
-func (m *MailerImpl) Close() error {
-	if m.client == nil {
-		return errors.New("call Connect before Close")
+func (c *connImpl) Close() error {
+	err := c.client.Close()
+	if err != nil {
+		return err
 	}
-	return m.client.Close()
+	c.client = nil
+	return nil
 }

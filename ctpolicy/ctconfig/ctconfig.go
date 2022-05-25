@@ -33,8 +33,7 @@ func (ts *TemporalSet) Setup() error {
 		return errors.New("temporal set contains no shards")
 	}
 	for i := range ts.Shards {
-		if ts.Shards[i].WindowEnd.Before(ts.Shards[i].WindowStart) ||
-			ts.Shards[i].WindowEnd.Equal(ts.Shards[i].WindowStart) {
+		if !ts.Shards[i].WindowEnd.After(ts.Shards[i].WindowStart) {
 			return errors.New("WindowStart must be before WindowEnd")
 		}
 	}
@@ -81,10 +80,46 @@ func (ld LogDescription) Info(exp time.Time) (string, string, error) {
 	return shard.URI, shard.Key, nil
 }
 
+// CTGroup represents a group of CT Logs. Although capable of holding logs
+// grouped by any arbitrary feature, is today primarily used to hold logs which
+// are all operated by the same legal entity.
 type CTGroup struct {
 	Name string
 	Logs []LogDescription
 	// How long to wait for one log to accept a certificate before moving on to
 	// the next.
+	// TODO(#5938): Remove this when CTLogGroups2 is removed from the RA.
 	Stagger cmd.ConfigDuration
+}
+
+// CTConfig is the top-level config object expected to be embedded in an
+// executable's JSON config struct.
+type CTConfig struct {
+	// Stagger is duration (e.g. "200ms") indicating how long to wait for a log
+	// from one operator group to accept a certificate before attempting
+	// submission to a log run by a different operator instead.
+	Stagger cmd.ConfigDuration
+	// LogListFile is a path to a JSON log list file. The file must match Chrome's
+	// schema: https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
+	LogListFile string
+	// SCTLogs is a list of CT log names to submit precerts to in order to get SCTs.
+	SCTLogs []string
+	// InfoLogs is a list of CT log names to submit precerts to on a best-effort
+	// basis. Logs are included here for the sake of wider distribution of our
+	// precerts, and to exercise logs that in the qualification process.
+	InfoLogs []string
+	// FinalLogs is a list of CT log names to submit final certificates to.
+	// This may include duplicates from the lists above, to submit both precerts
+	// and final certs to the same log.
+	FinalLogs []string
+}
+
+// LogID holds enough information to uniquely identify a CT Log: its log_id
+// (the base64-encoding of the SHA-256 hash of its public key) and its human-
+// readable name/description. This is used to extract other log parameters
+// (such as its URL and public key) from the Chrome Log List.
+type LogID struct {
+	Name        string
+	ID          string
+	SubmitFinal bool
 }

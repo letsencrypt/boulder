@@ -264,7 +264,7 @@ func rstHandler(rstFirst int) connHandler {
 	}
 }
 
-func setup(t *testing.T) (*MailerImpl, *net.TCPListener, func()) {
+func setup(t *testing.T) (*mailerImpl, *net.TCPListener, func()) {
 	fromAddress, _ := mail.ParseAddress("you-are-a-winner@example.com")
 	log := blog.UseMock()
 
@@ -322,11 +322,11 @@ func TestConnect(t *testing.T) {
 	defer cleanUp()
 
 	go listenForever(l, t, normalHandler)
-	err := m.Connect()
+	conn, err := m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
 	}
-	err = m.Close()
+	err = conn.Close()
 	if err != nil {
 		t.Errorf("Failed to clean up: %s", err)
 	}
@@ -344,11 +344,11 @@ func TestReconnectSuccess(t *testing.T) {
 	// With a mailer client that has a max attempt > `closedConns` we expect no
 	// error. The message should be delivered after `closedConns` reconnect
 	// attempts.
-	err := m.Connect()
+	conn, err := m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
 	}
-	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	err = conn.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	if err != nil {
 		t.Errorf("Expected SendMail() to not fail. Got err: %s", err)
 	}
@@ -361,12 +361,12 @@ func TestBadEmailError(t *testing.T) {
 
 	go listenForever(l, t, badEmailHandler(messages))
 
-	err := m.Connect()
+	conn, err := m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
 	}
 
-	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	err = conn.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	// We expect there to be an error
 	if err == nil {
 		t.Errorf("Expected SendMail() to return an BadAddressSMTPError, got nil")
@@ -393,11 +393,11 @@ func TestReconnectSMTP421(t *testing.T) {
 	// With a mailer client that has a max attempt > `closedConns` we expect no
 	// error. The message should be delivered after `closedConns` reconnect
 	// attempts.
-	err := m.Connect()
+	conn, err := m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
 	}
-	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	err = conn.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	if err != nil {
 		t.Errorf("Expected SendMail() to not fail. Got err: %s", err)
 	}
@@ -439,12 +439,12 @@ func TestOtherError(t *testing.T) {
 		_, _ = conn.Write([]byte("250 Ok yr rset now\r\n"))
 	})
 
-	err := m.Connect()
+	conn, err := m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
 	}
 
-	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	err = conn.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	// We expect there to be an error
 	if err == nil {
 		t.Errorf("Expected SendMail() to return an error, got nil")
@@ -488,12 +488,12 @@ func TestOtherError(t *testing.T) {
 
 		_, _ = conn.Write([]byte("nop\r\n"))
 	})
-	err = m.Connect()
+	conn, err = m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
 	}
 
-	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	err = conn.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	// We expect there to be an error
 	test.AssertError(t, err, "SendMail didn't fail as expected")
 	test.AssertEquals(t, err.Error(), "999 1.1.1 This would probably be bad? (also, on sending RSET: short response: nop)")
@@ -511,11 +511,11 @@ func TestReconnectAfterRST(t *testing.T) {
 	// With a mailer client that has a max attempt > `closedConns` we expect no
 	// error. The message should be delivered after `closedConns` reconnect
 	// attempts.
-	err := m.Connect()
+	conn, err := m.Connect()
 	if err != nil {
 		t.Errorf("Failed to connect: %s", err)
 	}
-	err = m.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
+	err = conn.SendMail([]string{"hi@bye.com"}, "You are already a winner!", "Just kidding")
 	if err != nil {
 		t.Errorf("Expected SendMail() to not fail. Got err: %s", err)
 	}
