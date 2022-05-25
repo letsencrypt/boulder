@@ -95,19 +95,22 @@ type CTGroup struct {
 // CTConfig is the top-level config object expected to be embedded in an
 // executable's JSON config struct.
 type CTConfig struct {
-	// How long to wait for a log from one operator group to accept a certificate
-	// before attempting submission to a log run by a different operator instead.
+	// Stagger is duration (e.g. "200ms") indicating how long to wait for a log
+	// from one operator group to accept a certificate before attempting
+	// submission to a log run by a different operator instead.
 	Stagger cmd.ConfigDuration
-	// Path to a JSON log list file on disk. The log list must conform to Google's
+	// LogListFile is a path to a JSON log list file. The file must match Chrome's
 	// schema: https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 	LogListFile string
-	// The list of CT log names that we submit to in order to get SCTs.
+	// SCTLogs is a list of CT log names to submit precerts to in order to get SCTs.
 	SCTLogs []string
-	// The list of CT log names that we best-effort submit to for the sake of wider
-	// log inclusion, and for exercising logs that are not yet qualified/usable.
+	// InfoLogs is a list of CT log names to submit precerts to on a best-effort
+	// basis. Logs are included here for the sake of wider distribution of our
+	// precerts, and to exercising logs that in the qualification process.
 	InfoLogs []string
-	// The list of CT log names that we submit final certificates to. May include
-	// duplicates from the two lists above.
+	// FinalLogs is a list of CT log names to submit final certificates to.
+	// This may include duplicates from the lists above, to submit both precerts
+	// and final certs to the same log.
 	FinalLogs []string
 }
 
