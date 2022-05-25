@@ -420,8 +420,9 @@ func TestMultiVA(t *testing.T) {
 			},
 			AllowedUAs: allowedUAs,
 			Features:   noEnforceMultiVA,
-			// The real failure cause should be logged
-			ExpectedLog: expectedInternalErrLine,
+			// Like above, the real failure cause will be logged eventually, but that
+			// will happen asynchronously. It's not guaranteed to happen before the
+			// test case exits, so we don't check for it here.
 		},
 		{
 			// With only one working remote VA there should *not* be a validation
@@ -514,7 +515,9 @@ func TestMultiVA(t *testing.T) {
 
 			if tc.ExpectedLog != "" {
 				lines := mockLog.GetAllMatching(tc.ExpectedLog)
-				test.AssertEquals(t, len(lines), 1)
+				if len(lines) != 1 {
+					t.Fatalf("Got log %v; expected %q", mockLog.GetAll(), tc.ExpectedLog)
+				}
 			}
 		})
 	}
