@@ -34,7 +34,9 @@ func InitLintList(path string) error {
 	return lintlist.err
 }
 
-// GetLintList returns the log list initialized by InitLintList.
+// GetLintList returns the log list initialized by InitLintList. This must
+// only be called after InitLintList has been called on the same (or parent)
+// goroutine.
 func GetLintList() List {
 	return lintlist.list
 }

@@ -308,6 +308,7 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 		}
 	}
 
+	// Ensure rand.Intn below won't panic.
 	if len(candidates) < 1 {
 		return "", "", fmt.Errorf("no log found for group %q and expiry %s", operator, expiry)
 	}

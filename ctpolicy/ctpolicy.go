@@ -26,7 +26,7 @@ type CTPolicy struct {
 	groups        []ctconfig.CTGroup
 	informational []ctconfig.LogDescription
 	final         []ctconfig.LogDescription
-	logs          loglist.List
+	sctLogs       loglist.List
 	infoLogs      loglist.List
 	finalLogs     loglist.List
 	stagger       time.Duration
@@ -40,7 +40,7 @@ func New(
 	pub pubpb.PublisherClient,
 	groups []ctconfig.CTGroup,
 	informational []ctconfig.LogDescription,
-	logs loglist.List,
+	sctLogs loglist.List,
 	infoLogs loglist.List,
 	finalLogs loglist.List,
 	stagger time.Duration,
@@ -75,7 +75,7 @@ func New(
 		groups:        groups,
 		informational: informational,
 		final:         final,
-		logs:          logs,
+		sctLogs:       sctLogs,
 		infoLogs:      infoLogs,
 		finalLogs:     finalLogs,
 		stagger:       stagger,
@@ -158,7 +158,7 @@ func (ctp *CTPolicy) race(ctx context.Context, cert core.CertDER, group ctconfig
 // GetSCTs attempts to retrieve two SCTs from the configured log groups and
 // returns the set of SCTs to the caller.
 func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
-	if len(ctp.logs) != 0 {
+	if len(ctp.sctLogs) != 0 {
 		return ctp.getOperatorSCTs(ctx, cert, expiration)
 	}
 	return ctp.getGoogleSCTs(ctx, cert, expiration)
@@ -232,7 +232,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 
 		// Pick a random log from among those in the group. In practice, very few
 		// operator groups have more than one log, so this loses little flexibility.
-		uri, key, err := ctp.logs.PickOne(g, expiration)
+		uri, key, err := ctp.sctLogs.PickOne(g, expiration)
 		if err != nil {
 			return nil, fmt.Errorf("unable to get log info: %w", err)
 		}
@@ -253,24 +253,24 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 	// Ensure that this channel has a buffer equal to the number of goroutines
 	// we're kicking off, so that they're all guaranteed to be able to write to
 	// it and exit without blocking and leaking.
-	results := make(chan result, len(ctp.logs))
+	results := make(chan result, len(ctp.sctLogs))
 
 	// Kick off a collection of goroutines to try to submit the precert to each
 	// log operator group. Randomize the order of the groups so that we're not
 	// always trying to submit to the same two operators.
-	for i, group := range ctp.logs.Permute() {
+	for i, group := range ctp.sctLogs.Permute() {
 		go func(i int, g string) {
 			sctDER, err := getOne(i, g)
 			results <- result{sct: sctDER, err: err}
 		}(i, group)
 	}
 
-	go ctp.submitAllBestEffort(cert, true, expiration)
+	go ctp.submitPrecertInformational(cert, expiration)
 
 	// Finally, collect SCTs and/or errors from our results channel.
 	scts := make(core.SCTDERs, 0)
 	errs := make([]string, 0)
-	for i := 0; i < len(ctp.logs); i++ {
+	for i := 0; i < len(ctp.sctLogs); i++ {
 		select {
 		case <-ctx.Done():
 			// We timed out (the calling function returned and canceled our context)
@@ -296,7 +296,7 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 // submitAllBestEffort submits the given certificate or precertificate to every
 // log ("informational" for precerts, "final" for certs) configured in the policy.
 // It neither waits for these submission to complete, nor tracks their success.
-func (ctp *CTPolicy) submitAllBestEffort(blob []byte, precert bool, expiry time.Time) {
+func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, precert bool, expiry time.Time) {
 	logs := ctp.finalLogs
 	if precert {
 		logs = ctp.infoLogs
@@ -327,8 +327,15 @@ func (ctp *CTPolicy) submitAllBestEffort(blob []byte, precert bool, expiry time.
 
 }
 
-// TODO(#5938): Remove this when it becomes dead code.
+// submitPrecertInformational submits precertificates to any configured
+// "informational" logs, but does not care about success or returned SCTs.
 func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration time.Time) {
+	if len(ctp.sctLogs) != 0 {
+		ctp.submitAllBestEffort(cert, true, expiration)
+		return
+	}
+
+	// TODO(#5938): Remove this when it becomes dead code.
 	for _, log := range ctp.informational {
 		go func(l ctconfig.LogDescription) {
 			// We use a context.Background() here instead of a context from the parent
@@ -354,9 +361,9 @@ func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration ti
 }
 
 // SubmitFinalCert submits finalized certificates created from precertificates
-// to any configured logs
-func (ctp *CTPolicy) SubmitFinalCert(cert []byte, expiration time.Time) {
-	if len(ctp.logs) != 0 {
+// to any configured "final" logs, but does not care about success.
+func (ctp *CTPolicy) SubmitFinalCert(cert core.CertDER, expiration time.Time) {
+	if len(ctp.sctLogs) != 0 {
 		ctp.submitAllBestEffort(cert, false, expiration)
 		return
 	}
