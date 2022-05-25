@@ -25,9 +25,11 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
+	_ "github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
@@ -352,7 +354,13 @@ type Config struct {
 		// IgnoredLints is a list of zlint names. Any lint results from a lint in
 		// the IgnoredLists list are ignored regardless of LintStatus level.
 		IgnoredLints []string
-		Features     map[string]bool
+
+		// CTLogListFile is the path to a JSON file on disk containing the set of
+		// all logs trusted by Chrome. The file must match the v3 log list schema:
+		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
+		CTLogListFile string
+
+		Features map[string]bool
 	}
 	PA     cmd.PAConfig
 	Syslog cmd.SyslogConfig
@@ -424,6 +432,11 @@ func main() {
 
 	err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
+
+	if config.CertChecker.CTLogListFile != "" {
+		err = loglist.InitLintList(config.CertChecker.CTLogListFile)
+		cmd.FailOnError(err, "Failed to load CT Log List")
+	}
 
 	checker := newChecker(
 		saDbMap,

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -32,11 +33,10 @@ type integrationSrv struct {
 	// path where all CT servers fail.
 	rejectHosts map[string]bool
 	// A list of entries that we rejected based on rejectHosts.
-	rejected        []string
-	key             *ecdsa.PrivateKey
-	latencySchedule []float64
-	latencyItem     int
-	userAgent       string
+	rejected      []string
+	key           *ecdsa.PrivateKey
+	flakinessRate int
+	userAgent     string
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, output interface{}) error {
@@ -159,13 +159,10 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 	is.submissions[hostnames]++
 	is.Unlock()
 
-	if is.latencySchedule != nil {
-		is.Lock()
-		sleepTime := time.Duration(is.latencySchedule[is.latencyItem%len(is.latencySchedule)]) * time.Second
-		is.latencyItem++
-		is.Unlock()
-		time.Sleep(sleepTime)
+	if is.flakinessRate != 0 && rand.Intn(100) < is.flakinessRate {
+		time.Sleep(10 * time.Second)
 	}
+
 	w.WriteHeader(http.StatusOK)
 	w.Write(publisher.CreateTestingSignedSCT(addChainReq.Chain, is.key, precert, time.Now()))
 }
@@ -198,9 +195,9 @@ type Personality struct {
 	// Generate your own with:
 	// openssl ecparam -name prime256v1 -genkey -outform der -noout | base64 -w 0
 	PrivKey string
-	// If present, sleep for the given number of seconds before replying. Each
-	// request uses the next number in the list, eventually cycling through.
-	LatencySchedule []float64
+	// FlakinessRate is an integer between 0-100 that controls how often the log
+	// "flakes", i.e. fails to respond in a reasonable time frame.
+	FlakinessRate int
 }
 
 func runPersonality(p Personality) {
@@ -217,11 +214,11 @@ func runPersonality(p Personality) {
 		log.Fatal(err)
 	}
 	is := integrationSrv{
-		key:             key,
-		latencySchedule: p.LatencySchedule,
-		submissions:     make(map[string]int64),
-		rejectHosts:     make(map[string]bool),
-		userAgent:       p.UserAgent,
+		key:           key,
+		flakinessRate: p.FlakinessRate,
+		submissions:   make(map[string]int64),
+		rejectHosts:   make(map[string]bool),
+		userAgent:     p.UserAgent,
 	}
 	m := http.NewServeMux()
 	m.HandleFunc("/submissions", is.getSubmissions)

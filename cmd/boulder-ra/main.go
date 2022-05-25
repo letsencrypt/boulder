@@ -2,7 +2,6 @@ package notmain
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -72,7 +72,18 @@ type Config struct {
 		// in a group and the first SCT returned will be used. This allows
 		// us to comply with Chrome CT policy which requires one SCT from a
 		// Google log and one SCT from any other log included in their policy.
+		// DEPRECATED: Use CTLogs instead.
+		// TODO(#5938): Remove this.
 		CTLogGroups2 []ctconfig.CTGroup
+		// CTLogs contains groupings of CT logs organized by what organization
+		// operates them. When we submit precerts to logs in order to get SCTs, we
+		// will submit the cert to one randomly-chosen log from each group, and use
+		// the SCTs from the first two groups which reply. This allows us to comply
+		// with various CT policies that require (for certs with short lifetimes
+		// like ours) two SCTs from logs run by different operators. It also holds
+		// a `Stagger` value controlling how long we wait for one operator group
+		// to respond before trying a different one.
+		CTLogs ctconfig.CTConfig
 		// InformationalCTLogs are a set of CT logs we will always submit to
 		// but won't ever use the SCTs from. This may be because we want to
 		// test them or because they are not yet approved by a browser/root
@@ -161,7 +172,6 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	var ctp *ctpolicy.CTPolicy
 	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := pubpb.NewPublisherClient(conn)
@@ -181,27 +191,44 @@ func main() {
 	}
 
 	// Boulder's components assume that there will always be CT logs configured.
-	// Issuing a certificate without SCTs embedded is a miss-issuance event in the
-	// environment Boulder is built for. Exit early if there is no CTLogGroups2
-	// configured.
-	if len(c.RA.CTLogGroups2) == 0 {
-		cmd.Fail("CTLogGroups2 must not be empty")
-	}
-
-	for i, g := range c.RA.CTLogGroups2 {
-		// Exit early if any of the log groups specify no logs
-		if len(g.Logs) == 0 {
-			cmd.Fail(
-				fmt.Sprintf("CTLogGroups2 index %d specifies no logs", i))
-		}
-		for _, l := range g.Logs {
-			if l.TemporalSet != nil {
-				err := l.Setup()
-				cmd.FailOnError(err, "Failed to setup a temporal log set")
+	// Issuing a certificate without SCTs embedded is a misissuance event as per
+	// our CPS 4.4.2, which declares we will always include at least two SCTs.
+	// Exit early if no groups are configured.
+	var ctp *ctpolicy.CTPolicy
+	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogs.SCTLogs) != 0 {
+		cmd.Fail("Configure only CTLogGroups2 or CTLogs, not both")
+	} else if len(c.RA.CTLogGroups2) > 0 {
+		for _, g := range c.RA.CTLogGroups2 {
+			// Exit early if any of the log groups specify no logs
+			if len(g.Logs) == 0 {
+				cmd.Fail("Encountered empty CT log group")
+			}
+			for _, l := range g.Logs {
+				if l.TemporalSet != nil {
+					err := l.Setup()
+					cmd.FailOnError(err, "Failed to setup a temporal log set")
+				}
 			}
 		}
+
+		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, nil, nil, nil, c.RA.CTLogs.Stagger.Duration, logger, scope)
+	} else if len(c.RA.CTLogs.SCTLogs) > 0 {
+		allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
+		cmd.FailOnError(err, "Failed to parse log list")
+
+		sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance)
+		cmd.FailOnError(err, "Failed to load SCT logs")
+
+		infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational)
+		cmd.FailOnError(err, "Failed to load informational logs")
+
+		finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
+		cmd.FailOnError(err, "Failed to load final logs")
+
+		ctp = ctpolicy.New(pubc, nil, nil, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
+	} else {
+		cmd.Fail("Must configure either CTLogGroups2 or CTLogs")
 	}
-	ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, logger, scope)
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
 	// or completed validation MUST be obtained no more than 398 days prior
