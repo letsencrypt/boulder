@@ -223,9 +223,15 @@ do
   fi
 done
 
+pretty "Enabling Consul ACLs"
+export CONSUL_HTTP_SSL=true
+export CONSUL_HTTP_ADDR=https://127.0.0.1:8501
+export CONSUL_HTTP_SSL_VERIFY=false
+CONSUL_TOKEN=$(consul acl bootstrap -format=json | jq -r '.SecretID')
+
 pretty "Starting Nomad Server"
 command sudo nomad agent -dev -dc dev-general \
-  -vault-token="${VAULT_TOKEN}" -config="config/nomad.conf.hcl" &>/dev/null &
+  -vault-token="${VAULT_TOKEN}" -consul-token="${CONSUL_TOKEN}" -config="config/nomad.conf.hcl" &>/dev/null &
 
 pretty "Wait for Nomad to Start"
 while true
@@ -293,6 +299,9 @@ command consul-template -vault-token="${CONSUL_TLS_TOKEN}" -config="./config/var
 
 pretty "Vault Root Token (run once before using vault CLI commands):"
 echo "export VAULT_TOKEN=\"${VAULT_TOKEN}\""
+echo
+pretty "Consul Management Token (run once before using consul CLI commands):"
+echo "export CONSUL_TOKEN=\"${CONSUL_TOKEN}\""
 echo
 pretty "Nomad Management Token (run once before using nomad CLI commands):"
 echo "export NOMAD_TOKEN=\"${NOMAD_TOKEN}\""

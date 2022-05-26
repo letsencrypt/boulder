@@ -9,7 +9,6 @@ ca_file                = "./config/var/consul-agent-ca.crt"
 auto_encrypt {
   allow_tls = true
 }
-
 ports {
   dns      = 8600
   http     = -1
@@ -18,4 +17,9 @@ ports {
   serf_lan = 8301
   serf_wan = -1
   server   = 8300
+}
+acl {
+  enabled                  = true
+  default_policy           = "deny"
+  enable_token_persistence = true
 }
