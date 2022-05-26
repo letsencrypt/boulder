@@ -4,31 +4,31 @@
 set -m
 
 function no_ctrlc() {
-    echo
-    prettyRed "Cleaning up and exiting..."
-    rm -rf config/var/* vault_audit.log
-    
-    prettyRed "Stopping Vault..."
-    killall vault
-    
-    prettyRed "Stopping Consul..."
-    killall consul
-
-    prettyRed "Stopping Consul-Template..."
-    killall consul-template -9
-
-    prettyRed "Stopping Nomad..."
-    sudo killall nomad
-    
-    exit
+  echo
+  prettyRed "Cleaning up and exiting..."
+  rm -rf config/var/* vault_audit.log
+  
+  prettyRed "Stopping Vault..."
+  killall vault
+  
+  prettyRed "Stopping Consul..."
+  killall consul
+  
+  prettyRed "Stopping Consul-Template..."
+  killall consul-template -9
+  
+  prettyRed "Stopping Nomad..."
+  sudo killall nomad
+  
+  exit
 }
 
 function prettyRed() {
-    tput setaf 1 && echo "==> $1" && tput sgr0
+  tput setaf 1 && echo "==> $1" && tput sgr0
 }
 
 function pretty() {
-    tput setaf 4 && echo "==> $1" && tput sgr0
+  tput setaf 4 && echo "==> $1" && tput sgr0
 }
 
 
@@ -71,42 +71,42 @@ pretty "Generating Root CAs"
 
 # Boulder Root CA
 vault write -field=certificate boulder/root/generate/internal \
-    common_name="Boulder Root" ttl=87600h > config/var/boulder_ca_cert.crt
+  common_name="Boulder Root" ttl=87600h > config/var/boulder_ca_cert.crt
 
 # Consul Root CA
 vault write -field=certificate consul/root/generate/internal \
-    common_name="Consul Root" ttl=87600h > config/var/consul_ca_cert.crt
+  common_name="Consul Root" ttl=87600h > config/var/consul_ca_cert.crt
 
 # Configure Vault as Consul's CA/ set CA and CRL URLs.
 vault write consul/config/urls \
-    issuing_certificates="http://127.0.0.1:8200/v1/consul/ca" \
-    crl_distribution_points="http://127.0.0.1:8200/v1/consul/crl"
+  issuing_certificates="http://127.0.0.1:8200/v1/consul/ca" \
+  crl_distribution_points="http://127.0.0.1:8200/v1/consul/crl"
 
 
 pretty "Generating the Intermediate CAs and CSRs"
 
 # Boulder Intermediate CA
 vault write -format=json boulder_int/intermediate/generate/internal \
-    common_name="Boulder Intermediate Authority" \
-    ttl="43800h" | jq -r '.data.csr' > config/var/boulder_int.csr
+  common_name="Boulder Intermediate Authority" \
+  ttl="43800h" | jq -r '.data.csr' > config/var/boulder_int.csr
 
 # Consul Intermediate CA
 vault write -format=json consul_int/intermediate/generate/internal \
-    common_name="dev-general.consul" \
-    ttl="43800h" | jq -r '.data.csr' > config/var/consul_int.csr
+  common_name="dev-general.consul" \
+  ttl="43800h" | jq -r '.data.csr' > config/var/consul_int.csr
 
 
 pretty "Signing Intermediate CA Certificates"
 
 # Boulder Intermediate CA with Boulder Root CA
 vault write -format=json boulder/root/sign-intermediate \
-    csr=@config/var/boulder_int.csr format=pem_bundle \
-    ttl="43800h" | jq -r '.data.certificate' > config/var/boulder_int.cert.pem
+  csr=@config/var/boulder_int.csr format=pem_bundle \
+  ttl="43800h" | jq -r '.data.certificate' > config/var/boulder_int.cert.pem
 
 # Consul Intermediate CA with Consul Root CA
 vault write -format=json consul/root/sign-intermediate \
-    csr=@config/var/consul_int.csr format=pem_bundle \
-    ttl="43800h" | jq -r '.data.certificate' > config/var/consul_int.cert.pem
+  csr=@config/var/consul_int.csr format=pem_bundle \
+  ttl="43800h" | jq -r '.data.certificate' > config/var/consul_int.cert.pem
 
 
 pretty "Deploying Intermediate CA Certificates to Vault"
@@ -145,10 +145,10 @@ vault policy write nomad-cluster vault/boulder.policy.hcl
 
 # Consul PKI Role
 vault write consul_int/roles/consul \
-    allowed_domains="dev-general.consul" \
-    allow_subdomains=true \
-    generate_lease=true \
-    max_ttl="720h"
+  allowed_domains="dev-general.consul" \
+  allow_subdomains=true \
+  generate_lease=true \
+  max_ttl="720h"
 
 pretty "Setup consul-template"
 
@@ -190,20 +190,17 @@ EOF
 
 # Consul PKI Role
 vault write consul_int/roles/consul \
-    allowed_domains="dev-general.consul" \
-    allow_subdomains=true \
-    generate_lease=true \
-    max_ttl="720h"
+  allowed_domains="dev-general.consul" \
+  allow_subdomains=true \
+  generate_lease=true \
+  max_ttl="720h"
 
 vault policy write consul-tls consul-tls-policy.hcl
 
+pretty "Creating Consul TLS Vault Token"
 CONSUL_TLS_TOKEN=$(vault token create -policy="consul-tls" -period=24h -orphan -format="json" | jq -r .auth.client_token)
 
-pretty "Consul TLS Token:"
-echo "${CONSUL_TLS_TOKEN}"
-
 pretty "Templating Consul TLS Certs"
-
 consul-template -vault-token="${CONSUL_TLS_TOKEN}" -config="./config/var/template-consul-tls-config.hcl" -once
 
 pretty "Starting Consul Server"
@@ -316,5 +313,5 @@ pretty "Waiting for ctrl+c to exit..."
 trap no_ctrlc EXIT
 while true
 do
-    sleep 10
+  sleep 10
 done
