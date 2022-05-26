@@ -220,15 +220,32 @@ do
   fi
 done
 
-pretty "Enabling Consul ACLs"
+pretty "Bootstrapping Consul ACLs"
 export CONSUL_HTTP_SSL=true
 export CONSUL_HTTP_ADDR=https://127.0.0.1:8501
 export CONSUL_HTTP_SSL_VERIFY=false
-CONSUL_TOKEN=$(consul acl bootstrap -format=json | jq -r '.SecretID')
+export CONSUL_HTTP_TOKEN=$(consul acl bootstrap -format=json | jq -r '.SecretID')
+
+pretty "Applying Consul ACL Policies"
+tee config/var/consul_nomad_acl_policy.hcl <<EOF
+node "treepie.local" {
+  policy = "write"
+}
+
+service "nomad" {
+  policy = "write"
+}
+EOF
+
+consul acl policy create \
+  -name nomad -rules @config/var/consul_nomad_acl_policy.hcl
+
+CONSUL_TOKEN_NOMAD=$(consul acl token create -description="Nomad ACL Token" -policy-name=nomad -format=json | jq -r .SecretID)
+
 
 pretty "Starting Nomad Server"
 command sudo nomad agent -dev -dc dev-general \
-  -vault-token="${VAULT_TOKEN}" -consul-token="${CONSUL_TOKEN}" -config="config/nomad.conf.hcl" &>/dev/null &
+  -vault-token="${VAULT_TOKEN}" -consul-token="${CONSUL_TOKEN_NOMAD}" -config="config/nomad.conf.hcl" -log-level=TRACE &
 
 pretty "Wait for Nomad to Start"
 while true
@@ -250,7 +267,7 @@ pretty "Bootstrapping Nomad ACLs"
 export NOMAD_TOKEN=$(nomad acl bootstrap -json | jq -r ".SecretID")
 
 # https://learn.hashicorp.com/tutorials/nomad/access-control-policies
-tee config/var/nomad_sre_policy.hcl <<EOF
+tee config/var/nomad_sre_acl_policy.hcl <<EOF
 namespace "*" {
   // Disallow access to execute shell commands from the web UI.
   deny   = ["alloc-exec", "alloc-node-exec"]
@@ -270,7 +287,7 @@ plugin {
 }
 EOF
 
-tee config/var/nomad_ro_policy.hcl <<EOF
+tee config/var/nomad_ro_acl_policy.hcl <<EOF
 namespace "*" {
   policy = "read"
 }
@@ -287,8 +304,8 @@ EOF
 
 pretty "Applying Nomad ACL Policies"
 # https://www.nomadproject.io/docs/commands/acl/policy-apply
-nomad acl policy apply sre "./config/var/nomad_sre_policy.hcl"
-nomad acl policy apply ro "./config/var/nomad_ro_policy.hcl"
+nomad acl policy apply sre "./config/var/nomad_sre_acl_policy.hcl"
+nomad acl policy apply ro "./config/var/nomad_ro_acl_policy.hcl"
 
 pretty "Starting Consul-Template: Consul TLS"
 sed -i '' 's|#command|command|g' ./config/var/template-consul-tls-config.hcl
@@ -298,7 +315,7 @@ pretty "Vault Root Token (run once before using vault CLI commands):"
 echo "export VAULT_TOKEN=\"${VAULT_TOKEN}\""
 echo
 pretty "Consul Management Token (run once before using consul CLI commands):"
-echo "export CONSUL_TOKEN=\"${CONSUL_TOKEN}\""
+echo "export CONSUL_HTTP_TOKEN=\"${CONSUL_HTTP_TOKEN}\""
 echo
 pretty "Nomad Management Token (run once before using nomad CLI commands):"
 echo "export NOMAD_TOKEN=\"${NOMAD_TOKEN}\""
