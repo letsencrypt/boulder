@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
@@ -58,8 +60,39 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 		return nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
 
 	case primaryResult := <-primaryChan:
-		src.counter.WithLabelValues("primary_result").Inc()
-		return primaryResult.resp, primaryResult.err
+		// If there was an error requesting from the primary, don't bother
+		// waiting for the secondary, because we wouldn't be able to
+		// check the secondary's status against the (more reliable) primary's
+		// status.
+		if primaryResult.err != nil {
+			src.counter.WithLabelValues("primary_error").Inc()
+			return nil, primaryResult.err
+		}
+		// The primary response was fresh enough to serve, go ahead and serve it.
+		// TODO: use a clock.Clock
+		if time.Since(primaryResult.resp.ThisUpdate) < 60*time.Hour {
+			src.counter.WithLabelValues("primary_result").Inc()
+			return primaryResult.resp, nil
+		}
+
+		// The response was too stale to (ideally) serve. This will be a common
+		// path once we stop ocsp-updater from writing updated blobs to MariaDB.
+		// Try to serve from the secondary.
+		select {
+		case <-ctx.Done():
+			src.counter.WithLabelValues("timed_out_awaiting_secondary").Inc()
+			// Best-effort: return the primary response even though it's stale.
+			return primaryResult.resp, nil
+
+		case secondaryResult := <-secondaryChan:
+			if secondaryResult.err != nil {
+				src.counter.WithLabelValues("primary_error_secondary_error").Inc()
+				// Best-effort: return the primary response even though it's stale.
+				return primaryResult.resp, nil
+			}
+			src.counter.WithLabelValues("primary_error_secondary_success").Inc()
+			return secondaryResult.resp, nil
+		}
 
 	case secondaryResult := <-secondaryChan:
 		// If secondary returns first, wait for primary to return for
@@ -69,13 +102,13 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 		// Listen for cancellation or timeout waiting for primary result.
 		select {
 		case <-ctx.Done():
-			src.counter.WithLabelValues("timed_out").Inc()
-			return nil, fmt.Errorf("looking up OCSP response for serial: %s err: %w", serialString, ctx.Err())
+			src.counter.WithLabelValues("timed_out_awaiting_primary").Inc()
+			return nil, fmt.Errorf("secondary ok; timed out waiting for primary")
 
 		case primaryResult = <-primaryChan:
 		}
 
-		// Check for error returned from the primary lookup, return on error.
+		// Check for error returned from the primary lookup, return an error.
 		if primaryResult.err != nil {
 			src.counter.WithLabelValues("primary_error").Inc()
 			return nil, primaryResult.err
@@ -84,14 +117,28 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 		// Check for error returned from the secondary lookup. If error return
 		// primary lookup result.
 		if secondaryResult.err != nil {
-			src.counter.WithLabelValues("secondary_error").Inc()
+			if errors.Is(secondaryResult.err, rocsp.ErrRedisNotFound) {
+				// This case will happen for several hours after first issuance.
+				src.counter.WithLabelValues("secondary_not_found").Inc()
+			} else {
+				src.counter.WithLabelValues("secondary_error").Inc()
+			}
 			return primaryResult.resp, nil
 		}
 
 		// If the secondary response status doesn't match primary, return
-		// primary response.
+		// primary response. For instance this will happen for several hours
+		// after any revocation.
 		if secondaryResult.resp.Status != primaryResult.resp.Status {
-			src.counter.WithLabelValues("mismatch").Inc()
+			src.counter.WithLabelValues("primary_status_wins").Inc()
+			return primaryResult.resp, nil
+		}
+
+		// If the primary response is fresher than the secondary, return the
+		// primary response. If ocsp-updater is updating Redis, this shouldn't
+		// happen (since revocation cases are caught above).
+		if primaryResult.resp.ThisUpdate.After(secondaryResult.resp.ThisUpdate) {
+			src.counter.WithLabelValues("primary_newer").Inc()
 			return primaryResult.resp, nil
 		}
 
