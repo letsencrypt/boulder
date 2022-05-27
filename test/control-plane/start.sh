@@ -228,11 +228,15 @@ export CONSUL_HTTP_TOKEN=$(consul acl bootstrap -format=json | jq -r '.SecretID'
 
 pretty "Applying Consul ACL Policies"
 tee config/var/consul_nomad_acl_policy.hcl <<EOF
-node "treepie.local" {
+agent_prefix "" {
+  policy = "read"
+}
+
+service_prefix "" {
   policy = "write"
 }
 
-service "nomad" {
+session_prefix "" {
   policy = "write"
 }
 EOF
@@ -245,7 +249,7 @@ CONSUL_TOKEN_NOMAD=$(consul acl token create -description="Nomad ACL Token" -pol
 
 pretty "Starting Nomad Server"
 command sudo nomad agent -dev -dc dev-general \
-  -vault-token="${VAULT_TOKEN}" -consul-token="${CONSUL_TOKEN_NOMAD}" -config="config/nomad.conf.hcl" -log-level=TRACE &
+  -vault-token="${VAULT_TOKEN}" -consul-token="${CONSUL_TOKEN_NOMAD}" -config="config/nomad.conf.hcl" &>/dev/null &
 
 pretty "Wait for Nomad to Start"
 while true
