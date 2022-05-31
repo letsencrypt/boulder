@@ -227,9 +227,25 @@ export CONSUL_HTTP_SSL_VERIFY=false
 export CONSUL_HTTP_TOKEN=$(consul acl bootstrap -format=json | jq -r '.SecretID')
 
 pretty "Applying Consul ACL Policies"
+
+tee config/var/consul_anonymous_dns_read_acl_policy.hcl <<EOF
+// Allow minimal read access for DNS requests.
+node_prefix "" {
+  policy = "read" 
+}
+
+service_prefix "" {
+  policy = "read"
+}
+EOF
+
 tee config/var/consul_nomad_acl_policy.hcl <<EOF
 agent_prefix "" {
   policy = "read"
+}
+
+node_prefix "" {
+  policy = "read" 
 }
 
 service_prefix "" {
@@ -241,11 +257,15 @@ session_prefix "" {
 }
 EOF
 
+# Update the default anonymous ACL policy to allow read access to the DNS
+# service.
+consul acl policy create -name anonymous-dns-read -rules @config/var/consul_anonymous_dns_read_acl_policy.hcl
+consul acl token update -id anonymous -policy-name=anonymous-dns-read
+
 consul acl policy create \
   -name nomad -rules @config/var/consul_nomad_acl_policy.hcl
 
 CONSUL_TOKEN_NOMAD=$(consul acl token create -description="Nomad ACL Token" -policy-name=nomad -format=json | jq -r .SecretID)
-
 
 pretty "Starting Nomad Server"
 command sudo nomad agent -dev -dc dev-general \
@@ -326,6 +346,9 @@ pretty "Vault Root Token (run once before using vault CLI commands):"
 echo "export VAULT_TOKEN=\"${VAULT_TOKEN}\""
 echo
 pretty "Consul Management Token (run once before using consul CLI commands):"
+echo "export CONSUL_HTTP_SSL=true"
+echo "export CONSUL_HTTP_ADDR=\"https://127.0.0.1:8501\""
+echo "export CONSUL_HTTP_SSL_VERIFY=false"
 echo "export CONSUL_HTTP_TOKEN=\"${CONSUL_HTTP_TOKEN}\""
 echo
 pretty "Nomad Management Token (run once before using nomad CLI commands):"
