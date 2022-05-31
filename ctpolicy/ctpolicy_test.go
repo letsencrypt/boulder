@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -198,10 +199,13 @@ func TestGetSCTsTimeoutMetrics(t *testing.T) {
 
 // A mock publisher that counts submissions
 type countEm struct {
+	sync.Mutex
 	count int
 }
 
 func (ce *countEm) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
+	ce.Lock()
+	defer ce.Unlock()
 	ce.count++
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
