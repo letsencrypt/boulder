@@ -91,6 +91,46 @@ var (
 	subjTmpl = template.Must(template.New("expiry-email-subject").Parse("Testing: " + defaultExpirationSubject))
 )
 
+func TestSendNagsManyCerts(t *testing.T) {
+	mc := mocks.Mailer{}
+	rs := newFakeRegStore()
+	fc := newFakeClock(t)
+
+	staticTmpl := template.Must(template.New("expiry-email-subject-static").Parse(testEmailSubject))
+	tmpl := template.Must(template.New("expiry-email").Parse(
+		`cert for DNS names {{.TruncatedDNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`))
+
+	m := mailer{
+		log:           log,
+		mailer:        &mc,
+		emailTemplate: tmpl,
+		// Explicitly override the default subject to use testEmailSubject
+		subjectTemplate: staticTmpl,
+		rs:              rs,
+		clk:             fc,
+		stats:           initStats(metrics.NoopRegisterer),
+	}
+
+	var certs []*x509.Certificate
+	for i := 0; i < 101; i++ {
+		certs = append(certs, &x509.Certificate{
+			SerialNumber: big.NewInt(0x0304),
+			NotAfter:     fc.Now().AddDate(0, 0, 2),
+			DNSNames:     []string{fmt.Sprintf("example-%d.com", i)},
+		})
+	}
+
+	conn, err := m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+	err = m.sendNags(conn, []string{emailA}, certs)
+	test.AssertNotError(t, err, "sending mail")
+
+	test.AssertEquals(t, len(mc.Messages), 1)
+	if len(strings.Split(mc.Messages[0].Body, "\n")) > 100 {
+		t.Errorf("Expected mailed message to truncate after 100 domains, got: %q", mc.Messages[0].Body)
+	}
+}
+
 func TestSendNags(t *testing.T) {
 	mc := mocks.Mailer{}
 	rs := newFakeRegStore()
