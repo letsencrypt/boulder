@@ -272,9 +272,13 @@ export NOMAD_TOKEN=$(nomad acl bootstrap -json | jq -r ".SecretID")
 
 # https://learn.hashicorp.com/tutorials/nomad/access-control-policies
 tee config/var/nomad_sre_acl_policy.hcl <<EOF
-namespace "*" {
+namespace "default" {
   // Disallow access to execute shell commands from the web UI.
+  // https://learn.hashicorp.com/tutorials/nomad/access-control-policies?in=nomad/access-control#namespace-rules
   deny   = ["alloc-exec", "alloc-node-exec"]
+  policy = "write"
+}
+operator {
   policy = "write"
 }
 node {
@@ -292,7 +296,10 @@ plugin {
 EOF
 
 tee config/var/nomad_ro_acl_policy.hcl <<EOF
-namespace "*" {
+namespace "default" {
+  policy = "read"
+}
+operator {
   policy = "read"
 }
 node {
