@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"golang.org/x/crypto/ocsp"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 const configDateLayout = "2006-01-02 15:04:05"
