@@ -35,7 +35,7 @@ SERVICES = (
         ('./bin/boulder-sa', '--config', os.path.join(config_dir, 'sa.json'), '--addr', 'sa2.boulder:9095', '--debug-addr', ':8103'),
         ('sd-test-srv',)),
     Service('ct-test-srv',
-        4500, None,
+        4600, None,
         ('./bin/ct-test-srv', '--config', 'test/ct-test-srv/ct-test-srv.json'),
         None),
     Service('boulder-publisher-1',

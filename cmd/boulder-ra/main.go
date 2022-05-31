@@ -67,14 +67,6 @@ type Config struct {
 
 		OrderLifetime cmd.ConfigDuration
 
-		// CTLogGroups contains groupings of CT logs which we want SCTs from.
-		// When we retrieve SCTs we will submit the certificate to each log
-		// in a group and the first SCT returned will be used. This allows
-		// us to comply with Chrome CT policy which requires one SCT from a
-		// Google log and one SCT from any other log included in their policy.
-		// DEPRECATED: Use CTLogs instead.
-		// TODO(#5938): Remove this.
-		CTLogGroups2 []ctconfig.CTGroup
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we
 		// will submit the cert to one randomly-chosen log from each group, and use
@@ -84,11 +76,6 @@ type Config struct {
 		// a `Stagger` value controlling how long we wait for one operator group
 		// to respond before trying a different one.
 		CTLogs ctconfig.CTConfig
-		// InformationalCTLogs are a set of CT logs we will always submit to
-		// but won't ever use the SCTs from. This may be because we want to
-		// test them or because they are not yet approved by a browser/root
-		// program but we still want our certs to end up there.
-		InformationalCTLogs []ctconfig.LogDescription
 
 		// IssuerCertPath is the path to the intermediate used to issue certificates.
 		// It is used to generate OCSP URLs to purge at revocation time.
@@ -190,45 +177,19 @@ func main() {
 		cmd.FailOnError(err, "Failed to load issuer certificate")
 	}
 
-	// Boulder's components assume that there will always be CT logs configured.
-	// Issuing a certificate without SCTs embedded is a misissuance event as per
-	// our CPS 4.4.2, which declares we will always include at least two SCTs.
-	// Exit early if no groups are configured.
-	var ctp *ctpolicy.CTPolicy
-	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogs.SCTLogs) != 0 {
-		cmd.Fail("Configure only CTLogGroups2 or CTLogs, not both")
-	} else if len(c.RA.CTLogGroups2) > 0 {
-		for _, g := range c.RA.CTLogGroups2 {
-			// Exit early if any of the log groups specify no logs
-			if len(g.Logs) == 0 {
-				cmd.Fail("Encountered empty CT log group")
-			}
-			for _, l := range g.Logs {
-				if l.TemporalSet != nil {
-					err := l.Setup()
-					cmd.FailOnError(err, "Failed to setup a temporal log set")
-				}
-			}
-		}
+	allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
+	cmd.FailOnError(err, "Failed to parse log list")
 
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, nil, nil, nil, c.RA.CTLogs.Stagger.Duration, logger, scope)
-	} else if len(c.RA.CTLogs.SCTLogs) > 0 {
-		allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
-		cmd.FailOnError(err, "Failed to parse log list")
+	sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance)
+	cmd.FailOnError(err, "Failed to load SCT logs")
 
-		sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance)
-		cmd.FailOnError(err, "Failed to load SCT logs")
+	infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational)
+	cmd.FailOnError(err, "Failed to load informational logs")
 
-		infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational)
-		cmd.FailOnError(err, "Failed to load informational logs")
+	finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
+	cmd.FailOnError(err, "Failed to load final logs")
 
-		finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
-		cmd.FailOnError(err, "Failed to load final logs")
-
-		ctp = ctpolicy.New(pubc, nil, nil, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
-	} else {
-		cmd.Fail("Must configure either CTLogGroups2 or CTLogs")
-	}
+	ctp := ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
 	// or completed validation MUST be obtained no more than 398 days prior

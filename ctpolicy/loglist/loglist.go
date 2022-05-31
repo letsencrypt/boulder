@@ -254,6 +254,10 @@ func (ll List) forPurpose(p purpose) (List, error) {
 		}
 	}
 
+	// Issuing a certificate with fewer than two SCTs embedded is a misissuance
+	// event as per our CPS, Section 4.4.2. If this loglist is being used for
+	// purpose Issuance or Validation, ensure that there are at least two operator
+	// groups in the list.
 	if len(newList) < 2 && p != Informational {
 		return nil, errors.New("log list does not have enough groups to satisfy Chrome policy")
 	}
@@ -290,10 +294,10 @@ func (ll List) Permute() []string {
 // PickOne returns the URI and Public Key of a single randomly-selected log
 // which is run by the given operator and whose temporal interval includes the
 // given expiry time. It returns an error if no such log can be found.
-func (ll List) PickOne(operator string, expiry time.Time) (string, string, error) {
+func (ll List) PickOne(operator string, expiry time.Time) (*Log, error) {
 	group, ok := ll[operator]
 	if !ok {
-		return "", "", fmt.Errorf("no log operator group named %q", operator)
+		return nil, fmt.Errorf("no log operator group named %q", operator)
 	}
 
 	candidates := make([]Log, 0)
@@ -310,9 +314,9 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 
 	// Ensure rand.Intn below won't panic.
 	if len(candidates) < 1 {
-		return "", "", fmt.Errorf("no log found for group %q and expiry %s", operator, expiry)
+		return nil, fmt.Errorf("no log found for group %q and expiry %s", operator, expiry)
 	}
 
 	log := candidates[rand.Intn(len(candidates))]
-	return log.Url, log.Key, nil
+	return &log, nil
 }

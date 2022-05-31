@@ -176,7 +176,7 @@ func TestPickOne(t *testing.T) {
 			"ID A1": Log{Name: "Log A1"},
 		},
 	}
-	_, _, err := input.PickOne("Operator B", date0)
+	_, err := input.PickOne("Operator B", date0)
 	test.AssertError(t, err, "should have failed to find operator")
 
 	input = List{
@@ -184,13 +184,13 @@ func TestPickOne(t *testing.T) {
 			"ID A1": Log{Name: "Log A1", StartInclusive: date0, EndExclusive: date1},
 		},
 	}
-	_, _, err = input.PickOne("Operator A", date2)
+	_, err = input.PickOne("Operator A", date2)
 	test.AssertError(t, err, "should have failed to find log")
-	_, _, err = input.PickOne("Operator A", date1)
+	_, err = input.PickOne("Operator A", date1)
 	test.AssertError(t, err, "should have failed to find log")
-	_, _, err = input.PickOne("Operator A", date0)
+	_, err = input.PickOne("Operator A", date0)
 	test.AssertNotError(t, err, "should have found a log")
-	_, _, err = input.PickOne("Operator A", date0.Add(time.Hour))
+	_, err = input.PickOne("Operator A", date0.Add(time.Hour))
 	test.AssertNotError(t, err, "should have found a log")
 
 	input = List{
@@ -201,8 +201,9 @@ func TestPickOne(t *testing.T) {
 			"ID B2": Log{Name: "Log B2", StartInclusive: date1, EndExclusive: date2, Key: "KB2", Url: "UB2"},
 		},
 	}
-	url, key, err := input.PickOne("Operator A", date0.Add(time.Hour))
+	l, err := input.PickOne("Operator A", date0.Add(time.Hour))
 	test.AssertNotError(t, err, "should have found a log")
-	test.AssertSliceContains(t, []string{"UA1", "UB1"}, url)
-	test.AssertSliceContains(t, []string{"KA1", "KB1"}, key)
+	test.AssertSliceContains(t, []string{"Log A1", "Log B1"}, l.Name)
+	test.AssertSliceContains(t, []string{"UA1", "UB1"}, l.Url)
+	test.AssertSliceContains(t, []string{"KA1", "KB1"}, l.Key)
 }
