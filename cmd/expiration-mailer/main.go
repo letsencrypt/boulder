@@ -71,12 +71,6 @@ type mailerStats struct {
 }
 
 func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Certificate) error {
-	// TODO(#6121): Remove this
-	if !features.Enabled(features.ExpirationMailerDontLookTwice) {
-		if len(contacts) == 0 {
-			return nil
-		}
-	}
 	if len(certs) == 0 {
 		return errors.New("no certs given to send nags for")
 	}
@@ -308,13 +302,6 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 	if len(parsedCerts) == 0 {
 		// all certificates are renewed
 		return nil
-	}
-
-	// TODO(#6121): Remove this
-	if !features.Enabled(features.ExpirationMailerDontLookTwice) {
-		if len(reg.Contact) == 0 {
-			return nil
-		}
 	}
 
 	err = m.sendNags(conn, reg.Contact, parsedCerts)
