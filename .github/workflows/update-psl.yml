@@ -6,6 +6,10 @@ on:
     # Run monthly at a random (https://xkcd.com/221/) time.
     - cron: '46 8 1 * *'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   create-pr:
     runs-on: ubuntu-latest
@@ -18,7 +22,7 @@ jobs:
       # This is the real username and email used by github-actions elsewhere.
       - run: git config user.name "github-actions[bot]"
       - run: git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
+
       - run: echo ::set-output name=name::update-psl-$(date +%F)
         id: branch
 
@@ -34,7 +38,7 @@ jobs:
       - run: git add vendor go.mod go.sum
       - run: git commit -m "Update Public Suffix List"
       - run: git push origin ${{ steps.branch.outputs.name }}
-      
+
       - uses: actions/github-script@v6
         with:
           script: |
