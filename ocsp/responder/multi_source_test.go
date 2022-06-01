@@ -21,9 +21,16 @@ func (src *succeedSource) Response(context.Context, *ocsp.Request) (*Response, e
 	if src.resp != nil {
 		return src.resp, nil
 	}
+	defaultResponse := &Response{
+		Response: &ocsp.Response{
+			Status:     ocsp.Good,
+			ThisUpdate: time.Now().Add(-10 * time.Hour),
+		},
+		Raw: nil,
+	}
 	// We can't just return nil, as the multiSource checks the Statuses from each
 	// Source to ensure they agree.
-	return &Response{&ocsp.Response{Status: ocsp.Good}, []byte{}}, nil
+	return defaultResponse, nil
 }
 
 type failSource struct{}
