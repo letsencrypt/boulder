@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -31,7 +33,7 @@ func (mp *alwaysFail) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Req
 	return nil, errors.New("BAD")
 }
 
-func TestGetSCTs(t *testing.T) {
+func TestGetGoogleSCTs(t *testing.T) {
 	expired, cancel := context.WithDeadline(context.Background(), time.Now())
 	defer cancel()
 	missingSCTErr := berrors.MissingSCTs
@@ -115,13 +117,101 @@ func TestGetSCTs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp := New(tc.mock, tc.groups, nil, blog.NewMock(), metrics.NoopRegisterer)
+			ctp := New(tc.mock, tc.groups, nil, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
 			} else if tc.errRegexp != nil {
 				if !tc.errRegexp.MatchString(err.Error()) {
 					t.Errorf("Error %q did not match expected regexp %q", err, tc.errRegexp)
+				}
+				if tc.berrorType != nil {
+					test.AssertErrorIs(t, err, *tc.berrorType)
+				}
+			}
+		})
+	}
+}
+
+func TestGetOperatorSCTs(t *testing.T) {
+	expired, cancel := context.WithDeadline(context.Background(), time.Now())
+	defer cancel()
+	missingSCTErr := berrors.MissingSCTs
+	testCases := []struct {
+		name       string
+		mock       pubpb.PublisherClient
+		groups     loglist.List
+		ctx        context.Context
+		result     core.SCTDERs
+		expectErr  string
+		berrorType *berrors.ErrorType
+	}{
+		{
+			name: "basic success case",
+			mock: &mockPub{},
+			groups: loglist.List{
+				"OperA": {
+					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
+				},
+				"OperB": {
+					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+				},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
+				},
+			},
+			ctx:    context.Background(),
+			result: core.SCTDERs{[]byte{0}, []byte{0}},
+		},
+		{
+			name: "basic failure case",
+			mock: &alwaysFail{},
+			groups: loglist.List{
+				"OperA": {
+					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
+				},
+				"OperB": {
+					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+				},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
+				},
+			},
+			ctx:        context.Background(),
+			expectErr:  "failed to get 2 SCTs, got error(s):",
+			berrorType: &missingSCTErr,
+		},
+		{
+			name: "parent context timeout failure case",
+			mock: &alwaysFail{},
+			groups: loglist.List{
+				"OperA": {
+					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
+				},
+				"OperB": {
+					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+				},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
+				},
+			},
+			ctx:       expired,
+			expectErr: "failed to get 2 SCTs before ctx finished",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctp := New(tc.mock, nil, nil, tc.groups, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
+			if tc.result != nil {
+				test.AssertDeepEquals(t, ret, tc.result)
+			} else if tc.expectErr != "" {
+				if !strings.Contains(err.Error(), tc.expectErr) {
+					t.Errorf("Error %q did not match expected %q", err, tc.expectErr)
 				}
 				if tc.berrorType != nil {
 					test.AssertErrorIs(t, err, *tc.berrorType)
@@ -165,7 +255,7 @@ func TestGetSCTsMetrics(t *testing.T) {
 				{URI: "ghi", Key: "jkl"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NoopRegisterer)
+	}, nil, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"log": "ghi", "group": "a"}, 1)
@@ -182,7 +272,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 				{URI: "abc", Key: "def"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NoopRegisterer)
+	}, nil, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
@@ -200,7 +290,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 				{URI: "abc", Key: "def"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NoopRegisterer)
+	}, nil, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	_, err = ctp.GetSCTs(ctx, []byte{0}, time.Time{})
 	if err == nil {
 		t.Fatal("GetSCTs should have failed")
@@ -229,7 +319,7 @@ func TestStagger(t *testing.T) {
 				{URI: "ghi", Key: "jkl"},
 			},
 		},
-	}, nil, blog.NewMock(), metrics.NoopRegisterer)
+	}, nil, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
 	if countingPub.count != 1 {

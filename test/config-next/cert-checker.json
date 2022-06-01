@@ -15,7 +15,8 @@
     "acceptableValidityDurations": ["7776000s"],
     "ignoredLints": [
       "n_subject_common_name_included"
-    ]
+    ],
+    "ctLogListFile": "test/ct-test-srv/log_list.json"
   },
 
   "pa": {

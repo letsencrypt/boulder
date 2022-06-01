@@ -1299,7 +1299,61 @@ def test_ocsp():
     # checking OCSP until we either see a good response or we timeout (5s).
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
-def test_ct_submission():
+# TODO(#5938): Remove _operator suffix from this test and remove CONFIG_NEXT check.
+def test_ct_submission_operator():
+    if not CONFIG_NEXT:
+        return
+
+    hostname = random_domain()
+
+    chisel2.auth_and_issue([hostname])
+
+    # These should correspond to the configured logs in ra.json.
+    log_groups = [
+        ["http://boulder:4600/submissions", "http://boulder:4601/submissions", "http://boulder:4602/submissions", "http://boulder:4603/submissions"],
+        ["http://boulder:4604/submissions", "http://boulder:4605/submissions"],
+        ["http://boulder:4606/submissions"],
+        ["http://boulder:4607/submissions"],
+        ["http://boulder:4608/submissions"],
+        ["http://boulder:4609/submissions"],
+    ]
+
+    # These should correspond to the logs with `submitFinal` in ra.json.
+    final_logs = [
+        "http://boulder:4600/submissions",
+        "http://boulder:4601/submissions",
+        "http://boulder:4606/submissions",
+        "http://boulder:4609/submissions",
+     ]
+
+    # We'd like to enforce strict limits here (exactly 1 submission per group,
+    # exactly two submissions overall) but the async nature of the race system
+    # means we can't -- a slowish submission to one log in a group could trigger
+    # a very fast submission to a different log in the same group, and then both
+    # submissions could succeed at the same time. Although the Go code will only
+    # use one of the SCTs, both logs will still have been submitted to, and it
+    # will show up here.
+    total_count = 0
+    for i in range(len(log_groups)):
+        group_count = 0
+        for j in range(len(log_groups[i])):
+            log = log_groups[i][j]
+            count = int(requests.get(log + "?hostnames=%s" % hostname).text)
+            threshold = 1
+            if log in final_logs:
+                threshold += 1
+            if count > threshold:
+                raise(Exception("Got %d submissions for log %s, expected at most %d" % (count, log, threshold)))
+            group_count += count
+        total_count += group_count
+    if total_count < 2:
+        raise(Exception("Got %d total submissions, expected at least 2" % total_count))
+
+# TODO(#5938): Remove this test.
+def test_ct_submission_google():
+    if CONFIG_NEXT:
+        return
+
     hostname = random_domain()
 
     # These should correspond to the configured logs in ra.json.
