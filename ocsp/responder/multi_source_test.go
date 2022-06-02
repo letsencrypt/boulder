@@ -13,9 +13,9 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-type ok struct{}
+const expectedFreshness = 61 * time.Hour
 
-const expectedFreshness = 60 * time.Hour
+type ok struct{}
 
 func (src ok) Response(context.Context, *ocsp.Request) (*Response, error) {
 	return &Response{
@@ -112,7 +112,7 @@ func TestMultiSource(t *testing.T) {
 			resp, err := src.Response(ctx, &ocsp.Request{})
 			if err != nil {
 				if !tc.expectedError {
-					t.Errorf("unexpected error: %s", err)
+					t.Fatalf("unexpected error: %s", err)
 				}
 				return
 			}

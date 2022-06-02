@@ -117,7 +117,7 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 	// primary response. For instance this will happen for several hours
 	// after any revocation.
 	if secondaryResponse.Status != primaryResponse.Status {
-		src.counter.WithLabelValues("stale_primary_status_wins").Inc()
+		src.counter.WithLabelValues("primary_stale_status_wins").Inc()
 		return primaryResponse, nil
 	}
 

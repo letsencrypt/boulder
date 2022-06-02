@@ -41,8 +41,8 @@ type Config struct {
 		OldOCSPBatchSize int
 
 		// The worst-case freshness of a response during normal operations.
-		// This corresponds to OCSPMinTimeToExpiry in ocsp-updater's config,
-		// and both correspond to the mandated refresh times in the BRs and
+		// This is related to to OCSPMinTimeToExpiry in ocsp-updater's config,
+		// and both are related to the mandated refresh times in the BRs and
 		// root programs (minus a safety margin).
 		OCSPMinTimeToExpiry cmd.ConfigDuration
 
