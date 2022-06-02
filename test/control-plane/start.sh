@@ -255,6 +255,10 @@ service_prefix "" {
 session_prefix "" {
   policy = "write"
 }
+
+key_prefix "" {
+  policy = "read"
+}
 EOF
 
 # Update the default anonymous ACL policy to allow read access to the DNS
