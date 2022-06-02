@@ -15,6 +15,8 @@ import (
 
 type ok struct{}
 
+const expectedFreshness = 60 * time.Hour
+
 func (src ok) Response(context.Context, *ocsp.Request) (*Response, error) {
 	return &Response{
 		Response: &ocsp.Response{
@@ -102,7 +104,7 @@ func TestMultiSource(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			src, err := NewMultiSource(tc.primary, tc.secondary, metrics.NoopRegisterer, blog.NewMock())
+			src, err := NewMultiSource(tc.primary, tc.secondary, expectedFreshness, metrics.NoopRegisterer, blog.NewMock())
 			test.AssertNotError(t, err, "failed to create multiSource")
 
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -126,7 +128,7 @@ func TestMultiSource(t *testing.T) {
 
 func TestSecondaryTimeout(t *testing.T) {
 	ch := make(chan struct{})
-	src, err := NewMultiSource(&ok{}, &timeout{ch: ch}, metrics.NoopRegisterer, blog.NewMock())
+	src, err := NewMultiSource(&ok{}, &timeout{ch: ch}, expectedFreshness, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -149,7 +151,7 @@ func TestSecondaryTimeout(t *testing.T) {
 }
 
 func TestPrimaryStale(t *testing.T) {
-	src, err := NewMultiSource(stale{}, ok{}, metrics.NoopRegisterer, blog.NewMock())
+	src, err := NewMultiSource(stale{}, ok{}, expectedFreshness, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -158,7 +160,7 @@ func TestPrimaryStale(t *testing.T) {
 	test.AssertNotError(t, err, "getting response")
 
 	age := time.Since(resp.ThisUpdate)
-	if age > 60*time.Hour {
+	if age > expectedFreshness {
 		t.Errorf("expected response to be fresh, but it was %s old", age)
 	}
 }

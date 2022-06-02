@@ -12,13 +12,27 @@ import (
 )
 
 type multiSource struct {
-	primary   Source
-	secondary Source
-	counter   *prometheus.CounterVec
-	log       blog.Logger
+	primary           Source
+	secondary         Source
+	expectedFreshness time.Duration
+	counter           *prometheus.CounterVec
+	log               blog.Logger
 }
 
-func NewMultiSource(primary, secondary Source, stats prometheus.Registerer, log blog.Logger) (*multiSource, error) {
+// NewMultiSource creates a source that combines a primary and a secondary source.
+//
+// It performs lookups using both the primary and secondary Sources.
+// It always waits for a response from the primary. If the primary response is
+// stale (older than expectedFreshness), it will wait for a "better" response
+// from the secondary.
+//
+// The secondary response will be served only if (a) it has the same status as
+// the primary response (good or revoked), and (b) it is fresher than the
+// primary response.
+//
+// A stale response from the primary will still be served if there is no
+// better response available from the secondary (due to error, timeout, etc).
+func NewMultiSource(primary, secondary Source, expectedFreshness time.Duration, stats prometheus.Registerer, log blog.Logger) (*multiSource, error) {
 	if primary == nil || secondary == nil {
 		return nil, errors.New("must provide both primary and secondary sources")
 	}
@@ -29,22 +43,15 @@ func NewMultiSource(primary, secondary Source, stats prometheus.Registerer, log 
 	stats.MustRegister(counter)
 
 	return &multiSource{
-		primary:   primary,
-		secondary: secondary,
-		counter:   counter,
-		log:       log,
+		primary:           primary,
+		secondary:         secondary,
+		expectedFreshness: expectedFreshness,
+		counter:           counter,
+		log:               log,
 	}, nil
 }
 
 // Response implements the Source interface.
-//
-// This function performs lookups using both the primary and secondary Sources.
-// It always waits for a response from the primary. If the primary response is
-// stale, it will wait for a "better" response from the secondary.
-//
-// The secondary response will be served only if (a) it has the same status as
-// the primary response (good or revoked), and (b) it is fresher than the
-// primary response.
 func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Response, error) {
 	primaryChan := getResponse(ctx, src.primary, req)
 	secondaryChan := getResponse(ctx, src.secondary, req)
@@ -75,8 +82,7 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 	}
 
 	// The primary response was fresh enough to serve, go ahead and serve it.
-	// TODO: use a clock.Clock
-	if time.Since(primaryResponse.ThisUpdate) < 60*time.Hour {
+	if time.Since(primaryResponse.ThisUpdate) < src.expectedFreshness {
 		src.checkSecondary(primaryResponse, secondaryChan)
 		src.counter.WithLabelValues("primary_result").Inc()
 		return primaryResponse, nil
