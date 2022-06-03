@@ -145,15 +145,17 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	}
 
 	email := struct {
-		ExpirationDate    string
-		DaysToExpiration  int
-		DNSNames          string
-		TruncatedDNSNames string
+		ExpirationDate     string
+		DaysToExpiration   int
+		DNSNames           string
+		TruncatedDNSNames  string
+		NumDNSNamesOmitted int
 	}{
-		ExpirationDate:    expDate.UTC().Format(time.RFC822Z),
-		DaysToExpiration:  int(expiresIn.Hours() / 24),
-		DNSNames:          strings.Join(domains, "\n"),
-		TruncatedDNSNames: strings.Join(truncatedDomains, "\n"),
+		ExpirationDate:     expDate.UTC().Format(time.RFC822Z),
+		DaysToExpiration:   int(expiresIn.Hours() / 24),
+		DNSNames:           strings.Join(domains, "\n"),
+		TruncatedDNSNames:  strings.Join(truncatedDomains, "\n"),
+		NumDNSNamesOmitted: len(domains) - len(truncatedDomains),
 	}
 	msgBuf := new(bytes.Buffer)
 	err = m.emailTemplate.Execute(msgBuf, email)

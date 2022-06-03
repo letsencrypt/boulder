@@ -11,7 +11,7 @@
     },
     "certLimit": 100000,
     "nagTimes": ["480h", "240h"],
-    "emailTemplate": "test/example-expiration-template",
+    "emailTemplate": "test/config-next/expiration-mailer.gotmpl",
     "debugAddr": ":8008",
     "parallelSends": 10,
     "tls": {
