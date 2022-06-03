@@ -44,7 +44,7 @@ type Config struct {
 		// This is related to to OCSPMinTimeToExpiry in ocsp-updater's config,
 		// and both are related to the mandated refresh times in the BRs and
 		// root programs (minus a safety margin).
-		OCSPMinTimeToExpiry cmd.ConfigDuration
+		ExpectedFreshness cmd.ConfigDuration
 
 		// ParallelGenerateOCSPRequests determines how many requests to the CA
 		// may be inflight at once.

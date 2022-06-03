@@ -51,13 +51,15 @@ type Config struct {
 		Timeout cmd.ConfigDuration
 
 		// The worst-case freshness of a response during normal operations.
-		// This is related to OCSPMinTimeToExpiry in ocsp-updater's config,
-		// and both are related to the mandated refresh times in the BRs and
-		// root programs (minus a safety margin).
 		//
 		// This controls behavior when both Redis and MariaDB backends are
 		// configured. If a MariaDB response is older than this, ocsp-responder
-		// will try to serve a fresher response from Redis, if available.
+		// will try to serve a fresher response from Redis, waiting for a Redis
+		// response if necessary.
+		//
+		// This is related to OCSPMinTimeToExpiry in ocsp-updater's config,
+		// and both are related to the mandated refresh times in the BRs and
+		// root programs (minus a safety margin).
 		//
 		// This should be configured slightly higher than ocsp-updater's
 		// OCSPMinTimeToExpiry, to account for the time taken to sign

@@ -72,7 +72,7 @@ func TestMultiSource(t *testing.T) {
 		primary        Source
 		secondary      Source
 		expectedError  bool
-		expectedStatus int // only checked if err is nil
+		expectedStatus int // only checked if expectedError is false
 	}
 	ignored := 99
 	cases := map[string]testCase{
