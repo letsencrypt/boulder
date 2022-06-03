@@ -387,11 +387,6 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 		string(status.Status),
 	)
 
-	if err != nil {
-		updater.storedCounter.WithLabelValues("failed").Inc()
-	} else {
-		updater.storedCounter.WithLabelValues("success").Inc()
-	}
 	return err
 }
 

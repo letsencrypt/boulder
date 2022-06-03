@@ -13,38 +13,122 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-type succeedSource struct {
-	resp *Response
+const expectedFreshness = 61 * time.Hour
+
+type ok struct{}
+
+func (src ok) Response(context.Context, *ocsp.Request) (*Response, error) {
+	return &Response{
+		Response: &ocsp.Response{
+			Status:     ocsp.Good,
+			ThisUpdate: time.Now().Add(-10 * time.Hour),
+		},
+		Raw: nil,
+	}, nil
 }
 
-func (src *succeedSource) Response(context.Context, *ocsp.Request) (*Response, error) {
-	if src.resp != nil {
-		return src.resp, nil
-	}
-	// We can't just return nil, as the multiSource checks the Statuses from each
-	// Source to ensure they agree.
-	return &Response{&ocsp.Response{Status: ocsp.Good}, []byte{}}, nil
+type revoked struct{}
+
+func (src revoked) Response(context.Context, *ocsp.Request) (*Response, error) {
+	return &Response{
+		Response: &ocsp.Response{
+			Status:     ocsp.Revoked,
+			ThisUpdate: time.Now().Add(-10 * time.Hour),
+		},
+		Raw: nil,
+	}, nil
 }
 
-type failSource struct{}
+type stale struct{}
 
-func (src *failSource) Response(context.Context, *ocsp.Request) (*Response, error) {
+func (src stale) Response(context.Context, *ocsp.Request) (*Response, error) {
+	return &Response{
+		Response: &ocsp.Response{
+			Status:     ocsp.Good,
+			ThisUpdate: time.Now().Add(-70 * time.Hour),
+		},
+		Raw: nil,
+	}, nil
+}
+
+type fail struct{}
+
+func (src fail) Response(context.Context, *ocsp.Request) (*Response, error) {
 	return nil, errors.New("failure")
 }
 
-// timeoutSource is a Source that will not return until its chan is closed.
-type timeoutSource struct {
+// timeout is a Source that will not return until its chan is closed.
+type timeout struct {
 	ch <-chan struct{}
 }
 
-func (src *timeoutSource) Response(context.Context, *ocsp.Request) (*Response, error) {
+func (src timeout) Response(context.Context, *ocsp.Request) (*Response, error) {
 	<-src.ch
 	return nil, errors.New("failure")
 }
 
+func TestMultiSource(t *testing.T) {
+	type testCase struct {
+		primary        Source
+		secondary      Source
+		expectedError  bool
+		expectedStatus int // only checked if expectedError is false
+	}
+	ignored := 99
+	cases := map[string]testCase{
+		"ok-ok":           {ok{}, ok{}, false, ocsp.Good},
+		"ok-fail":         {ok{}, fail{}, false, ocsp.Good},
+		"ok-revoked":      {ok{}, revoked{}, false, ocsp.Good},
+		"ok-stale":        {ok{}, stale{}, false, ocsp.Good},
+		"ok-timeout":      {ok{}, timeout{}, false, ocsp.Good},
+		"fail-ok":         {fail{}, ok{}, true, ignored},
+		"fail-fail":       {fail{}, fail{}, true, ignored},
+		"fail-revoked":    {fail{}, revoked{}, true, ignored},
+		"fail-stale":      {fail{}, stale{}, true, ignored},
+		"fail-timeout":    {fail{}, timeout{}, true, ignored},
+		"revoked-ok":      {revoked{}, ok{}, false, ocsp.Revoked},
+		"revoked-fail":    {revoked{}, fail{}, false, ocsp.Revoked},
+		"revoked-revoked": {revoked{}, revoked{}, false, ocsp.Revoked},
+		"revoked-stale":   {revoked{}, stale{}, false, ocsp.Revoked},
+		"revoked-timeout": {revoked{}, timeout{}, false, ocsp.Revoked},
+		"stale-ok":        {stale{}, ok{}, false, ocsp.Good},
+		"stale-fail":      {stale{}, fail{}, false, ocsp.Good},
+		"stale-revoked":   {stale{}, revoked{}, false, ocsp.Good},
+		"stale-stale":     {stale{}, stale{}, false, ocsp.Good},
+		"stale-timeout":   {stale{}, timeout{}, false, ocsp.Good},
+		"timeout-ok":      {timeout{}, ok{}, true, ignored},
+		"timeout-fail":    {timeout{}, fail{}, true, ignored},
+		"timeout-revoked": {timeout{}, revoked{}, true, ignored},
+		"timeout-stale":   {timeout{}, stale{}, true, ignored},
+		"timeout-timeout": {timeout{}, timeout{}, true, ignored},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			src, err := NewMultiSource(tc.primary, tc.secondary, expectedFreshness, metrics.NoopRegisterer, blog.NewMock())
+			test.AssertNotError(t, err, "failed to create multiSource")
+
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			resp, err := src.Response(ctx, &ocsp.Request{})
+			if err != nil {
+				if !tc.expectedError {
+					t.Fatalf("unexpected error: %s", err)
+				}
+				return
+			}
+			if tc.expectedError {
+				t.Errorf("expected error, got none")
+			}
+			if resp.Status != tc.expectedStatus {
+				t.Errorf("expected response status %d, got %d", tc.expectedStatus, resp.Status)
+			}
+		})
+	}
+}
+
 func TestSecondaryTimeout(t *testing.T) {
 	ch := make(chan struct{})
-	src, err := NewMultiSource(&succeedSource{}, &timeoutSource{ch: ch}, metrics.NoopRegisterer, blog.NewMock())
+	src, err := NewMultiSource(&ok{}, &timeout{ch: ch}, expectedFreshness, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -66,110 +150,17 @@ func TestSecondaryTimeout(t *testing.T) {
 	}
 }
 
-func TestBothGood(t *testing.T) {
-	src, err := NewMultiSource(&succeedSource{}, &succeedSource{}, metrics.NoopRegisterer, blog.NewMock())
+func TestPrimaryStale(t *testing.T) {
+	src, err := NewMultiSource(stale{}, ok{}, expectedFreshness, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
-	_, err = src.Response(context.Background(), &ocsp.Request{})
-	test.AssertNotError(t, err, "unexpected error")
-}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	resp, err := src.Response(ctx, &ocsp.Request{})
+	test.AssertNotError(t, err, "getting response")
 
-func TestPrimaryGoodSecondaryErr(t *testing.T) {
-	src, err := NewMultiSource(&succeedSource{}, &failSource{}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "failed to create multiSource")
-
-	_, err = src.Response(context.Background(), &ocsp.Request{})
-	test.AssertNotError(t, err, "unexpected error")
-}
-
-func TestPrimaryErrSecondaryGood(t *testing.T) {
-	src, err := NewMultiSource(&failSource{}, &succeedSource{}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "failed to create multiSource")
-
-	_, err = src.Response(context.Background(), &ocsp.Request{})
-	test.AssertError(t, err, "expected error")
-}
-
-func TestBothErr(t *testing.T) {
-	src, err := NewMultiSource(&failSource{}, &failSource{}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "failed to create multiSource")
-
-	_, err = src.Response(context.Background(), &ocsp.Request{})
-	test.AssertError(t, err, "expected error")
-}
-
-func TestBothSucceedButDisagree(t *testing.T) {
-	otherResp := &Response{&ocsp.Response{Status: ocsp.Revoked}, []byte{}}
-	src, err := NewMultiSource(&succeedSource{otherResp}, &succeedSource{}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "failed to create multiSource")
-
-	resp, err := src.Response(context.Background(), &ocsp.Request{})
-	test.AssertNotError(t, err, "unexpected error")
-	test.AssertEquals(t, resp.Status, ocsp.Revoked)
-}
-
-// blockingSource doesn't return until its channel is closed.
-// Use `defer close(signal)` to cause it to block until the test is done.
-type blockingSource struct {
-	signal chan struct{}
-}
-
-func (src *blockingSource) Response(context.Context, *ocsp.Request) (*Response, error) {
-	<-src.signal
-	return nil, nil
-}
-
-func TestPrimaryGoodSecondaryTimeout(t *testing.T) {
-	signal := make(chan struct{})
-	defer close(signal)
-
-	src, err := NewMultiSource(&succeedSource{}, &blockingSource{signal}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "failed to create multiSource")
-
-	_, err = src.Response(context.Background(), &ocsp.Request{})
-	test.AssertNotError(t, err, "unexpected error")
-}
-
-func TestPrimaryTimeoutSecondaryGood(t *testing.T) {
-	signal := make(chan struct{})
-	defer close(signal)
-
-	src, err := NewMultiSource(&blockingSource{signal}, &succeedSource{}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "failed to create multiSource")
-
-	// We use cancellation instead of timeout so we don't have to wait on real time.
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-
-	errChan := make(chan error)
-	go func() {
-		_, err = src.Response(ctx, &ocsp.Request{})
-		errChan <- err
-	}()
-	cancel()
-	err = <-errChan
-
-	test.AssertError(t, err, "expected error")
-}
-
-func TestBothTimeout(t *testing.T) {
-	signal := make(chan struct{})
-	defer close(signal)
-
-	src, err := NewMultiSource(&blockingSource{signal}, &blockingSource{signal}, metrics.NoopRegisterer, blog.NewMock())
-	test.AssertNotError(t, err, "failed to create multiSource")
-
-	// We use cancellation instead of timeout so we don't have to wait on real time.
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-
-	errChan := make(chan error)
-	go func() {
-		_, err = src.Response(ctx, &ocsp.Request{})
-		errChan <- err
-	}()
-	cancel()
-	err = <-errChan
-
-	test.AssertError(t, err, "expected error")
+	age := time.Since(resp.ThisUpdate)
+	if age > expectedFreshness {
+		t.Errorf("expected response to be fresh, but it was %s old", age)
+	}
 }

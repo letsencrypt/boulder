@@ -33,16 +33,30 @@ type Config struct {
 		// E1 -> 1, R3 -> 3, etc.
 		Issuers map[string]int
 
-		OldOCSPWindow    cmd.ConfigDuration
+		// OldOCSPWindow controls how frequently ocsp-updater signs a batch
+		// of responses.
+		OldOCSPWindow cmd.ConfigDuration
+		// OldOCSPBatchSize controls the maximum number of responses
+		// ocsp-updater will sign every OldOCSPWindow.
 		OldOCSPBatchSize int
 
-		OCSPMinTimeToExpiry          cmd.ConfigDuration
+		// The worst-case freshness of a response during normal operations.
+		// This is related to to ExpectedFreshness in ocsp-responder's config,
+		// and both are related to the mandated refresh times in the BRs and
+		// root programs (minus a safety margin).
+		OCSPMinTimeToExpiry cmd.ConfigDuration
+
+		// ParallelGenerateOCSPRequests determines how many requests to the CA
+		// may be inflight at once.
 		ParallelGenerateOCSPRequests int
 
 		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
 		SignFailureBackoffFactor float64
 		SignFailureBackoffMax    cmd.ConfigDuration
 
+		// SerialSuffixShards is a whitespace-separated list of single hex
+		// digits. When searching for work to do, ocsp-updater will query
+		// for only those certificates end in one of the specified hex digits.
 		SerialSuffixShards string
 
 		OCSPGeneratorService *cmd.GRPCClientConfig
