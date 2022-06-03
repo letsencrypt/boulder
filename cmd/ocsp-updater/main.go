@@ -41,10 +41,10 @@ type Config struct {
 		OldOCSPBatchSize int
 
 		// The worst-case freshness of a response during normal operations.
-		// This is related to to OCSPMinTimeToExpiry in ocsp-updater's config,
+		// This is related to to ExpectedFreshness in ocsp-responder's config,
 		// and both are related to the mandated refresh times in the BRs and
 		// root programs (minus a safety margin).
-		ExpectedFreshness cmd.ConfigDuration
+		OCSPMinTimeToExpiry cmd.ConfigDuration
 
 		// ParallelGenerateOCSPRequests determines how many requests to the CA
 		// may be inflight at once.
