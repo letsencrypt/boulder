@@ -36,11 +36,12 @@ func _() {
 	_ = x[SHA1CSRs-25]
 	_ = x[AllowUnrecognizedFeatures-26]
 	_ = x[ExpirationMailerDontLookTwice-27]
+	_ = x[RejectDuplicateCSRExtensions-28]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstAllowReRevocationMozRevocationReasonsOldTLSOutboundOldTLSInboundSHA1CSRsAllowUnrecognizedFeaturesExpirationMailerDontLookTwice"
+const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstAllowReRevocationMozRevocationReasonsOldTLSOutboundOldTLSInboundSHA1CSRsAllowUnrecognizedFeaturesExpirationMailerDontLookTwiceRejectDuplicateCSRExtensions"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 148, 161, 175, 193, 211, 230, 246, 265, 289, 300, 316, 332, 348, 378, 395, 415, 429, 442, 450, 475, 504}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 148, 161, 175, 193, 211, 230, 246, 265, 289, 300, 316, 332, 348, 378, 395, 415, 429, 442, 450, 475, 504, 532}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
