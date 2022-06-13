@@ -71,7 +71,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		oidSeen := make(map[string]bool)
 		for _, ext := range csr.Extensions {
 			if oidSeen[ext.Id.String()] {
-				return berrors.MalformedError("extension OID %s appears in CSR twice", ext.Id)
+				return berrors.MalformedError("extension OID %s appears in CSR twice. File an issue with the maintainer of your ACME client.", ext.Id)
 			}
 			oidSeen[ext.Id.String()] = true
 		}
