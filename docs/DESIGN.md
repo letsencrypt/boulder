@@ -302,7 +302,7 @@ order finalization and does not offer the new-cert endpoint.
   * Verify that the issued cert will not be valid longer than the CA cert
   * Verify that the issued cert will not be valid longer than the underlying authorizations
   * Open a CA DB transaction and allocate a new serial number
-  * Sign a poisoned precertificate with the CFSSL library
+  * Sign a poisoned precertificate
 
 * 5-6: RA does the following:
   * Collect the SCTs needed to satisfy the ctpolicy
@@ -311,7 +311,7 @@ order finalization and does not offer the new-cert endpoint.
 * 5-6: CA does the following:
   * Remove the precertificate poison and sign a final certificate with SCTs provided by the RA
   * Create the first OCSP response for the final certificate
-  * Sign the final certificate and the first OCSP response with the CFSSL library
+  * Sign the final certificate and the first OCSP response
   * Store the final certificate
   * Commit the CA DB transaction if everything worked
   * Return the final certificate serial number
@@ -372,7 +372,7 @@ ACME v2:
   * Verify that the issued cert will not be valid longer than the CA cert
   * Verify that the issued cert will not be valid longer than the underlying authorizations
   * Open a CA DB transaction and allocate a new serial number
-  * Sign a poisoned precertificate with the CFSSL library
+  * Sign a poisoned precertificate
 
 * 5-6: RA does the following
   * Collect the SCTs needed to satisfy the ctpolicy
@@ -381,7 +381,7 @@ ACME v2:
 * 5-6: CA does the following:
   * Sign a final certificate with SCTs provided by the RA
   * Create the first OCSP response for the final certificate
-  * Sign the final certificate and the first OCSP response with the CFSSL library
+  * Sign the final certificate and the first OCSP response
   * Store the final certificate
   * Commit the CA DB transaction if everything worked
   * Return the final certificate serial number
