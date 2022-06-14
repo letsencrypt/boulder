@@ -6,7 +6,7 @@ import (
 	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // ECDSAAllowList acts as a container for a map of Registration IDs, a

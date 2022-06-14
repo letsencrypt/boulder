@@ -19,7 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"golang.org/x/crypto/ocsp"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 const configDateLayout = "2006-01-02 15:04:05"
@@ -465,8 +465,11 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 }
 
 func rootCeremony(configBytes []byte) error {
+	d := yaml.NewDecoder(bytes.NewReader(configBytes))
+	d.KnownFields(true)
+
 	var config rootConfig
-	err := yaml.UnmarshalStrict(configBytes, &config)
+	err := d.Decode(&config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -501,8 +504,11 @@ func rootCeremony(configBytes []byte) error {
 }
 
 func intermediateCeremony(configBytes []byte, ct certType) error {
+	d := yaml.NewDecoder(bytes.NewReader(configBytes))
+	d.KnownFields(true)
+
 	var config intermediateConfig
-	err := yaml.UnmarshalStrict(configBytes, &config)
+	err := d.Decode(&config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -548,8 +554,11 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 }
 
 func csrCeremony(configBytes []byte) error {
+	d := yaml.NewDecoder(bytes.NewReader(configBytes))
+	d.KnownFields(true)
+
 	var config csrConfig
-	err := yaml.UnmarshalStrict(configBytes, &config)
+	err := d.Decode(&config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -591,8 +600,11 @@ func csrCeremony(configBytes []byte) error {
 }
 
 func keyCeremony(configBytes []byte) error {
+	d := yaml.NewDecoder(bytes.NewReader(configBytes))
+	d.KnownFields(true)
+
 	var config keyConfig
-	err := yaml.UnmarshalStrict(configBytes, &config)
+	err := d.Decode(&config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -613,8 +625,11 @@ func keyCeremony(configBytes []byte) error {
 }
 
 func ocspRespCeremony(configBytes []byte) error {
+	d := yaml.NewDecoder(bytes.NewReader(configBytes))
+	d.KnownFields(true)
+
 	var config ocspRespConfig
-	err := yaml.UnmarshalStrict(configBytes, &config)
+	err := d.Decode(&config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -683,8 +698,11 @@ func ocspRespCeremony(configBytes []byte) error {
 }
 
 func crlCeremony(configBytes []byte) error {
+	d := yaml.NewDecoder(bytes.NewReader(configBytes))
+	d.KnownFields(true)
+
 	var config crlConfig
-	err := yaml.UnmarshalStrict(configBytes, &config)
+	err := d.Decode(&config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
