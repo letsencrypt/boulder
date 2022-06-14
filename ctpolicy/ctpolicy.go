@@ -213,8 +213,11 @@ func (ctp *CTPolicy) getGoogleSCTs(ctx context.Context, cert core.CertDER, expir
 // TODO(#5938): Inline this into GetSCTs when getGoogleSCTs is removed.
 func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
 	// We'll cancel this sub-context when we have the two SCTs we need, to cause
-	// any other ongoing submission attempts to quit.
-	subCtx, cancel := context.WithCancel(ctx)
+	// any other ongoing submission attempts to quit. We don't make it a direct
+	// child of our input context so that we can be sure that the submission
+	// attempts only quit *after* this function exits, rather than cancelling
+	// themselves immediately if the parent context is cancelled or times out.
+	subCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// This closure will be called in parallel once for each operator group.

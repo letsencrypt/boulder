@@ -27,10 +27,17 @@ func (mp *mockPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Reques
 	return &pubpb.Result{Sct: []byte{0}}, nil
 }
 
-type alwaysFail struct{}
+type mockFailPub struct{}
 
-func (mp *alwaysFail) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
+func (mp *mockFailPub) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
 	return nil, errors.New("BAD")
+}
+
+type mockSlowPub struct{}
+
+func (mp *mockSlowPub) SubmitToSingleCTWithResult(ctx context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
+	<-ctx.Done()
+	return nil, errors.New("timed out")
 }
 
 func TestGetGoogleSCTs(t *testing.T) {
@@ -70,7 +77,7 @@ func TestGetGoogleSCTs(t *testing.T) {
 		},
 		{
 			name: "basic failure case",
-			mock: &alwaysFail{},
+			mock: &mockFailPub{},
 			groups: []ctconfig.CTGroup{
 				{
 					Name: "a",
@@ -93,7 +100,7 @@ func TestGetGoogleSCTs(t *testing.T) {
 		},
 		{
 			name: "parent context timeout failure case",
-			mock: &alwaysFail{},
+			mock: &mockSlowPub{},
 			groups: []ctconfig.CTGroup{
 				{
 					Name: "a",
@@ -166,7 +173,7 @@ func TestGetOperatorSCTs(t *testing.T) {
 		},
 		{
 			name: "basic failure case",
-			mock: &alwaysFail{},
+			mock: &mockFailPub{},
 			groups: loglist.List{
 				"OperA": {
 					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
@@ -185,7 +192,7 @@ func TestGetOperatorSCTs(t *testing.T) {
 		},
 		{
 			name: "parent context timeout failure case",
-			mock: &alwaysFail{},
+			mock: &mockSlowPub{},
 			groups: loglist.List{
 				"OperA": {
 					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
