@@ -19,6 +19,7 @@ const (
 	StoreIssuerInfo
 	StreamlineOrderAndAuthzs
 	V1DisableNewValidations
+	ExpirationMailerDontLookTwice
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -92,6 +93,7 @@ const (
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
+<<<<<<< HEAD
 	// ExpirationMailerDontLookTwice enables a bug fix in expiration-mailer
 	// speeds up expiration-mailer processing by ensuring processed items
 	// get marked done.
@@ -100,6 +102,8 @@ const (
 	// not contain duplicate extensions. This behavior will be on by default in
 	// go1.19.
 	RejectDuplicateCSRExtensions
+=======
+>>>>>>> refs/remotes/origin/main
 )
 
 // List of features and their default value, protected by fMu

@@ -254,7 +254,7 @@ func TestAddCertificate(t *testing.T) {
 	// with an issued time equal to now
 	test.AssertEquals(t, retrievedCert.Issued, clk.Now().UnixNano())
 
-	// Test cert generated locally by Boulder / CFSSL, names [example.com,
+	// Test cert generated locally by Boulder, with names [example.com,
 	// www.example.com, admin.example.com]
 	certDER2, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
@@ -319,7 +319,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
-	// Test cert generated locally by Boulder / CFSSL, names [example.com,
+	// Test cert generated locally by Boulder, with names [example.com,
 	// www.example.com, admin.example.com]
 	certDER, err := ioutil.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")

@@ -18,7 +18,7 @@ require (
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
 	github.com/miekg/dns v1.1.48
 	github.com/miekg/pkcs11 v1.1.1
-	github.com/prometheus/client_golang v1.12.1
+	github.com/prometheus/client_golang v1.12.2
 	github.com/prometheus/client_model v0.2.0
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.15.1-0.20220413065649-906f534b73a4
@@ -30,7 +30,7 @@ require (
 	google.golang.org/grpc v1.36.1
 	google.golang.org/protobuf v1.28.0
 	gopkg.in/square/go-jose.v2 v2.6.0
-	gopkg.in/yaml.v2 v2.4.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

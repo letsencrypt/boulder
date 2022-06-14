@@ -8,7 +8,7 @@ import (
 
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/miekg/dns"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 var (

@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/web"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 func TestBlockedKeys(t *testing.T) {
