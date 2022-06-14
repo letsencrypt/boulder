@@ -305,7 +305,7 @@ func detailedError(err error) *probs.ProblemDetails {
 			// user. Confirmed against Go 1.8.
 			return probs.TLSError(netOpErr.Error())
 		} else if netOpErr.Timeout() && netOpErr.Op == "dial" {
-			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+			return probs.ConnectionFailure("Timeout during connect (likely firewall problem, cannot connect anymore)")
 		} else if netOpErr.Timeout() {
 			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
 		}
