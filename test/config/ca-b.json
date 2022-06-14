@@ -93,7 +93,6 @@
     "ocspLogMaxLength": 4000,
     "ocspLogPeriod": "500ms",
     "features": {
-      "NonCFSSLSigner": true
     },
     "ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml"
   },
