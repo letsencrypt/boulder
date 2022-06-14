@@ -20,7 +20,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
@@ -209,10 +208,6 @@ func TestProcessCerts(t *testing.T) {
 // that certificate repeatedly; we should mark it as if it had an email sent already.
 func TestNoContactCertIsNotRenewed(t *testing.T) {
 	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
-
-	_ = features.Set(map[string]bool{
-		features.ExpirationMailerDontLookTwice.String(): true,
-	})
 
 	reg, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, nil)
 	test.AssertNotError(t, err, "Couldn't store regA")
