@@ -49,6 +49,7 @@ type StorageAuthorityClient interface {
 	GetValidAuthorizations2(ctx context.Context, in *GetValidAuthorizationsRequest, opts ...grpc.CallOption) (*Authorizations, error)
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
+	GetRevokedCerts(ctx context.Context, in *GetRevokedCertsRequest, opts ...grpc.CallOption) (StorageAuthority_GetRevokedCertsClient, error)
 	// Adders
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -300,6 +301,38 @@ func (x *storageAuthoritySerialsForIncidentClient) Recv() (*IncidentSerial, erro
 	return m, nil
 }
 
+func (c *storageAuthorityClient) GetRevokedCerts(ctx context.Context, in *GetRevokedCertsRequest, opts ...grpc.CallOption) (StorageAuthority_GetRevokedCertsClient, error) {
+	stream, err := c.cc.NewStream(ctx, &StorageAuthority_ServiceDesc.Streams[1], "/sa.StorageAuthority/GetRevokedCerts", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &storageAuthorityGetRevokedCertsClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type StorageAuthority_GetRevokedCertsClient interface {
+	Recv() (*proto.CRLEntry, error)
+	grpc.ClientStream
+}
+
+type storageAuthorityGetRevokedCertsClient struct {
+	grpc.ClientStream
+}
+
+func (x *storageAuthorityGetRevokedCertsClient) Recv() (*proto.CRLEntry, error) {
+	m := new(proto.CRLEntry)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 func (c *storageAuthorityClient) NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error) {
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/NewRegistration", in, out, opts...)
@@ -500,6 +533,7 @@ type StorageAuthorityServer interface {
 	GetValidAuthorizations2(context.Context, *GetValidAuthorizationsRequest) (*Authorizations, error)
 	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
+	GetRevokedCerts(*GetRevokedCertsRequest, StorageAuthority_GetRevokedCertsServer) error
 	// Adders
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
 	UpdateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
@@ -592,6 +626,9 @@ func (UnimplementedStorageAuthorityServer) KeyBlocked(context.Context, *KeyBlock
 }
 func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error {
 	return status.Errorf(codes.Unimplemented, "method SerialsForIncident not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetRevokedCerts(*GetRevokedCertsRequest, StorageAuthority_GetRevokedCertsServer) error {
+	return status.Errorf(codes.Unimplemented, "method GetRevokedCerts not implemented")
 }
 func (UnimplementedStorageAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
@@ -1059,6 +1096,27 @@ type storageAuthoritySerialsForIncidentServer struct {
 }
 
 func (x *storageAuthoritySerialsForIncidentServer) Send(m *IncidentSerial) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func _StorageAuthority_GetRevokedCerts_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetRevokedCertsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(StorageAuthorityServer).GetRevokedCerts(m, &storageAuthorityGetRevokedCertsServer{stream})
+}
+
+type StorageAuthority_GetRevokedCertsServer interface {
+	Send(*proto.CRLEntry) error
+	grpc.ServerStream
+}
+
+type storageAuthorityGetRevokedCertsServer struct {
+	grpc.ServerStream
+}
+
+func (x *storageAuthorityGetRevokedCertsServer) Send(m *proto.CRLEntry) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -1576,6 +1634,11 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SerialsForIncident",
 			Handler:       _StorageAuthority_SerialsForIncident_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "GetRevokedCerts",
+			Handler:       _StorageAuthority_GetRevokedCerts_Handler,
 			ServerStreams: true,
 		},
 	},

@@ -2705,3 +2705,110 @@ func TestSerialsForIncident(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Error getting serials for incident")
 }
+
+type mockGetRevokedCertsServerStream struct {
+	grpc.ServerStream
+	output chan<- *corepb.CRLEntry
+}
+
+func (s mockGetRevokedCertsServerStream) Send(entry *corepb.CRLEntry) error {
+	s.output <- entry
+	return nil
+}
+
+func (s mockGetRevokedCertsServerStream) Context() context.Context {
+	return context.Background()
+}
+
+func TestGetRevokedCerts(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
+	// up the certificateStatus row we need. This particular cert has a notAfter
+	// date of Mar 6 2023, and we lie about its IssuerNameID to make things easy.
+	reg := createWorkingRegistration(t, sa)
+	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
+	test.AssertNotError(t, err, "failed to load test cert")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      eeCert.Raw,
+		RegID:    reg.Id,
+		Ocsp:     nil,
+		Issued:   eeCert.NotBefore.UnixNano(),
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "failed to add test cert")
+
+	// Check that it worked.
+	status, err := sa.GetCertificateStatus(
+		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert.SerialNumber)})
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
+
+	// Here's a little helper func we'll use to call GetRevokedCerts and count
+	// how many results it returned.
+	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
+		stream := make(chan *corepb.CRLEntry)
+		mockServerStream := mockGetRevokedCertsServerStream{output: stream}
+		var err error
+		go func() {
+			err = sa.GetRevokedCerts(req, mockServerStream)
+			close(stream)
+		}()
+		entriesReceived := 0
+		for range stream {
+			entriesReceived++
+		}
+		return entriesReceived, err
+	}
+
+	// Asking for revoked certs now should return no results.
+	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:  1,
+		ExpiresAfter:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresBefore: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBefore: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
+
+	// Revoke the certificate.
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial:   core.SerialToString(eeCert.SerialNumber),
+		Date:     time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		Reason:   1,
+		Response: []byte{1, 2, 3},
+	})
+	test.AssertNotError(t, err, "failed to revoke test cert")
+
+	// Asking for revoked certs now should return one result.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:  1,
+		ExpiresAfter:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresBefore: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBefore: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "normal usage shouldn't result in error")
+	test.AssertEquals(t, count, 1)
+
+	// Asking for revoked certs with an old RevokedBefore should return no results.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:  1,
+		ExpiresAfter:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresBefore: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBefore: time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
+
+	// Asking for revoked certs in a time period that does not cover this cert's
+	// notAfter timestamp should return zero results.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:  1,
+		ExpiresAfter:  time.Date(2022, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresBefore: time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBefore: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
+}

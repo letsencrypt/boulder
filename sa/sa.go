@@ -2216,3 +2216,70 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 	}
 	return nil
 }
+
+// GetRevokedCerts gets a request specifying an issuer and a period of time,
+// and writes to the output stream the set of all certificates issued by that
+// issuer which expire during that period of time and which have been revoked.
+func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
+	atTime := time.Unix(0, req.RevokedBefore)
+
+	// TODO: Analyze and optimize this query.
+	// Should we condition on `WHERE status = 'revoked'`?
+	// Should we condition on `WHERE revokedDate < atTime`?
+	// I think the answer to both of the above is no, since we don't have indexes
+	// on either of those columns.
+	query := `SELECT serial, status, revokedReason, revokedDate
+		FROM certificateStatus
+		WHERE notAfter >= ?
+		AND notAfter < ?
+		AND issuerID = ?
+		AND status = ?`
+	params := []interface{}{
+		time.Unix(0, req.ExpiresAfter),
+		time.Unix(0, req.ExpiresBefore),
+		req.IssuerNameID,
+		core.OCSPStatusRevoked,
+	}
+
+	rows, err := ssa.dbReadOnlyMap.Query(query, params...)
+	if err != nil {
+		return fmt.Errorf("failed to read db: %w", err)
+	}
+
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			ssa.log.AuditErrf("failed to close row reader: %w", err)
+		}
+	}()
+
+	type entry struct {
+		Serial        string
+		Status        core.OCSPStatus
+		RevokedReason revocation.Reason
+		RevokedDate   time.Time
+	}
+
+	for rows.Next() {
+		var row entry
+		err = rows.Scan(&row.Serial, &row.Status, &row.RevokedReason, &row.RevokedDate)
+		if err != nil {
+			return fmt.Errorf("failed to read row: %w", err)
+		}
+
+		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
+			continue
+		}
+
+		err = stream.Send(&corepb.CRLEntry{
+			Serial:    row.Serial,
+			Reason:    int32(row.RevokedReason),
+			RevokedAt: row.RevokedDate.UnixNano(),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to send entry: %w", err)
+		}
+	}
+
+	return nil
+}
