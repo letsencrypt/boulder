@@ -106,7 +106,18 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	}
 	domains = core.UniqueLowerNames(domains)
 	sort.Strings(domains)
-	m.log.Debugf("Sending mail for %s (%s)", strings.Join(domains, ", "), strings.Join(serials, ", "))
+
+	const maxSerials = 100
+	truncatedSerials := serials
+	if len(truncatedSerials) > maxSerials {
+		truncatedSerials = serials[0:maxSerials]
+	}
+
+	const maxDomains = 100
+	truncatedDomains := domains
+	if len(truncatedDomains) > maxDomains {
+		truncatedDomains = domains[0:maxDomains]
+	}
 
 	// Construct the information about the expiring certificates for use in the
 	// subject template
@@ -128,13 +139,17 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	}
 
 	email := struct {
-		ExpirationDate   string
-		DaysToExpiration int
-		DNSNames         string
+		ExpirationDate     string
+		DaysToExpiration   int
+		DNSNames           string
+		TruncatedDNSNames  string
+		NumDNSNamesOmitted int
 	}{
-		ExpirationDate:   expDate.UTC().Format(time.RFC822Z),
-		DaysToExpiration: int(expiresIn.Hours() / 24),
-		DNSNames:         strings.Join(domains, "\n"),
+		ExpirationDate:     expDate.UTC().Format(time.RFC822Z),
+		DaysToExpiration:   int(expiresIn.Hours() / 24),
+		DNSNames:           strings.Join(domains, "\n"),
+		TruncatedDNSNames:  strings.Join(truncatedDomains, "\n"),
+		NumDNSNamesOmitted: len(domains) - len(truncatedDomains),
 	}
 	msgBuf := new(bytes.Buffer)
 	err = m.emailTemplate.Execute(msgBuf, email)
@@ -144,15 +159,15 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	}
 
 	logItem := struct {
-		Rcpt             []string
-		Serials          []string
-		DaysToExpiration int
-		DNSNames         []string
+		Rcpt              []string
+		DaysToExpiration  int
+		TruncatedDNSNames []string
+		TruncatedSerials  []string
 	}{
-		Rcpt:             emails,
-		Serials:          serials,
-		DaysToExpiration: email.DaysToExpiration,
-		DNSNames:         domains,
+		Rcpt:              emails,
+		DaysToExpiration:  email.DaysToExpiration,
+		TruncatedDNSNames: truncatedDomains,
+		TruncatedSerials:  truncatedSerials,
 	}
 	logStr, err := json.Marshal(logItem)
 	if err != nil {

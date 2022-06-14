@@ -12,7 +12,7 @@
     "certLimit": 100000,
     "nagTimes": ["480h", "240h"],
     "nagCheckInterval": "24h",
-    "emailTemplate": "test/example-expiration-template",
+    "emailTemplate": "test/config/expiration-mailer.gotmpl",
     "debugAddr": ":8008",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
