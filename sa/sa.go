@@ -804,7 +804,6 @@ func (ssa *SQLStorageAuthority) DeactivateRegistration(ctx context.Context, req 
 }
 
 // DeactivateAuthorization2 deactivates a currently valid or pending authorization.
-// This method is intended to deprecate DeactivateAuthorization.
 func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, req *sapb.AuthorizationID2) (*emptypb.Empty, error) {
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
@@ -1879,7 +1878,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 }
 
 // CountPendingAuthorizations2 returns the number of pending, unexpired authorizations
-// for the given registration. This method is intended to deprecate CountPendingAuthorizations.
+// for the given registration.
 func (ssa *SQLStorageAuthority) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID) (*sapb.Count, error) {
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
