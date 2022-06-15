@@ -212,14 +212,6 @@ func (ctp *CTPolicy) getGoogleSCTs(ctx context.Context, cert core.CertDER, expir
 // operators.
 // TODO(#5938): Inline this into GetSCTs when getGoogleSCTs is removed.
 func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
-	// We'll cancel this sub-context when we have the two SCTs we need, to cause
-	// any other ongoing submission attempts to quit. We don't make it a direct
-	// child of our input context so that we can be sure that the submission
-	// attempts only quit *after* this function exits, rather than cancelling
-	// themselves immediately if the parent context is cancelled or times out.
-	subCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	// This closure will be called in parallel once for each operator group.
 	getOne := func(i int, g string) ([]byte, error) {
 		// Sleep a little bit to stagger our requests to the later groups. Use `i-1`
@@ -228,8 +220,8 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 		// context gets cancelled (most likely because two logs from other operator
 		// groups returned SCTs already) before the sleep is complete, quit instead.
 		select {
-		case <-subCtx.Done():
-			return nil, subCtx.Err()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-time.After(time.Duration(i-1) * ctp.stagger):
 		}
 
@@ -270,29 +262,30 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 
 	go ctp.submitPrecertInformational(cert, expiration)
 
-	// Finally, collect SCTs and/or errors from our results channel.
+	// Finally, collect SCTs and/or errors from our results channel. We know that
+	// we will collect len(ctp.sctLogs) results from the channel because every
+	// goroutine is guaranteed to write one result to the channel.
 	scts := make(core.SCTDERs, 0)
 	errs := make([]string, 0)
 	for i := 0; i < len(ctp.sctLogs); i++ {
-		select {
-		case <-ctx.Done():
-			// We timed out (the calling function returned and canceled our context)
-			// before getting two SCTs.
-			return nil, berrors.MissingSCTsError("failed to get 2 SCTs before ctx finished: %s", ctx.Err())
-		case res := <-results:
-			if res.err != nil {
-				errs = append(errs, res.err.Error())
-				continue
-			}
-			scts = append(scts, res.sct)
-			if len(scts) >= 2 {
-				return scts, nil
-			}
+		res := <-results
+		if res.err != nil {
+			errs = append(errs, res.err.Error())
+			continue
+		}
+		scts = append(scts, res.sct)
+		if len(scts) >= 2 {
+			return scts, nil
 		}
 	}
 
 	// If we made it to the end of that loop, that means we never got two SCTs
 	// to return. Error out instead.
+	if ctx.Err() != nil {
+		// We timed out (the calling function returned and canceled our context),
+		// thereby causing all of our getOne sub-goroutines to be cancelled.
+		return nil, berrors.MissingSCTsError("failed to get 2 SCTs before ctx finished: %s", ctx.Err())
+	}
 	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got error(s): %s", strings.Join(errs, "; "))
 }
 
