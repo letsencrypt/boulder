@@ -2223,11 +2223,6 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
 	atTime := time.Unix(0, req.RevokedBefore)
 
-	// TODO: Analyze and optimize this query.
-	// Should we condition on `WHERE status = 'revoked'`?
-	// Should we condition on `WHERE revokedDate < atTime`?
-	// I think the answer to both of the above is no, since we don't have indexes
-	// on either of those columns.
 	query := `SELECT serial, status, revokedReason, revokedDate
 		FROM certificateStatus
 		WHERE notAfter >= ?
@@ -2241,7 +2236,7 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 		core.OCSPStatusRevoked,
 	}
 
-	rows, err := ssa.dbReadOnlyMap.Query(query, params...)
+	rows, err := ssa.dbReadOnlyMap.WithContext(stream.Context()).Query(query, params...)
 	if err != nil {
 		return fmt.Errorf("failed to read db: %w", err)
 	}
@@ -2279,6 +2274,11 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 		if err != nil {
 			return fmt.Errorf("failed to send entry: %w", err)
 		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("failed to iterate over db rows: %w", err)
 	}
 
 	return nil
