@@ -70,35 +70,45 @@ func (r typeRows[T]) Next() bool {
 // number of &interface{} arguments, it returns a populated object of the
 // parameterized type.
 func (r typeRows[T]) Get() (*T, error) {
-	var res T
+	// We have to use reflect.New(reflect.TypeOf(var T)) to create our result
+	// value to ensure that it gets allocated on the heap and its individual
+	// fields are all addressable.
+	var throwaway T
+	t := reflect.TypeOf(throwaway)
+	v := reflect.New(t)
 
 	columns, err := r.wrapped.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read column names: %w", err)
+		return nil, fmt.Errorf("reading column names: %w", err)
 	}
 
-	scanTarget := make([]interface{}, len(columns))
-	fields := reflect.VisibleFields(reflect.TypeOf(res))
+	// Because sql.Rows.Scan(...) takes a variadic number of individual targets to
+	// read values into, build a slice that can be splatted into the call.
+	scanTargets := make([]interface{}, len(columns))
 
 	// Iterate over the columns in the order they appear. For each, find the field
-	// on the result struct that has a matching `db:"colname"` struct tag. Put the
-	// address of that field into the slice which will be Scan()ed into.
-	for i, column := range columns {
-		for _, field := range fields {
-			if field.Tag.Get("db") == column {
-				scanTarget[i] = reflect.ValueOf(res).FieldByIndex(field.Index)
-				break
-			}
-			return nil, fmt.Errorf("no struct field found with tag matching column %q", column)
+	// on the result struct that has a matching `db:"colname"` struct tag. Put a
+	// pointer to that field into the slice of scan targets.
+	for i, colname := range columns {
+		field := v.Elem().FieldByNameFunc(func(fieldName string) bool {
+			structField, _ := t.FieldByName(fieldName)
+			tagColumn := structField.Tag.Get("db")
+			return tagColumn == colname
+		})
+		if !field.IsValid() {
+			return nil, fmt.Errorf("no struct field found with tag matching column %q", colname)
 		}
+		scanTargets[i] = field.Addr().Interface()
 	}
 
-	err = r.wrapped.Scan(scanTarget...)
+	err = r.wrapped.Scan(scanTargets...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read row: %w", err)
+		return nil, fmt.Errorf("reading db row: %w", err)
 	}
 
-	return &res, nil
+	// Finally cast our *reflect.Value back into a T so we can return it.
+	result := v.Elem().Interface().(T)
+	return &result, nil
 }
 
 // Err is a wrapper around sql.Rows.Err(). It should be checked immediately
