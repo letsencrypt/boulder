@@ -292,7 +292,7 @@ fit we're happy to answer questions to the best of our ability.
 ## Contributing
 
 Please take a look at
-[contributing.md](https://github.com/letsencrypt/boulder/blob/main/docs/contributing.md)
+[CONTRIBUTING.md](https://github.com/letsencrypt/boulder/blob/main/docs/CONTRIBUTING.md)
 for our guidelines on submitting patches, code review process, code of conduct,
 and various other tips related to working on the codebase.
 
