@@ -1,7 +1,6 @@
 package notmain
 
 import (
-	"database/sql"
 	"flag"
 	"os"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
@@ -93,15 +93,15 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	db, err := sa.InitSqlDb(conf.DB, stats)
+	readWriteDb, err := sa.InitWrappedDb(conf.DB, stats, logger)
 	cmd.FailOnError(err, "Failed to initialize database client")
 
-	var readOnlyDb *sql.DB
+	var readOnlyDb *db.WrappedMap
 	readOnlyDbDSN, _ := conf.ReadOnlyDB.URL()
 	if readOnlyDbDSN == "" {
-		readOnlyDb = db
+		readOnlyDb = readWriteDb
 	} else {
-		readOnlyDb, err = sa.InitSqlDb(conf.ReadOnlyDB, stats)
+		readOnlyDb, err = sa.InitWrappedDb(conf.ReadOnlyDB, stats, logger)
 		cmd.FailOnError(err, "Failed to initialize read-only database client")
 	}
 
@@ -133,7 +133,7 @@ func main() {
 	updater, err := ocsp_updater.New(
 		stats,
 		clk,
-		db,
+		readWriteDb,
 		readOnlyDb,
 		rocspClient,
 		issuers,

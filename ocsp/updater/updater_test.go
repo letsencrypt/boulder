@@ -8,11 +8,13 @@ import (
 	"database/sql"
 	"errors"
 	"math/big"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-gorp/gorp/v3"
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -124,13 +126,13 @@ func TestStalenessHistogram(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour)
 
 	// We should have 2 stale responses now.
-	statuses := updater.findStaleOCSPResponses(ctx, earliest, 10)
-	var statusSlice []sa.CertStatusMetadata
-	for status := range statuses {
-		statusSlice = append(statusSlice, status)
+	metas := updater.findStaleOCSPResponses(ctx, earliest, 10)
+	var metaSlice []*sa.CertStatusMetadata
+	for status := range metas {
+		metaSlice = append(metaSlice, status)
 	}
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
-	test.AssertEquals(t, len(statusSlice), 2)
+	test.AssertEquals(t, len(metaSlice), 2)
 
 	test.AssertMetricWithLabelsEquals(t, updater.stalenessHistogram, prometheus.Labels{}, 2)
 }
@@ -153,14 +155,14 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 
 	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	metas := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
-	test.AssertEquals(t, len(statuses), 1)
-	status := <-statuses
+	test.AssertEquals(t, len(metas), 1)
+	meta := <-metas
 
-	meta, err := updater.generateResponse(ctx, status)
+	status, err := updater.generateResponse(ctx, meta)
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
-	err = updater.storeResponse(context.Background(), meta)
+	err = updater.storeResponse(context.Background(), status)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 }
 
@@ -192,10 +194,8 @@ func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, s
 }
 
 // A mock ocspDb that sleeps for 50ms when Exec is called.
-type mockDBBlocksOnExec struct{}
-
-func (mdboe *mockDBBlocksOnExec) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return nil, nil
+type mockDBBlocksOnExec struct {
+	*db.WrappedMap
 }
 
 func (mdboe *mockDBBlocksOnExec) Exec(query string, args ...interface{}) (sql.Result, error) {
@@ -229,12 +229,10 @@ func TestROCSP(t *testing.T) {
 	test.AssertNotError(t, err, "loading issuers")
 	updater.db = &mockDBBlocksOnExec{}
 
-	err = updater.storeResponse(context.Background(), &sa.CertStatusMetadata{
-		CertificateStatus: core.CertificateStatus{
-			OCSPResponse: []byte("fake response"),
-			Serial:       "fake serial",
-			IssuerID:     66283756913588288,
-		},
+	err = updater.storeResponse(context.Background(), &core.CertificateStatus{
+		OCSPResponse: []byte("fake response"),
+		Serial:       "fake serial",
+		IssuerID:     66283756913588288,
 	})
 	test.AssertNotError(t, err, "Couldn't store certificate status")
 	storage := recorder.get()
@@ -246,20 +244,20 @@ func TestROCSP(t *testing.T) {
 // findStaleOCSPResponsesBuffered runs findStaleOCSPResponses and returns
 // it as a buffered channel. This is helpful for tests that want to test
 // the length of the channel.
-func findStaleOCSPResponsesBuffered(ctx context.Context, updater *OCSPUpdater, earliest time.Time, batchSize int) <-chan sa.CertStatusMetadata {
-	statuses := make(chan sa.CertStatusMetadata, batchSize)
+func findStaleOCSPResponsesBuffered(ctx context.Context, updater *OCSPUpdater, earliest time.Time, batchSize int) <-chan *sa.CertStatusMetadata {
+	out := make(chan *sa.CertStatusMetadata, batchSize)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer close(statuses)
-		s := updater.findStaleOCSPResponses(ctx, earliest, 10)
-		for status := range s {
-			statuses <- status
+		defer close(out)
+		metas := updater.findStaleOCSPResponses(ctx, earliest, 10)
+		for meta := range metas {
+			out <- meta
 		}
 	}()
 	wg.Wait()
-	return statuses
+	return out
 }
 
 func TestGenerateOCSPResponses(t *testing.T) {
@@ -505,10 +503,10 @@ func TestStoreResponseGuard(t *testing.T) {
 
 	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	metas := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
-	test.AssertEquals(t, len(statuses), 1)
-	status := <-statuses
+	test.AssertEquals(t, len(metas), 1)
+	meta := <-metas
 
 	serialStr := core.SerialToString(parsedCert.SerialNumber)
 	reason := int64(0)
@@ -523,8 +521,8 @@ func TestStoreResponseGuard(t *testing.T) {
 
 	// Attempt to update OCSP response where status.Status is good but stored status
 	// is revoked, this should fail silently
-	status.OCSPResponse = []byte("newfakeocspbytes")
-	err = updater.storeResponse(context.Background(), &status)
+	status := statusFromMetaAndResp(meta, []byte("newfakeocspbytes"))
+	err = updater.storeResponse(context.Background(), status)
 	test.AssertNotError(t, err, "Failed to update certificate status")
 
 	// Make sure the OCSP response hasn't actually changed
@@ -534,7 +532,7 @@ func TestStoreResponseGuard(t *testing.T) {
 
 	// Changing the status to the stored status should allow the update to occur
 	status.Status = core.OCSPStatusRevoked
-	err = updater.storeResponse(context.Background(), &status)
+	err = updater.storeResponse(context.Background(), status)
 	test.AssertNotError(t, err, "Failed to updated certificate status")
 
 	// Make sure the OCSP response has been updated
@@ -636,22 +634,22 @@ func TestIssuerInfo(t *testing.T) {
 
 type brokenDB struct{}
 
-func (bdb *brokenDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
+func (bdb *brokenDB) TableFor(_ reflect.Type, _ bool) (*gorp.TableMap, error) {
 	return nil, errors.New("broken")
 }
-func (bdb *brokenDB) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return nil, errors.New("broken")
+
+func (bdb *brokenDB) WithContext(_ context.Context) gorp.SqlExecutor {
+	return nil
 }
 
 func TestTickSleep(t *testing.T) {
 	updater, _, dbMap, fc, cleanUp := setup(t)
 	defer cleanUp()
-	m := &brokenDB{}
-	updater.readOnlyDb = m
 
 	// Test that when findStaleResponses fails the failure counter is
 	// incremented and the clock moved forward by more than
 	// updater.tickWindow
+	updater.readOnlyDb = &brokenDB{}
 	updater.readFailures.Add(2)
 	before := fc.Now()
 	updater.Tick()

@@ -1,7 +1,6 @@
 package sa
 
 import (
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -9,7 +8,6 @@ import (
 	"math"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	jose "gopkg.in/square/go-jose.v2"
@@ -135,69 +133,7 @@ type CertStatusMetadata struct {
 	IssuerID              int64             `db:"issuerID"`
 }
 
-// CertStatusMetadataFields returns a slice of column names for rows in the
-// certificateStatus table. Changes to the ordering of this list returned by
-// this function should also be made in `ScanCertStatusRow()`.
-func CertStatusMetadataFields() []string {
-	return []string{
-		"id",
-		"serial",
-		"status",
-		"ocspLastUpdated",
-		"revokedDate",
-		"revokedReason",
-		"lastExpirationNagSent",
-		"notAfter",
-		"isExpired",
-		"issuerID",
-	}
-}
-
-// ScanCertStatusRow is a helper function expored from SA so that we can readily
-// check that there's a 1:1 correspondence between the column name in the DB,
-// `CertStatusMetadataFields()`, and the `*core.CerticateStatus` field name
-// being copied to.
-func ScanCertStatusMetadataRow(rows *sql.Rows, status *CertStatusMetadata) error {
-	columns, err := rows.Columns()
-	if err != nil {
-		return err
-	}
-	expectedColumns := CertStatusMetadataFields()
-	if len(columns) != len(expectedColumns) {
-		return fmt.Errorf("incorrect number of columns in scanned rows: got %d, expected %d", len(columns), len(expectedColumns))
-	}
-	for i, v := range columns {
-		if v != expectedColumns[i] {
-			return fmt.Errorf("incorrect column %d in scanned rows: got %q, expected %q", i, v, expectedColumns[i])
-		}
-	}
-	err = rows.Scan(
-		&status.ID,
-		&status.Serial,
-		&status.Status,
-		&status.OCSPLastUpdated,
-		&status.RevokedDate,
-		&status.RevokedReason,
-		&status.LastExpirationNagSent,
-		&status.NotAfter,
-		&status.IsExpired,
-		&status.IssuerID,
-	)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func certStatusFields() []string {
-	// Add the full response bytes.
-	return append(CertStatusMetadataFields(), "ocspResponse")
-}
-
-func certStatusFieldsSelect(restOfQuery string) string {
-	fields := strings.Join(certStatusFields(), ",")
-	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
-}
+const certStatusFields = "id, serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired, issuerID"
 
 // SelectCertificateStatus selects all fields of one certificate status model
 // identified by serial
@@ -205,7 +141,7 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 	var model core.CertificateStatus
 	err := s.SelectOne(
 		&model,
-		certStatusFieldsSelect("WHERE serial = ?"),
+		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ?",
 		serial,
 	)
 	return model, err

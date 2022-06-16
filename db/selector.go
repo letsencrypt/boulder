@@ -8,23 +8,25 @@ import (
 	"strings"
 )
 
-type TypeSelector[T any] struct {
-	wrapped *WrappedMap
+type typeSelector[T any] struct {
+	wrapped MappedExecutor
 }
 
-func NewTypeSelector[T any](wm *WrappedMap) *TypeSelector[T] {
-	return &TypeSelector[T]{wrapped: wm}
+// NewTypeSelector returns an object which can be used to automagically query
+// the provided type-mapped database for rows of the parameterized type.
+func NewTypeSelector[T any](wm MappedExecutor) *typeSelector[T] {
+	return &typeSelector[T]{wrapped: wm}
 }
 
 // SelectRows combines the best features of gorp, the go stdlib, and generics.
-// It uses the type parameter of the TypeSelector object to automatically look
+// It uses the type parameter of the typeSelector object to automatically look
 // up the proper table name and columns to select. It returns an iterable which
 // yields fully-populated objects of the parameterized type directly. The given
 // clauses MUST be only the bits of a sql query from "WHERE ..." onwards; if
 // they contain any of the "SELECT ... FROM ..." portion of the query it will
 // result in an error. The caller is responsible for calling `Rows.Close()`
 // when they are done with the query.
-func (ts TypeSelector[T]) SelectRows(ctx context.Context, clauses string, args ...interface{}) (*typeRows[T], error) {
+func (ts typeSelector[T]) SelectRows(ctx context.Context, clauses string, args ...interface{}) (*typeRows[T], error) {
 	// Look up the table to use based on the type of this TypeSelector.
 	var t T
 	tableMap, err := ts.wrapped.TableFor(reflect.TypeOf(t), false)
@@ -38,7 +40,7 @@ func (ts TypeSelector[T]) SelectRows(ctx context.Context, clauses string, args .
 // SelectRowsFrom is the same as SelectRows, but it additionally takes a table
 // name to select from, rather than automatically computing the table name from
 // gorp's DbMap.
-func (ts TypeSelector[T]) SelectRowsFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (*typeRows[T], error) {
+func (ts typeSelector[T]) SelectRowsFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (*typeRows[T], error) {
 	// Look up the table to use based on the type of this TypeSelector.
 	var throwaway T
 	t := reflect.TypeOf(throwaway)
