@@ -122,7 +122,16 @@ func SelectPrecertificates(s db.Selector, q string, args map[string]interface{})
 }
 
 type CertStatusMetadata struct {
-	core.CertificateStatus
+	ID                    int64             `db:"id"`
+	Serial                string            `db:"serial"`
+	Status                core.OCSPStatus   `db:"status"`
+	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
+	RevokedDate           time.Time         `db:"revokedDate"`
+	RevokedReason         revocation.Reason `db:"revokedReason"`
+	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
+	NotAfter              time.Time         `db:"notAfter"`
+	IsExpired             bool              `db:"isExpired"`
+	IssuerID              int64             `db:"issuerID"`
 }
 
 // CertStatusMetadataFields returns a slice of column names for rows in the

@@ -2,7 +2,6 @@ package notmain
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"flag"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/metrics"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
@@ -111,12 +111,12 @@ func main2() error {
 		return fmt.Errorf("making client: %w", err)
 	}
 
-	var db *sql.DB
+	var db *db.WrappedMap
 	var ocspGenerator capb.OCSPGeneratorClient
 	var scanBatchSize int
 	if c.ROCSPTool.LoadFromDB != nil {
 		lfd := c.ROCSPTool.LoadFromDB
-		db, err = sa.InitSqlDb(lfd.DB, nil)
+		db, err = sa.InitWrappedDb(lfd.DB, nil, logger)
 		if err != nil {
 			return fmt.Errorf("connecting to DB: %w", err)
 		}

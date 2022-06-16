@@ -73,7 +73,7 @@ func TestGetStartingID(t *testing.T) {
 
 	clk.Sleep(48 * time.Hour)
 
-	startingID, err := getStartingID(context.Background(), clk, dbMap.Db)
+	startingID, err := getStartingID(context.Background(), clk, dbMap)
 	test.AssertNotError(t, err, "getting starting ID")
 
 	test.AssertEquals(t, startingID, secondID)
@@ -149,7 +149,7 @@ func TestLoadFromDB(t *testing.T) {
 	rocspToolClient := client{
 		issuers:       nil,
 		redis:         redisClient,
-		db:            dbMap.Db,
+		db:            dbMap,
 		ocspGenerator: mockOCSPGenerator{},
 		clk:           clk,
 		scanBatchSize: 10,
