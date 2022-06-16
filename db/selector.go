@@ -32,6 +32,20 @@ func (ts TypeSelector[T]) SelectRows(ctx context.Context, clauses string, args .
 		return nil, fmt.Errorf("database model type not mapped to table name: %w", err)
 	}
 
+	return ts.SelectRowsFrom(ctx, tableMap.TableName, clauses, args...)
+}
+
+// SelectRowsFrom is the same as SelectRows, but it additionally takes a table
+// name to select from, rather than automatically computing the table name from
+// gorp's DbMap.
+func (ts TypeSelector[T]) SelectRowsFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (*typeRows[T], error) {
+	// Look up the table to use based on the type of this TypeSelector.
+	var t T
+	tableMap, err := ts.wrapped.TableFor(reflect.TypeOf(t), false)
+	if err != nil {
+		return nil, fmt.Errorf("database model type not mapped to table name: %w", err)
+	}
+
 	// Extract the list of column names from the type's struct tags.
 	var columns []string
 	for _, column := range tableMap.Columns {
@@ -42,7 +56,7 @@ func (ts TypeSelector[T]) SelectRows(ctx context.Context, clauses string, args .
 	query := fmt.Sprintf(
 		"SELECT %s FROM %s %s",
 		strings.Join(columns, ", "),
-		tableMap.TableName,
+		tablename,
 		clauses,
 	)
 
