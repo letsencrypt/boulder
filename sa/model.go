@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 

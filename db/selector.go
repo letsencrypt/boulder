@@ -40,8 +40,9 @@ func (ts TypeSelector[T]) SelectRows(ctx context.Context, clauses string, args .
 // gorp's DbMap.
 func (ts TypeSelector[T]) SelectRowsFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (*typeRows[T], error) {
 	// Look up the table to use based on the type of this TypeSelector.
-	var t T
-	tableMap, err := ts.wrapped.TableFor(reflect.TypeOf(t), false)
+	var throwaway T
+	t := reflect.TypeOf(throwaway)
+	tableMap, err := ts.wrapped.TableFor(t, false)
 	if err != nil {
 		return nil, fmt.Errorf("database model type not mapped to table name: %w", err)
 	}
@@ -50,6 +51,24 @@ func (ts TypeSelector[T]) SelectRowsFrom(ctx context.Context, tablename string, 
 	var columns []string
 	for _, column := range tableMap.Columns {
 		columns = append(columns, column.ColumnName)
+	}
+
+	// Iterate over the columns in the order they appear. For each, find the field
+	// on the struct type that has a matching `db:"colname"` struct tag. Save that
+	// field's index into a map for quick lookup later.
+	colIndexToFieldIndex := make([][]int, len(columns))
+	for i, column := range columns {
+		structField, found := t.FieldByNameFunc(func(fieldName string) bool {
+			structField, _ := t.FieldByName(fieldName)
+			tagColumn := structField.Tag.Get("db")
+			return tagColumn == column
+		})
+		if !found {
+			// This should never happen, as the columns were derived from the struct
+			// fields in the first place.
+			return nil, fmt.Errorf("no struct field with tag matching column %q", column)
+		}
+		colIndexToFieldIndex[i] = structField.Index
 	}
 
 	// Construct the query from the column names, table name, and given clauses.
@@ -65,19 +84,14 @@ func (ts TypeSelector[T]) SelectRowsFrom(ctx context.Context, tablename string, 
 		return nil, fmt.Errorf("reading db: %w", err)
 	}
 
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, fmt.Errorf("reading column names: %w", err)
-	}
-
-	return &typeRows[T]{wrapped: rows, columns: cols}, nil
+	return &typeRows[T]{wrapped: rows, idxMap: colIndexToFieldIndex}, nil
 }
 
 // typeRows is a wrapper around the stdlib's sql.typeRows, but with a more
 // type-safe method to get actual row content.
 type typeRows[T any] struct {
 	wrapped *sql.Rows
-	columns []string
+	idxMap  [][]int
 }
 
 // Next is a wrapper around sql.Rows.Next(). It must be called before every call
@@ -98,21 +112,11 @@ func (r typeRows[T]) Get() (*T, error) {
 	v := reflect.New(t)
 
 	// Because sql.Rows.Scan(...) takes a variadic number of individual targets to
-	// read values into, build a slice that can be splatted into the call.
-	scanTargets := make([]interface{}, len(r.columns))
-
-	// Iterate over the columns in the order they appear. For each, find the field
-	// on the result struct that has a matching `db:"colname"` struct tag. Put a
-	// pointer to that field into the slice of scan targets.
-	for i, colname := range r.columns {
-		field := v.Elem().FieldByNameFunc(func(fieldName string) bool {
-			structField, _ := t.FieldByName(fieldName)
-			tagColumn := structField.Tag.Get("db")
-			return tagColumn == colname
-		})
-		if !field.IsValid() {
-			return nil, fmt.Errorf("no struct field found with tag matching column %q", colname)
-		}
+	// read values into, build a slice that can be splatted into the call. Use the
+	// pre-computed map of column indices to field indices to populate it.
+	scanTargets := make([]interface{}, len(r.idxMap))
+	for i := range r.idxMap {
+		field := v.Elem().FieldByIndex(r.idxMap[i])
 		scanTargets[i] = field.Addr().Interface()
 	}
 
