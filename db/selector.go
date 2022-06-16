@@ -62,16 +62,22 @@ func (ts TypeSelector[T]) SelectRowsFrom(ctx context.Context, tablename string, 
 
 	rows, err := ts.wrapped.WithContext(ctx).Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read db: %w", err)
+		return nil, fmt.Errorf("reading db: %w", err)
 	}
 
-	return &typeRows[T]{wrapped: rows}, nil
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("reading column names: %w", err)
+	}
+
+	return &typeRows[T]{wrapped: rows, columns: cols}, nil
 }
 
 // typeRows is a wrapper around the stdlib's sql.typeRows, but with a more
 // type-safe method to get actual row content.
 type typeRows[T any] struct {
 	wrapped *sql.Rows
+	columns []string
 }
 
 // Next is a wrapper around sql.Rows.Next(). It must be called before every call
@@ -91,19 +97,14 @@ func (r typeRows[T]) Get() (*T, error) {
 	t := reflect.TypeOf(throwaway)
 	v := reflect.New(t)
 
-	columns, err := r.wrapped.Columns()
-	if err != nil {
-		return nil, fmt.Errorf("reading column names: %w", err)
-	}
-
 	// Because sql.Rows.Scan(...) takes a variadic number of individual targets to
 	// read values into, build a slice that can be splatted into the call.
-	scanTargets := make([]interface{}, len(columns))
+	scanTargets := make([]interface{}, len(r.columns))
 
 	// Iterate over the columns in the order they appear. For each, find the field
 	// on the result struct that has a matching `db:"colname"` struct tag. Put a
 	// pointer to that field into the slice of scan targets.
-	for i, colname := range columns {
+	for i, colname := range r.columns {
 		field := v.Elem().FieldByNameFunc(func(fieldName string) bool {
 			structField, _ := t.FieldByName(fieldName)
 			tagColumn := structField.Tag.Get("db")
@@ -115,7 +116,7 @@ func (r typeRows[T]) Get() (*T, error) {
 		scanTargets[i] = field.Addr().Interface()
 	}
 
-	err = r.wrapped.Scan(scanTargets...)
+	err := r.wrapped.Scan(scanTargets...)
 	if err != nil {
 		return nil, fmt.Errorf("reading db row: %w", err)
 	}
