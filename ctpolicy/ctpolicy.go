@@ -212,6 +212,11 @@ func (ctp *CTPolicy) getGoogleSCTs(ctx context.Context, cert core.CertDER, expir
 // operators.
 // TODO(#5938): Inline this into GetSCTs when getGoogleSCTs is removed.
 func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
+	// We'll cancel this sub-context when we have the two SCTs we need, to cause
+	// any other ongoing submission attempts to quit.
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	// This closure will be called in parallel once for each operator group.
 	getOne := func(i int, g string) ([]byte, error) {
 		// Sleep a little bit to stagger our requests to the later groups. Use `i-1`
@@ -220,8 +225,8 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 		// context gets cancelled (most likely because two logs from other operator
 		// groups returned SCTs already) before the sleep is complete, quit instead.
 		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		case <-subCtx.Done():
+			return nil, subCtx.Err()
 		case <-time.After(time.Duration(i-1) * ctp.stagger):
 		}
 
