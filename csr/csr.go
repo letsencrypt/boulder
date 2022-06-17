@@ -66,6 +66,17 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if !features.Enabled(features.SHA1CSRs) && csr.SignatureAlgorithm == x509.SHA1WithRSA {
 		return unsupportedSigAlg
 	}
+
+	if features.Enabled(features.RejectDuplicateCSRExtensions) {
+		oidSeen := make(map[string]bool)
+		for _, ext := range csr.Extensions {
+			if oidSeen[ext.Id.String()] {
+				return berrors.MalformedError("extension OID %q appears twice in your CSR. File an issue with the maintainer of your ACME client.", ext.Id)
+			}
+			oidSeen[ext.Id.String()] = true
+		}
+	}
+
 	err = csr.CheckSignature()
 	if err != nil {
 		return invalidSig

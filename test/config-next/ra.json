@@ -59,7 +59,8 @@
       "RestrictRSAKeySizes": true,
       "StreamlineOrderAndAuthzs": true,
       "AllowReRevocation": true,
-      "MozRevocationReasons": true
+      "MozRevocationReasons": true,
+      "RejectDuplicateCSRExtensions": true
     },
     "ctLogs": {
       "stagger": "500ms",
