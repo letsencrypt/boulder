@@ -2223,8 +2223,7 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
 	atTime := time.Unix(0, req.RevokedBefore)
 
-	query := `SELECT serial, status, revokedReason, revokedDate
-		FROM certificateStatus
+	clauses := `
 		WHERE notAfter >= ?
 		AND notAfter < ?
 		AND issuerID = ?
@@ -2236,30 +2235,23 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 		core.OCSPStatusRevoked,
 	}
 
-	rows, err := ssa.dbReadOnlyMap.WithContext(stream.Context()).Query(query, params...)
+	selector := db.NewTypeSelector[crlEntryModel](ssa.dbReadOnlyMap)
+	rows, err := selector.SelectRows(stream.Context(), clauses, params...)
 	if err != nil {
-		return fmt.Errorf("failed to read db: %w", err)
+		return fmt.Errorf("reading db: %w", err)
 	}
 
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			ssa.log.AuditErrf("failed to close row reader: %w", err)
+			ssa.log.AuditErrf("closing row reader: %w", err)
 		}
 	}()
 
-	type entry struct {
-		Serial        string
-		Status        core.OCSPStatus
-		RevokedReason revocation.Reason
-		RevokedDate   time.Time
-	}
-
 	for rows.Next() {
-		var row entry
-		err = rows.Scan(&row.Serial, &row.Status, &row.RevokedReason, &row.RevokedDate)
+		row, err := rows.Get()
 		if err != nil {
-			return fmt.Errorf("failed to read row: %w", err)
+			return fmt.Errorf("reading row: %w", err)
 		}
 
 		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
@@ -2272,13 +2264,13 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 			RevokedAt: row.RevokedDate.UnixNano(),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to send entry: %w", err)
+			return fmt.Errorf("sending crl entry: %w", err)
 		}
 	}
 
 	err = rows.Err()
 	if err != nil {
-		return fmt.Errorf("failed to iterate over db rows: %w", err)
+		return fmt.Errorf("iterating over row reader: %w", err)
 	}
 
 	return nil

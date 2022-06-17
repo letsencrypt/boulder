@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -694,4 +695,13 @@ type incidentSerialModel struct {
 	RegistrationID int64     `db:"registrationID"`
 	OrderID        int64     `db:"orderID"`
 	LastNoticeSent time.Time `db:"lastNoticeSent"`
+}
+
+// crlEntryModel has just the certificate status fields necessary to construct
+// an entry in a CRL.
+type crlEntryModel struct {
+	Serial        string            `db:"serial"`
+	Status        core.OCSPStatus   `db:"status"`
+	RevokedReason revocation.Reason `db:"revokedReason"`
+	RevokedDate   time.Time         `db:"revokedDate"`
 }
