@@ -2449,8 +2449,8 @@ type GetRevokedCertsRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	IssuerNameID  int64 `protobuf:"varint,1,opt,name=issuerNameID,proto3" json:"issuerNameID,omitempty"`
-	ExpiresAfter  int64 `protobuf:"varint,2,opt,name=expiresAfter,proto3" json:"expiresAfter,omitempty"`   // Unix timestamp (nanoseconds)
-	ExpiresBefore int64 `protobuf:"varint,3,opt,name=expiresBefore,proto3" json:"expiresBefore,omitempty"` // Unix timestamp (nanoseconds)
+	ExpiresAfter  int64 `protobuf:"varint,2,opt,name=expiresAfter,proto3" json:"expiresAfter,omitempty"`   // Unix timestamp (nanoseconds), inclusive
+	ExpiresBefore int64 `protobuf:"varint,3,opt,name=expiresBefore,proto3" json:"expiresBefore,omitempty"` // Unix timestamp (nanoseconds), exclusive
 	RevokedBefore int64 `protobuf:"varint,4,opt,name=revokedBefore,proto3" json:"revokedBefore,omitempty"` // Unix timestamp (nanoseconds)
 }
 
