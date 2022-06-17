@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"reflect"
 
 	"github.com/go-gorp/gorp/v3"
 )
@@ -67,5 +68,12 @@ type Transaction interface {
 	Executor
 	Rollback() error
 	Commit() error
+	WithContext(ctx context.Context) gorp.SqlExecutor
+}
+
+// MappedExecutor is anything that can map types to tables, and which can
+// produce a contextual SqlExecutor.
+type MappedExecutor interface {
+	TableFor(reflect.Type, bool) (*gorp.TableMap, error)
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
