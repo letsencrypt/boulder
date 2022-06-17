@@ -295,7 +295,7 @@ message IncidentSerial {
 
 message GetRevokedCertsRequest {
   int64 issuerNameID = 1;
-  int64 expiresAfter = 2; // Unix timestamp (nanoseconds)
-  int64 expiresBefore = 3; // Unix timestamp (nanoseconds)
+  int64 expiresAfter = 2; // Unix timestamp (nanoseconds), inclusive
+  int64 expiresBefore = 3; // Unix timestamp (nanoseconds), exclusive
   int64 revokedBefore = 4; // Unix timestamp (nanoseconds)
 }

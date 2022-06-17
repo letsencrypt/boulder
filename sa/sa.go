@@ -2220,6 +2220,9 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 // GetRevokedCerts gets a request specifying an issuer and a period of time,
 // and writes to the output stream the set of all certificates issued by that
 // issuer which expire during that period of time and which have been revoked.
+// The starting timestamp is treated as inclusive (certs with exactly that
+// notAfter date are included), but the ending timestamp is exclusive (certs
+// with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
 	atTime := time.Unix(0, req.RevokedBefore)
 
@@ -2254,6 +2257,10 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 			return fmt.Errorf("reading row: %w", err)
 		}
 
+		// Double-check that the cert wasn't revoked between the time at which we're
+		// constructing this snapshot CRL and right now. If the cert was revoked
+		// at-or-after the "atTime", we'll just include it in the next generation
+		// of CRLs.
 		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
 			continue
 		}

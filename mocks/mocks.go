@@ -246,7 +246,7 @@ func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.Seri
 	return nil, nil
 }
 
-// SerialsForIncident is a mock
+// GetRevokedCerts is a mock
 func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
 	return nil, nil
 }
