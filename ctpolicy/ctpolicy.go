@@ -267,29 +267,30 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 
 	go ctp.submitPrecertInformational(cert, expiration)
 
-	// Finally, collect SCTs and/or errors from our results channel.
+	// Finally, collect SCTs and/or errors from our results channel. We know that
+	// we will collect len(ctp.sctLogs) results from the channel because every
+	// goroutine is guaranteed to write one result to the channel.
 	scts := make(core.SCTDERs, 0)
 	errs := make([]string, 0)
 	for i := 0; i < len(ctp.sctLogs); i++ {
-		select {
-		case <-ctx.Done():
-			// We timed out (the calling function returned and canceled our context)
-			// before getting two SCTs.
-			return nil, berrors.MissingSCTsError("failed to get 2 SCTs before ctx finished: %s", ctx.Err())
-		case res := <-results:
-			if res.err != nil {
-				errs = append(errs, res.err.Error())
-				continue
-			}
-			scts = append(scts, res.sct)
-			if len(scts) >= 2 {
-				return scts, nil
-			}
+		res := <-results
+		if res.err != nil {
+			errs = append(errs, res.err.Error())
+			continue
+		}
+		scts = append(scts, res.sct)
+		if len(scts) >= 2 {
+			return scts, nil
 		}
 	}
 
 	// If we made it to the end of that loop, that means we never got two SCTs
 	// to return. Error out instead.
+	if ctx.Err() != nil {
+		// We timed out (the calling function returned and canceled our context),
+		// thereby causing all of our getOne sub-goroutines to be cancelled.
+		return nil, berrors.MissingSCTsError("failed to get 2 SCTs before ctx finished: %s", ctx.Err())
+	}
 	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got error(s): %s", strings.Join(errs, "; "))
 }
 
