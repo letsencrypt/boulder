@@ -1597,14 +1597,3 @@ func TestMatchJWSURLs(t *testing.T) {
 		})
 	}
 }
-
-func TestBadPaddingError(t *testing.T) {
-	wfe, _ := setupWFE(t)
-
-	_, prob := wfe.parseJWS([]byte(`{"protected":"eyJhbGciOiJFUzI1NiIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6Im5QVElBQmNEQVNZNkZOR1NOZkhDQjUxdFk3cUNodGd6ZVZhek90THJ3USIsInkiOiJ2RUVzNFYwZWdKa055TTJRNHBwMDAxenUxNFZjcFEwX0VpOHhPT1B4S1pzIn19","payload":""}`))
-	test.Assert(t, prob != nil, "parseJWS didn't return a problem")
-	test.AssertEquals(t, prob.Detail, "Parse error reading JWS: EC public key has incorrect padding")
-	_, prob = wfe.parseJWS([]byte(`{"protected":"eyJhbGciOiJFUzI1NiIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6InZFRXM0VjBlZ0prTnlNMlE0cHAwMDF6dTE0VmNwUTBfRWk4eE9PUHhLWnMiLCJ5IjoiblBUSUFCY0RBU1k2Rk5HU05mSENCNTF0WTdxQ2h0Z3plVmF6T3RMcndRIn19","payload":""}`))
-	test.Assert(t, prob != nil, "parseJWS didn't return a problem")
-	test.AssertEquals(t, prob.Detail, "Parse error reading JWS: EC public key has incorrect padding")
-}
