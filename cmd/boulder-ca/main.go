@@ -34,6 +34,7 @@ type Config struct {
 
 		GRPCCA            *cmd.GRPCServerConfig
 		GRPCOCSPGenerator *cmd.GRPCServerConfig
+		GRPCCRLGenerator  *cmd.GRPCServerConfig
 
 		SAService *cmd.GRPCClientConfig
 
@@ -56,9 +57,15 @@ type Config struct {
 		// The maximum number of subjectAltNames in a single certificate
 		MaxNames int
 
-		// LifespanOCSP is how long OCSP responses are valid for; It should be longer
-		// than the minTimeToExpiry field for the OCSP Updater.
+		// LifespanOCSP is how long OCSP responses are valid for. It should be
+		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
+		// Section 4.9.10, it MUST NOT be more than 10 days.
 		LifespanOCSP cmd.ConfigDuration
+
+		// LifespanCRL is how long CRLs are valid for. It should be longer than the
+		// `period` field of the CRL Updater. Per the BRs, Section 4.9.7, it MUST
+		// NOT be more than 10 days.
+		LifespanCRL cmd.ConfigDuration
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -130,6 +137,7 @@ func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []is
 func main() {
 	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
 	ocspAddr := flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
+	crlAddr := flag.String("crl-addr", "", "CRL gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -150,6 +158,9 @@ func main() {
 	}
 	if *ocspAddr != "" {
 		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
+	}
+	if *crlAddr != "" {
+		c.CA.GRPCCRLGenerator.Address = *crlAddr
 	}
 	if *debugAddr != "" {
 		c.CA.DebugAddr = *debugAddr
@@ -272,10 +283,30 @@ func main() {
 		wg.Done()
 	}()
 
+	crli, err := ca.NewCRLImpl(
+		boulderIssuers,
+		c.CA.LifespanCRL.Duration,
+		logger,
+	)
+	cmd.FailOnError(err, "Failed to create CRL impl")
+
+	crlSrv, crlListener, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, serverMetrics, clk)
+	cmd.FailOnError(err, "Unable to setup CA gRPC server")
+	capb.RegisterCRLGeneratorServer(crlSrv, crli)
+	crlHealth := health.NewServer()
+	healthpb.RegisterHealthServer(crlSrv, crlHealth)
+	wg.Add(1)
+	go func() {
+		cmd.FailOnError(cmd.FilterShutdownErrors(crlSrv.Serve(crlListener)),
+			"CRLGenerator gRPC service failed")
+		wg.Done()
+	}()
+
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
 		pa,
 		ocspi,
+		crli,
 		boulderIssuers,
 		ecdsaAllowList,
 		c.CA.Expiry.Duration,
@@ -309,9 +340,11 @@ func main() {
 	go cmd.CatchSignals(logger, func() {
 		caHealth.Shutdown()
 		ocspHealth.Shutdown()
+		crlHealth.Shutdown()
 		ecdsaAllowList.Stop()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
+		crlSrv.GracefulStop()
 		wg.Wait()
 		ocspi.Stop()
 	})
