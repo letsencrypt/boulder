@@ -30,11 +30,12 @@ func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, logger blog.
 		issuersByNameID[issuer.Cert.NameID()] = issuer
 	}
 
-	if lifetime >= 10*24*time.Hour {
+	if lifetime == 0 {
+		logger.Warningf("got zero for crl lifetime; setting to default 9 days")
+		lifetime = 9 * 24 * time.Hour
+	} else if lifetime >= 10*24*time.Hour {
 		return nil, fmt.Errorf("crl lifetime cannot be more than 10 days, got: %s", lifetime)
-	}
-
-	if lifetime <= 0*time.Hour {
+	} else if lifetime <= 0*time.Hour {
 		return nil, fmt.Errorf("crl lifetime must be positive, got: %s", lifetime)
 	}
 

@@ -9,6 +9,7 @@ import (
 	"github.com/beeker1121/goque"
 	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -159,7 +160,8 @@ func main() {
 	if *ocspAddr != "" {
 		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
 	}
-	if *crlAddr != "" {
+	// TODO(#6161): Remove second conditional when we know it always exists.
+	if *crlAddr != "" && c.CA.GRPCCRLGenerator != nil {
 		c.CA.GRPCCRLGenerator.Address = *crlAddr
 	}
 	if *debugAddr != "" {
@@ -272,7 +274,7 @@ func main() {
 	go ocspi.LogOCSPLoop()
 
 	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
-	cmd.FailOnError(err, "Unable to setup CA gRPC server")
+	cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
 	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspi)
 	ocspHealth := health.NewServer()
 	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
@@ -290,17 +292,22 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create CRL impl")
 
-	crlSrv, crlListener, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, serverMetrics, clk)
-	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	capb.RegisterCRLGeneratorServer(crlSrv, crli)
-	crlHealth := health.NewServer()
-	healthpb.RegisterHealthServer(crlSrv, crlHealth)
-	wg.Add(1)
-	go func() {
-		cmd.FailOnError(cmd.FilterShutdownErrors(crlSrv.Serve(crlListener)),
-			"CRLGenerator gRPC service failed")
-		wg.Done()
-	}()
+	// TODO(#6161): Make this unconditional after this config is deployed.
+	var crlSrv *grpc.Server
+	var crlHealth *health.Server
+	if c.CA.GRPCCRLGenerator != nil {
+		crlSrv, crlListener, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, serverMetrics, clk)
+		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
+		capb.RegisterCRLGeneratorServer(crlSrv, crli)
+		crlHealth := health.NewServer()
+		healthpb.RegisterHealthServer(crlSrv, crlHealth)
+		wg.Add(1)
+		go func() {
+			cmd.FailOnError(cmd.FilterShutdownErrors(crlSrv.Serve(crlListener)),
+				"CRLGenerator gRPC service failed")
+			wg.Done()
+		}()
+	}
 
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
@@ -340,11 +347,17 @@ func main() {
 	go cmd.CatchSignals(logger, func() {
 		caHealth.Shutdown()
 		ocspHealth.Shutdown()
-		crlHealth.Shutdown()
+		// TODO(#6161): Make this unconditional.
+		if crlHealth != nil {
+			crlHealth.Shutdown()
+		}
 		ecdsaAllowList.Stop()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
-		crlSrv.GracefulStop()
+		// TODO(#6161): Make this unconditional.
+		if crlSrv != nil {
+			crlSrv.GracefulStop()
+		}
 		wg.Wait()
 		ocspi.Stop()
 	})
