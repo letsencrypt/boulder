@@ -232,7 +232,7 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:    "444444444444444444444444444444444444",
-				Reason:    4, // superceded
+				Reason:    4, // superseded
 				RevokedAt: time.Now().UnixNano(),
 			},
 		},
