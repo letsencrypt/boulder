@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
@@ -89,8 +90,24 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 		return nil, err
 	}
 
+	err = src.checkNextUpdate(resp)
+	if err != nil {
+		return nil, err
+	}
+
 	src.counter.WithLabelValues("success").Inc()
 	return resp, nil
+}
+
+// checkNextUpdate is in the past. If thats the case errOCSPResponseExpired
+// will be returned. Otherwise nil is returned. We do this, because clients will
+// not validate an OCSP response where NextUpdate is in the past, so we should
+// not serve them.
+func (src *filterSource) checkNextUpdate(resp *Response) error {
+	if time.Now().Before(resp.NextUpdate) {
+		return nil
+	}
+	return errOCSPResponseExpired
 }
 
 // checkRequest returns a descriptive error if the request does not satisfy any of

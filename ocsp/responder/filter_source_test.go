@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
@@ -28,6 +29,24 @@ func TestNewFilter(t *testing.T) {
 	test.AssertEquals(t, len(f.issuers), 1)
 	test.AssertEquals(t, len(f.serialPrefixes), 1)
 	test.AssertEquals(t, hex.EncodeToString(f.issuers[issuerNameId].keyHash), "fb784f12f96015832c9f177f3419b32e36ea4189")
+}
+
+func TestCheckNextUpdate(t *testing.T) {
+	issuer, err := issuance.LoadCertificate("./testdata/test-ca.der.pem")
+	test.AssertNotError(t, err, "failed to load issuer cert")
+
+	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock())
+	test.AssertNotError(t, err, "errored when creating good filter")
+
+	resp := &Response{
+		Response: &ocsp.Response{
+			NextUpdate: time.Now().Add(time.Hour),
+		},
+	}
+	test.AssertNotError(t, f.checkNextUpdate(resp), "error during valid check")
+
+	resp.NextUpdate = time.Now().Add(-time.Hour)
+	test.AssertErrorIs(t, f.checkNextUpdate(resp), errOCSPResponseExpired)
 }
 
 func TestCheckRequest(t *testing.T) {
