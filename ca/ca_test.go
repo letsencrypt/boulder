@@ -117,6 +117,7 @@ func mustRead(path string) []byte {
 type testCtx struct {
 	pa             core.PolicyAuthority
 	ocsp           *ocspImpl
+	crl            *crlImpl
 	certExpiry     time.Duration
 	certBackdate   time.Duration
 	serialPrefix   int
@@ -259,9 +260,17 @@ func setup(t *testing.T) *testCtx {
 	)
 	test.AssertNotError(t, err, "Failed to create ocsp impl")
 
+	crl, err := NewCRLImpl(
+		boulderIssuers,
+		time.Hour,
+		blog.NewMock(),
+	)
+	test.AssertNotError(t, err, "Failed to create crl impl")
+
 	return &testCtx{
 		pa:             pa,
 		ocsp:           ocsp,
+		crl:            crl,
 		certExpiry:     8760 * time.Hour,
 		certBackdate:   time.Hour,
 		serialPrefix:   17,
@@ -280,6 +289,7 @@ func TestFailNoSerialPrefix(t *testing.T) {
 	testCtx := setup(t)
 
 	_, err := NewCertificateAuthorityImpl(
+		nil,
 		nil,
 		nil,
 		nil,
@@ -382,6 +392,7 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		sa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		&ECDSAAllowList{},
 		testCtx.certExpiry,
@@ -429,6 +440,7 @@ func TestMultipleIssuers(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -565,6 +577,7 @@ func TestInvalidCSRs(t *testing.T) {
 			sa,
 			testCtx.pa,
 			testCtx.ocsp,
+			testCtx.crl,
 			testCtx.boulderIssuers,
 			nil,
 			testCtx.certExpiry,
@@ -603,6 +616,7 @@ func TestRejectValidityTooLong(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -705,6 +719,7 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -812,6 +827,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		sa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -855,6 +871,7 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		errorsa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -932,6 +949,7 @@ func TestPrecertOrphanQueue(t *testing.T) {
 		qsa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -999,6 +1017,7 @@ func TestOrphanQueue(t *testing.T) {
 		qsa,
 		testCtx.pa,
 		testCtx.ocsp,
+		testCtx.crl,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
