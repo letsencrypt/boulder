@@ -244,7 +244,14 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 	go func() {
 		defer close(staleStatusesOut)
 
-		selector := db.NewMappedSelector[sa.CertStatusMetadata](updater.readOnlyDb)
+		selector, err := db.NewMappedSelector[sa.CertStatusMetadata](updater.readOnlyDb)
+		if err != nil {
+			updater.log.AuditErrf("failed to initialize database map: %s", err)
+			updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
+			updater.readFailures.Add(1)
+			return
+		}
+
 		rows, err := selector.Query(ctx, updater.queryBody, args...)
 
 		// If error, log and increment retries for backoff. Else no

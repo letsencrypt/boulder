@@ -2152,7 +2152,11 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 		return fmt.Errorf("malformed table name %q", req.IncidentTable)
 	}
 
-	selector := db.NewMappedSelector[incidentSerialModel](ssa.dbReadOnlyMap)
+	selector, err := db.NewMappedSelector[incidentSerialModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
 	rows, err := selector.QueryFrom(stream.Context(), req.IncidentTable, "")
 	if err != nil {
 		return fmt.Errorf("starting db query: %w", err)
