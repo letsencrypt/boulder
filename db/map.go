@@ -52,6 +52,11 @@ func (e ErrDatabaseOp) Error() string {
 		e.Err)
 }
 
+// Unwrap returns the inner error to allow inspection of error chains.
+func (e ErrDatabaseOp) Unwrap() error {
+	return e.Err
+}
+
 // IsNoRows is a utility function for casting an error to ErrDatabaseOp and
 // returning true if its wrapped err is sql.ErrNoRows. If the error is not an
 // ErrDatabaseOp the return value of IsNoRows will always be false.
@@ -107,6 +112,10 @@ func (m *WrappedMap) Select(holder interface{}, query string, args ...interface{
 
 func (m *WrappedMap) SelectOne(holder interface{}, query string, args ...interface{}) error {
 	return WrappedExecutor{SqlExecutor: m.DbMap}.SelectOne(holder, query, args...)
+}
+
+func (m *WrappedMap) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.Query(query, args...)
 }
 
 func (m *WrappedMap) Exec(query string, args ...interface{}) (sql.Result, error) {
@@ -171,6 +180,10 @@ func (tx WrappedTransaction) Select(holder interface{}, query string, args ...in
 
 func (tx WrappedTransaction) SelectOne(holder interface{}, query string, args ...interface{}) error {
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).SelectOne(holder, query, args...)
+}
+
+func (tx WrappedTransaction) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Query(query, args...)
 }
 
 func (tx WrappedTransaction) Exec(query string, args ...interface{}) (sql.Result, error) {
@@ -263,6 +276,14 @@ func (we WrappedExecutor) SelectOne(holder interface{}, query string, args ...in
 		return errForQuery(query, "select one", err, []interface{}{holder})
 	}
 	return nil
+}
+
+func (we WrappedExecutor) Query(query string, args ...interface{}) (*sql.Rows, error) {
+	rows, err := we.SqlExecutor.Query(query, args...)
+	if err != nil {
+		return nil, errForQuery(query, "select", err, nil)
+	}
+	return rows, nil
 }
 
 var (

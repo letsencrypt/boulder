@@ -72,8 +72,24 @@ type Transaction interface {
 }
 
 // MappedExecutor is anything that can map types to tables, and which can
-// produce a contextual SqlExecutor.
+// produce a SqlExecutor bound to a context.
 type MappedExecutor interface {
 	TableFor(reflect.Type, bool) (*gorp.TableMap, error)
 	WithContext(ctx context.Context) gorp.SqlExecutor
+}
+
+// MappedSelector is anything that can execute various kinds of SQL statements
+// against a table automatically determined from the parameterized type.
+type MappedSelector[T any] interface {
+	Query(ctx context.Context, clauses string, args ...interface{}) (Rows[T], error)
+	QueryFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (Rows[T], error)
+}
+
+// Rows is anything which lets you iterate over the result rows of a SELECT
+// query. It is similar to sql.Rows, but generic.
+type Rows[T any] interface {
+	Next() bool
+	Get() (*T, error)
+	Err() error
+	Close() error
 }
