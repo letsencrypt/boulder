@@ -127,12 +127,8 @@ func (r rows[T]) Next() bool {
 // number of &interface{} arguments, it returns a populated object of the
 // parameterized type.
 func (r rows[T]) Get() (*T, error) {
-	// We have to use reflect.New(reflect.TypeOf(var T)) to create our result
-	// value to ensure that it gets allocated on the heap and its individual
-	// fields are all addressable.
-	var throwaway T
-	t := reflect.TypeOf(throwaway)
-	v := reflect.New(t)
+	result := new(T)
+	v := reflect.ValueOf(result)
 
 	// Because sql.Rows.Scan(...) takes a variadic number of individual targets to
 	// read values into, build a slice that can be splatted into the call. Use the
@@ -148,9 +144,7 @@ func (r rows[T]) Get() (*T, error) {
 		return nil, fmt.Errorf("reading db row: %w", err)
 	}
 
-	// Finally cast our *reflect.Value back into a T so we can return it.
-	result := v.Elem().Interface().(T)
-	return &result, nil
+	return result, nil
 }
 
 // Err is a wrapper around sql.Rows.Err(). It should be checked immediately
