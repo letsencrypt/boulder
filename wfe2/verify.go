@@ -327,9 +327,6 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*jose.JSONWebSignature, *prob
 	parsedJWS, err := jose.ParseSigned(bodyStr)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
-		if strings.HasPrefix(err.Error(), "failed to unmarshal JWK: square/go-jose: invalid EC public key, wrong length") {
-			return nil, probs.Malformed("Parse error reading JWS: EC public key has incorrect padding")
-		}
 		return nil, probs.Malformed("Parse error reading JWS")
 	}
 	if len(parsedJWS.Signatures) > 1 {
