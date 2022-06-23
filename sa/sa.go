@@ -2238,7 +2238,11 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 		core.OCSPStatusRevoked,
 	}
 
-	selector := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
+	selector, err := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
 	rows, err := selector.Query(stream.Context(), clauses, params...)
 	if err != nil {
 		return fmt.Errorf("reading db: %w", err)
