@@ -159,8 +159,8 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 	clauses := "WHERE id > ? ORDER BY id LIMIT ?"
 	params := []interface{}{prevID, cl.scanBatchSize}
 
-	selector := db.NewTypeSelector[sa.CertStatusMetadata](cl.db)
-	rows, err := selector.SelectRows(ctx, clauses, params...)
+	selector := db.NewMappedSelector[sa.CertStatusMetadata](cl.db)
+	rows, err := selector.Query(ctx, clauses, params...)
 	if err != nil {
 		return -1, fmt.Errorf("scanning certificateStatus: %w", err)
 	}

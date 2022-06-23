@@ -244,8 +244,8 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 	go func() {
 		defer close(staleStatusesOut)
 
-		selector := db.NewTypeSelector[sa.CertStatusMetadata](updater.readOnlyDb)
-		rows, err := selector.SelectRows(ctx, updater.queryBody, args...)
+		selector := db.NewMappedSelector[sa.CertStatusMetadata](updater.readOnlyDb)
+		rows, err := selector.Query(ctx, updater.queryBody, args...)
 
 		// If error, log and increment retries for backoff. Else no
 		// error, proceed to push statuses to channel.
