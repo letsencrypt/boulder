@@ -4,6 +4,7 @@ package ra;
 option go_package = "github.com/letsencrypt/boulder/ra/proto";
 
 import "core/proto/core.proto";
+import "ca/proto/ca.proto";
 import "google/protobuf/empty.proto";
 
 service RegistrationAuthority {
@@ -18,6 +19,12 @@ service RegistrationAuthority {
   rpc AdministrativelyRevokeCertificate(AdministrativelyRevokeCertificateRequest) returns (google.protobuf.Empty) {}
   rpc NewOrder(NewOrderRequest) returns (core.Order) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (core.Order) {}
+  // Generate an OCSP response based on the DB's current status and reason code.
+  rpc GenerateOCSP(GenerateOCSPRequest) returns (ca.OCSPResponse) {}
+}
+
+message GenerateOCSPRequest {
+  string serial = 1;
 }
 
 message UpdateRegistrationRequest {
