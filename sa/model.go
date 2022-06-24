@@ -1,7 +1,6 @@
 package sa
 
 import (
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -9,7 +8,6 @@ import (
 	"math"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	jose "gopkg.in/square/go-jose.v2"
@@ -19,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -122,72 +121,19 @@ func SelectPrecertificates(s db.Selector, q string, args map[string]interface{})
 }
 
 type CertStatusMetadata struct {
-	core.CertificateStatus
+	ID                    int64             `db:"id"`
+	Serial                string            `db:"serial"`
+	Status                core.OCSPStatus   `db:"status"`
+	OCSPLastUpdated       time.Time         `db:"ocspLastUpdated"`
+	RevokedDate           time.Time         `db:"revokedDate"`
+	RevokedReason         revocation.Reason `db:"revokedReason"`
+	LastExpirationNagSent time.Time         `db:"lastExpirationNagSent"`
+	NotAfter              time.Time         `db:"notAfter"`
+	IsExpired             bool              `db:"isExpired"`
+	IssuerID              int64             `db:"issuerID"`
 }
 
-// CertStatusMetadataFields returns a slice of column names for rows in the
-// certificateStatus table. Changes to the ordering of this list returned by
-// this function should also be made in `ScanCertStatusRow()`.
-func CertStatusMetadataFields() []string {
-	return []string{
-		"id",
-		"serial",
-		"status",
-		"ocspLastUpdated",
-		"revokedDate",
-		"revokedReason",
-		"lastExpirationNagSent",
-		"notAfter",
-		"isExpired",
-		"issuerID",
-	}
-}
-
-// ScanCertStatusRow is a helper function expored from SA so that we can readily
-// check that there's a 1:1 correspondence between the column name in the DB,
-// `CertStatusMetadataFields()`, and the `*core.CerticateStatus` field name
-// being copied to.
-func ScanCertStatusMetadataRow(rows *sql.Rows, status *CertStatusMetadata) error {
-	columns, err := rows.Columns()
-	if err != nil {
-		return err
-	}
-	expectedColumns := CertStatusMetadataFields()
-	if len(columns) != len(expectedColumns) {
-		return fmt.Errorf("incorrect number of columns in scanned rows: got %d, expected %d", len(columns), len(expectedColumns))
-	}
-	for i, v := range columns {
-		if v != expectedColumns[i] {
-			return fmt.Errorf("incorrect column %d in scanned rows: got %q, expected %q", i, v, expectedColumns[i])
-		}
-	}
-	err = rows.Scan(
-		&status.ID,
-		&status.Serial,
-		&status.Status,
-		&status.OCSPLastUpdated,
-		&status.RevokedDate,
-		&status.RevokedReason,
-		&status.LastExpirationNagSent,
-		&status.NotAfter,
-		&status.IsExpired,
-		&status.IssuerID,
-	)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func certStatusFields() []string {
-	// Add the full response bytes.
-	return append(CertStatusMetadataFields(), "ocspResponse")
-}
-
-func certStatusFieldsSelect(restOfQuery string) string {
-	fields := strings.Join(certStatusFields(), ",")
-	return fmt.Sprintf("SELECT %s FROM certificateStatus %s", fields, restOfQuery)
-}
+const certStatusFields = "id, serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired, issuerID"
 
 // SelectCertificateStatus selects all fields of one certificate status model
 // identified by serial
@@ -195,7 +141,7 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 	var model core.CertificateStatus
 	err := s.SelectOne(
 		&model,
-		certStatusFieldsSelect("WHERE serial = ?"),
+		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ?",
 		serial,
 	)
 	return model, err
