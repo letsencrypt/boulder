@@ -423,7 +423,7 @@ type CRLMetadata struct {
 	unknownFields protoimpl.UnknownFields
 
 	IssuerNameID int64 `protobuf:"varint,1,opt,name=issuerNameID,proto3" json:"issuerNameID,omitempty"`
-	ThisUpdate   int64 `protobuf:"varint,2,opt,name=thisUpdate,proto3" json:"thisUpdate,omitempty"` // Unix timestamp (nanoseconds)
+	ThisUpdate   int64 `protobuf:"varint,2,opt,name=thisUpdate,proto3" json:"thisUpdate,omitempty"` // Unix timestamp (nanoseconds), also used for CRLNumber.
 }
 
 func (x *CRLMetadata) Reset() {

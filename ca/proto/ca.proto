@@ -65,7 +65,7 @@ message GenerateCRLRequest {
 
 message CRLMetadata {
   int64 issuerNameID = 1;
-  int64 thisUpdate = 2; // Unix timestamp (nanoseconds)
+  int64 thisUpdate = 2; // Unix timestamp (nanoseconds), also used for CRLNumber.
 }
 
 message GenerateCRLResponse {

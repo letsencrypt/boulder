@@ -73,6 +73,10 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 				return errors.New("got incomplete metadata message")
 			}
 
+			// The CRL Number MUST be at most 20 octets, per RFC 5280 Section 5.2.3.
+			// A 64-bit (8-byte) integer will never exceed that requirement, but lets
+			// us guarantee that the CRL Number is always increasing without having to
+			// store or look up additional state.
 			number = big.NewInt(payload.Metadata.ThisUpdate)
 			thisUpdate = time.Unix(0, payload.Metadata.ThisUpdate)
 
