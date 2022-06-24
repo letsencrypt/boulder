@@ -93,6 +93,10 @@ const (
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
+	// RejectDuplicateCSRExtensions enables verification that submitted CSRs do
+	// not contain duplicate extensions. This behavior will be on by default in
+	// go1.19.
+	RejectDuplicateCSRExtensions
 )
 
 // List of features and their default value, protected by fMu
@@ -125,6 +129,7 @@ var features = map[FeatureFlag]bool{
 	SHA1CSRs:                       true,
 	AllowUnrecognizedFeatures:      false,
 	ExpirationMailerDontLookTwice:  false,
+	RejectDuplicateCSRExtensions:   false,
 }
 
 var fMu = new(sync.RWMutex)

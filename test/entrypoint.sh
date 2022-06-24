@@ -21,4 +21,4 @@ if [[ $# -eq 0 ]]; then
     exec python3 ./start.py
 fi
 
-exec $@
+exec "$@"

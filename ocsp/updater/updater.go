@@ -14,23 +14,16 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
-// ocspDB and ocspReadOnlyDB are interfaces collecting the `sql.DB` methods that
-// the various parts of OCSPUpdater rely on. Using this adapter shim allows tests to
-// swap out the `sql.DB` implementation.
-
-// ocspReadOnlyDb provides only read-only portions of the `sql.DB` interface.
-type ocspReadOnlyDb interface {
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-}
-
-// ocspDb provides read-write portions of the `sql.DB` interface.
+// ocspDb is an interface collecting the methods that the read/write parts of
+// OCSPUpdater rely on. This allows the tests to swap out the db implementation.
 type ocspDb interface {
-	ocspReadOnlyDb
+	db.MappedExecutor
 	Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
@@ -68,7 +61,7 @@ type OCSPUpdater struct {
 	clk clock.Clock
 
 	db          ocspDb
-	readOnlyDb  ocspReadOnlyDb
+	readOnlyDb  db.MappedExecutor
 	rocspClient rocspClientInterface
 
 	issuers []rocsp_config.ShortIDIssuer
@@ -106,8 +99,8 @@ type OCSPUpdater struct {
 func New(
 	stats prometheus.Registerer,
 	clk clock.Clock,
-	db ocspDb,
-	readOnlyDb ocspReadOnlyDb,
+	db *db.WrappedMap,
+	readOnlyDb *db.WrappedMap,
 	rocspClient rocspClientInterface,
 	issuers []rocsp_config.ShortIDIssuer,
 	serialSuffixes []string,
@@ -234,10 +227,10 @@ func getQuestionsForShardList(count int) string {
 
 // findStaleOCSPResponses sends a goroutine to fetch rows of stale OCSP
 // responses from the database and returns results on a channel.
-func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLastUpdatedTime time.Time, batchSize int) <-chan sa.CertStatusMetadata {
+func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLastUpdatedTime time.Time, batchSize int) <-chan *sa.CertStatusMetadata {
 	// staleStatusesOut channel contains all stale ocsp responses that need
 	// updating.
-	staleStatusesOut := make(chan sa.CertStatusMetadata)
+	staleStatusesOut := make(chan *sa.CertStatusMetadata)
 
 	args := make([]interface{}, 0)
 	args = append(args, oldestLastUpdatedTime)
@@ -251,14 +244,15 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 	go func() {
 		defer close(staleStatusesOut)
 
-		rows, err := updater.readOnlyDb.Query(
-			fmt.Sprintf(
-				"SELECT %s FROM certificateStatus %s",
-				strings.Join(sa.CertStatusMetadataFields(), ","),
-				updater.queryBody,
-			),
-			args...,
-		)
+		selector, err := db.NewMappedSelector[sa.CertStatusMetadata](updater.readOnlyDb)
+		if err != nil {
+			updater.log.AuditErrf("failed to initialize database map: %s", err)
+			updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
+			updater.readFailures.Add(1)
+			return
+		}
+
+		rows, err := selector.Query(ctx, updater.queryBody, args...)
 
 		// If error, log and increment retries for backoff. Else no
 		// error, proceed to push statuses to channel.
@@ -276,15 +270,14 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 		}()
 
 		for rows.Next() {
-			var status sa.CertStatusMetadata
-			err := sa.ScanCertStatusMetadataRow(rows, &status)
+			meta, err := rows.Get()
 			if err != nil {
 				updater.log.AuditErrf("failed to scan metadata status row: %s", err)
 				updater.findStaleOCSPCounter.WithLabelValues("failed").Inc()
 				updater.readFailures.Add(1)
 				return
 			}
-			staleness := oldestLastUpdatedTime.Sub(status.OCSPLastUpdated).Seconds()
+			staleness := oldestLastUpdatedTime.Sub(meta.OCSPLastUpdated).Seconds()
 			updater.stalenessHistogram.Observe(staleness)
 			select {
 			case <-ctx.Done():
@@ -293,7 +286,7 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 					updater.log.AuditErrf("context done reading rows: %s", err)
 				}
 				return
-			case staleStatusesOut <- status:
+			case staleStatusesOut <- meta:
 			}
 		}
 
@@ -313,18 +306,33 @@ func (updater *OCSPUpdater) findStaleOCSPResponses(ctx context.Context, oldestLa
 	return staleStatusesOut
 }
 
+func statusFromMetaAndResp(meta *sa.CertStatusMetadata, resp []byte) *core.CertificateStatus {
+	return &core.CertificateStatus{
+		ID:                    meta.ID,
+		Serial:                meta.Serial,
+		Status:                meta.Status,
+		OCSPLastUpdated:       meta.OCSPLastUpdated,
+		RevokedDate:           meta.RevokedDate,
+		RevokedReason:         meta.RevokedReason,
+		LastExpirationNagSent: meta.LastExpirationNagSent,
+		OCSPResponse:          resp,
+		NotAfter:              meta.NotAfter,
+		IsExpired:             meta.IsExpired,
+		IssuerID:              meta.IssuerID,
+	}
+}
+
 // generateResponse signs an new OCSP response for a given certStatus row.
-// Takes its argument by value to force a copy, then returns a reference to that copy.
-func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.CertStatusMetadata) (*sa.CertStatusMetadata, error) {
-	if status.IssuerID == 0 {
+func (updater *OCSPUpdater) generateResponse(ctx context.Context, meta *sa.CertStatusMetadata) (*core.CertificateStatus, error) {
+	if meta.IssuerID == 0 {
 		return nil, errors.New("cert status has 0 IssuerID")
 	}
 	ocspReq := capb.GenerateOCSPRequest{
-		Serial:    status.Serial,
-		IssuerID:  status.IssuerID,
-		Status:    string(status.Status),
-		Reason:    int32(status.RevokedReason),
-		RevokedAt: status.RevokedDate.UnixNano(),
+		Serial:    meta.Serial,
+		IssuerID:  meta.IssuerID,
+		Status:    string(meta.Status),
+		Reason:    int32(meta.RevokedReason),
+		RevokedAt: meta.RevokedDate.UnixNano(),
 	}
 
 	ocspResponse, err := updater.ogc.GenerateOCSP(ctx, &ocspReq)
@@ -332,14 +340,12 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, status sa.Cert
 		return nil, err
 	}
 
-	status.OCSPLastUpdated = updater.clk.Now()
-	status.OCSPResponse = ocspResponse.Response
-
-	return &status, nil
+	meta.OCSPLastUpdated = updater.clk.Now()
+	return statusFromMetaAndResp(meta, ocspResponse.Response), nil
 }
 
 // storeResponse stores a given CertificateStatus in the database.
-func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertStatusMetadata) error {
+func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *core.CertificateStatus) error {
 	// If a redis client is configured, try to store the response in redis.
 	if updater.rocspClient != nil {
 		// Create a context to set a deadline for the goroutine that stores
@@ -391,26 +397,26 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *sa.CertSt
 }
 
 // markExpired updates a given CertificateStatus to have `isExpired` set.
-func (updater *OCSPUpdater) markExpired(status sa.CertStatusMetadata) error {
+func (updater *OCSPUpdater) markExpired(meta *sa.CertStatusMetadata) error {
 	_, err := updater.db.Exec(
 		`UPDATE certificateStatus
  		SET isExpired = TRUE
  		WHERE id = ?`,
-		status.ID,
+		meta.ID,
 	)
 	return err
 }
 
 // processExpired is a pipeline step to process a channel of
-// `core.CertificateStatus` and set `isExpired` in the database.
-func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn <-chan sa.CertStatusMetadata) <-chan sa.CertStatusMetadata {
+// `sa.CertStatusMetadata` and set `isExpired` in the database.
+func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn <-chan *sa.CertStatusMetadata) <-chan *sa.CertStatusMetadata {
 	tickStart := updater.clk.Now()
-	staleStatusesOut := make(chan sa.CertStatusMetadata)
+	staleStatusesOut := make(chan *sa.CertStatusMetadata)
 	go func() {
 		defer close(staleStatusesOut)
-		for status := range staleStatusesIn {
-			if !status.IsExpired && tickStart.After(status.NotAfter) {
-				err := updater.markExpired(status)
+		for meta := range staleStatusesIn {
+			if !meta.IsExpired && tickStart.After(meta.NotAfter) {
+				err := updater.markExpired(meta)
 				if err != nil {
 					// Update error counters and log
 					updater.log.AuditErrf("Failed to set certificate expired: %s", err)
@@ -422,7 +428,7 @@ func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn 
 			select {
 			case <-ctx.Done():
 				return
-			case staleStatusesOut <- status:
+			case staleStatusesOut <- meta:
 			}
 		}
 	}()
@@ -433,7 +439,7 @@ func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn 
 // generateOCSPResponses is the final stage of a pipeline. It takes a
 // channel of `core.CertificateStatus` and sends a goroutine for each to
 // obtain a new OCSP response and update the status in the database.
-func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStatusesIn <-chan sa.CertStatusMetadata) {
+func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStatusesIn <-chan *sa.CertStatusMetadata) {
 	// Use the semaphore pattern from
 	// https://github.com/golang/go/wiki/BoundingResourceUse to send a number of
 	// GenerateOCSP / storeResponse requests in parallel, while limiting the total number of
@@ -450,10 +456,10 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStat
 
 	// Work runs as a goroutine per ocsp response to obtain a new ocsp
 	// response and store it in the database.
-	work := func(status sa.CertStatusMetadata) {
+	work := func(meta *sa.CertStatusMetadata) {
 		defer done(updater.clk.Now())
 
-		meta, err := updater.generateResponse(ctx, status)
+		status, err := updater.generateResponse(ctx, meta)
 		if err != nil {
 			updater.log.AuditErrf("Failed to generate OCSP response: %s", err)
 			updater.generatedCounter.WithLabelValues("failed").Inc()
@@ -461,7 +467,7 @@ func (updater *OCSPUpdater) generateOCSPResponses(ctx context.Context, staleStat
 		}
 		updater.generatedCounter.WithLabelValues("success").Inc()
 
-		err = updater.storeResponse(ctx, meta)
+		err = updater.storeResponse(ctx, status)
 		if err != nil {
 			updater.log.AuditErrf("Failed to store OCSP response: %s", err)
 			updater.storedCounter.WithLabelValues("failed").Inc()

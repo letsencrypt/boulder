@@ -114,6 +114,13 @@ func RateLimitError(msg string, args ...interface{}) error {
 	}
 }
 
+func DuplicateCertificateError(msg string, args ...interface{}) error {
+	return &BoulderError{
+		Type:   RateLimit,
+		Detail: fmt.Sprintf(msg+": see https://letsencrypt.org/docs/duplicate-certificate-limit/", args...),
+	}
+}
+
 func RejectedIdentifierError(msg string, args ...interface{}) error {
 	return New(RejectedIdentifier, msg, args...)
 }
