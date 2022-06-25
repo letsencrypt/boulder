@@ -90,11 +90,6 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 		return nil, err
 	}
 
-	err = src.checkNextUpdate(resp)
-	if err != nil {
-		return nil, err
-	}
-
 	src.counter.WithLabelValues("success").Inc()
 	return resp, nil
 }
@@ -150,6 +145,11 @@ func (src *filterSource) checkResponse(reqIssuerID issuance.IssuerNameID, resp *
 	if reqIssuerID != respIssuerID {
 		// This would be allowed if we used delegated responders, but we don't.
 		return fmt.Errorf("responder name does not match requested issuer name")
+	}
+
+	err := src.checkNextUpdate(resp)
+	if err != nil {
+		return err
 	}
 
 	// In an ideal world, we'd also compare the Issuer Key Hash from the request's
