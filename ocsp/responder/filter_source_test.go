@@ -113,6 +113,19 @@ func TestCheckResponse(t *testing.T) {
 	test.AssertNotError(t, err, "unexpected error")
 	test.AssertEquals(t, actual.Response, resp)
 
+	// test expired source
+	expiredResp, err := ocsp.ParseResponse(respBytes, nil)
+	test.AssertNotError(t, err, "failed to parse OCSP response")
+	expiredResp.NextUpdate = time.Time{}
+
+	sourceExpired := &echoSource{&Response{expiredResp, nil}}
+	fExpired, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, sourceExpired, metrics.NoopRegisterer, blog.NewMock())
+	test.AssertNotError(t, err, "errored when creating good filter")
+
+	actual, err = fExpired.Response(context.Background(), req)
+	test.AssertError(t, err, "missing error")
+	test.AssertErrorIs(t, err, errOCSPResponseExpired)
+
 	// Overwrite the Responder Name in the stored response to cause a diagreement.
 	resp.RawResponderName = []byte("C = US, O = Foo, DN = Bar")
 	source = &echoSource{&Response{resp, respBytes}}
