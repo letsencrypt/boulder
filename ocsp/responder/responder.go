@@ -293,8 +293,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			response.Write(ocsp.UnauthorizedErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return
-		}
-		if errors.Is(err, errOCSPResponseExpired) {
+		} else if errors.Is(err, errOCSPResponseExpired) {
 			rs.log.Infof("Requested ocsp response is expired: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
 			response.WriteHeader(533) // HTTP StatusCode - unassigned
