@@ -179,7 +179,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	startSending := m.clk.Now()
 	err = conn.SendMail(emails, subjBuf.String(), msgBuf.String())
 	if err != nil {
-		m.log.Errf("failed send JSON=%s", string(logStr))
+		m.log.Errf("failed send JSON=%s err=%s", string(logStr), err)
 		return err
 	}
 	finishSending := m.clk.Now()

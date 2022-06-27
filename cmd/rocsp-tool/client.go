@@ -2,17 +2,16 @@ package notmain
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
@@ -24,7 +23,7 @@ import (
 type client struct {
 	issuers       []rocsp_config.ShortIDIssuer
 	redis         *rocsp.WritingClient
-	db            *sql.DB // optional
+	db            *db.WrappedMap // optional
 	ocspGenerator capb.OCSPGeneratorClient
 	clk           clock.Clock
 	scanBatchSize int
@@ -39,7 +38,7 @@ type processResult struct {
 	err error
 }
 
-func getStartingID(ctx context.Context, clk clock.Clock, db *sql.DB) (int64, error) {
+func getStartingID(ctx context.Context, clk clock.Clock, db *db.WrappedMap) (int64, error) {
 	// To scan the DB efficiently, we want to select only currently-valid certificates. There's a
 	// handy expires index, but for selecting a large set of rows, using the primary key will be
 	// more efficient. So first we find a good id to start with, then scan from there. Note: since
@@ -47,8 +46,7 @@ func getStartingID(ctx context.Context, clk clock.Clock, db *sql.DB) (int64, err
 	// certificates.
 	startTime := clk.Now().Add(-24 * time.Hour)
 	var minID *int64
-	err := db.QueryRowContext(
-		ctx,
+	err := db.WithContext(ctx).QueryRow(
 		"SELECT MIN(id) FROM certificateStatus WHERE notAfter >= ?",
 		startTime,
 	).Scan(&minID)
@@ -74,8 +72,7 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 	// Find the current maximum id in certificateStatus. We do this because the table is always
 	// growing. If we scanned until we saw a batch with no rows, we would scan forever.
 	var maxID *int64
-	err = cl.db.QueryRowContext(
-		ctx,
+	err = cl.db.WithContext(ctx).QueryRow(
 		"SELECT MAX(id) FROM certificateStatus",
 	).Scan(&maxID)
 	if err != nil {
@@ -159,9 +156,15 @@ func (cl *client) scanFromDB(ctx context.Context, prevID int64, maxID int64, fre
 func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequency time.Duration, output chan<- *sa.CertStatusMetadata, inflightIDs *inflight) (int64, error) {
 	rowTicker := time.NewTicker(frequency)
 
-	query := fmt.Sprintf("SELECT %s FROM certificateStatus WHERE id > ? ORDER BY id LIMIT ?",
-		strings.Join(sa.CertStatusMetadataFields(), ", "))
-	rows, err := cl.db.QueryContext(ctx, query, prevID, cl.scanBatchSize)
+	clauses := "WHERE id > ? ORDER BY id LIMIT ?"
+	params := []interface{}{prevID, cl.scanBatchSize}
+
+	selector, err := db.NewMappedSelector[sa.CertStatusMetadata](cl.db)
+	if err != nil {
+		return -1, fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.Query(ctx, clauses, params...)
 	if err != nil {
 		return -1, fmt.Errorf("scanning certificateStatus: %w", err)
 	}
@@ -177,8 +180,7 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 	for rows.Next() {
 		<-rowTicker.C
 
-		status := new(sa.CertStatusMetadata)
-		err := sa.ScanCertStatusMetadataRow(rows, status)
+		status, err := rows.Get()
 		if err != nil {
 			return -1, fmt.Errorf("scanning row %d (previous ID %d): %w", scanned, previousID, err)
 		}

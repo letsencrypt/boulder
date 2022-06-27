@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -2153,47 +2152,21 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 		return fmt.Errorf("malformed table name %q", req.IncidentTable)
 	}
 
-	// Retrieve the `*gorp.TableMap` for the incident table.
-	tableMap, err := ssa.dbMap.TableFor(reflect.TypeOf(incidentSerialModel{}), false)
+	selector, err := db.NewMappedSelector[incidentSerialModel](ssa.dbReadOnlyMap)
 	if err != nil {
-		// This should never happen, the schema is always added at startup.
-		return fmt.Errorf(
-			"while retrieving table map for incident table %q: %s", req.IncidentTable, err)
+		return fmt.Errorf("initializing db map: %w", err)
 	}
 
-	// Use the `*gorp.TableMap` to construct a list of the expected column names
-	// for an incident table.
-	var modelColumns []string
-	for _, column := range tableMap.Columns {
-		modelColumns = append(modelColumns, column.ColumnName)
-	}
-
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(modelColumns, ", "), req.IncidentTable)
-	rows, err := ssa.dbMap.WithContext(stream.Context()).Query(query)
+	rows, err := selector.QueryFrom(stream.Context(), req.IncidentTable, "")
 	if err != nil {
-		return err
+		return fmt.Errorf("starting db query: %w", err)
 	}
 	defer rows.Close()
-
-	// Ensure that the columns in the model match the columns returned from the
-	// query. A mismatch indicates that the query returned a column that is
-	// either not in the model or not in the expected order.
-	dbColumns, err := rows.Columns()
-	if err != nil {
-		return err
-	}
-	for i, modelColumn := range dbColumns {
-		if modelColumns[i] != modelColumn {
-			return fmt.Errorf("incident table %q has column %q. Expected %q",
-				req.IncidentTable, modelColumns[i], modelColumn)
-		}
-	}
 
 	for rows.Next() {
 		// Scan the row into the model. Note: the fields must be passed in the
 		// same order as the columns returned by the query above.
-		var ism incidentSerialModel
-		err := rows.Scan(&ism.Serial, &ism.RegistrationID, &ism.OrderID, &ism.LastNoticeSent)
+		ism, err := rows.Get()
 		if err != nil {
 			return err
 		}
