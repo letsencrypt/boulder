@@ -2189,3 +2189,73 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 	}
 	return nil
 }
+
+// GetRevokedCerts gets a request specifying an issuer and a period of time,
+// and writes to the output stream the set of all certificates issued by that
+// issuer which expire during that period of time and which have been revoked.
+// The starting timestamp is treated as inclusive (certs with exactly that
+// notAfter date are included), but the ending timestamp is exclusive (certs
+// with exactly that notAfter date are *not* included).
+func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
+	atTime := time.Unix(0, req.RevokedBefore)
+
+	clauses := `
+		WHERE notAfter >= ?
+		AND notAfter < ?
+		AND issuerID = ?
+		AND status = ?`
+	params := []interface{}{
+		time.Unix(0, req.ExpiresAfter),
+		time.Unix(0, req.ExpiresBefore),
+		req.IssuerNameID,
+		core.OCSPStatusRevoked,
+	}
+
+	selector, err := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.Query(stream.Context(), clauses, params...)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			ssa.log.AuditErrf("closing row reader: %w", err)
+		}
+	}()
+
+	for rows.Next() {
+		row, err := rows.Get()
+		if err != nil {
+			return fmt.Errorf("reading row: %w", err)
+		}
+
+		// Double-check that the cert wasn't revoked between the time at which we're
+		// constructing this snapshot CRL and right now. If the cert was revoked
+		// at-or-after the "atTime", we'll just include it in the next generation
+		// of CRLs.
+		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
+			continue
+		}
+
+		err = stream.Send(&corepb.CRLEntry{
+			Serial:    row.Serial,
+			Reason:    int32(row.RevokedReason),
+			RevokedAt: row.RevokedDate.UnixNano(),
+		})
+		if err != nil {
+			return fmt.Errorf("sending crl entry: %w", err)
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
+	}
+
+	return nil
+}

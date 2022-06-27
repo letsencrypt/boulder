@@ -282,4 +282,5 @@ func initTables(dbMap *gorp.DbMap) {
 
 	// Read-only maps used for selecting subsets of columns.
 	dbMap.AddTableWithName(CertStatusMetadata{}, "certificateStatus")
+	dbMap.AddTableWithName(crlEntryModel{}, "certificateStatus")
 }
