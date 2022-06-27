@@ -121,7 +121,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		fmt.Fprintf(&builder, "%x,", rcs[i].SerialNumber.Bytes())
 
 		if builder.Len() != ci.maxLogLen {
-			ci.log.AuditInfof(builder.String())
+			ci.log.AuditInfof("%s", builder)
 			builder = strings.Builder{}
 		}
 	}
