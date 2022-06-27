@@ -3,6 +3,7 @@ package notmain
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"sync"
 
@@ -293,14 +294,18 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create CRL impl")
 
-	// TODO(#6161): Make this unconditional after this config is deployed.
+	// TODO(#6161): Make this unconditional after this config is deployed. We have
+	// to pre-declare crlListener even though it is only used inside the if block
+	// so that the other assignments inside the block don't shadow crlSrv and
+	// crlHealth, leaving them nil.
 	var crlSrv *grpc.Server
 	var crlHealth *health.Server
+	var crlListener net.Listener
 	if c.CA.GRPCCRLGenerator != nil {
-		crlSrv, crlListener, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, serverMetrics, clk)
+		crlSrv, crlListener, err = bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, serverMetrics, clk)
 		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
 		capb.RegisterCRLGeneratorServer(crlSrv, crli)
-		crlHealth := health.NewServer()
+		crlHealth = health.NewServer()
 		healthpb.RegisterHealthServer(crlSrv, crlHealth)
 		wg.Add(1)
 		go func() {
