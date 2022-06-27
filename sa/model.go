@@ -641,3 +641,12 @@ type incidentSerialModel struct {
 	OrderID        int64     `db:"orderID"`
 	LastNoticeSent time.Time `db:"lastNoticeSent"`
 }
+
+// crlEntryModel has just the certificate status fields necessary to construct
+// an entry in a CRL.
+type crlEntryModel struct {
+	Serial        string            `db:"serial"`
+	Status        core.OCSPStatus   `db:"status"`
+	RevokedReason revocation.Reason `db:"revokedReason"`
+	RevokedDate   time.Time         `db:"revokedDate"`
+}

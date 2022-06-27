@@ -99,4 +99,3 @@ message CRLEntry {
   int32 reason = 2;
   int64 revokedAt = 3; // Unix timestamp (nanoseconds)
 }
- 
