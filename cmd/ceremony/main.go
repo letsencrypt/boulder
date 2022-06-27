@@ -624,7 +624,7 @@ func keyCeremony(configBytes []byte) error {
 
 	if config.Outputs.PKCS11ConfigPath != "" {
 		contents := fmt.Sprintf(
-			`{"module": %q, "tokenLabel": %q, "pin": "%q"}`,
+			`{"module": %q, "tokenLabel": %q, "pin": %q}`,
 			config.PKCS11.Module, config.PKCS11.StoreLabel, config.PKCS11.PIN,
 		)
 		err = writeFile(config.Outputs.PKCS11ConfigPath, []byte(contents))
