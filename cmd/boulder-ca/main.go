@@ -288,6 +288,7 @@ func main() {
 	crli, err := ca.NewCRLImpl(
 		boulderIssuers,
 		c.CA.LifespanCRL.Duration,
+		c.CA.OCSPLogMaxLength,
 		logger,
 	)
 	cmd.FailOnError(err, "Failed to create CRL impl")

@@ -589,6 +589,6 @@ func (ca *certificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 // GenerateCRL is simply a passthrough to crlImpl.GenerateCRL so that other
 // services which need to talk to the CA anyway can do so without configuring
 // two separate gRPC service backends.
-func (ca *certificateAuthorityImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
+func (ca *certificateAuthorityImpl) GenerateCRL(stream capb.CertificateAuthority_GenerateCRLServer) error {
 	return ca.crl.GenerateCRL(stream)
 }

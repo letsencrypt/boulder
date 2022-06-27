@@ -67,12 +67,8 @@
           "ocspURL": "http://127.0.0.1:4002/",
           "crlURL": "http://example.com/crl",
           "location": {
+            "configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
             "certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
-            "pkcs11": {
-              "module": "/usr/lib/softhsm/libsofthsm2.so",
-              "tokenLabel": "intermediate signing key (rsa)",
-              "pin": "1234"
-            },
             "numSessions": 2
           }
         },
@@ -82,12 +78,8 @@
           "issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
           "ocspURL": "http://127.0.0.1:4002/",
           "location": {
+            "configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
             "certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
-            "pkcs11": {
-              "module": "/usr/lib/softhsm/libsofthsm2.so",
-              "tokenLabel": "intermediate signing key (ecdsa)",
-              "pin": "1234"
-            },
             "numSessions": 2
           }
         },
@@ -98,12 +90,8 @@
           "ocspURL": "http://127.0.0.1:4002/",
           "crlURL": "http://example.com/crl",
           "location": {
+            "configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
             "certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
-            "pkcs11": {
-              "module": "/usr/lib/softhsm/libsofthsm2.so",
-              "tokenLabel": "intermediate signing key (rsa)",
-              "pin": "1234"
-            },
             "numSessions": 2
           }
         }

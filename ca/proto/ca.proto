@@ -10,6 +10,7 @@ service CertificateAuthority {
   rpc IssuePrecertificate(IssueCertificateRequest) returns (IssuePrecertificateResponse) {}
   rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
   rpc GenerateOCSP(GenerateOCSPRequest) returns (OCSPResponse) {}
+  rpc GenerateCRL(stream GenerateCRLRequest) returns (stream GenerateCRLResponse) {}
 }
 
 message IssueCertificateRequest {
@@ -51,7 +52,7 @@ message OCSPResponse {
   bytes response = 1;
 }
 
-// CRLGenerator signs CRLs. It is separated for the same reason.
+// CRLGenerator signs CRLs. It is separated for the same reason as OCSPGenerator.
 service CRLGenerator {
   rpc GenerateCRL(stream GenerateCRLRequest) returns (stream GenerateCRLResponse) {}
 }
@@ -66,6 +67,7 @@ message GenerateCRLRequest {
 message CRLMetadata {
   int64 issuerNameID = 1;
   int64 thisUpdate = 2; // Unix timestamp (nanoseconds), also used for CRLNumber.
+  int64 shard = 3;
 }
 
 message GenerateCRLResponse {

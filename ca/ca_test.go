@@ -263,6 +263,7 @@ func setup(t *testing.T) *testCtx {
 	crl, err := NewCRLImpl(
 		boulderIssuers,
 		time.Hour,
+		100,
 		blog.NewMock(),
 	)
 	test.AssertNotError(t, err, "Failed to create crl impl")
