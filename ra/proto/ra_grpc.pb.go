@@ -8,6 +8,7 @@ package proto
 
 import (
 	context "context"
+	proto1 "github.com/letsencrypt/boulder/ca/proto"
 	proto "github.com/letsencrypt/boulder/core/proto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -35,6 +36,8 @@ type RegistrationAuthorityClient interface {
 	AdministrativelyRevokeCertificate(ctx context.Context, in *AdministrativelyRevokeCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	NewOrder(ctx context.Context, in *NewOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
 	FinalizeOrder(ctx context.Context, in *FinalizeOrderRequest, opts ...grpc.CallOption) (*proto.Order, error)
+	// Generate an OCSP response based on the DB's current status and reason code.
+	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error)
 }
 
 type registrationAuthorityClient struct {
@@ -144,6 +147,15 @@ func (c *registrationAuthorityClient) FinalizeOrder(ctx context.Context, in *Fin
 	return out, nil
 }
 
+func (c *registrationAuthorityClient) GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*proto1.OCSPResponse, error) {
+	out := new(proto1.OCSPResponse)
+	err := c.cc.Invoke(ctx, "/ra.RegistrationAuthority/GenerateOCSP", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RegistrationAuthorityServer is the server API for RegistrationAuthority service.
 // All implementations must embed UnimplementedRegistrationAuthorityServer
 // for forward compatibility
@@ -159,6 +171,8 @@ type RegistrationAuthorityServer interface {
 	AdministrativelyRevokeCertificate(context.Context, *AdministrativelyRevokeCertificateRequest) (*emptypb.Empty, error)
 	NewOrder(context.Context, *NewOrderRequest) (*proto.Order, error)
 	FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error)
+	// Generate an OCSP response based on the DB's current status and reason code.
+	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error)
 	mustEmbedUnimplementedRegistrationAuthorityServer()
 }
 
@@ -198,6 +212,9 @@ func (UnimplementedRegistrationAuthorityServer) NewOrder(context.Context, *NewOr
 }
 func (UnimplementedRegistrationAuthorityServer) FinalizeOrder(context.Context, *FinalizeOrderRequest) (*proto.Order, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FinalizeOrder not implemented")
+}
+func (UnimplementedRegistrationAuthorityServer) GenerateOCSP(context.Context, *GenerateOCSPRequest) (*proto1.OCSPResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GenerateOCSP not implemented")
 }
 func (UnimplementedRegistrationAuthorityServer) mustEmbedUnimplementedRegistrationAuthorityServer() {}
 
@@ -410,6 +427,24 @@ func _RegistrationAuthority_FinalizeOrder_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RegistrationAuthority_GenerateOCSP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateOCSPRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RegistrationAuthorityServer).GenerateOCSP(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/ra.RegistrationAuthority/GenerateOCSP",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RegistrationAuthorityServer).GenerateOCSP(ctx, req.(*GenerateOCSPRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RegistrationAuthority_ServiceDesc is the grpc.ServiceDesc for RegistrationAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -460,6 +495,10 @@ var RegistrationAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FinalizeOrder",
 			Handler:    _RegistrationAuthority_FinalizeOrder_Handler,
+		},
+		{
+			MethodName: "GenerateOCSP",
+			Handler:    _RegistrationAuthority_GenerateOCSP_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

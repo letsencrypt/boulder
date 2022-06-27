@@ -3562,6 +3562,41 @@ func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.Cal
 	return &emptypb.Empty{}, nil
 }
 
+type mockSAGenerateOCSP struct {
+	mocks.StorageAuthority
+	expiration time.Time
+}
+
+func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	return &corepb.CertificateStatus{
+		Serial:   req.Serial,
+		Status:   "good",
+		NotAfter: msgo.expiration.UTC().UnixNano(),
+	}, nil
+}
+
+func TestGenerateOCSP(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.CA = &mockCAOCSP{}
+	ra.SA = &mockSAGenerateOCSP{expiration: clk.Now().Add(time.Hour)}
+
+	req := &rapb.GenerateOCSPRequest{
+		Serial: core.SerialToString(big.NewInt(1)),
+	}
+
+	resp, err := ra.GenerateOCSP(context.Background(), req)
+	test.AssertNotError(t, err, "generating OCSP")
+	test.AssertByteEquals(t, resp.Response, []byte{1, 2, 3})
+
+	ra.SA = &mockSAGenerateOCSP{expiration: clk.Now().Add(-time.Hour)}
+	_, err = ra.GenerateOCSP(context.Background(), req)
+	if !errors.Is(err, berrors.NotFound) {
+		t.Errorf("expected NotFound error, got %s", err)
+	}
+}
+
 func TestRevokerCertificateWithReg(t *testing.T) {
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()

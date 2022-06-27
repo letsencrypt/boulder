@@ -2365,6 +2365,30 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 	return nil
 }
 
+// GenerateOCSP looks up a certificate's status, then requests a signed OCSP
+// response for it from the CA. If the certificate status is not available
+// or the certificate is expired, it returns berrors.NotFoundError.
+// This does not write back the result to the SA or any other storage.
+func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
+	if err != nil {
+		return nil, err
+	}
+
+	notAfter := time.Unix(0, status.NotAfter).UTC()
+	if ra.clk.Now().After(notAfter) {
+		return nil, berrors.NotFoundError("certificate is expired")
+	}
+
+	return ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+		Serial:    req.Serial,
+		Status:    status.Status,
+		Reason:    int32(status.RevokedReason),
+		RevokedAt: status.RevokedDate,
+		IssuerID:  status.IssuerID,
+	})
+}
+
 // NewOrder creates a new order object
 func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.NewOrderRequest) (*corepb.Order, error) {
 	if req == nil || req.RegistrationID == 0 {

@@ -386,6 +386,9 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, req *s
 	}
 
 	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), req.Serial)
+	if db.IsNoRows(err) {
+		return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
+	}
 	if err != nil {
 		return nil, err
 	}
