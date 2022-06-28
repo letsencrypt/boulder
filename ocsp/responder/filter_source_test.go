@@ -122,7 +122,7 @@ func TestCheckResponse(t *testing.T) {
 	fExpired, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, sourceExpired, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
-	actual, err = fExpired.Response(context.Background(), req)
+	_, err = fExpired.Response(context.Background(), req)
 	test.AssertError(t, err, "missing error")
 	test.AssertErrorIs(t, err, errOCSPResponseExpired)
 
