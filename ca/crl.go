@@ -38,9 +38,9 @@ func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, maxLogLen in
 		logger.Warningf("got zero for crl lifetime; setting to default 9 days")
 		lifetime = 9 * 24 * time.Hour
 	} else if lifetime >= 10*24*time.Hour {
-		return nil, fmt.Errorf("crl lifetime cannot be more than 10 days, got: %s", lifetime)
+		return nil, fmt.Errorf("crl lifetime cannot be more than 10 days, got %q", lifetime)
 	} else if lifetime <= 0*time.Hour {
-		return nil, fmt.Errorf("crl lifetime must be positive, got: %s", lifetime)
+		return nil, fmt.Errorf("crl lifetime must be positive, got %q", lifetime)
 	}
 
 	return &crlImpl{
