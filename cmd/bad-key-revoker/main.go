@@ -87,7 +87,7 @@ func (bkr *badKeyRevoker) countUncheckedKeys() (int, error) {
 	err := bkr.dbMap.SelectOne(
 		&count,
 		`SELECT COUNT(*)
-		FROM (SELECT * FROM blockedKeys
+		FROM (SELECT 1 FROM blockedKeys
 		WHERE extantCertificatesChecked = false
 		LIMIT ?) AS a`,
 		blockedKeysGaugeLimit,
@@ -294,7 +294,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	// blockedKeysGaugeLimit).
 	keysToProcess.Set(float64(uncheckedCount))
 
-	if uncheckedCount == blockedKeysGaugeLimit {
+	if uncheckedCount >= blockedKeysGaugeLimit {
 		bkr.logger.AuditInfof("found >= %d unchecked blocked keys left to process", uncheckedCount)
 	} else {
 		bkr.logger.AuditInfof("found %d unchecked blocked keys left to process", uncheckedCount)
@@ -375,9 +375,6 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-
-	// Decrement 1 from the number of rows to be processed.
-	keysToProcess.Dec()
 	return false, nil
 }
 
