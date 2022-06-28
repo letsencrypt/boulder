@@ -275,7 +275,7 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 	}
 
 	numBytes := template.Number.Bytes()
-	if len(numBytes) > 20 || numBytes[0]&0x80 != 0 && len(numBytes) > 19 {
+	if len(numBytes) > 20 || (numBytes[0]&0x80 != 0 && len(numBytes) > 19) {
 		return nil, errors.New("x509: template contains Number longer than 20 octets")
 	}
 

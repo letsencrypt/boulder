@@ -105,7 +105,7 @@ func TestCreateRevocationList(t *testing.T) {
 			expectedError: "x509: template contains nil Number field",
 		},
 		{
-			name: "nil Number",
+			name: "too-big Number",
 			key:  ec256Priv,
 			issuer: &x509.Certificate{
 				KeyUsage: x509.KeyUsageCRLSign,
