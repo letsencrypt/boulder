@@ -290,10 +290,11 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 		return false, err
 	}
 
-	// Set the gauge to the number of rows to be processed (max: 1000).
+	// Set the gauge to the number of rows to be processed (max:
+	// blockedKeysGaugeLimit).
 	keysToProcess.Set(float64(uncheckedCount))
 
-	if uncheckedCount == 1000 {
+	if uncheckedCount == blockedKeysGaugeLimit {
 		bkr.logger.AuditInfof("found >= %d unchecked blocked keys left to process", uncheckedCount)
 	} else {
 		bkr.logger.AuditInfof("found %d unchecked blocked keys left to process", uncheckedCount)
