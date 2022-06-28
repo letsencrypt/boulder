@@ -94,10 +94,8 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 	return resp, nil
 }
 
-// checkNextUpdate is in the past. If thats the case errOCSPResponseExpired
-// will be returned. Otherwise nil is returned. We do this, because clients will
-// not validate an OCSP response where NextUpdate is in the past, so we should
-// not serve them.
+// checkNextUpdate evaluates whether the nextUpdate field of the requested OCSP
+// response is in the past. If so, `errOCSPResponseExpired` will be returned.
 func (src *filterSource) checkNextUpdate(resp *Response) error {
 	if time.Now().Before(resp.NextUpdate) {
 		return nil
