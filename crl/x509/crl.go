@@ -274,6 +274,11 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 		return nil, errors.New("x509: template contains nil Number field")
 	}
 
+	numBytes := template.Number.Bytes()
+	if len(numBytes) > 20 || numBytes[0]&0x80 != 0 && len(numBytes) > 19 {
+		return nil, errors.New("x509: template contains Number longer than 20 octets")
+	}
+
 	hashFunc, signatureAlgorithm, err := signingParamsForPublicKey(priv.Public(), template.SignatureAlgorithm)
 	if err != nil {
 		return nil, err

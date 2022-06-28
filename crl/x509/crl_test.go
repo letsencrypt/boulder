@@ -32,6 +32,7 @@ func TestCreateRevocationList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to generate Ed25519 key: %s", err)
 	}
+	bigNum, _ := big.NewInt(0).SetString("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF", 16)
 	tests := []struct {
 		name          string
 		key           crypto.Signer
@@ -102,6 +103,23 @@ func TestCreateRevocationList(t *testing.T) {
 				NextUpdate: time.Time{}.Add(time.Hour * 48),
 			},
 			expectedError: "x509: template contains nil Number field",
+		},
+		{
+			name: "nil Number",
+			key:  ec256Priv,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
+				Subject: pkix.Name{
+					CommonName: "testing",
+				},
+				SubjectKeyId: []byte{1, 2, 3},
+			},
+			template: &RevocationList{
+				Number:     bigNum,
+				ThisUpdate: time.Time{}.Add(time.Hour * 24),
+				NextUpdate: time.Time{}.Add(time.Hour * 48),
+			},
+			expectedError: "x509: template contains Number longer than 20 octets",
 		},
 		{
 			name: "invalid signature algorithm",
