@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/rsa"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
@@ -233,14 +234,14 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 // The issuer distinguished name CRL field and authority key identifier
 // extension are populated using the issuer certificate. issuer must have
 // SubjectKeyId set.
-func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *Certificate, priv crypto.Signer) ([]byte, error) {
+func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509.Certificate, priv crypto.Signer) ([]byte, error) {
 	if template == nil {
 		return nil, errors.New("x509: template can not be nil")
 	}
 	if issuer == nil {
 		return nil, errors.New("x509: issuer can not be nil")
 	}
-	if (issuer.KeyUsage & KeyUsageCRLSign) == 0 {
+	if (issuer.KeyUsage & x509.KeyUsageCRLSign) == 0 {
 		return nil, errors.New("x509: issuer must have the crlSign key usage bit set")
 	}
 	if len(issuer.SubjectKeyId) == 0 {
@@ -332,19 +333,19 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *Cert
 
 // CheckSignatureFrom verifies that the signature on rl is a valid signature
 // from issuer.
-func (rl *RevocationList) CheckSignatureFrom(parent *Certificate) error {
+func (rl *RevocationList) CheckSignatureFrom(parent *x509.Certificate) error {
 	if parent.Version == 3 && !parent.BasicConstraintsValid ||
 		parent.BasicConstraintsValid && !parent.IsCA {
-		return ConstraintViolationError{}
+		return x509.ConstraintViolationError{}
 	}
 
-	if parent.KeyUsage != 0 && parent.KeyUsage&KeyUsageCRLSign == 0 {
-		return ConstraintViolationError{}
+	if parent.KeyUsage != 0 && parent.KeyUsage&x509.KeyUsageCRLSign == 0 {
+		return x509.ConstraintViolationError{}
 	}
 
-	if parent.PublicKeyAlgorithm == UnknownPublicKeyAlgorithm {
-		return ErrUnsupportedAlgorithm
+	if parent.PublicKeyAlgorithm == x509.UnknownPublicKeyAlgorithm {
+		return x509.ErrUnsupportedAlgorithm
 	}
 
-	return parent.CheckSignature(rl.SignatureAlgorithm, rl.RawTBSRevocationList, rl.Signature)
+	return parent.CheckSignature(x509.SignatureAlgorithm(rl.SignatureAlgorithm), rl.RawTBSRevocationList, rl.Signature)
 }

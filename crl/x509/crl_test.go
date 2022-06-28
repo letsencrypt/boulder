@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	_ "crypto/sha256"
 	_ "crypto/sha512"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"math/big"
@@ -34,7 +35,7 @@ func TestCreateRevocationList(t *testing.T) {
 	tests := []struct {
 		name          string
 		key           crypto.Signer
-		issuer        *Certificate
+		issuer        *x509.Certificate
 		template      *RevocationList
 		expectedError string
 	}{
@@ -55,8 +56,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "issuer doesn't have crlSign key usage bit set",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCertSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCertSign,
 			},
 			template:      &RevocationList{},
 			expectedError: "x509: issuer must have the crlSign key usage bit set",
@@ -64,8 +65,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "issuer missing SubjectKeyId",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 			},
 			template:      &RevocationList{},
 			expectedError: "x509: issuer certificate doesn't contain a subject key identifier",
@@ -73,8 +74,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "nextUpdate before thisUpdate",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -89,8 +90,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "nil Number",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -105,8 +106,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "invalid signature algorithm",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -129,8 +130,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "valid",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -151,8 +152,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "valid, Ed25519 key",
 			key:  ed25519Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -173,8 +174,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "valid, non-default signature algorithm",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -196,8 +197,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "valid, extra extension",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -224,8 +225,8 @@ func TestCreateRevocationList(t *testing.T) {
 		{
 			name: "valid, empty list",
 			key:  ec256Priv,
-			issuer: &Certificate{
-				KeyUsage: KeyUsageCRLSign,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
 				Subject: pkix.Name{
 					CommonName: "testing",
 				},
@@ -334,81 +335,81 @@ func TestRevocationListCheckSignatureFrom(t *testing.T) {
 	}
 	tests := []struct {
 		name   string
-		issuer *Certificate
+		issuer *x509.Certificate
 		err    string
 	}{
 		{
 			name: "valid",
-			issuer: &Certificate{
+			issuer: &x509.Certificate{
 				Version:               3,
 				BasicConstraintsValid: true,
 				IsCA:                  true,
-				PublicKeyAlgorithm:    ECDSA,
+				PublicKeyAlgorithm:    x509.ECDSA,
 				PublicKey:             goodKey.Public(),
 			},
 		},
 		{
 			name: "valid, key usage set",
-			issuer: &Certificate{
+			issuer: &x509.Certificate{
 				Version:               3,
 				BasicConstraintsValid: true,
 				IsCA:                  true,
-				PublicKeyAlgorithm:    ECDSA,
+				PublicKeyAlgorithm:    x509.ECDSA,
 				PublicKey:             goodKey.Public(),
-				KeyUsage:              KeyUsageCRLSign,
+				KeyUsage:              x509.KeyUsageCRLSign,
 			},
 		},
 		{
 			name: "invalid issuer, wrong key usage",
-			issuer: &Certificate{
+			issuer: &x509.Certificate{
 				Version:               3,
 				BasicConstraintsValid: true,
 				IsCA:                  true,
-				PublicKeyAlgorithm:    ECDSA,
+				PublicKeyAlgorithm:    x509.ECDSA,
 				PublicKey:             goodKey.Public(),
-				KeyUsage:              KeyUsageCertSign,
+				KeyUsage:              x509.KeyUsageCertSign,
 			},
 			err: "x509: invalid signature: parent certificate cannot sign this kind of certificate",
 		},
 		{
 			name: "invalid issuer, no basic constraints/ca",
-			issuer: &Certificate{
+			issuer: &x509.Certificate{
 				Version:            3,
-				PublicKeyAlgorithm: ECDSA,
+				PublicKeyAlgorithm: x509.ECDSA,
 				PublicKey:          goodKey.Public(),
 			},
 			err: "x509: invalid signature: parent certificate cannot sign this kind of certificate",
 		},
 		{
 			name: "invalid issuer, unsupported public key type",
-			issuer: &Certificate{
+			issuer: &x509.Certificate{
 				Version:               3,
 				BasicConstraintsValid: true,
 				IsCA:                  true,
-				PublicKeyAlgorithm:    UnknownPublicKeyAlgorithm,
+				PublicKeyAlgorithm:    x509.UnknownPublicKeyAlgorithm,
 				PublicKey:             goodKey.Public(),
 			},
 			err: "x509: cannot verify signature: algorithm unimplemented",
 		},
 		{
 			name: "wrong key",
-			issuer: &Certificate{
+			issuer: &x509.Certificate{
 				Version:               3,
 				BasicConstraintsValid: true,
 				IsCA:                  true,
-				PublicKeyAlgorithm:    ECDSA,
+				PublicKeyAlgorithm:    x509.ECDSA,
 				PublicKey:             badKey.Public(),
 			},
 			err: "x509: ECDSA verification failure",
 		},
 	}
 
-	crlIssuer := &Certificate{
+	crlIssuer := &x509.Certificate{
 		BasicConstraintsValid: true,
 		IsCA:                  true,
-		PublicKeyAlgorithm:    ECDSA,
+		PublicKeyAlgorithm:    x509.ECDSA,
 		PublicKey:             goodKey.Public(),
-		KeyUsage:              KeyUsageCRLSign,
+		KeyUsage:              x509.KeyUsageCRLSign,
 		SubjectKeyId:          []byte{1, 2, 3},
 	}
 	for _, tc := range tests {
