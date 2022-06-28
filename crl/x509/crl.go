@@ -22,6 +22,21 @@ import (
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
+var (
+	oidExtensionReasonCode = []int{2, 5, 29, 21}
+)
+
+// RevokedCertificate contains the fields used to create an X.509 v2 Revoked
+// Certificate, i.e. an entry in a Certificate Revocation List's sequence of
+// revoked certificates.
+// NOTE: This type does not exist in upstream.
+type RevokedCertificate struct {
+	SerialNumber    *big.Int
+	RevocationTime  time.Time
+	ReasonCode      int
+	ExtraExtensions []pkix.Extension
+}
+
 // RevocationList contains the fields used to create an X.509 v2 Certificate
 // Revocation list with CreateRevocationList.
 type RevocationList struct {
@@ -41,7 +56,7 @@ type RevocationList struct {
 	// RevokedCertificates is used to populate the revokedCertificates
 	// sequence in the CRL, it may be empty. RevokedCertificates may be nil,
 	// in which case an empty CRL will be created.
-	RevokedCertificates []pkix.RevokedCertificate
+	RevokedCertificates []RevokedCertificate
 
 	// Number is used to populate the X.509 v2 cRLNumber extension in the CRL,
 	// which should be a monotonically increasing sequence number for a given
@@ -162,7 +177,7 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 			if !revokedSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE) {
 				return nil, errors.New("x509: malformed crl")
 			}
-			rc := pkix.RevokedCertificate{}
+			rc := RevokedCertificate{}
 			rc.SerialNumber = new(big.Int)
 			if !certSeq.ReadASN1Integer(rc.SerialNumber) {
 				return nil, errors.New("x509: malformed serial number")
@@ -186,7 +201,15 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 					if err != nil {
 						return nil, err
 					}
-					rc.Extensions = append(rc.Extensions, ext)
+					// NOTE: This block differs from upstream.
+					if ext.Id.Equal(oidExtensionReasonCode) {
+						val := cryptobyte.String(ext.Value)
+						if !val.ReadASN1Enum(&rc.ReasonCode) {
+							return nil, fmt.Errorf("x509: malformed reasonCode extension")
+						}
+						continue
+					}
+					rc.ExtraExtensions = append(rc.ExtraExtensions, ext)
 				}
 			}
 
@@ -256,11 +279,42 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 		return nil, err
 	}
 
-	// Force revocation times to UTC per RFC 5280.
-	revokedCertsUTC := make([]pkix.RevokedCertificate, len(template.RevokedCertificates))
+	// Convert the ReasonCode field to a proper extension, and force revocation
+	// times to UTC per RFC 5280.
+	// NOTE: This block differs from upstream.
+	revokedCerts := make([]pkix.RevokedCertificate, len(template.RevokedCertificates))
 	for i, rc := range template.RevokedCertificates {
-		rc.RevocationTime = rc.RevocationTime.UTC()
-		revokedCertsUTC[i] = rc
+		prc := pkix.RevokedCertificate{
+			SerialNumber:   rc.SerialNumber,
+			RevocationTime: rc.RevocationTime.UTC(),
+		}
+
+		// Copy over any extra extensions, except for a Reason Code extension,
+		// because we'll synthesize that ourselves to ensure it is correct.
+		exts := make([]pkix.Extension, 0)
+		for _, ext := range rc.ExtraExtensions {
+			if ext.Id.Equal(oidExtensionReasonCode) {
+				continue
+			}
+			exts = append(exts, ext)
+		}
+
+		// Only add a reasonCode extension if the reason is non-zero, as per
+		// RFC 5280 Section 5.3.1.
+		if rc.ReasonCode != 0 {
+			reasonBytes, err := asn1.Marshal(asn1.Enumerated(rc.ReasonCode))
+			if err != nil {
+				return nil, err
+			}
+
+			exts = append(exts, pkix.Extension{
+				Id:    oidExtensionReasonCode,
+				Value: reasonBytes,
+			})
+		}
+
+		prc.Extensions = exts
+		revokedCerts[i] = prc
 	}
 
 	aki, err := asn1.Marshal(authKeyId{Id: issuer.SubjectKeyId})
@@ -289,8 +343,8 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 			},
 		},
 	}
-	if len(revokedCertsUTC) > 0 {
-		tbsCertList.RevokedCertificates = revokedCertsUTC
+	if len(revokedCerts) > 0 {
+		tbsCertList.RevokedCertificates = revokedCerts
 	}
 
 	if len(template.ExtraExtensions) > 0 {
