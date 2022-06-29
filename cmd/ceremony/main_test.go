@@ -544,9 +544,11 @@ func TestKeyConfigValidate(t *testing.T) {
 					RSAModLength: 2048,
 				},
 				Outputs: struct {
-					PublicKeyPath string `yaml:"public-key-path"`
+					PublicKeyPath    string `yaml:"public-key-path"`
+					PKCS11ConfigPath string `yaml:"pkcs11-config-path"`
 				}{
-					PublicKeyPath: "path",
+					PublicKeyPath:    "path",
+					PKCS11ConfigPath: "path.json",
 				},
 			},
 		},
