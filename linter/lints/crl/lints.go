@@ -11,9 +11,13 @@ import (
 
 type crlLint func(*crl_x509.RevocationList) *lint.LintResult
 
+// registry is the collection of all known CRL lints. It is populated by this
+// file's init(), and should not be touched by anything else on pain of races.
 var registry map[string]crlLint
 
 func init() {
+	// NOTE TO DEVS: you MUST add your new lint function to this list or it
+	// WILL NOT be run.
 	registry = map[string]crlLint{
 		"isVersion2":    isVersion2,
 		"hasNextUpdate": hasNextUpdate,
@@ -64,7 +68,7 @@ func LintCRL(lintCRL *crl_x509.RevocationList) *zlint.ResultSet {
 // isVersion2 checks RFC 5280, Section 5:
 // CRLs MUST be version 2 CRLs
 func isVersion2(crl *crl_x509.RevocationList) *lint.LintResult {
-	// TODO: Figure out how to check this, since Version isn't surfaced.
+	// TODO: Figure out how best to check this, since Version isn't surfaced.
 	return &lint.LintResult{Status: lint.NA}
 }
 
