@@ -3,9 +3,6 @@ package ca
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +13,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	crl_x509 "github.com/letsencrypt/boulder/crl/x509"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -53,9 +51,9 @@ func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, maxLogLen in
 
 func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
 	var issuer *issuance.Issuer
-	var template *x509.RevocationList
+	var template *crl_x509.RevocationList
 	var shard int64
-	rcs := make([]pkix.RevokedCertificate, 0)
+	rcs := make([]crl_x509.RevokedCertificate, 0)
 
 	for {
 		in, err := stream.Recv()
@@ -127,7 +125,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	}
 
 	template.RevokedCertificates = rcs
-	crlBytes, err := x509.CreateRevocationList(
+	crlBytes, err := crl_x509.CreateRevocationList(
 		rand.Reader,
 		template,
 		issuer.Cert.Certificate,
@@ -162,7 +160,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	return nil
 }
 
-func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*x509.RevocationList, error) {
+func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.RevocationList, error) {
 	if meta.IssuerNameID == 0 || meta.ThisUpdate == 0 {
 		return nil, errors.New("got incomplete metadata message")
 	}
@@ -174,7 +172,7 @@ func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*x509.RevocationL
 	number := big.NewInt(meta.ThisUpdate)
 	thisUpdate := time.Unix(0, meta.ThisUpdate)
 
-	return &x509.RevocationList{
+	return &crl_x509.RevocationList{
 		Number:     number,
 		ThisUpdate: thisUpdate,
 		NextUpdate: thisUpdate.Add(-time.Second).Add(ci.lifetime),
@@ -182,7 +180,7 @@ func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*x509.RevocationL
 
 }
 
-func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*pkix.RevokedCertificate, error) {
+func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*crl_x509.RevokedCertificate, error) {
 	serial, err := core.StringToSerial(entry.Serial)
 	if err != nil {
 		return nil, err
@@ -193,29 +191,9 @@ func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*pkix.Revo
 	}
 	revokedAt := time.Unix(0, entry.RevokedAt)
 
-	// RFC 5280 Section 5.3.1 says "the reason code CRL entry extension SHOULD be
-	// absent instead of using the unspecified (0) reasonCode value.", so we make
-	// sure we only add this extension if we have a non-zero revocation reason.
-	var extensions []pkix.Extension
-	if entry.Reason != 0 {
-		reasonBytes, err := asn1.Marshal(asn1.Enumerated(entry.Reason))
-		if err != nil {
-			return nil, err
-		}
-
-		extensions = []pkix.Extension{
-			// The Reason Code extension, as defined in RFC 5280 Section 5.3.1:
-			// https://datatracker.ietf.org/doc/html/rfc5280#section-5.3.1
-			{
-				Id:    asn1.ObjectIdentifier{2, 5, 29, 21}, // id-ce-reasonCode
-				Value: reasonBytes,
-			},
-		}
-	}
-
-	return &pkix.RevokedCertificate{
+	return &crl_x509.RevokedCertificate{
 		SerialNumber:   serial,
 		RevocationTime: revokedAt,
-		Extensions:     extensions,
+		ReasonCode:     int(entry.Reason),
 	}, nil
 }
