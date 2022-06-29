@@ -15,7 +15,10 @@ var registry map[string]crlLint
 
 func init() {
 	registry = map[string]crlLint{
-		"hasNumber": hasNumber,
+		"isVersion2":    isVersion2,
+		"hasNextUpdate": hasNextUpdate,
+		"hasNumber":     hasNumber,
+		"hasAKI":        hasAKI,
 	}
 }
 
