@@ -48,3 +48,8 @@ func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *ca
 func (ca *MockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return nil, nil
 }
+
+// GenerateCRL is a mock
+func (ca *MockCA) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (capb.CertificateAuthority_GenerateCRLClient, error) {
+	return nil, nil
+}

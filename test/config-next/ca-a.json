@@ -24,6 +24,14 @@
         "orphan-finder.boulder"
       ]
     },
+    "grpcCRLGenerator": {
+      "maxConnectionAge": "30s",
+      "address": ":9106",
+      "clientNames": [
+        "health-checker.boulder",
+        "crl-updater.boulder"
+      ]
+    },
     "saService": {
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"
@@ -59,8 +67,19 @@
           "ocspURL": "http://127.0.0.1:4002/",
           "crlURL": "http://example.com/crl",
           "location": {
-            "configFile": "test/test-ca.key-pkcs11.json",
+            "configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
             "certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
+            "numSessions": 2
+          }
+        },
+        {
+          "useForRSALeaves": false,
+          "useForECDSALeaves": true,
+          "issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
+          "ocspURL": "http://127.0.0.1:4002/",
+          "location": {
+            "configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
+            "certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
             "numSessions": 2
           }
         },
@@ -71,7 +90,7 @@
           "ocspURL": "http://127.0.0.1:4002/",
           "crlURL": "http://example.com/crl",
           "location": {
-            "configFile": "test/test-ca.key-pkcs11.json",
+            "configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
             "certFile": "/hierarchy/intermediate-cert-rsa-b.pem",
             "numSessions": 2
           }
@@ -84,6 +103,7 @@
     "serialPrefix": 255,
     "maxNames": 100,
     "lifespanOCSP": "96h",
+    "lifespanCRL": "216h",
     "goodkey": {
       "weakKeyFile": "test/example-weak-keys.json",
       "blockedKeyFile": "test/example-blocked-keys.yaml",

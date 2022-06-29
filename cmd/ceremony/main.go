@@ -240,7 +240,8 @@ type keyConfig struct {
 	PKCS11       PKCS11KeyGenConfig `yaml:"pkcs11"`
 	Key          keyGenConfig       `yaml:"key"`
 	Outputs      struct {
-		PublicKeyPath string `yaml:"public-key-path"`
+		PublicKeyPath    string `yaml:"public-key-path"`
+		PKCS11ConfigPath string `yaml:"pkcs11-config-path"`
 	} `yaml:"outputs"`
 }
 
@@ -619,6 +620,17 @@ func keyCeremony(configBytes []byte) error {
 	log.Printf("Opened PKCS#11 session for slot %d\n", config.PKCS11.StoreSlot)
 	if _, err = generateKey(session, config.PKCS11.StoreLabel, config.Outputs.PublicKeyPath, config.Key); err != nil {
 		return err
+	}
+
+	if config.Outputs.PKCS11ConfigPath != "" {
+		contents := fmt.Sprintf(
+			`{"module": %q, "tokenLabel": %q, "pin": %q}`,
+			config.PKCS11.Module, config.PKCS11.StoreLabel, config.PKCS11.PIN,
+		)
+		err = writeFile(config.Outputs.PKCS11ConfigPath, []byte(contents))
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
