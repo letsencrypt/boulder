@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -29,12 +29,13 @@ type filterSource struct {
 	serialPrefixes []string
 	counter        *prometheus.CounterVec
 	log            blog.Logger
+	clk            clock.Clock
 }
 
 // NewFilterSource returns a filterSource which performs various checks on the
 // OCSP requests sent to the wrapped Source, and the OCSP responses returned
 // by it.
-func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, stats prometheus.Registerer, log blog.Logger) (*filterSource, error) {
+func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, stats prometheus.Registerer, log blog.Logger, clk clock.Clock) (*filterSource, error) {
 	if len(issuerCerts) < 1 {
 		return nil, errors.New("Filter must include at least 1 issuer cert")
 	}
@@ -63,6 +64,7 @@ func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []strin
 		serialPrefixes: serialPrefixes,
 		counter:        counter,
 		log:            log,
+		clk:            clk,
 	}, nil
 }
 
@@ -97,7 +99,7 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 // checkNextUpdate evaluates whether the nextUpdate field of the requested OCSP
 // response is in the past. If so, `errOCSPResponseExpired` will be returned.
 func (src *filterSource) checkNextUpdate(resp *Response) error {
-	if time.Now().Before(resp.NextUpdate) {
+	if src.clk.Now().Before(resp.NextUpdate) {
 		return nil
 	}
 	return errOCSPResponseExpired

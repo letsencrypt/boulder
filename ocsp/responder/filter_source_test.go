@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -17,14 +18,14 @@ import (
 )
 
 func TestNewFilter(t *testing.T) {
-	_, err := NewFilterSource([]*issuance.Certificate{}, []string{}, nil, metrics.NoopRegisterer, blog.NewMock())
+	_, err := NewFilterSource([]*issuance.Certificate{}, []string{}, nil, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertError(t, err, "didn't error when creating empty filter")
 
 	issuer, err := issuance.LoadCertificate("./testdata/test-ca.der.pem")
 	test.AssertNotError(t, err, "failed to load issuer cert")
 	issuerNameId := issuer.NameID()
 
-	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock())
+	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertNotError(t, err, "errored when creating good filter")
 	test.AssertEquals(t, len(f.issuers), 1)
 	test.AssertEquals(t, len(f.serialPrefixes), 1)
@@ -35,7 +36,7 @@ func TestCheckNextUpdate(t *testing.T) {
 	issuer, err := issuance.LoadCertificate("./testdata/test-ca.der.pem")
 	test.AssertNotError(t, err, "failed to load issuer cert")
 
-	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock())
+	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
 	resp := &Response{
@@ -53,7 +54,7 @@ func TestCheckRequest(t *testing.T) {
 	issuer, err := issuance.LoadCertificate("./testdata/test-ca.der.pem")
 	test.AssertNotError(t, err, "failed to load issuer cert")
 
-	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock())
+	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
 	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
@@ -106,7 +107,7 @@ func TestCheckResponse(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse OCSP response")
 
 	source := &echoSource{&Response{resp, respBytes}}
-	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, source, metrics.NoopRegisterer, blog.NewMock())
+	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, source, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
 	actual, err := f.Response(context.Background(), req)
@@ -119,7 +120,7 @@ func TestCheckResponse(t *testing.T) {
 	expiredResp.NextUpdate = time.Time{}
 
 	sourceExpired := &echoSource{&Response{expiredResp, nil}}
-	fExpired, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, sourceExpired, metrics.NoopRegisterer, blog.NewMock())
+	fExpired, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, sourceExpired, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
 	_, err = fExpired.Response(context.Background(), req)
@@ -129,7 +130,7 @@ func TestCheckResponse(t *testing.T) {
 	// Overwrite the Responder Name in the stored response to cause a diagreement.
 	resp.RawResponderName = []byte("C = US, O = Foo, DN = Bar")
 	source = &echoSource{&Response{resp, respBytes}}
-	f, err = NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, source, metrics.NoopRegisterer, blog.NewMock())
+	f, err = NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, source, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
 	_, err = f.Response(context.Background(), req)
