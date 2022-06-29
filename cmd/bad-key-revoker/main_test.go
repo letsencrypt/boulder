@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -378,6 +379,7 @@ func TestInvoke(t *testing.T) {
 	test.AssertEquals(t, mr.revoked, 4)
 	test.AssertEquals(t, len(mm.Messages), 1)
 	test.AssertEquals(t, mm.Messages[0].To, "example.com")
+	test.AssertMetricWithLabelsEquals(t, keysToProcess, prometheus.Labels{}, 1)
 
 	var checked struct {
 		ExtantCertificatesChecked bool

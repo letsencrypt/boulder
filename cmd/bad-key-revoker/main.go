@@ -32,7 +32,7 @@ import (
 const blockedKeysGaugeLimit = 1000
 
 var keysToProcess = prometheus.NewGauge(prometheus.GaugeOpts{
-	Name: "bad_keys_processed",
+	Name: "bad_keys_to_process",
 	Help: fmt.Sprintf("A gauge of blockedKeys rows to process (max: %d)", blockedKeysGaugeLimit),
 })
 var keysProcessed = prometheus.NewCounterVec(prometheus.CounterOpts{
