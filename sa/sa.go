@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -93,7 +94,7 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
-	rocspWriteClient rocspWriter,
+	rocspWriteClient *rocsp.WritingClient,
 	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,
@@ -114,10 +115,15 @@ func NewSQLStorageAuthority(
 	}, []string{"result"})
 	stats.MustRegister(redisStoreResponse)
 
+	var rocspWriter rocspWriter
+	if rocspWriteClient != nil {
+		rocspWriter = rocspWriteClient
+	}
+
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
 		dbReadOnlyMap:        dbReadOnlyMap,
-		rocspWriteClient:     rocspWriteClient,
+		rocspWriteClient:     rocspWriter,
 		shortIssuers:         shortIssuers,
 		clk:                  clk,
 		log:                  logger,
