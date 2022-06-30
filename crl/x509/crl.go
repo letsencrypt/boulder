@@ -26,8 +26,8 @@ var (
 	oidExtensionReasonCode = []int{2, 5, 29, 21}
 )
 
-// RevokedCertificate contains the fields used to create an X.509 v2 Revoked
-// Certificate, i.e. an entry in a Certificate Revocation List's sequence of
+// RevokedCertificate contains the fields used to create an entry in the revokedCertificates
+// list of a CRL.
 // revoked certificates.
 // NOTE: This type does not exist in upstream.
 type RevokedCertificate struct {
