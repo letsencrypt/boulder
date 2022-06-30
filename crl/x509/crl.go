@@ -269,6 +269,17 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 			if err != nil {
 				return nil, err
 			}
+			// NOTE: The block does not exist in upstream.
+			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
+				rl.AuthorityKeyId = ext.Value
+			} else if ext.Id.Equal(oidExtensionCRLNumber) {
+				number := new(big.Int)
+				value := cryptobyte.String(ext.Value)
+				if !value.ReadASN1Integer(number) {
+					return nil, errors.New("x509: malformed crl number")
+				}
+				rl.Number = number
+			}
 			rl.Extensions = append(rl.Extensions, ext)
 		}
 	}
