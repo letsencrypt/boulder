@@ -57,6 +57,11 @@ import (
 // indicate that the responder should reply with unauthorizedErrorResponse.
 var ErrNotFound = errors.New("Request OCSP Response not found")
 
+// errOCSPResponseExpired indicates that the nextUpdate field of the requested
+// OCSP response occurred in the past and an HTTP status code of 533 should be
+// returned to the caller.
+var errOCSPResponseExpired = errors.New("OCSP response is expired")
+
 var responseTypeToString = map[ocsp.ResponseStatus]string{
 	ocsp.Success:           "Success",
 	ocsp.Malformed:         "Malformed",
@@ -285,6 +290,14 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		if errors.Is(err, ErrNotFound) {
 			rs.log.Infof("No response found for request: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
+			response.Write(ocsp.UnauthorizedErrorResponse)
+			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
+			return
+		} else if errors.Is(err, errOCSPResponseExpired) {
+			rs.log.Infof("Requested ocsp response is expired: serial %x, request body %s",
+				ocspRequest.SerialNumber, b64Body)
+			// HTTP StatusCode - unassigned
+			response.WriteHeader(533)
 			response.Write(ocsp.UnauthorizedErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return

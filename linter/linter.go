@@ -13,7 +13,7 @@ import (
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
-	crl_x509 "github.com/letsencrypt/boulder/crl/x509"
+	"github.com/letsencrypt/boulder/crl/crl_x509"
 	crllints "github.com/letsencrypt/boulder/linter/lints/crl"
 
 	_ "github.com/letsencrypt/boulder/linter/lints/all"

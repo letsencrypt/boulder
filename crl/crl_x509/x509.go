@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package x509 parses X.509-encoded keys and certificates.
-package x509
+package crl_x509
 
 import (
 	"bytes"

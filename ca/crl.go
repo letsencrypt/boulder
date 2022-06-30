@@ -13,7 +13,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	crl_x509 "github.com/letsencrypt/boulder/crl/x509"
+	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -114,7 +114,11 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 			fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
 		}
 
-		fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
+		reason := 0
+		if rcs[i].ReasonCode != nil {
+			reason = *rcs[i].ReasonCode
+		}
+		fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
 
 		if builder.Len() != ci.maxLogLen {
 			ci.log.AuditInfof("%s", builder)
