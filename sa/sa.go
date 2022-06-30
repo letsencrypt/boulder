@@ -1776,7 +1776,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}
@@ -1836,7 +1836,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}

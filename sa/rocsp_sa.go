@@ -9,7 +9,7 @@ type rocspWriter interface {
 }
 
 // storeOCSPRedis stores an OCSP response in a redis cluster.
-func (ssa *SQLStorageAuthority) storeOCSPRedis(ctx context.Context, resp []byte, issuerID int64) error {
+func (ssa *SQLStorageAuthority) storeOCSPRedis(ctx context.Context, resp []byte) error {
 	err := ssa.rocspWriteClient.StoreResponse(ctx, resp)
 	if err != nil {
 		ssa.redisStoreResponse.WithLabelValues("store_response_error").Inc()
