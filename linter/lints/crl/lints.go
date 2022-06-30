@@ -19,10 +19,11 @@ func init() {
 	// NOTE TO DEVS: you MUST add your new lint function to this list or it
 	// WILL NOT be run.
 	registry = map[string]crlLint{
-		"isVersion2":    isVersion2,
-		"hasNextUpdate": hasNextUpdate,
-		"hasNumber":     hasNumber,
-		"hasAKI":        hasAKI,
+		"isVersion2":        isVersion2,
+		"hasNextUpdate":     hasNextUpdate,
+		"hasNumber":         hasNumber,
+		"hasAKI":            hasAKI,
+		"hasMozReasonCodes": hasMozReasonCodes,
 	}
 }
 
@@ -104,6 +105,35 @@ func hasAKI(crl *crl_x509.RevocationList) *lint.LintResult {
 		return &lint.LintResult{
 			Status:  lint.Error,
 			Details: "CRLs MUST include the authority key identifier extension",
+		}
+	}
+	return &lint.LintResult{Status: lint.Pass}
+}
+
+// hasMozReasonCodes checks MRSP v2.8 Section 6.1.1:
+// When the CRLReason code is not one of the following, then the reasonCode extension MUST NOT be provided:
+// - keyCompromise (RFC 5280 CRLReason #1);
+// - privilegeWithdrawn (RFC 5280 CRLReason #9);
+// - cessationOfOperation (RFC 5280 CRLReason #5);
+// - affiliationChanged (RFC 5280 CRLReason #3); or
+// - superseded (RFC 5280 CRLReason #4).
+func hasMozReasonCodes(crl *crl_x509.RevocationList) *lint.LintResult {
+	for _, rc := range crl.RevokedCertificates {
+		if rc.ReasonCode == nil {
+			continue
+		}
+		switch *rc.ReasonCode {
+		case 1: // keyCompromise
+		case 3: // affiliationChanged
+		case 4: // superseded
+		case 5: // cessationOfOperation
+		case 9: // privilegeWithdrawn
+			continue
+		default:
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "CRLs MUST NOT include reasonCodes other than 1, 3, 4, 5, and 9",
+			}
 		}
 	}
 	return &lint.LintResult{Status: lint.Pass}
