@@ -109,7 +109,9 @@ func UnaryServerInterceptorWithConfig(cfg config.GRPCIncomingConfig) grpc.UnaryS
 		if err != nil {
 			span.AddTraceField("handler_error", err.Error())
 		}
-		span.AddField("response.grpc_status_code", status.Code(err))
+		code := status.Code(err)
+		span.AddField("response.grpc_status_code", code)
+		span.AddField("response.grpc_status_message", code.String())
 		return resp, err
 	}
 }
