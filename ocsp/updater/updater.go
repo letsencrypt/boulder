@@ -16,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -25,10 +24,6 @@ import (
 type ocspDb interface {
 	db.MappedExecutor
 	Exec(query string, args ...interface{}) (sql.Result, error)
-}
-
-type rocspClientInterface interface {
-	StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error
 }
 
 // failCounter provides a concurrent safe counter.
@@ -60,11 +55,8 @@ type OCSPUpdater struct {
 	log blog.Logger
 	clk clock.Clock
 
-	db          ocspDb
-	readOnlyDb  db.MappedExecutor
-	rocspClient rocspClientInterface
-
-	issuers []rocsp_config.ShortIDIssuer
+	db         ocspDb
+	readOnlyDb db.MappedExecutor
 
 	ogc capb.OCSPGeneratorClient
 
@@ -84,14 +76,11 @@ type OCSPUpdater struct {
 	// these requests in parallel allows us to get higher total throughput.
 	parallelGenerateOCSPRequests int
 
-	redisTimeout time.Duration
-
 	tickHistogram        *prometheus.HistogramVec
 	stalenessHistogram   prometheus.Histogram
 	genStoreHistogram    prometheus.Histogram
 	generatedCounter     *prometheus.CounterVec
 	storedCounter        *prometheus.CounterVec
-	storedRedisCounter   *prometheus.CounterVec
 	markExpiredCounter   *prometheus.CounterVec
 	findStaleOCSPCounter *prometheus.CounterVec
 }
@@ -101,8 +90,6 @@ func New(
 	clk clock.Clock,
 	db *db.WrappedMap,
 	readOnlyDb *db.WrappedMap,
-	rocspClient rocspClientInterface,
-	issuers []rocsp_config.ShortIDIssuer,
 	serialSuffixes []string,
 	ogc capb.OCSPGeneratorClient,
 	batchSize int,
@@ -111,7 +98,6 @@ func New(
 	retryBackoffFactor float64,
 	ocspMinTimeToExpiry time.Duration,
 	parallelGenerateOCSPRequests int,
-	redisTimeout time.Duration,
 	log blog.Logger,
 ) (*OCSPUpdater, error) {
 	if batchSize == 0 {
@@ -153,11 +139,6 @@ func New(
 		Help: "A counter of OCSP response generation calls labeled by result",
 	}, []string{"result"})
 	stats.MustRegister(generatedCounter)
-	storedRedisCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "ocsp_updater_stored_redis",
-		Help: "A counter of OCSP response storage calls labeled by result",
-	}, []string{"result"})
-	stats.MustRegister(storedRedisCounter)
 	storedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_updater_stored",
 		Help: "A counter of OCSP response storage calls labeled by result",
@@ -186,17 +167,11 @@ func New(
 	}, []string{"result"})
 	stats.MustRegister(findStaleOCSPCounter)
 
-	var rocspClientInterface rocspClientInterface
-	if rocspClient != nil {
-		rocspClientInterface = rocspClient
-	}
 	updater := OCSPUpdater{
 		log:                          log,
 		clk:                          clk,
 		db:                           db,
 		readOnlyDb:                   readOnlyDb,
-		rocspClient:                  rocspClientInterface,
-		issuers:                      issuers,
 		ogc:                          ogc,
 		batchSize:                    batchSize,
 		tickWindow:                   windowSize,
@@ -207,13 +182,11 @@ func New(
 		queryBody:                    queryBody.String(),
 		ocspMinTimeToExpiry:          ocspMinTimeToExpiry,
 		parallelGenerateOCSPRequests: parallelGenerateOCSPRequests,
-		redisTimeout:                 redisTimeout,
 		tickHistogram:                tickHistogram,
 		stalenessHistogram:           stalenessHistogram,
 		genStoreHistogram:            genStoreHistogram,
 		generatedCounter:             generatedCounter,
 		storedCounter:                storedCounter,
-		storedRedisCounter:           storedRedisCounter,
 		markExpiredCounter:           markExpiredCounter,
 		findStaleOCSPCounter:         findStaleOCSPCounter,
 	}
@@ -346,39 +319,6 @@ func (updater *OCSPUpdater) generateResponse(ctx context.Context, meta *sa.CertS
 
 // storeResponse stores a given CertificateStatus in the database.
 func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *core.CertificateStatus) error {
-	// If a redis client is configured, try to store the response in redis.
-	if updater.rocspClient != nil {
-		// Create a context to set a deadline for the goroutine that stores
-		// the response in redis. Set the timeout to one second longer than
-		// the configured redis timeout to give redis a chance to return a
-		// timeout error first. This context is necessary because we don't
-		// want to wait to confirm a write to redis (best effort), which
-		// causes a race with the Tick() context cancellation if the parent
-		// context is used. When writing to redis is the primary storage
-		// source we can change to use the parent context.
-		ctx2, cancel := context.WithTimeout(context.Background(), updater.redisTimeout+time.Second)
-		go func() {
-			defer cancel()
-			shortIssuerID, err := rocsp_config.FindIssuerByID(status.IssuerID, updater.issuers)
-			if err != nil {
-				updater.storedRedisCounter.WithLabelValues("missing issuer").Inc()
-				return
-			}
-			err = updater.rocspClient.StoreResponse(ctx2, status.OCSPResponse, shortIssuerID.ShortID())
-			if err != nil {
-				if errors.Is(err, context.Canceled) {
-					updater.storedRedisCounter.WithLabelValues("canceled").Inc()
-				} else if errors.Is(err, context.DeadlineExceeded) {
-					updater.storedRedisCounter.WithLabelValues("deadlineExceeded").Inc()
-				} else {
-					updater.storedRedisCounter.WithLabelValues("failed").Inc()
-				}
-			} else {
-				updater.storedRedisCounter.WithLabelValues("success").Inc()
-			}
-		}()
-	}
-
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
