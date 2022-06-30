@@ -165,7 +165,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Ocsp, req.IssuerID)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Ocsp)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}
