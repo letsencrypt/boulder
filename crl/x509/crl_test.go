@@ -33,6 +33,7 @@ func TestCreateRevocationList(t *testing.T) {
 		t.Fatalf("Failed to generate Ed25519 key: %s", err)
 	}
 	bigNum, _ := big.NewInt(0).SetString("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF", 16)
+	reasonKeyCompromise := 1
 	tests := []struct {
 		name          string
 		key           crypto.Signer
@@ -182,7 +183,7 @@ func TestCreateRevocationList(t *testing.T) {
 					{
 						SerialNumber:   big.NewInt(2),
 						RevocationTime: time.Time{}.Add(time.Hour),
-						ReasonCode:     1,
+						ReasonCode:     &reasonKeyCompromise,
 					},
 				},
 				Number:     big.NewInt(5),
@@ -205,8 +206,8 @@ func TestCreateRevocationList(t *testing.T) {
 					{
 						SerialNumber:   big.NewInt(2),
 						RevocationTime: time.Time{}.Add(time.Hour),
-						ReasonCode:     1,
-						ExtraExtensions: []pkix.Extension{
+						ReasonCode:     &reasonKeyCompromise,
+						Extensions: []pkix.Extension{
 							{
 								Id:    []int{1, 1},
 								Value: []byte{5, 0},
