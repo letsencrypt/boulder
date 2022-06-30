@@ -114,7 +114,11 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 			fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
 		}
 
-		fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
+		reason := 0
+		if rcs[i].ReasonCode != nil {
+			reason = *rcs[i].ReasonCode
+		}
+		fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
 
 		if builder.Len() != ci.maxLogLen {
 			ci.log.AuditInfof("%s", builder)
