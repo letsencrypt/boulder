@@ -32,7 +32,7 @@ func TestCreateRevocationList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to generate Ed25519 key: %s", err)
 	}
-	bigNum, _ := big.NewInt(0).SetString("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF", 16)
+	reasonKeyCompromise := 1
 	tests := []struct {
 		name          string
 		key           crypto.Signer
@@ -105,23 +105,6 @@ func TestCreateRevocationList(t *testing.T) {
 			expectedError: "x509: template contains nil Number field",
 		},
 		{
-			name: "too-big Number",
-			key:  ec256Priv,
-			issuer: &x509.Certificate{
-				KeyUsage: x509.KeyUsageCRLSign,
-				Subject: pkix.Name{
-					CommonName: "testing",
-				},
-				SubjectKeyId: []byte{1, 2, 3},
-			},
-			template: &RevocationList{
-				Number:     bigNum,
-				ThisUpdate: time.Time{}.Add(time.Hour * 24),
-				NextUpdate: time.Time{}.Add(time.Hour * 48),
-			},
-			expectedError: "x509: template contains Number longer than 20 octets",
-		},
-		{
 			name: "invalid signature algorithm",
 			key:  ec256Priv,
 			issuer: &x509.Certificate{
@@ -144,6 +127,40 @@ func TestCreateRevocationList(t *testing.T) {
 				NextUpdate: time.Time{}.Add(time.Hour * 48),
 			},
 			expectedError: "x509: requested SignatureAlgorithm does not match private key type",
+		},
+		{
+			name: "long Number",
+			key:  ec256Priv,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
+				Subject: pkix.Name{
+					CommonName: "testing",
+				},
+				SubjectKeyId: []byte{1, 2, 3},
+			},
+			template: &RevocationList{
+				ThisUpdate: time.Time{}.Add(time.Hour * 24),
+				NextUpdate: time.Time{}.Add(time.Hour * 48),
+				Number:     big.NewInt(0).SetBytes(append([]byte{1}, make([]byte, 20)...)),
+			},
+			expectedError: "x509: CRL number exceeds 20 octets",
+		},
+		{
+			name: "long Number (20 bytes, MSB set)",
+			key:  ec256Priv,
+			issuer: &x509.Certificate{
+				KeyUsage: x509.KeyUsageCRLSign,
+				Subject: pkix.Name{
+					CommonName: "testing",
+				},
+				SubjectKeyId: []byte{1, 2, 3},
+			},
+			template: &RevocationList{
+				ThisUpdate: time.Time{}.Add(time.Hour * 24),
+				NextUpdate: time.Time{}.Add(time.Hour * 48),
+				Number:     big.NewInt(0).SetBytes(append([]byte{255}, make([]byte, 19)...)),
+			},
+			expectedError: "x509: CRL number exceeds 20 octets",
 		},
 		{
 			name: "valid",
@@ -182,7 +199,7 @@ func TestCreateRevocationList(t *testing.T) {
 					{
 						SerialNumber:   big.NewInt(2),
 						RevocationTime: time.Time{}.Add(time.Hour),
-						ReasonCode:     1,
+						ReasonCode:     &reasonKeyCompromise,
 					},
 				},
 				Number:     big.NewInt(5),
@@ -205,7 +222,7 @@ func TestCreateRevocationList(t *testing.T) {
 					{
 						SerialNumber:   big.NewInt(2),
 						RevocationTime: time.Time{}.Add(time.Hour),
-						ReasonCode:     1,
+						ReasonCode:     &reasonKeyCompromise,
 						ExtraExtensions: []pkix.Extension{
 							{
 								Id:    []int{1, 1},

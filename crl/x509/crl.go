@@ -26,57 +26,89 @@ var (
 	oidExtensionReasonCode = []int{2, 5, 29, 21}
 )
 
-// RevokedCertificate contains the fields used to create an X.509 v2 Revoked
-// Certificate, i.e. an entry in a Certificate Revocation List's sequence of
-// revoked certificates.
+// RevokedCertificate represents an entry in the revokedCertificates sequence of
+// a CRL.
 // NOTE: This type does not exist in upstream.
 type RevokedCertificate struct {
-	SerialNumber    *big.Int
-	RevocationTime  time.Time
-	ReasonCode      int
+	// SerialNumber represents the serial number of a revoked certificate. It is
+	// both used when creating a CRL and populated when parsing a CRL. It MUST NOT
+	// be nil.
+	SerialNumber *big.Int
+	// RevocationTime represents the time at which the certificate was revoked. It
+	// is both used when creating a CRL and populated when parsing a CRL. It MUST
+	// NOT be nil.
+	RevocationTime time.Time
+	// ReasonCode represents the reason for revocation, using the integer enum
+	// values specified in RFC 5280 Section 5.3.1. When creating a CRL, a value of
+	// nil or zero will result in the reasonCode extension being omitted. When
+	// parsing a CRL, a value of nil represents a no reasonCode extension, while a
+	// value of 0 represents a reasonCode extension containing enum value 0 (this
+	// SHOULD NOT happen, but can and does).
+	ReasonCode *int
+	// When creating a CRL, ExtraExtensions should contain all extra extensions to
+	// add to the CRL entry. If ExtraExtensions contains a reasonCode extension,
+	// it will be ignored in favor of the ReasonCode field above. When parsing a
+	// CRL, ExtraExtensions contains all raw extensions parsed from the CRL entry,
+	// except for reasonCode which is represented by the ReasonCode field above.
 	ExtraExtensions []pkix.Extension
 }
 
-// RevocationList contains the fields used to create an X.509 v2 Certificate
-// Revocation list with CreateRevocationList.
+// RevocationList represents a Certificate Revocation List (CRL) as specified
+// by RFC 5280.
 type RevocationList struct {
+	// Raw, RawTBSRevocationList, and RawIssuer contain the raw bytes of the whole
+	// CRL, the tbsCertList field, and the issuer field, respectively. They are
+	// populated when parsing a CRL; they are ignored when creating a CRL.
 	Raw                  []byte
 	RawTBSRevocationList []byte
 	RawIssuer            []byte
 
-	Issuer         pkix.Name
-	AuthorityKeyId []byte
+	// Issuer is the name of the issuer which issued the CRL. It is ignored when
+	// creating a CRL.
+	Issuer pkix.Name
 
+	// Signature is the signature contained within the CRL. It is ignored when
+	// creating a CRL.
 	Signature []byte
-	// SignatureAlgorithm is used to determine the signature algorithm to be
-	// used when signing the CRL. If 0 the default algorithm for the signing
-	// key will be used.
+	// SignatureAlgorithm is the signature algorithm used when signing the CRL.
+	// When creating a CRL, a value of 0 means that the default algorithm for the
+	// signing key will be used.
 	SignatureAlgorithm SignatureAlgorithm
 
-	// RevokedCertificates is used to populate the revokedCertificates
-	// sequence in the CRL, it may be empty. RevokedCertificates may be nil,
-	// in which case an empty CRL will be created.
+	// ThisUpdate represents the thisUpdate field in the CRL, which indicates the
+	// issuance date of the CRL. It is both used when creating a CRL and populated
+	// when parsing a CRL.
+	ThisUpdate time.Time
+	// NextUpdate represents the nextUpdate field in the CRL, which indicates the
+	// date by which the next CRL will be issued. NextUpdate must be greater than
+	// ThisUpdate. It is both used when creating a CRL and populated when parsing
+	// a CRL.
+	NextUpdate time.Time
+
+	// RevokedCertificates represents the revokedCertificates sequence in the CRL.
+	// It is both used when creating a CRL and populated when parsing a CRL. When
+	// creating a CRL, it may be empty or nil, in which case the
+	// revokedCertificates sequence will be omitted from the CRL entirely.
 	RevokedCertificates []RevokedCertificate
 
-	// Number is used to populate the X.509 v2 cRLNumber extension in the CRL,
-	// which should be a monotonically increasing sequence number for a given
-	// CRL scope and CRL issuer.
+	// Number represents the CRLNumber extension, which should be a monotonically
+	// increasing sequence number for a given CRL scope and CRL issuer. It is both
+	// used when creating a CRL and populated when parsing a CRL. When creating a
+	// CRL, it MUST NOT be nil, and MUST NOT be longer than 20 bytes.
 	Number *big.Int
 
-	// ThisUpdate is used to populate the thisUpdate field in the CRL, which
-	// indicates the issuance date of the CRL.
-	ThisUpdate time.Time
-	// NextUpdate is used to populate the nextUpdate field in the CRL, which
-	// indicates the date by which the next CRL will be issued. NextUpdate
-	// must be greater than ThisUpdate.
-	NextUpdate time.Time
+	// AuthorityKeyId is populated from the authorityKeyIdentifier extension in
+	// the CRL. It is ignored when creating a CRL: the extension is populated from
+	// the issuer information instead.
+	AuthorityKeyId []byte
 
 	// Extensions contains raw X.509 extensions. When creating a CRL,
 	// the Extensions field is ignored, see ExtraExtensions.
 	Extensions []pkix.Extension
 
-	// ExtraExtensions contains any additional extensions to add directly to
-	// the CRL.
+	// ExtraExtensions contains any additional extensions to add directly to the
+	// CRL. The ExtraExtensions field is not populated when parsing a CRL, see
+	// Extensions.
 	ExtraExtensions []pkix.Extension
 }
 
@@ -201,10 +233,11 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 					if err != nil {
 						return nil, err
 					}
-					// NOTE: This block differs from upstream.
+					// NOTE: This block does not exist in upstream.
 					if ext.Id.Equal(oidExtensionReasonCode) {
 						val := cryptobyte.String(ext.Value)
-						if !val.ReadASN1Enum(&rc.ReasonCode) {
+						rc.ReasonCode = new(int)
+						if !val.ReadASN1Enum(rc.ReasonCode) {
 							return nil, fmt.Errorf("x509: malformed reasonCode extension")
 						}
 						continue
@@ -234,6 +267,17 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 			ext, err := parseExtension(extension)
 			if err != nil {
 				return nil, err
+			}
+			// NOTE: The block does not exist in upstream.
+			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
+				rl.AuthorityKeyId = ext.Value
+			} else if ext.Id.Equal(oidExtensionCRLNumber) {
+				number := new(big.Int)
+				value := cryptobyte.String(ext.Value)
+				if !value.ReadASN1Integer(number) {
+					return nil, errors.New("x509: malformed crl number")
+				}
+				rl.Number = number
 			}
 			rl.Extensions = append(rl.Extensions, ext)
 		}
@@ -274,11 +318,6 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 		return nil, errors.New("x509: template contains nil Number field")
 	}
 
-	numBytes := template.Number.Bytes()
-	if len(numBytes) > 20 || (numBytes[0]&0x80 != 0 && len(numBytes) > 19) {
-		return nil, errors.New("x509: template contains Number longer than 20 octets")
-	}
-
 	hashFunc, signatureAlgorithm, err := signingParamsForPublicKey(priv.Public(), template.SignatureAlgorithm)
 	if err != nil {
 		return nil, err
@@ -306,8 +345,8 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 
 		// Only add a reasonCode extension if the reason is non-zero, as per
 		// RFC 5280 Section 5.3.1.
-		if rc.ReasonCode != 0 {
-			reasonBytes, err := asn1.Marshal(asn1.Enumerated(rc.ReasonCode))
+		if rc.ReasonCode != nil && *rc.ReasonCode != 0 {
+			reasonBytes, err := asn1.Marshal(asn1.Enumerated(*rc.ReasonCode))
 			if err != nil {
 				return nil, err
 			}
@@ -325,6 +364,10 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 	aki, err := asn1.Marshal(authKeyId{Id: issuer.SubjectKeyId})
 	if err != nil {
 		return nil, err
+	}
+
+	if numBytes := template.Number.Bytes(); len(numBytes) > 20 || (len(numBytes) == 20 && numBytes[0]&0x80 != 0) {
+		return nil, errors.New("x509: CRL number exceeds 20 octets")
 	}
 	crlNum, err := asn1.Marshal(template.Number)
 	if err != nil {

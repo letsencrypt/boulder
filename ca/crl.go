@@ -189,9 +189,15 @@ func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*crl_x509.
 	}
 	revokedAt := time.Unix(0, entry.RevokedAt)
 
+	var reason *int
+	if entry.Reason != 0 {
+		reason = new(int)
+		*reason = int(entry.Reason)
+	}
+
 	return &crl_x509.RevokedCertificate{
 		SerialNumber:   serial,
 		RevocationTime: revokedAt,
-		ReasonCode:     int(entry.Reason),
+		ReasonCode:     reason,
 	}, nil
 }
