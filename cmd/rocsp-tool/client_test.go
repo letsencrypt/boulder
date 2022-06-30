@@ -15,7 +15,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/rocsp"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -95,15 +94,7 @@ func TestStoreResponse(t *testing.T) {
 	}, issuerKey)
 	test.AssertNotError(t, err, "creating OCSP response")
 
-	issuers, err := rocsp_config.LoadIssuers(map[string]int{
-		"../../test/hierarchy/int-e1.cert.pem": 23,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	cl := client{
-		issuers:       issuers,
 		redis:         redisClient,
 		db:            nil,
 		ocspGenerator: nil,
@@ -147,7 +138,6 @@ func TestLoadFromDB(t *testing.T) {
 	}
 
 	rocspToolClient := client{
-		issuers:       nil,
 		redis:         redisClient,
 		db:            dbMap,
 		ocspGenerator: mockOCSPGenerator{},
