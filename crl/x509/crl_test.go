@@ -206,7 +206,7 @@ func TestCreateRevocationList(t *testing.T) {
 						SerialNumber:   big.NewInt(2),
 						RevocationTime: time.Time{}.Add(time.Hour),
 						ReasonCode:     1,
-						ExtraExtensions: []pkix.Extension{
+						Extensions: []pkix.Extension{
 							{
 								Id:    []int{1, 1},
 								Value: []byte{5, 0},
