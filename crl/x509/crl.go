@@ -319,11 +319,6 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 		return nil, errors.New("x509: template contains nil Number field")
 	}
 
-	numBytes := template.Number.Bytes()
-	if len(numBytes) > 20 || (numBytes[0]&0x80 != 0 && len(numBytes) > 19) {
-		return nil, errors.New("x509: template contains Number longer than 20 octets")
-	}
-
 	hashFunc, signatureAlgorithm, err := signingParamsForPublicKey(priv.Public(), template.SignatureAlgorithm)
 	if err != nil {
 		return nil, err
@@ -370,6 +365,10 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 	aki, err := asn1.Marshal(authKeyId{Id: issuer.SubjectKeyId})
 	if err != nil {
 		return nil, err
+	}
+
+	if numBytes := template.Number.Bytes(); len(numBytes) > 20 || (len(numBytes) == 20 && numBytes[0]&0x80 != 0) {
+		return nil, errors.New("x509: CRL number exceeds 20 octets")
 	}
 	crlNum, err := asn1.Marshal(template.Number)
 	if err != nil {
