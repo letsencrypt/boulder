@@ -83,5 +83,6 @@ func generateKey(session *pkcs11helpers.Session, label string, outputPath string
 		return nil, fmt.Errorf("Failed to write public key to %q: %s", outputPath, err)
 	}
 	log.Printf("Public key written to %q\n", outputPath)
+
 	return &keyInfo{key: pubKey, der: der, id: keyID}, nil
 }

@@ -55,6 +55,7 @@ type certificateAuthorityImpl struct {
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	ocsp    *ocspImpl
+	crl     *crlImpl
 	issuers issuerMaps
 
 	// This is temporary, and will be used for testing and slow roll-out
@@ -101,6 +102,7 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	ocsp *ocspImpl,
+	crl *crlImpl,
 	boulderIssuers []*issuance.Issuer,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
@@ -154,6 +156,7 @@ func NewCertificateAuthorityImpl(
 		sa:                 sa,
 		pa:                 pa,
 		ocsp:               ocsp,
+		crl:                crl,
 		issuers:            issuers,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
@@ -581,4 +584,11 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 // two separate gRPC service backends.
 func (ca *certificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	return ca.ocsp.GenerateOCSP(ctx, req)
+}
+
+// GenerateCRL is simply a passthrough to crlImpl.GenerateCRL so that other
+// services which need to talk to the CA anyway can do so without configuring
+// two separate gRPC service backends.
+func (ca *certificateAuthorityImpl) GenerateCRL(stream capb.CertificateAuthority_GenerateCRLServer) error {
+	return ca.crl.GenerateCRL(stream)
 }

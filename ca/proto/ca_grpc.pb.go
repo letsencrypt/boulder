@@ -26,6 +26,7 @@ type CertificateAuthorityClient interface {
 	IssuePrecertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(ctx context.Context, in *IssueCertificateForPrecertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*OCSPResponse, error)
+	GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (CertificateAuthority_GenerateCRLClient, error)
 }
 
 type certificateAuthorityClient struct {
@@ -63,6 +64,37 @@ func (c *certificateAuthorityClient) GenerateOCSP(ctx context.Context, in *Gener
 	return out, nil
 }
 
+func (c *certificateAuthorityClient) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (CertificateAuthority_GenerateCRLClient, error) {
+	stream, err := c.cc.NewStream(ctx, &CertificateAuthority_ServiceDesc.Streams[0], "/ca.CertificateAuthority/GenerateCRL", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &certificateAuthorityGenerateCRLClient{stream}
+	return x, nil
+}
+
+type CertificateAuthority_GenerateCRLClient interface {
+	Send(*GenerateCRLRequest) error
+	Recv() (*GenerateCRLResponse, error)
+	grpc.ClientStream
+}
+
+type certificateAuthorityGenerateCRLClient struct {
+	grpc.ClientStream
+}
+
+func (x *certificateAuthorityGenerateCRLClient) Send(m *GenerateCRLRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *certificateAuthorityGenerateCRLClient) Recv() (*GenerateCRLResponse, error) {
+	m := new(GenerateCRLResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // CertificateAuthorityServer is the server API for CertificateAuthority service.
 // All implementations must embed UnimplementedCertificateAuthorityServer
 // for forward compatibility
@@ -70,6 +102,7 @@ type CertificateAuthorityServer interface {
 	IssuePrecertificate(context.Context, *IssueCertificateRequest) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error)
 	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*OCSPResponse, error)
+	GenerateCRL(CertificateAuthority_GenerateCRLServer) error
 	mustEmbedUnimplementedCertificateAuthorityServer()
 }
 
@@ -85,6 +118,9 @@ func (UnimplementedCertificateAuthorityServer) IssueCertificateForPrecertificate
 }
 func (UnimplementedCertificateAuthorityServer) GenerateOCSP(context.Context, *GenerateOCSPRequest) (*OCSPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GenerateOCSP not implemented")
+}
+func (UnimplementedCertificateAuthorityServer) GenerateCRL(CertificateAuthority_GenerateCRLServer) error {
+	return status.Errorf(codes.Unimplemented, "method GenerateCRL not implemented")
 }
 func (UnimplementedCertificateAuthorityServer) mustEmbedUnimplementedCertificateAuthorityServer() {}
 
@@ -153,6 +189,32 @@ func _CertificateAuthority_GenerateOCSP_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CertificateAuthority_GenerateCRL_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(CertificateAuthorityServer).GenerateCRL(&certificateAuthorityGenerateCRLServer{stream})
+}
+
+type CertificateAuthority_GenerateCRLServer interface {
+	Send(*GenerateCRLResponse) error
+	Recv() (*GenerateCRLRequest, error)
+	grpc.ServerStream
+}
+
+type certificateAuthorityGenerateCRLServer struct {
+	grpc.ServerStream
+}
+
+func (x *certificateAuthorityGenerateCRLServer) Send(m *GenerateCRLResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *certificateAuthorityGenerateCRLServer) Recv() (*GenerateCRLRequest, error) {
+	m := new(GenerateCRLRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // CertificateAuthority_ServiceDesc is the grpc.ServiceDesc for CertificateAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -173,7 +235,14 @@ var CertificateAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CertificateAuthority_GenerateOCSP_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GenerateCRL",
+			Handler:       _CertificateAuthority_GenerateCRL_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "ca.proto",
 }
 
@@ -260,5 +329,123 @@ var OCSPGenerator_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
+	Metadata: "ca.proto",
+}
+
+// CRLGeneratorClient is the client API for CRLGenerator service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type CRLGeneratorClient interface {
+	GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (CRLGenerator_GenerateCRLClient, error)
+}
+
+type cRLGeneratorClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewCRLGeneratorClient(cc grpc.ClientConnInterface) CRLGeneratorClient {
+	return &cRLGeneratorClient{cc}
+}
+
+func (c *cRLGeneratorClient) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (CRLGenerator_GenerateCRLClient, error) {
+	stream, err := c.cc.NewStream(ctx, &CRLGenerator_ServiceDesc.Streams[0], "/ca.CRLGenerator/GenerateCRL", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &cRLGeneratorGenerateCRLClient{stream}
+	return x, nil
+}
+
+type CRLGenerator_GenerateCRLClient interface {
+	Send(*GenerateCRLRequest) error
+	Recv() (*GenerateCRLResponse, error)
+	grpc.ClientStream
+}
+
+type cRLGeneratorGenerateCRLClient struct {
+	grpc.ClientStream
+}
+
+func (x *cRLGeneratorGenerateCRLClient) Send(m *GenerateCRLRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *cRLGeneratorGenerateCRLClient) Recv() (*GenerateCRLResponse, error) {
+	m := new(GenerateCRLResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// CRLGeneratorServer is the server API for CRLGenerator service.
+// All implementations must embed UnimplementedCRLGeneratorServer
+// for forward compatibility
+type CRLGeneratorServer interface {
+	GenerateCRL(CRLGenerator_GenerateCRLServer) error
+	mustEmbedUnimplementedCRLGeneratorServer()
+}
+
+// UnimplementedCRLGeneratorServer must be embedded to have forward compatible implementations.
+type UnimplementedCRLGeneratorServer struct {
+}
+
+func (UnimplementedCRLGeneratorServer) GenerateCRL(CRLGenerator_GenerateCRLServer) error {
+	return status.Errorf(codes.Unimplemented, "method GenerateCRL not implemented")
+}
+func (UnimplementedCRLGeneratorServer) mustEmbedUnimplementedCRLGeneratorServer() {}
+
+// UnsafeCRLGeneratorServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CRLGeneratorServer will
+// result in compilation errors.
+type UnsafeCRLGeneratorServer interface {
+	mustEmbedUnimplementedCRLGeneratorServer()
+}
+
+func RegisterCRLGeneratorServer(s grpc.ServiceRegistrar, srv CRLGeneratorServer) {
+	s.RegisterService(&CRLGenerator_ServiceDesc, srv)
+}
+
+func _CRLGenerator_GenerateCRL_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(CRLGeneratorServer).GenerateCRL(&cRLGeneratorGenerateCRLServer{stream})
+}
+
+type CRLGenerator_GenerateCRLServer interface {
+	Send(*GenerateCRLResponse) error
+	Recv() (*GenerateCRLRequest, error)
+	grpc.ServerStream
+}
+
+type cRLGeneratorGenerateCRLServer struct {
+	grpc.ServerStream
+}
+
+func (x *cRLGeneratorGenerateCRLServer) Send(m *GenerateCRLResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *cRLGeneratorGenerateCRLServer) Recv() (*GenerateCRLRequest, error) {
+	m := new(GenerateCRLRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// CRLGenerator_ServiceDesc is the grpc.ServiceDesc for CRLGenerator service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var CRLGenerator_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "ca.CRLGenerator",
+	HandlerType: (*CRLGeneratorServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GenerateCRL",
+			Handler:       _CRLGenerator_GenerateCRL_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
 	Metadata: "ca.proto",
 }

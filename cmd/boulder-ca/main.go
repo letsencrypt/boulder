@@ -3,12 +3,14 @@ package notmain
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"sync"
 
 	"github.com/beeker1121/goque"
 	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -34,6 +36,7 @@ type Config struct {
 
 		GRPCCA            *cmd.GRPCServerConfig
 		GRPCOCSPGenerator *cmd.GRPCServerConfig
+		GRPCCRLGenerator  *cmd.GRPCServerConfig
 
 		SAService *cmd.GRPCClientConfig
 
@@ -56,9 +59,15 @@ type Config struct {
 		// The maximum number of subjectAltNames in a single certificate
 		MaxNames int
 
-		// LifespanOCSP is how long OCSP responses are valid for; It should be longer
-		// than the minTimeToExpiry field for the OCSP Updater.
+		// LifespanOCSP is how long OCSP responses are valid for. It should be
+		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
+		// Section 4.9.10, it MUST NOT be more than 10 days.
 		LifespanOCSP cmd.ConfigDuration
+
+		// LifespanCRL is how long CRLs are valid for. It should be longer than the
+		// `period` field of the CRL Updater. Per the BRs, Section 4.9.7, it MUST
+		// NOT be more than 10 days.
+		LifespanCRL cmd.ConfigDuration
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -130,6 +139,7 @@ func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []is
 func main() {
 	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
 	ocspAddr := flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
+	crlAddr := flag.String("crl-addr", "", "CRL gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
@@ -150,6 +160,10 @@ func main() {
 	}
 	if *ocspAddr != "" {
 		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
+	}
+	// TODO(#6161): Remove second conditional when we know it always exists.
+	if *crlAddr != "" && c.CA.GRPCCRLGenerator != nil {
+		c.CA.GRPCCRLGenerator.Address = *crlAddr
 	}
 	if *debugAddr != "" {
 		c.CA.DebugAddr = *debugAddr
@@ -261,7 +275,7 @@ func main() {
 	go ocspi.LogOCSPLoop()
 
 	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
-	cmd.FailOnError(err, "Unable to setup CA gRPC server")
+	cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
 	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspi)
 	ocspHealth := health.NewServer()
 	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
@@ -272,10 +286,40 @@ func main() {
 		wg.Done()
 	}()
 
+	crli, err := ca.NewCRLImpl(
+		boulderIssuers,
+		c.CA.LifespanCRL.Duration,
+		c.CA.OCSPLogMaxLength,
+		logger,
+	)
+	cmd.FailOnError(err, "Failed to create CRL impl")
+
+	// TODO(#6161): Make this unconditional after this config is deployed. We have
+	// to pre-declare crlListener even though it is only used inside the if block
+	// so that the other assignments inside the block don't shadow crlSrv and
+	// crlHealth, leaving them nil.
+	var crlSrv *grpc.Server
+	var crlHealth *health.Server
+	var crlListener net.Listener
+	if c.CA.GRPCCRLGenerator != nil {
+		crlSrv, crlListener, err = bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, serverMetrics, clk)
+		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
+		capb.RegisterCRLGeneratorServer(crlSrv, crli)
+		crlHealth = health.NewServer()
+		healthpb.RegisterHealthServer(crlSrv, crlHealth)
+		wg.Add(1)
+		go func() {
+			cmd.FailOnError(cmd.FilterShutdownErrors(crlSrv.Serve(crlListener)),
+				"CRLGenerator gRPC service failed")
+			wg.Done()
+		}()
+	}
+
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
 		pa,
 		ocspi,
+		crli,
 		boulderIssuers,
 		ecdsaAllowList,
 		c.CA.Expiry.Duration,
@@ -309,9 +353,17 @@ func main() {
 	go cmd.CatchSignals(logger, func() {
 		caHealth.Shutdown()
 		ocspHealth.Shutdown()
+		// TODO(#6161): Make this unconditional.
+		if crlHealth != nil {
+			crlHealth.Shutdown()
+		}
 		ecdsaAllowList.Stop()
 		caSrv.GracefulStop()
 		ocspSrv.GracefulStop()
+		// TODO(#6161): Make this unconditional.
+		if crlSrv != nil {
+			crlSrv.GracefulStop()
+		}
 		wg.Wait()
 		ocspi.Stop()
 	})
