@@ -70,9 +70,51 @@ func (ts testSource) Response(_ context.Context, r *ocsp.Request) (*Response, er
 	return &Response{resp, respBytes}, nil
 }
 
+type expiredSource struct{}
+
+func (es expiredSource) Response(_ context.Context, r *ocsp.Request) (*Response, error) {
+	return nil, errOCSPResponseExpired
+}
+
 type testCase struct {
 	method, path string
 	expected     int
+}
+
+func TestResponseExpired(t *testing.T) {
+	cases := []testCase{
+		{"GET", "/MFQwUjBQME4wTDAJBgUrDgMCGgUABBQ55F6w46hhx%2Fo6OXOHa%2BYfe32YhgQU%2B3hPEvlgFYMsnxd%2FNBmzLjbqQYkCEwD6Wh0MaVKu9gJ3By9DI%2F%2Fxsd4%3D", 533},
+	}
+
+	responder := Responder{
+		Source: expiredSource{},
+		responseTypes: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "ocspResponses-test",
+			},
+			[]string{"type"},
+		),
+		clk: clock.NewFake(),
+		log: blog.NewMock(),
+	}
+
+	for _, tc := range cases {
+		t.Run(fmt.Sprintf("%s %s", tc.method, tc.path), func(t *testing.T) {
+			rw := httptest.NewRecorder()
+			responder.responseTypes.Reset()
+
+			responder.ServeHTTP(rw, &http.Request{
+				Method: tc.method,
+				URL: &url.URL{
+					Path: tc.path,
+				},
+			})
+			if rw.Code != tc.expected {
+				t.Errorf("Incorrect response code: got %d, wanted %d", rw.Code, tc.expected)
+			}
+			test.AssertByteEquals(t, ocsp.UnauthorizedErrorResponse, rw.Body.Bytes())
+		})
+	}
 }
 
 func TestOCSP(t *testing.T) {
