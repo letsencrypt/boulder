@@ -1025,7 +1025,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 		err := ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
 			[]string{"charlie.brown.com", "all.i.do.is.lose.com"})
 		test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
-		test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
+		test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
 	}
 
 	testcase()
@@ -2115,7 +2115,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	})
 
 	test.AssertError(t, err, "expected error for domain with too many failures")
-	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
 }
 
 // mockSAUnsafeAuthzReuse has a GetAuthorizations implementation that returns

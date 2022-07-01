@@ -121,6 +121,13 @@ func DuplicateCertificateError(msg string, args ...interface{}) error {
 	}
 }
 
+func FailedValidationError(msg string, args ...interface{}) error {
+	return &BoulderError{
+		Type:   RateLimit,
+		Detail: fmt.Sprintf(msg+": see https://letsencrypt.org/docs/failed-validation-limit/", args...),
+	}
+}
+
 func RejectedIdentifierError(msg string, args ...interface{}) error {
 	return New(RejectedIdentifier, msg, args...)
 }
