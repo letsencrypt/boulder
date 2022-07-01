@@ -32,7 +32,7 @@ type Config struct {
 		// complete" CRL will be split.
 		// WARNING: When this number is changed, the "JSON Array of CRL URLs" field
 		// in CCADB MUST be updated.
-		NumShards int64
+		NumShards int
 		// LookbackPeriod controls how far into the past the updater should look.
 		// You'd think that this could be 0, because certs are sharded by their
 		// expiration time, and once a cert is expired, we don't have to care about
@@ -58,6 +58,11 @@ type Config struct {
 		// updates may require that this not be more than 24 hours, and currently
 		// recommend and UpdatePeriod of 6 hours.
 		UpdatePeriod cmd.ConfigDuration
+		// MaxParallelism controls how many workers may be running in parallel.
+		// A higher value reduces the total time necessary to update all CRL shards
+		// that this updater is responsible for, but also increases the memory used
+		// by this updater.
+		MaxParallelism int
 
 		Features map[string]bool
 	}
@@ -122,6 +127,7 @@ func main() {
 		c.CRLUpdater.LookbackPeriod.Duration,
 		c.CRLUpdater.LookforwardPeriod.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
+		c.CRLUpdater.MaxParallelism,
 		sac,
 		cac,
 		scope,

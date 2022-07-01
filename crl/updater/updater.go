@@ -18,10 +18,11 @@ import (
 
 type crlUpdater struct {
 	issuers           map[issuance.IssuerNameID]*issuance.Certificate
-	numShards         int64
+	numShards         int
 	lookbackPeriod    time.Duration
 	lookforwardPeriod time.Duration
 	updatePeriod      time.Duration
+	maxParallelism    int
 
 	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
@@ -37,10 +38,11 @@ type crlUpdater struct {
 
 func NewUpdater(
 	issuers []*issuance.Certificate,
-	numShards int64,
+	numShards int,
 	lookbackPeriod time.Duration,
 	lookforwardPeriod time.Duration,
 	updatePeriod time.Duration,
+	maxParallelism int,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
 	stats prometheus.Registerer,
@@ -61,9 +63,13 @@ func NewUpdater(
 	}
 
 	window := lookbackPeriod + lookforwardPeriod
-	if window.Nanoseconds()%numShards != 0 {
+	if window.Nanoseconds()%int64(numShards) != 0 {
 		return nil, fmt.Errorf("total window (lookback+lookforward=%dns) must be evenly divisible by numShards (%d)",
 			window.Nanoseconds(), numShards)
+	}
+
+	if maxParallelism <= 0 {
+		maxParallelism = 1
 	}
 
 	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -87,6 +93,7 @@ func NewUpdater(
 		lookbackPeriod,
 		lookforwardPeriod,
 		updatePeriod,
+		maxParallelism,
 		sa,
 		ca,
 		tickHistogram,
@@ -115,8 +122,9 @@ func (cu *crlUpdater) tick(ctx context.Context) {
 	cu.log.Debugf("Ticking at time %s", atTime)
 
 	for id, iss := range cu.issuers {
-		// For now, process each issuer serially. This prevents us from trying to
-		// load multiple issuers-worth of CRL entries simultaneously.
+		// For now, process each issuer serially. This keeps the worker pool system
+		// simple, and processing all of the issuers in parallel likely wouldn't
+		// meaningfully speed up the overall process.
 		err := cu.tickIssuer(ctx, atTime, id)
 		if err != nil {
 			cu.log.AuditErrf(
@@ -138,20 +146,50 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 	}()
 	cu.log.Debugf("Ticking issuer %d at time %s", issuerID, atTime)
 
-	for shardID := int64(0); shardID < cu.numShards; shardID++ {
-		// For now, process each shard serially. This prevents us fromt trying to
-		// load multiple shards-worth of CRL entries simultaneously.
-		err := cu.tickShard(ctx, atTime, issuerID, shardID)
-		if err != nil {
-			result = "failed"
-			return fmt.Errorf("updating shard %d: %w", shardID, err)
+	type shardResult struct {
+		shardID int
+		err     error
+	}
+
+	shardWorker := func(in <-chan int, out chan<- shardResult) {
+		for id := range in {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			out <- shardResult{
+				shardID: id,
+				err:     cu.tickShard(ctx, atTime, issuerID, id),
+			}
 		}
 	}
 
+	shardIDs := make(chan int, cu.numShards)
+	shardResults := make(chan shardResult, cu.numShards)
+	for i := 0; i < cu.maxParallelism; i++ {
+		go shardWorker(shardIDs, shardResults)
+	}
+
+	for shardID := 0; shardID < cu.numShards; shardID++ {
+		shardIDs <- shardID
+	}
+	close(shardIDs)
+
+	for i := 0; i < int(cu.numShards); i++ {
+		res := <-shardResults
+		if res.err != nil {
+			result = "failed"
+			return fmt.Errorf("updating shard %d: %w", res.shardID, res.err)
+		}
+	}
+
+	// TODO(#6162): Send an RPC to the crl-storer to atomically update this CRL's
+	// urls to all point to the newly-uploaded shards.
 	return nil
 }
 
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID, shardID int64) error {
+func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID, shardID int) error {
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
@@ -184,6 +222,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(issuerID),
 				ThisUpdate:   atTime.UnixNano(),
+				Shard:        int64(shardID),
 			},
 		},
 	})
@@ -292,7 +331,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 // there is a buffer of at least one whole chunk width between the actual
 // furthest-future expiration (generally atTime+90d) and the right-hand edge of
 // the window (atTime+lookforwardPeriod).
-func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardID int64) (time.Time, time.Time) {
+func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardID int) (time.Time, time.Time) {
 	// Ensure that the given shardID falls within the space of acceptable IDs.
 	shardID = shardID % cu.numShards
 
@@ -305,10 +344,10 @@ func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardID int64) (time.
 	zeroStart := atTime.Add(-atTimeOffset)
 
 	// Compute the width of a single shard.
-	shardWidth := time.Duration(windowWidth.Nanoseconds() / cu.numShards)
+	shardWidth := time.Duration(windowWidth.Nanoseconds() / int64(cu.numShards))
 	// Compute the amount of time between the left-hand edge of the most recent
 	// "0" chunk and the left-hand edge of the desired chunk.
-	shardOffset := time.Duration(shardID * shardWidth.Nanoseconds())
+	shardOffset := time.Duration(int64(shardID) * shardWidth.Nanoseconds())
 	// Compute the left-hand edge of the most recent chunk with the given ID.
 	shardStart := zeroStart.Add(shardOffset)
 	// Compute the right-hand edge of the most recent chunk with the given ID.

@@ -22,7 +22,8 @@
     "numShards": 10,
     "lookbackPeriod": "240h",
     "lookforwardPeriod": "2400h",
-    "updatePeriod": "6h"
+    "updatePeriod": "6h",
+    "maxParallelism": 10
   },
 
   "syslog": {
