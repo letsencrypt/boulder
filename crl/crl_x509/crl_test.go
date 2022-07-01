@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package x509
+package crl_x509
 
 import (
 	"crypto"
@@ -223,7 +223,7 @@ func TestCreateRevocationList(t *testing.T) {
 						SerialNumber:   big.NewInt(2),
 						RevocationTime: time.Time{}.Add(time.Hour),
 						ReasonCode:     &reasonKeyCompromise,
-						Extensions: []pkix.Extension{
+						ExtraExtensions: []pkix.Extension{
 							{
 								Id:    []int{1, 1},
 								Value: []byte{5, 0},

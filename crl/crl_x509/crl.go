@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package x509 parses X.509-encoded keys and certificates.
-package x509
+// Package crl_x509 parses X.509-encoded certificate revocation lists.
+package crl_x509
 
 import (
 	"bytes"
@@ -26,9 +26,8 @@ var (
 	oidExtensionReasonCode = []int{2, 5, 29, 21}
 )
 
-// RevokedCertificate contains the fields used to create an entry in the revokedCertificates
-// list of a CRL.
-// revoked certificates.
+// RevokedCertificate represents an entry in the revokedCertificates sequence of
+// a CRL.
 // NOTE: This type does not exist in upstream.
 type RevokedCertificate struct {
 	// SerialNumber represents the serial number of a revoked certificate. It is
@@ -46,15 +45,16 @@ type RevokedCertificate struct {
 	// value of 0 represents a reasonCode extension containing enum value 0 (this
 	// SHOULD NOT happen, but can and does).
 	ReasonCode *int
-	// Extensions contains all raw extensions parsed from the CRL entry, or all
-	// extra extensions to add to the CRL entry. When creating a CRL, if
-	// Extensions contains a reasonCode extension, it will be ignored in favor of
-	// the ReasonCode field above.
-	Extensions []pkix.Extension
+	// When creating a CRL, ExtraExtensions should contain all extra extensions to
+	// add to the CRL entry. If ExtraExtensions contains a reasonCode extension,
+	// it will be ignored in favor of the ReasonCode field above. When parsing a
+	// CRL, ExtraExtensions contains all raw extensions parsed from the CRL entry,
+	// except for reasonCode which is represented by the ReasonCode field above.
+	ExtraExtensions []pkix.Extension
 }
 
-// RevocationList contains the fields used to create an X.509 v2 Certificate
-// Revocation list with CreateRevocationList.
+// RevocationList represents a Certificate Revocation List (CRL) as specified
+// by RFC 5280.
 type RevocationList struct {
 	// Raw, RawTBSRevocationList, and RawIssuer contain the raw bytes of the whole
 	// CRL, the tbsCertList field, and the issuer field, respectively. They are
@@ -91,16 +91,15 @@ type RevocationList struct {
 	// revokedCertificates sequence will be omitted from the CRL entirely.
 	RevokedCertificates []RevokedCertificate
 
-	// Number represents the X.509 v2 CRLNumber extension, which should be a
-	// monotonically increasing sequence number for a given CRL scope and CRL
-	// issuer. It is both used when creating a CRL and populated when parsing a
-	// CRL. When creating a CRL, it MUST NOT be nil, and MUST NOT be longer than
-	// 20 bytes.
+	// Number represents the CRLNumber extension, which should be a monotonically
+	// increasing sequence number for a given CRL scope and CRL issuer. It is both
+	// used when creating a CRL and populated when parsing a CRL. When creating a
+	// CRL, it MUST NOT be nil, and MUST NOT be longer than 20 bytes.
 	Number *big.Int
 
-	// AuthorityKeyId is populated from the X.509 v2 authorityKeyIdentifier
-	// extension in the CRL. It is ignored when creating a CRL: the extension is
-	// populated from the issuer information instead.
+	// AuthorityKeyId is populated from the authorityKeyIdentifier extension in
+	// the CRL. It is ignored when creating a CRL: the extension is populated from
+	// the issuer information instead.
 	AuthorityKeyId []byte
 
 	// Extensions contains raw X.509 extensions. When creating a CRL,
@@ -243,7 +242,7 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 						}
 						continue
 					}
-					rc.Extensions = append(rc.Extensions, ext)
+					rc.ExtraExtensions = append(rc.ExtraExtensions, ext)
 				}
 			}
 
@@ -337,7 +336,7 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 		// Copy over any extra extensions, except for a Reason Code extension,
 		// because we'll synthesize that ourselves to ensure it is correct.
 		exts := make([]pkix.Extension, 0)
-		for _, ext := range rc.Extensions {
+		for _, ext := range rc.ExtraExtensions {
 			if ext.Id.Equal(oidExtensionReasonCode) {
 				continue
 			}
