@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"database/sql"
 	"errors"
 	"math/big"
 	"reflect"
@@ -22,7 +21,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/sa/satest"
@@ -42,13 +40,6 @@ type mockOCSP struct {
 func (ca *mockOCSP) GenerateOCSP(_ context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	time.Sleep(ca.sleepTime)
 	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
-}
-
-type noopROCSP struct {
-}
-
-func (noopROCSP) StoreResponse(_ context.Context, _ []byte, _ byte) error {
-	return nil
 }
 
 var log = blog.UseMock()
@@ -72,15 +63,12 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 		fc,
 		dbMap,
 		readOnlyDb,
-		noopROCSP{},
-		nil,
 		strings.Fields("0 1 2 3 4 5 6 7 8 9 a b c d e f"),
 		&mockOCSP{},
 		1,
 		time.Second,
 		time.Minute,
 		1.5,
-		0,
 		0,
 		0,
 		blog.NewMock(),
@@ -164,81 +152,6 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't generate OCSP response")
 	err = updater.storeResponse(context.Background(), status)
 	test.AssertNotError(t, err, "Couldn't store certificate status")
-}
-
-type rocspStorage struct {
-	shortIDIssuer byte
-	response      []byte
-}
-
-type recordingROCSP struct {
-	sync.Mutex
-	storage []rocspStorage
-}
-
-func (rr *recordingROCSP) get() []rocspStorage {
-	rr.Lock()
-	defer rr.Unlock()
-	var ret []rocspStorage
-	return append(ret, rr.storage...)
-}
-
-func (rr *recordingROCSP) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error {
-	rr.Lock()
-	defer rr.Unlock()
-	rr.storage = append(rr.storage, rocspStorage{
-		shortIDIssuer: shortIssuerID,
-		response:      respBytes,
-	})
-	return nil
-}
-
-// A mock ocspDb that sleeps for 50ms when Exec is called.
-type mockDBBlocksOnExec struct {
-	*db.WrappedMap
-}
-
-func (mdboe *mockDBBlocksOnExec) Exec(query string, args ...interface{}) (sql.Result, error) {
-	time.Sleep(500 * time.Millisecond)
-	return nil, nil
-}
-
-func TestROCSP(t *testing.T) {
-	updater, sac, _, fc, cleanUp := setup(t)
-	defer cleanUp()
-
-	reg := satest.CreateWorkingRegistration(t, sac)
-	parsedCert, err := core.LoadCert("testdata/test-cert.pem")
-	test.AssertNotError(t, err, "Couldn't read test certificate")
-	_, err = sac.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      parsedCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   nowNano(fc),
-		IssuerID: 66283756913588288,
-	})
-	test.AssertNotError(t, err, "Couldn't add test-cert.pem")
-
-	recorder := &recordingROCSP{}
-	updater.rocspClient = recorder
-	updater.issuers, err = rocsp_config.LoadIssuers(
-		map[string]int{
-			"../../test/hierarchy/int-e1.cert.pem": 23,
-		},
-	)
-	test.AssertNotError(t, err, "loading issuers")
-	updater.db = &mockDBBlocksOnExec{}
-
-	err = updater.storeResponse(context.Background(), &core.CertificateStatus{
-		OCSPResponse: []byte("fake response"),
-		Serial:       "fake serial",
-		IssuerID:     66283756913588288,
-	})
-	test.AssertNotError(t, err, "Couldn't store certificate status")
-	storage := recorder.get()
-	test.AssertEquals(t, len(storage), 1)
-
-	test.AssertByteEquals(t, storage[0].response, []byte("fake response"))
 }
 
 // findStaleOCSPResponsesBuffered runs findStaleOCSPResponses and returns
@@ -706,15 +619,12 @@ func mkNewUpdaterWithStrings(t *testing.T, shards []string) (*OCSPUpdater, error
 		fc,
 		dbMap,
 		dbMap,
-		noopROCSP{},
-		nil,
 		shards,
 		&mockOCSP{},
 		1,
 		time.Second,
 		time.Minute,
 		1.5,
-		0,
 		0,
 		0,
 		blog.NewMock(),

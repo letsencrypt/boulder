@@ -4,7 +4,6 @@ import (
 	"flag"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/honeycombio/beeline-go"
 
@@ -14,8 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
-	"github.com/letsencrypt/boulder/rocsp"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -24,7 +21,6 @@ type Config struct {
 		cmd.ServiceConfig
 		DB         cmd.DBConfig
 		ReadOnlyDB cmd.DBConfig
-		Redis      *rocsp_config.RedisConfig
 
 		// Issuers is a map from filenames to short issuer IDs.
 		// Each filename must contain an issuer certificate. The short issuer
@@ -107,17 +103,6 @@ func main() {
 
 	clk := cmd.Clock()
 
-	redisConf := c.OCSPUpdater.Redis
-	var rocspClient *rocsp.WritingClient
-	var redisTimeout time.Duration
-	if redisConf != nil {
-		rocspClient, err = rocsp_config.MakeClient(redisConf, clk, stats)
-		redisTimeout = redisConf.Timeout.Duration
-		cmd.FailOnError(err, "making Redis client")
-	}
-	issuers, err := rocsp_config.LoadIssuers(c.OCSPUpdater.Issuers)
-	cmd.FailOnError(err, "loading issuers")
-
 	tlsConfig, err := c.OCSPUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
@@ -135,8 +120,6 @@ func main() {
 		clk,
 		readWriteDb,
 		readOnlyDb,
-		rocspClient,
-		issuers,
 		serialSuffixes,
 		ogc,
 		conf.OldOCSPBatchSize,
@@ -145,7 +128,6 @@ func main() {
 		conf.SignFailureBackoffFactor,
 		conf.OCSPMinTimeToExpiry.Duration,
 		conf.ParallelGenerateOCSPRequests,
-		redisTimeout,
 		logger,
 	)
 	cmd.FailOnError(err, "Failed to create updater")

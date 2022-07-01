@@ -19,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -61,11 +62,17 @@ func TestSelectUncheckedRows(t *testing.T) {
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashA, 1, true)
+	count, err := bkr.countUncheckedKeys()
+	test.AssertNotError(t, err, "countUncheckedKeys failed")
+	test.AssertEquals(t, count, 0)
 	_, err = bkr.selectUncheckedKey()
 	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
 	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
 	insertBlockedRow(t, dbMap, fc, hashB, 1, false)
 	insertBlockedRow(t, dbMap, fc, hashC, 1, false)
+	count, err = bkr.countUncheckedKeys()
+	test.AssertNotError(t, err, "countUncheckedKeys failed")
+	test.AssertEquals(t, count, 2)
 	row, err := bkr.selectUncheckedKey()
 	test.AssertNotError(t, err, "selectUncheckKey failed")
 	test.AssertByteEquals(t, row.KeyHash, hashB)
@@ -372,6 +379,7 @@ func TestInvoke(t *testing.T) {
 	test.AssertEquals(t, mr.revoked, 4)
 	test.AssertEquals(t, len(mm.Messages), 1)
 	test.AssertEquals(t, mm.Messages[0].To, "example.com")
+	test.AssertMetricWithLabelsEquals(t, keysToProcess, prometheus.Labels{}, 1)
 
 	var checked struct {
 		ExtantCertificatesChecked bool
