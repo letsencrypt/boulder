@@ -139,8 +139,8 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	hash := sha256.Sum256(crlBytes)
 	ci.log.AuditInfof(
-		"Signing CRL success: logID=[%s] size=[%d] hash=[%d]",
-		logID, len(crlBytes), hash[:],
+		"Signing CRL success: logID=[%s] size=[%d] hash=[%x]",
+		logID, len(crlBytes), hash,
 	)
 
 	for i := 0; i < len(crlBytes); i += 1000 {
