@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version a7c03b (Tue Apr 12 18:31:21 2022)"
+const defaultListVersion = "PSL version d17a65 (Wed May 18 19:44:47 2022)"
 
-func DefaultRules() [9360]Rule {
+func DefaultRules() [9368]Rule {
 	return r
 }
 
-var r = [9360]Rule{
+var r = [9368]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -8451,6 +8451,7 @@ var r = [9360]Rule{
 	{1, "blogspot.ug", 2, true},
 	{1, "blogspot.vn", 2, true},
 	{1, "goupile.fr", 2, true},
+	{1, "gov.nl", 2, true},
 	{1, "awsmppl.com", 2, true},
 	{1, "xn--gnstigbestellen-zvb.de", 2, true},
 	{1, "xn--gnstigliefern-wob.de", 2, true},
@@ -8486,7 +8487,6 @@ var r = [9360]Rule{
 	{1, "ngo.ng", 2, true},
 	{1, "edu.scot", 2, true},
 	{1, "sch.so", 2, true},
-	{1, "org.yt", 2, true},
 	{1, "hostyhosting.io", 2, true},
 	{1, "xn--hkkinen-5wa.fi", 2, true},
 	{2, "moonscale.io", 3, true},
@@ -9042,6 +9042,9 @@ var r = [9360]Rule{
 	{1, "xn--h1aliz.xn--p1acf", 2, true},
 	{1, "xn--90a1af.xn--p1acf", 2, true},
 	{1, "xn--41a.xn--p1acf", 2, true},
+	{1, "builder.code.com", 3, true},
+	{1, "dev-builder.code.com", 3, true},
+	{1, "stg-builder.code.com", 3, true},
 	{1, "sandcats.io", 2, true},
 	{1, "logoip.de", 2, true},
 	{1, "logoip.com", 2, true},
@@ -9258,6 +9261,11 @@ var r = [9360]Rule{
 	{1, "hk.org", 2, true},
 	{1, "ltd.hk", 2, true},
 	{1, "inc.hk", 2, true},
+	{1, "name.pm", 2, true},
+	{1, "sch.tf", 2, true},
+	{1, "biz.wf", 2, true},
+	{1, "sch.wf", 2, true},
+	{1, "org.yt", 2, true},
 	{1, "virtualuser.de", 2, true},
 	{1, "virtual-user.de", 2, true},
 	{1, "upli.io", 2, true},
