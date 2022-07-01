@@ -35,6 +35,9 @@ func init() {
 		"hasNoAIA":                       hasNoAIA,
 		"noZeroReasonCodes":              noZeroReasonCodes,
 		"hasNoCertIssuers":               hasNoCertIssuers,
+		"hasAcceptableValidity":          hasAcceptableValidity,
+		"noCriticalReasons":              noCriticalReasons,
+		"noCertificateHolds":             noCertificateHolds,
 		"hasMozReasonCodes":              hasMozReasonCodes,
 	}
 }
@@ -261,15 +264,19 @@ func hasNoAIA(crl *crl_x509.RevocationList) *lint.LintResult {
 	return &lint.LintResult{Status: lint.Pass}
 }
 
-// noZeroReasonCodes checks RFC 5280, Section 5.3.1:
+// noZeroReasonCodes checks Baseline Requirements, Section 7.2.2.1:
+// The CRLReason indicated MUST NOT be unspecified (0). If the reason for
+// revocation is unspecified, CAs MUST omit reasonCode entry extension, if
+// allowed by the previous requirements.
+// By extension, it therefore also checks RFC 5280, Section 5.3.1:
 // The reason code CRL entry extension SHOULD be absent instead of using the
 // unspecified (0) reasonCode value.
 func noZeroReasonCodes(crl *crl_x509.RevocationList) *lint.LintResult {
 	for _, entry := range crl.RevokedCertificates {
 		if entry.ReasonCode != nil && *entry.ReasonCode == 0 {
 			return &lint.LintResult{
-				Status:  lint.Warn,
-				Details: "CRL entries SHOULD NOT contain the unspecified (0) reason code",
+				Status:  lint.Error,
+				Details: "CRL entries MUST NOT contain the unspecified (0) reason code",
 			}
 		}
 	}
@@ -288,6 +295,47 @@ func hasNoCertIssuers(crl *crl_x509.RevocationList) *lint.LintResult {
 			return &lint.LintResult{
 				Status:  lint.Notice,
 				Details: "CRL has an entry with a Certificate Issuer extension",
+			}
+		}
+	}
+	return &lint.LintResult{Status: lint.Pass}
+}
+
+// hasAcceptableValidity checks Baseline Requirements, Section 4.9.7:
+// The value of the nextUpdate field MUST NOT be more than ten days beyond the
+// value of the thisUpdate field.
+func hasAcceptableValidity(crl *crl_x509.RevocationList) *lint.LintResult {
+	validity := crl.NextUpdate.Sub(crl.ThisUpdate)
+	if validity <= 0 {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "CRL has NextUpdate at or before ThisUpdate",
+		}
+	} else if validity > 10*24*time.Hour {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "CRL has validity period greater than ten days",
+		}
+	}
+	return &lint.LintResult{Status: lint.Pass}
+}
+
+// noCrticialReasons checks Baseline Requirements, Section 7.2.2.1:
+// If present, [the reasonCode] extension MUST NOT be marked critical.
+func noCriticalReasons(crl *crl_x509.RevocationList) *lint.LintResult {
+	// TODO: Figure out how to check this without direct access to the underlying
+	// reasonCode extension.
+	return &lint.LintResult{Status: lint.NA}
+}
+
+// noCertificateHolds checks Baseline Requirements, Section 7.2.2.1:
+// The CRLReason MUST NOT be certificateHold (6).
+func noCertificateHolds(crl *crl_x509.RevocationList) *lint.LintResult {
+	for _, entry := range crl.RevokedCertificates {
+		if entry.ReasonCode != nil && *entry.ReasonCode == 6 {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "CRL entries MUST NOT use the certificateHold (6) reason code",
 			}
 		}
 	}
