@@ -21,6 +21,7 @@
       "clientNames": [
         "admin-revoker.boulder",
         "ca.boulder",
+        "crl-updater.boulder",
         "expiration-mailer.boulder",
         "health-checker.boulder",
         "orphan-finder.boulder",
