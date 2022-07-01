@@ -176,7 +176,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 	}
 	close(shardIDs)
 
-	for i := 0; i < int(cu.numShards); i++ {
+	for i := 0; i < cu.numShards; i++ {
 		res := <-shardResults
 		if res.err != nil {
 			result = "failed"

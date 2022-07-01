@@ -26,11 +26,13 @@ func TestGetWindowForShard(t *testing.T) {
 	// At the same moment, the 93rd shard should start 93 days later.
 	start, end = tcu.getShardBoundaries(zeroTime.Add(time.Minute), 93)
 	test.AssertEquals(t, start, zeroTime.Add(93*24*time.Hour))
+	test.AssertEquals(t, end, zeroTime.Add(94*24*time.Hour))
 
 	// If we jump 100 days into the future, now the 0th shard should start 107
 	// days after the zero time.
 	start, end = tcu.getShardBoundaries(zeroTime.Add(100*24*time.Hour+time.Minute), 0)
 	test.AssertEquals(t, start, zeroTime.Add(107*24*time.Hour))
+	test.AssertEquals(t, end, zeroTime.Add(108*24*time.Hour))
 
 	// During day 100, the 93rd shard should still start at the same time (just
 	// over 7 days ago), because we haven't fully left it behind yet. The 92nd
