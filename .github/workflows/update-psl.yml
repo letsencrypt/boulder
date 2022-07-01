@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # Run monthly at a random (https://xkcd.com/221/) time.
-    - cron: '46 8 1 * *'
+    - cron: '46 16 1 * *'
 
 permissions:
   contents: write
@@ -39,6 +39,11 @@ jobs:
       - run: git commit -m "Update Public Suffix List"
       - run: git push origin ${{ steps.branch.outputs.name }}
 
+      - run: echo ::set-output name=name::$(gh repo view --json defaultBranchRef --jq .defaultBranchRef.name)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        id: default_branch
+
       - uses: actions/github-script@v6
         with:
           script: |
@@ -48,5 +53,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               head: '${{ steps.branch.outputs.name }}',
-              base: '${{ github.event.repository.default_branch }}'
+              base: '${{ steps.default_branch.outputs.name }}'
             })
