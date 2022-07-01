@@ -29,6 +29,12 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+const blockedKeysGaugeLimit = 1000
+
+var keysToProcess = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "bad_keys_to_process",
+	Help: fmt.Sprintf("A gauge of blockedKeys rows to process (max: %d)", blockedKeysGaugeLimit),
+})
 var keysProcessed = prometheus.NewCounterVec(prometheus.CounterOpts{
 	Name: "bad_keys_processed",
 	Help: "A counter of blockedKeys rows processed labelled by processing state",
@@ -74,6 +80,19 @@ type uncheckedBlockedKey struct {
 func (ubk uncheckedBlockedKey) String() string {
 	return fmt.Sprintf("[revokedBy: %d, keyHash: %x]",
 		ubk.RevokedBy, ubk.KeyHash)
+}
+
+func (bkr *badKeyRevoker) countUncheckedKeys() (int, error) {
+	var count int
+	err := bkr.dbMap.SelectOne(
+		&count,
+		`SELECT COUNT(*)
+		FROM (SELECT 1 FROM blockedKeys
+		WHERE extantCertificatesChecked = false
+		LIMIT ?) AS a`,
+		blockedKeysGaugeLimit,
+	)
+	return count, err
 }
 
 func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
@@ -265,6 +284,22 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[s
 // invoke processes a single key in the blockedKeys table and returns whether
 // there were any rows to process or not.
 func (bkr *badKeyRevoker) invoke() (bool, error) {
+	// Gather a count of rows to be processed.
+	uncheckedCount, err := bkr.countUncheckedKeys()
+	if err != nil {
+		return false, err
+	}
+
+	// Set the gauge to the number of rows to be processed (max:
+	// blockedKeysGaugeLimit).
+	keysToProcess.Set(float64(uncheckedCount))
+
+	if uncheckedCount >= blockedKeysGaugeLimit {
+		bkr.logger.AuditInfof("found >= %d unchecked blocked keys left to process", uncheckedCount)
+	} else {
+		bkr.logger.AuditInfof("found %d unchecked blocked keys left to process", uncheckedCount)
+	}
+
 	// select a row to process
 	unchecked, err := bkr.selectUncheckedKey()
 	if err != nil {
