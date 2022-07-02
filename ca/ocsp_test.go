@@ -116,7 +116,7 @@ func TestOcspLogFlushOnExit(t *testing.T) {
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(4000, 10000*time.Millisecond, stats, log)
 	go queue.loop()
-	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+	queue.enqueue(serial(t), time.Now(), ocsp.Good)
 	queue.stop()
 
 	expected := []string{
@@ -133,7 +133,7 @@ func TestOcspFlushOnLength(t *testing.T) {
 	queue := newOCSPLogQueue(100, 100*time.Millisecond, stats, log)
 	go queue.loop()
 	for i := 0; i < 5; i++ {
-		queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+		queue.enqueue(serial(t), time.Now(), ocsp.Good)
 	}
 	queue.stop()
 
@@ -153,7 +153,7 @@ func TestOcspFlushOnTimeout(t *testing.T) {
 	queue := newOCSPLogQueue(90000, 10*time.Millisecond, stats, log)
 
 	go queue.loop()
-	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+	queue.enqueue(serial(t), time.Now(), ocsp.Good)
 
 	expected := "INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,"
 	logLines, err := log.WaitForMatch("OCSP signed", 50*time.Millisecond)
@@ -183,7 +183,7 @@ func TestOcspLogWhenMaxLogLenIsShort(t *testing.T) {
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(3, 10000*time.Millisecond, stats, log)
 	go queue.loop()
-	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+	queue.enqueue(serial(t), time.Now(), ocsp.Good)
 	queue.stop()
 
 	expected := []string{
@@ -208,5 +208,5 @@ func TestOcspLogPanicsOnEnqueueAfterStop(t *testing.T) {
 		}
 	}()
 
-	queue.enqueue(serial(t), time.Now(), ocsp.ResponseStatus(ocsp.Good))
+	queue.enqueue(serial(t), time.Now(), ocsp.Good)
 }
