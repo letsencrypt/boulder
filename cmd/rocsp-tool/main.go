@@ -26,8 +26,6 @@ type Config struct {
 	ROCSPTool struct {
 		DebugAddr string
 		Redis     rocsp_config.RedisConfig
-		// Issuers is deprecated.
-		Issuers map[string]int
 
 		// If using load-from-db, this provides credentials to connect to the DB
 		// and the CA. Otherwise, it's optional.
