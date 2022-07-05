@@ -26,8 +26,7 @@ type crlUpdater struct {
 
 	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
-	// TODO(#6162): Add this so we can talk to the crl-storer.
-	// cs cspb.CRLStorerClient
+	// TODO(#6162): Add a crl-storer gRPC client.
 
 	tickHistogram    *prometheus.HistogramVec
 	generatedCounter *prometheus.CounterVec
@@ -98,7 +97,7 @@ func NewUpdater(
 	}, []string{"result"})
 	stats.MustRegister(generatedCounter)
 
-	// TODO(#6162): add a storedCounter when sending to the crl-storer.
+	// TODO(#6162): Add a storedCounter when sending to the crl-storer.
 
 	return &crlUpdater{
 		issuersByNameID,
@@ -117,12 +116,20 @@ func NewUpdater(
 }
 
 // Run causes the crl-updater to run immediately, and then re-run continuously
-// on the frequency specified by crlUpdater.updatePeriod.
-func (cu *crlUpdater) Run() {
-	cu.tick(context.Background())
+// on the frequency specified by crlUpdater.updatePeriod. The provided context
+// can be used to gracefully stop (cancel) the process.
+func (cu *crlUpdater) Run(ctx context.Context) {
+	// TODO(#6163): Should there also be a configurable per-run timeout, to
+	// prevent overruns, used in a context.WithTimeout here?
+	cu.tick(ctx)
 	ticker := time.Tick(cu.updatePeriod)
-	for range ticker {
-		cu.tick(context.Background())
+	for {
+		select {
+		case <-ticker:
+			cu.tick(ctx)
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
@@ -150,7 +157,7 @@ func (cu *crlUpdater) tick(ctx context.Context) {
 	}
 }
 
-// tickIssuer performs the full crl issuance cycle for a single issuer cert.
+// tickIssuer performs the full CRL issuance cycle for a single issuer cert.
 func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID) error {
 	start := cu.clk.Now()
 	result := "success"

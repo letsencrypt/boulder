@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -21,18 +22,19 @@ type Config struct {
 
 		CRLGeneratorService *cmd.GRPCClientConfig
 		SAService           *cmd.GRPCClientConfig
-		// TODO(#6162): Add this so we can talk to the crl-storer.
-		// CRLStorerService    *cmd.GRPCClientConfig
+		// TODO(#6162): Add CRLStorerService stanza
 
 		// IssuerCerts is a list of paths to issuer certificates on disk. This
 		// controls the set of CRLs which will be published by this updater: it will
 		// publish one set of NumShards CRL shards for each issuer in this list.
 		IssuerCerts []string
+
 		// NumShards is the number of shards into which each issuer's "full and
 		// complete" CRL will be split.
 		// WARNING: When this number is changed, the "JSON Array of CRL URLs" field
 		// in CCADB MUST be updated.
 		NumShards int
+
 		// CertificateLifetime is the validity period (usually expressed in hours,
 		// like "2160h") of the longest-lived currently-unexpired certificate. For
 		// Let's Encrypt, this is usually ninety days. If the validity period of
@@ -41,12 +43,14 @@ type Config struct {
 		// changes downwards, the value must not change until after all certificates with
 		// the old validity period have expired.
 		CertificateLifetime cmd.ConfigDuration
+
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
-		// new versions of every crl shard. The Baseline Requirements, Section 4.9.7
+		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7
 		// state that this MUST NOT be more than 7 days. We believe that future
 		// updates may require that this not be more than 24 hours, and currently
 		// recommend and UpdatePeriod of 6 hours.
 		UpdatePeriod cmd.ConfigDuration
+
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
@@ -105,10 +109,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	// TODO(#6162): Add this so we can talk to the crl-storer.
-	// csConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLStorerService, tlsConfig, clientMetrics, clk)
-	// cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLStorer")
-	// csc := cspb.NewCRLStorerClient(csConn)
+	// TODO(#6162): Set up crl-storer client connection.
 
 	u, err := updater.NewUpdater(
 		issuers,
@@ -124,8 +125,9 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create crl-updater")
 
-	go cmd.CatchSignals(logger, nil)
-	u.Run()
+	ctx, cancel := context.WithCancel(context.Background())
+	go cmd.CatchSignals(logger, cancel)
+	u.Run(ctx)
 }
 
 func init() {
