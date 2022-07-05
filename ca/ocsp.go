@@ -143,7 +143,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 	}
 
 	if oi.ocspLogQueue != nil {
-		oi.ocspLogQueue.enqueue(serial.Bytes(), now, ocsp.ResponseStatus(tbsResponse.Status))
+		oi.ocspLogQueue.enqueue(serial.Bytes(), now, tbsResponse.Status)
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.Cert.Certificate, issuer.Cert.Certificate, tbsResponse, issuer.Signer)
@@ -184,7 +184,7 @@ type ocspLogQueue struct {
 type ocspLog struct {
 	serial []byte
 	time   time.Time
-	status ocsp.ResponseStatus
+	status int
 }
 
 func newOCSPLogQueue(
@@ -212,7 +212,7 @@ func newOCSPLogQueue(
 	return &olq
 }
 
-func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status ocsp.ResponseStatus) {
+func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status int) {
 	olq.queue <- ocspLog{
 		serial: append([]byte{}, serial...),
 		time:   time,
