@@ -122,12 +122,13 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 	// TODO(#6163): Should there also be a configurable per-run timeout, to
 	// prevent overruns, used in a context.WithTimeout here?
 	cu.tick(ctx)
-	ticker := time.Tick(cu.updatePeriod)
+	ticker := time.NewTicker(cu.updatePeriod)
 	for {
 		select {
-		case <-ticker:
+		case <-ticker.C:
 			cu.tick(ctx)
 		case <-ctx.Done():
+			ticker.Stop()
 			return
 		}
 	}
