@@ -98,7 +98,7 @@ func LintCRL(lintCRL *crl_x509.RevocationList) *zlint.ResultSet {
 // the encoding rules of a certificate issuer name, because it (perhaps wrongly)
 // assumes that those were checked when the issuer was itself issued, and on all
 // certificates issued by this CRL issuer. Also because there are just a lot of
-// things to check there.
+// things to check there, and zlint doesn't expose a public helper for it.
 func hasIssuerName(crl *crl_x509.RevocationList) *lint.LintResult {
 	if len(crl.Issuer.Names) == 0 {
 		return &lint.LintResult{
