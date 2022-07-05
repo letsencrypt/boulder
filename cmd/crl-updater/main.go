@@ -33,25 +33,14 @@ type Config struct {
 		// WARNING: When this number is changed, the "JSON Array of CRL URLs" field
 		// in CCADB MUST be updated.
 		NumShards int
-		// LookbackPeriod controls how far into the past the updater should look.
-		// You'd think that this could be 0, because certs are sharded by their
-		// expiration time, and once a cert is expired, we don't have to care about
-		// it anymore. But in fact, we do: as per RFC5280 Section 3.3 "An entry MUST
-		// NOT be removed from the CRL until it appears on one regularly scheduled
-		// CRL issued beyond the revoked certificate's validity period." Therefore
-		// the LookbackPeriod MUST be at least the UpdatePeriod; a value of 2x or
-		// more is recommended.
-		// TODO: Consider removing this config parameter and instead computing it
-		// directly as a function of UpdatePeriod.
-		LookbackPeriod cmd.ConfigDuration
-		// LookforwardPeriod controls how far into the future the updater should
-		// look. This must be at least equal to the lifetime of the longest-lived
-		// currently-valid certificate (generally 90d) *plus* the width of one
-		// shard ((LookbackPeriod + LookforwardPeriod) / NumShards). Therefore,
-		// a LookforwardPeriod of 100 days is recommended.
-		// TODO: Consider removing this config parameter, replacing it with e.g.
-		// `CertificateLifetime` (90d), and computing it from that and NumShards.
-		LookforwardPeriod cmd.ConfigDuration
+		// CertificateLifetime is the validity period (usually expressed in hours,
+		// like "2160h") of the longest-lived currently-unexpired certificate. For
+		// Let's Encrypt, this is usually ninety days. If the validity period of
+		// the issued certificates ever changes upwards, this value must be updated
+		// immediately; if the validity period of the issued certificates ever
+		// changes downwards, the value must not change until after all certificates with
+		// the old validity period have expired.
+		CertificateLifetime cmd.ConfigDuration
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
 		// new versions of every crl shard. The Baseline Requirements, Section 4.9.7
 		// state that this MUST NOT be more than 7 days. We believe that future
@@ -124,8 +113,7 @@ func main() {
 	u, err := updater.NewUpdater(
 		issuers,
 		c.CRLUpdater.NumShards,
-		c.CRLUpdater.LookbackPeriod.Duration,
-		c.CRLUpdater.LookforwardPeriod.Duration,
+		c.CRLUpdater.CertificateLifetime.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
 		c.CRLUpdater.MaxParallelism,
 		sac,

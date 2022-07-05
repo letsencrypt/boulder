@@ -39,8 +39,7 @@ type crlUpdater struct {
 func NewUpdater(
 	issuers []*issuance.Certificate,
 	numShards int,
-	lookbackPeriod time.Duration,
-	lookforwardPeriod time.Duration,
+	certLifetime time.Duration,
 	updatePeriod time.Duration,
 	maxParallelism int,
 	sa sapb.StorageAuthorityClient,
@@ -62,10 +61,24 @@ func NewUpdater(
 		return nil, fmt.Errorf("must update CRLs at least every 7 days, got: %s", updatePeriod)
 	}
 
+	// Set the lookback period to be significantly greater than the update period.
+	// This guarantees that a certificate which was revoked very shortly before it
+	// expired will still appear on at least one CRL, as required by RFC 5280
+	// Section 3.3.
+	lookbackPeriod := 4 * updatePeriod
+
+	// Set the lookforward period to be greater than the lifetime of the longest
+	// currently-valid certificate. Ensure it overshoots by more than the width
+	// of one shard. See comment on getShardBoundaries for details.
+	tentativeShardWidth := (lookbackPeriod + certLifetime).Nanoseconds() / int64(numShards)
+	lookforwardPeriod := certLifetime + time.Duration(4*tentativeShardWidth)
+
+	// Ensure that the total window (lookback + lookforward) is evenly divisible
+	// by the number of shards, to make shard boundary calculations easy.
 	window := lookbackPeriod + lookforwardPeriod
-	if window.Nanoseconds()%int64(numShards) != 0 {
-		return nil, fmt.Errorf("total window (lookback+lookforward=%dns) must be evenly divisible by numShards (%d)",
-			window.Nanoseconds(), numShards)
+	offset := window.Nanoseconds() % int64(numShards)
+	if offset != 0 {
+		lookforwardPeriod += time.Duration(int64(numShards) - offset)
 	}
 
 	if maxParallelism <= 0 {
