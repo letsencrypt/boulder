@@ -26,12 +26,6 @@ type Config struct {
 	ROCSPTool struct {
 		DebugAddr string
 		Redis     rocsp_config.RedisConfig
-		// Issuers is a map from filenames to short issuer IDs.
-		// Each filename must contain an issuer certificate. The short issuer
-		// IDs are arbitrarily assigned and must be consistent across OCSP
-		// components. For production we'll use the number part of the CN, i.e.
-		// E1 -> 1, R3 -> 3, etc.
-		Issuers map[string]int
 
 		// If using load-from-db, this provides credentials to connect to the DB
 		// and the CA. Otherwise, it's optional.
@@ -98,13 +92,6 @@ func main2() error {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	issuers, err := rocsp_config.LoadIssuers(c.ROCSPTool.Issuers)
-	if err != nil {
-		return fmt.Errorf("loading issuers: %w", err)
-	}
-	if len(issuers) == 0 {
-		return fmt.Errorf("'issuers' section of config JSON is required")
-	}
 	clk := cmd.Clock()
 	redisClient, err := rocsp_config.MakeClient(&c.ROCSPTool.Redis, clk, metrics.NoopRegisterer)
 	if err != nil {
@@ -138,7 +125,6 @@ func main2() error {
 
 	ctx := context.Background()
 	cl := client{
-		issuers:       issuers,
 		redis:         redisClient,
 		db:            db,
 		ocspGenerator: ocspGenerator,
@@ -173,15 +159,6 @@ func main2() error {
 		err = cl.loadFromDB(ctx, c.ROCSPTool.LoadFromDB.Speed, *startFromID)
 		if err != nil {
 			return fmt.Errorf("loading OCSP responses from DB: %w", err)
-		}
-	case "scan-metadata":
-		results := cl.redis.ScanMetadata(ctx, "*")
-		for r := range results {
-			if r.Err != nil {
-				cmd.FailOnError(err, "while scanning")
-			}
-			age := clk.Now().Sub(r.Metadata.ThisUpdate)
-			logger.Infof("%s: %g\n", r.Serial, age.Hours())
 		}
 	case "scan-responses":
 		results := cl.redis.ScanResponses(ctx, "*")

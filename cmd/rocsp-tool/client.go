@@ -14,14 +14,12 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rocsp"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
 )
 
 type client struct {
-	issuers       []rocsp_config.ShortIDIssuer
 	redis         *rocsp.WritingClient
 	db            *db.WrappedMap // optional
 	ocspGenerator capb.OCSPGeneratorClient
@@ -220,13 +218,8 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
-		issuer, err := rocsp_config.FindIssuerByID(status.IssuerID, cl.issuers)
-		if err != nil {
-			output <- processResult{id: uint64(status.ID), err: err}
-			continue
-		}
 
-		err = cl.redis.StoreResponse(ctx, result.Response, issuer.ShortID())
+		err = cl.redis.StoreResponse(ctx, result.Response)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
@@ -263,16 +256,6 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("parsing response: %w", err)
 	}
-	issuer, err := rocsp_config.FindIssuerByName(resp, cl.issuers)
-	if err != nil {
-		return fmt.Errorf("finding issuer for response: %w", err)
-	}
-
-	// Re-parse the response, this time verifying with the appropriate issuer
-	resp, err = ocsp.ParseResponse(respBytes, issuer.Certificate.Certificate)
-	if err != nil {
-		return fmt.Errorf("parsing response: %w", err)
-	}
 
 	serial := core.SerialToString(resp.SerialNumber)
 
@@ -289,7 +272,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte) error {
 		time.Until(resp.NextUpdate).Hours(),
 	)
 
-	err = cl.redis.StoreResponse(ctx, respBytes, issuer.ShortID())
+	err = cl.redis.StoreResponse(ctx, respBytes)
 	if err != nil {
 		return fmt.Errorf("storing response: %w", err)
 	}
@@ -299,7 +282,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte) error {
 		return fmt.Errorf("getting response: %w", err)
 	}
 
-	parsedRetrievedResponse, err := ocsp.ParseResponse(retrievedResponse, issuer.Certificate.Certificate)
+	parsedRetrievedResponse, err := ocsp.ParseResponse(retrievedResponse, nil)
 	if err != nil {
 		return fmt.Errorf("parsing retrieved response: %w", err)
 	}

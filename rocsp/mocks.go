@@ -12,7 +12,7 @@ type MockWriteClient struct {
 
 // StoreResponse mocks a rocsp.StoreResponse method and returns nil or an
 // error depending on the desired state.
-func (r MockWriteClient) StoreResponse(ctx context.Context, respBytes []byte, shortIssuerID byte) error {
+func (r MockWriteClient) StoreResponse(ctx context.Context, respBytes []byte) error {
 	return r.StoreReponseReturnError
 }
 

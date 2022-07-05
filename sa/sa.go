@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
+	"github.com/letsencrypt/boulder/rocsp"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -93,7 +94,7 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
-	rocspWriteClient rocspWriter,
+	rocspWriteClient *rocsp.WritingClient,
 	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,
@@ -114,10 +115,15 @@ func NewSQLStorageAuthority(
 	}, []string{"result"})
 	stats.MustRegister(redisStoreResponse)
 
+	var rocspWriter rocspWriter
+	if rocspWriteClient != nil {
+		rocspWriter = rocspWriteClient
+	}
+
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
 		dbReadOnlyMap:        dbReadOnlyMap,
-		rocspWriteClient:     rocspWriteClient,
+		rocspWriteClient:     rocspWriter,
 		shortIssuers:         shortIssuers,
 		clk:                  clk,
 		log:                  logger,
@@ -1776,7 +1782,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}
@@ -1836,7 +1842,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 
 		// Send the response off to redis in a goroutine.
 		go func() {
-			err = ssa.storeOCSPRedis(rocspCtx, req.Response, req.IssuerID)
+			err = ssa.storeOCSPRedis(rocspCtx, req.Response)
 			ssa.log.Debugf("failed to store OCSP response in redis: %v", err)
 		}()
 	}
