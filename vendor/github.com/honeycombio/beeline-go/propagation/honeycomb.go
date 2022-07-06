@@ -48,7 +48,7 @@ func MarshalHoneycombTraceContext(prop *PropagationContext) string {
 	tcB64 := base64.StdEncoding.EncodeToString(tcJSON)
 
 	var datasetClause string
-	if prop.Dataset != "" {
+	if GlobalConfig.PropagateDataset && prop.Dataset != "" {
 		datasetClause = fmt.Sprintf("dataset=%s,", url.QueryEscape(prop.Dataset))
 	}
 
@@ -92,7 +92,9 @@ func unmarshalHoneycombTraceContextV1(header string) (*PropagationContext, error
 		case "parent_id":
 			prop.ParentID = keyval[1]
 		case "dataset":
-			prop.Dataset, _ = url.QueryUnescape(keyval[1])
+			if GlobalConfig.PropagateDataset {
+				prop.Dataset, _ = url.QueryUnescape(keyval[1])
+			}
 		case "context":
 			tcB64 = keyval[1]
 		}

@@ -2,9 +2,11 @@ package hnynethttp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"reflect"
 	"runtime"
+	"strings"
 
 	"github.com/honeycombio/beeline-go/propagation"
 	"github.com/honeycombio/beeline-go/timer"
@@ -21,7 +23,7 @@ import (
 // each incoming HTTP request.
 func WrapHandlerWithConfig(handler http.Handler, cfg config.HTTPIncomingConfig) http.Handler {
 	// if we can cache handlerName here, let's do so for efficiency's sake
-	handlerName := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
+	handlerName := getHandlerName(handler)
 
 	wrappedHandler := func(w http.ResponseWriter, r *http.Request) {
 		// get a new context with our trace from the request, and add common fields
@@ -42,7 +44,7 @@ func WrapHandlerWithConfig(handler http.Handler, cfg config.HTTPIncomingConfig) 
 		if ok {
 			// this is actually a mux! let's do extra muxxy stuff
 			handler, pat := mux.Handler(r)
-			name := runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name()
+			name := getHandlerName(handler)
 			hType := reflect.TypeOf(handler).String()
 			span.AddField("handler.pattern", pat)
 			span.AddField("handler.type", hType)
@@ -76,6 +78,15 @@ func WrapHandlerWithConfig(handler http.Handler, cfg config.HTTPIncomingConfig) 
 		span.AddField("response.status_code", wrappedWriter.Status)
 	}
 	return http.HandlerFunc(wrappedHandler)
+}
+
+// getHandlerName returns the name of the function or struct passed to it
+func getHandlerName(handler interface{}) string {
+	voh := reflect.ValueOf(handler)
+	if voh.Kind() == reflect.Func {
+		return runtime.FuncForPC(voh.Pointer()).Name()
+	}
+	return strings.TrimLeft(fmt.Sprintf("%T", handler), "*")
 }
 
 // WrapHandler will create a Honeycomb event per invocation of this handler with
