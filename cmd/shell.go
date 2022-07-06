@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -126,6 +128,14 @@ func (log promLogger) Println(args ...interface{}) {
 	log.AuditErr(fmt.Sprint(args...))
 }
 
+type redisLogger struct {
+	blog.Logger
+}
+
+func (rl redisLogger) Printf(ctx context.Context, format string, v ...interface{}) {
+	rl.Infof(format, v...)
+}
+
 // logWriter implements the io.Writer interface.
 type logWriter struct {
 	blog.Logger
@@ -169,6 +179,7 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	_ = mysql.SetLogger(mysqlLogger{logger})
 	grpclog.SetLoggerV2(grpcLogger{logger})
 	log.SetOutput(logWriter{logger})
+	redis.SetLogger(redisLogger{logger})
 
 	// Periodically log the current timestamp, to ensure syslog timestamps match
 	// Boulder's conception of time.
