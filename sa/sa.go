@@ -707,6 +707,32 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 	return &sapb.Count{Count: count}, err
 }
 
+// FQDNSetIssuanceForWindow returns a count of issuance, for a set of domains,
+// that occurred during a given window of time and the issuance timestamp of the
+// earliest issuance in the window.
+func (ssa *SQLStorageAuthority) FQDNSetIssuanceForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.CountWithTimestamp, error) {
+	if req.Window == 0 || len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
+	}
+	var result struct {
+		Count  int64
+		Issued time.Time
+	}
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&result,
+		`SELECT COUNT(*) as count, MIN(issued) as issued 
+		FROM (SELECT * FROM fqdnSets 
+		WHERE setHash = ?
+		AND issued > ?) AS a`,
+		HashNames(req.Domains),
+		ssa.clk.Now().Add(-time.Duration(req.Window)),
+	)
+	return &sapb.CountWithTimestamp{
+		Count:     result.Count,
+		Timestamp: result.Issued.UnixNano(),
+	}, err
+}
+
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
