@@ -200,6 +200,7 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 	}
 
 	if tbs.PeekASN1Tag(cryptobyte_asn1.SEQUENCE) {
+		rcs := make([]RevokedCertificate, 0)
 		var revokedSeq cryptobyte.String
 		if !tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE) {
 			return nil, errors.New("x509: malformed crl")
@@ -246,8 +247,9 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 				}
 			}
 
-			rl.RevokedCertificates = append(rl.RevokedCertificates, rc)
+			rcs = append(rcs, rc)
 		}
+		rl.RevokedCertificates = rcs
 	}
 
 	var extensions cryptobyte.String
