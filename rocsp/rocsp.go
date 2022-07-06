@@ -58,6 +58,12 @@ func NewClient(
 	}
 }
 
+func (c *Client) Ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	return c.rdb.Ping(ctx).Err()
+}
+
 // WritingClient represents a Redis client that can both read and write.
 type WritingClient struct {
 	*Client
