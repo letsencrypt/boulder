@@ -150,3 +150,93 @@ func TestHasNoCertIssuers(t *testing.T) {
 	test.AssertEquals(t, res.Status, lint.Notice)
 	test.AssertContains(t, res.Details, "Certificate Issuer")
 }
+
+func TestHasAcceptableValidity(t *testing.T) {
+	crl := loadPEMCRL(t, "testdata/good.pem")
+	res := hasAcceptableValidity(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/negative_validity.pem")
+	res = hasAcceptableValidity(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "at or before")
+
+	crl = loadPEMCRL(t, "testdata/long_validity.pem")
+	res = hasAcceptableValidity(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "greater than ten days")
+}
+
+func TestNoZeroReasonCodes(t *testing.T) {
+	crl := loadPEMCRL(t, "testdata/good.pem")
+	res := noZeroReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_0.pem")
+	res = noZeroReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "MUST NOT contain the unspecified")
+}
+
+func TestNoCertificateHolds(t *testing.T) {
+	crl := loadPEMCRL(t, "testdata/good.pem")
+	res := noCertificateHolds(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_6.pem")
+	res = noCertificateHolds(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "MUST NOT use the certificateHold")
+}
+
+func TestHasMozReasonCodes(t *testing.T) {
+	// good.pem contains a revocation entry with no reason code extension.
+	crl := loadPEMCRL(t, "testdata/good.pem")
+	res := hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_0.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "MUST NOT include reasonCodes other than")
+
+	crl = loadPEMCRL(t, "testdata/reason_1.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_2.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "MUST NOT include reasonCodes other than")
+
+	crl = loadPEMCRL(t, "testdata/reason_3.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_4.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_5.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_6.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "MUST NOT include reasonCodes other than")
+
+	crl = loadPEMCRL(t, "testdata/reason_8.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "MUST NOT include reasonCodes other than")
+
+	crl = loadPEMCRL(t, "testdata/reason_9.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/reason_10.pem")
+	res = hasMozReasonCodes(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "MUST NOT include reasonCodes other than")
+}

@@ -264,25 +264,6 @@ func hasNoAIA(crl *crl_x509.RevocationList) *lint.LintResult {
 	return &lint.LintResult{Status: lint.Pass}
 }
 
-// noZeroReasonCodes checks Baseline Requirements, Section 7.2.2.1:
-// The CRLReason indicated MUST NOT be unspecified (0). If the reason for
-// revocation is unspecified, CAs MUST omit reasonCode entry extension, if
-// allowed by the previous requirements.
-// By extension, it therefore also checks RFC 5280, Section 5.3.1:
-// The reason code CRL entry extension SHOULD be absent instead of using the
-// unspecified (0) reasonCode value.
-func noZeroReasonCodes(crl *crl_x509.RevocationList) *lint.LintResult {
-	for _, entry := range crl.RevokedCertificates {
-		if entry.ReasonCode != nil && *entry.ReasonCode == 0 {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "CRL entries MUST NOT contain the unspecified (0) reason code",
-			}
-		}
-	}
-	return &lint.LintResult{Status: lint.Pass}
-}
-
 // hasNoCertIssuers checks that the CRL does not have any entries with the
 // Certificate Issuer extension (RFC 5280, Section 5.3.3). There is no
 // requirement against this, but the presence of this extension would mean that
@@ -315,6 +296,25 @@ func hasAcceptableValidity(crl *crl_x509.RevocationList) *lint.LintResult {
 		return &lint.LintResult{
 			Status:  lint.Error,
 			Details: "CRL has validity period greater than ten days",
+		}
+	}
+	return &lint.LintResult{Status: lint.Pass}
+}
+
+// noZeroReasonCodes checks Baseline Requirements, Section 7.2.2.1:
+// The CRLReason indicated MUST NOT be unspecified (0). If the reason for
+// revocation is unspecified, CAs MUST omit reasonCode entry extension, if
+// allowed by the previous requirements.
+// By extension, it therefore also checks RFC 5280, Section 5.3.1:
+// The reason code CRL entry extension SHOULD be absent instead of using the
+// unspecified (0) reasonCode value.
+func noZeroReasonCodes(crl *crl_x509.RevocationList) *lint.LintResult {
+	for _, entry := range crl.RevokedCertificates {
+		if entry.ReasonCode != nil && *entry.ReasonCode == 0 {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "CRL entries MUST NOT contain the unspecified (0) reason code",
+			}
 		}
 	}
 	return &lint.LintResult{Status: lint.Pass}
