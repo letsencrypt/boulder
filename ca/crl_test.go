@@ -222,15 +222,6 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "333333333333333333333333333333333333",
-				Reason:    3, // affiliationChanged
-				RevokedAt: time.Now().UnixNano(),
-			},
-		},
-	}
-	ins <- &capb.GenerateCRLRequest{
-		Payload: &capb.GenerateCRLRequest_Entry{
-			Entry: &corepb.CRLEntry{
 				Serial:    "444444444444444444444444444444444444",
 				Reason:    4, // superseded
 				RevokedAt: time.Now().UnixNano(),
@@ -262,7 +253,7 @@ func TestGenerateCRL(t *testing.T) {
 	test.Assert(t, len(crlBytes) > 0, "should have gotten some CRL bytes")
 	crl, err = x509.ParseCRL(crlBytes)
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
-	test.AssertEquals(t, len(crl.TBSCertList.RevokedCertificates), 6)
+	test.AssertEquals(t, len(crl.TBSCertList.RevokedCertificates), 5)
 	err = testCtx.boulderIssuers[0].Cert.CheckCRLSignature(crl)
 	test.AssertNotError(t, err, "CRL signature should validate")
 }

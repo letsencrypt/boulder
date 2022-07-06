@@ -710,8 +710,8 @@ def test_revoke_by_account_with_reason():
         else:
             raise(Exception("Revoked by applicant with reason keyCompromise"))
 
-        client.revoke(josepy.ComparableX509(cert), 3)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "affiliationChanged")
+        client.revoke(josepy.ComparableX509(cert), 4)
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "superseded")
 
     verify_akamai_purge()
 
@@ -743,8 +743,8 @@ def test_revoke_by_authz():
         else:
             raise(Exception("Revoked by applicant with reason keyCompromise"))
 
-        client.revoke(josepy.ComparableX509(cert), 3)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "affiliationChanged")
+        client.revoke(josepy.ComparableX509(cert), 4)
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "superseded")
 
     verify_akamai_purge()
 
@@ -792,8 +792,8 @@ def test_revoke_by_privkey():
 
     else:
         # Revocation should work for any reason.
-        revoke_client.revoke(josepy.ComparableX509(cert), 3)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "affiliationChanged")
+        revoke_client.revoke(josepy.ComparableX509(cert), 4)
+        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "superseded")
 
     verify_akamai_purge()
 
@@ -1771,8 +1771,8 @@ def ocsp_resigning_setup():
 
     cert = OpenSSL.crypto.load_certificate(
         OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
-    # Revoke for reason 3: affiliationChanged
-    client.revoke(josepy.ComparableX509(cert), 3)
+    # Revoke for reason 5: cessationOfOperation
+    client.revoke(josepy.ComparableX509(cert), 5)
 
     ocsp_response, reason = get_ocsp_response_and_reason(
         cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002")
@@ -1802,5 +1802,5 @@ def test_ocsp_resigning():
     if reason != ocsp_resigning_setup_data['reason']:
         raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
             reason, ocsp_resigning_setup_data['reason'])))
-    if reason != "affiliationChanged":
+    if reason != "cessationOfOperation":
         raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
