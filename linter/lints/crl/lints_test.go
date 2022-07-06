@@ -178,6 +178,17 @@ func TestNoZeroReasonCodes(t *testing.T) {
 	test.AssertContains(t, res.Details, "MUST NOT contain the unspecified")
 }
 
+func TestNoCriticalReasons(t *testing.T) {
+	crl := loadPEMCRL(t, "testdata/good.pem")
+	res := noCriticalReasons(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	crl = loadPEMCRL(t, "testdata/critical_reason.pem")
+	res = noCriticalReasons(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "reasonCodes MUST NOT be critical")
+}
+
 func TestNoCertificateHolds(t *testing.T) {
 	crl := loadPEMCRL(t, "testdata/good.pem")
 	res := noCertificateHolds(crl)

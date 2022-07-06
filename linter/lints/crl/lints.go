@@ -272,7 +272,7 @@ func hasNoAIA(crl *crl_x509.RevocationList) *lint.LintResult {
 func hasNoCertIssuers(crl *crl_x509.RevocationList) *lint.LintResult {
 	certIssuerOID := asn1.ObjectIdentifier{2, 5, 29, 29} // id-ce-certificateIssuer
 	for _, entry := range crl.RevokedCertificates {
-		if getExtWithOID(entry.ExtraExtensions, certIssuerOID) != nil {
+		if getExtWithOID(entry.Extensions, certIssuerOID) != nil {
 			return &lint.LintResult{
 				Status:  lint.Notice,
 				Details: "CRL has an entry with a Certificate Issuer extension",
@@ -323,9 +323,18 @@ func noZeroReasonCodes(crl *crl_x509.RevocationList) *lint.LintResult {
 // noCrticialReasons checks Baseline Requirements, Section 7.2.2.1:
 // If present, [the reasonCode] extension MUST NOT be marked critical.
 func noCriticalReasons(crl *crl_x509.RevocationList) *lint.LintResult {
-	// TODO: Figure out how to check this without direct access to the underlying
-	// reasonCode extension.
-	return &lint.LintResult{Status: lint.NA}
+	reasonCodeOID := asn1.ObjectIdentifier{2, 5, 29, 21} // id-ce-reasonCode
+	for _, rc := range crl.RevokedCertificates {
+		for _, ext := range rc.Extensions {
+			if ext.Id.Equal(reasonCodeOID) && ext.Critical {
+				return &lint.LintResult{
+					Status:  lint.Error,
+					Details: "CRL entry reasonCodes MUST NOT be critical",
+				}
+			}
+		}
+	}
+	return &lint.LintResult{Status: lint.Pass}
 }
 
 // noCertificateHolds checks Baseline Requirements, Section 7.2.2.1:
