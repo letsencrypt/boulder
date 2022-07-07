@@ -48,7 +48,7 @@ type Config struct {
 		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7
 		// state that this MUST NOT be more than 7 days. We believe that future
 		// updates may require that this not be more than 24 hours, and currently
-		// recommend and UpdatePeriod of 6 hours.
+		// recommend an UpdatePeriod of 6 hours.
 		UpdatePeriod cmd.ConfigDuration
 
 		// MaxParallelism controls how many workers may be running in parallel.

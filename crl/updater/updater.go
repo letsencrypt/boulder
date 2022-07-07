@@ -138,7 +138,7 @@ func (cu *crlUpdater) tick(ctx context.Context) {
 	atTime := cu.clk.Now()
 	result := "success"
 	defer func() {
-		cu.tickHistogram.WithLabelValues("all", result).Observe(cu.clk.Now().Sub(atTime).Seconds())
+		cu.tickHistogram.WithLabelValues("all", result).Observe(cu.clk.Since(atTime).Seconds())
 	}()
 	cu.log.Debugf("Ticking at time %s", atTime)
 
@@ -163,7 +163,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Now().Sub(start).Seconds())
+		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
 	}()
 	cu.log.Debugf("Ticking issuer %d at time %s", issuerID, atTime)
 
@@ -178,10 +178,10 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 			case <-ctx.Done():
 				return
 			default:
-			}
-			out <- shardResult{
-				shardID: id,
-				err:     cu.tickShard(ctx, atTime, issuerID, id),
+				out <- shardResult{
+					shardID: id,
+					err:     cu.tickShard(ctx, atTime, issuerID, id),
+				}
 			}
 		}
 	}
@@ -214,7 +214,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName, result).Observe(cu.clk.Now().Sub(start).Seconds())
+		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
 		cu.generatedCounter.WithLabelValues(result).Inc()
 	}()
 	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardID, issuerID, atTime)
