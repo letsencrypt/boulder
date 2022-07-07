@@ -46,6 +46,7 @@ jobs:
 
       - uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.CREATE_PR_PAT }}
           script: |
             github.rest.pulls.create({
               title: 'Update Public Suffix List',
