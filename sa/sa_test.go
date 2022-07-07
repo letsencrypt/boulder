@@ -632,7 +632,7 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertEquals(t, count.Count, int64(2))
 }
 
-func TestFQDNSetIssuanceForWindow(t *testing.T) {
+func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -651,19 +651,17 @@ func TestFQDNSetIssuanceForWindow(t *testing.T) {
 		Window:  threeHours.Nanoseconds(),
 	}
 	// only one valid
-	resp, err := sa.FQDNSetIssuanceForWindow(ctx, req)
+	resp, err := sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, resp.Count, int64(1))
-	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamp).UTC())
+	test.AssertEquals(t, len(resp.Timestamps), 1)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
 
 	// check hash isn't affected by changing name order/casing
 	req.Domains = []string{"b.example.com", "A.example.COM"}
-	resp, err = sa.FQDNSetIssuanceForWindow(ctx, req)
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, resp.Count, int64(1))
-	timestamp := time.Unix(0, resp.Timestamp).UTC()
-	test.AssertEquals(t, firstIssued, timestamp)
-	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamp).UTC())
+	test.AssertEquals(t, len(resp.Timestamps), 1)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
 
 	// add another valid set
 	tx, err = sa.dbMap.Begin()
@@ -674,10 +672,10 @@ func TestFQDNSetIssuanceForWindow(t *testing.T) {
 
 	// only two valid
 	req.Domains = names
-	resp, err = sa.FQDNSetIssuanceForWindow(ctx, req)
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, resp.Count, int64(2))
-	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamp).UTC())
+	test.AssertEquals(t, len(resp.Timestamps), 2)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
 
 	// add an expired set
 	tx, err = sa.dbMap.Begin()
@@ -693,10 +691,10 @@ func TestFQDNSetIssuanceForWindow(t *testing.T) {
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
 	// only two valid
-	resp, err = sa.FQDNSetIssuanceForWindow(ctx, req)
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
-	test.AssertEquals(t, resp.Count, int64(2))
-	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamp).UTC())
+	test.AssertEquals(t, len(resp.Timestamps), 2)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
 }
 
 func TestFQDNSetsExists(t *testing.T) {

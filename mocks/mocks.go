@@ -282,8 +282,8 @@ func (sa *StorageAuthority) CountFQDNSets(_ context.Context, _ *sapb.CountFQDNSe
 }
 
 // FQDNSetIssuanceForWindow is a mock
-func (sa *StorageAuthority) FQDNSetIssuanceForWindow(_ context.Context, _ *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.CountWithTimestamp, error) {
-	return &sapb.CountWithTimestamp{}, nil
+func (sa *StorageAuthority) FQDNSetTimestampsForWindow(_ context.Context, _ *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
+	return &sapb.Timestamps{}, nil
 }
 
 // FQDNSetExists is a mock

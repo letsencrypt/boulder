@@ -38,7 +38,7 @@ type StorageAuthorityClient interface {
 	// Return a count of authorizations with status "invalid" that belong to
 	// a given registration ID and expire in the given time range.
 	CountFQDNSets(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Count, error)
-	FQDNSetIssuanceForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*CountWithTimestamp, error)
+	FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error)
 	FQDNSetExists(ctx context.Context, in *FQDNSetExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	PreviousCertificateExists(ctx context.Context, in *PreviousCertificateExistsRequest, opts ...grpc.CallOption) (*Exists, error)
 	GetAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*proto.Authorization, error)
@@ -180,9 +180,9 @@ func (c *storageAuthorityClient) CountFQDNSets(ctx context.Context, in *CountFQD
 	return out, nil
 }
 
-func (c *storageAuthorityClient) FQDNSetIssuanceForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*CountWithTimestamp, error) {
-	out := new(CountWithTimestamp)
-	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/FQDNSetIssuanceForWindow", in, out, opts...)
+func (c *storageAuthorityClient) FQDNSetTimestampsForWindow(ctx context.Context, in *CountFQDNSetsRequest, opts ...grpc.CallOption) (*Timestamps, error) {
+	out := new(Timestamps)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/FQDNSetTimestampsForWindow", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -532,7 +532,7 @@ type StorageAuthorityServer interface {
 	// Return a count of authorizations with status "invalid" that belong to
 	// a given registration ID and expire in the given time range.
 	CountFQDNSets(context.Context, *CountFQDNSetsRequest) (*Count, error)
-	FQDNSetIssuanceForWindow(context.Context, *CountFQDNSetsRequest) (*CountWithTimestamp, error)
+	FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error)
 	FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error)
 	PreviousCertificateExists(context.Context, *PreviousCertificateExistsRequest) (*Exists, error)
 	GetAuthorization2(context.Context, *AuthorizationID2) (*proto.Authorization, error)
@@ -605,8 +605,8 @@ func (UnimplementedStorageAuthorityServer) CountOrders(context.Context, *CountOr
 func (UnimplementedStorageAuthorityServer) CountFQDNSets(context.Context, *CountFQDNSetsRequest) (*Count, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountFQDNSets not implemented")
 }
-func (UnimplementedStorageAuthorityServer) FQDNSetIssuanceForWindow(context.Context, *CountFQDNSetsRequest) (*CountWithTimestamp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetIssuanceForWindow not implemented")
+func (UnimplementedStorageAuthorityServer) FQDNSetTimestampsForWindow(context.Context, *CountFQDNSetsRequest) (*Timestamps, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetTimestampsForWindow not implemented")
 }
 func (UnimplementedStorageAuthorityServer) FQDNSetExists(context.Context, *FQDNSetExistsRequest) (*Exists, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FQDNSetExists not implemented")
@@ -912,20 +912,20 @@ func _StorageAuthority_CountFQDNSets_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _StorageAuthority_FQDNSetIssuanceForWindow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _StorageAuthority_FQDNSetTimestampsForWindow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CountFQDNSetsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(StorageAuthorityServer).FQDNSetIssuanceForWindow(ctx, in)
+		return srv.(StorageAuthorityServer).FQDNSetTimestampsForWindow(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/sa.StorageAuthority/FQDNSetIssuanceForWindow",
+		FullMethod: "/sa.StorageAuthority/FQDNSetTimestampsForWindow",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(StorageAuthorityServer).FQDNSetIssuanceForWindow(ctx, req.(*CountFQDNSetsRequest))
+		return srv.(StorageAuthorityServer).FQDNSetTimestampsForWindow(ctx, req.(*CountFQDNSetsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1546,8 +1546,8 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _StorageAuthority_CountFQDNSets_Handler,
 		},
 		{
-			MethodName: "FQDNSetIssuanceForWindow",
-			Handler:    _StorageAuthority_FQDNSetIssuanceForWindow_Handler,
+			MethodName: "FQDNSetTimestampsForWindow",
+			Handler:    _StorageAuthority_FQDNSetTimestampsForWindow_Handler,
 		},
 		{
 			MethodName: "FQDNSetExists",

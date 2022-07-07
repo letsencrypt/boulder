@@ -707,30 +707,35 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 	return &sapb.Count{Count: count}, err
 }
 
-// FQDNSetIssuanceForWindow returns a count of issuance, for a set of domains,
-// that occurred during a given window of time and the issuance timestamp of the
-// earliest issuance in the window.
-func (ssa *SQLStorageAuthority) FQDNSetIssuanceForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.CountWithTimestamp, error) {
+// FQDNSetTimestampsForWindow returns the issuance timestamps for each
+// certificate, issued for a set of domains, during a given window of time, in
+// ascending order.
+func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
 	if req.Window == 0 || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
-	var result struct {
-		Count  int64
+	type row struct {
 		Issued time.Time
 	}
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
-		&result,
-		`SELECT COUNT(*) as count, MIN(issued) as issued 
-		FROM (SELECT issued FROM fqdnSets 
+	var rows []row
+	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
+		&rows,
+		`SELECT issued FROM fqdnSets 
 		WHERE setHash = ?
-		AND issued > ?) AS a`,
+		AND issued > ?
+		ORDER BY issued ASC`,
 		HashNames(req.Domains),
 		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)
-	return &sapb.CountWithTimestamp{
-		Count:     result.Count,
-		Timestamp: result.Issued.UnixNano(),
-	}, err
+	if err != nil {
+		return nil, err
+	}
+
+	var results []int64
+	for _, i := range rows {
+		results = append(results, i.Issued.UnixNano())
+	}
+	return &sapb.Timestamps{Timestamps: results}, nil
 }
 
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
