@@ -1222,6 +1222,14 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 
 	// Create a mock SA that has a count of already issued certificates for some
 	// test names
+	firstIssuanceTimestamp := ra.clk.Now().Add(-23 * time.Hour)
+	issuanceTimestamps := []int64{
+		firstIssuanceTimestamp.UnixNano(),
+		firstIssuanceTimestamp.Add(time.Hour).UnixNano(),
+		firstIssuanceTimestamp.Add(time.Hour * 2).UnixNano(),
+		firstIssuanceTimestamp.Add(time.Hour * 3).UnixNano(),
+	}
+	expectRetryAfter := time.Unix(0, issuanceTimestamps[0]).Add(23 * time.Hour).Format(time.RFC3339)
 	ra.SA = &mockSAWithFQDNSet{
 		nameCounts: &sapb.CountByNames{
 			Counts: map[string]int64{
@@ -1229,6 +1237,11 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 				"equal.example.com": dupeCertLimit,
 				"over.example.com":  dupeCertLimit + 1,
 			},
+		},
+		issuanceTimestamps: map[string]*sapb.Timestamps{
+			"under.example.com": {Timestamps: issuanceTimestamps[0 : dupeCertLimit-1]},
+			"equal.example.com": {Timestamps: issuanceTimestamps[0:dupeCertLimit]},
+			"over.example.com":  {Timestamps: issuanceTimestamps[0 : dupeCertLimit+1]},
 		},
 		t: t,
 	}
@@ -1244,14 +1257,20 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 			ExpectedErr: nil,
 		},
 		{
-			Name:        "FQDN set issuances equal to limit",
-			Domain:      "equal.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23 hours: equal.example.com: see https://letsencrypt.org/docs/duplicate-certificate-limit/"),
+			Name:   "FQDN set issuances equal to limit",
+			Domain: "equal.example.com",
+			ExpectedErr: fmt.Errorf(
+				"too many certificates (3) already issued for this exact set of domains in the last 23 hours: equal.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				expectRetryAfter,
+			),
 		},
 		{
-			Name:        "FQDN set issuances above limit",
-			Domain:      "over.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23 hours: over.example.com: see https://letsencrypt.org/docs/duplicate-certificate-limit/"),
+			Name:   "FQDN set issuances above limit",
+			Domain: "over.example.com",
+			ExpectedErr: fmt.Errorf(
+				"too many certificates (3) already issued for this exact set of domains in the last 23 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				expectRetryAfter,
+			),
 		},
 	}
 
@@ -1364,9 +1383,10 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 // checkCertificatesPerNameRateLimit's FQDN exemption logic.
 type mockSAWithFQDNSet struct {
 	mocks.StorageAuthority
-	fqdnSet    map[string]bool
-	nameCounts *sapb.CountByNames
-	t          *testing.T
+	fqdnSet            map[string]bool
+	nameCounts         *sapb.CountByNames
+	issuanceTimestamps map[string]*sapb.Timestamps
+	t                  *testing.T
 }
 
 // Construct the FQDN Set key the same way as the SA (by using
@@ -1412,6 +1432,14 @@ func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNS
 		}
 	}
 	return &sapb.Count{Count: total}, nil
+}
+
+func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
+	if len(req.Domains) == 1 {
+		return m.issuanceTimestamps[req.Domains[0]], nil
+	} else {
+		return nil, fmt.Errorf("FQDNSetTimestampsForWindow mock only supports a single domain")
+	}
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
