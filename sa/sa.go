@@ -721,7 +721,7 @@ func (ssa *SQLStorageAuthority) FQDNSetIssuanceForWindow(ctx context.Context, re
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&result,
 		`SELECT COUNT(*) as count, MIN(issued) as issued 
-		FROM (SELECT * FROM fqdnSets 
+		FROM (SELECT issued FROM fqdnSets 
 		WHERE setHash = ?
 		AND issued > ?) AS a`,
 		HashNames(req.Domains),
