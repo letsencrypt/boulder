@@ -215,12 +215,11 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 			return nil, errors.New("x509: malformed crl")
 		}
 		for !revokedSeq.Empty() {
-			rc := RevokedCertificate{}
 			var certSeq cryptobyte.String
 			if !revokedSeq.ReadASN1Element(&certSeq, cryptobyte_asn1.SEQUENCE) {
 				return nil, errors.New("x509: malformed crl")
 			}
-			rc.Raw = certSeq
+			rc := RevokedCertificate{Raw: certSeq}
 			if !certSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE) {
 				return nil, errors.New("x509: malformed crl")
 			}
@@ -286,12 +285,11 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
 				rl.AuthorityKeyId = ext.Value
 			} else if ext.Id.Equal(oidExtensionCRLNumber) {
-				number := new(big.Int)
 				value := cryptobyte.String(ext.Value)
-				if !value.ReadASN1Integer(number) {
+				rl.Number = new(big.Int)
+				if !value.ReadASN1Integer(rl.Number) {
 					return nil, errors.New("x509: malformed crl number")
 				}
-				rl.Number = number
 			}
 			rl.Extensions = append(rl.Extensions, ext)
 		}

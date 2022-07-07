@@ -24,7 +24,6 @@ func init() {
 	// WILL NOT be run.
 	registry = map[string]crlLint{
 		"hasIssuerName":                  hasIssuerName,
-		"usesCorrectTimeEncoding":        usesCorrectTimeEncoding,
 		"hasNextUpdate":                  hasNextUpdate,
 		"noEmptyRevokedCertificatesList": noEmptyRevokedCertificatesList,
 		"hasAKI":                         hasAKI,
@@ -109,20 +108,11 @@ func hasIssuerName(crl *crl_x509.RevocationList) *lint.LintResult {
 	return &lint.LintResult{Status: lint.Pass}
 }
 
-// usesCorrectTimeEncoding checks RFC 5280, Section 5.1.2.4 and 5.1.2.5:
+// TODO(#6222): Write a lint which checks RFC 5280, Section 5.1.2.4 and 5.1.2.5:
 // CRL issuers conforming to this profile MUST encode thisUpdate and nextUpdate
 // as UTCTime for dates through the year 2049. UTCTime and GeneralizedTime
 // values MUST be expressed in Greenwich Mean Time (Zulu) and MUST include
 // seconds, even where the number of seconds is zero.
-func usesCorrectTimeEncoding(crl *crl_x509.RevocationList) *lint.LintResult {
-	// TODO: Figure out how to do this gracefully. Zlint's three lints for this
-	// all re-parse the entire certificate to get access to the raw time fields:
-	// https://github.com/zmap/zlint/blob/master/v3/lints/rfc/lint_utc_time_does_not_include_seconds.go
-	// https://github.com/zmap/zlint/blob/master/v3/lints/rfc/lint_utc_time_not_in_zulu.go
-	// https://github.com/zmap/zlint/blob/master/v3/lints/rfc/lint_wrong_time_format_pre2050.go
-	// TODO: Also do the same for the revocationDate timestamps inside each entry.
-	return &lint.LintResult{Status: lint.NA}
-}
 
 // hasNextUpdate checks RFC 5280, Section 5.1.2.5:
 // Conforming CRL issuers MUST include the nextUpdate field in all CRLs.

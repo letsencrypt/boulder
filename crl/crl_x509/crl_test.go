@@ -358,33 +358,33 @@ func TestCreateRevocationList(t *testing.T) {
 			}
 			for i, rc := range parsedCRL.RevokedCertificates {
 				erc := tc.template.RevokedCertificates[i]
-				if rc.SerialNumber.String() != erc.SerialNumber.String() {
-					t.Fatalf("RevokedCertificates entry %d serial mismatch: got %s; want %s.",
+				if rc.SerialNumber.Cmp(erc.SerialNumber) != 0 {
+					t.Errorf("RevokedCertificates entry %d serial mismatch: got %s; want %s.",
 						i, rc.SerialNumber.String(), erc.SerialNumber.String())
 				}
 				if rc.RevocationTime != erc.RevocationTime {
-					t.Fatalf("RevokedCertificates entry %d date mismatch: got %v; want %v.",
+					t.Errorf("RevokedCertificates entry %d date mismatch: got %v; want %v.",
 						i, rc.RevocationTime, erc.RevocationTime)
 				}
 				numExtra := 0
 				if erc.ReasonCode != nil {
 					if rc.ReasonCode == nil {
-						t.Fatalf("RevokedCertificates entry %d reason mismatch: got nil; want %v.",
+						t.Errorf("RevokedCertificates entry %d reason mismatch: got nil; want %v.",
 							i, *erc.ReasonCode)
 					}
 					if *rc.ReasonCode != *erc.ReasonCode {
-						t.Fatalf("RevokedCertificates entry %d reason mismatch: got %v; want %v.",
+						t.Errorf("RevokedCertificates entry %d reason mismatch: got %v; want %v.",
 							i, *rc.ReasonCode, *erc.ReasonCode)
 					}
 					numExtra = 1
 				} else {
 					if rc.ReasonCode != nil {
-						t.Fatalf("RevokedCertificates entry %d reason mismatch: got %v; want nil.",
+						t.Errorf("RevokedCertificates entry %d reason mismatch: got %v; want nil.",
 							i, *rc.ReasonCode)
 					}
 				}
 				if len(rc.Extensions) != numExtra+len(erc.ExtraExtensions) {
-					t.Fatalf("RevokedCertificates entry %d has wrong number of extensions: got %d; want %d",
+					t.Errorf("RevokedCertificates entry %d has wrong number of extensions: got %d; want %d",
 						i, len(rc.Extensions), numExtra+len(erc.ExtraExtensions))
 				}
 			}
