@@ -21,6 +21,7 @@ service StorageAuthority {
   // Return a count of authorizations with status "invalid" that belong to
   // a given registration ID and expire in the given time range.
   rpc CountFQDNSets(CountFQDNSetsRequest) returns (Count) {}
+  rpc FQDNSetTimestampsForWindow(CountFQDNSetsRequest) returns (Timestamps) {}
   rpc FQDNSetExists(FQDNSetExistsRequest) returns (Exists) {}
   rpc PreviousCertificateExists(PreviousCertificateExistsRequest) returns (Exists) {}
   rpc GetAuthorization2(AuthorizationID2) returns (core.Authorization) {}
@@ -107,6 +108,10 @@ message Range {
 
 message Count {
   int64 count = 1;
+}
+
+message Timestamps {
+	repeated int64 timestamps = 1; // Unix timestamp (nanoseconds)
 }
 
 message CountCertificatesByNamesRequest {

@@ -632,6 +632,71 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertEquals(t, count.Count, int64(2))
 }
 
+func TestFQDNSetTimestampsForWindow(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	tx, err := sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	names := []string{"a.example.com", "B.example.com"}
+	expires := fc.Now().Add(time.Hour * 2).UTC()
+	firstIssued := fc.Now()
+	err = addFQDNSet(tx, names, "serial", firstIssued, expires)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	threeHours := time.Hour * 3
+	req := &sapb.CountFQDNSetsRequest{
+		Domains: names,
+		Window:  threeHours.Nanoseconds(),
+	}
+	// only one valid
+	resp, err := sa.FQDNSetTimestampsForWindow(ctx, req)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, len(resp.Timestamps), 1)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
+
+	// check hash isn't affected by changing name order/casing
+	req.Domains = []string{"b.example.com", "A.example.COM"}
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, len(resp.Timestamps), 1)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
+
+	// add another valid set
+	tx, err = sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	err = addFQDNSet(tx, names, "anotherSerial", firstIssued, expires)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	// only two valid
+	req.Domains = names
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, len(resp.Timestamps), 2)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
+
+	// add an expired set
+	tx, err = sa.dbMap.Begin()
+	test.AssertNotError(t, err, "Failed to open transaction")
+	err = addFQDNSet(
+		tx,
+		names,
+		"yetAnotherSerial",
+		firstIssued.Add(-threeHours),
+		expires.Add(-threeHours),
+	)
+	test.AssertNotError(t, err, "Failed to add name set")
+	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
+
+	// only two valid
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, len(resp.Timestamps), 2)
+	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())
+}
+
 func TestFQDNSetsExists(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()

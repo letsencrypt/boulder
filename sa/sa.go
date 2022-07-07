@@ -707,6 +707,37 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 	return &sapb.Count{Count: count}, err
 }
 
+// FQDNSetTimestampsForWindow returns the issuance timestamps for each
+// certificate, issued for a set of domains, during a given window of time, in
+// ascending order.
+func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
+	if req.Window == 0 || len(req.Domains) == 0 {
+		return nil, errIncompleteRequest
+	}
+	type row struct {
+		Issued time.Time
+	}
+	var rows []row
+	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
+		&rows,
+		`SELECT issued FROM fqdnSets 
+		WHERE setHash = ?
+		AND issued > ?
+		ORDER BY issued ASC`,
+		HashNames(req.Domains),
+		ssa.clk.Now().Add(-time.Duration(req.Window)),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []int64
+	for _, i := range rows {
+		results = append(results, i.Issued.UnixNano())
+	}
+	return &sapb.Timestamps{Timestamps: results}, nil
+}
+
 // FQDNSetExists returns a bool indicating if one or more FQDN sets |names|
 // exists in the database
 func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest) (*sapb.Exists, error) {
