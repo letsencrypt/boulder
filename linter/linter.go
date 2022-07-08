@@ -13,6 +13,9 @@ import (
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
+	"github.com/letsencrypt/boulder/crl/crl_x509"
+	crllints "github.com/letsencrypt/boulder/linter/lints/crl"
+
 	_ "github.com/letsencrypt/boulder/linter/lints/all"
 	_ "github.com/letsencrypt/boulder/linter/lints/intermediate"
 	_ "github.com/letsencrypt/boulder/linter/lints/root"
@@ -72,7 +75,20 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) err
 	if err != nil {
 		return err
 	}
-	return check(cert, l.registry)
+	lintRes := zlint.LintCertificateEx(cert, l.registry)
+	return processResultSet(lintRes)
+}
+
+// CheckCRL signs the given RevocationList template using the Linter's fake
+// issuer cert and private key, then runs the resulting CRL through our suite
+// of CRL checks. It returns an error if any check fails.
+func (l Linter) CheckCRL(tbs *crl_x509.RevocationList) error {
+	crl, err := makeLintCRL(tbs, l.issuer, l.signer)
+	if err != nil {
+		return err
+	}
+	lintRes := crllints.LintCRL(crl)
+	return processResultSet(lintRes)
 }
 
 func makeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
@@ -174,8 +190,7 @@ func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer 
 	return lintCert, nil
 }
 
-func check(lintCert *zlintx509.Certificate, lints lint.Registry) error {
-	lintRes := zlint.LintCertificateEx(lintCert, lints)
+func processResultSet(lintRes *zlint.ResultSet) error {
 	if lintRes.NoticesPresent || lintRes.WarningsPresent || lintRes.ErrorsPresent || lintRes.FatalsPresent {
 		var failedLints []string
 		for lintName, result := range lintRes.Results {
@@ -186,4 +201,16 @@ func check(lintCert *zlintx509.Certificate, lints lint.Registry) error {
 		return fmt.Errorf("failed lints: %s", strings.Join(failedLints, ", "))
 	}
 	return nil
+}
+
+func makeLintCRL(tbs *crl_x509.RevocationList, issuer *x509.Certificate, signer crypto.Signer) (*crl_x509.RevocationList, error) {
+	lintCRLBytes, err := crl_x509.CreateRevocationList(rand.Reader, tbs, issuer, signer)
+	if err != nil {
+		return nil, err
+	}
+	lintCRL, err := crl_x509.ParseRevocationList(lintCRLBytes)
+	if err != nil {
+		return nil, err
+	}
+	return lintCRL, nil
 }

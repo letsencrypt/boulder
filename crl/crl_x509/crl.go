@@ -30,6 +30,10 @@ var (
 // a CRL.
 // NOTE: This type does not exist in upstream.
 type RevokedCertificate struct {
+	// Raw contains the raw bytes of the revokedCertificates entry. It is set when
+	// parsing a CRL; it is ignored when generating a CRL.
+	Raw []byte
+
 	// SerialNumber represents the serial number of a revoked certificate. It is
 	// both used when creating a CRL and populated when parsing a CRL. It MUST NOT
 	// be nil.
@@ -45,11 +49,15 @@ type RevokedCertificate struct {
 	// value of 0 represents a reasonCode extension containing enum value 0 (this
 	// SHOULD NOT happen, but can and does).
 	ReasonCode *int
-	// When creating a CRL, ExtraExtensions should contain all extra extensions to
-	// add to the CRL entry. If ExtraExtensions contains a reasonCode extension,
-	// it will be ignored in favor of the ReasonCode field above. When parsing a
-	// CRL, ExtraExtensions contains all raw extensions parsed from the CRL entry,
-	// except for reasonCode which is represented by the ReasonCode field above.
+
+	// Extensions contains raw X.509 extensions. When creating a CRL, the
+	// Extensions field is ignored, see ExtraExtensions.
+	Extensions []pkix.Extension
+	// ExtraExtensions contains any additional extensions to add directly to the
+	// revokedCertificate entry. It is up to the caller to ensure that this field
+	// does not contain any extensions which duplicate extensions created by this
+	// package (currently, the reasonCode extension). The ExtraExtensions field is
+	// not populated when parsing a CRL, see Extensions.
 	ExtraExtensions []pkix.Extension
 }
 
@@ -102,13 +110,14 @@ type RevocationList struct {
 	// the issuer information instead.
 	AuthorityKeyId []byte
 
-	// Extensions contains raw X.509 extensions. When creating a CRL,
-	// the Extensions field is ignored, see ExtraExtensions.
+	// Extensions contains raw X.509 extensions. When creating a CRL, the
+	// Extensions field is ignored, see ExtraExtensions.
 	Extensions []pkix.Extension
-
 	// ExtraExtensions contains any additional extensions to add directly to the
-	// CRL. The ExtraExtensions field is not populated when parsing a CRL, see
-	// Extensions.
+	// CRL. It is up to the caller to ensure that this field does not contain any
+	// extensions which duplicate extensions created by this package (currently,
+	// the number and authorityKeyIdentifier extensions). The ExtraExtensions
+	// field is not populated when parsing a CRL, see Extensions.
 	ExtraExtensions []pkix.Extension
 }
 
@@ -122,22 +131,22 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 	// we can populate RevocationList.Raw, before unwrapping the
 	// SEQUENCE so it can be operated on
 	if !input.ReadASN1Element(&input, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed certificate")
+		return nil, errors.New("x509: malformed crl")
 	}
 	rl.Raw = input
 	if !input.ReadASN1(&input, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed certificate")
+		return nil, errors.New("x509: malformed crl")
 	}
 
 	var tbs cryptobyte.String
 	// do the same trick again as above to extract the raw
 	// bytes for Certificate.RawTBSCertificate
 	if !input.ReadASN1Element(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed tbs certificate")
+		return nil, errors.New("x509: malformed tbs crl")
 	}
 	rl.RawTBSRevocationList = tbs
 	if !tbs.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
-		return nil, errors.New("x509: malformed tbs certificate")
+		return nil, errors.New("x509: malformed tbs crl")
 	}
 
 	var version int
@@ -200,16 +209,20 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 	}
 
 	if tbs.PeekASN1Tag(cryptobyte_asn1.SEQUENCE) {
+		rcs := make([]RevokedCertificate, 0)
 		var revokedSeq cryptobyte.String
 		if !tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE) {
 			return nil, errors.New("x509: malformed crl")
 		}
 		for !revokedSeq.Empty() {
 			var certSeq cryptobyte.String
-			if !revokedSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE) {
+			if !revokedSeq.ReadASN1Element(&certSeq, cryptobyte_asn1.SEQUENCE) {
 				return nil, errors.New("x509: malformed crl")
 			}
-			rc := RevokedCertificate{}
+			rc := RevokedCertificate{Raw: certSeq}
+			if !certSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE) {
+				return nil, errors.New("x509: malformed crl")
+			}
 			rc.SerialNumber = new(big.Int)
 			if !certSeq.ReadASN1Integer(rc.SerialNumber) {
 				return nil, errors.New("x509: malformed serial number")
@@ -240,14 +253,14 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 						if !val.ReadASN1Enum(rc.ReasonCode) {
 							return nil, fmt.Errorf("x509: malformed reasonCode extension")
 						}
-						continue
 					}
-					rc.ExtraExtensions = append(rc.ExtraExtensions, ext)
+					rc.Extensions = append(rc.Extensions, ext)
 				}
 			}
 
-			rl.RevokedCertificates = append(rl.RevokedCertificates, rc)
+			rcs = append(rcs, rc)
 		}
+		rl.RevokedCertificates = rcs
 	}
 
 	var extensions cryptobyte.String
@@ -272,12 +285,11 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
 				rl.AuthorityKeyId = ext.Value
 			} else if ext.Id.Equal(oidExtensionCRLNumber) {
-				number := new(big.Int)
 				value := cryptobyte.String(ext.Value)
-				if !value.ReadASN1Integer(number) {
+				rl.Number = new(big.Int)
+				if !value.ReadASN1Integer(rl.Number) {
 					return nil, errors.New("x509: malformed crl number")
 				}
-				rl.Number = number
 			}
 			rl.Extensions = append(rl.Extensions, ext)
 		}
@@ -357,7 +369,9 @@ func CreateRevocationList(rand io.Reader, template *RevocationList, issuer *x509
 			})
 		}
 
-		prc.Extensions = exts
+		if len(exts) > 0 {
+			prc.Extensions = exts
+		}
 		revokedCerts[i] = prc
 	}
 

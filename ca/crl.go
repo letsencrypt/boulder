@@ -127,6 +127,12 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	}
 
 	template.RevokedCertificates = rcs
+
+	err := issuer.Linter.CheckCRL(template)
+	if err != nil {
+		return err
+	}
+
 	crlBytes, err := crl_x509.CreateRevocationList(
 		rand.Reader,
 		template,
