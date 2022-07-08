@@ -105,7 +105,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.Cert.NameID()) + template.Number.String() + fmt.Sprintf("%d", shard))
 	ci.log.AuditInfof(
 		"Signing CRL: logID=[%s] issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-		logID, issuer.Cert.Subject.CommonName, template.Number.String(), template.ThisUpdate, template.NextUpdate, len(rcs),
+		logID, issuer.Cert.Subject.CommonName, template.Number.String(), shard, template.ThisUpdate, template.NextUpdate, len(rcs),
 	)
 
 	builder := strings.Builder{}
@@ -121,7 +121,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
 
 		if builder.Len() != ci.maxLogLen {
-			ci.log.AuditInfof("%s", builder)
+			ci.log.AuditInfo(builder.String())
 			builder = strings.Builder{}
 		}
 	}
@@ -139,8 +139,8 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	hash := sha256.Sum256(crlBytes)
 	ci.log.AuditInfof(
-		"Signing CRL success: logID=[%s] size=[%d] hash=[%d]",
-		logID, len(crlBytes), hash[:],
+		"Signing CRL success: logID=[%s] size=[%d] hash=[%x]",
+		logID, len(crlBytes), hash,
 	)
 
 	for i := 0; i < len(crlBytes); i += 1000 {
