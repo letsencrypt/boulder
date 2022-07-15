@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,7 +55,7 @@ func NewMultiSource(primary, secondary Source, expectedFreshness time.Duration, 
 // Response implements the Source interface.
 func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Response, error) {
 	primaryChan := getResponse(ctx, src.primary, req)
-	secondaryChan := getResponse(ctx, src.secondary, req)
+	secondaryChan := getResponse(context.Background(), src.secondary, req)
 
 	var primaryResponse *Response
 
@@ -121,16 +122,14 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 		return primaryResponse, nil
 	}
 
-	// If the primary response is fresher than the secondary, return the
-	// primary response. If ocsp-updater is updating Redis, this shouldn't
-	// happen (since revocation cases are caught above).
-	if primaryResponse.ThisUpdate.After(secondaryResponse.ThisUpdate) {
-		src.counter.WithLabelValues("primary_newer").Inc()
-		return primaryResponse, nil
+	// ROCSP Stage 2 enables serving responses from Redis
+	if features.Enabled(features.ROCSPStage2) {
+		src.counter.WithLabelValues("secondary").Inc()
+		return secondaryResponse, nil
 	}
 
-	src.counter.WithLabelValues("primary_stale_secondary_success").Inc()
-	return secondaryResponse, nil
+	src.counter.WithLabelValues("primary").Inc()
+	return primaryResponse, nil
 }
 
 // checkSecondary updates the src.counter metrics when we're planning to return
