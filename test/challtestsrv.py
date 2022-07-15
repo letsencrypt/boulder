@@ -5,11 +5,11 @@ class ChallTestServer:
     """
     ChallTestServer is a wrapper around pebble-challtestsrv's HTTP management
     API. If the pebble-challtestsrv process you want to interact with is using
-    a -management argument other than the default ('http://localhost:8055') you
+    a -management argument other than the default ('http://10.77.77.77:8055') you
     can instantiate the ChallTestServer using the -management address in use. If
     no custom address is provided the default is assumed.
     """
-    _baseURL = "http://localhost:8055"
+    _baseURL = "http://10.77.77.77:8055"
 
     _paths = {
             "set-ipv4": "/set-default-ipv4",
