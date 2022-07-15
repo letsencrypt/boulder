@@ -18,6 +18,15 @@
         "keyFile": "test/redis-tls/boulder/key.pem"
       }
     },
+    "tls": {
+      "caCertFile": "test/grpc-creds/minica.pem",
+      "certFile": "test/grpc-creds/ocsp-responder.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
+    },
+    "raService": {
+      "serverAddress": "ra.boulder:9094",
+      "timeout": "15s"
+    },
     "path": "/",
     "listenAddress": "0.0.0.0:4002",
     "issuerCerts": [
@@ -29,7 +38,10 @@
     "timeout": "4.9s",
     "shutdownStopTimeout": "10s",
     "debugAddr": ":8005",
-    "requiredSerialPrefixes": ["ff"]
+    "requiredSerialPrefixes": ["ff"],
+    "features": {
+      "ROCSPStage1": true
+    }
   },
 
   "syslog": {

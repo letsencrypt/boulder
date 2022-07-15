@@ -51,6 +51,7 @@
         "admin-revoker.boulder",
         "bad-key-revoker.boulder",
         "health-checker.boulder",
+        "ocsp-responder.boulder",
         "wfe.boulder"
       ]
     },

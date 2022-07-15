@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/features"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
@@ -151,6 +152,11 @@ func TestSecondaryTimeout(t *testing.T) {
 }
 
 func TestPrimaryStale(t *testing.T) {
+	err := features.Set(map[string]bool{
+		"ROCSPStage2": true,
+	})
+	test.AssertNotError(t, err, "setting features")
+
 	src, err := NewMultiSource(stale{}, ok{}, expectedFreshness, metrics.NoopRegisterer, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create multiSource")
 
