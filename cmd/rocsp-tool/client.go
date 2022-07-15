@@ -218,8 +218,13 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 			output <- processResult{id: uint64(status.ID), err: err}
 			continue
 		}
+		resp, err := ocsp.ParseResponse(result.Response, nil)
+		if err != nil {
+			output <- processResult{id: uint64(status.ID), err: err}
+			continue
+		}
 
-		err = cl.redis.StoreResponse(ctx, result.Response)
+		err = cl.redis.StoreResponse(ctx, resp)
 		if err != nil {
 			output <- processResult{id: uint64(status.ID), err: err}
 		} else {
@@ -272,7 +277,7 @@ func (cl *client) storeResponse(ctx context.Context, respBytes []byte) error {
 		time.Until(resp.NextUpdate).Hours(),
 	)
 
-	err = cl.redis.StoreResponse(ctx, respBytes)
+	err = cl.redis.StoreResponse(ctx, resp)
 	if err != nil {
 		return fmt.Errorf("storing response: %w", err)
 	}

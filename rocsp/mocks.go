@@ -3,6 +3,8 @@ package rocsp
 import (
 	"context"
 	"fmt"
+
+	"golang.org/x/crypto/ocsp"
 )
 
 // MockWriteClient is a mock
@@ -12,7 +14,7 @@ type MockWriteClient struct {
 
 // StoreResponse mocks a rocsp.StoreResponse method and returns nil or an
 // error depending on the desired state.
-func (r MockWriteClient) StoreResponse(ctx context.Context, respBytes []byte) error {
+func (r MockWriteClient) StoreResponse(ctx context.Context, resp *ocsp.Response) error {
 	return r.StoreReponseReturnError
 }
 
