@@ -331,7 +331,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc.Set(fc.Now().Add(time.Hour))
 
 	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations)
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, nil, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetSATestDatabase(t)
 	defer func() {

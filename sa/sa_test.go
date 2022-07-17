@@ -81,7 +81,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("failed to load issuers: %s", err)
 	}
-	sa, err := NewSQLStorageAuthority(dbMap, dbMap, nil, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	sa, err := NewSQLStorageAuthority(dbMap, dbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
