@@ -84,24 +84,19 @@ func NewWritingClient(rdb *redis.ClusterClient, timeout time.Duration, clk clock
 }
 
 // StoreResponse parses the given bytes as an OCSP response, and stores it
-// into Redis. Returns error if the OCSP response fails to parse. The
-// expiration time (ttl) of the Redis key is set to OCSP response `NextUpdate`.
-func (c *WritingClient) StoreResponse(ctx context.Context, respBytes []byte) error {
+// into Redis. The expiration time (ttl) of the Redis key is set to OCSP
+// response `NextUpdate`.
+func (c *WritingClient) StoreResponse(ctx context.Context, resp *ocsp.Response) error {
 	start := c.clk.Now()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-
-	resp, err := ocsp.ParseResponse(respBytes, nil)
-	if err != nil {
-		return fmt.Errorf("parsing %d-byte response: %w", len(respBytes), err)
-	}
 
 	serial := core.SerialToString(resp.SerialNumber)
 
 	// Set the ttl duration to the response `NextUpdate - now()`
 	ttl := time.Until(resp.NextUpdate)
 
-	err = c.rdb.Set(ctx, serial, respBytes, ttl).Err()
+	err := c.rdb.Set(ctx, serial, resp.Raw, ttl).Err()
 	if err != nil {
 		state := "failed"
 		if errors.Is(err, context.DeadlineExceeded) {

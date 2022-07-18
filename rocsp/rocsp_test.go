@@ -11,6 +11,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/metrics"
+	"golang.org/x/crypto/ocsp"
 )
 
 func makeClient() (*WritingClient, clock.Clock) {
@@ -40,7 +41,12 @@ func makeClient() (*WritingClient, clock.Clock) {
 func TestSetAndGet(t *testing.T) {
 	client, _ := makeClient()
 
-	response, err := ioutil.ReadFile("testdata/ocsp.response")
+	respBytes, err := ioutil.ReadFile("testdata/ocsp.response")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := ocsp.ParseResponse(respBytes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +60,7 @@ func TestSetAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getting response: %s", err)
 	}
-	if !bytes.Equal(resp2, response) {
+	if !bytes.Equal(resp2, respBytes) {
 		t.Errorf("response written and response retrieved were not equal")
 	}
 }
