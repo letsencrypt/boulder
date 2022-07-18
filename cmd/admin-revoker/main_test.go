@@ -67,7 +67,7 @@ func TestRevokeBatch(t *testing.T) {
 		"../../test/hierarchy/int-r3.cert.pem": 102,
 	})
 	test.AssertNotError(t, err, "error loading issuers")
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -514,7 +514,7 @@ func setup(t *testing.T) testCtx {
 		"../../test/hierarchy/int-r3.cert.pem": 102,
 	})
 	test.AssertNotError(t, err, "error loading issuers")
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
