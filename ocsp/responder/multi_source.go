@@ -54,7 +54,12 @@ func NewMultiSource(primary, secondary Source, expectedFreshness time.Duration, 
 // Response implements the Source interface.
 func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Response, error) {
 	primaryChan := getResponse(ctx, src.primary, req)
-	secondaryChan := getResponse(ctx, src.secondary, req)
+
+	// Use a separate context for the secondary source. This prevents cancellations
+	// from reaching the backend layer (Redis) and causing connections to be closed
+	// unnecessarily.
+	// https://blog.uptrace.dev/posts/go-context-timeout.html
+	secondaryChan := getResponse(context.Background(), src.secondary, req)
 
 	var primaryResponse *Response
 
@@ -163,7 +168,7 @@ type responseResult struct {
 func getResponse(ctx context.Context, src Source, req *ocsp.Request) chan responseResult {
 	// Use a buffer so the following goroutine can exit as soon as it's done,
 	// rather than blocking on a reader (which would introduce a risk that the
-	// nother ever reads, leaking the goroutine).
+	// other never reads, leaking the goroutine).
 	responseChan := make(chan responseResult, 1)
 
 	go func() {
