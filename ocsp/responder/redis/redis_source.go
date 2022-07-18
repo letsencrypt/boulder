@@ -104,10 +104,6 @@ func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, caus
 		return nil, err
 	}
 	src.counter.WithLabelValues(cause + "_signing_success").Inc()
-	go src.save(resp)
+	go src.client.StoreResponse(context.Background(), resp.Response)
 	return resp, nil
-}
-
-func (src *redisSource) save(resp *responder.Response) {
-	src.client.StoreResponse(context.Background(), resp.Response)
 }
