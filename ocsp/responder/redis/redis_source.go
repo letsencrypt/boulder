@@ -30,7 +30,7 @@ type redisSource struct {
 	log blog.Logger
 }
 
-// NewRedisSource returns a dbSource which will look up OCSP responses in a
+// NewRedisSource returns a responder.Source which will look up OCSP responses in a
 // Redis table.
 func NewRedisSource(
 	client *rocsp.WritingClient,
@@ -80,7 +80,7 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 		return nil, err
 	}
 
-	if src.stale(resp) {
+	if src.isStale(resp) {
 		src.counter.WithLabelValues("stale").Inc()
 		return src.signAndSave(ctx, req, "stale_redis")
 	}
@@ -89,7 +89,7 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 	return &responder.Response{Response: resp, Raw: respBytes}, nil
 }
 
-func (src *redisSource) stale(resp *ocsp.Response) bool {
+func (src *redisSource) isStale(resp *ocsp.Response) bool {
 	return src.clk.Since(resp.ThisUpdate) > src.staleThreshold
 }
 
