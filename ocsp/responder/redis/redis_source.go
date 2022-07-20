@@ -20,11 +20,11 @@ type rocspClient interface {
 }
 
 type redisSource struct {
-	client         rocspClient
-	signer         responder.Source
-	counter        *prometheus.CounterVec
-	clk            clock.Clock
-	staleThreshold time.Duration
+	client            rocspClient
+	signer            responder.Source
+	counter           *prometheus.CounterVec
+	clk               clock.Clock
+	liveSigningPeriod time.Duration
 	// Note: this logger is not currently used, as all audit log events are from
 	// the dbSource right now, but it should and will be used in the future.
 	log blog.Logger
@@ -35,7 +35,7 @@ type redisSource struct {
 func NewRedisSource(
 	client *rocsp.WritingClient,
 	signer responder.Source,
-	staleThreshold time.Duration,
+	liveSigningPeriod time.Duration,
 	clk clock.Clock,
 	stats prometheus.Registerer,
 	log blog.Logger,
@@ -51,12 +51,12 @@ func NewRedisSource(
 		rocspReader = client
 	}
 	return &redisSource{
-		client:         rocspReader,
-		signer:         signer,
-		counter:        counter,
-		staleThreshold: staleThreshold,
-		clk:            clk,
-		log:            log,
+		client:            rocspReader,
+		signer:            signer,
+		counter:           counter,
+		liveSigningPeriod: liveSigningPeriod,
+		clk:               clk,
+		log:               log,
 	}, nil
 }
 
@@ -90,7 +90,7 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 }
 
 func (src *redisSource) isStale(resp *ocsp.Response) bool {
-	return src.clk.Since(resp.ThisUpdate) > src.staleThreshold
+	return src.clk.Since(resp.ThisUpdate) > src.liveSigningPeriod
 }
 
 func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error) {
