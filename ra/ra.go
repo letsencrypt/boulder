@@ -468,8 +468,11 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if parsed.Scheme != "mailto" {
 			return berrors.InvalidEmailError("contact method %q is not supported", parsed.Scheme)
 		}
-		if parsed.RawQuery != "" {
-			return berrors.InvalidEmailError("contact email [%q] contains hfields", contact)
+		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
+			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)
+		}
+		if parsed.Fragment != "" {
+			return berrors.InvalidEmailError("contact email %q contains a '#'", contact)
 		}
 		if !core.IsASCII(contact) {
 			return berrors.InvalidEmailError(
