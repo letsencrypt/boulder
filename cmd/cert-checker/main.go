@@ -133,7 +133,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 
 	var sni sql.NullInt64
 	var err error
-	var backoff int
+	var retries int
 	for {
 		sni, err = c.dbMap.SelectNullInt(
 			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
@@ -141,11 +141,11 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		)
 		if err != nil {
 			c.logger.AuditErrf("finding starting certificate: %s", err)
-			backoff++
-			time.Sleep(time.Second)
+			retries++
+			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
 		}
-		backoff = 0
+		retries = 0
 		break
 	}
 	if !sni.Valid {
@@ -173,11 +173,11 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		)
 		if err != nil {
 			c.logger.AuditErrf("selecting certificates: %s", err)
-			backoff++
-			time.Sleep(time.Duration(backoff) * time.Second)
+			retries++
+			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
 		}
-		backoff = 0
+		retries = 0
 		for _, cert := range certs {
 			c.certs <- cert.Certificate
 		}
