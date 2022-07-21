@@ -1,4 +1,4 @@
-package responder
+package redis
 
 import (
 	"context"
@@ -226,4 +226,21 @@ func TestCertificateNotFound(t *testing.T) {
 	if !errors.Is(err, responder.ErrNotFound) {
 		t.Errorf("expected NotFound error, got %s", err)
 	}
+}
+
+func TestServeStale(t *testing.T) {
+	clk := clock.NewFake()
+	src, err := NewRedisSource(nil, errorSigner{}, time.Second, clk, metrics.NoopRegisterer, log.NewMock())
+	test.AssertNotError(t, err, "making source")
+	staleRedis := &staleRedis{
+		serialStored: nil,
+		thisUpdate:   clk.Now().Add(-time.Hour),
+	}
+	src.client = staleRedis
+
+	serial := big.NewInt(111111)
+	_, err = src.Response(context.Background(), &ocsp.Request{
+		SerialNumber: serial,
+	})
+	test.AssertNotError(t, err, "expected to serve stale response when signer was down")
 }
