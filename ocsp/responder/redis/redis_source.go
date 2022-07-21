@@ -1,4 +1,18 @@
-package responder
+// Package redis provides a Redis-based OCSP responder.
+//
+// This responder will first look for a response cached in Redis. If there is
+// no response, or the response is too old, it will make a request to the RA
+// for a freshly-signed response. If that succeeds, this responder will return
+// the response to the user right away, while storing a copy to Redis in a
+// separate goroutine.
+//
+// If the response was too old, but the request to the RA failed, this
+// responder will serve the response anyhow. This allows for graceful
+// degradation: it is better to serve a response that is 5 days old (outside
+// the Baseline Requirements limits) than to serve no response at all.
+// It's assumed that this will be wrapped in a responder.filterSource, which
+// means that if a response is past its NextUpdate, we'll generate a 500.
+package redis
 
 import (
 	"context"
@@ -82,7 +96,11 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 
 	if src.isStale(resp) {
 		src.counter.WithLabelValues("stale").Inc()
-		return src.signAndSave(ctx, req, "stale_redis")
+		freshResp, err := src.signAndSave(ctx, req, "stale_redis")
+		if err != nil {
+			return &responder.Response{Response: resp, Raw: respBytes}, nil
+		}
+		return freshResp, nil
 	}
 
 	src.counter.WithLabelValues("success").Inc()
