@@ -97,9 +97,17 @@ type certChecker struct {
 	issuedReport                report
 	checkPeriod                 time.Duration
 	acceptableValidityDurations map[time.Duration]bool
+	logger                      blog.Logger
 }
 
-func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, kp goodkey.KeyPolicy, period time.Duration, avd map[time.Duration]bool) certChecker {
+func newChecker(saDbMap certDB,
+	clk clock.Clock,
+	pa core.PolicyAuthority,
+	kp goodkey.KeyPolicy,
+	period time.Duration,
+	avd map[time.Duration]bool,
+	logger blog.Logger,
+) certChecker {
 	return certChecker{
 		pa:                          pa,
 		kp:                          kp,
@@ -110,6 +118,7 @@ func newChecker(saDbMap certDB, clk clock.Clock, pa core.PolicyAuthority, kp goo
 		issuedReport:                report{Entries: make(map[string]reportEntry)},
 		checkPeriod:                 period,
 		acceptableValidityDurations: avd,
+		logger:                      logger,
 	}
 }
 
@@ -122,12 +131,22 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 		args["now"] = c.clock.Now()
 	}
 
-	sni, err := c.dbMap.SelectNullInt(
-		"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
-		args,
-	)
-	if err != nil {
-		return err
+	var sni sql.NullInt64
+	var err error
+	var retries int
+	for {
+		sni, err = c.dbMap.SelectNullInt(
+			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
+			args,
+		)
+		if err != nil {
+			c.logger.AuditErrf("finding starting certificate: %s", err)
+			retries++
+			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
+			continue
+		}
+		retries = 0
+		break
 	}
 	if !sni.Valid {
 		// a nil response was returned by the DB, so return error and fail
@@ -145,6 +164,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	// packet limit.
 	args["limit"] = batchSize
 	args["id"] = initialID
+
 	for {
 		certs, err := sa.SelectCertificates(
 			c.dbMap,
@@ -152,8 +172,12 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 			args,
 		)
 		if err != nil {
-			return err
+			c.logger.AuditErrf("selecting certificates: %s", err)
+			retries++
+			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
+			continue
 		}
+		retries = 0
 		for _, cert := range certs {
 			c.certs <- cert.Certificate
 		}
@@ -445,6 +469,7 @@ func main() {
 		kp,
 		config.CertChecker.CheckPeriod.Duration,
 		acceptableValidityDurations,
+		logger,
 	)
 	fmt.Fprintf(os.Stderr, "# Getting certificates issued in the last %s\n", config.CertChecker.CheckPeriod)
 
