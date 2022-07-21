@@ -519,7 +519,7 @@ func main() {
 	cmd.FailOnError(err, "While initializing dbMap")
 
 	// Load and parse message body.
-	template, err := template.New("email").ParseFiles(*bodyFile)
+	template, err := template.ParseFiles(*bodyFile)
 	cmd.FailOnError(err, "Couldn't parse message template")
 
 	address, err := mail.ParseAddress(*from)
