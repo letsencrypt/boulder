@@ -30,6 +30,18 @@ type RedisConfig struct {
 	// Timeout is a per-request timeout applied to all Redis requests.
 	Timeout cmd.ConfigDuration
 
+	// Enables read-only commands on replicas.
+	ReadOnly bool
+	// Allows routing read-only commands to the closest primary or replica.
+	// It automatically enables ReadOnly.
+	RouteByLatency bool
+	// Allows routing read-only commands to a random primary or replica.
+	// It automatically enables ReadOnly.
+	RouteRandomly bool
+
+	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
+	PoolFIFO bool
+
 	// Maximum number of retries before giving up.
 	// Default is to not retry failed commands.
 	MaxRetries int
@@ -139,6 +151,12 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		Username:  c.Username,
 		Password:  password,
 		TLSConfig: tlsConfig,
+
+		ReadOnly:       c.ReadOnly,
+		RouteByLatency: c.RouteByLatency,
+		RouteRandomly:  c.RouteRandomly,
+
+		PoolFIFO: c.PoolFIFO,
 
 		MaxRetries:      c.MaxRetries,
 		MinRetryBackoff: c.MinRetryBackoff.Duration,

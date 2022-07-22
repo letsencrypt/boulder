@@ -12,6 +12,7 @@
       ],
       "timeout": "5s",
       "poolSize": 100,
+      "routeRandomly": true,
       "tls": {
         "caCertFile": "test/redis-tls/minica.pem",
         "certFile": "test/redis-tls/boulder/cert.pem",
