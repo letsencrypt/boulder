@@ -69,11 +69,10 @@ func validateContacts(id int64, createdAt string, contacts []string) error {
 // beginAuditQuery executes the audit query and returns a cursor used to
 // stream the results.
 func (c contactAuditor) beginAuditQuery() (*sql.Rows, error) {
-	rows, err := c.db.Query(
-		`SELECT DISTINCT r.id, r.contact, r.createdAt
-		FROM registrations AS r
-			INNER JOIN certificates AS c on c.registrationID = r.id
-		WHERE r.contact NOT IN ('[]', 'null');`)
+	rows, err := c.db.Query(`
+		SELECT DISTINCT id, contact, createdAt
+		FROM registrations
+		WHERE contact NOT IN ('[]', 'null');`)
 	if err != nil {
 		return nil, err
 	}
