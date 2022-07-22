@@ -72,10 +72,15 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	}
 
 	addr, user, err := config.DSNAddressAndUser()
-	cmd.FailOnError(err, "while parsing DSN")
+	if err != nil {
+		return nil, fmt.Errorf("while parsing DSN: %w", err)
+	}
 
 	if scope != nil {
-		InitDBMetrics(dbMap.Db, scope, settings, addr, user)
+		err = InitDBMetrics(dbMap.Db, scope, settings, addr, user)
+		if err != nil {
+			return nil, fmt.Errorf("while initializing metrics: %w", err)
+		}
 	}
 	return dbMap, nil
 }
@@ -114,7 +119,9 @@ func InitSqlDb(config cmd.DBConfig, scope prometheus.Registerer) (*sql.DB, error
 	db.SetConnMaxIdleTime(config.ConnMaxIdleTime.Duration)
 
 	addr, user, err := config.DSNAddressAndUser()
-	cmd.FailOnError(err, "while parsing DSN")
+	if err != nil {
+		return nil, fmt.Errorf("while parsing DSN: %w", err)
+	}
 
 	if scope != nil {
 		settings := DbSettings{
@@ -123,7 +130,10 @@ func InitSqlDb(config cmd.DBConfig, scope prometheus.Registerer) (*sql.DB, error
 			ConnMaxLifetime: config.ConnMaxLifetime.Duration,
 			ConnMaxIdleTime: config.ConnMaxIdleTime.Duration,
 		}
-		InitDBMetrics(db, scope, settings, addr, user)
+		err = InitDBMetrics(db, scope, settings, addr, user)
+		if err != nil {
+			return nil, fmt.Errorf("while initializing metrics: %w", err)
+		}
 	}
 	return db, nil
 }
