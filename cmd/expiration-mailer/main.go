@@ -30,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
-	"github.com/letsencrypt/boulder/mail"
 	bmail "github.com/letsencrypt/boulder/mail"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
@@ -337,7 +336,7 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 	if err != nil {
 		// Check to see if the error was due to the mail being undeliverable,
 		// in which case we don't want to try again later.
-		var badAddrErr *mail.BadAddressSMTPError
+		var badAddrErr *bmail.BadAddressSMTPError
 		if ok := errors.As(err, &badAddrErr); ok {
 			m.updateLastNagTimestamps(ctx, parsedCerts)
 		}
