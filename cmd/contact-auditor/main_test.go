@@ -2,10 +2,8 @@ package notmain
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io/ioutil"
-	"math/big"
 	"net"
 	"os"
 	"strings"
@@ -220,26 +218,4 @@ func setup(t *testing.T) testCtx {
 		ssa:     ssa,
 		cleanUp: cleanUp,
 	}
-}
-
-func bigIntFromB64(b64 string) *big.Int {
-	bytes, _ := base64.URLEncoding.DecodeString(b64)
-	x := big.NewInt(0)
-	x.SetBytes(bytes)
-	return x
-}
-
-func intFromB64(b64 string) int {
-	return int(bigIntFromB64(b64).Int64())
-}
-
-func newFakeClock(t *testing.T) clock.FakeClock {
-	const fakeTimeFormat = "2006-01-02T15:04:05.999999999Z"
-	ft, err := time.Parse(fakeTimeFormat, fakeTimeFormat)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fc := clock.NewFake()
-	fc.Set(ft.UTC())
-	return fc
 }
