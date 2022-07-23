@@ -64,7 +64,7 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 // InitDBMetrics will register a Collector that translates the provided dbMap's
 // stats and DbSettings into Prometheus metrics on the fly. The stat values will
 // be translated from the gorp dbMap's inner sql.DBMap's DBStats structure values
-func InitDBMetrics(db *sql.DB, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) {
+func InitDBMetrics(db *sql.DB, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) error {
 	// Create a dbMetricsCollector and register it
 	dbc := dbMetricsCollector{db: db, dbSettings: dbSettings}
 
@@ -125,5 +125,5 @@ func InitDBMetrics(db *sql.DB, stats prometheus.Registerer, dbSettings DbSetting
 		"Total number of connections closed due to SetConnMaxLifetime.",
 		nil, labels)
 
-	stats.MustRegister(dbc)
+	return stats.Register(dbc)
 }
