@@ -246,10 +246,10 @@ func (olq *ocspLogQueue) loop() {
 					break inner
 				}
 				reasonStr := "_"
-				if ol.reason != ocsp.Revoked {
+				if ol.status == ocsp.Revoked {
 					reasonStr = fmt.Sprintf("%d", ol.reason)
 				}
-				fmt.Fprintf(&builder, "%x:%d:%s,", ol.serial, ol.status, reasonStr)
+				fmt.Fprintf(&builder, "%x:%s,", ol.serial, reasonStr)
 			case <-deadline:
 				break inner
 			}
