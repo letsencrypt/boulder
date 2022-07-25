@@ -45,6 +45,8 @@ func NewClient(
 		prometheus.HistogramOpts{
 			Name: "rocsp_get_latency",
 			Help: "Histogram of latencies of rocsp.GetResponse calls with result",
+			// 8 buckets, ranging from 0.5ms to 2s
+			Buckets: prometheus.ExponentialBucketsRange(0.0005, 2, 8),
 		},
 		[]string{"result"},
 	)
