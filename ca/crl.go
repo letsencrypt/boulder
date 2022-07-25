@@ -120,11 +120,14 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		}
 		fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
 
-		if builder.Len() != ci.maxLogLen {
+		if builder.Len() >= ci.maxLogLen {
+			fmt.Fprint(&builder, "]")
 			ci.log.AuditInfo(builder.String())
 			builder = strings.Builder{}
 		}
 	}
+	fmt.Fprint(&builder, "]")
+	ci.log.AuditInfo(builder.String())
 
 	template.RevokedCertificates = rcs
 
