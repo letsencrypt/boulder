@@ -1370,9 +1370,13 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		Domains: names,
 		Window:  limit.Window.Duration.Nanoseconds(),
 	})
-	if err != nil {
+	if errors.Is(err, berrors.NotFound) {
+		// No issuance timestamps in the window.
+		return nil
+	} else if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
+
 	names = core.UniqueLowerNames(names)
 	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
 	if int64(len(issuanceTimestampsInWindow.Timestamps)) >= threshold {
