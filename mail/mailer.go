@@ -347,6 +347,7 @@ var badAddressErrorCodes = map[int]bool{
 	422: true, // Recipient mailbox is full
 	441: true, // Recipient server is not responding
 	450: true, // User's mailbox is not available
+	501: true, // Bad recipient address syntax
 	510: true, // Invalid recipient
 	511: true, // Invalid recipient
 	513: true, // Address type invalid

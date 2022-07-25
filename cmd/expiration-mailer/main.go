@@ -188,11 +188,28 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	return nil
 }
 
-func (m *mailer) updateCertStatus(ctx context.Context, serial string) error {
-	_, err := m.dbMap.WithContext(ctx).Exec(
-		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial = ?",
-		m.clk.Now(), serial)
-	return err
+// updateLastNagTimestamps updates the lastExpirationNagSent column for every cert in
+// the given list. Even though it can encounter errors, it only logs them and
+// does not return them, because we always prefer to simply continue.
+func (m *mailer) updateLastNagTimestamps(ctx context.Context, certs []*x509.Certificate) {
+	qmarks := make([]string, len(certs))
+	params := make([]interface{}, len(certs)+1)
+	for i, cert := range certs {
+		qmarks[i] = "?"
+		params[i+1] = core.SerialToString(cert.SerialNumber)
+	}
+
+	query := fmt.Sprintf(
+		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial IN (%s)",
+		strings.Join(qmarks, ","),
+	)
+	params[0] = m.clk.Now()
+
+	_, err := m.dbMap.WithContext(ctx).Exec(query, params...)
+	if err != nil {
+		m.log.AuditErrf("Error updating certificate status for %d certs: %s", len(certs), err)
+		m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
+	}
 }
 
 func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.Time) (bool, error) {
@@ -301,11 +318,7 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 		} else if renewed {
 			m.log.Debugf("Cert %s is already renewed", cert.Serial)
 			m.stats.certificatesAlreadyRenewed.Add(1)
-			err := m.updateCertStatus(ctx, cert.Serial)
-			if err != nil {
-				m.log.AuditErrf("Error updating certificate status for %s: %s", cert.Serial, err)
-				m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
-			}
+			m.updateLastNagTimestamps(ctx, []*x509.Certificate{parsedCert})
 			continue
 		}
 
@@ -321,21 +334,18 @@ func (m *mailer) sendToOneRegID(ctx context.Context, conn bmail.Conn, regID int6
 
 	err = m.sendNags(conn, reg.Contact, parsedCerts)
 	if err != nil {
+		// Check to see if the error was due to the mail being undeliverable,
+		// in which case we don't want to try again later.
+		var badAddrErr *bmail.BadAddressSMTPError
+		if ok := errors.As(err, &badAddrErr); ok {
+			m.updateLastNagTimestamps(ctx, parsedCerts)
+		}
+
 		m.stats.errorCount.With(prometheus.Labels{"type": "SendNags"}).Inc()
 		return fmt.Errorf("sending nag emails: %s", err)
 	}
-	for _, cert := range parsedCerts {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		serial := core.SerialToString(cert.SerialNumber)
-		err = m.updateCertStatus(ctx, serial)
-		if err != nil {
-			m.log.AuditErrf("Error updating certificate status for %s: %s", serial, err)
-			m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
-			continue
-		}
-	}
+
+	m.updateLastNagTimestamps(ctx, parsedCerts)
 	return nil
 }
 
