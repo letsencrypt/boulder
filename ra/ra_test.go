@@ -1233,12 +1233,14 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	ra.SA = &mockSAWithFQDNSet{
 		nameCounts: &sapb.CountByNames{
 			Counts: map[string]int64{
+				"none.example.com":  0,
 				"under.example.com": dupeCertLimit - 1,
 				"equal.example.com": dupeCertLimit,
 				"over.example.com":  dupeCertLimit + 1,
 			},
 		},
 		issuanceTimestamps: map[string]*sapb.Timestamps{
+			"none.example.com":  {Timestamps: []int64{}},
 			"under.example.com": {Timestamps: issuanceTimestamps[0 : dupeCertLimit-1]},
 			"equal.example.com": {Timestamps: issuanceTimestamps[0:dupeCertLimit]},
 			"over.example.com":  {Timestamps: issuanceTimestamps[0 : dupeCertLimit+1]},
@@ -1251,6 +1253,11 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 		Domain      string
 		ExpectedErr error
 	}{
+		{
+			Name:        "FQDN set issuances none",
+			Domain:      "none.example.com",
+			ExpectedErr: nil,
+		},
 		{
 			Name:        "FQDN set issuances less than limit",
 			Domain:      "under.example.com",
