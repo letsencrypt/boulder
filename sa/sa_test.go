@@ -648,10 +648,8 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	// zero issuance timestamps for names
 	resp, err := sa.FQDNSetTimestampsForWindow(ctx, req)
-	test.AssertError(t, err, "Failed to return error for 0 results")
-	test.AssertErrorIs(t, err, berrors.NotFound)
-	var expectNilTimestamps *sapb.Timestamps
-	test.AssertEquals(t, resp, expectNilTimestamps)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, len(resp.Timestamps), 0)
 
 	// add a valid set inside the window
 	expires := fc.Now().Add(time.Hour * 2).UTC()
