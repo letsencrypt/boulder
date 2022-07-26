@@ -1366,6 +1366,13 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
+	names = core.UniqueLowerNames(names)
+	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
+	if threshold <= 0 {
+		// No limit configured.
+		return nil
+	}
+
 	issuanceTimestampsInWindow, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		Domains: names,
 		Window:  limit.Window.Duration.Nanoseconds(),
@@ -1374,18 +1381,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 
-	names = core.UniqueLowerNames(names)
-	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
-	if threshold <= 0 {
-		// No limit configured.
-		return nil
-	}
-
-	issuanceCount := int64(len(issuanceTimestampsInWindow.Timestamps))
-	if issuanceCount <= 0 {
-		// No issuance in the requested window.
-		return nil
-	} else if issuanceCount >= threshold {
+	if int64(len(issuanceTimestampsInWindow.Timestamps)) >= threshold {
 		// FQDNSetTimestampsForWindow returns the issuance timestamps in
 		// ascending order so we can assume that the first one is the oldest.
 		retryAfter := time.Unix(0, issuanceTimestampsInWindow.Timestamps[0]).Add(limit.Window.Duration)
