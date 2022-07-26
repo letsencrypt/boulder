@@ -1376,6 +1376,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 	names = core.UniqueLowerNames(names)
 	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
+	if threshold <= 0 {
+		// No limit configured.
+		return nil
+	}
+
 	issuanceCount := int64(len(issuanceTimestampsInWindow.Timestamps))
 	if issuanceCount <= 0 {
 		// No issuance in the requested window.

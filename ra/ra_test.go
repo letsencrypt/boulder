@@ -1231,14 +1231,6 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	}
 	expectRetryAfter := time.Unix(0, issuanceTimestamps[0]).Add(23 * time.Hour).Format(time.RFC3339)
 	ra.SA = &mockSAWithFQDNSet{
-		nameCounts: &sapb.CountByNames{
-			Counts: map[string]int64{
-				"none.example.com":  0,
-				"under.example.com": dupeCertLimit - 1,
-				"equal.example.com": dupeCertLimit,
-				"over.example.com":  dupeCertLimit + 1,
-			},
-		},
 		issuanceTimestamps: map[string]*sapb.Timestamps{
 			"none.example.com":  {Timestamps: []int64{}},
 			"under.example.com": {Timestamps: issuanceTimestamps[0 : dupeCertLimit-1]},
@@ -1391,7 +1383,6 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 type mockSAWithFQDNSet struct {
 	mocks.StorageAuthority
 	fqdnSet            map[string]bool
-	nameCounts         *sapb.CountByNames
 	issuanceTimestamps map[string]*sapb.Timestamps
 	t                  *testing.T
 }
@@ -1424,8 +1415,9 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExi
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	counts := make(map[string]int64)
 	for _, name := range req.Names {
-		if count, ok := m.nameCounts.Counts[name]; ok {
-			counts[name] = count
+		entry, ok := m.issuanceTimestamps[name]
+		if ok {
+			counts[name] = int64(len(entry.Timestamps))
 		}
 	}
 	return &sapb.CountByNames{Counts: counts}, nil
@@ -1434,8 +1426,9 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sa
 func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	var total int64
 	for _, name := range req.Domains {
-		if count, ok := m.nameCounts.Counts[name]; ok {
-			total += count
+		entry, ok := m.issuanceTimestamps[name]
+		if ok {
+			total += int64(len(entry.Timestamps))
 		}
 	}
 	return &sapb.Count{Count: total}, nil
@@ -1467,9 +1460,11 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	}
 
 	// Create a mock SA that has both name counts and an FQDN set
+	ts := ra.clk.Now().UnixNano()
 	mockSA := &mockSAWithFQDNSet{
-		nameCounts: &sapb.CountByNames{
-			Counts: map[string]int64{"example.com": 100, "zombo.com": 100},
+		issuanceTimestamps: map[string]*sapb.Timestamps{
+			"example.com": {Timestamps: []int64{ts, ts}},
+			"zombo.com":   {Timestamps: []int64{ts, ts}},
 		},
 		fqdnSet: map[string]bool{},
 		t:       t,
