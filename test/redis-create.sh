@@ -27,4 +27,4 @@ fi
 # The Boulder container will wait for this port on this container to be
 # available before starting up.
 echo "Starting a server so everything knows we're done."
-redis-server /test/redis.config
+exec redis-server /test/redis.config
