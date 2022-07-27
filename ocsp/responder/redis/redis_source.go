@@ -69,7 +69,7 @@ func NewRedisSource(
 
 	cachedResponseAges := prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "ocsp_redis_cached_response_ages",
-		Help:    "How old are the cached OCSP responses when we successfull retrieve them.",
+		Help:    "How old are the cached OCSP responses when we successfully retrieve them.",
 		Buckets: buckets,
 	})
 	stats.MustRegister(cachedResponseAges)
