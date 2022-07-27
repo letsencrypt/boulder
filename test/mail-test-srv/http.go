@@ -9,14 +9,18 @@ import (
 	"strings"
 )
 
-// toFilter filters mails based on the To: field.
+// filter filters mails based on the To: and From: fields.
 // The zero value matches all mails.
-type toFilter struct {
-	To string
+type filter struct {
+	To   string
+	From string
 }
 
-func (f *toFilter) Match(m rcvdMail) bool {
+func (f *filter) Match(m rcvdMail) bool {
 	if f.To != "" && f.To != m.To {
+		return false
+	}
+	if f.From != "" && f.From != m.From {
 		return false
 	}
 	return true
@@ -25,11 +29,13 @@ func (f *toFilter) Match(m rcvdMail) bool {
 /*
 /count - number of mails
 /count?to=foo@bar.com - number of mails for foo@bar.com
+/count?from=service@test.org - number of mails sent by service@test.org
 /clear - clear the mail list
 /mail/0 - first mail
 /mail/1 - second mail
 /mail/0?to=foo@bar.com - first mail for foo@bar.com
 /mail/1?to=foo@bar.com - second mail for foo@bar.com
+/mail/1?to=foo@bar.com&from=service@test.org - second mail for foo@bar.com from service@test.org
 */
 
 func (srv *mailSrv) setupHTTP(serveMux *http.ServeMux) {
@@ -79,13 +85,12 @@ func (srv *mailSrv) httpGetMail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func extractFilter(r *http.Request) toFilter {
+func extractFilter(r *http.Request) filter {
 	values := r.URL.Query()
-	to := values.Get("to")
-	return toFilter{To: to}
+	return filter{To: values.Get("to"), From: values.Get("from")}
 }
 
-func (srv *mailSrv) iterMail(f toFilter, cb func(rcvdMail) bool) bool {
+func (srv *mailSrv) iterMail(f filter, cb func(rcvdMail) bool) bool {
 	srv.allMailMutex.Lock()
 	defer srv.allMailMutex.Unlock()
 	for _, v := range srv.allReceivedMail {
