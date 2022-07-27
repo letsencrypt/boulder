@@ -660,18 +660,20 @@ func TestBadKeyRevoker(t *testing.T) {
 	_, err = ocsp_helper.ReqDER(badCert.Raw, ocspConfig)
 	test.AssertNotError(t, err, "ReqDER failed")
 
-outer:
 	for _, cert := range certs {
 		for i := 0; i < 5; i++ {
 			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
 			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-			if err == nil {
-				continue outer
+			if err != nil {
+				t.Logf("TestBadKeyRevoker: Got bad response: %s", err.Error())
+				if i >= 4 {
+					t.Fatal("timed out waiting for correct OCSP status")
+				}
+				time.Sleep(time.Second)
+				continue
 			}
-			t.Logf("TestBadKeyRevoker: Got bad response: %s", err.Error())
-			time.Sleep(time.Second)
+			break
 		}
-		t.Fatal("timed out waiting for correct OCSP status")
 	}
 
 	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee@letsencrypt.org&from=bad-key-revoker@test.org")
@@ -746,18 +748,20 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	test.AssertNotError(t, err, "ReqDER failed")
 
 	ocspConfig = ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
-outer:
 	for _, cert := range certs {
 		for i := 0; i < 5; i++ {
-			t.Logf("TestBadKeyRevokerByAccount: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
-			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
-			if err == nil {
-				continue outer
+			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
+			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
+			if err != nil {
+				t.Logf("TestBadKeyRevoker: Got bad response: %s", err.Error())
+				if i >= 4 {
+					t.Fatal("timed out waiting for correct OCSP status")
+				}
+				time.Sleep(time.Second)
+				continue
 			}
-			t.Logf("TestBadKeyRevokerByAccount: Got bad response: %s", err.Error())
-			time.Sleep(time.Second)
+			break
 		}
-		t.Fatal("timed out waiting for correct OCSP status")
 	}
 
 	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee-moz@letsencrypt.org&from=bad-key-revoker@test.org")
