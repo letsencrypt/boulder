@@ -638,10 +638,12 @@ func TestBadKeyRevoker(t *testing.T) {
 	res, err := authAndIssue(revokerClient, certKey, []string{random_domain()})
 	test.AssertNotError(t, err, "authAndIssue failed")
 	badCert := res.certs[0]
+	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
 	certs := []*x509.Certificate{}
 	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
 		cert, err := authAndIssue(c, certKey, []string{random_domain()})
+		t.Logf("TestBadKeyRevoker: Issued cert with serial %x", cert.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
 		certs = append(certs, cert.certs[0])
 	}
@@ -661,13 +663,15 @@ func TestBadKeyRevoker(t *testing.T) {
 outer:
 	for _, cert := range certs {
 		for i := 0; i < 5; i++ {
+			t.Logf("TestBadKeyRevoker: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
 			_, err := ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err == nil {
 				continue outer
 			}
+			t.Logf("TestBadKeyRevoker: Got bad response: %s", err.Error())
 			time.Sleep(time.Second)
 		}
-		t.Fatal("timed out waiting for revoked OCSP status")
+		t.Fatal("timed out waiting for correct OCSP status")
 	}
 
 	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee@letsencrypt.org&from=bad-key-revoker@test.org")
@@ -719,10 +723,12 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	res, err := authAndIssue(revokerClient, certKey, []string{random_domain()})
 	test.AssertNotError(t, err, "authAndIssue failed")
 	badCert := res.certs[0]
+	t.Logf("Generated to-be-revoked cert with serial %x", badCert.SerialNumber)
 
 	certs := []*x509.Certificate{}
 	for _, c := range []*client{revokerClient, revokeeClient, noContactClient} {
 		cert, err := authAndIssue(c, certKey, []string{random_domain()})
+		t.Logf("TestBadKeyRevokerByAccount: Issued cert with serial %x", cert.certs[0].SerialNumber)
 		test.AssertNotError(t, err, "authAndIssue failed")
 		certs = append(certs, cert.certs[0])
 	}
@@ -743,13 +749,15 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 outer:
 	for _, cert := range certs {
 		for i := 0; i < 5; i++ {
+			t.Logf("TestBadKeyRevokerByAccount: Requesting OCSP for cert with serial %x (attempt %d)", cert.SerialNumber, i)
 			_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 			if err == nil {
 				continue outer
 			}
+			t.Logf("TestBadKeyRevokerByAccount: Got bad response: %s", err.Error())
 			time.Sleep(time.Second)
 		}
-		t.Fatal("timed out waiting for revoked OCSP status")
+		t.Fatal("timed out waiting for correct OCSP status")
 	}
 
 	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee-moz@letsencrypt.org&from=bad-key-revoker@test.org")
