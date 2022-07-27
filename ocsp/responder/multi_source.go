@@ -49,7 +49,7 @@ func NewMultiSource(primary, secondary Source, expectedFreshness time.Duration, 
 		Name: "ocsp_multiplex_check_secondary",
 		Help: "Count of OCSP requests/responses by action taken by the multiSource",
 	}, []string{"result"})
-	stats.MustRegister(counter)
+	stats.MustRegister(checkSecondaryCounter)
 
 	return &multiSource{
 		primary:               primary,
