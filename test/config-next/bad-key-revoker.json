@@ -30,7 +30,7 @@
         "backoffIntervalMax": "60s"
     },
     "syslog": {
-        "stdoutlevel": 4,
+        "stdoutlevel": 6,
         "sysloglevel": 4
     },
     "beeline": {
