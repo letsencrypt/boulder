@@ -61,12 +61,14 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 	// unnecessarily.
 	// https://blog.uptrace.dev/posts/go-context-timeout.html
 	redisCtx := context.Background()
-	cancel := func() {}
 	deadline, ok := ctx.Deadline()
 	if ok {
-		redisCtx, cancel = context.WithDeadline(redisCtx, deadline)
+		// We don't call the CancelFunc returnwed by WithDeadline because it
+		// would defeat the purpose. That leaks the context, but only until
+		// the deadline is reached.
+		////nolint:govet
+		redisCtx, _ = context.WithDeadline(redisCtx, deadline)
 	}
-	defer cancel()
 
 	secondaryChan := getResponse(redisCtx, src.secondary, req)
 
