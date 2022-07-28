@@ -635,20 +635,28 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 
 	tx, err := sa.dbMap.Begin()
 	test.AssertNotError(t, err, "Failed to open transaction")
+
 	names := []string{"a.example.com", "B.example.com"}
+	threeHours := time.Hour * 3
+	req := &sapb.CountFQDNSetsRequest{
+		Domains: names,
+		Window:  threeHours.Nanoseconds(),
+	}
+
+	// zero issuance timestamps for names
+	resp, err := sa.FQDNSetTimestampsForWindow(ctx, req)
+	test.AssertNotError(t, err, "Failed to count name sets")
+	test.AssertEquals(t, len(resp.Timestamps), 0)
+
+	// add a valid set inside the window
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	firstIssued := fc.Now()
 	err = addFQDNSet(tx, names, "serial", firstIssued, expires)
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	threeHours := time.Hour * 3
-	req := &sapb.CountFQDNSetsRequest{
-		Domains: names,
-		Window:  threeHours.Nanoseconds(),
-	}
 	// only one valid
-	resp, err := sa.FQDNSetTimestampsForWindow(ctx, req)
+	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, len(resp.Timestamps), 1)
 	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[0]).UTC())

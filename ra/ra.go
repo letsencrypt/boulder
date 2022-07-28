@@ -1369,19 +1369,28 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	count, err := ra.SA.CountFQDNSets(ctx, &sapb.CountFQDNSetsRequest{
+	names = core.UniqueLowerNames(names)
+	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
+	if threshold <= 0 {
+		// No limit configured.
+		return nil
+	}
+
+	issuanceTimestampsInWindow, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		Domains: names,
 		Window:  limit.Window.Duration.Nanoseconds(),
 	})
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
-	names = core.UniqueLowerNames(names)
-	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
-	if count.Count >= threshold {
+
+	if int64(len(issuanceTimestampsInWindow.Timestamps)) >= threshold {
+		// FQDNSetTimestampsForWindow returns the issuance timestamps in
+		// ascending order so we can assume that the first one is the oldest.
+		retryAfter := time.Unix(0, issuanceTimestampsInWindow.Timestamps[0]).Add(limit.Window.Duration)
 		return berrors.DuplicateCertificateError(
-			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s",
-			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","),
+			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
+			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryAfter.Format(time.RFC3339),
 		)
 	}
 	return nil
