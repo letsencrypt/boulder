@@ -29,8 +29,9 @@ type crlUpdater struct {
 	ca capb.CRLGeneratorClient
 	// TODO(#6162): Add a crl-storer gRPC client.
 
-	tickHistogram    *prometheus.HistogramVec
-	generatedCounter *prometheus.CounterVec
+	tickHistogram       *prometheus.HistogramVec
+	generatedCounter    *prometheus.CounterVec
+	secondsSinceSuccess *prometheus.GaugeVec
 
 	log blog.Logger
 	clk clock.Clock
@@ -103,6 +104,12 @@ func NewUpdater(
 	}, []string{"result"})
 	stats.MustRegister(generatedCounter)
 
+	secondsSinceSuccess := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "crl_updater_secs_since_success",
+		Help: "The number of seconds since crl-updater last succeeded labeled by issuer",
+	}, []string{"issuer"})
+	stats.MustRegister(secondsSinceSuccess)
+
 	// TODO(#6162): Add a storedCounter when sending to the crl-storer.
 
 	return &crlUpdater{
@@ -117,6 +124,7 @@ func NewUpdater(
 		ca,
 		tickHistogram,
 		generatedCounter,
+		secondsSinceSuccess,
 		log,
 		clk,
 	}, nil
