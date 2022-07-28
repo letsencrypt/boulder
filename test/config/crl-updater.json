@@ -22,6 +22,7 @@
     "numShards": 10,
     "certificateLifetime": "2160h",
     "updatePeriod": "6h",
+    "updateOffset": "9120s",
     "maxParallelism": 10
   },
 

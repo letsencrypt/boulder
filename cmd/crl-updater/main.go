@@ -51,6 +51,12 @@ type Config struct {
 		// recommend an UpdatePeriod of 6 hours.
 		UpdatePeriod cmd.ConfigDuration
 
+		// UpdateOffset controls the times at which crl-updater runs, to avoid
+		// scheduling the batch job at exactly midnight. The updater runs every
+		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
+		// continuing forward into the future forever.
+		UpdateOffset cmd.ConfigDuration
+
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
@@ -116,6 +122,7 @@ func main() {
 		c.CRLUpdater.NumShards,
 		c.CRLUpdater.CertificateLifetime.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
+		c.CRLUpdater.UpdateOffset.Duration,
 		c.CRLUpdater.MaxParallelism,
 		sac,
 		cac,

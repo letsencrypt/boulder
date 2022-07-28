@@ -22,6 +22,7 @@ type crlUpdater struct {
 	lookbackPeriod    time.Duration
 	lookforwardPeriod time.Duration
 	updatePeriod      time.Duration
+	updateOffset      time.Duration
 	maxParallelism    int
 
 	sa sapb.StorageAuthorityClient
@@ -40,6 +41,7 @@ func NewUpdater(
 	numShards int,
 	certLifetime time.Duration,
 	updatePeriod time.Duration,
+	updateOffset time.Duration,
 	maxParallelism int,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
@@ -105,6 +107,7 @@ func NewUpdater(
 		lookbackPeriod,
 		lookforwardPeriod,
 		updatePeriod,
+		updateOffset,
 		maxParallelism,
 		sa,
 		ca,
@@ -119,11 +122,34 @@ func NewUpdater(
 // on the frequency specified by crlUpdater.updatePeriod. The provided context
 // can be used to gracefully stop (cancel) the process.
 func (cu *crlUpdater) Run(ctx context.Context) {
-	// TODO(#6163): Should there also be a configurable per-run timeout, to
-	// prevent overruns, used in a context.WithTimeout here?
-	cu.tick(ctx)
+	// We don't want the times at which crl-updater runs to be dependent on when
+	// the process starts. So wait until the appropriate time before kicking off
+	// the first run and the main ticker loop.
+	currOffset := cu.clk.Now().UnixNano() % cu.updatePeriod.Nanoseconds()
+	var waitNanos int64
+	if currOffset <= cu.updateOffset.Nanoseconds() {
+		waitNanos = cu.updateOffset.Nanoseconds() - currOffset
+	} else {
+		waitNanos = cu.updatePeriod.Nanoseconds() - currOffset + cu.updateOffset.Nanoseconds()
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(time.Duration(waitNanos)):
+	}
+
+	// Tick once immediately, but create the ticker first so that it starts
+	// counting from the appropriate time.
 	ticker := time.NewTicker(cu.updatePeriod)
+	cu.tick(ctx)
+
 	for {
+		// If we have overrun *and* been canceled, both of the below cases could be
+		// selectable at the same time, so check for context cancellation first.
+		if ctx.Err() != nil {
+			ticker.Stop()
+			return
+		}
 		select {
 		case <-ticker.C:
 			cu.tick(ctx)
