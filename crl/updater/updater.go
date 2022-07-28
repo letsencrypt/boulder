@@ -62,6 +62,10 @@ func NewUpdater(
 		return nil, fmt.Errorf("must update CRLs at least every 7 days, got: %s", updatePeriod)
 	}
 
+	if updateOffset > updatePeriod {
+		updateOffset = updatePeriod
+	}
+
 	// Set the lookback period to be significantly greater than the update period.
 	// This guarantees that a certificate which was revoked very shortly before it
 	// expired will still appear on at least one CRL, as required by RFC 5280

@@ -54,7 +54,8 @@ type Config struct {
 		// UpdateOffset controls the times at which crl-updater runs, to avoid
 		// scheduling the batch job at exactly midnight. The updater runs every
 		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
-		// continuing forward into the future forever.
+		// continuing forward into the future forever. This value is clamped to the
+		// interval [0, UpdatePeriod] (i.e. it cannot be greater than UpdatePeriod.)
 		UpdateOffset cmd.ConfigDuration
 
 		// MaxParallelism controls how many workers may be running in parallel.
