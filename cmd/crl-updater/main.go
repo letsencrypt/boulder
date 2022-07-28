@@ -72,6 +72,7 @@ type Config struct {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	runOnce := flag.Bool("runOnce", false, "If true, run once immediately and then exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -134,7 +135,12 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go cmd.CatchSignals(logger, cancel)
-	u.Run(ctx)
+
+	if *runOnce {
+		u.Tick(ctx)
+	} else {
+		u.Run(ctx)
+	}
 }
 
 func init() {

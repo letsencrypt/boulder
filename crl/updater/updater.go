@@ -141,7 +141,7 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 	// Tick once immediately, but create the ticker first so that it starts
 	// counting from the appropriate time.
 	ticker := time.NewTicker(cu.updatePeriod)
-	cu.tick(ctx)
+	cu.Tick(ctx)
 
 	for {
 		// If we have overrun *and* been canceled, both of the below cases could be
@@ -152,7 +152,7 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 		}
 		select {
 		case <-ticker.C:
-			cu.tick(ctx)
+			cu.Tick(ctx)
 		case <-ctx.Done():
 			ticker.Stop()
 			return
@@ -160,7 +160,7 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 	}
 }
 
-func (cu *crlUpdater) tick(ctx context.Context) {
+func (cu *crlUpdater) Tick(ctx context.Context) {
 	atTime := cu.clk.Now()
 	result := "success"
 	defer func() {
