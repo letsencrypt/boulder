@@ -63,7 +63,7 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 	redisCtx := context.Background()
 	deadline, ok := ctx.Deadline()
 	if ok {
-		// We don't call the CancelFunc returnwed by WithDeadline because it
+		// We don't call the CancelFunc returned by WithDeadline because it
 		// would defeat the purpose. That leaks the context, but only until
 		// the deadline is reached.
 		////nolint:govet
