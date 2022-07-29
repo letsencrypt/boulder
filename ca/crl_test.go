@@ -70,8 +70,8 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: 1,
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerID:   1,
+				ThisUpdate: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -88,16 +88,16 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerID:   int64(testCtx.boulderIssuers[0].Cert.NameID()),
+				ThisUpdate: time.Now().UnixNano(),
 			},
 		},
 	}
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerID:   int64(testCtx.boulderIssuers[0].Cert.NameID()),
+				ThisUpdate: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -162,8 +162,8 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerID:   int64(testCtx.boulderIssuers[0].Cert.NameID()),
+				ThisUpdate: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -196,8 +196,8 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				IssuerID:   int64(testCtx.boulderIssuers[0].Cert.NameID()),
+				ThisUpdate: time.Now().UnixNano(),
 			},
 		},
 	}

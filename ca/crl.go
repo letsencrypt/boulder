@@ -76,12 +76,12 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 			}
 
 			var ok bool
-			issuer, ok = ci.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
+			issuer, ok = ci.issuers[issuance.IssuerNameID(payload.Metadata.IssuerID)]
 			if !ok {
-				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerNameID)
+				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerID)
 			}
 
-			shard = payload.Metadata.Shard
+			shard = payload.Metadata.ShardIdx
 
 		case *capb.GenerateCRLRequest_Entry:
 			rc, err := ci.entryToRevokedCertificate(payload.Entry)
@@ -172,7 +172,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 }
 
 func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.RevocationList, error) {
-	if meta.IssuerNameID == 0 || meta.ThisUpdate == 0 {
+	if meta.IssuerID == 0 || meta.ThisUpdate == 0 {
 		return nil, errors.New("got incomplete metadata message")
 	}
 
