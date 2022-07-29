@@ -51,6 +51,13 @@ type Config struct {
 		// recommend an UpdatePeriod of 6 hours.
 		UpdatePeriod cmd.ConfigDuration
 
+		// UpdateOffset controls the times at which crl-updater runs, to avoid
+		// scheduling the batch job at exactly midnight. The updater runs every
+		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
+		// continuing forward into the future forever. This value must be strictly
+		// less than the UpdatePeriod.
+		UpdateOffset cmd.ConfigDuration
+
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
@@ -66,6 +73,7 @@ type Config struct {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	runOnce := flag.Bool("runOnce", false, "If true, run once immediately and then exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -116,6 +124,7 @@ func main() {
 		c.CRLUpdater.NumShards,
 		c.CRLUpdater.CertificateLifetime.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
+		c.CRLUpdater.UpdateOffset.Duration,
 		c.CRLUpdater.MaxParallelism,
 		sac,
 		cac,
@@ -127,7 +136,12 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go cmd.CatchSignals(logger, cancel)
-	u.Run(ctx)
+
+	if *runOnce {
+		u.Tick(ctx)
+	} else {
+		u.Run(ctx)
+	}
 }
 
 func init() {
