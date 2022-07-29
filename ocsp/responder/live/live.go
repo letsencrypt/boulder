@@ -34,6 +34,9 @@ func (s *Source) Response(ctx context.Context, req *ocsp.Request) (*responder.Re
 		return nil, err
 	}
 	defer s.sem.Release(1)
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 
 	resp, err := s.ra.GenerateOCSP(ctx, &rapb.GenerateOCSPRequest{
 		Serial: core.SerialToString(req.SerialNumber),
