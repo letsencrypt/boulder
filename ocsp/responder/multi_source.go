@@ -13,11 +13,12 @@ import (
 )
 
 type multiSource struct {
-	primary           Source
-	secondary         Source
-	expectedFreshness time.Duration
-	counter           *prometheus.CounterVec
-	log               blog.Logger
+	primary               Source
+	secondary             Source
+	expectedFreshness     time.Duration
+	counter               *prometheus.CounterVec
+	checkSecondaryCounter *prometheus.CounterVec
+	log                   blog.Logger
 }
 
 // NewMultiSource creates a source that combines a primary and a secondary source.
@@ -37,18 +38,26 @@ func NewMultiSource(primary, secondary Source, expectedFreshness time.Duration, 
 	if primary == nil || secondary == nil {
 		return nil, errors.New("must provide both primary and secondary sources")
 	}
+
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_multiplex_responses",
 		Help: "Count of OCSP requests/responses by action taken by the multiSource",
 	}, []string{"result"})
 	stats.MustRegister(counter)
 
+	checkSecondaryCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_multiplex_check_secondary",
+		Help: "Count of OCSP requests/responses by action taken by the multiSource",
+	}, []string{"result"})
+	stats.MustRegister(checkSecondaryCounter)
+
 	return &multiSource{
-		primary:           primary,
-		secondary:         secondary,
-		expectedFreshness: expectedFreshness,
-		counter:           counter,
-		log:               log,
+		primary:               primary,
+		secondary:             secondary,
+		expectedFreshness:     expectedFreshness,
+		counter:               counter,
+		checkSecondaryCounter: checkSecondaryCounter,
+		log:                   log,
 	}, nil
 }
 
@@ -91,7 +100,11 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 		// check the secondary's status against the (more reliable) primary's
 		// status.
 		if r.err != nil {
-			src.counter.WithLabelValues("primary_error").Inc()
+			if errors.Is(r.err, ErrNotFound) {
+				src.counter.WithLabelValues("primary_not_found").Inc()
+			} else {
+				src.counter.WithLabelValues("primary_error").Inc()
+			}
 			return nil, r.err
 		}
 		primaryResponse = r.resp
@@ -156,14 +169,14 @@ func (src *multiSource) checkSecondary(primaryResponse *Response, secondaryChan 
 		if secondaryResult.err != nil {
 			if errors.Is(secondaryResult.err, rocsp.ErrRedisNotFound) {
 				// This case will happen for several hours after first issuance.
-				src.counter.WithLabelValues("primary_good_secondary_not_found").Inc()
+				src.checkSecondaryCounter.WithLabelValues("not_found").Inc()
 			} else {
-				src.counter.WithLabelValues("primary_good_secondary_error").Inc()
+				src.checkSecondaryCounter.WithLabelValues("error").Inc()
 			}
 		}
-		src.counter.WithLabelValues("primary_good_secondary_good").Inc()
+		src.checkSecondaryCounter.WithLabelValues("good").Inc()
 	default:
-		src.counter.WithLabelValues("primary_good_secondary_slow").Inc()
+		src.checkSecondaryCounter.WithLabelValues("slow").Inc()
 	}
 }
 
