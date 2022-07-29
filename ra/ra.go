@@ -1376,7 +1376,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return nil
 	}
 
-	issuance, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
+	prevIssuances, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		Domains: names,
 		Window:  limit.Window.Duration.Nanoseconds(),
 	})
@@ -1384,23 +1384,24 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 
-	if int64(len(issuance.Timestamps)) < threshold {
+	if int64(len(prevIssuances.Timestamps)) < threshold {
 		// Issuance in window is below the threshold, no need to limit.
 		return nil
 	} else {
 		// Evaluate the rate limit using a leaky bucket algorithm. The bucket
 		// has a capacity of threshold and is refilled at a rate of 1 token per
 		// limit.Window/threshold from the time of each issuance timestamp.
+		now := ra.clk.Now()
 		nsPerToken := limit.Window.Nanoseconds() / threshold
-		for i, timestamp := range issuance.Timestamps {
-			nsUntilNextToken := int64(i+1) * nsPerToken
-			nsSinceIssuance := ra.clk.Now().Sub(time.Unix(0, timestamp)).Nanoseconds()
-			if nsSinceIssuance > nsUntilNextToken {
-				// Found a token.
+		for i, timestamp := range prevIssuances.Timestamps {
+			tokenGeneratedAt := now.Add(-time.Duration(int64(1*i+1) * nsPerToken))
+			if tokenGeneratedAt.After(time.Unix(0, timestamp)) {
+				// Found an interval during which more tokens were 'generated'
+				// than consumed.
 				return nil
 			}
 		}
-		retryTime := ra.clk.Now().Add(time.Duration(nsPerToken) - ra.clk.Now().Sub(time.Unix(0, issuance.Timestamps[0])))
+		retryTime := now.Add(time.Duration(nsPerToken) - now.Sub(time.Unix(0, prevIssuances.Timestamps[0])))
 		return berrors.DuplicateCertificateError(
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
