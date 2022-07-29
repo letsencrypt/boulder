@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"io/ioutil"
 	"os"
 	"strings"
 	"testing"
@@ -51,10 +50,9 @@ func TestOCSPBadSerialPrefix(t *testing.T) {
 	// prefix invalid. This works because ocsp_helper.Req (and the underlying
 	// ocsp.CreateRequest) completely ignore the cert's .Raw value.
 	serialStr := []byte(core.SerialToString(cert.SerialNumber))
-	ocspConfig := ocsp_helper.DefaultConfig.WithOutput(ioutil.Discard)
 	serialStr[0] = serialStr[0] + 1
 	cert.SerialNumber.SetString(string(serialStr), 16)
-	_, err = ocsp_helper.Req(cert, ocspConfig)
+	_, err = ocsp_helper.Req(cert, ocsp_helper.DefaultConfig)
 	if err == nil {
 		t.Fatal("Expected error getting OCSP for request with invalid serial")
 	}
@@ -95,7 +93,7 @@ func TestOCSPRejectedPrecertificate(t *testing.T) {
 		t.Fatalf("couldn't find rejected precert for %q", domain)
 	}
 
-	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good).WithOutput(ioutil.Discard)
+	ocspConfig := ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Good)
 	_, err = ocsp_helper.ReqDER(cert.Raw, ocspConfig)
 	if err != nil {
 		t.Errorf("requesting OCSP for rejected precertificate: %s", err)

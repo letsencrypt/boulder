@@ -18,7 +18,7 @@
             "server": "localhost",
             "port": "9380",
             "username": "cert-manager@example.com",
-            "from": "bad key revoker <test@example.com>",
+            "from": "bad key revoker <bad-key-revoker@test.org>",
             "passwordFile": "test/secrets/smtp_password",
             "SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
             "emailSubject": "Certificates you've issued have been revoked due to key compromise",
@@ -26,7 +26,8 @@
         },
         "maximumRevocations": 15,
         "findCertificatesBatchSize": 10,
-        "interval": "1s"
+        "interval": "1s",
+        "backoffIntervalMax": "2s"
     },
     "syslog": {
         "stdoutlevel": 4,

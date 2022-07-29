@@ -46,8 +46,8 @@ type Config struct {
 	issuerFile         string
 }
 
-// DefaultConfig is a Config populated with the same defaults as if no
-// command-line had been provided, so all retain their default value.
+// DefaultConfig is a Config populated with a set of curated default values
+// intended for library test usage of this package.
 var DefaultConfig = Config{
 	method:             *method,
 	urlOverride:        *urlOverride,
@@ -56,14 +56,16 @@ var DefaultConfig = Config{
 	ignoreExpiredCerts: *ignoreExpiredCerts,
 	expectStatus:       *expectStatus,
 	expectReason:       *expectReason,
-	output:             os.Stdout,
+	output:             ioutil.Discard,
 	issuerFile:         *issuerFile,
 }
 
 var parseFlagsOnce sync.Once
 
-// ConfigFromFlags returns a Config whose values are populated from
-// any command line flags passed by the user, or default values if not passed.
+// ConfigFromFlags returns a Config whose values are populated from any command
+// line flags passed by the user, or default values if not passed.  However, it
+// replaces ioutil.Discard with os.Stdout so that CLI usages of this package
+// will produce output on stdout by default.
 func ConfigFromFlags() Config {
 	parseFlagsOnce.Do(func() {
 		flag.Parse()
@@ -372,16 +374,16 @@ func parseAndPrint(respBytes []byte, cert, issuer *x509.Certificate, config Conf
 	fmt.Fprint(config.output, PrettyResponse(resp))
 
 	if len(errs) > 0 {
-		fmt.Print("Errors:\n")
+		fmt.Fprint(config.output, "Errors:\n")
 		err := errs[0]
-		fmt.Printf("  %v\n", err.Error())
+		fmt.Fprintf(config.output, "  %v\n", err.Error())
 		for _, e := range errs[1:] {
 			err = fmt.Errorf("%w; %v", err, e)
-			fmt.Printf("  %v\n", e.Error())
+			fmt.Fprintf(config.output, "  %v\n", e.Error())
 		}
 		return nil, err
 	}
-	fmt.Print("No errors found.\n")
+	fmt.Fprint(config.output, "No errors found.\n")
 	return resp, nil
 }
 

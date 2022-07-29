@@ -2178,8 +2178,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
-// DEPRECATED: use RevokeCertBySubscriber, RevokeCertByController, or
-// RevokeCertByKey instead.
+// DEPRECATED: use RevokeCertByApplicant or RevokeCertByKey instead.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil {
 		return nil, errIncompleteGRPCRequest
