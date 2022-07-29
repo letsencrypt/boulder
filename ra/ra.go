@@ -1394,14 +1394,15 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		now := ra.clk.Now()
 		nsPerToken := limit.Window.Nanoseconds() / threshold
 		for i, timestamp := range prevIssuances.Timestamps {
-			tokenGeneratedAt := now.Add(-time.Duration(int64(1*i+1) * nsPerToken))
-			if tokenGeneratedAt.After(time.Unix(0, timestamp)) {
-				// Found an interval during which more tokens were 'generated'
-				// than consumed.
+			tokensGeneratedSince := now.Add(-time.Duration(int64(i+1) * nsPerToken))
+			if time.Unix(0, timestamp).Before(tokensGeneratedSince) {
+				// We know `i+1` tokens were generated since `tokenGeneratedSince`,
+				// and only `i` certificates were issued, so there's room to allow
+				// for an additional issuance.
 				return nil
 			}
 		}
-		retryTime := now.Add(time.Duration(nsPerToken) - now.Sub(time.Unix(0, prevIssuances.Timestamps[0])))
+		retryTime := time.Unix(0, prevIssuances.Timestamps[0]).Add(time.Duration(nsPerToken))
 		return berrors.DuplicateCertificateError(
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
