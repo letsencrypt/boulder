@@ -117,27 +117,23 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 
 	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
 
-	// Open question: should it be the responsibility of the Storer to do this
-	// validation, or should the Updater do it?
 	crl, err := x509.ParseDERCRL(crlBytes)
 	if err != nil {
-		return fmt.Errorf("failed to parse CRL bytes for shard %d: %w", shardID, err)
+		return fmt.Errorf("parsing CRL for shard %d: %w", shardID, err)
 	}
 
 	err = issuer.CheckCRLSignature(crl)
 	if err != nil {
-		return fmt.Errorf("failed to validate signature for shard %d: %w", shardID, err)
+		return fmt.Errorf("validating signature for shard %d: %w", shardID, err)
 	}
-
-	cs.log.Debugf("got complete CRL for issuer %s, shard %d with %d entries", issuer.Subject.CommonName, shardID, len(crl.TBSCertList.RevokedCertificates))
 
 	start := cs.clk.Now()
 
-	filename := fmt.Sprintf("%s/%d.crl", issuer.Subject.CommonName, shardID)
+	filename := fmt.Sprintf("%d/%s/%d.crl", issuer.NameID(), crlNumber.String(), shardID)
 	checksum := sha256.Sum256(crlBytes)
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
-	res, err := cs.s3Client.PutObject(stream.Context(), &s3.PutObjectInput{
+	_, err = cs.s3Client.PutObject(stream.Context(), &s3.PutObjectInput{
 		Bucket:            &cs.s3Bucket,
 		Key:               &filename,
 		Body:              bytes.NewReader(crlBytes),
@@ -147,9 +143,16 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
 	})
 	if err != nil {
-		cs.log.AuditErrf("failed to upload CRL: %s", err.Error())
+		cs.log.AuditErrf(
+			"CRL upload failed: issuer=[%s] number=[%s] shard=[%d] err=[%v]",
+			issuer.Subject.CommonName, crlNumber.String(), shardID, err.Error(),
+		)
 	} else {
-		cs.log.Debugf("uploaded CRL, got resp: %#v", res)
+		cs.log.AuditInfof(
+			"CRL uploaded: issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
+			issuer.Subject.CommonName, crlNumber.String(), shardID,
+			crl.TBSCertList.ThisUpdate, crl.TBSCertList.NextUpdate, len(crl.TBSCertList.RevokedCertificates),
+		)
 	}
 
 	latency := cs.clk.Now().Sub(start)

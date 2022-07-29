@@ -236,8 +236,8 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 		go shardWorker(shardIdxs, shardResults)
 	}
 
-	for shardID := 0; shardID < cu.numShards; shardID++ {
-		shardIdxs <- shardID
+	for shardIdx := 0; shardIdx < cu.numShards; shardIdx++ {
+		shardIdxs <- shardIdx
 	}
 	close(shardIdxs)
 
@@ -329,25 +329,25 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	csStream, err := cu.cs.UploadCRL(ctx)
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("connecting to CRLStorer for shard %d: %w", shardID, err)
+		return fmt.Errorf("connecting to CRLStorer for shard %d: %w", shardIdx, err)
 	}
 
 	err = csStream.Send(&cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
 				IssuerNameID: int64(issuerID),
-				ShardID:      int64(shardID),
+				ShardID:      int64(shardIdx),
 				Number:       atTime.UnixNano(),
 			},
 		},
 	})
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("sending CRLStorer metadata for shard %d: %w", shardID, err)
+		return fmt.Errorf("sending CRLStorer metadata for shard %d: %w", shardIdx, err)
 	}
 
-	crlBytes := make([]byte, 0)
-	crlHasher := sha256.New()
+	crlLen := 0
+	crlHash := sha256.New()
 	for {
 		out, err := caStream.Recv()
 		if err != nil {
@@ -365,22 +365,21 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 		})
 		if err != nil {
 			result = "failed"
-			return fmt.Errorf("uploading CRL bytes for shard %d: %w", shardID, err)
+			return fmt.Errorf("uploading CRL bytes for shard %d: %w", shardIdx, err)
 		}
 
-		crlBytes = append(crlBytes, out.Chunk...)
-		crlHasher.Write(out.Chunk)
+		crlLen += len(out.Chunk)
+		crlHash.Write(out.Chunk)
 	}
 
-	crlHash := crlHasher.Sum(nil)
-	cu.log.AuditInfof(
-		"Received CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
-		issuerID, atTime.UnixNano(), shardIdx, len(crlBytes), crlHash)
+	cu.log.Infof(
+		"Generated CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
+		issuerID, atTime.UnixNano(), shardIdx, crlLen, crlHash.Sum(nil))
 
 	err = csStream.CloseSend()
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("closing CRLStorer upload stream for shard %d: %w", shardID, err)
+		return fmt.Errorf("closing CRLStorer upload stream for shard %d: %w", shardIdx, err)
 	}
 
 	return nil
