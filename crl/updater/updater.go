@@ -63,8 +63,8 @@ func NewUpdater(
 		return nil, fmt.Errorf("must update CRLs at least every 7 days, got: %s", updatePeriod)
 	}
 
-	if updateOffset > updatePeriod {
-		updateOffset = updatePeriod
+	if updateOffset >= updatePeriod {
+		return nil, fmt.Errorf("update offset must be less than period: %s !< %s", updateOffset, updatePeriod)
 	}
 
 	// Set the lookback period to be significantly greater than the update period.
