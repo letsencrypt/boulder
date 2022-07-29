@@ -17,7 +17,7 @@ message UploadCRLRequest {
 }
 
 message CRLMetadata {
-  int64 issuerNameID = 1;
-  int64 shardID = 2;
-  int64 number = 3;
+  int64 issuerID = 1;
+  int64 number = 2;
+  int64 shardIdx = 3;
 }

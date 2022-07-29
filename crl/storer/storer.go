@@ -78,7 +78,7 @@ func New(
 
 func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	var issuer *issuance.Certificate
-	var shardID int64
+	var shardIdx int64
 	var crlNumber *big.Int
 	crlBytes := make([]byte, 0)
 
@@ -96,17 +96,17 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			if crlNumber != nil || issuer != nil {
 				return errors.New("got more than one metadata message")
 			}
-			if payload.Metadata.Number == 0 || payload.Metadata.IssuerNameID == 0 {
+			if payload.Metadata.IssuerID == 0 || payload.Metadata.Number == 0 {
 				return errors.New("got incomplete metadata message")
 			}
 
-			shardID = payload.Metadata.ShardID
+			shardIdx = payload.Metadata.ShardIdx
 			crlNumber = big.NewInt(payload.Metadata.Number)
 
 			var ok bool
-			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
+			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerID)]
 			if !ok {
-				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerNameID)
+				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerID)
 			}
 
 		case *cspb.UploadCRLRequest_CrlChunk:
@@ -119,17 +119,17 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 
 	crl, err := x509.ParseDERCRL(crlBytes)
 	if err != nil {
-		return fmt.Errorf("parsing CRL for shard %d: %w", shardID, err)
+		return fmt.Errorf("parsing CRL for shard %d: %w", shardIdx, err)
 	}
 
 	err = issuer.CheckCRLSignature(crl)
 	if err != nil {
-		return fmt.Errorf("validating signature for shard %d: %w", shardID, err)
+		return fmt.Errorf("validating signature for shard %d: %w", shardIdx, err)
 	}
 
 	start := cs.clk.Now()
 
-	filename := fmt.Sprintf("%d/%s/%d.crl", issuer.NameID(), crlNumber.String(), shardID)
+	filename := fmt.Sprintf("%d/%s/%d.crl", issuer.NameID(), crlNumber.String(), shardIdx)
 	checksum := sha256.Sum256(crlBytes)
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
@@ -145,12 +145,12 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	if err != nil {
 		cs.log.AuditErrf(
 			"CRL upload failed: issuer=[%s] number=[%s] shard=[%d] err=[%v]",
-			issuer.Subject.CommonName, crlNumber.String(), shardID, err.Error(),
+			issuer.Subject.CommonName, crlNumber.String(), shardIdx, err.Error(),
 		)
 	} else {
 		cs.log.AuditInfof(
 			"CRL uploaded: issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-			issuer.Subject.CommonName, crlNumber.String(), shardID,
+			issuer.Subject.CommonName, crlNumber.String(), shardIdx,
 			crl.TBSCertList.ThisUpdate, crl.TBSCertList.NextUpdate, len(crl.TBSCertList.RevokedCertificates),
 		)
 	}
