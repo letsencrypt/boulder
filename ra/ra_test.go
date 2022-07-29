@@ -1223,25 +1223,28 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	const dupeCertLimit = 3
 	rlp := ratelimit.RateLimitPolicy{
 		Threshold: dupeCertLimit,
-		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+		Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
 	}
 
 	// Create a mock SA that has a count of already issued certificates for some
 	// test names
-	firstIssuanceTimestamp := ra.clk.Now().Add(-23 * time.Hour)
+	firstIssuanceTimestamp := ra.clk.Now().Add(-rlp.Window.Duration)
 	issuanceTimestamps := []int64{
+		firstIssuanceTimestamp.Add(time.Hour * 23).UnixNano(),
+		firstIssuanceTimestamp.Add(time.Hour * 16).UnixNano(),
+		firstIssuanceTimestamp.Add(time.Hour * 8).UnixNano(),
 		firstIssuanceTimestamp.UnixNano(),
-		firstIssuanceTimestamp.Add(time.Hour).UnixNano(),
-		firstIssuanceTimestamp.Add(time.Hour * 2).UnixNano(),
-		firstIssuanceTimestamp.Add(time.Hour * 3).UnixNano(),
 	}
-	expectRetryAfter := time.Unix(0, issuanceTimestamps[0]).Add(23 * time.Hour).Format(time.RFC3339)
+	// Our window is 24 hours and our threshold is 3 issuance. If our most
+	// recent issuance was 1 hour ago, we expect the next token to be available
+	// 8 hours from issuance time or 7 hours from now.
+	expectRetryAfter := time.Unix(0, issuanceTimestamps[0]).Add(time.Hour * 8).Format(time.RFC3339)
 	ra.SA = &mockSAWithFQDNSet{
 		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"none.example.com":  {Timestamps: []int64{}},
-			"under.example.com": {Timestamps: issuanceTimestamps[0 : dupeCertLimit-1]},
-			"equal.example.com": {Timestamps: issuanceTimestamps[0:dupeCertLimit]},
-			"over.example.com":  {Timestamps: issuanceTimestamps[0 : dupeCertLimit+1]},
+			"none.example.com":          {Timestamps: []int64{}},
+			"under.example.com":         {Timestamps: issuanceTimestamps[3:3]},
+			"equalbutvalid.example.com": {Timestamps: issuanceTimestamps[1:3]},
+			"over.example.com":          {Timestamps: issuanceTimestamps[0:3]},
 		},
 		t: t,
 	}
@@ -1262,18 +1265,15 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 			ExpectedErr: nil,
 		},
 		{
-			Name:   "FQDN set issuances equal to limit",
-			Domain: "equal.example.com",
-			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 23 hours: equal.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
-				expectRetryAfter,
-			),
+			Name:        "FQDN set issuances equal to limit",
+			Domain:      "equalbutvalid.example.com",
+			ExpectedErr: nil,
 		},
 		{
 			Name:   "FQDN set issuances above limit",
 			Domain: "over.example.com",
 			ExpectedErr: fmt.Errorf(
-				"too many certificates (3) already issued for this exact set of domains in the last 23 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
 				expectRetryAfter,
 			),
 		},
