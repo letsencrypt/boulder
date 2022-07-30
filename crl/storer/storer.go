@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -15,7 +14,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/crl/crl_x509"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -106,7 +107,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			var ok bool
 			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerID)]
 			if !ok {
-				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerID)
+				return fmt.Errorf("got unrecognized IssuerID: %d", payload.Metadata.IssuerID)
 			}
 
 		case *cspb.UploadCRLRequest_CrlChunk:
@@ -115,14 +116,22 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 
 	}
 
+	if issuer == nil || crlNumber == nil {
+		return errors.New("got no metadata message")
+	}
+
 	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
 
-	crl, err := x509.ParseDERCRL(crlBytes)
+	crl, err := crl_x509.ParseRevocationList(crlBytes)
 	if err != nil {
 		return fmt.Errorf("parsing CRL for shard %d: %w", shardIdx, err)
 	}
 
-	err = issuer.CheckCRLSignature(crl)
+	if crl.Number.Cmp(crlNumber) != 0 {
+		return errors.New("got mismatched CRL Number")
+	}
+
+	err = crl.CheckSignatureFrom(issuer.Certificate)
 	if err != nil {
 		return fmt.Errorf("validating signature for shard %d: %w", shardIdx, err)
 	}
@@ -151,12 +160,16 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		cs.log.AuditInfof(
 			"CRL uploaded: issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
 			issuer.Subject.CommonName, crlNumber.String(), shardIdx,
-			crl.TBSCertList.ThisUpdate, crl.TBSCertList.NextUpdate, len(crl.TBSCertList.RevokedCertificates),
+			crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
 		)
 	}
 
 	latency := cs.clk.Now().Sub(start)
 	cs.latencyHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(latency.Seconds())
 
-	return err
+	if err != nil {
+		return fmt.Errorf("uploading to S3: %w", err)
+	}
+
+	return stream.SendAndClose(&emptypb.Empty{})
 }
