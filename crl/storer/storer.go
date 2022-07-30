@@ -77,6 +77,9 @@ func New(
 	}, nil
 }
 
+// TODO(#6261): Unify all error messages to identify the shard they're working
+// on as a JSON object including issuer, crl number, and shard number.
+
 func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	var issuer *issuance.Certificate
 	var shardIdx int64
