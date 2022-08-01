@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"runtime"
 
@@ -87,6 +88,9 @@ func main() {
 		cmd.FailOnError(err, "failed to load chain.")
 		issuer := chain[0]
 		id := issuer.NameID()
+		if _, exists := bundles[id]; exists {
+			cmd.Fail(fmt.Sprintf("Got multiple chains configured for issuer %q", issuer.Subject.CommonName))
+		}
 		bundles[id] = publisher.GetCTBundleForChain(chain)
 	}
 
