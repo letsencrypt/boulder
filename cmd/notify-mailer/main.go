@@ -167,12 +167,20 @@ func (m *mailer) run() error {
 	startTime := m.clk.Now()
 	sortedAddresses := sortAddresses(addressToRecipient)
 
+	if sortedAddresses[totalAddresses-1] < m.targetRange.start || sortedAddresses[0] > m.targetRange.end {
+		return errors.New("Zero found addresses fall inside target range")
+	}
+
 	go func(ch chan<- work) {
 		for i, address := range sortedAddresses {
 			ch <- work{i, address}
 		}
 		close(workChan)
 	}(workChan)
+
+	if m.parallelSends < 1 {
+		m.parallelSends = 1
+	}
 
 	for senderNum := uint(0); senderNum < m.parallelSends; senderNum++ {
 		// For politeness' sake, don't open more than 1 new connection per

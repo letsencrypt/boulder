@@ -278,12 +278,14 @@ func TestSleepInterval(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	tmpl := template.Must(template.New("letter").Parse("an email body"))
 	recipients := []recipient{{id: 1}, {id: 2}, {id: 3}}
-	// Set up a mock mailer that sleeps for `sleepLen` seconds
+	// Set up a mock mailer that sleeps for `sleepLen` seconds and only has one
+	// goroutine to process results
 	m := &mailer{
 		log:           blog.UseMock(),
 		mailer:        mc,
 		emailTemplate: tmpl,
 		sleepInterval: sleepLen * time.Second,
+		parallelSends: 1,
 		targetRange:   interval{start: "", end: "\xFF"},
 		clk:           newFakeClock(t),
 		recipients:    recipients,
