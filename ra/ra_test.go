@@ -419,6 +419,9 @@ func TestValidateContacts(t *testing.T) {
 	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com?"})
 	test.AssertError(t, err, "No hfields in email")
 
+	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#"})
+	test.AssertError(t, err, "No fragment")
+
 	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#optional"})
 	test.AssertError(t, err, "No fragment")
 

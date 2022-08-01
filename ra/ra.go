@@ -471,7 +471,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
 			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)
 		}
-		if parsed.Fragment != "" {
+		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
 			return berrors.InvalidEmailError("contact email %q contains a '#'", contact)
 		}
 		if !core.IsASCII(contact) {
