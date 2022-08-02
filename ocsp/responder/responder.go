@@ -155,11 +155,13 @@ var hashToString = map[crypto.Hash]string{
 // decodes the request, and passes back whatever response is provided by the
 // source.
 // The Responder will set these headers:
-//   Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
-//   Last-Modified: response.ThisUpdate,
-//   Expires: response.NextUpdate,
-//   ETag: the SHA256 hash of the response, and
-//   Content-Type: application/ocsp-response.
+//
+//	Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
+//	Last-Modified: response.ThisUpdate,
+//	Expires: response.NextUpdate,
+//	ETag: the SHA256 hash of the response, and
+//	Content-Type: application/ocsp-response.
+//
 // Note: The caller must use http.StripPrefix to strip any path components
 // (including '/') on GET requests.
 // Do not use this responder in conjunction with http.NewServeMux, because the

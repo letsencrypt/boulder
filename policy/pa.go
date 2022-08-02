@@ -345,18 +345,18 @@ func ValidEmail(address string) error {
 // cases breaking queries.
 //
 // We place several criteria on identifiers we are willing to issue for:
+//   - MUST self-identify as DNS identifiers
+//   - MUST contain only bytes in the DNS hostname character set
+//   - MUST NOT have more than maxLabels labels
+//   - MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
 //
-//  * MUST self-identify as DNS identifiers
-//  * MUST contain only bytes in the DNS hostname character set
-//  * MUST NOT have more than maxLabels labels
-//  * MUST follow the DNS hostname syntax rules in RFC 1035 and RFC 2181
-//    In particular:
-//    * MUST NOT contain underscores
-//  * MUST NOT match the syntax of an IP address
-//  * MUST end in a public suffix
-//  * MUST have at least one label in addition to the public suffix
-//  * MUST NOT be a label-wise suffix match for a name on the block list,
-//    where comparison is case-independent (normalized to lower case)
+// In particular, it:
+//   - MUST NOT contain underscores
+//   - MUST NOT match the syntax of an IP address
+//   - MUST end in a public suffix
+//   - MUST have at least one label in addition to the public suffix
+//   - MUST NOT be a label-wise suffix match for a name on the block list,
+//     where comparison is case-independent (normalized to lower case)
 //
 // If WillingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
@@ -390,15 +390,14 @@ func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
 // All provided identifiers are run through WillingToIssue and any errors are
 // returned. In addition to the regular WillingToIssue checks this function
 // also checks each wildcard identifier to enforce that:
-//
-// * The identifier is a DNS type identifier
-// * There is at most one `*` wildcard character
-// * That the wildcard character is the leftmost label
-// * That the wildcard label is not immediately adjacent to a top level ICANN
-//   TLD
-// * That the wildcard wouldn't cover an exact blocklist entry (e.g. an exact
-//   blocklist entry for "foo.example.com" should prevent issuance for
-//   "*.example.com")
+//   - The identifier is a DNS type identifier
+//   - There is at most one `*` wildcard character
+//   - That the wildcard character is the leftmost label
+//   - That the wildcard label is not immediately adjacent to a top level ICANN
+//     TLD
+//   - That the wildcard wouldn't cover an exact blocklist entry (e.g. an exact
+//     blocklist entry for "foo.example.com" should prevent issuance for
+//     "*.example.com")
 //
 // If any of the identifiers are not valid then an error with suberrors specific
 // to the rejected identifiers will be returned.

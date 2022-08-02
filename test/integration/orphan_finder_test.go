@@ -115,7 +115,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	}
 	if precert {
 		template.ExtraExtensions = []pkix.Extension{
-			pkix.Extension{
+			{
 				Id:       OIDExtensionCTPoison,
 				Critical: true,
 				Value:    []byte{5, 0},
