@@ -143,7 +143,7 @@ func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequ
 	}
 
 	if oi.ocspLogQueue != nil {
-		oi.ocspLogQueue.enqueue(serial.Bytes(), now, tbsResponse.Status)
+		oi.ocspLogQueue.enqueue(serial.Bytes(), now, tbsResponse.Status, tbsResponse.RevocationReason)
 	}
 
 	ocspResponse, err := ocsp.CreateResponse(issuer.Cert.Certificate, issuer.Cert.Certificate, tbsResponse, issuer.Signer)
@@ -185,6 +185,7 @@ type ocspLog struct {
 	serial []byte
 	time   time.Time
 	status int
+	reason int
 }
 
 func newOCSPLogQueue(
@@ -212,11 +213,12 @@ func newOCSPLogQueue(
 	return &olq
 }
 
-func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status int) {
+func (olq *ocspLogQueue) enqueue(serial []byte, time time.Time, status, reason int) {
 	olq.queue <- ocspLog{
 		serial: append([]byte{}, serial...),
 		time:   time,
 		status: status,
+		reason: reason,
 	}
 }
 
@@ -243,7 +245,11 @@ func (olq *ocspLogQueue) loop() {
 					done = true
 					break inner
 				}
-				fmt.Fprintf(&builder, "%x:%d,", ol.serial, ol.status)
+				reasonStr := "_"
+				if ol.status == ocsp.Revoked {
+					reasonStr = fmt.Sprintf("%d", ol.reason)
+				}
+				fmt.Fprintf(&builder, "%x:%s,", ol.serial, reasonStr)
 			case <-deadline:
 				break inner
 			}

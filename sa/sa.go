@@ -697,8 +697,8 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 }
 
 // FQDNSetTimestampsForWindow returns the issuance timestamps for each
-// certificate, issued for a set of domains, during a given window of time, in
-// ascending order.
+// certificate, issued for a set of domains, during a given window of time,
+// starting from the most recent issuance.
 func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
 	if req.Window == 0 || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
@@ -712,7 +712,7 @@ func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, 
 		`SELECT issued FROM fqdnSets 
 		WHERE setHash = ?
 		AND issued > ?
-		ORDER BY issued ASC`,
+		ORDER BY issued DESC`,
 		HashNames(req.Domains),
 		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)

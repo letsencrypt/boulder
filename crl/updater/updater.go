@@ -203,13 +203,13 @@ func (cu *crlUpdater) Tick(ctx context.Context) {
 }
 
 // tickIssuer performs the full CRL issuance cycle for a single issuer cert.
-func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID) error {
+func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) error {
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
+		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
 	}()
-	cu.log.Debugf("Ticking issuer %d at time %s", issuerID, atTime)
+	cu.log.Debugf("Ticking issuer %d at time %s", issuerNameID, atTime)
 
 	type shardResult struct {
 		shardIdx int
@@ -224,7 +224,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 			default:
 				out <- shardResult{
 					shardIdx: idx,
-					err:      cu.tickShard(ctx, atTime, issuerID, idx),
+					err:      cu.tickShard(ctx, atTime, issuerNameID, idx),
 				}
 			}
 		}
@@ -254,19 +254,19 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 	return nil
 }
 
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID, shardIdx int) error {
+func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) error {
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
+		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
 		cu.generatedCounter.WithLabelValues(result).Inc()
 	}()
-	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerID, atTime)
+	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerNameID, atTime)
 
 	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
 
 	saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
-		IssuerNameID:  int64(issuerID),
+		IssuerNameID:  int64(issuerNameID),
 		ExpiresAfter:  expiresAfter.UnixNano(),
 		ExpiresBefore: expiresBefore.UnixNano(),
 		RevokedBefore: atTime.UnixNano(),
@@ -285,7 +285,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	err = caStream.Send(&capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerID:   int64(issuerID),
+				IssuerID:   int64(issuerNameID),
 				ThisUpdate: atTime.UnixNano(),
 				ShardIdx:   int64(shardIdx),
 			},
@@ -335,9 +335,9 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	err = csStream.Send(&cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(issuerID),
-				Number:   atTime.UnixNano(),
-				ShardIdx: int64(shardIdx),
+				IssuerNameID: int64(issuerNameID),
+				Number:       atTime.UnixNano(),
+				ShardIdx:     int64(shardIdx),
 			},
 		},
 	})
@@ -374,7 +374,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 
 	cu.log.Infof(
 		"Generated CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
-		issuerID, atTime.UnixNano(), shardIdx, crlLen, crlHash.Sum(nil))
+		issuerNameID, atTime.UnixNano(), shardIdx, crlLen, crlHash.Sum(nil))
 
 	err = csStream.CloseSend()
 	if err != nil {

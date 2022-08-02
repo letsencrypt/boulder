@@ -117,8 +117,8 @@ func TestUploadCRL(t *testing.T) {
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: 1,
-				Number:   1,
+				IssuerNameID: 1,
+				Number:       1,
 			},
 		},
 	}
@@ -135,16 +135,16 @@ func TestUploadCRL(t *testing.T) {
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(e1.NameID()),
-				Number:   1,
+				IssuerNameID: int64(e1.NameID()),
+				Number:       1,
 			},
 		},
 	}
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(e1.NameID()),
-				Number:   1,
+				IssuerNameID: int64(e1.NameID()),
+				Number:       1,
 			},
 		},
 	}
@@ -161,8 +161,8 @@ func TestUploadCRL(t *testing.T) {
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(e1.NameID()),
-				Number:   1,
+				IssuerNameID: int64(e1.NameID()),
+				Number:       1,
 			},
 		},
 	}
@@ -185,8 +185,8 @@ func TestUploadCRL(t *testing.T) {
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(e1.NameID()),
-				Number:   1,
+				IssuerNameID: int64(e1.NameID()),
+				Number:       1,
 			},
 		},
 	}
@@ -221,8 +221,8 @@ func TestUploadCRL(t *testing.T) {
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(e1.NameID()),
-				Number:   1,
+				IssuerNameID: int64(e1.NameID()),
+				Number:       1,
 			},
 		},
 	}
@@ -255,8 +255,8 @@ func TestUploadCRL(t *testing.T) {
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(e1.NameID()),
-				Number:   1,
+				IssuerNameID: int64(e1.NameID()),
+				Number:       1,
 			},
 		},
 	}
@@ -292,8 +292,8 @@ func TestUploadCRL(t *testing.T) {
 	ins <- &cspb.UploadCRLRequest{
 		Payload: &cspb.UploadCRLRequest_Metadata{
 			Metadata: &cspb.CRLMetadata{
-				IssuerID: int64(e1.NameID()),
-				Number:   1,
+				IssuerNameID: int64(e1.NameID()),
+				Number:       1,
 			},
 		},
 	}

@@ -100,7 +100,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			if crlNumber != nil || issuer != nil {
 				return errors.New("got more than one metadata message")
 			}
-			if payload.Metadata.IssuerID == 0 || payload.Metadata.Number == 0 {
+			if payload.Metadata.IssuerNameID == 0 || payload.Metadata.Number == 0 {
 				return errors.New("got incomplete metadata message")
 			}
 
@@ -108,9 +108,9 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			crlNumber = big.NewInt(payload.Metadata.Number)
 
 			var ok bool
-			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerID)]
+			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
 			if !ok {
-				return fmt.Errorf("got unrecognized IssuerID: %d", payload.Metadata.IssuerID)
+				return fmt.Errorf("got unrecognized IssuerID: %d", payload.Metadata.IssuerNameID)
 			}
 
 		case *cspb.UploadCRLRequest_CrlChunk:
