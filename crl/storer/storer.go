@@ -141,7 +141,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 
 	start := cs.clk.Now()
 
-	filename := fmt.Sprintf("%d/%s/%d.crl", issuer.NameID(), crlNumber.String(), shardIdx)
+	filename := fmt.Sprintf("%d/%s/%d.crl", issuer.NameID(), crlNumber, shardIdx)
 	checksum := sha256.Sum256(crlBytes)
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
@@ -156,13 +156,13 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	})
 	if err != nil {
 		cs.log.AuditErrf(
-			"CRL upload failed: issuer=[%s] number=[%s] shard=[%d] err=[%v]",
-			issuer.Subject.CommonName, crlNumber.String(), shardIdx, err.Error(),
+			"CRL upload failed: issuer=[%s] number=[%s] shard=[%d] err=[%s]",
+			issuer.Subject.CommonName, crlNumber, shardIdx, err,
 		)
 	} else {
 		cs.log.AuditInfof(
 			"CRL uploaded: issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-			issuer.Subject.CommonName, crlNumber.String(), shardIdx,
+			issuer.Subject.CommonName, crlNumber, shardIdx,
 			crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
 		)
 	}
