@@ -236,7 +236,7 @@ func popPendingOrder(ctx *context) *OrderJSON {
 	return order
 }
 
-// getAuthorization fetches an authorization by GETing the provided URL. It
+// getAuthorization fetches an authorization by GET-ing the provided URL. It
 // records the latency and result of the GET operation in the state.
 func getAuthorization(s *State, ctx *context, url string) (*core.Authorization, error) {
 	latencyTag := "/acme/authz/{ID}"

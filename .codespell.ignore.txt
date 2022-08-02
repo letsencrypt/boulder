@@ -1,4 +1,3 @@
-geting
 keypair
 vas
 strat
@@ -6,5 +5,5 @@ hist
 dur
 uint
 iff
-cas
 te
+ot
