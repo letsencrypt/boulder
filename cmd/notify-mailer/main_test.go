@@ -278,12 +278,14 @@ func TestSleepInterval(t *testing.T) {
 	dbMap := mockEmailResolver{}
 	tmpl := template.Must(template.New("letter").Parse("an email body"))
 	recipients := []recipient{{id: 1}, {id: 2}, {id: 3}}
-	// Set up a mock mailer that sleeps for `sleepLen` seconds
+	// Set up a mock mailer that sleeps for `sleepLen` seconds and only has one
+	// goroutine to process results
 	m := &mailer{
 		log:           blog.UseMock(),
 		mailer:        mc,
 		emailTemplate: tmpl,
 		sleepInterval: sleepLen * time.Second,
+		parallelSends: 1,
 		targetRange:   interval{start: "", end: "\xFF"},
 		clk:           newFakeClock(t),
 		recipients:    recipients,
@@ -429,6 +431,52 @@ func TestMailIntervals(t *testing.T) {
 		Subject: testSubject,
 		Body:    "an email body",
 	}, mc.Messages[1])
+}
+
+func TestParallelism(t *testing.T) {
+	const testSubject = "Test Subject"
+	dbMap := mockEmailResolver{}
+
+	tmpl := template.Must(template.New("letter").Parse("an email body"))
+	recipients := []recipient{{id: 1}, {id: 2}, {id: 3}, {id: 4}}
+
+	mc := &mocks.Mailer{}
+
+	// Create a mailer with 10 parallel workers.
+	m := &mailer{
+		log:           blog.UseMock(),
+		mailer:        mc,
+		dbMap:         dbMap,
+		subject:       testSubject,
+		recipients:    recipients,
+		emailTemplate: tmpl,
+		targetRange:   interval{end: "\xFF"},
+		sleepInterval: 0,
+		parallelSends: 10,
+		clk:           newFakeClock(t),
+	}
+
+	mc.Clear()
+	err := m.run()
+	test.AssertNotError(t, err, "run() produced an error")
+
+	// The fake clock should have advanced 9 seconds, one for each parallel
+	// goroutine after the first doing its polite 1-second sleep at startup.
+	expectedEnd := newFakeClock(t)
+	expectedEnd.Add(9 * time.Second)
+	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
+
+	// A message should have been sent to all four addresses.
+	test.AssertEquals(t, len(mc.Messages), 4)
+	expectedAddresses := []string{
+		"example@letsencrypt.org",
+		"test-example-updated@letsencrypt.org",
+		"test-test-test@letsencrypt.org",
+		"example-example-example@letsencrypt.org",
+	}
+	for _, msg := range mc.Messages {
+		test.AssertSliceContains(t, expectedAddresses, msg.To)
+	}
 }
 
 func TestMessageContentStatic(t *testing.T) {
