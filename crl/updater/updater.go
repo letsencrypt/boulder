@@ -206,40 +206,40 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 	cu.log.Debugf("Ticking issuer %d at time %s", issuerID, atTime)
 
 	type shardResult struct {
-		shardID int
-		err     error
+		shardIdx int
+		err      error
 	}
 
 	shardWorker := func(in <-chan int, out chan<- shardResult) {
-		for id := range in {
+		for idx := range in {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 				out <- shardResult{
-					shardID: id,
-					err:     cu.tickShard(ctx, atTime, issuerID, id),
+					shardIdx: idx,
+					err:      cu.tickShard(ctx, atTime, issuerID, idx),
 				}
 			}
 		}
 	}
 
-	shardIDs := make(chan int, cu.numShards)
+	shardIdxs := make(chan int, cu.numShards)
 	shardResults := make(chan shardResult, cu.numShards)
 	for i := 0; i < cu.maxParallelism; i++ {
-		go shardWorker(shardIDs, shardResults)
+		go shardWorker(shardIdxs, shardResults)
 	}
 
 	for shardID := 0; shardID < cu.numShards; shardID++ {
-		shardIDs <- shardID
+		shardIdxs <- shardID
 	}
-	close(shardIDs)
+	close(shardIdxs)
 
 	for i := 0; i < cu.numShards; i++ {
 		res := <-shardResults
 		if res.err != nil {
 			result = "failed"
-			return fmt.Errorf("updating shard %d: %w", res.shardID, res.err)
+			return fmt.Errorf("updating shard %d: %w", res.shardIdx, res.err)
 		}
 	}
 
@@ -248,16 +248,16 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 	return nil
 }
 
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID, shardID int) error {
+func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID, shardIdx int) error {
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
 		cu.generatedCounter.WithLabelValues(result).Inc()
 	}()
-	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardID, issuerID, atTime)
+	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerID, atTime)
 
-	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardID)
+	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
 
 	saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
 		IssuerNameID:  int64(issuerID),
@@ -267,13 +267,13 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	})
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("connecting to SA for shard %d: %w", shardID, err)
+		return fmt.Errorf("connecting to SA for shard %d: %w", shardIdx, err)
 	}
 
 	caStream, err := cu.ca.GenerateCRL(ctx)
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("connecting to CA for shard %d: %w", shardID, err)
+		return fmt.Errorf("connecting to CA for shard %d: %w", shardIdx, err)
 	}
 
 	err = caStream.Send(&capb.GenerateCRLRequest{
@@ -281,13 +281,13 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(issuerID),
 				ThisUpdate:   atTime.UnixNano(),
-				Shard:        int64(shardID),
+				ShardIdx:     int64(shardIdx),
 			},
 		},
 	})
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("sending CA metadata for shard %d: %w", shardID, err)
+		return fmt.Errorf("sending CA metadata for shard %d: %w", shardIdx, err)
 	}
 
 	for {
@@ -297,7 +297,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 				break
 			}
 			result = "failed"
-			return fmt.Errorf("retrieving entry from SA for shard %d: %w", shardID, err)
+			return fmt.Errorf("retrieving entry from SA for shard %d: %w", shardIdx, err)
 		}
 
 		err = caStream.Send(&capb.GenerateCRLRequest{
@@ -307,7 +307,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 		})
 		if err != nil {
 			result = "failed"
-			return fmt.Errorf("sending entry to CA for shard %d: %w", shardID, err)
+			return fmt.Errorf("sending entry to CA for shard %d: %w", shardIdx, err)
 		}
 	}
 
@@ -317,7 +317,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	err = caStream.CloseSend()
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("closing CA request stream for shard %d: %w", shardID, err)
+		return fmt.Errorf("closing CA request stream for shard %d: %w", shardIdx, err)
 	}
 
 	// TODO(#6162): Connect to the crl-storer, and stream the bytes there.
@@ -330,7 +330,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 				break
 			}
 			result = "failed"
-			return fmt.Errorf("receiving CRL bytes for shard %d: %w", shardID, err)
+			return fmt.Errorf("receiving CRL bytes for shard %d: %w", shardIdx, err)
 		}
 
 		crlBytes = append(crlBytes, out.Chunk...)
@@ -340,7 +340,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	crlHash := crlHasher.Sum(nil)
 	cu.log.AuditInfof(
 		"Received CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
-		issuerID, atTime.UnixNano(), shardID, len(crlBytes), crlHash)
+		issuerID, atTime.UnixNano(), shardIdx, len(crlBytes), crlHash)
 
 	return nil
 }
@@ -390,9 +390,9 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 // there is a buffer of at least one whole chunk width between the actual
 // furthest-future expiration (generally atTime+90d) and the right-hand edge of
 // the window (atTime+lookforwardPeriod).
-func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardID int) (time.Time, time.Time) {
-	// Ensure that the given shardID falls within the space of acceptable IDs.
-	shardID = shardID % cu.numShards
+func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.Time, time.Time) {
+	// Ensure that the given shard index falls within the space of acceptable indices.
+	shardIdx = shardIdx % cu.numShards
 
 	// Compute the width of the full window.
 	windowWidth := cu.lookbackPeriod + cu.lookforwardPeriod
@@ -406,10 +406,10 @@ func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardID int) (time.Ti
 	shardWidth := time.Duration(windowWidth.Nanoseconds() / int64(cu.numShards))
 	// Compute the amount of time between the left-hand edge of the most recent
 	// "0" chunk and the left-hand edge of the desired chunk.
-	shardOffset := time.Duration(int64(shardID) * shardWidth.Nanoseconds())
-	// Compute the left-hand edge of the most recent chunk with the given ID.
+	shardOffset := time.Duration(int64(shardIdx) * shardWidth.Nanoseconds())
+	// Compute the left-hand edge of the most recent chunk with the given index.
 	shardStart := zeroStart.Add(shardOffset)
-	// Compute the right-hand edge of the most recent chunk with the given ID.
+	// Compute the right-hand edge of the most recent chunk with the given index.
 	shardEnd := shardStart.Add(shardWidth)
 
 	// But the shard boundaries we just computed might be for a chunk that is
