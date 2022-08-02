@@ -8,7 +8,7 @@ services:
     image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.18.4_2022-07-20}
     environment:
       FAKE_DNS: 10.77.77.77
-      BOULDER_CONFIG_DIR: test/config
+      BOULDER_CONFIG_DIR: test/config-next
       GOFLAGS: -mod=vendor
       # Go 1.18 turns off SHA-1 validation on CSRs (and certs, but that doesn't
       # affect us). It also turns off TLS 1.0 and TLS 1.1. Temporarily go back

@@ -105,6 +105,7 @@ const (
 	// to Redis, and does serve responses from Redis when appropriate (when
 	// they are fresh, and agree with MariaDB's status for the certificate).
 	ROCSPStage2
+	ROCSPStage3
 )
 
 // List of features and their default value, protected by fMu
@@ -140,6 +141,7 @@ var features = map[FeatureFlag]bool{
 	RejectDuplicateCSRExtensions:   false,
 	ROCSPStage1:                    false,
 	ROCSPStage2:                    false,
+	ROCSPStage3:                    false,
 }
 
 var fMu = new(sync.RWMutex)
