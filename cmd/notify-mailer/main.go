@@ -167,7 +167,8 @@ func (m *mailer) run() error {
 	startTime := m.clk.Now()
 	sortedAddresses := sortAddresses(addressToRecipient)
 
-	if sortedAddresses[totalAddresses-1] < m.targetRange.start || sortedAddresses[0] > m.targetRange.end {
+	if (m.targetRange.start != "" && m.targetRange.start > sortedAddresses[totalAddresses-1]) ||
+		(m.targetRange.end != "" && m.targetRange.end < sortedAddresses[0]) {
 		return errors.New("Zero found addresses fall inside target range")
 	}
 
@@ -186,7 +187,7 @@ func (m *mailer) run() error {
 		// For politeness' sake, don't open more than 1 new connection per
 		// second.
 		if senderNum > 0 {
-			time.Sleep(time.Second)
+			m.clk.Sleep(time.Second)
 		}
 
 		conn, err := m.mailer.Connect()
