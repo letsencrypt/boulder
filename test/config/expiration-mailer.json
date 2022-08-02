@@ -3,7 +3,7 @@
     "server": "localhost",
     "port": "9380",
     "username": "cert-manager@example.com",
-    "from": "Expiry bot <test@example.com>",
+    "from": "Expiry bot <expiration-mailer@test.org>",
     "passwordFile": "test/secrets/smtp_password",
     "db": {
       "dbConnectFile": "test/secrets/mailer_dburl",

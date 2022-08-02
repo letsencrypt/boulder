@@ -471,7 +471,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, conta
 		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
 			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)
 		}
-		if parsed.Fragment != "" {
+		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
 			return berrors.InvalidEmailError("contact email %q contains a '#'", contact)
 		}
 		if !core.IsASCII(contact) {
@@ -1369,22 +1369,45 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
-	count, err := ra.SA.CountFQDNSets(ctx, &sapb.CountFQDNSetsRequest{
+	names = core.UniqueLowerNames(names)
+	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
+	if threshold <= 0 {
+		// No limit configured.
+		return nil
+	}
+
+	prevIssuances, err := ra.SA.FQDNSetTimestampsForWindow(ctx, &sapb.CountFQDNSetsRequest{
 		Domains: names,
 		Window:  limit.Window.Duration.Nanoseconds(),
 	})
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
-	names = core.UniqueLowerNames(names)
-	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
-	if count.Count >= threshold {
+
+	if int64(len(prevIssuances.Timestamps)) < threshold {
+		// Issuance in window is below the threshold, no need to limit.
+		return nil
+	} else {
+		// Evaluate the rate limit using a leaky bucket algorithm. The bucket
+		// has a capacity of threshold and is refilled at a rate of 1 token per
+		// limit.Window/threshold from the time of each issuance timestamp.
+		now := ra.clk.Now()
+		nsPerToken := limit.Window.Nanoseconds() / threshold
+		for i, timestamp := range prevIssuances.Timestamps {
+			tokensGeneratedSince := now.Add(-time.Duration(int64(i+1) * nsPerToken))
+			if time.Unix(0, timestamp).Before(tokensGeneratedSince) {
+				// We know `i+1` tokens were generated since `tokenGeneratedSince`,
+				// and only `i` certificates were issued, so there's room to allow
+				// for an additional issuance.
+				return nil
+			}
+		}
+		retryTime := time.Unix(0, prevIssuances.Timestamps[0]).Add(time.Duration(nsPerToken))
 		return berrors.DuplicateCertificateError(
-			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s",
-			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","),
+			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
+			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
 		)
 	}
-	return nil
 }
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
@@ -2169,8 +2192,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 }
 
 // RevokeCertificateWithReg terminates trust in the certificate provided.
-// DEPRECATED: use RevokeCertBySubscriber, RevokeCertByController, or
-// RevokeCertByKey instead.
+// DEPRECATED: use RevokeCertByApplicant or RevokeCertByKey instead.
 func (ra *RegistrationAuthorityImpl) RevokeCertificateWithReg(ctx context.Context, req *rapb.RevokeCertificateWithRegRequest) (*emptypb.Empty, error) {
 	if req == nil || req.Cert == nil {
 		return nil, errIncompleteGRPCRequest

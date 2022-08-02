@@ -116,11 +116,11 @@ func TestOcspLogFlushOnExit(t *testing.T) {
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(4000, 10000*time.Millisecond, stats, log)
 	go queue.loop()
-	queue.enqueue(serial(t), time.Now(), ocsp.Good)
+	queue.enqueue(serial(t), time.Now(), ocsp.Good, ocsp.Unspecified)
 	queue.stop()
 
 	expected := []string{
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,",
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:_,",
 	}
 	test.AssertDeepEquals(t, log.GetAll(), expected)
 }
@@ -133,14 +133,14 @@ func TestOcspFlushOnLength(t *testing.T) {
 	queue := newOCSPLogQueue(100, 100*time.Millisecond, stats, log)
 	go queue.loop()
 	for i := 0; i < 5; i++ {
-		queue.enqueue(serial(t), time.Now(), ocsp.Good)
+		queue.enqueue(serial(t), time.Now(), ocsp.Good, ocsp.Unspecified)
 	}
 	queue.stop()
 
 	expected := []string{
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,aabbccddeeffaabbccddeeff000102030405:0,",
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,aabbccddeeffaabbccddeeff000102030405:0,",
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,",
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:_,aabbccddeeffaabbccddeeff000102030405:_,",
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:_,aabbccddeeffaabbccddeeff000102030405:_,",
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:_,",
 	}
 	test.AssertDeepEquals(t, log.GetAll(), expected)
 }
@@ -153,9 +153,9 @@ func TestOcspFlushOnTimeout(t *testing.T) {
 	queue := newOCSPLogQueue(90000, 10*time.Millisecond, stats, log)
 
 	go queue.loop()
-	queue.enqueue(serial(t), time.Now(), ocsp.Good)
+	queue.enqueue(serial(t), time.Now(), ocsp.Good, ocsp.Unspecified)
 
-	expected := "INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,"
+	expected := "INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:_,"
 	logLines, err := log.WaitForMatch("OCSP signed", 50*time.Millisecond)
 	test.AssertNotError(t, err, "error in mock log")
 	test.AssertDeepEquals(t, logLines, expected)
@@ -183,11 +183,11 @@ func TestOcspLogWhenMaxLogLenIsShort(t *testing.T) {
 	stats := metrics.NoopRegisterer
 	queue := newOCSPLogQueue(3, 10000*time.Millisecond, stats, log)
 	go queue.loop()
-	queue.enqueue(serial(t), time.Now(), ocsp.Good)
+	queue.enqueue(serial(t), time.Now(), ocsp.Good, ocsp.Unspecified)
 	queue.stop()
 
 	expected := []string{
-		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:0,",
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:_,",
 	}
 	test.AssertDeepEquals(t, log.GetAll(), expected)
 }
@@ -208,5 +208,23 @@ func TestOcspLogPanicsOnEnqueueAfterStop(t *testing.T) {
 		}
 	}()
 
-	queue.enqueue(serial(t), time.Now(), ocsp.Good)
+	queue.enqueue(serial(t), time.Now(), ocsp.Good, ocsp.Unspecified)
+}
+
+// Ensure revoke reason gets set.
+func TestOcspRevokeReasonIsSet(t *testing.T) {
+	t.Parallel()
+	log := blog.NewMock()
+	stats := metrics.NoopRegisterer
+	queue := newOCSPLogQueue(100, 100*time.Millisecond, stats, log)
+	go queue.loop()
+
+	queue.enqueue(serial(t), time.Now(), ocsp.Revoked, ocsp.KeyCompromise)
+	queue.enqueue(serial(t), time.Now(), ocsp.Revoked, ocsp.CACompromise)
+	queue.stop()
+
+	expected := []string{
+		"INFO: [AUDIT] OCSP signed: aabbccddeeffaabbccddeeff000102030405:1,aabbccddeeffaabbccddeeff000102030405:2,",
+	}
+	test.AssertDeepEquals(t, log.GetAll(), expected)
 }

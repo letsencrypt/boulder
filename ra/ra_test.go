@@ -419,6 +419,9 @@ func TestValidateContacts(t *testing.T) {
 	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com?"})
 	test.AssertError(t, err, "No hfields in email")
 
+	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#"})
+	test.AssertError(t, err, "No fragment")
+
 	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#optional"})
 	test.AssertError(t, err, "No fragment")
 
@@ -1223,18 +1226,28 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	const dupeCertLimit = 3
 	rlp := ratelimit.RateLimitPolicy{
 		Threshold: dupeCertLimit,
-		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+		Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
 	}
 
 	// Create a mock SA that has a count of already issued certificates for some
 	// test names
+	firstIssuanceTimestamp := ra.clk.Now().Add(-rlp.Window.Duration)
+	issuanceTimestamps := []int64{
+		firstIssuanceTimestamp.Add(time.Hour * 23).UnixNano(),
+		firstIssuanceTimestamp.Add(time.Hour * 16).UnixNano(),
+		firstIssuanceTimestamp.Add(time.Hour * 8).UnixNano(),
+		firstIssuanceTimestamp.UnixNano(),
+	}
+	// Our window is 24 hours and our threshold is 3 issuance. If our most
+	// recent issuance was 1 hour ago, we expect the next token to be available
+	// 8 hours from issuance time or 7 hours from now.
+	expectRetryAfter := time.Unix(0, issuanceTimestamps[0]).Add(time.Hour * 8).Format(time.RFC3339)
 	ra.SA = &mockSAWithFQDNSet{
-		nameCounts: &sapb.CountByNames{
-			Counts: map[string]int64{
-				"under.example.com": dupeCertLimit - 1,
-				"equal.example.com": dupeCertLimit,
-				"over.example.com":  dupeCertLimit + 1,
-			},
+		issuanceTimestamps: map[string]*sapb.Timestamps{
+			"none.example.com":          {Timestamps: []int64{}},
+			"under.example.com":         {Timestamps: issuanceTimestamps[3:3]},
+			"equalbutvalid.example.com": {Timestamps: issuanceTimestamps[1:3]},
+			"over.example.com":          {Timestamps: issuanceTimestamps[0:3]},
 		},
 		t: t,
 	}
@@ -1245,19 +1258,27 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 		ExpectedErr error
 	}{
 		{
+			Name:        "FQDN set issuances none",
+			Domain:      "none.example.com",
+			ExpectedErr: nil,
+		},
+		{
 			Name:        "FQDN set issuances less than limit",
 			Domain:      "under.example.com",
 			ExpectedErr: nil,
 		},
 		{
 			Name:        "FQDN set issuances equal to limit",
-			Domain:      "equal.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23 hours: equal.example.com: see https://letsencrypt.org/docs/duplicate-certificate-limit/"),
+			Domain:      "equalbutvalid.example.com",
+			ExpectedErr: nil,
 		},
 		{
-			Name:        "FQDN set issuances above limit",
-			Domain:      "over.example.com",
-			ExpectedErr: fmt.Errorf("too many certificates (3) already issued for this exact set of domains in the last 23 hours: over.example.com: see https://letsencrypt.org/docs/duplicate-certificate-limit/"),
+			Name:   "FQDN set issuances above limit",
+			Domain: "over.example.com",
+			ExpectedErr: fmt.Errorf(
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				expectRetryAfter,
+			),
 		},
 	}
 
@@ -1370,9 +1391,9 @@ func TestRegistrationKeyUpdate(t *testing.T) {
 // checkCertificatesPerNameRateLimit's FQDN exemption logic.
 type mockSAWithFQDNSet struct {
 	mocks.StorageAuthority
-	fqdnSet    map[string]bool
-	nameCounts *sapb.CountByNames
-	t          *testing.T
+	fqdnSet            map[string]bool
+	issuanceTimestamps map[string]*sapb.Timestamps
+	t                  *testing.T
 }
 
 // Construct the FQDN Set key the same way as the SA (by using
@@ -1403,8 +1424,9 @@ func (m mockSAWithFQDNSet) FQDNSetExists(_ context.Context, req *sapb.FQDNSetExi
 func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	counts := make(map[string]int64)
 	for _, name := range req.Names {
-		if count, ok := m.nameCounts.Counts[name]; ok {
-			counts[name] = count
+		entry, ok := m.issuanceTimestamps[name]
+		if ok {
+			counts[name] = int64(len(entry.Timestamps))
 		}
 	}
 	return &sapb.CountByNames{Counts: counts}, nil
@@ -1413,11 +1435,20 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sa
 func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
 	var total int64
 	for _, name := range req.Domains {
-		if count, ok := m.nameCounts.Counts[name]; ok {
-			total += count
+		entry, ok := m.issuanceTimestamps[name]
+		if ok {
+			total += int64(len(entry.Timestamps))
 		}
 	}
 	return &sapb.Count{Count: total}, nil
+}
+
+func (m mockSAWithFQDNSet) FQDNSetTimestampsForWindow(_ context.Context, req *sapb.CountFQDNSetsRequest, _ ...grpc.CallOption) (*sapb.Timestamps, error) {
+	if len(req.Domains) == 1 {
+		return m.issuanceTimestamps[req.Domains[0]], nil
+	} else {
+		return nil, fmt.Errorf("FQDNSetTimestampsForWindow mock only supports a single domain")
+	}
 }
 
 // Tests for boulder issue 1925[0] - that the `checkCertificatesPerNameLimit`
@@ -1438,9 +1469,11 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	}
 
 	// Create a mock SA that has both name counts and an FQDN set
+	ts := ra.clk.Now().UnixNano()
 	mockSA := &mockSAWithFQDNSet{
-		nameCounts: &sapb.CountByNames{
-			Counts: map[string]int64{"example.com": 100, "zombo.com": 100},
+		issuanceTimestamps: map[string]*sapb.Timestamps{
+			"example.com": {Timestamps: []int64{ts, ts}},
+			"zombo.com":   {Timestamps: []int64{ts, ts}},
 		},
 		fqdnSet: map[string]bool{},
 		t:       t,

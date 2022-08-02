@@ -34,11 +34,12 @@ type rocspClient interface {
 }
 
 type redisSource struct {
-	client            rocspClient
-	signer            responder.Source
-	counter           *prometheus.CounterVec
-	clk               clock.Clock
-	liveSigningPeriod time.Duration
+	client             rocspClient
+	signer             responder.Source
+	counter            *prometheus.CounterVec
+	cachedResponseAges prometheus.Histogram
+	clk                clock.Clock
+	liveSigningPeriod  time.Duration
 	// Note: this logger is not currently used, as all audit log events are from
 	// the dbSource right now, but it should and will be used in the future.
 	log blog.Logger
@@ -60,17 +61,31 @@ func NewRedisSource(
 	}, []string{"result"})
 	stats.MustRegister(counter)
 
+	// Set up 12-hour-wide buckets, measured in seconds.
+	buckets := make([]float64, 14)
+	for i := range buckets {
+		buckets[i] = 43200 * float64(i)
+	}
+
+	cachedResponseAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "ocsp_redis_cached_response_ages",
+		Help:    "How old are the cached OCSP responses when we successfully retrieve them.",
+		Buckets: buckets,
+	})
+	stats.MustRegister(cachedResponseAges)
+
 	var rocspReader rocspClient
 	if client != nil {
 		rocspReader = client
 	}
 	return &redisSource{
-		client:            rocspReader,
-		signer:            signer,
-		counter:           counter,
-		liveSigningPeriod: liveSigningPeriod,
-		clk:               clk,
-		log:               log,
+		client:             rocspReader,
+		signer:             signer,
+		counter:            counter,
+		cachedResponseAges: cachedResponseAges,
+		liveSigningPeriod:  liveSigningPeriod,
+		clk:                clk,
+		log:                log,
 	}, nil
 }
 
@@ -108,7 +123,9 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 }
 
 func (src *redisSource) isStale(resp *ocsp.Response) bool {
-	return src.clk.Since(resp.ThisUpdate) > src.liveSigningPeriod
+	age := src.clk.Since(resp.ThisUpdate)
+	src.cachedResponseAges.Observe(age.Seconds())
+	return age > src.liveSigningPeriod
 }
 
 func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error) {
