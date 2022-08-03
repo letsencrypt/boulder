@@ -19,21 +19,28 @@ func TestClientSetup(t *testing.T) {
 		interceptors []grpc.UnaryClientInterceptor
 	}
 	tests := []struct {
-		name    string
-		args    args
-		wantErr bool
+		name       string
+		cfg        *cmd.GRPCClientConfig
+		wantTarget string
+		wantErr    bool
 	}{
-		{"valid, address provided", args{&cmd.GRPCClientConfig{ServerAddress: "localhost:8080"}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, false},
-		{"valid, addresses provided", args{&cmd.GRPCClientConfig{ServerIPAddresses: []string{"127.0.0.1:8080"}}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, false},
-		{"invalid, both address and addresses provided", args{&cmd.GRPCClientConfig{ServerAddress: "localhost:8080", ServerIPAddresses: []string{"127.0.0.1:8080"}}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, true},
-		{"invalid, no address or addresses provided", args{&cmd.GRPCClientConfig{}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, true},
+		{"valid, address provided", &cmd.GRPCClientConfig{ServerAddress: "localhost:8080"}, "dns:///localhost:8080", false},
+		{"valid, implicit localhost with port provided", &cmd.GRPCClientConfig{ServerAddress: ":8080"}, "dns:///:8080", false},
+		{"valid, two addresses provided", &cmd.GRPCClientConfig{ServerIPAddresses: []string{"127.0.0.1:8080", "127.0.0.2:8080"}}, "static:///127.0.0.1:8080,127.0.0.2:8080", false},
+		{"valid, two addresses provided, one has an implicit localhost, ", &cmd.GRPCClientConfig{ServerIPAddresses: []string{":8080", "127.0.0.2:8080"}}, "static:///:8080,127.0.0.2:8080", false},
+		{"invalid, both address and addresses provided", &cmd.GRPCClientConfig{ServerAddress: "localhost:8080", ServerIPAddresses: []string{"127.0.0.1:8080"}}, "", true},
+		{"invalid, no address or addresses provided", &cmd.GRPCClientConfig{}, "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := ClientSetup(tt.args.c, tt.args.tlsConfig, tt.args.metrics, tt.args.clk, tt.args.interceptors...)
+			client, err := ClientSetup(tt.cfg, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ClientSetup() error = %v, wantErr %v", err, tt.wantErr)
 				return
+			}
+			if tt.wantTarget != "" && client.Target() != tt.wantTarget {
+				target := client.Target()
+				t.Errorf("ClientSetup() target = %v, wantTarget %v", target, tt.wantTarget)
 			}
 		})
 	}
