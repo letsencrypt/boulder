@@ -109,9 +109,6 @@ func sortAddresses(input addressToRecipientMap) []string {
 func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
 	var messageBody strings.Builder
 
-	// Ensure that in the event of a missing key, an informative error is
-	// returned.
-	m.emailTemplate.Option("missingkey=error")
 	err := m.emailTemplate.Execute(&messageBody, recipients)
 	if err != nil {
 		return "", err
@@ -554,6 +551,10 @@ func main() {
 	// Load and parse message body.
 	template, err := template.ParseFiles(*bodyFile)
 	cmd.FailOnError(err, "Couldn't parse message template")
+
+	// Ensure that in the event of a missing key, an informative error is
+	// returned.
+	template.Option("missingkey=error")
 
 	address, err := mail.ParseAddress(*from)
 	cmd.FailOnError(err, fmt.Sprintf("Couldn't parse %q to address", *from))
