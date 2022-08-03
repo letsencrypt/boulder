@@ -11,13 +11,6 @@ import (
 )
 
 func TestClientSetup(t *testing.T) {
-	type args struct {
-		c            *cmd.GRPCClientConfig
-		tlsConfig    *tls.Config
-		metrics      clientMetrics
-		clk          clock.Clock
-		interceptors []grpc.UnaryClientInterceptor
-	}
 	tests := []struct {
 		name       string
 		cfg        *cmd.GRPCClientConfig
