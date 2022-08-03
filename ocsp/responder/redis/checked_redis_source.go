@@ -22,17 +22,34 @@ type dbSelector interface {
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
+// rocspSourceInterface expands on responder.Source by adding a private signAndSave method.
+// This allows checkedRedisSource to trigger a live signing if the DB disagrees with Redis.
+type rocspSourceInterface interface {
+	Response(ctx context.Context, req *ocsp.Request) (*responder.Response, error)
+	signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error)
+}
+
 type checkedRedisSource struct {
-	base    *redisSource
+	base    rocspSourceInterface
 	dbMap   dbSelector
 	counter *prometheus.CounterVec
 	log     blog.Logger
 }
 
 func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
+	if base == nil {
+		return nil
+	}
+
+	return newCheckedRedisSource(base, dbMap, stats, log)
+}
+
+// Internal-only method that takes a private interface as a parameter. We call this from tests and
+// from NewCheckedRedisSource.
+func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "ocsp_db_responses",
-		Help: "Count of OCSP requests/responses by action taken by the dbSource",
+		Name: "checked_rocsp_responses",
+		Help: "Count of OCSP requests/responses from checkedRedisSource, by result",
 	}, []string{"result"})
 	stats.MustRegister(counter)
 
@@ -62,6 +79,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	var redisErr, dbErr error
 	go func() {
 		defer wg.Done()
+		// TODO: Make a more efficient query here that looks only at status and revokedAt.
 		dbStatus, dbErr = sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
 	}()
 	go func() {
@@ -71,6 +89,8 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	wg.Wait()
 
 	if dbErr != nil {
+		// If the DB says "not found", the certificate either doesn't exist or has
+		// expired and been removed from the DB. We don't need to check the Redis error.
 		if db.IsNoRows(dbErr) {
 			src.counter.WithLabelValues("not_found").Inc()
 			return nil, responder.ErrNotFound
@@ -81,27 +101,37 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	}
 
 	if redisErr != nil {
+		src.counter.WithLabelValues("redis_error").Inc()
 		return nil, redisErr
 	}
 
-	// If the DB status doesn't match the status returned from the Redis
-	// pipeline, the DB is authoritative. Trigger a fresh signing.
-	if dbStatus.Status != ocspCodeToStatus[redisResult.Status] ||
-		dbStatus.RevokedDate != redisResult.RevokedAt {
-		src.counter.WithLabelValues("primary_status_causes_resign").Inc()
-		freshResult, err := src.base.signAndSave(ctx, req, serialString)
-		if err != nil {
-			src.counter.WithLabelValues("sign_and_save_error").Inc()
-			return nil, err
-		}
-		// This could happen for instance with replication lag, or if the
-		// RA was talking to a different DB.
-		if dbStatus.Status != ocspCodeToStatus[freshResult.Status] {
-			src.counter.WithLabelValues("fresh_mismatch").Inc()
-			return nil, errors.New("freshly signed status did not match DB")
-		}
+	// If the DB status matches the status returned from the Redis pipeline, all is good.
+	if agree(dbStatus, redisResult.Response) {
+		src.counter.WithLabelValues("success").Inc()
+		return redisResult, nil
+	}
+
+	// Otherwise, the DB is authoritative. Trigger a fresh signing.
+	freshResult, err := src.base.signAndSave(ctx, req, serialString)
+	if err != nil {
+		src.counter.WithLabelValues("sign_and_save_error").Inc()
+		return nil, err
+	}
+
+	if agree(dbStatus, freshResult.Response) {
+		src.counter.WithLabelValues("sign_and_save_success").Inc()
 		return freshResult, nil
 	}
 
-	return redisResult, nil
+	// This could happen for instance with replication lag, or if the
+	// RA was talking to a different DB.
+	src.counter.WithLabelValues("sign_and_save_mismatch").Inc()
+	return nil, errors.New("freshly signed status did not match DB")
+
+}
+
+// agree returns true if the contents of the redisResult ocsp.Response agree with what's in the DB.
+func agree(dbStatus core.CertificateStatus, redisResult *ocsp.Response) bool {
+	return dbStatus.Status == ocspCodeToStatus[redisResult.Status] &&
+		dbStatus.RevokedDate.Equal(redisResult.RevokedAt)
 }
