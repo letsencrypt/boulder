@@ -81,7 +81,7 @@ func parseResolverIPAddress(addr string) (*resolver.Address, error) {
 	}
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return nil, fmt.Errorf("address: %v", err)
+		return nil, fmt.Errorf("splitting host and port for address %q: %w", addr, err)
 	}
 	if port == "" {
 		// If the port field is empty the address ends with colon (e.g.
