@@ -234,7 +234,7 @@ func TestMakeMessageBody(t *testing.T) {
 	m := &mailer{
 		log:           blog.UseMock(),
 		mailer:        &mocks.Mailer{},
-		emailTemplate: template.Must(template.New("email").Parse(emailTemplate)),
+		emailTemplate: template.Must(template.New("email").Parse(emailTemplate)).Option("missingkey=error"),
 		sleepInterval: 0,
 		targetRange:   interval{end: "\xFF"},
 		clk:           newFakeClock(t),
