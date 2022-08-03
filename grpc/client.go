@@ -27,9 +27,9 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	if c == nil {
 		return nil, errors.New("nil gRPC client config provided. JSON config is probably missing a fooService section.")
 	}
-	if c.ServerAddresses != nil && c.ServerAddress != "" {
+	if c.ServerIPAddresses != nil && c.ServerAddress != "" {
 		return nil, errors.New(
-			"both 'serverAddresses' and 'serverAddress' are set in gRPC client config provided. Only one should be set.",
+			"both 'serverIPAddresses' and 'serverAddress' are set in gRPC client config provided. Only one should be set.",
 		)
 	}
 	if tlsConfig == nil {
@@ -44,27 +44,26 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	}
 	allInterceptors = append(interceptors, allInterceptors...)
 
+	var target string
+	var hostOverride string
+	var splitHostPortErr error
 	if c.ServerAddress != "" {
-		host, _, err := net.SplitHostPort(c.ServerAddress)
-		if err != nil {
-			return nil, err
+		hostOverride, _, splitHostPortErr = net.SplitHostPort(c.ServerAddress)
+		if splitHostPortErr != nil {
+			return nil, splitHostPortErr
 		}
-		creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, host)
-		return grpc.Dial(
-			"dns:///"+c.ServerAddress,
-			grpc.WithBalancerName("round_robin"),
-			grpc.WithTransportCredentials(creds),
-			grpc.WithChainUnaryInterceptor(allInterceptors...),
-		)
+		target = "dns:///" + c.ServerAddress
 	} else {
-		creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, "")
-		return grpc.Dial(
-			"static:///"+strings.Join(c.ServerAddresses, ","),
-			grpc.WithBalancerName("round_robin"),
-			grpc.WithTransportCredentials(creds),
-			grpc.WithChainUnaryInterceptor(allInterceptors...),
-		)
+		target = "static:///" + strings.Join(c.ServerIPAddresses, ",")
 	}
+	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
+	return grpc.Dial(
+		target,
+		grpc.WithBalancerName("round_robin"),
+		grpc.WithTransportCredentials(creds),
+		grpc.WithChainUnaryInterceptor(allInterceptors...),
+	)
+
 }
 
 type registry interface {

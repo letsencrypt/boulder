@@ -20,7 +20,7 @@
       "keyFile": "test/grpc-creds/expiration-mailer.boulder/key.pem"
     },
     "saService": {
-      "serverAddresses": [
+      "serverIPAddresses": [
         "10.77.77.77:9095",
         "10.88.88.88:9095"
       ],

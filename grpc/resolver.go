@@ -11,23 +11,22 @@ import (
 
 // init registers the `staticBuilder` with the gRPC resolver registry.
 func init() {
-	resolver.Register(NewStaticBuilder())
+	resolver.Register(newStaticBuilder())
 }
 
-// NewStaticBuilder creates a `staticBuilder` used to construct static DNS
+// newStaticBuilder creates a `staticBuilder` used to construct static DNS
 // resolvers.
-func NewStaticBuilder() resolver.Builder {
+func newStaticBuilder() resolver.Builder {
 	return &staticBuilder{}
 }
 
 // staticBuilder implements the `resolver.Builder` interface.
 type staticBuilder struct{}
 
-// Build constructs a `staticResolver` which implements the `resolver.Resolver`
-// interface. This method is typically called by the gRPC dialer, which passes a
-// list of comma separated IPv4/6 addresses and a `resolver.ClientConn`. The
-// state of the `resolver.ClientConn` is updated with the list of addresses and
-// the `resolver.ClientConn` is wrapped in the returned `staticResolver`.
+// Build implements the `resolver.Builder` interface and is usually called by
+// the gRPC dialer. It takes a target containing a comma separated list of
+// IPv4/6 addresses and a `resolver.ClientConn` and returns a `staticResolver`
+// which implements the `resolver.Resolver` interface.
 func (sb *staticBuilder) Build(target resolver.Target, cc resolver.ClientConn, _ resolver.BuildOptions) (resolver.Resolver, error) {
 	var resolverAddrs []resolver.Address
 	for _, address := range strings.Split(target.Endpoint, ",") {
@@ -37,7 +36,7 @@ func (sb *staticBuilder) Build(target resolver.Target, cc resolver.ClientConn, _
 		}
 		resolverAddrs = append(resolverAddrs, *parsedAddress)
 	}
-	return NewStaticResolver(cc, resolverAddrs), nil
+	return newStaticResolver(cc, resolverAddrs), nil
 }
 
 // Scheme returns the scheme that `staticBuilder` will be registered for
@@ -46,9 +45,11 @@ func (sb *staticBuilder) Scheme() string {
 	return "static"
 }
 
-// NewStaticResolver populates and returns a new `staticResolver` which
-// implements the `resolver.Resolver` interface.
-func NewStaticResolver(cc resolver.ClientConn, resolverAddrs []resolver.Address) resolver.Resolver {
+// newStaticResolver takes a `resolver.ClientConn` and a list of
+// `resolver.Addresses`. It updates the state of the `resolver.ClientConn` with
+// the provided addresses and returns a `staticResolver` which wraps the
+// `resolver.ClientConn` and implements the `resolver.Resolver` interface.
+func newStaticResolver(cc resolver.ClientConn, resolverAddrs []resolver.Address) resolver.Resolver {
 	cc.UpdateState(resolver.State{Addresses: resolverAddrs})
 	return &staticResolver{cc: cc}
 }

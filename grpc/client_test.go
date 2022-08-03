@@ -24,8 +24,8 @@ func TestClientSetup(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid, address provided", args{&cmd.GRPCClientConfig{ServerAddress: "localhost:8080"}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, false},
-		{"valid, addresses provided", args{&cmd.GRPCClientConfig{ServerAddresses: []string{"127.0.0.1:8080"}}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, false},
-		{"invalid, both address and addresses provided", args{&cmd.GRPCClientConfig{ServerAddress: "localhost:8080", ServerAddresses: []string{"127.0.0.1:8080"}}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, true},
+		{"valid, addresses provided", args{&cmd.GRPCClientConfig{ServerIPAddresses: []string{"127.0.0.1:8080"}}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, false},
+		{"invalid, both address and addresses provided", args{&cmd.GRPCClientConfig{ServerAddress: "localhost:8080", ServerIPAddresses: []string{"127.0.0.1:8080"}}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, true},
 		{"invalid, no address or addresses provided", args{&cmd.GRPCClientConfig{}, &tls.Config{}, clientMetrics{}, clock.NewFake(), []grpc.UnaryClientInterceptor{}}, true},
 	}
 	for _, tt := range tests {
