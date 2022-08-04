@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ocsp/responder"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -44,8 +45,8 @@ func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, stats prometheus
 	return newCheckedRedisSource(base, dbMap, stats, log)
 }
 
-// Internal-only method that takes a private interface as a parameter. We call this from tests and
-// from NewCheckedRedisSource.
+// newCheckRedisSource is an internal-only constructor that takes a private interface as a parameter.
+// We call this from tests and from NewCheckedRedisSource.
 func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "checked_rocsp_responses",
@@ -79,7 +80,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	var redisErr, dbErr error
 	go func() {
 		defer wg.Done()
-		// TODO: Make a more efficient query here that looks only at status and revokedAt.
+		// TODO(#6274): Make a more efficient query here that looks only at status and revokedAt.
 		dbStatus, dbErr = sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
 	}()
 	go func() {
@@ -133,5 +134,6 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 // agree returns true if the contents of the redisResult ocsp.Response agree with what's in the DB.
 func agree(dbStatus core.CertificateStatus, redisResult *ocsp.Response) bool {
 	return dbStatus.Status == ocspCodeToStatus[redisResult.Status] &&
+		dbStatus.RevokedReason == revocation.Reason(redisResult.RevocationReason) &&
 		dbStatus.RevokedDate.Equal(redisResult.RevokedAt)
 }
