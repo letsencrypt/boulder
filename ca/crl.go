@@ -81,7 +81,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 				return fmt.Errorf("got unrecognized IssuerNameID: %d", payload.Metadata.IssuerNameID)
 			}
 
-			shard = payload.Metadata.Shard
+			shard = payload.Metadata.ShardIdx
 
 		case *capb.GenerateCRLRequest_Entry:
 			rc, err := ci.entryToRevokedCertificate(payload.Entry)
