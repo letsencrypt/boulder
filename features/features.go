@@ -105,6 +105,13 @@ const (
 	// to Redis, and does serve responses from Redis when appropriate (when
 	// they are fresh, and agree with MariaDB's status for the certificate).
 	ROCSPStage2
+	// ROCSPStage3 enables querying Redis, live-signing a response, and serving
+	// from Redis, without any fallback to serving bytes from MariaDB. In this
+	// mode we still make a parallel request to MariaDB to cross-check the
+	// _status_ of the response. If that request indicates a different status
+	// than what's stored in Redis, we'll trigger a fresh signing and serve and
+	// store the result.
+	ROCSPStage3
 )
 
 // List of features and their default value, protected by fMu
@@ -140,6 +147,7 @@ var features = map[FeatureFlag]bool{
 	RejectDuplicateCSRExtensions:   false,
 	ROCSPStage1:                    false,
 	ROCSPStage2:                    false,
+	ROCSPStage3:                    false,
 }
 
 var fMu = new(sync.RWMutex)
