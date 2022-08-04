@@ -37,12 +37,14 @@ type checkedRedisSource struct {
 	log     blog.Logger
 }
 
-func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
+// NewCheckedRedisSource builds a source that queries both the DB and Redis, and confirms
+// the value in Redis matches the DB.
+func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, stats prometheus.Registerer, log blog.Logger) (*checkedRedisSource, error) {
 	if base == nil {
-		return nil
+		return nil, errors.New("base was nil")
 	}
 
-	return newCheckedRedisSource(base, dbMap, stats, log)
+	return newCheckedRedisSource(base, dbMap, stats, log), nil
 }
 
 // newCheckRedisSource is an internal-only constructor that takes a private interface as a parameter.
