@@ -285,9 +285,9 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	err = caStream.Send(&capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerID:   int64(issuerNameID),
-				ThisUpdate: atTime.UnixNano(),
-				ShardIdx:   int64(shardIdx),
+				IssuerNameID: int64(issuerNameID),
+				ThisUpdate:   atTime.UnixNano(),
+				ShardIdx:     int64(shardIdx),
 			},
 		},
 	})
