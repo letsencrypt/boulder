@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -132,6 +133,10 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	}
 	if err != nil {
 		return nil, err
+	}
+	// Register prober-specific metrics as applicable
+	for _, collector := range probers.ProberCollectors {
+		metrics.MustRegister(collector)
 	}
 	return &Observer{logger, monitors}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -13,6 +14,11 @@ var (
 	// are added to this mapping on import by including a call to
 	// `Register` in their `init` function.
 	Registry = make(map[string]Configurer)
+
+	// ProberCollectors keeps track of the Prometheus `Collector` objects needed
+	// for all created probers. The key for each `Collector` is the name from
+	// the `Opts` object used to create it.
+	ProberCollectors = make(map[string]prometheus.Collector)
 )
 
 // Prober is the interface for `Prober` types.
