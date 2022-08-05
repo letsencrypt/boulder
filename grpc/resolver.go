@@ -1,7 +1,6 @@
 package grpc
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -70,9 +69,6 @@ func (sr *staticResolver) Close() {}
 // `ServerName` fields of the returned `resolver.Address` will both be set to
 // host:port or [host]:port if the host is an IPv6 address.
 func parseResolverIPAddress(addr string) (*resolver.Address, error) {
-	if addr == "" {
-		return nil, errors.New("address is an empty string")
-	}
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, fmt.Errorf("splitting host and port for address %q: %w", addr, err)
@@ -85,21 +81,14 @@ func parseResolverIPAddress(addr string) (*resolver.Address, error) {
 	if host == "" {
 		// Address only has a port (i.e ipv4-host:port, [ipv6-host]:port,
 		// host-name:port). Keep consistent with net.Dial(); if the host is
-		// empty, as in (e.g. :80), the local system is assumed.
+		// empty (e.g. :80), the local system is assumed.
 		host = "127.0.0.1"
 	}
 	if net.ParseIP(host) == nil {
 		// Host is a DNS name or an IPv6 address without brackets.
 		return nil, fmt.Errorf("address %q is not an IP address", addr)
 	}
-	var parsedAddr string
-	if net.ParseIP(host).To4() != nil {
-		// Host is an IPv4 address.
-		parsedAddr = host + ":" + port
-	} else {
-		// Host is an IPv6 address.
-		parsedAddr = "[" + host + "]:" + port
-	}
+	parsedAddr := net.JoinHostPort(host, port)
 	return &resolver.Address{
 		Addr:       parsedAddr,
 		ServerName: parsedAddr,
