@@ -46,8 +46,8 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 
 	var target string
 	var hostOverride string
-	var splitHostPortErr error
 	if c.ServerAddress != "" {
+		var splitHostPortErr error
 		hostOverride, _, splitHostPortErr = net.SplitHostPort(c.ServerAddress)
 		if splitHostPortErr != nil {
 			return nil, splitHostPortErr

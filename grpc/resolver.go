@@ -9,19 +9,14 @@ import (
 	"google.golang.org/grpc/resolver"
 )
 
-// init registers the `staticBuilder` with the gRPC resolver registry.
-func init() {
-	resolver.Register(newStaticBuilder())
-}
+// staticBuilder implements the `resolver.Builder` interface.
+type staticBuilder struct{}
 
 // newStaticBuilder creates a `staticBuilder` used to construct static DNS
 // resolvers.
 func newStaticBuilder() resolver.Builder {
 	return &staticBuilder{}
 }
-
-// staticBuilder implements the `resolver.Builder` interface.
-type staticBuilder struct{}
 
 // Build implements the `resolver.Builder` interface and is usually called by
 // the gRPC dialer. It takes a target containing a comma separated list of
@@ -39,10 +34,16 @@ func (sb *staticBuilder) Build(target resolver.Target, cc resolver.ClientConn, _
 	return newStaticResolver(cc, resolverAddrs), nil
 }
 
-// Scheme returns the scheme that `staticBuilder` will be registered for
+// Scheme returns the scheme that `staticBuilder` will be registered for, for
 // example: `static:///`.
 func (sb *staticBuilder) Scheme() string {
 	return "static"
+}
+
+// staticResolver is used to wrap an inner `resolver.ClientConn` and implements
+// the `resolver.Resolver` interface.
+type staticResolver struct {
+	cc resolver.ClientConn
 }
 
 // newStaticResolver takes a `resolver.ClientConn` and a list of
@@ -52,12 +53,6 @@ func (sb *staticBuilder) Scheme() string {
 func newStaticResolver(cc resolver.ClientConn, resolverAddrs []resolver.Address) resolver.Resolver {
 	cc.UpdateState(resolver.State{Addresses: resolverAddrs})
 	return &staticResolver{cc: cc}
-}
-
-// staticResolver is used to wrap an inner `resolver.ClientConn` and implements
-// the `resolver.Resolver` interface.
-type staticResolver struct {
-	cc resolver.ClientConn
 }
 
 // ResolveNow is a no-op necessary for `staticResolver` to implement the
@@ -71,10 +66,9 @@ func (sr *staticResolver) ResolveNow(_ resolver.ResolveNowOptions) {}
 func (sr *staticResolver) Close() {}
 
 // parseResolverIPAddress takes an IPv4/6 address (ip:port, [ip]:port, or :port)
-// and returns a properly formatted `resolver.Address` object. If address is in
-// IPv6 format, where the host is enclosed in square brackets, the brackets will
-// be stripped. The `Addr` and `ServerName` fields of the returned
-// `resolver.Address` will both be set to host:port.
+// and returns a properly formatted `resolver.Address` object. The `Addr` and
+// `ServerName` fields of the returned `resolver.Address` will both be set to
+// host:port or [host]:port if the host is an IPv6 address.
 func parseResolverIPAddress(addr string) (*resolver.Address, error) {
 	if addr == "" {
 		return nil, errors.New("address is an empty string")
@@ -98,9 +92,22 @@ func parseResolverIPAddress(addr string) (*resolver.Address, error) {
 		// Host is a DNS name or an IPv6 address without brackets.
 		return nil, fmt.Errorf("address %q is not an IP address", addr)
 	}
-	parsedAddr := host + ":" + port
+	var parsedAddr string
+	if net.ParseIP(host).To4() != nil {
+		// Host is an IPv4 address.
+		parsedAddr = host + ":" + port
+	} else {
+		// Host is an IPv6 address.
+		parsedAddr = "[" + host + "]:" + port
+
+	}
 	return &resolver.Address{
 		Addr:       parsedAddr,
 		ServerName: parsedAddr,
 	}, nil
+}
+
+// init registers the `staticBuilder` with the gRPC resolver registry.
+func init() {
+	resolver.Register(newStaticBuilder())
 }

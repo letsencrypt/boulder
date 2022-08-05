@@ -250,7 +250,7 @@ type GRPCClientConfig struct {
 	// cannot be used in combination with `ServerIPAddresses` field.
 	ServerAddress string
 	// ServerIPAddresses is a list of IPv4/6 addresses, in the format IPv4:port,
-	// IPv6:port or :port, that the gRPC client will connect to. Note that the
+	// [IPv6]:port or :port, that the gRPC client will connect to. Note that the
 	// server's certificate will be validated against these IP addresses, so
 	// they must be present in the SANs of the server certificate. This field
 	// cannot be used in combination with `ServerAddress`.
