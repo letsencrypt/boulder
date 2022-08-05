@@ -74,6 +74,7 @@ type Config struct {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	runOnce := flag.Bool("runOnce", false, "If true, run once immediately and then exit")
 	flag.Parse()
 	if *configFile == "" {
@@ -84,6 +85,10 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	if *debugAddr != "" {
+		c.CRLUpdater.DebugAddr = *debugAddr
+	}
 
 	err = features.Set(c.CRLUpdater.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")

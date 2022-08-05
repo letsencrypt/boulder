@@ -108,26 +108,28 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		logID, issuer.Cert.Subject.CommonName, template.Number.String(), shard, template.ThisUpdate, template.NextUpdate, len(rcs),
 	)
 
-	builder := strings.Builder{}
-	for i := 0; i < len(rcs); i += 1 {
-		if builder.Len() == 0 {
-			fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
-		}
+	if len(rcs) > 0 {
+		builder := strings.Builder{}
+		for i := 0; i < len(rcs); i += 1 {
+			if builder.Len() == 0 {
+				fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
+			}
 
-		reason := 0
-		if rcs[i].ReasonCode != nil {
-			reason = *rcs[i].ReasonCode
-		}
-		fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
+			reason := 0
+			if rcs[i].ReasonCode != nil {
+				reason = *rcs[i].ReasonCode
+			}
+			fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
 
-		if builder.Len() >= ci.maxLogLen {
-			fmt.Fprint(&builder, "]")
-			ci.log.AuditInfo(builder.String())
-			builder = strings.Builder{}
+			if builder.Len() >= ci.maxLogLen {
+				fmt.Fprint(&builder, "]")
+				ci.log.AuditInfo(builder.String())
+				builder = strings.Builder{}
+			}
 		}
+		fmt.Fprint(&builder, "]")
+		ci.log.AuditInfo(builder.String())
 	}
-	fmt.Fprint(&builder, "]")
-	ci.log.AuditInfo(builder.String())
 
 	template.RevokedCertificates = rcs
 
