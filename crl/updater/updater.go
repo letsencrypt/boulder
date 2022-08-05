@@ -376,7 +376,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		"Generated CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
 		issuerNameID, atTime.UnixNano(), shardIdx, crlLen, crlHash.Sum(nil))
 
-	err = csStream.CloseSend()
+	_, err = csStream.CloseAndRecv()
 	if err != nil {
 		result = "failed"
 		return fmt.Errorf("closing CRLStorer upload stream for shard %d: %w", shardIdx, err)
@@ -390,10 +390,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 // stable. Picture a timeline, divided into chunks. Number those chunks from 0
 // to cu.numShards, then repeat the cycle when you run out of numbers:
 //
-//    chunk:  5     0     1     2     3     4     5     0     1     2     3
+//	chunk:  5     0     1     2     3     4     5     0     1     2     3
+//
 // ...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//                          ^  ^-atTime                         ^
-//    atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
+//
+//	                      ^  ^-atTime                         ^
+//	atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
 //
 // The width of each chunk is determined by dividing the total time window we
 // care about (lookbackPeriod+lookforwardPeriod) by the number of shards we
@@ -403,10 +405,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 // times that we care about moves forward, the boundaries of each chunk remain
 // stable:
 //
-//    chunk:  5     0     1     2     3     4     5     0     1     2     3
+//	chunk:  5     0     1     2     3     4     5     0     1     2     3
+//
 // ...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//                                  ^  ^-atTime                         ^
-//            atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
+//
+//	                      ^  ^-atTime                         ^
+//	atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
 //
 // However, note that at essentially all times the window includes parts of two
 // different instances of the chunk which appears at its ends. For example,
@@ -421,10 +425,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 // there is another chunk with ID "1" near the right-hand edge of the window,
 // that chunk is ignored.
 //
-//    shard:           |  1  |  2  |  3  |  4  |  5  |  0  |
+//	shard:           |  1  |  2  |  3  |  4  |  5  |  0  |
+//
 // ...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//                          ^  ^-atTime                         ^
-//    atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
+//
+//	                      ^  ^-atTime                         ^
+//	atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
 //
 // This means that the lookforwardPeriod MUST be configured large enough that
 // there is a buffer of at least one whole chunk width between the actual
