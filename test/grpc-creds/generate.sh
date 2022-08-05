@@ -14,6 +14,12 @@ for SERVICE in admin-revoker expiration-mailer ocsp-updater ocsp-responder \
   minica -domains "${SERVICE}.boulder"
 done
 
+NEEDIPSANS=( "sa" )
 for SERVICE in publisher nonce ra ca sa va ; do
-  minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
+  if [[ "${NEEDIPSANS[@]}" =~ "${SERVICE}" ]]; then
+    minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder" \
+      -ip-addresses "10.77.77.77,10.88.88.88"
+  else
+    minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
+  fi
 done

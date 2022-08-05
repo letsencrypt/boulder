@@ -37,7 +37,10 @@
       "timeout": "300s"
     },
     "saService": {
-      "serverAddress": "sa.boulder:9095",
+      "serverIPAddresses": [
+        "10.77.77.77:9095",
+        "10.88.88.88:9095"
+      ],
       "timeout": "15s"
     },
     "akamaiPurgerService": {

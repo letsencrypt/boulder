@@ -19,8 +19,8 @@ for you, you may need to create a combined bundle containing
 The gRPC PKI is under test/grpc-creds/. Each Boulder component has two
 hostnames, each resolving to a different IP address in our test environment,
 plus a third hostname that resolves to both IP addresses. Certificates for these
-components contain all three hostnames, and are stored under
-test/grpc-creds/SERVICE.boulder.
+components contain all three hostnames, both test IP addresses, and are stored
+under test/grpc-creds/SERVICE.boulder.
 
 To issue new certificates in the WFE or gRPC PKI, install
 https://github.com/jsha/minica, cd to the directory containing minica.pem for

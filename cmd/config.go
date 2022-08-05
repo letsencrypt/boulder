@@ -245,8 +245,17 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
+	// ServerAddress is a single host:port combination that the gRPC client
+	// will, if necessary, resolve via DNS and then connect to. This field
+	// cannot be used in combination with `ServerIPAddresses` field.
 	ServerAddress string
-	Timeout       ConfigDuration
+	// ServerIPAddresses is a list of IPv4/6 addresses, in the format IPv4:port,
+	// [IPv6]:port or :port, that the gRPC client will connect to. Note that the
+	// server's certificate will be validated against these IP addresses, so
+	// they must be present in the SANs of the server certificate. This field
+	// cannot be used in combination with `ServerAddress`.
+	ServerIPAddresses []string
+	Timeout           ConfigDuration
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service
