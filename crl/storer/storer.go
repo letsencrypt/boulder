@@ -33,6 +33,7 @@ type crlStorer struct {
 	s3Client         s3Putter
 	s3Bucket         string
 	issuers          map[issuance.IssuerNameID]*issuance.Certificate
+	uploadCount      *prometheus.CounterVec
 	sizeHistogram    *prometheus.HistogramVec
 	latencyHistogram *prometheus.HistogramVec
 	log              blog.Logger
@@ -52,6 +53,12 @@ func New(
 		issuersByNameID[issuer.NameID()] = issuer
 	}
 
+	uploadCount := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "crl_storer_uploads",
+		Help: "A counter of the number of CRLs uploaded by crl-storer",
+	}, []string{"issuer", "result"})
+	stats.MustRegister(uploadCount)
+
 	sizeHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_storer_sizes",
 		Help:    "A histogram of the sizes (in bytes) of CRLs uploaded by crl-storer",
@@ -70,6 +77,7 @@ func New(
 		issuers:          issuersByNameID,
 		s3Client:         s3Client,
 		s3Bucket:         s3Bucket,
+		uploadCount:      uploadCount,
 		sizeHistogram:    sizeHistogram,
 		latencyHistogram: latencyHistogram,
 		log:              log,
@@ -155,11 +163,13 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
 	})
 	if err != nil {
+		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed")
 		cs.log.AuditErrf(
 			"CRL upload failed: issuer=[%s] number=[%s] shard=[%d] err=[%s]",
 			issuer.Subject.CommonName, crlNumber, shardIdx, err,
 		)
 	} else {
+		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success")
 		cs.log.AuditInfof(
 			"CRL uploaded: issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
 			issuer.Subject.CommonName, crlNumber, shardIdx,
