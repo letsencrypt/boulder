@@ -18,64 +18,9 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-// To mock out WithContext, we need to be able to return objects that satisfy
-// gorp.SqlExecutor. That's a pretty big interface, so we specify one no-op mock
-// that we can embed everywhere we need to satisfy it.
-// Note: mockSqlExecutor does *not* implement WithContext. The expectation is
-// that structs that embed mockSqlExecutor will define their own WithContext
-// that returns a reference to themselves. That makes it easy for those structs
-// to override the specific methods they need to implement (e.g. SelectOne).
-type mockSqlExecutor struct{}
-
-func (mse mockSqlExecutor) Get(i interface{}, keys ...interface{}) (interface{}, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) Insert(list ...interface{}) error {
-	return errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) Update(list ...interface{}) (int64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) Delete(list ...interface{}) (int64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) Select(i interface{}, query string, args ...interface{}) ([]interface{}, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) SelectInt(query string, args ...interface{}) (int64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error) {
-	return sql.NullInt64{}, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) SelectFloat(query string, args ...interface{}) (float64, error) {
-	return 0, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) SelectNullFloat(query string, args ...interface{}) (sql.NullFloat64, error) {
-	return sql.NullFloat64{}, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) SelectStr(query string, args ...interface{}) (string, error) {
-	return "", errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) SelectNullStr(query string, args ...interface{}) (sql.NullString, error) {
-	return sql.NullString{}, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	return errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return nil, errors.New("unimplemented")
-}
-func (mse mockSqlExecutor) QueryRow(query string, args ...interface{}) *sql.Row {
-	return nil
-}
-
 // echoSelector always returns the given certificateStatus.
 type echoSelector struct {
-	mockSqlExecutor
+	db.MockSqlExecutor
 	status core.CertificateStatus
 }
 
@@ -94,7 +39,7 @@ func (s echoSelector) SelectOne(output interface{}, _ string, _ ...interface{}) 
 
 // errorSelector always returns the given error.
 type errorSelector struct {
-	mockSqlExecutor
+	db.MockSqlExecutor
 	err error
 }
 

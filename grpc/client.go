@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"strings"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
@@ -26,8 +27,10 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	if c == nil {
 		return nil, errors.New("nil gRPC client config provided. JSON config is probably missing a fooService section.")
 	}
-	if c.ServerAddress == "" {
-		return nil, errors.New("ServerAddress must not be empty")
+	if c.ServerIPAddresses != nil && c.ServerAddress != "" {
+		return nil, errors.New(
+			"both 'serverIPAddresses' and 'serverAddress' are set in gRPC client config provided. Only one should be set.",
+		)
 	}
 	if tlsConfig == nil {
 		return nil, errNilTLS
@@ -40,17 +43,27 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		hnygrpc.UnaryClientInterceptor(),
 	}
 	allInterceptors = append(interceptors, allInterceptors...)
-	host, _, err := net.SplitHostPort(c.ServerAddress)
-	if err != nil {
-		return nil, err
+
+	var target string
+	var hostOverride string
+	if c.ServerAddress != "" {
+		var splitHostPortErr error
+		hostOverride, _, splitHostPortErr = net.SplitHostPort(c.ServerAddress)
+		if splitHostPortErr != nil {
+			return nil, splitHostPortErr
+		}
+		target = "dns:///" + c.ServerAddress
+	} else {
+		target = "static:///" + strings.Join(c.ServerIPAddresses, ",")
 	}
-	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, host)
+	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
 	return grpc.Dial(
-		"dns:///"+c.ServerAddress,
+		target,
 		grpc.WithBalancerName("round_robin"),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithChainUnaryInterceptor(allInterceptors...),
 	)
+
 }
 
 type registry interface {
