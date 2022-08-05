@@ -99,7 +99,6 @@ func parseResolverIPAddress(addr string) (*resolver.Address, error) {
 	} else {
 		// Host is an IPv6 address.
 		parsedAddr = "[" + host + "]:" + port
-
 	}
 	return &resolver.Address{
 		Addr:       parsedAddr,
