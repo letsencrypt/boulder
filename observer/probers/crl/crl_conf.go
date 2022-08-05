@@ -7,7 +7,7 @@ import (
 )
 
 type CRLConfigurer struct {
-	URL    string               `yaml:"url"`
+	URL string `yaml:"url"`
 }
 
 func (c CRLConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
@@ -52,7 +52,7 @@ func (c CRLConfigurer) MakeProber() (probers.Prober, error) {
 	nu := probers.ProberCollectors["obs_crl_next_update"].(*prometheus.GaugeVec)
 	tu := probers.ProberCollectors["obs_crl_this_update"].(*prometheus.GaugeVec)
 	rcc := probers.ProberCollectors["obs_crl_revoked_cert_count"].(*prometheus.GaugeVec)
-	return CRLProber{ c.URL, *nu, *tu, *rcc}, nil
+	return CRLProber{c.URL, *nu, *tu, *rcc}, nil
 }
 
 func init() {

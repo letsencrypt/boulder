@@ -11,10 +11,10 @@ import (
 )
 
 type CRLProber struct {
-	url string
+	url         string
 	cNextUpdate prometheus.GaugeVec
 	cThisUpdate prometheus.GaugeVec
-	cCertCount prometheus.GaugeVec
+	cCertCount  prometheus.GaugeVec
 }
 
 func (p CRLProber) Name() string {
