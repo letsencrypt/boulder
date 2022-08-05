@@ -9,22 +9,12 @@ command -v minica >/dev/null 2>&1 || {
   exit 1;
 }
 
-for SERVICE in \
-  admin-revoker \
-  akamai-purger \
-  bad-key-revoker \
-  crl-storer \
-  crl-updater \
-  expiration-mailer \
-  nonce \
-  ocsp-responder \
-  ocsp-updater \
-  orphan-finder \
-  wfe \
+for SERVICE in admin-revoker expiration-mailer ocsp-updater ocsp-responder \
+  orphan-finder wfe akamai-purger bad-key-revoker crl-updater crl-storer \
   health-checker; do
   minica -domains "${SERVICE}.boulder"
 done
 
-for SERVICE in publisher ra ca sa va ; do
+for SERVICE in publisher nonce ra ca sa va ; do
   minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
 done
