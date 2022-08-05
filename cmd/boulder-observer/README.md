@@ -166,17 +166,38 @@ monitors:
   - 
     period: 2s
     kind: HTTP
-    settings: 
+    settings:
       url: http://letsencrypt.org/FOO
       rcodes: [200, 404]
       useragent: letsencrypt/boulder-observer-http-client
+```
+
+#### CRL
+
+##### Schema
+
+`url`: Scheme + Hostname to grab the CRL from (e.g. `http://x1.c.lencr.org/`).
+
+##### Example
+
+```yaml
+monitors:
+  - 
+    period: 1h
+    kind: CRL
+    settings:
+      url: http://x1.c.lencr.org/
 ```
 
 ## Metrics
 
 Observer provides the following metrics.
 
-### obs_monitors
+### Global Metrics
+
+These metrics will always be available.
+
+#### obs_monitors
 
 Count of configured monitors.
 
@@ -187,7 +208,7 @@ Count of configured monitors.
 `valid`: Bool indicating whether settings provided could be validated
 for the `kind` of Prober specified.
 
-### obs_observations
+#### obs_observations
 
 **Labels:**
 
@@ -199,6 +220,34 @@ for the `kind` of Prober specified.
 
 `success`: Bool indicating whether the result of the probe attempt was
 successful.
+
+### CRL Metrics
+
+These metrics will be available whenever a valid CRL prober is configured.
+
+#### obs_crl_this_update
+
+Unix timestamp value of the thisUpdate field for a CRL.
+
+**Labels:**
+
+`url`: Url of the CRL
+
+#### obs_crl_next_update
+
+Unix timestamp value of the nextUpdate field for a CRL.
+
+**Labels:**
+
+`url`: Url of the CRL
+
+#### obs_crl_revoked_cert_count
+
+Count of revoked certificates in a CRL.
+
+**Labels:**
+
+`url`: Url of the CRL
 
 **Bucketed response times:**
 
