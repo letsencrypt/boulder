@@ -11,7 +11,7 @@ import (
 
 func TestCRLConfigurer_MakeProber(t *testing.T) {
 	type fields struct {
-		URL    string
+		URL string
 	}
 	tests := []struct {
 		name    string
@@ -28,7 +28,7 @@ func TestCRLConfigurer_MakeProber(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := CRLConfigurer{
-				URL:    tt.fields.URL,
+				URL: tt.fields.URL,
 			}
 			if _, err := c.MakeProber(); (err != nil) != tt.wantErr {
 				t.Errorf("CRLConfigurer.Validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -60,7 +60,7 @@ func TestCRLConfigurer_AddCollectors(t *testing.T) {
 
 func TestCRLConfigurer_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		url       interface{}
+		url interface{}
 	}
 	tests := []struct {
 		name    string
@@ -75,7 +75,7 @@ func TestCRLConfigurer_UnmarshalSettings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := probers.Settings{
-				"url":       tt.fields.url,
+				"url": tt.fields.url,
 			}
 			settingsBytes, _ := yaml.Marshal(settings)
 			t.Log(string(settingsBytes))
