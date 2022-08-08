@@ -1,6 +1,9 @@
 package probers
 
 import (
+	"fmt"
+	"net/url"
+
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
@@ -17,6 +20,19 @@ func (c CRLConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, e
 		return nil, err
 	}
 	return conf, nil
+}
+
+func (c CRLConfigurer) validateURL() error {
+	url, err := url.Parse(c.URL)
+	if err != nil {
+		return fmt.Errorf(
+			"invalid 'url', got: %q, expected a valid url", c.URL)
+	}
+	if url.Scheme == "" {
+		return fmt.Errorf(
+			"invalid 'url', got: %q, missing scheme", c.URL)
+	}
+	return nil
 }
 
 // AddCollectors creates all of the `Collector` objects that any `Prober`
@@ -48,6 +64,12 @@ func (c CRLConfigurer) AddCollectors() {
 }
 
 func (c CRLConfigurer) MakeProber() (probers.Prober, error) {
+	// validate `url`
+	err := c.validateURL()
+	if err != nil {
+		return nil, err
+	}
+
 	c.AddCollectors()
 	nu := probers.ProberCollectors["obs_crl_next_update"].(*prometheus.GaugeVec)
 	tu := probers.ProberCollectors["obs_crl_this_update"].(*prometheus.GaugeVec)
