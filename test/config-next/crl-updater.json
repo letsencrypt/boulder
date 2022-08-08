@@ -6,15 +6,19 @@
       "certFile": "test/grpc-creds/crl-updater.boulder/cert.pem",
       "keyFile": "test/grpc-creds/crl-updater.boulder/key.pem"
     },
-    "crlGeneratorService": {
-      "serverAddress": "ca.boulder:9106",
-      "timeout": "15s"
-    },
     "saService": {
       "serverIPAddresses": [
         "10.77.77.77:9095",
         "10.88.88.88:9095"
       ],
+      "timeout": "15s"
+    },
+    "crlGeneratorService": {
+      "serverAddress": "ca.boulder:9106",
+      "timeout": "15s"
+    },
+    "crlStorerService": {
+      "serverAddress": "crl-storer.boulder:9109",
       "timeout": "15s"
     },
     "issuerCerts": [

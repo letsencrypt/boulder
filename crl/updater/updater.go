@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -27,10 +28,10 @@ type crlUpdater struct {
 
 	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
-	// TODO(#6162): Add a crl-storer gRPC client.
+	cs cspb.CRLStorerClient
 
 	tickHistogram       *prometheus.HistogramVec
-	generatedCounter    *prometheus.CounterVec
+	updatedCounter      *prometheus.CounterVec
 	secondsSinceSuccess *prometheus.GaugeVec
 
 	log blog.Logger
@@ -46,6 +47,7 @@ func NewUpdater(
 	maxParallelism int,
 	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
+	cs cspb.CRLStorerClient,
 	stats prometheus.Registerer,
 	log blog.Logger,
 	clk clock.Clock,
@@ -98,19 +100,17 @@ func NewUpdater(
 	}, []string{"issuer", "result"})
 	stats.MustRegister(tickHistogram)
 
-	generatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+	updatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "crl_updater_generated",
 		Help: "A counter of CRL generation calls labeled by result",
 	}, []string{"result"})
-	stats.MustRegister(generatedCounter)
+	stats.MustRegister(updatedCounter)
 
 	secondsSinceSuccess := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "crl_updater_secs_since_success",
 		Help: "The number of seconds since crl-updater last succeeded labeled by issuer",
 	}, []string{"issuer"})
 	stats.MustRegister(secondsSinceSuccess)
-
-	// TODO(#6162): Add a storedCounter when sending to the crl-storer.
 
 	return &crlUpdater{
 		issuersByNameID,
@@ -122,8 +122,9 @@ func NewUpdater(
 		maxParallelism,
 		sa,
 		ca,
+		cs,
 		tickHistogram,
-		generatedCounter,
+		updatedCounter,
 		secondsSinceSuccess,
 		log,
 		clk,
@@ -172,6 +173,9 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 	}
 }
 
+// TODO(#6261): Unify all error messages to identify the shard they're working
+// on as a JSON object including issuer, crl number, and shard number.
+
 func (cu *crlUpdater) Tick(ctx context.Context) {
 	atTime := cu.clk.Now()
 	result := "success"
@@ -197,13 +201,13 @@ func (cu *crlUpdater) Tick(ctx context.Context) {
 }
 
 // tickIssuer performs the full CRL issuance cycle for a single issuer cert.
-func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID) error {
+func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) error {
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
+		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
 	}()
-	cu.log.Debugf("Ticking issuer %d at time %s", issuerID, atTime)
+	cu.log.Debugf("Ticking issuer %d at time %s", issuerNameID, atTime)
 
 	type shardResult struct {
 		shardIdx int
@@ -218,7 +222,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 			default:
 				out <- shardResult{
 					shardIdx: idx,
-					err:      cu.tickShard(ctx, atTime, issuerID, idx),
+					err:      cu.tickShard(ctx, atTime, issuerNameID, idx),
 				}
 			}
 		}
@@ -230,8 +234,8 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 		go shardWorker(shardIdxs, shardResults)
 	}
 
-	for shardID := 0; shardID < cu.numShards; shardID++ {
-		shardIdxs <- shardID
+	for shardIdx := 0; shardIdx < cu.numShards; shardIdx++ {
+		shardIdxs <- shardIdx
 	}
 	close(shardIdxs)
 
@@ -243,24 +247,22 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerID
 		}
 	}
 
-	// TODO(#6162): Send an RPC to the crl-storer to atomically update this CRL's
-	// urls to all point to the newly-uploaded shards.
 	return nil
 }
 
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID issuance.IssuerNameID, shardIdx int) error {
+func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) error {
 	start := cu.clk.Now()
 	result := "success"
 	defer func() {
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
-		cu.generatedCounter.WithLabelValues(result).Inc()
+		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
+		cu.updatedCounter.WithLabelValues(result).Inc()
 	}()
-	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerID, atTime)
+	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerNameID, atTime)
 
 	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
 
 	saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
-		IssuerNameID:  int64(issuerID),
+		IssuerNameID:  int64(issuerNameID),
 		ExpiresAfter:  expiresAfter.UnixNano(),
 		ExpiresBefore: expiresBefore.UnixNano(),
 		RevokedBefore: atTime.UnixNano(),
@@ -279,7 +281,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 	err = caStream.Send(&capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
-				IssuerNameID: int64(issuerID),
+				IssuerNameID: int64(issuerNameID),
 				ThisUpdate:   atTime.UnixNano(),
 				ShardIdx:     int64(shardIdx),
 			},
@@ -320,9 +322,28 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 		return fmt.Errorf("closing CA request stream for shard %d: %w", shardIdx, err)
 	}
 
-	// TODO(#6162): Connect to the crl-storer, and stream the bytes there.
-	crlBytes := make([]byte, 0)
-	crlHasher := sha256.New()
+	csStream, err := cu.cs.UploadCRL(ctx)
+	if err != nil {
+		result = "failed"
+		return fmt.Errorf("connecting to CRLStorer for shard %d: %w", shardIdx, err)
+	}
+
+	err = csStream.Send(&cspb.UploadCRLRequest{
+		Payload: &cspb.UploadCRLRequest_Metadata{
+			Metadata: &cspb.CRLMetadata{
+				IssuerNameID: int64(issuerNameID),
+				Number:       atTime.UnixNano(),
+				ShardIdx:     int64(shardIdx),
+			},
+		},
+	})
+	if err != nil {
+		result = "failed"
+		return fmt.Errorf("sending CRLStorer metadata for shard %d: %w", shardIdx, err)
+	}
+
+	crlLen := 0
+	crlHash := sha256.New()
 	for {
 		out, err := caStream.Recv()
 		if err != nil {
@@ -333,14 +354,29 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 			return fmt.Errorf("receiving CRL bytes for shard %d: %w", shardIdx, err)
 		}
 
-		crlBytes = append(crlBytes, out.Chunk...)
-		crlHasher.Write(out.Chunk)
+		err = csStream.Send(&cspb.UploadCRLRequest{
+			Payload: &cspb.UploadCRLRequest_CrlChunk{
+				CrlChunk: out.Chunk,
+			},
+		})
+		if err != nil {
+			result = "failed"
+			return fmt.Errorf("uploading CRL bytes for shard %d: %w", shardIdx, err)
+		}
+
+		crlLen += len(out.Chunk)
+		crlHash.Write(out.Chunk)
 	}
 
-	crlHash := crlHasher.Sum(nil)
-	cu.log.AuditInfof(
-		"Received CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
-		issuerID, atTime.UnixNano(), shardIdx, len(crlBytes), crlHash)
+	cu.log.Infof(
+		"Generated CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
+		issuerNameID, atTime.UnixNano(), shardIdx, crlLen, crlHash.Sum(nil))
+
+	_, err = csStream.CloseAndRecv()
+	if err != nil {
+		result = "failed"
+		return fmt.Errorf("closing CRLStorer upload stream for shard %d: %w", shardIdx, err)
+	}
 
 	return nil
 }
@@ -350,10 +386,10 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 // stable. Picture a timeline, divided into chunks. Number those chunks from 0
 // to cu.numShards, then repeat the cycle when you run out of numbers:
 //
-//    chunk:  5     0     1     2     3     4     5     0     1     2     3
-// ...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//                          ^  ^-atTime                         ^
-//    atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
+//	   chunk:  5     0     1     2     3     4     5     0     1     2     3
+//	...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
+//	                         ^  ^-atTime                         ^
+//	   atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
 //
 // The width of each chunk is determined by dividing the total time window we
 // care about (lookbackPeriod+lookforwardPeriod) by the number of shards we
@@ -363,10 +399,10 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 // times that we care about moves forward, the boundaries of each chunk remain
 // stable:
 //
-//    chunk:  5     0     1     2     3     4     5     0     1     2     3
-// ...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//                                  ^  ^-atTime                         ^
-//            atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
+//	   chunk:  5     0     1     2     3     4     5     0     1     2     3
+//	...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
+//	                                 ^  ^-atTime                         ^
+//	           atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
 //
 // However, note that at essentially all times the window includes parts of two
 // different instances of the chunk which appears at its ends. For example,
@@ -381,10 +417,10 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerID 
 // there is another chunk with ID "1" near the right-hand edge of the window,
 // that chunk is ignored.
 //
-//    shard:           |  1  |  2  |  3  |  4  |  5  |  0  |
-// ...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//                          ^  ^-atTime                         ^
-//    atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
+//	   shard:           |  1  |  2  |  3  |  4  |  5  |  0  |
+//	...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
+//	                         ^  ^-atTime                         ^
+//	   atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
 //
 // This means that the lookforwardPeriod MUST be configured large enough that
 // there is a buffer of at least one whole chunk width between the actual
