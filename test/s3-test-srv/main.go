@@ -15,7 +15,7 @@ import (
 )
 
 type s3TestSrv struct {
-	sync.Mutex
+	sync.RWMutex
 	allSerials map[string]revocation.Reason
 }
 
@@ -66,6 +66,13 @@ func (srv *s3TestSrv) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	serial := r.URL.Query().Get("serial")
+	if serial == "" {
+		w.WriteHeader(400)
+		return
+	}
+
+	srv.RLock()
+	defer srv.RUnlock()
 	reason, ok := srv.allSerials[serial]
 	if !ok {
 		w.WriteHeader(404)

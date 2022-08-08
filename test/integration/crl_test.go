@@ -33,9 +33,13 @@ func runUpdater(t *testing.T, configFile string) {
 // that the correct number of properly-formed and validly-signed CRLs are sent
 // to our fake S3 service.
 func TestCRLPipeline(t *testing.T) {
+	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")
+	if !ok {
+		t.Fatal("failed to look up test config directory")
+	}
+
 	// The crl-updater and crl-storer are not yet deployed in Prod, so only run
 	// this test in config-next.
-	configDir := os.Getenv("BOULDER_CONFIG_DIR")
 	if !strings.Contains(configDir, "config-next") {
 		return
 	}
