@@ -10,22 +10,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type CRLProber struct {
+type CRLProbe struct {
 	url         string
 	cNextUpdate prometheus.GaugeVec
 	cThisUpdate prometheus.GaugeVec
 	cCertCount  prometheus.GaugeVec
 }
 
-func (p CRLProber) Name() string {
+func (p CRLProbe) Name() string {
 	return p.url
 }
 
-func (p CRLProber) Kind() string {
+func (p CRLProbe) Kind() string {
 	return "CRL"
 }
 
-func (p CRLProber) Probe(timeout time.Duration) (bool, time.Duration) {
+func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	resp, err := http.Get(p.url)
 	if err != nil {

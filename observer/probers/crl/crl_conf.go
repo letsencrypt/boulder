@@ -9,12 +9,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type CRLConfigurer struct {
+type CRLConf struct {
 	URL string `yaml:"url"`
 }
 
-func (c CRLConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
-	var conf CRLConfigurer
+func (c CRLConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
+	var conf CRLConf
 	err := yaml.Unmarshal(settings, &conf)
 	if err != nil {
 		return nil, err
@@ -22,7 +22,7 @@ func (c CRLConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, e
 	return conf, nil
 }
 
-func (c CRLConfigurer) validateURL() error {
+func (c CRLConf) validateURL() error {
 	url, err := url.Parse(c.URL)
 	if err != nil {
 		return fmt.Errorf(
@@ -39,7 +39,7 @@ func (c CRLConfigurer) validateURL() error {
 // object of the configured type will need, if they do not already exist in
 // `probers.ProberCollectors`. If new `Collector` objects are created, they are
 // added to `probers.ProberCollectors`
-func (c CRLConfigurer) AddCollectors() {
+func (c CRLConf) AddCollectors() {
 	nextUpdate := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "obs_crl_next_update",
@@ -63,7 +63,7 @@ func (c CRLConfigurer) AddCollectors() {
 	probers.ProberCollectors["obs_crl_revoked_cert_count"] = certCount
 }
 
-func (c CRLConfigurer) MakeProber() (probers.Prober, error) {
+func (c CRLConf) MakeProber() (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
 	if err != nil {
@@ -74,9 +74,9 @@ func (c CRLConfigurer) MakeProber() (probers.Prober, error) {
 	nu := probers.ProberCollectors["obs_crl_next_update"].(*prometheus.GaugeVec)
 	tu := probers.ProberCollectors["obs_crl_this_update"].(*prometheus.GaugeVec)
 	rcc := probers.ProberCollectors["obs_crl_revoked_cert_count"].(*prometheus.GaugeVec)
-	return CRLProber{c.URL, *nu, *tu, *rcc}, nil
+	return CRLProbe{c.URL, *nu, *tu, *rcc}, nil
 }
 
 func init() {
-	probers.Register("CRL", CRLConfigurer{})
+	probers.Register("CRL", CRLConf{})
 }

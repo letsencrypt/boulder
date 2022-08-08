@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestCRLConfigurer_MakeProber(t *testing.T) {
+func TestCRLConf_MakeProber(t *testing.T) {
 	type fields struct {
 		URL string
 	}
@@ -27,38 +27,38 @@ func TestCRLConfigurer_MakeProber(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := CRLConfigurer{
+			c := CRLConf{
 				URL: tt.fields.URL,
 			}
 			if _, err := c.MakeProber(); (err != nil) != tt.wantErr {
-				t.Errorf("CRLConfigurer.Validate() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("CRLConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestCRLConfigurer_AddCollectors(t *testing.T) {
+func TestCRLConf_AddCollectors(t *testing.T) {
 	t.Run("collectors get added", func(t *testing.T) {
-		c := CRLConfigurer{"http://example.com"}
+		c := CRLConf{"http://example.com"}
 		// Make sure ProberCollectors is initialized but empty
 		probers.ProberCollectors = make(map[string]prometheus.Collector)
 		c.AddCollectors()
 		_, ok := probers.ProberCollectors["obs_crl_next_update"]
 		if !ok {
-			t.Errorf("CRLConfigurer.Validate() collector '%s' wasn't added", "obs_crl_next_update")
+			t.Errorf("CRLConf.Validate() collector '%s' wasn't added", "obs_crl_next_update")
 		}
 		_, ok = probers.ProberCollectors["obs_crl_this_update"]
 		if !ok {
-			t.Errorf("CRLConfigurer.Validate() collector '%s' wasn't added", "obs_crl_this_update")
+			t.Errorf("CRLConf.Validate() collector '%s' wasn't added", "obs_crl_this_update")
 		}
 		_, ok = probers.ProberCollectors["obs_crl_revoked_cert_count"]
 		if !ok {
-			t.Errorf("CRLConfigurer.Validate() collector '%s' wasn't added", "obs_crl_revoked_cert_count")
+			t.Errorf("CRLConf.Validate() collector '%s' wasn't added", "obs_crl_revoked_cert_count")
 		}
 	})
 }
 
-func TestCRLConfigurer_UnmarshalSettings(t *testing.T) {
+func TestCRLConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
 		url interface{}
 	}
@@ -68,7 +68,7 @@ func TestCRLConfigurer_UnmarshalSettings(t *testing.T) {
 		want    probers.Configurer
 		wantErr bool
 	}{
-		{"valid", fields{"google.com"}, CRLConfigurer{"google.com"}, false},
+		{"valid", fields{"google.com"}, CRLConf{"google.com"}, false},
 		{"invalid (map)", fields{make(map[string]interface{})}, nil, true},
 		{"invalid (list)", fields{make([]string, 0)}, nil, true},
 	}
@@ -79,14 +79,14 @@ func TestCRLConfigurer_UnmarshalSettings(t *testing.T) {
 			}
 			settingsBytes, _ := yaml.Marshal(settings)
 			t.Log(string(settingsBytes))
-			c := CRLConfigurer{}
+			c := CRLConf{}
 			got, err := c.UnmarshalSettings(settingsBytes)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("CRLConfigurer.UnmarshalSettings() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("CRLConf.UnmarshalSettings() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("CRLConfigurer.UnmarshalSettings() = %v, want %v", got, tt.want)
+				t.Errorf("CRLConf.UnmarshalSettings() = %v, want %v", got, tt.want)
 			}
 		})
 	}
