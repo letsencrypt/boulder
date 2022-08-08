@@ -9,10 +9,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// CRLConf is exported to receive YAML configuration
 type CRLConf struct {
 	URL string `yaml:"url"`
 }
 
+// UnmarshalSettings constructs a CRLConf object from YAML as bytes.
 func (c CRLConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf CRLConf
 	err := yaml.Unmarshal(settings, &conf)
@@ -63,6 +65,9 @@ func (c CRLConf) AddCollectors() {
 	probers.ProberCollectors["obs_crl_revoked_cert_count"] = certCount
 }
 
+// MakeProber constructs a `CRLProbe` object from the contents of the
+// bound `CRLConf` object. If the `CRLConf` cannot be validated, an
+// error appropriate for end-user consumption is returned instead.
 func (c CRLConf) MakeProber() (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
@@ -77,6 +82,8 @@ func (c CRLConf) MakeProber() (probers.Prober, error) {
 	return CRLProbe{c.URL, *nu, *tu, *rcc}, nil
 }
 
+// init is called at runtime and registers `CRLConf`, a `Prober`
+// `Configurer` type, as "CRL".
 func init() {
 	probers.Register("CRL", CRLConf{})
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// CRLProbe is the exported 'Prober' object for monitors configured to
+// monitor CRL availability & characteristics.
 type CRLProbe struct {
 	url         string
 	cNextUpdate prometheus.GaugeVec
@@ -17,14 +19,17 @@ type CRLProbe struct {
 	cCertCount  prometheus.GaugeVec
 }
 
+// Name returns a string that uniquely identifies the monitor.
 func (p CRLProbe) Name() string {
 	return p.url
 }
 
+// Kind returns a name that uniquely identifies the `Kind` of `Prober`.
 func (p CRLProbe) Kind() string {
 	return "CRL"
 }
 
+// Probe requests the configured CRL and publishes metrics about it if found.
 func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	resp, err := http.Get(p.url)
