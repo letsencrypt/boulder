@@ -106,58 +106,65 @@ func TestAddPrecertificate(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 
-	addPrecert := func(expectIssuedNamesUpdate bool) {
-		// Create a throw-away self signed certificate with a random name and
-		// serial number
-		serial, testCert := test.ThrowAwayCert(t, 1)
+	// Create a throw-away self signed certificate with a random name and
+	// serial number
+	serial, testCert := test.ThrowAwayCert(t, 1)
 
-		// Add the cert as a precertificate
-		ocspResp := []byte{0, 0, 1}
-		regID := reg.Id
-		issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
-		_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:      testCert.Raw,
-			RegID:    regID,
-			Ocsp:     ocspResp,
-			Issued:   issuedTime.UnixNano(),
-			IssuerID: 1,
-		})
-		test.AssertNotError(t, err, "Couldn't add test cert")
+	// Add the cert as a precertificate
+	ocspResp := []byte{0, 0, 1}
+	regID := reg.Id
+	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      testCert.Raw,
+		RegID:    regID,
+		Ocsp:     ocspResp,
+		Issued:   issuedTime.UnixNano(),
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test cert")
 
-		// It should have the expected certificate status
-		certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-		test.AssertNotError(t, err, "Couldn't get status for test cert")
-		test.Assert(
-			t,
-			bytes.Equal(certStatus.OcspResponse, ocspResp),
-			fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OcspResponse, ocspResp),
-		)
-		test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
+	// It should have the expected certificate status
+	certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	test.AssertNotError(t, err, "Couldn't get status for test cert")
+	test.Assert(
+		t,
+		bytes.Equal(certStatus.OcspResponse, ocspResp),
+		fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OcspResponse, ocspResp),
+	)
+	test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
 
-		issuedNamesSerial, err := findIssuedName(sa.dbMap, testCert.DNSNames[0])
-		if expectIssuedNamesUpdate {
-			// If we expectIssuedNamesUpdate then there should be no err and the
-			// expected serial
-			test.AssertNotError(t, err, "expected no err querying issuedNames for precert")
-			test.AssertEquals(t, issuedNamesSerial, serial)
+	// It should show up in the issued names table
+	issuedNamesSerial, err := findIssuedName(sa.dbMap, testCert.DNSNames[0])
+	test.AssertNotError(t, err, "expected no err querying issuedNames for precert")
+	test.AssertEquals(t, issuedNamesSerial, serial)
 
-			// We should also be able to call AddCertificate with the same cert
-			// without it being an error. The duplicate err on inserting to
-			// issuedNames should be ignored.
-			_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-				Der:    testCert.Raw,
-				RegID:  regID,
-				Issued: issuedTime.UnixNano(),
-			})
-			test.AssertNotError(t, err, "unexpected err adding final cert after precert")
-		} else {
-			// Otherwise we expect an ErrDatabaseOp that indicates NoRows because
-			// AddCertificate not AddPrecertificate will be updating this table.
-			test.AssertEquals(t, db.IsNoRows(err), true)
-		}
-	}
+	// We should also be able to call AddCertificate with the same cert
+	// without it being an error. The duplicate err on inserting to
+	// issuedNames should be ignored.
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  regID,
+		Issued: issuedTime.UnixNano(),
+	})
+	test.AssertNotError(t, err, "unexpected err adding final cert after precert")
+}
 
-	addPrecert(true)
+func TestAddPrecertificateNoOCSP(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	regID := reg.Id
+	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      testCert.Raw,
+		RegID:    regID,
+		Issued:   issuedTime.UnixNano(),
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test cert")
 }
 
 func TestAddPreCertificateDuplicate(t *testing.T) {
@@ -183,7 +190,6 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 		IssuerID: 1,
 	})
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
-
 }
 
 func TestAddPrecertificateIncomplete(t *testing.T) {

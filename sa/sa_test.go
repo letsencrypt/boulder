@@ -1692,6 +1692,14 @@ func TestRevokeCertificate(t *testing.T) {
 
 	now := fc.Now()
 	reason := int64(1)
+
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial: serial,
+		Date:   now.UnixNano(),
+		Reason: reason,
+	})
+	test.AssertError(t, err, "RevokeCertificate should fail with no response")
+
 	response := []byte{1, 2, 3}
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
@@ -1699,7 +1707,7 @@ func TestRevokeCertificate(t *testing.T) {
 		Reason:   reason,
 		Response: response,
 	})
-	test.AssertNotError(t, err, "RevokeCertificate failed")
+	test.AssertNotError(t, err, "RevokeCertificate should have succeeded")
 
 	status, err = sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
@@ -1716,6 +1724,46 @@ func TestRevokeCertificate(t *testing.T) {
 		Response: response,
 	})
 	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
+}
+
+func TestRevokeCertificateNoResponse(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	err := features.Set(map[string]bool{features.ROCSPStage6.String(): true})
+	test.AssertNotError(t, err, "failed to set features")
+	defer features.Reset()
+
+	reg := createWorkingRegistration(t, sa)
+	// Add a cert to the DB to test with.
+	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      certDER,
+		RegID:    reg.Id,
+		Ocsp:     nil,
+		Issued:   sa.clk.Now().UnixNano(),
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+
+	serial := "000000000000000000000000000000021bd4"
+
+	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
+
+	fc.Add(1 * time.Hour)
+
+	now := fc.Now()
+	reason := int64(1)
+
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		Serial: serial,
+		Date:   now.UnixNano(),
+		Reason: reason,
+	})
+	test.AssertNotError(t, err, "RevokeCertificate should succeed with no response when ROCSPStage3 is enabled")
 }
 
 func TestUpdateRevokedCertificate(t *testing.T) {

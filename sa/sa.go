@@ -1760,10 +1760,19 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" || req.Date == 0 || req.Response == nil {
+	if req.Serial == "" || req.Date == 0 {
 		return nil, errIncompleteRequest
 	}
+	if req.Response == nil && !features.Enabled(features.ROCSPStage6) {
+		return nil, errIncompleteRequest
+	}
+
 	revokedDate := time.Unix(0, req.Date)
+	ocspResponse := req.Response
+	if features.Enabled(features.ROCSPStage6) {
+		ocspResponse = nil
+	}
+
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
 				status = ?,
@@ -1776,7 +1785,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		revocation.Reason(req.Reason),
 		revokedDate,
 		revokedDate,
-		req.Response,
+		ocspResponse,
 		req.Serial,
 		string(core.OCSPStatusRevoked),
 	)
@@ -1799,14 +1808,23 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 // cert is already revoked, if the new revocation reason is `KeyCompromise`,
 // and if the revokedDate is identical to the current revokedDate.
 func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" || req.Date == 0 || req.Backdate == 0 || req.Response == nil {
+	if req.Serial == "" || req.Date == 0 || req.Backdate == 0 {
+		return nil, errIncompleteRequest
+	}
+	if req.Response == nil && !features.Enabled(features.ROCSPStage6) {
 		return nil, errIncompleteRequest
 	}
 	if req.Reason != ocsp.KeyCompromise {
 		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
 	}
+
 	thisUpdate := time.Unix(0, req.Date)
 	revokedDate := time.Unix(0, req.Backdate)
+	ocspResponse := req.Response
+	if features.Enabled(features.ROCSPStage6) {
+		ocspResponse = nil
+	}
+
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
 				revokedReason = ?,
@@ -1815,7 +1833,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 			WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
 		revocation.Reason(ocsp.KeyCompromise),
 		thisUpdate,
-		req.Response,
+		ocspResponse,
 		req.Serial,
 		string(core.OCSPStatusRevoked),
 		revocation.Reason(ocsp.KeyCompromise),
