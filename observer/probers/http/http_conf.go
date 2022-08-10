@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,7 +58,7 @@ func (c HTTPConf) validateRCodes() error {
 // MakeProber constructs a `HTTPProbe` object from the contents of the
 // bound `HTTPConf` object. If the `HTTPConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
-func (c HTTPConf) MakeProber() (probers.Prober, error) {
+func (c HTTPConf) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
 	if err != nil {
@@ -75,6 +76,10 @@ func (c HTTPConf) MakeProber() (probers.Prober, error) {
 		c.UserAgent = "letsencrypt/boulder-observer-http-client"
 	}
 	return HTTPProbe{c.URL, c.RCodes, c.UserAgent}, nil
+}
+
+func (c HTTPConf) Instrument() map[string]*prometheus.Collector {
+	return map[string]*prometheus.Collector{}
 }
 
 // init is called at runtime and registers `HTTPConf`, a `Prober`
