@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"io/ioutil"
+	"os"
 )
 
 func makeVerifyHash() (hash.Hash, error) {
@@ -87,7 +87,7 @@ func verify(privateKey crypto.Signer) (crypto.Signer, crypto.PublicKey, error) {
 // match for the private key and returned as a crypto.PublicKey. This function
 // is only intended for use in administrative tooling and tests.
 func Load(keyPath string) (crypto.Signer, crypto.PublicKey, error) {
-	keyBytes, err := ioutil.ReadFile(keyPath)
+	keyBytes, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not read key file %q", keyPath)
 	}

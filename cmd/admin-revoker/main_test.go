@@ -9,7 +9,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
@@ -107,7 +106,7 @@ func TestRevokeBatch(t *testing.T) {
 		log:   log,
 	}
 
-	serialFile, err := ioutil.TempFile("", "serials")
+	serialFile, err := os.CreateTemp("", "serials")
 	test.AssertNotError(t, err, "failed to open temp file")
 	defer os.Remove(serialFile.Name())
 
@@ -159,7 +158,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to generate test key 3")
 
 	// Write the contents of testKey1 to a temp file.
-	testKey1File, err := ioutil.TempFile("", "key")
+	testKey1File, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
 	der, err := x509.MarshalPKCS8PrivateKey(testKey1)
 	test.AssertNotError(t, err, "failed to marshal testKey1 to DER")
@@ -284,7 +283,7 @@ func TestPrivateKeyBlock(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to generate test key 3")
 
 	// Write the contents of testKey1 to a temp file.
-	testKey1File, err := ioutil.TempFile("", "key")
+	testKey1File, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
 	der, err := x509.MarshalPKCS8PrivateKey(testKey1)
 	test.AssertNotError(t, err, "failed to marshal testKey1 to DER")
@@ -374,7 +373,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to generate test key 3")
 
 	// Write the contents of testKey1 to a temp file.
-	testKey1File, err := ioutil.TempFile("", "key")
+	testKey1File, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
 	der, err := x509.MarshalPKCS8PrivateKey(testKey1)
 	test.AssertNotError(t, err, "failed to marshal testKey1 to DER")

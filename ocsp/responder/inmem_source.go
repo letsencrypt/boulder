@@ -3,7 +3,7 @@ package responder
 import (
 	"context"
 	"encoding/base64"
-	"io/ioutil"
+	"os"
 	"regexp"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -32,7 +32,7 @@ func NewMemorySource(responses map[string]*Response, logger blog.Logger) (*inMem
 // PEM without headers or whitespace).  Invalid responses are ignored.
 // This function pulls the entire file into an InMemorySource.
 func NewMemorySourceFromFile(responseFile string, logger blog.Logger) (*inMemorySource, error) {
-	fileContents, err := ioutil.ReadFile(responseFile)
+	fileContents, err := os.ReadFile(responseFile)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@
 package integration
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -79,7 +79,7 @@ func TestCRLPipeline(t *testing.T) {
 	test.AssertEquals(t, resp.StatusCode, 200)
 
 	// Confirm that the revoked certificate entry has the correct reason.
-	reason, err := ioutil.ReadAll(resp.Body)
+	reason, err := io.ReadAll(resp.Body)
 	test.AssertNotError(t, err, "reading revocation reason")
 	test.AssertEquals(t, string(reason), "5")
 	resp.Body.Close()

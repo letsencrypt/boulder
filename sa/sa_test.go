@@ -10,11 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"math/bits"
 	mrand "math/rand"
 	"net"
+	"os"
 	"reflect"
 	"strings"
 	"sync"
@@ -233,7 +233,7 @@ func TestAddCertificate(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
 	// Calling AddCertificate with a non-nil issued should succeed
@@ -254,7 +254,7 @@ func TestAddCertificate(t *testing.T) {
 
 	// Test cert generated locally by Boulder, with names [example.com,
 	// www.example.com, admin.example.com]
-	certDER2, err := ioutil.ReadFile("test-cert.der")
+	certDER2, err := os.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	serial := "ffdd9b8a82126d96f61d378d5ba99a0474f0"
 
@@ -276,7 +276,7 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertEquals(t, retrievedCert2.Issued, issuedTime.UnixNano())
 
 	// Test adding OCSP response with cert
-	certDER3, err := ioutil.ReadFile("test-cert2.der")
+	certDER3, err := os.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	ocspResp := []byte{0, 0, 1}
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -319,7 +319,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 
 	// Test cert generated locally by Boulder, with names [example.com,
 	// www.example.com, admin.example.com]
-	certDER, err := ioutil.ReadFile("test-cert.der")
+	certDER, err := os.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
 	cert, err := x509.ParseCertificate(certDER)
@@ -395,7 +395,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 		return oldCertCountFunc(sel, domain, timeRange)
 	}
 
-	certDER2, err := ioutil.ReadFile("test-cert2.der")
+	certDER2, err := os.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER2,
@@ -838,7 +838,7 @@ func TestPreviousCertificateExists(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "reading cert DER")
 
 	issued := sa.clk.Now()
@@ -1671,7 +1671,7 @@ func TestRevokeCertificate(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
@@ -1724,7 +1724,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Add a cert to the DB to test with.
 	reg := createWorkingRegistration(t, sa)
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	certDER, err := os.ReadFile("www.eff.org.der")
 	serial := "000000000000000000000000000000021bd4"
 	issuedTime := fc.Now().UnixNano()
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
@@ -1827,7 +1827,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 
 	// An example cert taken from EFF's website
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Unexpected error reading www.eff.org.der test file")
 	cert, err := x509.ParseCertificate(certDER)
 	test.AssertNotError(t, err, "Unexpected error parsing www.eff.org.der test file")
@@ -1880,7 +1880,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	}
 
 	// Add a certificate with different names.
-	certDER, err = ioutil.ReadFile("test-cert.der")
+	certDER, err = os.ReadFile("test-cert.der")
 	test.AssertNotError(t, err, "Unexpected error reading test-cert.der test file")
 	cert, err = x509.ParseCertificate(certDER)
 	test.AssertNotError(t, err, "Unexpected error parsing test-cert.der test file")

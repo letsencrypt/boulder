@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -52,12 +52,12 @@ func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func TestDbSource(t *testing.T) {
-	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
+	reqBytes, err := os.ReadFile("./testdata/ocsp.req")
 	test.AssertNotError(t, err, "failed to read OCSP request")
 	req, err := ocsp.ParseRequest(reqBytes)
 	test.AssertNotError(t, err, "failed to parse OCSP request")
 
-	respBytes, err := ioutil.ReadFile("./testdata/ocsp.resp")
+	respBytes, err := os.ReadFile("./testdata/ocsp.resp")
 	test.AssertNotError(t, err, "failed to read OCSP response")
 
 	// Test for failure when the database lookup fails.

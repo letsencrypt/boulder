@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -150,7 +150,7 @@ func getRawDirectory(directoryURL string) ([]byte, error) {
 		return nil, ErrInvalidDirectoryHTTPCode
 	}
 
-	rawDirectory, err := ioutil.ReadAll(resp.Body)
+	rawDirectory, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}

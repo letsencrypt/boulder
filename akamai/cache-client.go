@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -227,7 +227,7 @@ func (cpc *CachePurgeClient) authedRequest(endpoint string, body v3PurgeRequest)
 		return fmt.Errorf("response body was empty from URL %q", resp.Request.URL)
 	}
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}

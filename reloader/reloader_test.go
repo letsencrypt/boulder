@@ -2,7 +2,6 @@ package reloader
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
@@ -34,7 +33,7 @@ func TestNoStat(t *testing.T) {
 }
 
 func TestNoRead(t *testing.T) {
-	f, _ := ioutil.TempFile("", "test-no-read.txt")
+	f, _ := os.CreateTemp("", "test-no-read.txt")
 	defer os.Remove(f.Name())
 	oldReadFile := readFile
 	readFile = func(string) ([]byte, error) {
@@ -49,7 +48,7 @@ func TestNoRead(t *testing.T) {
 }
 
 func TestFirstError(t *testing.T) {
-	f, _ := ioutil.TempFile("", "test-first-error.txt")
+	f, _ := os.CreateTemp("", "test-first-error.txt")
 	defer os.Remove(f.Name())
 	_, err := New(f.Name(), func([]byte) error {
 		return fmt.Errorf("i die")
@@ -60,7 +59,7 @@ func TestFirstError(t *testing.T) {
 }
 
 func TestFirstSuccess(t *testing.T) {
-	f, _ := ioutil.TempFile("", "test-first-success.txt")
+	f, _ := os.CreateTemp("", "test-first-success.txt")
 	defer os.Remove(f.Name())
 	r, err := New(f.Name(), func([]byte) error {
 		return nil
@@ -90,7 +89,7 @@ func TestReload(t *testing.T) {
 	fakeTick, restoreMakeTicker := makeFakeMakeTicker()
 	defer restoreMakeTicker()
 
-	f, _ := ioutil.TempFile("", "test-reload.txt")
+	f, _ := os.CreateTemp("", "test-reload.txt")
 	filename := f.Name()
 	defer os.Remove(filename)
 
@@ -121,7 +120,7 @@ func TestReload(t *testing.T) {
 	// Write to the file, expect a reload. Sleep a few milliseconds first so the
 	// timestamps actually differ.
 	time.Sleep(1 * time.Second)
-	err = ioutil.WriteFile(filename, []byte("second body"), 0644)
+	err = os.WriteFile(filename, []byte("second body"), 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +144,7 @@ func TestReloadFailure(t *testing.T) {
 	// Mock out makeTicker
 	fakeTick, restoreMakeTicker := makeFakeMakeTicker()
 
-	f, _ := ioutil.TempFile("", "test-reload-failure.txt")
+	f, _ := os.CreateTemp("", "test-reload-failure.txt")
 	filename := f.Name()
 	defer func() {
 		restoreMakeTicker()
@@ -200,7 +199,7 @@ func TestReloadFailure(t *testing.T) {
 	}
 	readFile = oldReadFile
 
-	err = ioutil.WriteFile(filename, []byte("third body"), 0644)
+	err = os.WriteFile(filename, []byte("third body"), 0644)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -5,11 +5,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"net/mail"
 	"net/textproto"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -285,7 +285,7 @@ func setup(t *testing.T) (*mailerImpl, *net.TCPListener, func()) {
 		}
 	}
 
-	pem, err := ioutil.ReadFile("../test/mail-test-srv/minica.pem")
+	pem, err := os.ReadFile("../test/mail-test-srv/minica.pem")
 	if err != nil {
 		t.Fatalf("loading smtp root: %s", err)
 	}

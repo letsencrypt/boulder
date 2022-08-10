@@ -1,7 +1,7 @@
 package ratelimit
 
 import (
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -102,7 +102,7 @@ func TestWindowBegin(t *testing.T) {
 func TestLoadPolicies(t *testing.T) {
 	policy := New()
 
-	policyContent, readErr := ioutil.ReadFile("../test/rate-limit-policies.yml")
+	policyContent, readErr := os.ReadFile("../test/rate-limit-policies.yml")
 	test.AssertNotError(t, readErr, "Failed to load rate-limit-policies.yml")
 
 	// Test that loading a good policy from YAML doesn't error

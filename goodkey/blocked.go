@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"io/ioutil"
+	"os"
 
 	"github.com/letsencrypt/boulder/core"
 
@@ -51,7 +51,7 @@ func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
 //
 // If no hashes are found in the input YAML an error is returned.
 func loadBlockedKeysList(filename string) (*blockedKeys, error) {
-	yamlBytes, err := ioutil.ReadFile(filename)
+	yamlBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}

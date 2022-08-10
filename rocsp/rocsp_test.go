@@ -3,7 +3,7 @@ package rocsp
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -41,7 +41,7 @@ func makeClient() (*WritingClient, clock.Clock) {
 func TestSetAndGet(t *testing.T) {
 	client, _ := makeClient()
 
-	respBytes, err := ioutil.ReadFile("testdata/ocsp.response")
+	respBytes, err := os.ReadFile("testdata/ocsp.response")
 	if err != nil {
 		t.Fatal(err)
 	}

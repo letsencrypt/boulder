@@ -10,7 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"time"
@@ -384,7 +383,7 @@ func (cc crlConfig) validate() error {
 
 // loadCert loads a PEM certificate specified by filename or returns an error
 func loadCert(filename string) (cert *x509.Certificate, err error) {
-	certPEM, err := ioutil.ReadFile(filename)
+	certPEM, err := os.ReadFile(filename)
 	if err != nil {
 		return
 	}
@@ -518,7 +517,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	pubPEMBytes, err := ioutil.ReadFile(config.Inputs.PublicKeyPath)
+	pubPEMBytes, err := os.ReadFile(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
 	}
@@ -568,7 +567,7 @@ func csrCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	pubPEMBytes, err := ioutil.ReadFile(config.Inputs.PublicKeyPath)
+	pubPEMBytes, err := os.ReadFile(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return fmt.Errorf("failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
 	}
@@ -788,7 +787,7 @@ func main() {
 	if *configPath == "" {
 		log.Fatal("--config is required")
 	}
-	configBytes, err := ioutil.ReadFile(*configPath)
+	configBytes, err := os.ReadFile(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to read config file: %s", err)
 	}

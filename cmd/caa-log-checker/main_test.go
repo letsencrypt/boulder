@@ -3,7 +3,6 @@ package notmain
 import (
 	"compress/gzip"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -18,14 +17,14 @@ import (
 var testTime = time.Time{}.Add(time.Hour + time.Minute + time.Second + time.Millisecond + time.Microsecond).Local()
 
 func TestOpenFile(t *testing.T) {
-	tmpPlain, err := ioutil.TempFile(os.TempDir(), "plain")
+	tmpPlain, err := os.CreateTemp(os.TempDir(), "plain")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmpPlain.Name())
 	_, err = tmpPlain.Write([]byte("test-1\ntest-2"))
 	test.AssertNotError(t, err, "failed to write to temp file")
 	tmpPlain.Close()
 
-	tmpGzip, err := ioutil.TempFile(os.TempDir(), "gzip-*.gz")
+	tmpGzip, err := os.CreateTemp(os.TempDir(), "gzip-*.gz")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmpGzip.Name())
 	gzipWriter := gzip.NewWriter(tmpGzip)
@@ -113,7 +112,7 @@ trailer`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			tmp, err := ioutil.TempFile(os.TempDir(), "TestLoadIssuanceLog")
+			tmp, err := os.CreateTemp(os.TempDir(), "TestLoadIssuanceLog")
 			test.AssertNotError(t, err, "failed to create temporary log file")
 			defer os.Remove(tmp.Name())
 			_, err = tmp.Write([]byte(tc.loglines))
@@ -214,7 +213,7 @@ trailer`,
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fmt.Println(tc.name)
-			tmp, err := ioutil.TempFile(os.TempDir(), "TestProcessCAALog")
+			tmp, err := os.CreateTemp(os.TempDir(), "TestProcessCAALog")
 			test.AssertNotError(t, err, "failed to create temporary log file")
 			defer os.Remove(tmp.Name())
 			_, err = tmp.Write([]byte(tc.loglines))

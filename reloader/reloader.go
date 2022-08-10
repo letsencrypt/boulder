@@ -2,7 +2,6 @@
 package reloader
 
 import (
-	"io/ioutil"
 	"os"
 	"time"
 )
@@ -24,7 +23,7 @@ func (r *Reloader) Stop() {
 }
 
 // A pointer we can override for testing.
-var readFile = ioutil.ReadFile
+var readFile = os.ReadFile
 
 // New loads the filename provided, and calls the callback.  It then spawns a
 // goroutine to check for updates to that file, calling the callback again with

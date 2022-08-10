@@ -39,7 +39,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -55,7 +55,7 @@ import (
 
 // ErrNotFound indicates the request OCSP response was not found. It is used to
 // indicate that the responder should reply with unauthorizedErrorResponse.
-var ErrNotFound = errors.New("Request OCSP Response not found")
+var ErrNotFound = errors.New("request OCSP Response not found")
 
 // errOCSPResponseExpired indicates that the nextUpdate field of the requested
 // OCSP response occurred in the past and an HTTP status code of 533 should be
@@ -155,11 +155,13 @@ var hashToString = map[crypto.Hash]string{
 // decodes the request, and passes back whatever response is provided by the
 // source.
 // The Responder will set these headers:
-//   Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
-//   Last-Modified: response.ThisUpdate,
-//   Expires: response.NextUpdate,
-//   ETag: the SHA256 hash of the response, and
-//   Content-Type: application/ocsp-response.
+//
+//	Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
+//	Last-Modified: response.ThisUpdate,
+//	Expires: response.NextUpdate,
+//	ETag: the SHA256 hash of the response, and
+//	Content-Type: application/ocsp-response.
+//
 // Note: The caller must use http.StripPrefix to strip any path components
 // (including '/') on GET requests.
 // Do not use this responder in conjunction with http.NewServeMux, because the
@@ -240,7 +242,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			return
 		}
 	case "POST":
-		requestBody, err = ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, 10000))
+		requestBody, err = io.ReadAll(http.MaxBytesReader(nil, request.Body, 10000))
 		if err != nil {
 			rs.log.Errf("Problem reading body of POST: %s", err)
 			response.WriteHeader(http.StatusBadRequest)
