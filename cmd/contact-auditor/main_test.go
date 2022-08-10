@@ -96,7 +96,7 @@ func TestContactAuditor(t *testing.T) {
 
 	// Each result entry should contain five tab separated columns.
 	for _, line := range contentLines {
-		test.AssertEquals(t, len(strings.Split(line, "\t")), 5)
+		test.AssertEquals(t, len(strings.Split(line, "\t")), 6)
 	}
 }
 
