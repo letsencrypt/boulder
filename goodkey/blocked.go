@@ -42,12 +42,10 @@ func (b blockedKeys) blocked(key crypto.PublicKey) (bool, error) {
 // SHA256 hashes of SubjectPublicKeyInfo's in the input YAML file
 // with the expected format:
 //
-// ```
-// blocked:
-//   - cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=
-//   <snipped>
-//   - Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=
-// ```
+//	blocked:
+//	  - cuwGhNNI6nfob5aqY90e7BleU6l7rfxku4X3UTJ3Z7M=
+//	  <snipped>
+//	  - Qebc1V3SkX3izkYRGNJilm9Bcuvf0oox4U2Rn+b4JOE=
 //
 // If no hashes are found in the input YAML an error is returned.
 func loadBlockedKeysList(filename string) (*blockedKeys, error) {

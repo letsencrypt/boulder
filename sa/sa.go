@@ -1278,16 +1278,17 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 
 // statusForOrder examines the status of a provided order's authorizations to
 // determine what the overall status of the order should be. In summary:
-//   * If the order has an error, the order is invalid
-//   * If any of the order's authorizations are in any state other than
+//   - If the order has an error, the order is invalid
+//   - If any of the order's authorizations are in any state other than
 //     valid or pending, the order is invalid.
-//   * If any of the order's authorizations are pending, the order is pending.
-//   * If all of the order's authorizations are valid, and there is
+//   - If any of the order's authorizations are pending, the order is pending.
+//   - If all of the order's authorizations are valid, and there is
 //     a certificate serial, the order is valid.
-//   * If all of the order's authorizations are valid, and we have began
+//   - If all of the order's authorizations are valid, and we have began
 //     processing, but there is no certificate serial, the order is processing.
-//   * If all of the order's authorizations are valid, and we haven't begun
+//   - If all of the order's authorizations are valid, and we haven't begun
 //     processing, then the order is status ready.
+//
 // An error is returned for any other case.
 func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
 	// Without any further work we know an order with an error is invalid

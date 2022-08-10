@@ -36,9 +36,6 @@ unzip /tmp/protoc.zip -d /usr/local/protoc
 # Override default GOBIN and GOCACHE
 export GOBIN=/usr/local/bin GOCACHE=/tmp/gocache
 
-# Install golangci-lint
-curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOBIN v1.46.2
-
 # Install protobuf and testing/dev tools.
 # Note: The version of golang/protobuf is partially tied to the version of grpc
 # used by Boulder overall. Updating it may require updating the grpc version
@@ -48,6 +45,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
 go install bitbucket.org/liamstask/goose/cmd/goose@latest
 go install golang.org/x/tools/cmd/stringer@latest
 go install github.com/letsencrypt/pebble/cmd/pebble-challtestsrv@master
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.47.1
 
 go clean -cache
 go clean -modcache

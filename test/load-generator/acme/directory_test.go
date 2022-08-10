@@ -47,13 +47,12 @@ func newMockDirectoryServer() *mockDirectoryServer {
 	})
 
 	m.HandleFunc(invalidEndpointURLPath, func(w http.ResponseWriter, r *http.Request) {
-		invalidURLDir := fmt.Sprintf(`{
+		fmt.Fprint(w, `{
 			 "newAccount": "",
-			 "newNonce": %q,
+			 "newNonce": "ht\ntp://bad-scheme",
 			 "newOrder": "",
 			 "revokeCert": ""
-		}`, "http://"+string([]byte{0x7F}))
-		fmt.Fprint(w, invalidURLDir)
+		}`)
 	})
 
 	m.HandleFunc(invalidMetaDirectoryPath, func(w http.ResponseWriter, r *http.Request) {
@@ -116,27 +115,6 @@ func TestNew(t *testing.T) {
 		return fmt.Sprintf("http://localhost:%s%s", port, path)
 	}
 
-	wrongStatusCodeURL := testURL(wrongStatusCodePath)
-
-	invalidJSONURL := testURL(invalidJSONPath)
-
-	missingEndpointURL := testURL(missingEndpointPath)
-	missingEndpointErr := ErrMissingEndpoint{
-		endpoint: NewNonceEndpoint,
-	}
-
-	invalidEndpointURL := testURL(invalidEndpointURLPath)
-	invalidEndpointErr := ErrInvalidEndpointURL{
-		endpoint: NewNonceEndpoint,
-		value:    "http://" + string([]byte{0x7F}),
-	}
-
-	invalidDirectoryMetaURL := testURL(invalidMetaDirectoryPath)
-
-	invalidDirectoryToSURL := testURL(invalidMetaDirectoryToSPath)
-
-	validDirectoryURL := testURL(validDirectoryPath)
-
 	testCases := []struct {
 		Name          string
 		DirectoryURL  string
@@ -151,47 +129,47 @@ func TestNew(t *testing.T) {
 			DirectoryURL:  "http://" + string([]byte{0x1, 0x7F}),
 			ExpectedError: ErrInvalidDirectoryURL.Error(),
 		},
-		/* This test case depends on an error message that changed in Go 1.14. We
-		   can uncomment it once we've moved fully to Go 1.14.
 		{
 			Name:          "unreachable directory URL",
 			DirectoryURL:  "http://localhost:1987",
-			ExpectedError: "Get http://localhost:1987: dial tcp 127.0.0.1:1987: connect: connection refused",
+			ExpectedError: "Get \"http://localhost:1987\": dial tcp 127.0.0.1:1987: connect: connection refused",
 		},
-		*/
 		{
 			Name:          "wrong directory HTTP status code",
-			DirectoryURL:  wrongStatusCodeURL,
+			DirectoryURL:  testURL(wrongStatusCodePath),
 			ExpectedError: ErrInvalidDirectoryHTTPCode.Error(),
 		},
 		{
 			Name:          "invalid directory JSON",
-			DirectoryURL:  invalidJSONURL,
+			DirectoryURL:  testURL(invalidJSONPath),
 			ExpectedError: ErrInvalidDirectoryJSON.Error(),
 		},
 		{
 			Name:          "directory JSON missing required endpoint",
-			DirectoryURL:  missingEndpointURL,
-			ExpectedError: missingEndpointErr.Error(),
+			DirectoryURL:  testURL(missingEndpointPath),
+			ExpectedError: ErrMissingEndpoint{endpoint: NewNonceEndpoint}.Error(),
 		},
 		{
-			Name:          "directory JSON with invalid endpoint URL",
-			DirectoryURL:  invalidEndpointURL,
-			ExpectedError: invalidEndpointErr.Error(),
+			Name:         "directory JSON with invalid endpoint URL",
+			DirectoryURL: testURL(invalidEndpointURLPath),
+			ExpectedError: ErrInvalidEndpointURL{
+				endpoint: NewNonceEndpoint,
+				value:    "ht\ntp://bad-scheme",
+			}.Error(),
 		},
 		{
 			Name:          "directory JSON missing meta key",
-			DirectoryURL:  invalidDirectoryMetaURL,
+			DirectoryURL:  testURL(invalidMetaDirectoryPath),
 			ExpectedError: ErrInvalidDirectoryMeta.Error(),
 		},
 		{
 			Name:          "directory JSON missing meta TermsOfService key",
-			DirectoryURL:  invalidDirectoryToSURL,
+			DirectoryURL:  testURL(invalidMetaDirectoryToSPath),
 			ExpectedError: ErrInvalidTermsOfService.Error(),
 		},
 		{
 			Name:         "valid directory",
-			DirectoryURL: validDirectoryURL,
+			DirectoryURL: testURL(validDirectoryPath),
 		},
 	}
 

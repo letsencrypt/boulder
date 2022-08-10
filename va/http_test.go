@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -1595,6 +1596,11 @@ func oldTLSRedirectSrv(t *testing.T, token string) (*httptest.Server, *httptest.
 
 // TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 func TestOldTLS(t *testing.T) {
+	// Don't run this test with go1.19, which removes support for TLS 1.0 and 1.1.
+	if strings.Contains(runtime.Version(), "go1.19") {
+		return
+	}
+
 	features.Reset()
 
 	chall := httpChallenge()
