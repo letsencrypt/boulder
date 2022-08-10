@@ -53,7 +53,8 @@
       "FasterNewOrdersRateLimit": true,
       "StoreRevokerInfo": true,
       "GetAuthzReadOnly": true,
-      "GetAuthzUseIndex": true
+      "GetAuthzUseIndex": true,
+      "ROCSPStage6": true
     }
   },
 
