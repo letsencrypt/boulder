@@ -56,12 +56,13 @@ func (c *ObsConf) validateDebugAddr() error {
 	return nil
 }
 
-func (c *ObsConf) makeMonitors() ([]*monitor, []error, error) {
+func (c *ObsConf) makeMonitors(reg *prometheus.Registerer) ([]*monitor, []error, error) {
 	var errs []error
 	var monitors []*monitor
+	collectors := make(map[string]map[string]*prometheus.Collector)
 	for e, m := range c.MonConfs {
 		entry := strconv.Itoa(e + 1)
-		monitor, err := m.makeMonitor()
+		monitor, err := m.makeMonitor(collectors)
 		if err != nil {
 			// append validation error to errs
 			errs = append(
@@ -80,6 +81,12 @@ func (c *ObsConf) makeMonitors() ([]*monitor, []error, error) {
 	}
 	if len(c.MonConfs) == len(errs) {
 		return nil, errs, errors.New("no valid monitors, cannot continue")
+	}
+	// Register any prober-specific metrics that were constructed
+	for _, m := range collectors {
+		for _, collector := range m {
+			(*reg).MustRegister(*collector)
+		}
 	}
 	return monitors, errs, nil
 }
@@ -121,7 +128,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	logger.Infof("Initializing boulder-observer daemon")
 	logger.Debugf("Using config: %+v", c)
 
-	monitors, errs, err := c.makeMonitors()
+	monitors, errs, err := c.makeMonitors(&metrics)
 	if len(errs) != 0 {
 		logger.Errf("%d of %d monitors failed validation", len(errs), len(c.MonConfs))
 		for _, err := range errs {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -29,33 +30,38 @@ func (c *MonConf) validatePeriod() error {
 // value of the `Settings` field back to bytes, then passing it to the
 // `UnmarshalSettings` method of the `Configurer` type specified by the
 // `Kind` field.
-func (c MonConf) unmarshalConfigurer() (probers.Configurer, error) {
+func (c MonConf) unmarshalConfigurer() (probers.Configurer, string, error) {
 	kind := strings.Trim(strings.ToLower(c.Kind), " ")
 	configurer, err := probers.GetConfigurer(kind)
 	if err != nil {
-		return nil, err
+		return nil, kind, err
 	}
 	settings, _ := yaml.Marshal(c.Settings)
 	configurer, err = configurer.UnmarshalSettings(settings)
 	if err != nil {
-		return nil, err
+		return nil, kind, err
 	}
-	return configurer, nil
+	return configurer, kind, nil
 }
 
 // makeMonitor constructs a `monitor` object from the contents of the
 // bound `MonConf`. If the `MonConf` cannot be validated, an error
 // appropriate for end-user consumption is returned instead.
-func (c MonConf) makeMonitor() (*monitor, error) {
+func (c MonConf) makeMonitor(collectors map[string]map[string]*prometheus.Collector) (*monitor, error) {
 	err := c.validatePeriod()
 	if err != nil {
 		return nil, err
 	}
-	probeConf, err := c.unmarshalConfigurer()
+	probeConf, kind, err := c.unmarshalConfigurer()
 	if err != nil {
 		return nil, err
 	}
-	prober, err := probeConf.MakeProber()
+	pColls, exist := collectors[kind]
+	if !exist {
+		pColls = probeConf.Instrument()
+		collectors[kind] = pColls
+	}
+	prober, err := probeConf.MakeProber(pColls)
 	if err != nil {
 		return nil, err
 	}

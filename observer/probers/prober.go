@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -40,7 +41,14 @@ type Configurer interface {
 	// bound `Configurer` object. If the `Configurer` cannot be
 	// validated, an error appropriate for end-user consumption is
 	// returned instead.
-	MakeProber() (Prober, error)
+	MakeProber(map[string]*prometheus.Collector) (Prober, error)
+
+	// Instrument constructs any `prometheus.Collector` objects that a prober of
+	// the configured type will need to report its own metrics. A map is
+	// returned containing the constructed objects, indexed by the name of the
+	// prometheus metric. If no objects were constructed, an empty map is
+	// returned.
+	Instrument() map[string]*prometheus.Collector
 }
 
 // Settings is exported as a temporary receiver for the `settings` field
