@@ -94,7 +94,7 @@ func TestContactAuditor(t *testing.T) {
 	contentLines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
 	test.AssertEquals(t, len(contentLines), 2)
 
-	// Each result entry should contain five tab separated columns.
+	// Each result entry should contain six tab separated columns.
 	for _, line := range contentLines {
 		test.AssertEquals(t, len(strings.Split(line, "\t")), 6)
 	}
