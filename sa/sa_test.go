@@ -1736,7 +1736,7 @@ func TestRevokeCertificateNoResponse(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 	// Add a cert to the DB to test with.
-	certDER, err := ioutil.ReadFile("www.eff.org.der")
+	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
