@@ -609,11 +609,11 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 // that the PublicKey, CommonName, and DNSNames match those provided in
 // the CSR that was used to generate the certificate. It also checks the
 // following fields for:
-//		* notBefore is not more than 24 hours ago
-//		* BasicConstraintsValid is true
-//		* IsCA is false
-//		* ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
-//		* Subject only contains CommonName & Names
+//   - notBefore is not more than 24 hours ago
+//   - BasicConstraintsValid is true
+//   - IsCA is false
+//   - ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
+//   - Subject only contains CommonName & Names
 func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certificate, csr *x509.CertificateRequest) error {
 	// Check issued certificate matches what was expected from the CSR
 	hostNames := make([]string, len(csr.DNSNames))

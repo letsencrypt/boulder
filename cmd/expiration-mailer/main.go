@@ -8,7 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math"
 	netmail "net/mail"
 	"net/url"
@@ -645,7 +644,7 @@ func main() {
 
 	var smtpRoots *x509.CertPool
 	if c.Mailer.SMTPTrustedRootFile != "" {
-		pem, err := ioutil.ReadFile(c.Mailer.SMTPTrustedRootFile)
+		pem, err := os.ReadFile(c.Mailer.SMTPTrustedRootFile)
 		cmd.FailOnError(err, "Loading trusted roots file")
 		smtpRoots = x509.NewCertPool()
 		if !smtpRoots.AppendCertsFromPEM(pem) {
@@ -654,7 +653,7 @@ func main() {
 	}
 
 	// Load email template
-	emailTmpl, err := ioutil.ReadFile(c.Mailer.EmailTemplate)
+	emailTmpl, err := os.ReadFile(c.Mailer.EmailTemplate)
 	cmd.FailOnError(err, fmt.Sprintf("Could not read email template file [%s]", c.Mailer.EmailTemplate))
 	tmpl, err := template.New("expiry-email").Parse(string(emailTmpl))
 	cmd.FailOnError(err, "Could not parse email template")

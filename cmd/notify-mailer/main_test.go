@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"testing"
 	"text/template"
@@ -41,7 +40,7 @@ func TestIntervalOK(t *testing.T) {
 }
 
 func setupMakeRecipientList(t *testing.T, contents string) string {
-	entryFile, err := ioutil.TempFile("", "")
+	entryFile, err := os.CreateTemp("", "")
 	test.AssertNotError(t, err, "couldn't create temp file")
 
 	_, err = entryFile.WriteString(contents)

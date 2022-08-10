@@ -11,8 +11,8 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -107,7 +107,7 @@ const caCertFile = "../test/test-ca.pem"
 const caCertFile2 = "../test/test-ca2.pem"
 
 func mustRead(path string) []byte {
-	b, err := ioutil.ReadFile(path)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		panic(fmt.Sprintf("unable to read %#v: %s", path, err))
 	}

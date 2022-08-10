@@ -11,7 +11,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/big"
 	"os"
@@ -40,7 +39,7 @@ func TestOrphanFinder(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	f, _ := ioutil.TempFile("", "orphaned.log")
+	f, _ := os.CreateTemp("", "orphaned.log")
 	io.WriteString(f, fmt.Sprintf(template, precert.SerialNumber.Bytes(),
 		precert.Raw, cert.SerialNumber.Bytes(), cert.Raw))
 	f.Close()
@@ -75,7 +74,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	pubKeyBytes, err := ioutil.ReadFile("/hierarchy/intermediate-signing-pub-rsa.pem")
+	pubKeyBytes, err := os.ReadFile("/hierarchy/intermediate-signing-pub-rsa.pem")
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +87,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("parsing issuer public key: %s", err)
 	}
 	var pkcs11Config pkcs11key.Config
-	contents, err := ioutil.ReadFile("test/test-ca.key-pkcs11.json")
+	contents, err := os.ReadFile("test/test-ca.key-pkcs11.json")
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +114,7 @@ func makeFakeCert(precert bool) (*x509.Certificate, error) {
 	}
 	if precert {
 		template.ExtraExtensions = []pkix.Extension{
-			pkix.Extension{
+			{
 				Id:       OIDExtensionCTPoison,
 				Critical: true,
 				Value:    []byte{5, 0},

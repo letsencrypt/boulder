@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -47,11 +46,11 @@ func genKey(path string, inSlot string) error {
 // rewriteConfig creates a temporary config based on the template at path
 // using the variables in rewrites.
 func rewriteConfig(path string, rewrites map[string]string) (string, error) {
-	tmplBytes, err := ioutil.ReadFile(path)
+	tmplBytes, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
-	tmp, err := ioutil.TempFile(os.TempDir(), "ceremony-config")
+	tmp, err := os.CreateTemp(os.TempDir(), "ceremony-config")
 	if err != nil {
 		return "", err
 	}

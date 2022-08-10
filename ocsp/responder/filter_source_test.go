@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto"
 	"encoding/hex"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -57,7 +57,7 @@ func TestCheckRequest(t *testing.T) {
 	f, err := NewFilterSource([]*issuance.Certificate{issuer}, []string{"00"}, nil, metrics.NoopRegisterer, blog.NewMock(), clock.New())
 	test.AssertNotError(t, err, "errored when creating good filter")
 
-	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
+	reqBytes, err := os.ReadFile("./testdata/ocsp.req")
 	test.AssertNotError(t, err, "failed to read OCSP request")
 
 	// Select a bad hash algorithm.
@@ -96,12 +96,12 @@ func TestCheckResponse(t *testing.T) {
 	issuer, err := issuance.LoadCertificate("./testdata/test-ca.der.pem")
 	test.AssertNotError(t, err, "failed to load issuer cert")
 
-	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
+	reqBytes, err := os.ReadFile("./testdata/ocsp.req")
 	test.AssertNotError(t, err, "failed to read OCSP request")
 	req, err := ocsp.ParseRequest(reqBytes)
 	test.AssertNotError(t, err, "failed to prepare fake ocsp request")
 
-	respBytes, err := ioutil.ReadFile("./testdata/ocsp.resp")
+	respBytes, err := os.ReadFile("./testdata/ocsp.resp")
 	test.AssertNotError(t, err, "failed to read OCSP response")
 	resp, err := ocsp.ParseResponse(respBytes, nil)
 	test.AssertNotError(t, err, "failed to parse OCSP response")

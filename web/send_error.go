@@ -11,11 +11,12 @@ import (
 )
 
 // SendError does a few things that we want for each error response:
-//  - Adds both the external and the internal error to a RequestEvent.
-//  - If the ProblemDetails provided is a ServerInternalProblem, audit logs the
-//    internal error.
-//  - Prefixes the Type field of the ProblemDetails with a namespace.
-//  - Sends an HTTP response containing the error and an error code to the user.
+//   - Adds both the external and the internal error to a RequestEvent.
+//   - If the ProblemDetails provided is a ServerInternalProblem, audit logs the
+//     internal error.
+//   - Prefixes the Type field of the ProblemDetails with a namespace.
+//   - Sends an HTTP response containing the error and an error code to the user.
+//
 // The internal error (ierr) may be nil if no information beyond the
 // ProblemDetails is needed for internal debugging.
 func SendError(

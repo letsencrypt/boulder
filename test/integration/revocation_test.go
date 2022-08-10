@@ -9,7 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -679,21 +679,21 @@ func TestBadKeyRevoker(t *testing.T) {
 	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokeeCount.Body.Close() }()
-	body, err := ioutil.ReadAll(revokeeCount.Body)
+	body, err := io.ReadAll(revokeeCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "1\n")
 
 	revokerCount, err := http.Get("http://boulder:9381/count?to=revoker@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokerCount.Body.Close() }()
-	body, err = ioutil.ReadAll(revokerCount.Body)
+	body, err = io.ReadAll(revokerCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "1\n")
 
 	sharedCount, err := http.Get("http://boulder:9381/count?to=shared@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = sharedCount.Body.Close() }()
-	body, err = ioutil.ReadAll(sharedCount.Body)
+	body, err = io.ReadAll(sharedCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "1\n")
 }
@@ -767,21 +767,21 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee-moz@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokeeCount.Body.Close() }()
-	body, err := ioutil.ReadAll(revokeeCount.Body)
+	body, err := io.ReadAll(revokeeCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "0\n")
 
 	revokerCount, err := http.Get("http://boulder:9381/count?to=revoker-moz@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokerCount.Body.Close() }()
-	body, err = ioutil.ReadAll(revokerCount.Body)
+	body, err = io.ReadAll(revokerCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "0\n")
 
 	sharedCount, err := http.Get("http://boulder:9381/count?to=shared-moz@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = sharedCount.Body.Close() }()
-	body, err = ioutil.ReadAll(sharedCount.Body)
+	body, err = io.ReadAll(sharedCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "0\n")
 }

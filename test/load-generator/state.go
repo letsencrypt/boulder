@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -228,7 +228,7 @@ func (s *State) Snapshot(filename string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(filename, cont, os.ModePerm)
+	return os.WriteFile(filename, cont, os.ModePerm)
 }
 
 // Restore previously generated accounts
@@ -241,7 +241,7 @@ func (s *State) Restore(filename string) error {
 		return err
 	}
 
-	content, err := ioutil.ReadAll(f)
+	content, err := io.ReadAll(f)
 	if err != nil {
 		return err
 	}

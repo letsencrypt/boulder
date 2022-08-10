@@ -3,7 +3,6 @@ package notmain
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"strings"
@@ -85,7 +84,7 @@ func TestContactAuditor(t *testing.T) {
 	}
 
 	// Load results file.
-	data, err := ioutil.ReadFile(testCtx.c.resultsFile.Name())
+	data, err := os.ReadFile(testCtx.c.resultsFile.Name())
 	if err != nil {
 		t.Error(err)
 	}
@@ -187,7 +186,7 @@ func setup(t *testing.T) testCtx {
 	}
 
 	// Make temp results file
-	file, err := ioutil.TempFile("", fmt.Sprintf("audit-%s", time.Now().Format("2006-01-02T15:04")))
+	file, err := os.CreateTemp("", fmt.Sprintf("audit-%s", time.Now().Format("2006-01-02T15:04")))
 	if err != nil {
 		t.Fatal(err)
 	}

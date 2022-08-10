@@ -12,10 +12,10 @@ import (
 	"database/sql"
 	"encoding/asn1"
 	"encoding/pem"
-	"io/ioutil"
 	"log"
 	"math/big"
 	mrand "math/rand"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -144,7 +144,7 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 	}()
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 
-	certPEM, err := ioutil.ReadFile("testdata/quite_invalid.pem")
+	certPEM, err := os.ReadFile("testdata/quite_invalid.pem")
 	if err != nil {
 		t.Fatal(err)
 	}

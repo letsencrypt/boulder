@@ -9,7 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strconv"
@@ -198,7 +197,7 @@ type orphanFinder struct {
 }
 
 func newOrphanFinder(configFile string) *orphanFinder {
-	configJSON, err := ioutil.ReadFile(configFile)
+	configJSON, err := os.ReadFile(configFile)
 	cmd.FailOnError(err, "Failed to read config file")
 	var conf Config
 	err = json.Unmarshal(configJSON, &conf)
@@ -240,7 +239,7 @@ func newOrphanFinder(configFile string) *orphanFinder {
 // found, and how many it successfully stored.
 func (opf *orphanFinder) parseCALog(logPath string) {
 	ctx := context.Background()
-	logData, err := ioutil.ReadFile(logPath)
+	logData, err := os.ReadFile(logPath)
 	cmd.FailOnError(err, "Failed to read log file")
 
 	var certOrphansFound, certOrphansAdded, precertOrphansFound, precertOrphansAdded int64
@@ -347,7 +346,7 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 // parseDER loads and attempts to store a single orphan from a single DER file.
 func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 	ctx := context.Background()
-	der, err := ioutil.ReadFile(derPath)
+	der, err := os.ReadFile(derPath)
 	cmd.FailOnError(err, "Failed to read DER file")
 	cert, typ, err := checkDER(opf.sa, der)
 	cmd.FailOnError(err, "Pre-AddCertificate checks failed")

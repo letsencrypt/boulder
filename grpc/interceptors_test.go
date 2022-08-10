@@ -254,8 +254,9 @@ func TestRequestTimeTagging(t *testing.T) {
 }
 
 // blockedServer implements a ChillerServer with a Chill method that:
-//   a) Calls Done() on the received waitgroup when receiving an RPC
-//   b) Blocks the RPC on the roadblock waitgroup
+//  1. Calls Done() on the received waitgroup when receiving an RPC
+//  2. Blocks the RPC on the roadblock waitgroup
+//
 // This is used by TestInFlightRPCStat to test that the gauge for in-flight RPCs
 // is incremented and decremented as expected.
 type blockedServer struct {

@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"io/ioutil"
 	netmail "net/mail"
 	"os"
 	"strings"
@@ -458,7 +457,7 @@ func main() {
 
 	var smtpRoots *x509.CertPool
 	if config.BadKeyRevoker.Mailer.SMTPTrustedRootFile != "" {
-		pem, err := ioutil.ReadFile(config.BadKeyRevoker.Mailer.SMTPTrustedRootFile)
+		pem, err := os.ReadFile(config.BadKeyRevoker.Mailer.SMTPTrustedRootFile)
 		cmd.FailOnError(err, "Loading trusted roots file")
 		smtpRoots = x509.NewCertPool()
 		if !smtpRoots.AppendCertsFromPEM(pem) {
@@ -487,7 +486,7 @@ func main() {
 	if config.BadKeyRevoker.Mailer.EmailSubject == "" {
 		cmd.Fail("BadKeyRevoker.Mailer.EmailSubject must be populated")
 	}
-	templateBytes, err := ioutil.ReadFile(config.BadKeyRevoker.Mailer.EmailTemplate)
+	templateBytes, err := os.ReadFile(config.BadKeyRevoker.Mailer.EmailTemplate)
 	cmd.FailOnError(err, fmt.Sprintf("failed to read email template %q: %s", config.BadKeyRevoker.Mailer.EmailTemplate, err))
 	emailTemplate, err := template.New("email").Parse(string(templateBytes))
 	cmd.FailOnError(err, fmt.Sprintf("failed to parse email template %q: %s", config.BadKeyRevoker.Mailer.EmailTemplate, err))

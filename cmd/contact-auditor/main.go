@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -160,7 +159,7 @@ func main() {
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
 
 	// Load config from JSON.
-	configData, err := ioutil.ReadFile(*configFile)
+	configData, err := os.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Error reading config file: %q", *configFile))
 
 	var cfg Config

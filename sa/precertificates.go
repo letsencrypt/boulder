@@ -12,6 +12,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -106,20 +107,21 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
-		err = ssa.dbMap.WithContext(ctx).Insert(
-			&core.CertificateStatus{
-				Serial:                serialHex,
-				Status:                core.OCSPStatusGood,
-				OCSPLastUpdated:       ssa.clk.Now(),
-				RevokedDate:           time.Time{},
-				RevokedReason:         0,
-				LastExpirationNagSent: time.Time{},
-				OCSPResponse:          req.Ocsp,
-				NotAfter:              parsed.NotAfter,
-				IsExpired:             false,
-				IssuerID:              req.IssuerID,
-			},
-		)
+		cs := &core.CertificateStatus{
+			Serial:                serialHex,
+			Status:                core.OCSPStatusGood,
+			OCSPLastUpdated:       ssa.clk.Now(),
+			RevokedDate:           time.Time{},
+			RevokedReason:         0,
+			LastExpirationNagSent: time.Time{},
+			NotAfter:              parsed.NotAfter,
+			IsExpired:             false,
+			IssuerID:              req.IssuerID,
+		}
+		if !features.Enabled(features.ROCSPStage6) {
+			cs.OCSPResponse = req.Ocsp
+		}
+		err = ssa.dbMap.WithContext(ctx).Insert(cs)
 		if err != nil {
 			return nil, err
 		}

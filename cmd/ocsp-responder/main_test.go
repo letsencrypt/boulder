@@ -3,9 +3,9 @@ package notmain
 import (
 	"bytes"
 	"encoding/base64"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -18,7 +18,7 @@ import (
 )
 
 func TestMux(t *testing.T) {
-	reqBytes, err := ioutil.ReadFile("./testdata/ocsp.req")
+	reqBytes, err := os.ReadFile("./testdata/ocsp.req")
 	test.AssertNotError(t, err, "failed to read OCSP request")
 	req, err := ocsp.ParseRequest(reqBytes)
 	test.AssertNotError(t, err, "failed to parse OCSP request")
@@ -28,7 +28,7 @@ func TestMux(t *testing.T) {
 	doubleSlashReq, err := ocsp.ParseRequest(doubleSlashBytes)
 	test.AssertNotError(t, err, "failed to parse double slash OCSP request")
 
-	respBytes, err := ioutil.ReadFile("./testdata/ocsp.resp")
+	respBytes, err := os.ReadFile("./testdata/ocsp.resp")
 	test.AssertNotError(t, err, "failed to read OCSP response")
 	resp, err := ocsp.ParseResponse(respBytes, nil)
 	test.AssertNotError(t, err, "failed to parse OCSP response")

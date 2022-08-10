@@ -15,11 +15,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -248,7 +248,7 @@ func (ra *MockRegistrationAuthority) FinalizeOrder(ctx context.Context, in *rapb
 }
 
 func makeBody(s string) io.ReadCloser {
-	return ioutil.NopCloser(strings.NewReader(s))
+	return io.NopCloser(strings.NewReader(s))
 }
 
 // loadKey loads a private key from PEM/DER-encoded data and returns
@@ -1800,14 +1800,14 @@ func TestGetCertificate(t *testing.T) {
 	_, ok := altKey.(*rsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load RSA key")
 
-	certPemBytes, _ := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
+	certPemBytes, _ := os.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "failed to load test certificate")
 
-	chainPemBytes, err := ioutil.ReadFile("../test/hierarchy/int-r3.cert.pem")
+	chainPemBytes, err := os.ReadFile("../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Error reading ../test/hierarchy/int-r3.cert.pem")
 
-	chainCrossPemBytes, err := ioutil.ReadFile("../test/hierarchy/int-r3-cross.cert.pem")
+	chainCrossPemBytes, err := os.ReadFile("../test/hierarchy/int-r3-cross.cert.pem")
 	test.AssertNotError(t, err, "Error reading ../test/hierarchy/int-r3-cross.cert.pem")
 
 	reqPath := fmt.Sprintf("/acme/cert/%s", core.SerialToString(cert.SerialNumber))
@@ -1994,7 +1994,7 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 		return nil, fmt.Errorf("failed to load test issuer cert: %w", err)
 	}
 
-	issuerKeyPem, err := ioutil.ReadFile("../test/hierarchy/int-e1.key.pem")
+	issuerKeyPem, err := os.ReadFile("../test/hierarchy/int-e1.key.pem")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load test issuer key: %w", err)
 	}
@@ -2135,11 +2135,11 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
-	certPemBytes, _ := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
+	certPemBytes, _ := os.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "failed to load test certificate")
 
-	chainPemBytes, err := ioutil.ReadFile("../test/hierarchy/int-r3.cert.pem")
+	chainPemBytes, err := os.ReadFile("../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Error reading ../test/hierarchy/int-r3.cert.pem")
 	chain := fmt.Sprintf("%s\n%s", string(certPemBytes), string(chainPemBytes))
 	chainLen := strconv.Itoa(len(chain))
@@ -2156,7 +2156,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	if err != nil {
 		test.AssertNotError(t, err, "do error")
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		test.AssertNotEquals(t, err, "readall error")
 	}
@@ -2666,7 +2666,7 @@ func TestKeyRollover(t *testing.T) {
 	existingKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating random 2048 RSA key")
 
-	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	newKeyBytes, err := os.ReadFile("../test/test-key-5.der")
 	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
 	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
 	test.AssertNotError(t, err, "Failed parsing private key")
@@ -2756,7 +2756,7 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 	wfe, _ := setupWFE(t)
 
-	newKeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	newKeyBytes, err := os.ReadFile("../test/test-key-5.der")
 	test.AssertNotError(t, err, "Failed to read ../test/test-key-5.der")
 	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
 	test.AssertNotError(t, err, "Failed parsing private key")
@@ -2872,7 +2872,7 @@ func TestGetOrder(t *testing.T) {
 }
 
 func makeRevokeRequestJSON(reason *revocation.Reason) ([]byte, error) {
-	certPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.cert.pem")
+	certPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	if err != nil {
 		return nil, err
 	}
@@ -2932,7 +2932,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
 
-	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
+	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2974,7 +2974,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, k.Public(), k)
 	test.AssertNotError(t, err, "Unexpected error creating self-signed junk cert")
 
-	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
+	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -2995,7 +2995,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
 	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
-	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-r3.key.pem")
+	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 
@@ -3088,7 +3088,7 @@ func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
 
-	keyPemBytes, err := ioutil.ReadFile("../test/hierarchy/ee-e1.key.pem")
+	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-e1.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
 	key := loadKey(t, keyPemBytes)
 

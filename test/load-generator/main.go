@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -52,7 +51,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	configBytes, err := ioutil.ReadFile(*configPath)
+	configBytes, err := os.ReadFile(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read load-generator config file %q: %s\n", *configPath, err)
 		os.Exit(1)

@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"testing"
 	"time"
@@ -271,7 +270,7 @@ type fakeS3Putter struct {
 }
 
 func (p *fakeS3Putter) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	recvBytes, err := ioutil.ReadAll(params.Body)
+	recvBytes, err := io.ReadAll(params.Body)
 	if err != nil {
 		return nil, err
 	}

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -649,7 +648,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 	// At this point we've made a successful request (be it from a retry or
 	// otherwise) and can read and process the response body.
-	body, err := ioutil.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
+	body, err := io.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
 	closeErr := httpResponse.Body.Close()
 	if err == nil {
 		err = closeErr

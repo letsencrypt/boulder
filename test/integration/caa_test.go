@@ -4,7 +4,6 @@ package integration
 
 import (
 	"bytes"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"testing"
@@ -39,7 +38,7 @@ func TestCAALogChecker(t *testing.T) {
 	// we don't know how many issuances there have been. We just
 	// test for caa-log-checker outputting _something_ since any
 	// output, with a 0 exit code, indicates it's found bad issuances.
-	tmp, err := ioutil.TempFile(os.TempDir(), "boulder-va-empty")
+	tmp, err := os.CreateTemp(os.TempDir(), "boulder-va-empty")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmp.Name())
 	cmd = exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", tmp.Name())

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
+	"os"
 	"strings"
 	"time"
 
@@ -105,7 +105,7 @@ func usableForPurpose(s state, p purpose) bool {
 // the given path. The file must conform to the JSON Schema published by Google:
 // https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 func New(path string) (List, error) {
-	file, err := ioutil.ReadFile(path)
+	file, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CT Log List: %w", err)
 	}

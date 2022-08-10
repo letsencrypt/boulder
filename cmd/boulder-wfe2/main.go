@@ -7,7 +7,6 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -140,7 +139,7 @@ type CacheConfig struct {
 // a certFile do not have a trailing newline one is added.
 // TODO(5164): Remove this after all configs have migrated to `Chains`.
 func loadCertificateFile(aiaIssuerURL, certFile string) ([]byte, *issuance.Certificate, error) {
-	pemBytes, err := ioutil.ReadFile(certFile)
+	pemBytes, err := os.ReadFile(certFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf(
 			"CertificateChain entry for AIA issuer url %q has an "+
@@ -453,6 +452,10 @@ func main() {
 
 	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats)
+
+	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
+	// because that field inherits its value from ReadTimeout.
+	////nolint:gosec
 	srv := http.Server{
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
@@ -469,6 +472,9 @@ func main() {
 		}
 	}()
 
+	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
+	// because that field inherits its value from ReadTimeout.
+	////nolint:gosec
 	tlsSrv := http.Server{
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
