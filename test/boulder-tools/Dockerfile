@@ -12,5 +12,6 @@ COPY requirements.txt /tmp/requirements.txt
 COPY boulder.rsyslog.conf /etc/rsyslog.d/
 COPY build.sh /tmp/build.sh
 RUN /tmp/build.sh
-RUN sed -i '/$ActionFileDefaultTemplate/s/^/#/' /etc/rsyslog.conf
 RUN sed -i '/imklog/s/^/#/' /etc/rsyslog.conf
+RUN sed -i '/$ActionFileDefaultTemplate/s/^/#/' /etc/rsyslog.conf
+RUN sed -i '/$RepeatedMsgReduction on/s/^/#/' /etc/rsyslog.conf
