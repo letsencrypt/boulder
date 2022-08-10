@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -30,7 +29,7 @@ func (pc *PasswordConfig) Pass() (string, error) {
 	if pc.PasswordFile == "" {
 		return "", nil
 	}
-	contents, err := ioutil.ReadFile(pc.PasswordFile)
+	contents, err := os.ReadFile(pc.PasswordFile)
 	if err != nil {
 		return "", err
 	}
@@ -84,7 +83,7 @@ type DBConfig struct {
 // whitespace is stripped.
 func (d *DBConfig) URL() (string, error) {
 	if d.DBConnectFile != "" {
-		url, err := ioutil.ReadFile(d.DBConnectFile)
+		url, err := os.ReadFile(d.DBConnectFile)
 		return strings.TrimSpace(string(url)), err
 	}
 	return d.DBConnect, nil
@@ -127,7 +126,7 @@ func (pc PAConfig) CheckChallenges() error {
 	}
 	for c := range pc.Challenges {
 		if !c.IsValid() {
-			return fmt.Errorf("Invalid challenge in PA config: %s", c)
+			return fmt.Errorf("invalid challenge in PA config: %s", c)
 		}
 	}
 	return nil
@@ -161,7 +160,7 @@ func (t *TLSConfig) Load() (*tls.Config, error) {
 	if t.CACertFile == nil {
 		return nil, fmt.Errorf("nil CACertFile in TLSConfig")
 	}
-	caCertBytes, err := ioutil.ReadFile(*t.CACertFile)
+	caCertBytes, err := os.ReadFile(*t.CACertFile)
 	if err != nil {
 		return nil, fmt.Errorf("reading CA cert from %q: %s", *t.CACertFile, err)
 	}

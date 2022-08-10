@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -56,7 +55,7 @@ var DefaultConfig = Config{
 	ignoreExpiredCerts: *ignoreExpiredCerts,
 	expectStatus:       *expectStatus,
 	expectReason:       *expectReason,
-	output:             ioutil.Discard,
+	output:             io.Discard,
 	issuerFile:         *issuerFile,
 }
 
@@ -64,7 +63,7 @@ var parseFlagsOnce sync.Once
 
 // ConfigFromFlags returns a Config whose values are populated from any command
 // line flags passed by the user, or default values if not passed.  However, it
-// replaces ioutil.Discard with os.Stdout so that CLI usages of this package
+// replaces io.Discard with os.Stdout so that CLI usages of this package
 // will produce output on stdout by default.
 func ConfigFromFlags() Config {
 	parseFlagsOnce.Do(func() {
@@ -108,7 +107,7 @@ func (template Config) WithOutput(w io.Writer) Config {
 }
 
 func GetIssuerFile(f string) (*x509.Certificate, error) {
-	certFileBytes, err := ioutil.ReadFile(f)
+	certFileBytes, err := os.ReadFile(f)
 	if err != nil {
 		return nil, fmt.Errorf("reading issuer file: %w", err)
 	}
@@ -136,7 +135,7 @@ func GetIssuer(cert *x509.Certificate) (*x509.Certificate, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +194,7 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 // ReqFle makes an OCSP request using the given config for the PEM-encoded
 // certificate in fileName, and returns the response.
 func ReqFile(fileName string, config Config) (*ocsp.Response, error) {
-	contents, err := ioutil.ReadFile(fileName)
+	contents, err := os.ReadFile(fileName)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +253,7 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 	if httpResp.StatusCode != 200 {
 		return nil, fmt.Errorf("http status code %d", httpResp.StatusCode)
 	}
-	respBytes, err := ioutil.ReadAll(httpResp.Body)
+	respBytes, err := io.ReadAll(httpResp.Body)
 	defer httpResp.Body.Close()
 	if err != nil {
 		return nil, err

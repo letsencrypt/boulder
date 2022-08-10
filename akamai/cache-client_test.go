@@ -3,7 +3,7 @@ package akamai
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -67,7 +67,7 @@ func (as *akamaiServer) purgeHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Objects []string
 	}
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		fmt.Printf("Failed to read request body: %s\n", err)
 		w.WriteHeader(http.StatusInternalServerError)

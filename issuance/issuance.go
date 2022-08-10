@@ -15,8 +15,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -124,7 +124,7 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 
 	var pkcs11Config *pkcs11key.Config
 	if location.ConfigFile != "" {
-		contents, err := ioutil.ReadFile(location.ConfigFile)
+		contents, err := os.ReadFile(location.ConfigFile)
 		if err != nil {
 			return nil, err
 		}

@@ -8,8 +8,8 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"path"
 	"strings"
 	"testing"
@@ -65,7 +65,7 @@ func TestGenerateKeyRSA(t *testing.T) {
 		RSAModLength: 1024,
 	})
 	test.AssertNotError(t, err, "Failed to generate RSA key")
-	diskKeyBytes, err := ioutil.ReadFile(keyPath)
+	diskKeyBytes, err := os.ReadFile(keyPath)
 	test.AssertNotError(t, err, "Failed to load key from disk")
 	block, _ := pem.Decode(diskKeyBytes)
 	diskKey, err := x509.ParsePKIXPublicKey(block.Bytes)
@@ -101,7 +101,7 @@ func TestGenerateKeyEC(t *testing.T) {
 		ECDSACurve: "P-256",
 	})
 	test.AssertNotError(t, err, "Failed to generate ECDSA key")
-	diskKeyBytes, err := ioutil.ReadFile(keyPath)
+	diskKeyBytes, err := os.ReadFile(keyPath)
 	test.AssertNotError(t, err, "Failed to load key from disk")
 	block, _ := pem.Decode(diskKeyBytes)
 	diskKey, err := x509.ParsePKIXPublicKey(block.Bytes)

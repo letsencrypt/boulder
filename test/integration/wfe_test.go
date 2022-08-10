@@ -3,7 +3,7 @@
 package integration
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -45,7 +45,7 @@ func TestWFEHTTPMetrics(t *testing.T) {
 	resp, err = http.Get("http://boulder:8013/metrics")
 	test.AssertNotError(t, err, "GET boulder-wfe2 metrics")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	test.AssertNotError(t, err, "Reading boulder-wfe2 metrics response")
 	test.AssertContains(t, string(body), `response_time_count{code="200",endpoint="/directory",method="GET"}`)
 	resp.Body.Close()

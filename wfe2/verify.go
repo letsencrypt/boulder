@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -354,7 +354,7 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWe
 
 	// Read the POST request body's bytes. validPOSTRequest has already checked
 	// that the body is non-nil
-	bodyBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
+	bodyBytes, err := io.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
 		if err.Error() == "http: request body too large" {
 			return nil, probs.Unauthorized("request body too large")

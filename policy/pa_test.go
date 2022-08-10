@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -151,9 +150,9 @@ func TestWillingToIssue(t *testing.T) {
 
 	yamlPolicyBytes, err := yaml.Marshal(policy)
 	test.AssertNotError(t, err, "Couldn't YAML serialize blocklist")
-	yamlPolicyFile, _ := ioutil.TempFile("", "test-blocklist.*.yaml")
+	yamlPolicyFile, _ := os.CreateTemp("", "test-blocklist.*.yaml")
 	defer os.Remove(yamlPolicyFile.Name())
-	err = ioutil.WriteFile(yamlPolicyFile.Name(), yamlPolicyBytes, 0640)
+	err = os.WriteFile(yamlPolicyFile.Name(), yamlPolicyBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write YAML blocklist")
 
 	pa := paImpl(t)
@@ -228,9 +227,9 @@ func TestWillingToIssueWildcard(t *testing.T) {
 		ExactBlockedNames:    exactBannedDomains,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
-	f, _ := ioutil.TempFile("", "test-wildcard-banlist.*.yaml")
+	f, _ := os.CreateTemp("", "test-wildcard-banlist.*.yaml")
 	defer os.Remove(f.Name())
-	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
+	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
@@ -319,9 +318,9 @@ func TestWillingToIssueWildcards(t *testing.T) {
 		ExactBlockedNames:    banned,
 	})
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
-	f, _ := ioutil.TempFile("", "test-wildcard-banlist.*.yaml")
+	f, _ := os.CreateTemp("", "test-wildcard-banlist.*.yaml")
 	defer os.Remove(f.Name())
-	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
+	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
 	err = pa.SetHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
@@ -445,10 +444,10 @@ func TestMalformedExactBlocklist(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't serialize banned list")
 
 	// Create a temp file for the YAML contents
-	f, _ := ioutil.TempFile("", "test-invalid-exactblocklist.*.yaml")
+	f, _ := os.CreateTemp("", "test-invalid-exactblocklist.*.yaml")
 	defer os.Remove(f.Name())
 	// Write the YAML to the temp file
-	err = ioutil.WriteFile(f.Name(), bannedBytes, 0640)
+	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
 
 	// Try to use the YAML tempfile as the hostname policy. It should produce an

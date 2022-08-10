@@ -2,7 +2,7 @@ package notmain
 
 import (
 	"flag"
-	"io/ioutil"
+	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer"
@@ -14,7 +14,7 @@ func main() {
 		"config", "config.yml", "Path to boulder-observer configuration file")
 	flag.Parse()
 
-	configYAML, err := ioutil.ReadFile(*configPath)
+	configYAML, err := os.ReadFile(*configPath)
 	cmd.FailOnError(err, "failed to read config file")
 
 	// Parse the YAML config file.

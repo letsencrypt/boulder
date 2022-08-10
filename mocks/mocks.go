@@ -7,9 +7,9 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -113,7 +113,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.Registr
 
 // GetRegistrationByKey is a mock
 func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	test5KeyBytes, err := ioutil.ReadFile("../test/test-key-5.der")
+	test5KeyBytes, err := os.ReadFile("../test/test-key-5.der")
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (sa *StorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Ser
 func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	// Serial ee == 238.crt
 	if req.Serial == "0000000000000000000000000000000000ee" {
-		certPemBytes, _ := ioutil.ReadFile("test/238.crt")
+		certPemBytes, _ := os.ReadFile("test/238.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
 		return &corepb.Certificate{
 			RegistrationID: 1,
@@ -206,7 +206,7 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial, 
 			Issued:         sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
 		}, nil
 	} else if req.Serial == "0000000000000000000000000000000000b2" {
-		certPemBytes, _ := ioutil.ReadFile("test/178.crt")
+		certPemBytes, _ := os.ReadFile("test/178.crt")
 		certBlock, _ := pem.Decode(certPemBytes)
 		return &corepb.Certificate{
 			RegistrationID: 1,

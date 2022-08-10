@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -65,7 +64,7 @@ func (i *idExporterResults) writeToFile(outfile string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(outfile, data, 0644)
+	return os.WriteFile(outfile, data, 0644)
 }
 
 // findIDs gathers all registration IDs with unexpired certificates.
@@ -254,7 +253,7 @@ func main() {
 	log := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
 
 	// Load configuration file.
-	configData, err := ioutil.ReadFile(*configFile)
+	configData, err := os.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Reading %q", *configFile))
 
 	// Unmarshal JSON config file.

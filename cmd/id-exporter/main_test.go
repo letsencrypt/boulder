@@ -8,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"os"
@@ -189,51 +188,51 @@ func TestWriteToFile(t *testing.T) {
 	mockResults := idExporterResults{{ID: 1}, {ID: 2}, {ID: 3}}
 	dir := os.TempDir()
 
-	f, err := ioutil.TempFile(dir, "ids_test")
-	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
+	f, err := os.CreateTemp(dir, "ids_test")
+	test.AssertNotError(t, err, "os.CreateTemp produced an error")
 
 	// Writing the result to an outFile should produce the correct results
 	err = mockResults.writeToFile(f.Name())
 	test.AssertNotError(t, err, fmt.Sprintf("writeIDs produced an error writing to %s", f.Name()))
 
-	contents, err := ioutil.ReadFile(f.Name())
-	test.AssertNotError(t, err, fmt.Sprintf("ioutil.ReadFile produced an error reading from %s", f.Name()))
+	contents, err := os.ReadFile(f.Name())
+	test.AssertNotError(t, err, fmt.Sprintf("os.ReadFile produced an error reading from %s", f.Name()))
 
 	test.AssertEquals(t, string(contents), expected+"\n")
 }
 
 func Test_unmarshalHostnames(t *testing.T) {
 	testDir := os.TempDir()
-	testFile, err := ioutil.TempFile(testDir, "ids_test")
-	test.AssertNotError(t, err, "ioutil.TempFile produced an error")
+	testFile, err := os.CreateTemp(testDir, "ids_test")
+	test.AssertNotError(t, err, "os.CreateTemp produced an error")
 
 	// Non-existent hostnamesFile
 	_, err = unmarshalHostnames("file_does_not_exist")
 	test.AssertError(t, err, "expected error for non-existent file")
 
 	// Empty hostnamesFile
-	err = ioutil.WriteFile(testFile.Name(), []byte(""), 0644)
-	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	err = os.WriteFile(testFile.Name(), []byte(""), 0644)
+	test.AssertNotError(t, err, "os.WriteFile produced an error")
 	_, err = unmarshalHostnames(testFile.Name())
 	test.AssertError(t, err, "expected error for file containing 0 entries")
 
 	// One hostname present in the hostnamesFile
-	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com"), 0644)
-	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	err = os.WriteFile(testFile.Name(), []byte("example-a.com"), 0644)
+	test.AssertNotError(t, err, "os.WriteFile produced an error")
 	results, err := unmarshalHostnames(testFile.Name())
 	test.AssertNotError(t, err, "error when unmarshalling hostnamesFile with a single hostname")
 	test.AssertEquals(t, len(results), 1)
 
 	// Two hostnames present in the hostnamesFile
-	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com"), 0644)
-	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	err = os.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com"), 0644)
+	test.AssertNotError(t, err, "os.WriteFile produced an error")
 	results, err = unmarshalHostnames(testFile.Name())
 	test.AssertNotError(t, err, "error when unmarshalling hostnamesFile with a two hostnames")
 	test.AssertEquals(t, len(results), 2)
 
 	// Three hostnames present in the hostnamesFile but two are separated only by a space
-	err = ioutil.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com example-c.com"), 0644)
-	test.AssertNotError(t, err, "ioutil.WriteFile produced an error")
+	err = os.WriteFile(testFile.Name(), []byte("example-a.com\nexample-b.com example-c.com"), 0644)
+	test.AssertNotError(t, err, "os.WriteFile produced an error")
 	_, err = unmarshalHostnames(testFile.Name())
 	test.AssertError(t, err, "error when unmarshalling hostnamesFile with three space separated domains")
 }

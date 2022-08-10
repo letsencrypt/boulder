@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/mail"
 	"os"
 	"sort"
@@ -534,7 +533,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	configData, err := ioutil.ReadFile(*configFile)
+	configData, err := os.ReadFile(*configFile)
 	cmd.FailOnError(err, "Couldn't load JSON config file")
 
 	// Parse JSON config.

@@ -37,7 +37,7 @@ type filterSource struct {
 // by it.
 func NewFilterSource(issuerCerts []*issuance.Certificate, serialPrefixes []string, wrapped Source, stats prometheus.Registerer, log blog.Logger, clk clock.Clock) (*filterSource, error) {
 	if len(issuerCerts) < 1 {
-		return nil, errors.New("Filter must include at least 1 issuer cert")
+		return nil, errors.New("filter must include at least 1 issuer cert")
 	}
 
 	issuersByNameId := make(map[issuance.IssuerNameID]responderID)

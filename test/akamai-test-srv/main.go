@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"sync"
@@ -52,7 +52,7 @@ func main() {
 		var purgeRequest struct {
 			Objects []string `json:"objects"`
 		}
-		body, err := ioutil.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Println("Can't read body:", err)

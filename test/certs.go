@@ -10,8 +10,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"testing"
 )
 
@@ -19,7 +19,7 @@ import (
 // Can be paired with issuance.LoadCertificate to get both a CA cert and its
 // associated private key for use in signing throwaway test certs.
 func LoadSigner(filename string) (crypto.Signer, error) {
-	keyBytes, err := ioutil.ReadFile(filename)
+	keyBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}

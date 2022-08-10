@@ -3,7 +3,6 @@ package goodkey
 import (
 	"context"
 	"crypto"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -23,11 +22,11 @@ func TestBlockedKeys(t *testing.T) {
 	yamlList, err := yaml.Marshal(&inList)
 	test.AssertNotError(t, err, "error marshaling test blockedKeys list")
 
-	yamlListFile, err := ioutil.TempFile("", "test-blocked-keys-list.*.yaml")
+	yamlListFile, err := os.CreateTemp("", "test-blocked-keys-list.*.yaml")
 	test.AssertNotError(t, err, "error creating test blockedKeys yaml file")
 	defer os.Remove(yamlListFile.Name())
 
-	err = ioutil.WriteFile(yamlListFile.Name(), yamlList, 0640)
+	err = os.WriteFile(yamlListFile.Name(), yamlList, 0640)
 	test.AssertNotError(t, err, "error writing test blockedKeys yaml file")
 
 	// Trying to load it should error
@@ -65,11 +64,11 @@ func TestBlockedKeys(t *testing.T) {
 	yamlList, err = yaml.Marshal(&inList)
 	test.AssertNotError(t, err, "error marshaling test blockedKeys list")
 
-	yamlListFile, err = ioutil.TempFile("", "test-blocked-keys-list.*.yaml")
+	yamlListFile, err = os.CreateTemp("", "test-blocked-keys-list.*.yaml")
 	test.AssertNotError(t, err, "error creating test blockedKeys yaml file")
 	defer os.Remove(yamlListFile.Name())
 
-	err = ioutil.WriteFile(yamlListFile.Name(), yamlList, 0640)
+	err = os.WriteFile(yamlListFile.Name(), yamlList, 0640)
 	test.AssertNotError(t, err, "error writing test blockedKeys yaml file")
 
 	// Trying to load it should not error

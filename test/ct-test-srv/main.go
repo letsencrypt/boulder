@@ -10,10 +10,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -43,7 +44,7 @@ func readJSON(w http.ResponseWriter, r *http.Request, output interface{}) error 
 	if r.Method != "POST" {
 		return fmt.Errorf("incorrect method; only POST allowed")
 	}
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		return err
 	}
@@ -119,7 +120,7 @@ func (is *integrationSrv) addChainOrPre(w http.ResponseWriter, r *http.Request, 
 		http.NotFound(w, r)
 		return
 	}
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -238,7 +239,7 @@ func runPersonality(p Personality) {
 func main() {
 	configFile := flag.String("config", "", "Path to config file.")
 	flag.Parse()
-	data, err := ioutil.ReadFile(*configFile)
+	data, err := os.ReadFile(*configFile)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -2,7 +2,7 @@ package web
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 
 	jose "gopkg.in/square/go-jose.v2"
 )
@@ -10,7 +10,7 @@ import (
 // LoadJWK loads a JSON encoded JWK specified by filename or returns an error
 func LoadJWK(filename string) (*jose.JSONWebKey, error) {
 	var jwk jose.JSONWebKey
-	if jsonBytes, err := ioutil.ReadFile(filename); err != nil {
+	if jsonBytes, err := os.ReadFile(filename); err != nil {
 		return nil, err
 	} else if err = json.Unmarshal(jsonBytes, &jwk); err != nil {
 		return nil, err

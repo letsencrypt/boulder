@@ -3,7 +3,6 @@ package goodkey
 import (
 	"crypto/rsa"
 	"encoding/hex"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -36,7 +35,7 @@ func TestLoadKeys(t *testing.T) {
 	testKey := rsa.PublicKey{N: mod}
 	tempDir := t.TempDir()
 	tempPath := filepath.Join(tempDir, "a.json")
-	err = ioutil.WriteFile(tempPath, []byte("[\"8df20e6961a16398b85a\"]"), os.ModePerm)
+	err = os.WriteFile(tempPath, []byte("[\"8df20e6961a16398b85a\"]"), os.ModePerm)
 	test.AssertNotError(t, err, "Failed to create temporary file")
 
 	wk, err := LoadWeakRSASuffixes(tempPath)

@@ -5,7 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"testing"
 
@@ -59,8 +59,8 @@ func TestLoadChain_Unloadable(t *testing.T) {
 	})
 	test.AssertError(t, err, "Should reject unloadable chain")
 
-	invalidPEMFile, _ := ioutil.TempFile("", "invalid.pem")
-	err = ioutil.WriteFile(invalidPEMFile.Name(), []byte(""), 0640)
+	invalidPEMFile, _ := os.CreateTemp("", "invalid.pem")
+	err = os.WriteFile(invalidPEMFile.Name(), []byte(""), 0640)
 	test.AssertNotError(t, err, "Error writing invalid PEM tmp file")
 	_, _, err = loadChain([]string{
 		invalidPEMFile.Name(),
@@ -84,35 +84,35 @@ func TestLoadChain_NoRoot(t *testing.T) {
 
 func TestLoadCertificateChains(t *testing.T) {
 	// Read some cert bytes to use for expected chain content
-	certBytesA, err := ioutil.ReadFile("../../test/test-ca.pem")
+	certBytesA, err := os.ReadFile("../../test/test-ca.pem")
 	test.AssertNotError(t, err, "Error reading../../test/test-ca.pem")
-	certBytesB, err := ioutil.ReadFile("../../test/test-ca2.pem")
+	certBytesB, err := os.ReadFile("../../test/test-ca2.pem")
 	test.AssertNotError(t, err, "Error reading../../test/test-ca2.pem")
 
 	// Make a .pem file with invalid contents
-	invalidPEMFile, _ := ioutil.TempFile("", "invalid.pem")
-	err = ioutil.WriteFile(invalidPEMFile.Name(), []byte(""), 0640)
+	invalidPEMFile, _ := os.CreateTemp("", "invalid.pem")
+	err = os.WriteFile(invalidPEMFile.Name(), []byte(""), 0640)
 	test.AssertNotError(t, err, "Error writing invalid PEM tmp file")
 
 	// Make a .pem file with a valid cert but also some leftover bytes
-	leftoverPEMFile, _ := ioutil.TempFile("", "leftovers.pem")
+	leftoverPEMFile, _ := os.CreateTemp("", "leftovers.pem")
 	leftovers := "vegan curry, cold rice, soy milk"
 	leftoverBytes := append(certBytesA, []byte(leftovers)...)
-	err = ioutil.WriteFile(leftoverPEMFile.Name(), leftoverBytes, 0640)
+	err = os.WriteFile(leftoverPEMFile.Name(), leftoverBytes, 0640)
 	test.AssertNotError(t, err, "Error writing leftover PEM tmp file")
 
 	// Make a .pem file that is test-ca2.pem but with Windows/DOS CRLF line
 	// endings
-	crlfPEM, _ := ioutil.TempFile("", "crlf.pem")
+	crlfPEM, _ := os.CreateTemp("", "crlf.pem")
 	crlfPEMBytes := []byte(strings.Replace(string(certBytesB), "\n", "\r\n", -1))
-	err = ioutil.WriteFile(crlfPEM.Name(), crlfPEMBytes, 0640)
-	test.AssertNotError(t, err, "ioutil.WriteFile failed")
+	err = os.WriteFile(crlfPEM.Name(), crlfPEMBytes, 0640)
+	test.AssertNotError(t, err, "os.WriteFile failed")
 
 	// Make a .pem file that is test-ca.pem but with no trailing newline
-	abruptPEM, _ := ioutil.TempFile("", "abrupt.pem")
+	abruptPEM, _ := os.CreateTemp("", "abrupt.pem")
 	abruptPEMBytes := certBytesA[:len(certBytesA)-1]
-	err = ioutil.WriteFile(abruptPEM.Name(), abruptPEMBytes, 0640)
-	test.AssertNotError(t, err, "ioutil.WriteFile failed")
+	err = os.WriteFile(abruptPEM.Name(), abruptPEMBytes, 0640)
+	test.AssertNotError(t, err, "os.WriteFile failed")
 
 	testCases := []struct {
 		Name            string
