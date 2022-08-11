@@ -9,6 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/observer/probers"
 	_ "github.com/letsencrypt/boulder/observer/probers/mock"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -58,7 +59,8 @@ func TestObsConf_makeMonitors(t *testing.T) {
 				DebugAddr: tt.fields.DebugAddr,
 				MonConfs:  tt.fields.MonConfs,
 			}
-			_, errs, err := c.makeMonitors()
+			var reg prometheus.Registerer = prometheus.NewRegistry()
+			_, errs, err := c.makeMonitors(&reg)
 			if len(errs) != len(tt.errs) {
 				t.Errorf("ObsConf.validateMonConfs() errs = %d, want %d", len(errs), len(tt.errs))
 				t.Logf("%v", errs)

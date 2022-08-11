@@ -6,6 +6,7 @@ import (
 
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -129,6 +130,15 @@ func TestDNSConf_validateProto(t *testing.T) {
 }
 
 func TestDNSConf_MakeProber(t *testing.T) {
+	conf := DNSConf{}
+	colls := conf.Instrument()
+	badColl := prometheus.Collector(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "obs_dns_foo",
+			Help: "Hmmm, this shouldn't be here...",
+		},
+		[]string{},
+	));
 	type fields struct {
 		Proto   string
 		Server  string
@@ -139,14 +149,21 @@ func TestDNSConf_MakeProber(t *testing.T) {
 	tests := []struct {
 		name    string
 		fields  fields
+		colls   map[string]*prometheus.Collector
 		wantErr bool
 	}{
 		// valid
-		{"valid", fields{"udp", "1.1.1.1:53", true, "google.com", "A"}, false},
+		{"valid", fields{"udp", "1.1.1.1:53", true, "google.com", "A"}, colls, false},
 		// invalid
-		{"bad proto", fields{"can with string", "1.1.1.1:53", true, "google.com", "A"}, true},
-		{"bad server", fields{"udp", "1.1.1.1:9000000", true, "google.com", "A"}, true},
-		{"bad qtype", fields{"udp", "1.1.1.1:9000000", true, "google.com", "BAZ"}, true},
+		{"bad proto", fields{"can with string", "1.1.1.1:53", true, "google.com", "A"}, colls, true},
+		{"bad server", fields{"udp", "1.1.1.1:9000000", true, "google.com", "A"}, colls, true},
+		{"bad qtype", fields{"udp", "1.1.1.1:9000000", true, "google.com", "BAZ"}, colls, true},
+		{
+			"unexpected collector",
+			fields{"udp", "1.1.1.1:53", true, "google.com", "A"},
+			map[string]*prometheus.Collector{"obs_dns_foo": &badColl},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -157,7 +174,7 @@ func TestDNSConf_MakeProber(t *testing.T) {
 				QName:   tt.fields.QName,
 				QType:   tt.fields.QType,
 			}
-			_, err := c.MakeProber()
+			_, err := c.MakeProber(tt.colls)
 			if tt.wantErr {
 				test.AssertError(t, err, "DNSConf.MakeProber() should have errored")
 			} else {
