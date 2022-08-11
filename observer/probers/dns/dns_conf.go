@@ -127,6 +127,10 @@ func (c DNSConf) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober,
 	}, nil
 }
 
+// Instrument constructs any `prometheus.Collector` objects the `DNSProbe` will
+// need to report its own metrics. A map is returned containing the constructed
+// objects, indexed by the name of the prometheus metric. If no objects were
+// constructed, an empty map is returned.
 func (c DNSConf) Instrument() map[string]*prometheus.Collector {
 	return map[string]*prometheus.Collector{}
 }
