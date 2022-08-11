@@ -43,7 +43,7 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 			"unexpected collector",
 			fields{"http://example.com", []int{200}},
 			map[string]*prometheus.Collector{"obs_http_foo": &badColl},
-			false,
+			true,
 		},
 	}
 	for _, tt := range tests {

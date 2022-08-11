@@ -1,6 +1,7 @@
 package probers
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -55,10 +56,21 @@ func (c HTTPConf) validateRCodes() error {
 	return nil
 }
 
+func (c HTTPConf) validateCollectors(colls map[string]*prometheus.Collector) error {
+	for name := range colls {
+		switch name {
+		default:
+			message := fmt.Sprintf("http prober received unexpected collector '%s'", name)
+			return errors.New(message)
+		}
+	}
+	return nil
+}
+
 // MakeProber constructs a `HTTPProbe` object from the contents of the
 // bound `HTTPConf` object. If the `HTTPConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
-func (c HTTPConf) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober, error) {
+func (c HTTPConf) MakeProber(colls map[string]*prometheus.Collector) (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
 	if err != nil {
@@ -67,6 +79,12 @@ func (c HTTPConf) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober
 
 	// validate `rcodes`
 	err = c.validateRCodes()
+	if err != nil {
+		return nil, err
+	}
+
+	// validate the prometheus collectors that were passed in
+	err = c.validateCollectors(colls)
 	if err != nil {
 		return nil, err
 	}
