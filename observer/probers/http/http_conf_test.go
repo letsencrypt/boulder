@@ -19,7 +19,7 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 			Help: "Hmmm, this shouldn't be here...",
 		},
 		[]string{},
-	));
+	))
 	type fields struct {
 		URL    string
 		RCodes []int

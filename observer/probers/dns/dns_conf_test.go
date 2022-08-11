@@ -138,7 +138,7 @@ func TestDNSConf_MakeProber(t *testing.T) {
 			Help: "Hmmm, this shouldn't be here...",
 		},
 		[]string{},
-	));
+	))
 	type fields struct {
 		Proto   string
 		Server  string
