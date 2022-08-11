@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/ocsp"
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/identifier"
@@ -77,6 +78,11 @@ const (
 	OCSPStatusGood    = OCSPStatus("good")
 	OCSPStatusRevoked = OCSPStatus("revoked")
 )
+
+var OCSPStatusToInt = map[OCSPStatus]int{
+	OCSPStatusGood:    ocsp.Good,
+	OCSPStatusRevoked: ocsp.Revoked,
+}
 
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"

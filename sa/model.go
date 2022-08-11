@@ -147,6 +147,35 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 	return model, err
 }
 
+type certStatusModel struct {
+	Status        core.OCSPStatus   `db:"status"`
+	RevokedDate   time.Time         `db:"revokedDate"`
+	RevokedReason revocation.Reason `db:"revokedReason"`
+}
+
+func SelectCertificateStatus2(s db.OneSelector, serial string) (*sapb.CertificateStatus, error) {
+	var model certStatusModel
+	err := s.SelectOne(
+		&model,
+		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ?",
+		serial,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	statusInt, ok := core.OCSPStatusToInt[model.Status]
+	if !ok {
+		return nil, fmt.Errorf("got unrecognized status %q", model.Status)
+	}
+
+	return &sapb.CertificateStatus{
+		Status:        int64(statusInt),
+		RevokedDate:   model.RevokedDate.UnixNano(),
+		RevokedReason: int64(model.RevokedReason),
+	}, nil
+}
+
 var mediumBlobSize = int(math.Pow(2, 24))
 
 type issuedNameModel struct {
