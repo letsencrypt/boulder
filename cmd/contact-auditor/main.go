@@ -45,7 +45,7 @@ func validateContacts(id int64, createdAt string, contacts []string) error {
 	// Helper to write validation problems to our buffer.
 	writeProb := func(contact string, prob string) {
 		// Add validation problem to buffer.
-		fmt.Fprintf(&probsBuff, "%d\t%s\tvalidation\t%q\t%q\n", id, createdAt, contact, prob)
+		fmt.Fprintf(&probsBuff, "%d\t%s\tvalidation\t%q\t%q\t%q\n", id, createdAt, contact, prob, contacts)
 	}
 
 	for _, contact := range contacts {
