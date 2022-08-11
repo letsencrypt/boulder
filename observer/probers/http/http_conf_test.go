@@ -59,6 +59,19 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 	}
 }
 
+func TestHTTPConf_Instrument(t *testing.T) {
+	t.Run("instrument", func(t *testing.T) {
+		conf := HTTPConf{}
+		colls := conf.Instrument()
+		for name := range colls {
+			switch name {
+			default:
+				t.Errorf("HTTPConf.Instrument() returned unexpected Collector '%s'", name)
+			}
+		}
+	})
+}
+
 func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
 		url       interface{}

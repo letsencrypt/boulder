@@ -184,6 +184,19 @@ func TestDNSConf_MakeProber(t *testing.T) {
 	}
 }
 
+func TestDNSConf_Instrument(t *testing.T) {
+	t.Run("instrument", func(t *testing.T) {
+		conf := DNSConf{}
+		colls := conf.Instrument()
+		for name := range colls {
+			switch name {
+			default:
+				t.Errorf("DNSConf.Instrument() returned unexpected Collector '%s'", name)
+			}
+		}
+	})
+}
+
 func TestDNSConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
 		protocol   interface{}
