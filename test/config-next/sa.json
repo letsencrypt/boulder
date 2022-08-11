@@ -24,6 +24,7 @@
         "crl-updater.boulder",
         "expiration-mailer.boulder",
         "health-checker.boulder",
+        "ocsp-responder.boulder",
         "orphan-finder.boulder",
         "ra.boulder",
         "sa.boulder",
