@@ -2,7 +2,6 @@ package observer
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -30,38 +29,32 @@ func (c *MonConf) validatePeriod() error {
 // value of the `Settings` field back to bytes, then passing it to the
 // `UnmarshalSettings` method of the `Configurer` type specified by the
 // `Kind` field.
-func (c MonConf) unmarshalConfigurer() (probers.Configurer, string, error) {
-	kind := strings.Trim(strings.ToLower(c.Kind), " ")
-	configurer, err := probers.GetConfigurer(kind)
+func (c MonConf) unmarshalConfigurer() (probers.Configurer, error) {
+	configurer, err := probers.GetConfigurer(c.Kind)
 	if err != nil {
-		return nil, kind, err
+		return nil, err
 	}
 	settings, _ := yaml.Marshal(c.Settings)
 	configurer, err = configurer.UnmarshalSettings(settings)
 	if err != nil {
-		return nil, kind, err
+		return nil, err
 	}
-	return configurer, kind, nil
+	return configurer, nil
 }
 
 // makeMonitor constructs a `monitor` object from the contents of the
 // bound `MonConf`. If the `MonConf` cannot be validated, an error
 // appropriate for end-user consumption is returned instead.
-func (c MonConf) makeMonitor(collectors map[string]map[string]*prometheus.Collector) (*monitor, error) {
+func (c MonConf) makeMonitor(collectors map[string]*prometheus.Collector) (*monitor, error) {
 	err := c.validatePeriod()
 	if err != nil {
 		return nil, err
 	}
-	probeConf, kind, err := c.unmarshalConfigurer()
+	probeConf, err := c.unmarshalConfigurer()
 	if err != nil {
 		return nil, err
 	}
-	pColls, exist := collectors[kind]
-	if !exist {
-		pColls = probeConf.Instrument()
-		collectors[kind] = pColls
-	}
-	prober, err := probeConf.MakeProber(pColls)
+	prober, err := probeConf.MakeProber(collectors)
 	if err != nil {
 		return nil, err
 	}

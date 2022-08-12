@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -62,7 +63,27 @@ func (c *ObsConf) makeMonitors(reg *prometheus.Registerer) ([]*monitor, []error,
 	collectors := make(map[string]map[string]*prometheus.Collector)
 	for e, m := range c.MonConfs {
 		entry := strconv.Itoa(e + 1)
-		monitor, err := m.makeMonitor(collectors)
+
+		kind := probers.NormalizedKind(m.Kind)
+		pCollectors, exist := collectors[kind]
+		if !exist {
+			pConf, err := probers.GetConfigurer(kind)
+			if err != nil {
+				// append validation error to errs
+				message := fmt.Errorf("'monitors' entry #%s couldn't be validated: %v", entry, err)
+				errs = append(errs, message)
+
+				// increment metrics
+				countMonitors.WithLabelValues(m.Kind, "false").Inc()
+
+				// Skip trying to call m.MakeMonitor(). We know it will fail
+				continue
+			}
+			pCollectors = pConf.Instrument()
+			collectors[kind] = pCollectors
+		}
+
+		monitor, err := m.makeMonitor(pCollectors)
 		if err != nil {
 			// append validation error to errs
 			errs = append(
