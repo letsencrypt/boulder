@@ -41,8 +41,8 @@ func TestNoRead(t *testing.T) {
 	}
 	_, err := New(f.Name(), noop, testErrCb(t))
 	if err == nil {
-		t.Fatalf("Expected New to return error when permission denied.")
 		readFile = oldReadFile
+		t.Fatalf("Expected New to return error when permission denied.")
 	}
 	readFile = oldReadFile
 }
