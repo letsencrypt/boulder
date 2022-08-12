@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -171,7 +172,7 @@ func SelectCertificateStatus2(s db.OneSelector, serial string) (*sapb.Certificat
 
 	return &sapb.CertificateStatus{
 		Status:        int64(statusInt),
-		RevokedDate:   model.RevokedDate.UnixNano(),
+		RevokedDate:   timestamppb.New(model.RevokedDate),
 		RevokedReason: int64(model.RevokedReason),
 	}, nil
 }

@@ -93,7 +93,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 			certStatus, dbErr = src.sac.GetCertificateStatus2(ctx, &sapb.Serial{Serial: serialString})
 			dbStatus = minimalStatus{
 				status:        int(certStatus.Status),
-				revokedDate:   time.Unix(0, certStatus.RevokedDate),
+				revokedDate:   certStatus.RevokedDate.AsTime(),
 				revokedReason: revocation.Reason(certStatus.RevokedReason),
 			}
 		} else {

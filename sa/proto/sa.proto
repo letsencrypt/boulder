@@ -5,6 +5,7 @@ option go_package = "github.com/letsencrypt/boulder/sa/proto";
 
 import "core/proto/core.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
 
 service StorageAuthority {
   // Getters
@@ -309,6 +310,5 @@ message GetRevokedCertsRequest {
 message CertificateStatus {
   int64 status = 1;
   int64 revokedReason = 2;
-  int64 revokedDate = 3; // Unix timestamp (nanoseconds)
-
+  google.protobuf.Timestamp revokedDate = 3; // Unix timestamp (nanoseconds)
 }
