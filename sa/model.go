@@ -148,14 +148,14 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 	return model, err
 }
 
-type certStatus2Model struct {
+type CertStatus2Model struct {
 	Status        core.OCSPStatus   `db:"status"`
 	RevokedDate   time.Time         `db:"revokedDate"`
 	RevokedReason revocation.Reason `db:"revokedReason"`
 }
 
 func SelectCertificateStatus2(s db.OneSelector, serial string) (*sapb.CertificateStatus, error) {
-	var model certStatus2Model
+	var model CertStatus2Model
 	err := s.SelectOne(
 		&model,
 		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ?",
