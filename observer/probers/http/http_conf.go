@@ -57,12 +57,8 @@ func (c HTTPConf) validateRCodes() error {
 }
 
 func (c HTTPConf) validateCollectors(colls map[string]*prometheus.Collector) error {
-	for name := range colls {
-		switch name {
-		default:
-			message := fmt.Sprintf("http prober received unexpected collector '%s'", name)
-			return errors.New(message)
-		}
+	if colls != nil {
+		return errors.New("http prober defines no metrics but received non-nil collector map")
 	}
 	return nil
 }
@@ -99,9 +95,9 @@ func (c HTTPConf) MakeProber(colls map[string]*prometheus.Collector) (probers.Pr
 // Instrument constructs any `prometheus.Collector` objects the `HTTPProbe` will
 // need to report its own metrics. A map is returned containing the constructed
 // objects, indexed by the name of the prometheus metric. If no objects were
-// constructed, an empty map is returned.
+// constructed, nil is returned.
 func (c HTTPConf) Instrument() map[string]*prometheus.Collector {
-	return map[string]*prometheus.Collector{}
+	return nil
 }
 
 // init is called at runtime and registers `HTTPConf`, a `Prober`

@@ -92,12 +92,8 @@ func (c DNSConf) validateQType() error {
 }
 
 func (c DNSConf) validateCollectors(colls map[string]*prometheus.Collector) error {
-	for name := range colls {
-		switch name {
-		default:
-			message := fmt.Sprintf("dns prober received unexpected collector '%s'", name)
-			return errors.New(message)
-		}
+	if colls != nil {
+		return errors.New("dns prober defines no metrics but received non-nil collector map")
 	}
 	return nil
 }
@@ -148,9 +144,9 @@ func (c DNSConf) MakeProber(colls map[string]*prometheus.Collector) (probers.Pro
 // Instrument constructs any `prometheus.Collector` objects the `DNSProbe` will
 // need to report its own metrics. A map is returned containing the constructed
 // objects, indexed by the name of the prometheus metric. If no objects were
-// constructed, an empty map is returned.
+// constructed, nil is returned.
 func (c DNSConf) Instrument() map[string]*prometheus.Collector {
-	return map[string]*prometheus.Collector{}
+	return nil
 }
 
 // init is called at runtime and registers `DNSConf`, a `Prober`
