@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/go-gorp/gorp/v3"
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,7 +13,6 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ocsp/responder"
-	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -69,12 +67,6 @@ func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, sac sapb
 	}
 }
 
-type minimalStatus struct {
-	status        int
-	revokedDate   time.Time
-	revokedReason revocation.Reason
-}
-
 // Response implements the responder.Source interface. It looks up the requested OCSP
 // response in the redis cluster and looks up the corresponding status in the DB. If
 // the status disagrees with what redis says, it signs a fresh response and serves it.
@@ -83,27 +75,15 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	var dbStatus minimalStatus
+	var dbStatus *sapb.CertificateStatus
 	var redisResult *responder.Response
 	var redisErr, dbErr error
 	go func() {
 		defer wg.Done()
 		if src.sac != nil {
-			var certStatus *sapb.CertificateStatus
-			certStatus, dbErr = src.sac.GetCertificateStatus2(ctx, &sapb.Serial{Serial: serialString})
-			dbStatus = minimalStatus{
-				status:        int(certStatus.Status),
-				revokedDate:   certStatus.RevokedDate.AsTime(),
-				revokedReason: revocation.Reason(certStatus.RevokedReason),
-			}
+			dbStatus, dbErr = src.sac.GetCertificateStatus2(ctx, &sapb.Serial{Serial: serialString})
 		} else {
-			var certStatus core.CertificateStatus
-			certStatus, dbErr = sa.SelectCertificateStatus(src.dbMap.WithContext(ctx), serialString)
-			dbStatus = minimalStatus{
-				status:        core.OCSPStatusToInt[certStatus.Status],
-				revokedDate:   certStatus.RevokedDate,
-				revokedReason: certStatus.RevokedReason,
-			}
+			dbStatus, dbErr = sa.SelectCertificateStatus2(src.dbMap.WithContext(ctx), serialString)
 		}
 	}()
 	go func() {
@@ -155,8 +135,8 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 }
 
 // agree returns true if the contents of the redisResult ocsp.Response agree with what's in the DB.
-func agree(dbStatus minimalStatus, redisResult *ocsp.Response) bool {
-	return dbStatus.status == redisResult.Status &&
-		dbStatus.revokedReason == revocation.Reason(redisResult.RevocationReason) &&
-		dbStatus.revokedDate.Equal(redisResult.RevokedAt)
+func agree(dbStatus *sapb.CertificateStatus, redisResult *ocsp.Response) bool {
+	return dbStatus.Status == int64(redisResult.Status) &&
+		dbStatus.RevokedReason == int64(redisResult.RevocationReason) &&
+		dbStatus.RevokedDate.AsTime().Equal(redisResult.RevokedAt)
 }
