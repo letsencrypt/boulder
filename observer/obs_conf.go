@@ -57,33 +57,36 @@ func (c *ObsConf) validateDebugAddr() error {
 	return nil
 }
 
-func (c *ObsConf) makeMonitors(reg *prometheus.Registerer) ([]*monitor, []error, error) {
+func (c *ObsConf) makeMonitors(metrics *prometheus.Registerer) ([]*monitor, []error, error) {
 	var errs []error
 	var monitors []*monitor
-	collectors := make(map[string]map[string]*prometheus.Collector)
+	proberSpecificMetrics := make(map[string]map[string]*prometheus.Collector)
 	for e, m := range c.MonConfs {
-		entry := strconv.Itoa(e + 1)
-
+		// set up custom metrics internal to each prober kind
 		kind := probers.NormalizedKind(m.Kind)
-		pCollectors, exist := collectors[kind]
+		_, exist := proberSpecificMetrics[kind]
 		if !exist {
-			pConf, err := probers.GetConfigurer(kind)
+			// we haven't seen this prober kind before, so we need to request
+			// any custom metrics it may have and register them with the
+			// prometheus registry
+			proberConf, err := probers.GetConfigurer(kind)
 			if err != nil {
-				// append validation error to errs
-				message := fmt.Errorf("'monitors' entry #%s couldn't be validated: %v", entry, err)
+				// append error to errs
+				message := fmt.Errorf("metrics for prober kind '%s' couldn't be registered: %v", kind, err)
 				errs = append(errs, message)
-
-				// increment metrics
-				countMonitors.WithLabelValues(m.Kind, "false").Inc()
-
-				// Skip trying to call m.MakeMonitor(). We know it will fail
-				continue
 			}
-			pCollectors = pConf.Instrument()
-			collectors[kind] = pCollectors
+			collectors := proberConf.Instrument()
+			for name, collector := range collectors {
+				// register the collector with the prometheus registry
+				(*metrics).MustRegister(*collector)
+				// store the registered collector so we can pass it to every
+				// monitor that will construct this kind of prober
+				proberSpecificMetrics[kind][name] = collector
+			}
 		}
 
-		monitor, err := m.makeMonitor(pCollectors)
+		entry := strconv.Itoa(e + 1)
+		monitor, err := m.makeMonitor(proberSpecificMetrics[kind])
 		if err != nil {
 			// append validation error to errs
 			errs = append(
@@ -102,12 +105,6 @@ func (c *ObsConf) makeMonitors(reg *prometheus.Registerer) ([]*monitor, []error,
 	}
 	if len(c.MonConfs) == len(errs) {
 		return nil, errs, errors.New("no valid monitors, cannot continue")
-	}
-	// Register any prober-specific metrics that were constructed
-	for _, m := range collectors {
-		for _, collector := range m {
-			(*reg).MustRegister(*collector)
-		}
 	}
 	return monitors, errs, nil
 }
