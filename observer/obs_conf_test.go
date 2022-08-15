@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/observer/probers"
 	_ "github.com/letsencrypt/boulder/observer/probers/mock"
 	"github.com/letsencrypt/boulder/test"
@@ -59,7 +60,7 @@ func TestObsConf_makeMonitors(t *testing.T) {
 				DebugAddr: tt.fields.DebugAddr,
 				MonConfs:  tt.fields.MonConfs,
 			}
-			var reg prometheus.Registerer = prometheus.NewRegistry()
+			var reg prometheus.Registerer = metrics.NoopRegisterer
 			_, errs, err := c.makeMonitors(&reg)
 			if len(errs) != len(tt.errs) {
 				t.Errorf("ObsConf.validateMonConfs() errs = %d, want %d", len(errs), len(tt.errs))
