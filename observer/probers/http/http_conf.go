@@ -1,7 +1,6 @@
 package probers
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 
@@ -56,13 +55,6 @@ func (c HTTPConf) validateRCodes() error {
 	return nil
 }
 
-func (c HTTPConf) validateCollectors(colls map[string]*prometheus.Collector) error {
-	if colls != nil {
-		return errors.New("http prober defines no metrics but received non-nil collector map")
-	}
-	return nil
-}
-
 // MakeProber constructs a `HTTPProbe` object from the contents of the
 // bound `HTTPConf` object. If the `HTTPConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
@@ -75,12 +67,6 @@ func (c HTTPConf) MakeProber(colls map[string]*prometheus.Collector) (probers.Pr
 
 	// validate `rcodes`
 	err = c.validateRCodes()
-	if err != nil {
-		return nil, err
-	}
-
-	// validate the prometheus collectors that were passed in
-	err = c.validateCollectors(colls)
 	if err != nil {
 		return nil, err
 	}

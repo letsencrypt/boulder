@@ -13,13 +13,6 @@ import (
 func TestHTTPConf_MakeProber(t *testing.T) {
 	conf := HTTPConf{}
 	colls := conf.Instrument()
-	badColl := prometheus.Collector(prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "obs_http_foo",
-			Help: "Hmmm, this shouldn't be here...",
-		},
-		[]string{},
-	))
 	type fields struct {
 		URL    string
 		RCodes []int
@@ -39,12 +32,6 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 		{"valid fqdn 1 invalid rcode", fields{"http://example.com", []int{200, 1000}}, colls, true},
 		{"bad fqdn good rcode", fields{":::::", []int{200}}, colls, true},
 		{"missing scheme", fields{"example.com", []int{200}}, colls, true},
-		{
-			"unexpected collector",
-			fields{"http://example.com", []int{200}},
-			map[string]*prometheus.Collector{"obs_http_foo": &badColl},
-			true,
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -57,19 +44,6 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestHTTPConf_Instrument(t *testing.T) {
-	t.Run("instrument", func(t *testing.T) {
-		conf := HTTPConf{}
-		colls := conf.Instrument()
-		for name := range colls {
-			switch name {
-			default:
-				t.Errorf("HTTPConf.Instrument() returned unexpected Collector '%s'", name)
-			}
-		}
-	})
 }
 
 func TestHTTPConf_UnmarshalSettings(t *testing.T) {

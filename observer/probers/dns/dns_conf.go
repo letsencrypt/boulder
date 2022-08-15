@@ -1,7 +1,6 @@
 package probers
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -91,13 +90,6 @@ func (c DNSConf) validateQType() error {
 		"invalid `query_type`, got: %q, expected one in %s", c.QType, q)
 }
 
-func (c DNSConf) validateCollectors(colls map[string]*prometheus.Collector) error {
-	if colls != nil {
-		return errors.New("dns prober defines no metrics but received non-nil collector map")
-	}
-	return nil
-}
-
 // MakeProber constructs a `DNSProbe` object from the contents of the
 // bound `DNSConf` object. If the `DNSConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
@@ -122,12 +114,6 @@ func (c DNSConf) MakeProber(colls map[string]*prometheus.Collector) (probers.Pro
 
 	// validate `query_type`
 	err = c.validateQType()
-	if err != nil {
-		return nil, err
-	}
-
-	// validate the prometheus collectors that were passed in
-	err = c.validateCollectors(colls)
 	if err != nil {
 		return nil, err
 	}
