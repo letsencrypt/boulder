@@ -61,7 +61,7 @@ func TestObsConf_makeMonitors(t *testing.T) {
 				MonConfs:  tt.fields.MonConfs,
 			}
 			var reg prometheus.Registerer = metrics.NoopRegisterer
-			_, errs, err := c.makeMonitors(&reg)
+			_, errs, err := c.makeMonitors(reg)
 			if len(errs) != len(tt.errs) {
 				t.Errorf("ObsConf.validateMonConfs() errs = %d, want %d", len(errs), len(tt.errs))
 				t.Logf("%v", errs)
