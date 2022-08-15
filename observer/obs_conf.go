@@ -60,7 +60,7 @@ func (c *ObsConf) validateDebugAddr() error {
 func (c *ObsConf) makeMonitors(metrics *prometheus.Registerer) ([]*monitor, []error, error) {
 	var errs []error
 	var monitors []*monitor
-	proberSpecificMetrics := make(map[string]map[string]*prometheus.Collector)
+	proberSpecificMetrics := make(map[string]map[string]prometheus.Collector)
 	for e, m := range c.MonConfs {
 		// set up custom metrics internal to each prober kind
 		kind := probers.NormalizedKind(m.Kind)
@@ -78,7 +78,7 @@ func (c *ObsConf) makeMonitors(metrics *prometheus.Registerer) ([]*monitor, []er
 			collectors := proberConf.Instrument()
 			for name, collector := range collectors {
 				// register the collector with the prometheus registry
-				(*metrics).MustRegister(*collector)
+				(*metrics).MustRegister(collector)
 				// store the registered collector so we can pass it to every
 				// monitor that will construct this kind of prober
 				proberSpecificMetrics[kind][name] = collector

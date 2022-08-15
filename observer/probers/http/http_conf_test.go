@@ -20,7 +20,7 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 	tests := []struct {
 		name    string
 		fields  fields
-		colls   map[string]*prometheus.Collector
+		colls   map[string]prometheus.Collector
 		wantErr bool
 	}{
 		// valid

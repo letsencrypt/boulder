@@ -27,14 +27,14 @@ func (c MockConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, 
 	return conf, nil
 }
 
-func (c MockConfigurer) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober, error) {
+func (c MockConfigurer) MakeProber(_ map[string]prometheus.Collector) (probers.Prober, error) {
 	if !c.Valid {
 		return nil, errors.New("could not be validated")
 	}
 	return MockProber{c.PName, c.PKind, c.PTook, c.PSuccess}, nil
 }
 
-func (c MockConfigurer) Instrument() map[string]*prometheus.Collector {
+func (c MockConfigurer) Instrument() map[string]prometheus.Collector {
 	return nil
 }
 

@@ -58,7 +58,7 @@ func (c HTTPConf) validateRCodes() error {
 // MakeProber constructs a `HTTPProbe` object from the contents of the
 // bound `HTTPConf` object. If the `HTTPConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
-func (c HTTPConf) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober, error) {
+func (c HTTPConf) MakeProber(_ map[string]prometheus.Collector) (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
 	if err != nil {
@@ -79,7 +79,7 @@ func (c HTTPConf) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober
 }
 
 // Instrument is a no-op to implement the `Configurer` interface.
-func (c HTTPConf) Instrument() map[string]*prometheus.Collector {
+func (c HTTPConf) Instrument() map[string]prometheus.Collector {
 	return nil
 }
 

@@ -45,7 +45,7 @@ func (c MonConf) unmarshalConfigurer() (probers.Configurer, error) {
 // makeMonitor constructs a `monitor` object from the contents of the
 // bound `MonConf`. If the `MonConf` cannot be validated, an error
 // appropriate for end-user consumption is returned instead.
-func (c MonConf) makeMonitor(collectors map[string]*prometheus.Collector) (*monitor, error) {
+func (c MonConf) makeMonitor(collectors map[string]prometheus.Collector) (*monitor, error) {
 	err := c.validatePeriod()
 	if err != nil {
 		return nil, err

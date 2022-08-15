@@ -41,13 +41,13 @@ type Configurer interface {
 	// bound `Configurer` object. If the `Configurer` cannot be
 	// validated, an error appropriate for end-user consumption is
 	// returned instead.
-	MakeProber(map[string]*prometheus.Collector) (Prober, error)
+	MakeProber(map[string]prometheus.Collector) (Prober, error)
 
 	// Instrument constructs any `prometheus.Collector` objects that a prober of
 	// the configured type will need to report its own metrics. A map is
 	// returned containing the constructed objects, indexed by the name of the
 	// prometheus metric. If no objects were constructed, nil is returned.
-	Instrument() map[string]*prometheus.Collector
+	Instrument() map[string]prometheus.Collector
 }
 
 // Settings is exported as a temporary receiver for the `settings` field
