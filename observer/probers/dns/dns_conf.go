@@ -93,7 +93,7 @@ func (c DNSConf) validateQType() error {
 // MakeProber constructs a `DNSProbe` object from the contents of the
 // bound `DNSConf` object. If the `DNSConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
-func (c DNSConf) MakeProber(colls map[string]*prometheus.Collector) (probers.Prober, error) {
+func (c DNSConf) MakeProber(_ map[string]*prometheus.Collector) (probers.Prober, error) {
 	// validate `query_name`
 	if !dns.IsFqdn(dns.Fqdn(c.QName)) {
 		return nil, fmt.Errorf(
@@ -127,10 +127,7 @@ func (c DNSConf) MakeProber(colls map[string]*prometheus.Collector) (probers.Pro
 	}, nil
 }
 
-// Instrument constructs any `prometheus.Collector` objects the `DNSProbe` will
-// need to report its own metrics. A map is returned containing the constructed
-// objects, indexed by the name of the prometheus metric. If no objects were
-// constructed, nil is returned.
+// Instrument is a no-op to implement the `Configurer` interface.
 func (c DNSConf) Instrument() map[string]*prometheus.Collector {
 	return nil
 }
