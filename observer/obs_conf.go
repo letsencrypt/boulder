@@ -57,7 +57,7 @@ func (c *ObsConf) validateDebugAddr() error {
 	return nil
 }
 
-func (c *ObsConf) makeMonitors(metrics *prometheus.Registerer) ([]*monitor, []error, error) {
+func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []error, error) {
 	var errs []error
 	var monitors []*monitor
 	proberSpecificMetrics := make(map[string]map[string]prometheus.Collector)
@@ -78,7 +78,7 @@ func (c *ObsConf) makeMonitors(metrics *prometheus.Registerer) ([]*monitor, []er
 			collectors := proberConf.Instrument()
 			for name, collector := range collectors {
 				// register the collector with the prometheus registry
-				(*metrics).MustRegister(collector)
+				metrics.MustRegister(collector)
 				// store the registered collector so we can pass it to every
 				// monitor that will construct this kind of prober
 				proberSpecificMetrics[kind][name] = collector
@@ -146,7 +146,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	logger.Infof("Initializing boulder-observer daemon")
 	logger.Debugf("Using config: %+v", c)
 
-	monitors, errs, err := c.makeMonitors(&metrics)
+	monitors, errs, err := c.makeMonitors(metrics)
 	if len(errs) != 0 {
 		logger.Errf("%d of %d monitors failed validation", len(errs), len(c.MonConfs))
 		for _, err := range errs {
