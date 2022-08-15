@@ -6,13 +6,10 @@ import (
 
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
 
 func TestHTTPConf_MakeProber(t *testing.T) {
-	conf := HTTPConf{}
-	colls := conf.Instrument()
 	type fields struct {
 		URL    string
 		RCodes []int
@@ -20,18 +17,17 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 	tests := []struct {
 		name    string
 		fields  fields
-		colls   map[string]prometheus.Collector
 		wantErr bool
 	}{
 		// valid
-		{"valid fqdn valid rcode", fields{"http://example.com", []int{200}}, colls, false},
-		{"valid hostname valid rcode", fields{"example", []int{200}}, colls, true},
+		{"valid fqdn valid rcode", fields{"http://example.com", []int{200}}, false},
+		{"valid hostname valid rcode", fields{"example", []int{200}}, true},
 		// invalid
-		{"valid fqdn no rcode", fields{"http://example.com", nil}, colls, true},
-		{"valid fqdn invalid rcode", fields{"http://example.com", []int{1000}}, colls, true},
-		{"valid fqdn 1 invalid rcode", fields{"http://example.com", []int{200, 1000}}, colls, true},
-		{"bad fqdn good rcode", fields{":::::", []int{200}}, colls, true},
-		{"missing scheme", fields{"example.com", []int{200}}, colls, true},
+		{"valid fqdn no rcode", fields{"http://example.com", nil}, true},
+		{"valid fqdn invalid rcode", fields{"http://example.com", []int{1000}}, true},
+		{"valid fqdn 1 invalid rcode", fields{"http://example.com", []int{200, 1000}}, true},
+		{"bad fqdn good rcode", fields{":::::", []int{200}}, true},
+		{"missing scheme", fields{"example.com", []int{200}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -39,7 +35,7 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 				URL:    tt.fields.URL,
 				RCodes: tt.fields.RCodes,
 			}
-			if _, err := c.MakeProber(tt.colls); (err != nil) != tt.wantErr {
+			if _, err := c.MakeProber(nil); (err != nil) != tt.wantErr {
 				t.Errorf("HTTPConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -90,10 +86,9 @@ rcodes: [ 200 ]
 useragent: ""
 `
 	c := HTTPConf{}
-	colls := c.Instrument()
 	configurer, err := c.UnmarshalSettings([]byte(proberYAML))
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	prober, err := configurer.MakeProber(colls)
+	prober, err := configurer.MakeProber(nil)
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-letsencrypt/boulder-observer-http-client")
 
@@ -104,10 +99,9 @@ rcodes: [ 200 ]
 useragent: fancy-custom-http-client
 `
 	c = HTTPConf{}
-	colls = c.Instrument()
 	configurer, err = c.UnmarshalSettings([]byte(proberYAML))
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	prober, err = configurer.MakeProber(colls)
+	prober, err = configurer.MakeProber(nil)
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client")
 
