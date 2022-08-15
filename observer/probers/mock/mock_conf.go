@@ -35,7 +35,7 @@ func (c MockConfigurer) MakeProber(_ map[string]*prometheus.Collector) (probers.
 }
 
 func (c MockConfigurer) Instrument() map[string]*prometheus.Collector {
-	return map[string]*prometheus.Collector{}
+	return nil
 }
 
 func init() {
