@@ -332,7 +332,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	}
 
 	if count.Count >= limit.GetThreshold(ip.String(), noRegistrationID) {
-		return berrors.RateLimitError("too many registrations for this IP")
+		return berrors.RegistrationsPerIPError("too many registrations for this IP")
 	}
 
 	return nil
