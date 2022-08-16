@@ -65,7 +65,7 @@ func (es errorSource) signAndSave(ctx context.Context, req *ocsp.Request, cause 
 // echoSelector always returns the given certificateStatus.
 type echoSelector struct {
 	db.MockSqlExecutor
-	status sa.CertStatus2Model
+	status sa.RevocationStatusModel
 }
 
 func (s echoSelector) WithContext(context.Context) gorp.SqlExecutor {
@@ -73,7 +73,7 @@ func (s echoSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func (s echoSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
-	outputPtr, ok := output.(*sa.CertStatus2Model)
+	outputPtr, ok := output.(*sa.RevocationStatusModel)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
@@ -96,10 +96,10 @@ func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
 
 type echoSA struct {
 	mocks.StorageAuthority
-	status *sapb.CertificateStatus
+	status *sapb.RevocationStatus
 }
 
-func (s *echoSA) GetCertificateStatus2(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.CertificateStatus, error) {
+func (s *echoSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	return s.status, nil
 }
 
@@ -107,7 +107,7 @@ type errorSA struct {
 	mocks.StorageAuthority
 }
 
-func (s *errorSA) GetCertificateStatus2(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.CertificateStatus, error) {
+func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	return nil, errors.New("oops")
 }
 
@@ -122,7 +122,7 @@ func TestCheckedRedisSourceSuccess(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "making fake response")
 
-	status := sa.CertStatus2Model{
+	status := sa.RevocationStatusModel{
 		Status: core.OCSPStatusGood,
 	}
 	src := newCheckedRedisSource(echoSource{resp: resp}, echoSelector{status: status}, nil, metrics.NoopRegisterer, blog.NewMock())
@@ -172,7 +172,7 @@ func TestCheckedRedisSourceSAError(t *testing.T) {
 func TestCheckedRedisSourceRedisError(t *testing.T) {
 	serial := big.NewInt(314159262)
 
-	status := sa.CertStatus2Model{
+	status := sa.RevocationStatusModel{
 		Status: core.OCSPStatusGood,
 	}
 	src := newCheckedRedisSource(errorSource{}, echoSelector{status: status}, nil, metrics.NoopRegisterer, blog.NewMock())
@@ -201,7 +201,7 @@ func TestCheckedRedisStatusDisagreement(t *testing.T) {
 		ThisUpdate:       thisUpdate,
 	})
 	test.AssertNotError(t, err, "making fake response")
-	status := sa.CertStatus2Model{
+	status := sa.RevocationStatusModel{
 		Status:        core.OCSPStatusRevoked,
 		RevokedDate:   thisUpdate,
 		RevokedReason: ocsp.KeyCompromise,
@@ -242,7 +242,7 @@ func TestCheckedRedisStatusSADisagreement(t *testing.T) {
 		ThisUpdate:       thisUpdate,
 	})
 	test.AssertNotError(t, err, "making fake response")
-	statusPB := sapb.CertificateStatus{
+	statusPB := sapb.RevocationStatus{
 		Status:        1,
 		RevokedDate:   timestamppb.New(thisUpdate),
 		RevokedReason: ocsp.KeyCompromise,

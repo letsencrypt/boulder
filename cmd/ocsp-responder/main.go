@@ -97,12 +97,13 @@ type Config struct {
 		// TLS client certificate, private key, and trusted root bundle.
 		TLS cmd.TLSConfig
 
-		// How to communicate with the RA when it is necessary to generate a
-		// fresh OCSP response.
+		// RAService configures how to communicate with the RA when it is necessary
+		// to generate a fresh OCSP response.
 		RAService *cmd.GRPCClientConfig
 
-		// How to communicate with the SA to look up certificate status metadata
-		// used to confirm/deny that the response from Redis is up-to-date.
+		// SAService configures how to communicate with the SA to look up
+		// certificate status metadata used to confirm/deny that the response from
+		// Redis is up-to-date.
 		SAService *cmd.GRPCClientConfig
 	}
 

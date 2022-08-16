@@ -241,8 +241,8 @@ func (sa *StorageAuthority) GetCertificateStatus(_ context.Context, req *sapb.Se
 	}
 }
 
-// GetCertificateStatus2 is a mock
-func (sa *StorageAuthority) GetCertificateStatus2(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.CertificateStatus, error) {
+// GetRevocationStatus is a mock
+func (sa *StorageAuthority) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	return nil, nil
 }
 

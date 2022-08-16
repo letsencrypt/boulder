@@ -391,10 +391,10 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, req *s
 	return bgrpc.CertStatusToPB(certStatus), nil
 }
 
-// GetCertificateStatus2 takes a hexadecimal string representing the full serial
+// GetRevocationStatus takes a hexadecimal string representing the full serial
 // number of a certificate and returns a minimal set of data about that cert's
 // current validity.
-func (ssa *SQLStorageAuthority) GetCertificateStatus2(ctx context.Context, req *sapb.Serial) (*sapb.CertificateStatus, error) {
+func (ssa *SQLStorageAuthority) GetRevocationStatus(ctx context.Context, req *sapb.Serial) (*sapb.RevocationStatus, error) {
 	if req.Serial == "" {
 		return nil, errIncompleteRequest
 	}
@@ -402,7 +402,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus2(ctx context.Context, req *
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	status, err := SelectCertificateStatus2(ssa.dbMap.WithContext(ctx), req.Serial)
+	status, err := SelectRevocationStatus(ssa.dbMap.WithContext(ctx), req.Serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)

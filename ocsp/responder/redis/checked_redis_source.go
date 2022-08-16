@@ -31,6 +31,13 @@ type rocspSourceInterface interface {
 	signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error)
 }
 
+// checkedRedisSource implements the Source interface. It relies on two
+// underlying datastores to provide its OCSP responses: a rocspSourceInterface
+// (a Source that can also signAndSave new responses) to provide the responses
+// themselves, and the database to double-check that those responses match the
+// authoritative revocation status stored in the db.
+// TODO(#6285): Inline the rocspSourceInterface into this type.
+// TODO(#6295): Remove the dbMap after all deployments use the SA instead.
 type checkedRedisSource struct {
 	base    rocspSourceInterface
 	dbMap   dbSelector
@@ -75,15 +82,15 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	var dbStatus *sapb.CertificateStatus
+	var dbStatus *sapb.RevocationStatus
 	var redisResult *responder.Response
 	var redisErr, dbErr error
 	go func() {
 		defer wg.Done()
 		if src.sac != nil {
-			dbStatus, dbErr = src.sac.GetCertificateStatus2(ctx, &sapb.Serial{Serial: serialString})
+			dbStatus, dbErr = src.sac.GetRevocationStatus(ctx, &sapb.Serial{Serial: serialString})
 		} else {
-			dbStatus, dbErr = sa.SelectCertificateStatus2(src.dbMap.WithContext(ctx), serialString)
+			dbStatus, dbErr = sa.SelectRevocationStatus(src.dbMap.WithContext(ctx), serialString)
 		}
 	}()
 	go func() {
@@ -135,7 +142,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 }
 
 // agree returns true if the contents of the redisResult ocsp.Response agree with what's in the DB.
-func agree(dbStatus *sapb.CertificateStatus, redisResult *ocsp.Response) bool {
+func agree(dbStatus *sapb.RevocationStatus, redisResult *ocsp.Response) bool {
 	return dbStatus.Status == int64(redisResult.Status) &&
 		dbStatus.RevokedReason == int64(redisResult.RevocationReason) &&
 		dbStatus.RevokedDate.AsTime().Equal(redisResult.RevokedAt)

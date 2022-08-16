@@ -148,14 +148,19 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 	return model, err
 }
 
-type CertStatus2Model struct {
+// RevocationStatusModel represents a small subset of the columns in the
+// certificateStatus table, used to determine the authoritative revocation
+// status of a certificate.
+type RevocationStatusModel struct {
 	Status        core.OCSPStatus   `db:"status"`
 	RevokedDate   time.Time         `db:"revokedDate"`
 	RevokedReason revocation.Reason `db:"revokedReason"`
 }
 
-func SelectCertificateStatus2(s db.OneSelector, serial string) (*sapb.CertificateStatus, error) {
-	var model CertStatus2Model
+// SelectRevocationStatus returns the authoritative revocation information for
+// the certificate with the given serial.
+func SelectRevocationStatus(s db.OneSelector, serial string) (*sapb.RevocationStatus, error) {
+	var model RevocationStatusModel
 	err := s.SelectOne(
 		&model,
 		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ?",
@@ -170,7 +175,7 @@ func SelectCertificateStatus2(s db.OneSelector, serial string) (*sapb.Certificat
 		return nil, fmt.Errorf("got unrecognized status %q", model.Status)
 	}
 
-	return &sapb.CertificateStatus{
+	return &sapb.RevocationStatus{
 		Status:        int64(statusInt),
 		RevokedDate:   timestamppb.New(model.RevokedDate),
 		RevokedReason: int64(model.RevokedReason),
