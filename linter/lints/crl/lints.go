@@ -15,6 +15,11 @@ import (
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 )
 
+const (
+	utcTimeFormat         = "YYMMDDHHMMSSZ"
+	generalizedTimeFormat = "YYYYMMDDHHMMSSZ"
+)
+
 type crlLint func(*crl_x509.RevocationList) *lint.LintResult
 
 // registry is the collection of all known CRL lints. It is populated by this
@@ -386,120 +391,161 @@ func hasMozReasonCodes(crl *crl_x509.RevocationList) *lint.LintResult {
 // MUST include seconds (i.e., times are YYYYMMDDHHMMSSZ), even where the number
 // of seconds is zero.  GeneralizedTime values MUST NOT include fractional
 // seconds. See: https://www.rfc-editor.org/rfc/rfc5280.html#section-4.1.2.5.2
+//
+// Conforming applications MUST encode thisUpdate, nextUpdate, and cerficate
+// validity timestamps prior to 2050 as UTCTime and GeneralizedTime there-after.
+// See:
+//   - https://www.rfc-editor.org/rfc/rfc5280.html#section-5.1.2.4
+//   - https://www.rfc-editor.org/rfc/rfc5280.html#section-5.1.2.5
+//   - https://www.rfc-editor.org/rfc/rfc5280.html#section-5.1.2.6
 func hasValidTimestamps(crl *crl_x509.RevocationList) *lint.LintResult {
 	input := cryptobyte.String(crl.RawTBSRevocationList)
-	parseFail := lint.LintResult{
+	lintFail := lint.LintResult{
 		Status:  lint.Error,
 		Details: "Failed to re-parse tbsCertList during linting",
 	}
+
 	// Read tbsCertList.
 	var tbs cryptobyte.String
-	input.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE)
+	if !input.ReadASN1(&tbs, cryptobyte_asn1.SEQUENCE) {
+		return &lintFail
+	}
+
 	// Skip (optional) version.
 	if !tbs.SkipOptionalASN1(cryptobyte_asn1.INTEGER) {
-		return &parseFail
+		return &lintFail
 	}
+
 	// Skip signature.
 	if !tbs.SkipASN1(cryptobyte_asn1.SEQUENCE) {
-		return &parseFail
+		return &lintFail
 	}
+
 	// Skip issuer.
 	if !tbs.SkipASN1(cryptobyte_asn1.SEQUENCE) {
-		return &parseFail
+		return &lintFail
 	}
+
 	// Read thisUpdate.
 	var thisUpdate cryptobyte.String
 	var thisUpdateTag cryptobyte_asn1.Tag
 	if !tbs.ReadAnyASN1Element(&thisUpdate, &thisUpdateTag) {
-		return &parseFail
+		return &lint.LintResult{Status: lint.Error, Details: "Failed to read thisUpdate timestamp"}
 	}
+
 	// Lint thisUpdate.
 	err := lintTimestamp(&thisUpdate, thisUpdateTag)
 	if err != nil {
-		parseFail.Details = err.Error()
-		return &parseFail
+		return &lint.LintResult{Status: lint.Error, Details: err.Error()}
 	}
+
 	// Peek (optional) nextUpdate.
 	if tbs.PeekASN1Tag(cryptobyte_asn1.UTCTime) || tbs.PeekASN1Tag(cryptobyte_asn1.GeneralizedTime) {
+
 		// Read nextUpdate.
 		var nextUpdate cryptobyte.String
 		var nextUpdateTag cryptobyte_asn1.Tag
 		if !tbs.ReadAnyASN1Element(&nextUpdate, &nextUpdateTag) {
-			return &parseFail
+			return &lint.LintResult{Status: lint.Error, Details: "Failed to read nextUpdate timestamp"}
 		}
+
 		// Lint nextUpdate.
 		err = lintTimestamp(&nextUpdate, nextUpdateTag)
 		if err != nil {
-			parseFail.Details = err.Error()
-			return &parseFail
+			return &lint.LintResult{Status: lint.Error, Details: err.Error()}
 		}
 	}
-	// Read sequence of revokedCertificate.
-	var revokedSeq cryptobyte.String
-	tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE)
-	for !revokedSeq.Empty() {
-		// Read revokedCertificate.
-		var certSeq cryptobyte.String
-		revokedSeq.ReadASN1Element(&certSeq, cryptobyte_asn1.SEQUENCE)
-		certSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE)
 
-		// Skip userCertificate (serial number).
-		certSeq.SkipASN1(cryptobyte_asn1.INTEGER)
-
-		// Read revocationDate.
-		var revocationDate cryptobyte.String
-		var revocationDateTag cryptobyte_asn1.Tag
-		if !certSeq.ReadAnyASN1Element(&revocationDate, &revocationDateTag) {
-			return &parseFail
+	// Peek (optional) revokedCertificates.
+	if tbs.PeekASN1Tag(cryptobyte_asn1.SEQUENCE) {
+		// Read sequence of revokedCertificate.
+		var revokedSeq cryptobyte.String
+		if !tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE) {
+			return &lint.LintResult{Status: lint.Error, Details: "Failed to read revokedCertificate sequence"}
 		}
 
-		// Lint revocationDate.
-		err = lintTimestamp(&revocationDate, revocationDateTag)
-		if err != nil {
-			parseFail.Details = err.Error()
-			return &parseFail
+		// Iterate over each revokedCertificate sequence.
+		for !revokedSeq.Empty() {
+			// Read revokedCertificate.
+			var certSeq cryptobyte.String
+			if !revokedSeq.ReadASN1Element(&certSeq, cryptobyte_asn1.SEQUENCE) {
+				return &lint.LintResult{Status: lint.Error, Details: "Failed to read revokedCertificate in sequence"}
+			}
+
+			if !certSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE) {
+				return &lint.LintResult{Status: lint.Error, Details: "Failed to read revokedCertificate in sequence"}
+			}
+
+			// Skip userCertificate (serial number).
+			if !certSeq.SkipASN1(cryptobyte_asn1.INTEGER) {
+				return &lintFail
+			}
+
+			// Read revocationDate.
+			var revocationDate cryptobyte.String
+			var revocationDateTag cryptobyte_asn1.Tag
+			if !certSeq.ReadAnyASN1Element(&revocationDate, &revocationDateTag) {
+				return &lintFail
+			}
+
+			// Lint revocationDate.
+			err = lintTimestamp(&revocationDate, revocationDateTag)
+			if err != nil {
+				return &lint.LintResult{Status: lint.Error, Details: err.Error()}
+			}
 		}
 	}
 	return &lint.LintResult{Status: lint.Pass}
 }
 
 func lintTimestamp(der *cryptobyte.String, tag cryptobyte_asn1.Tag) error {
-	utcTimeFormat := "YYMMDDHHMMSSZ"
-	generalizedTimeFormat := "YYYYMMDDHHMMSSZ"
 	// Preserve the original timestamp for length checking.
 	derBytes := *der
 	var tsBytes cryptobyte.String
-	derBytes.ReadASN1(&tsBytes, tag)
-	tsString := string(tsBytes)
-	var t time.Time
+	if !derBytes.ReadASN1(&tsBytes, tag) {
+		return errors.New("x509: failed to read timestamp")
+	}
+	tsLen := len(string(tsBytes))
+
+	var parsedTime time.Time
 	switch tag {
 	case cryptobyte_asn1.UTCTime:
 		// Verify that the timestamp is properly formatted.
-		if len(tsString) != len(utcTimeFormat) {
+		if tsLen != len(utcTimeFormat) {
 			return fmt.Errorf("x509: timestamps encoded using UTCTime MUST be specified in the format %q", utcTimeFormat)
 		}
-		// Verify that the timestamp is prior to the year 2050.
-		der.ReadASN1UTCTime(&t)
-		if t.Year() > 2049 {
-			return errors.New("x509: timestamps after 2049 MUST be encoded using GeneralizedTime")
+
+		if !der.ReadASN1UTCTime(&parsedTime) {
+			return errors.New("x509: failed to read timestamp encoded using UTCTime")
+		}
+
+		// Verify that the timestamp is prior to the year 2050. This should
+		// really never happen.
+		if parsedTime.Year() > 2049 {
+			return errors.New("x509: ReadASN1UTCTime returned a UTCTime after 2049")
 		}
 	case cryptobyte_asn1.GeneralizedTime:
 		// Verify that the timestamp is properly formatted.
-		if len(tsString) != len(generalizedTimeFormat) {
+		if tsLen != len(generalizedTimeFormat) {
 			return fmt.Errorf(
 				"x509: timestamps encoded using GeneralizedTime MUST be specified in the format %q", generalizedTimeFormat,
 			)
 		}
+
+		if !der.ReadASN1GeneralizedTime(&parsedTime) {
+			return fmt.Errorf("x509: failed to read timestamp encoded using GeneralizedTime")
+		}
+
 		// Verify that the timestamp occurred after the year 2049.
-		der.ReadASN1GeneralizedTime(&t)
-		if t.Year() < 2050 {
+		if parsedTime.Year() < 2050 {
 			return errors.New("x509: timestamps prior to 2050 MUST be encoded using UTCTime")
 		}
 	default:
 		return errors.New("x509: unsupported time format")
 	}
+
 	// Verify that the location is UTC.
-	if t.Location() != time.UTC {
+	if parsedTime.Location() != time.UTC {
 		return errors.New("x509: time must be in UTC")
 	}
 	return nil
