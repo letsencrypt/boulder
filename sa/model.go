@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -145,6 +146,40 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 		serial,
 	)
 	return model, err
+}
+
+// RevocationStatusModel represents a small subset of the columns in the
+// certificateStatus table, used to determine the authoritative revocation
+// status of a certificate.
+type RevocationStatusModel struct {
+	Status        core.OCSPStatus   `db:"status"`
+	RevokedDate   time.Time         `db:"revokedDate"`
+	RevokedReason revocation.Reason `db:"revokedReason"`
+}
+
+// SelectRevocationStatus returns the authoritative revocation information for
+// the certificate with the given serial.
+func SelectRevocationStatus(s db.OneSelector, serial string) (*sapb.RevocationStatus, error) {
+	var model RevocationStatusModel
+	err := s.SelectOne(
+		&model,
+		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ?",
+		serial,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	statusInt, ok := core.OCSPStatusToInt[model.Status]
+	if !ok {
+		return nil, fmt.Errorf("got unrecognized status %q", model.Status)
+	}
+
+	return &sapb.RevocationStatus{
+		Status:        int64(statusInt),
+		RevokedDate:   timestamppb.New(model.RevokedDate),
+		RevokedReason: int64(model.RevokedReason),
+	}, nil
 }
 
 var mediumBlobSize = int(math.Pow(2, 24))

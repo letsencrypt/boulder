@@ -28,6 +28,13 @@
       "serverAddress": "ra.boulder:9094",
       "timeout": "15s"
     },
+    "saService": {
+      "serverIPAddresses": [
+        "10.77.77.77:9095",
+        "10.88.88.88:9095"
+      ],
+      "timeout": "15s"
+    },
     "path": "/",
     "listenAddress": "0.0.0.0:4002",
     "issuerCerts": [

@@ -13,10 +13,15 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	ocsp_test "github.com/letsencrypt/boulder/ocsp/test"
+	"github.com/letsencrypt/boulder/sa"
+	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // echoSource implements rocspSourceInterface, returning the provided response
@@ -60,7 +65,7 @@ func (es errorSource) signAndSave(ctx context.Context, req *ocsp.Request, cause 
 // echoSelector always returns the given certificateStatus.
 type echoSelector struct {
 	db.MockSqlExecutor
-	status core.CertificateStatus
+	status sa.RevocationStatusModel
 }
 
 func (s echoSelector) WithContext(context.Context) gorp.SqlExecutor {
@@ -68,7 +73,7 @@ func (s echoSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 func (s echoSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
-	outputPtr, ok := output.(*core.CertificateStatus)
+	outputPtr, ok := output.(*sa.RevocationStatusModel)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
 	}
@@ -89,6 +94,23 @@ func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
 	return s
 }
 
+type echoSA struct {
+	mocks.StorageAuthority
+	status *sapb.RevocationStatus
+}
+
+func (s *echoSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
+	return s.status, nil
+}
+
+type errorSA struct {
+	mocks.StorageAuthority
+}
+
+func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
+	return nil, errors.New("oops")
+}
+
 func TestCheckedRedisSourceSuccess(t *testing.T) {
 	serial := big.NewInt(17777)
 	thisUpdate := time.Now().Truncate(time.Second).UTC()
@@ -100,10 +122,10 @@ func TestCheckedRedisSourceSuccess(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "making fake response")
 
-	status := core.CertificateStatus{
-		Status: "good",
+	status := sa.RevocationStatusModel{
+		Status: core.OCSPStatusGood,
 	}
-	src := newCheckedRedisSource(echoSource{resp: resp}, echoSelector{status: status}, metrics.NoopRegisterer, blog.NewMock())
+	src := newCheckedRedisSource(echoSource{resp: resp}, echoSelector{status: status}, nil, metrics.NoopRegisterer, blog.NewMock())
 	responderResponse, err := src.Response(context.Background(), &ocsp.Request{
 		SerialNumber: serial,
 	})
@@ -122,7 +144,25 @@ func TestCheckedRedisSourceDBError(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "making fake response")
 
-	src := newCheckedRedisSource(echoSource{resp: resp}, errorSelector{}, metrics.NoopRegisterer, blog.NewMock())
+	src := newCheckedRedisSource(echoSource{resp: resp}, errorSelector{}, nil, metrics.NoopRegisterer, blog.NewMock())
+	_, err = src.Response(context.Background(), &ocsp.Request{
+		SerialNumber: serial,
+	})
+	test.AssertError(t, err, "getting response")
+}
+
+func TestCheckedRedisSourceSAError(t *testing.T) {
+	serial := big.NewInt(404040)
+	thisUpdate := time.Now().Truncate(time.Second).UTC()
+
+	resp, _, err := ocsp_test.FakeResponse(ocsp.Response{
+		SerialNumber: serial,
+		Status:       ocsp.Good,
+		ThisUpdate:   thisUpdate,
+	})
+	test.AssertNotError(t, err, "making fake response")
+
+	src := newCheckedRedisSource(echoSource{resp: resp}, nil, &errorSA{}, metrics.NoopRegisterer, blog.NewMock())
 	_, err = src.Response(context.Background(), &ocsp.Request{
 		SerialNumber: serial,
 	})
@@ -132,10 +172,10 @@ func TestCheckedRedisSourceDBError(t *testing.T) {
 func TestCheckedRedisSourceRedisError(t *testing.T) {
 	serial := big.NewInt(314159262)
 
-	status := core.CertificateStatus{
-		Status: "good",
+	status := sa.RevocationStatusModel{
+		Status: core.OCSPStatusGood,
 	}
-	src := newCheckedRedisSource(errorSource{}, echoSelector{status: status}, metrics.NoopRegisterer, blog.NewMock())
+	src := newCheckedRedisSource(errorSource{}, echoSelector{status: status}, nil, metrics.NoopRegisterer, blog.NewMock())
 	_, err := src.Response(context.Background(), &ocsp.Request{
 		SerialNumber: serial,
 	})
@@ -161,8 +201,8 @@ func TestCheckedRedisStatusDisagreement(t *testing.T) {
 		ThisUpdate:       thisUpdate,
 	})
 	test.AssertNotError(t, err, "making fake response")
-	status := core.CertificateStatus{
-		Status:        "revoked",
+	status := sa.RevocationStatusModel{
+		Status:        core.OCSPStatusRevoked,
 		RevokedDate:   thisUpdate,
 		RevokedReason: ocsp.KeyCompromise,
 	}
@@ -171,7 +211,48 @@ func TestCheckedRedisStatusDisagreement(t *testing.T) {
 		secondResp: &responder.Response{Response: secondResp, Raw: secondResp.Raw},
 		ch:         make(chan string, 1),
 	}
-	src := newCheckedRedisSource(source, echoSelector{status: status}, metrics.NoopRegisterer, blog.NewMock())
+	src := newCheckedRedisSource(source, echoSelector{status: status}, nil, metrics.NoopRegisterer, blog.NewMock())
+	fetchedResponse, err := src.Response(context.Background(), &ocsp.Request{
+		SerialNumber: serial,
+	})
+	test.AssertNotError(t, err, "getting re-signed response")
+	test.Assert(t, fetchedResponse.ThisUpdate.Equal(thisUpdate), "thisUpdate not updated")
+	test.AssertEquals(t, fetchedResponse.SerialNumber.String(), serial.String())
+	test.AssertEquals(t, fetchedResponse.RevokedAt, thisUpdate)
+	test.AssertEquals(t, fetchedResponse.RevocationReason, ocsp.KeyCompromise)
+	test.AssertEquals(t, fetchedResponse.ThisUpdate, thisUpdate)
+}
+
+func TestCheckedRedisStatusSADisagreement(t *testing.T) {
+	serial := big.NewInt(2718)
+	thisUpdate := time.Now().Truncate(time.Second).UTC()
+
+	resp, _, err := ocsp_test.FakeResponse(ocsp.Response{
+		SerialNumber: serial,
+		Status:       ocsp.Good,
+		ThisUpdate:   thisUpdate.Add(-time.Minute),
+	})
+	test.AssertNotError(t, err, "making fake response")
+
+	secondResp, _, err := ocsp_test.FakeResponse(ocsp.Response{
+		SerialNumber:     serial,
+		Status:           ocsp.Revoked,
+		RevokedAt:        thisUpdate,
+		RevocationReason: ocsp.KeyCompromise,
+		ThisUpdate:       thisUpdate,
+	})
+	test.AssertNotError(t, err, "making fake response")
+	statusPB := sapb.RevocationStatus{
+		Status:        1,
+		RevokedDate:   timestamppb.New(thisUpdate),
+		RevokedReason: ocsp.KeyCompromise,
+	}
+	source := recordingEchoSource{
+		echoSource: echoSource{resp: resp},
+		secondResp: &responder.Response{Response: secondResp, Raw: secondResp.Raw},
+		ch:         make(chan string, 1),
+	}
+	src := newCheckedRedisSource(source, nil, &echoSA{status: &statusPB}, metrics.NoopRegisterer, blog.NewMock())
 	fetchedResponse, err := src.Response(context.Background(), &ocsp.Request{
 		SerialNumber: serial,
 	})

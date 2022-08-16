@@ -31,6 +31,7 @@ type StorageAuthorityClient interface {
 	GetCertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetPrecertificate(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.Certificate, error)
 	GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.CertificateStatus, error)
+	GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error)
 	CountCertificatesByNames(ctx context.Context, in *CountCertificatesByNamesRequest, opts ...grpc.CallOption) (*CountByNames, error)
 	CountRegistrationsByIP(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error)
 	CountRegistrationsByIPRange(ctx context.Context, in *CountRegistrationsByIPRequest, opts ...grpc.CallOption) (*Count, error)
@@ -129,6 +130,15 @@ func (c *storageAuthorityClient) GetPrecertificate(ctx context.Context, in *Seri
 func (c *storageAuthorityClient) GetCertificateStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*proto.CertificateStatus, error) {
 	out := new(proto.CertificateStatus)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetCertificateStatus", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *storageAuthorityClient) GetRevocationStatus(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*RevocationStatus, error) {
+	out := new(RevocationStatus)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetRevocationStatus", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -525,6 +535,7 @@ type StorageAuthorityServer interface {
 	GetCertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetPrecertificate(context.Context, *Serial) (*proto.Certificate, error)
 	GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error)
+	GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error)
 	CountCertificatesByNames(context.Context, *CountCertificatesByNamesRequest) (*CountByNames, error)
 	CountRegistrationsByIP(context.Context, *CountRegistrationsByIPRequest) (*Count, error)
 	CountRegistrationsByIPRange(context.Context, *CountRegistrationsByIPRequest) (*Count, error)
@@ -589,6 +600,9 @@ func (UnimplementedStorageAuthorityServer) GetPrecertificate(context.Context, *S
 }
 func (UnimplementedStorageAuthorityServer) GetCertificateStatus(context.Context, *Serial) (*proto.CertificateStatus, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetCertificateStatus not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetRevocationStatus(context.Context, *Serial) (*RevocationStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetRevocationStatus not implemented")
 }
 func (UnimplementedStorageAuthorityServer) CountCertificatesByNames(context.Context, *CountCertificatesByNamesRequest) (*CountByNames, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CountCertificatesByNames not implemented")
@@ -818,6 +832,24 @@ func _StorageAuthority_GetCertificateStatus_Handler(srv interface{}, ctx context
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(StorageAuthorityServer).GetCertificateStatus(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StorageAuthority_GetRevocationStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).GetRevocationStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/GetRevocationStatus",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).GetRevocationStatus(ctx, req.(*Serial))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1524,6 +1556,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetCertificateStatus",
 			Handler:    _StorageAuthority_GetCertificateStatus_Handler,
+		},
+		{
+			MethodName: "GetRevocationStatus",
+			Handler:    _StorageAuthority_GetRevocationStatus_Handler,
 		},
 		{
 			MethodName: "CountCertificatesByNames",
