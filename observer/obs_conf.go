@@ -74,14 +74,15 @@ func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []err
 				// append error to errs
 				message := fmt.Errorf("metrics for prober kind '%s' couldn't be registered: %v", kind, err)
 				errs = append(errs, message)
-			}
-			collectors := proberConf.Instrument()
-			for name, collector := range collectors {
-				// register the collector with the prometheus registry
-				metrics.MustRegister(collector)
-				// store the registered collector so we can pass it to every
-				// monitor that will construct this kind of prober
-				proberSpecificMetrics[kind][name] = collector
+			} else {
+				collectors := proberConf.Instrument()
+				for name, collector := range collectors {
+					// register the collector with the prometheus registry
+					metrics.MustRegister(collector)
+					// store the registered collector so we can pass it to every
+					// monitor that will construct this kind of prober
+					proberSpecificMetrics[kind][name] = collector
+				}
 			}
 		}
 
@@ -94,13 +95,13 @@ func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []err
 					"'monitors' entry #%s couldn't be validated: %v", entry, err))
 
 			// increment metrics
-			countMonitors.WithLabelValues(m.Kind, "false").Inc()
+			countMonitors.WithLabelValues(kind, "false").Inc()
 		} else {
 			// append monitor to monitors
 			monitors = append(monitors, monitor)
 
 			// increment metrics
-			countMonitors.WithLabelValues(m.Kind, "true").Inc()
+			countMonitors.WithLabelValues(kind, "true").Inc()
 		}
 	}
 	if len(c.MonConfs) == len(errs) {
