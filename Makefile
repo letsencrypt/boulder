@@ -65,3 +65,13 @@ deb: build
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
 		--maintainer "$(MAINTAINER)" \
 		test/config/ sa/_db data/ $(OBJECTS) bin/ct-test-srv
+
+tar: build
+	fpm -f -s dir -t tar --name "boulder" \
+		--license "Mozilla Public License v2.0" --vendor "ISRG" \
+		--url "https://github.com/letsencrypt/boulder" --prefix=/opt/boulder \
+		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
+		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).amd64.tar.gz" \
+		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
+		--maintainer "$(MAINTAINsER)" \
+		test/config/ sa/_db data/ $(OBJECTS)
