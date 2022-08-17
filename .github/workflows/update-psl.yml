@@ -28,7 +28,7 @@ jobs:
       # We run these inside docker-compose to ensure we use the same Go version
       # as elsewhere. They're run inside the netaccess container so they can
       # download the dependency files.
-      - run: docker-compose run netaccess go get github.com/weppos/publicsuffix-go@master
+      - run: docker-compose run netaccess go get github.com/weppos/publicsuffix-go@main
       - run: docker-compose run netaccess go mod vendor
       - run: docker-compose run netaccess go mod tidy
 
