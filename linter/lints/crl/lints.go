@@ -430,7 +430,7 @@ func hasValidTimestamps(crl *crl_x509.RevocationList) *lint.LintResult {
 	var thisUpdate cryptobyte.String
 	var thisUpdateTag cryptobyte_asn1.Tag
 	if !tbs.ReadAnyASN1Element(&thisUpdate, &thisUpdateTag) {
-		return &lint.LintResult{Status: lint.Error, Details: "Failed to read thisUpdate timestamp"}
+		return &lintFail
 	}
 
 	// Lint thisUpdate.
@@ -441,12 +441,11 @@ func hasValidTimestamps(crl *crl_x509.RevocationList) *lint.LintResult {
 
 	// Peek (optional) nextUpdate.
 	if tbs.PeekASN1Tag(cryptobyte_asn1.UTCTime) || tbs.PeekASN1Tag(cryptobyte_asn1.GeneralizedTime) {
-
 		// Read nextUpdate.
 		var nextUpdate cryptobyte.String
 		var nextUpdateTag cryptobyte_asn1.Tag
 		if !tbs.ReadAnyASN1Element(&nextUpdate, &nextUpdateTag) {
-			return &lint.LintResult{Status: lint.Error, Details: "Failed to read nextUpdate timestamp"}
+			return &lintFail
 		}
 
 		// Lint nextUpdate.
@@ -461,7 +460,7 @@ func hasValidTimestamps(crl *crl_x509.RevocationList) *lint.LintResult {
 		// Read sequence of revokedCertificate.
 		var revokedSeq cryptobyte.String
 		if !tbs.ReadASN1(&revokedSeq, cryptobyte_asn1.SEQUENCE) {
-			return &lint.LintResult{Status: lint.Error, Details: "Failed to read revokedCertificate sequence"}
+			return &lintFail
 		}
 
 		// Iterate over each revokedCertificate sequence.
@@ -469,11 +468,11 @@ func hasValidTimestamps(crl *crl_x509.RevocationList) *lint.LintResult {
 			// Read revokedCertificate.
 			var certSeq cryptobyte.String
 			if !revokedSeq.ReadASN1Element(&certSeq, cryptobyte_asn1.SEQUENCE) {
-				return &lint.LintResult{Status: lint.Error, Details: "Failed to read revokedCertificate in sequence"}
+				return &lintFail
 			}
 
 			if !certSeq.ReadASN1(&certSeq, cryptobyte_asn1.SEQUENCE) {
-				return &lint.LintResult{Status: lint.Error, Details: "Failed to read revokedCertificate in sequence"}
+				return &lintFail
 			}
 
 			// Skip userCertificate (serial number).
@@ -503,7 +502,7 @@ func lintTimestamp(der *cryptobyte.String, tag cryptobyte_asn1.Tag) error {
 	derBytes := *der
 	var tsBytes cryptobyte.String
 	if !derBytes.ReadASN1(&tsBytes, tag) {
-		return errors.New("x509: failed to read timestamp")
+		return errors.New("failed to read timestamp")
 	}
 	tsLen := len(string(tsBytes))
 
@@ -512,41 +511,41 @@ func lintTimestamp(der *cryptobyte.String, tag cryptobyte_asn1.Tag) error {
 	case cryptobyte_asn1.UTCTime:
 		// Verify that the timestamp is properly formatted.
 		if tsLen != len(utcTimeFormat) {
-			return fmt.Errorf("x509: timestamps encoded using UTCTime MUST be specified in the format %q", utcTimeFormat)
+			return fmt.Errorf("timestamps encoded using UTCTime MUST be specified in the format %q", utcTimeFormat)
 		}
 
 		if !der.ReadASN1UTCTime(&parsedTime) {
-			return errors.New("x509: failed to read timestamp encoded using UTCTime")
+			return errors.New("failed to read timestamp encoded using UTCTime")
 		}
 
 		// Verify that the timestamp is prior to the year 2050. This should
 		// really never happen.
 		if parsedTime.Year() > 2049 {
-			return errors.New("x509: ReadASN1UTCTime returned a UTCTime after 2049")
+			return errors.New("ReadASN1UTCTime returned a UTCTime after 2049")
 		}
 	case cryptobyte_asn1.GeneralizedTime:
 		// Verify that the timestamp is properly formatted.
 		if tsLen != len(generalizedTimeFormat) {
 			return fmt.Errorf(
-				"x509: timestamps encoded using GeneralizedTime MUST be specified in the format %q", generalizedTimeFormat,
+				"timestamps encoded using GeneralizedTime MUST be specified in the format %q", generalizedTimeFormat,
 			)
 		}
 
 		if !der.ReadASN1GeneralizedTime(&parsedTime) {
-			return fmt.Errorf("x509: failed to read timestamp encoded using GeneralizedTime")
+			return fmt.Errorf("failed to read timestamp encoded using GeneralizedTime")
 		}
 
 		// Verify that the timestamp occurred after the year 2049.
 		if parsedTime.Year() < 2050 {
-			return errors.New("x509: timestamps prior to 2050 MUST be encoded using UTCTime")
+			return errors.New("timestamps prior to 2050 MUST be encoded using UTCTime")
 		}
 	default:
-		return errors.New("x509: unsupported time format")
+		return errors.New("unsupported time format")
 	}
 
 	// Verify that the location is UTC.
 	if parsedTime.Location() != time.UTC {
-		return errors.New("x509: time must be in UTC")
+		return errors.New("time must be in UTC")
 	}
 	return nil
 }
