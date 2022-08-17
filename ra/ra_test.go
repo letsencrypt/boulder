@@ -634,7 +634,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
 
 	// Create a registration for an IPv6 address
 	reg.Key = newAcctKey(t)
@@ -651,7 +651,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// exceed the RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
-	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
 
 	// Create a registration for an IPv6 address in the same /48
 	reg.Key = newAcctKey(t)
