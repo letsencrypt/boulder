@@ -10,7 +10,6 @@ import (
 	"github.com/letsencrypt/boulder/observer/probers"
 	_ "github.com/letsencrypt/boulder/observer/probers/mock"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
