@@ -25,7 +25,7 @@ BUILD_TIME_VAR = github.com/letsencrypt/boulder/core.BuildTime
 
 GO_BUILD_FLAGS = -ldflags "-X \"$(BUILD_ID_VAR)=$(BUILD_ID)\" -X \"$(BUILD_TIME_VAR)=$(BUILD_TIME)\" -X \"$(BUILD_HOST_VAR)=$(BUILD_HOST)\""
 
-.PHONY: all build
+.PHONY: all build build_cmds rpm deb
 all: build
 
 build: $(OBJECTS)
