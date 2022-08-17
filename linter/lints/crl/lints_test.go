@@ -257,32 +257,33 @@ func TestHasValidTimestamps(t *testing.T) {
 	res := hasValidTimestamps(crl)
 	test.AssertEquals(t, res.Status, lint.Pass)
 
-	// Ensure a UTCTime with '50' in the 'YY' (year) field is interpreted as
-	// '1950', not '2050'.
+	// Check that 'thisUpdate' of 'UTCTIME 500706164338Z' is considered valid.
 	crl = loadPEMCRL(t, "testdata/good_utctime_1950.pem")
 	res = hasValidTimestamps(crl)
 	test.AssertEquals(t, res.Status, lint.Pass)
 
-	// Ensure a GeneralizedTime in the year '2050' is accepted.
+	// Check that 'thisUpdate' of 'GENERALIZEDTIME 20500706164338Z' is
+	// considered valid.
 	crl = loadPEMCRL(t, "testdata/good_gentime_2050.pem")
 	res = hasValidTimestamps(crl)
 	test.AssertEquals(t, res.Status, lint.Pass)
 
-	// Check that a UTCTime with a missing 'SS' (seconds) field is rejected.
-	crl = loadPEMCRL(t, "testdata/utctime_no_seconds.pem")
-	res = hasValidTimestamps(crl)
-	test.AssertEquals(t, res.Status, lint.Error)
-	test.AssertContains(t, res.Details, "timestamps encoded using UTCTime MUST be specified in the format \"YYMMDDHHMMSSZ\"")
-
-	// Check that a GeneralizedTime with '2049' in the 'nextUpdate' field is
-	// rejected.
+	// Check that 'thisUpdate' of 'GENERALIZEDTIME 20490706164338Z' (before
+	// 2050) is considered invalid.
 	crl = loadPEMCRL(t, "testdata/gentime_2049.pem")
 	res = hasValidTimestamps(crl)
 	test.AssertEquals(t, res.Status, lint.Error)
 	test.AssertContains(t, res.Details, "timestamps prior to 2050 MUST be encoded using UTCTime")
 
-	// Check that a GeneralizedTime with '2049' in the 'revocationDate' field of
-	// a revokedCertificate entry is rejected.
+	// Check that 'nextUpdate' of 'UTCTIME 2207061643Z' (missing seconds) is
+	// considered invalid.
+	crl = loadPEMCRL(t, "testdata/utctime_no_seconds.pem")
+	res = hasValidTimestamps(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "timestamps encoded using UTCTime MUST be specified in the format \"YYMMDDHHMMSSZ\"")
+
+	// Check that 'revocationDate' of 'GENERALIZEDTIME 20490706154338Z' (before
+	// 2050) is considered invalid.
 	crl = loadPEMCRL(t, "testdata/gentime_revoked_2049.pem")
 	res = hasValidTimestamps(crl)
 	test.AssertEquals(t, res.Status, lint.Error)
