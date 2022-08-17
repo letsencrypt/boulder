@@ -251,3 +251,41 @@ func TestHasMozReasonCodes(t *testing.T) {
 	test.AssertEquals(t, res.Status, lint.Error)
 	test.AssertContains(t, res.Details, "MUST NOT include reasonCodes other than")
 }
+
+func TestHasValidTimestamps(t *testing.T) {
+	crl := loadPEMCRL(t, "testdata/good.pem")
+	res := hasValidTimestamps(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	// Check that 'thisUpdate' of 'UTCTIME 500706164338Z' is considered valid.
+	crl = loadPEMCRL(t, "testdata/good_utctime_1950.pem")
+	res = hasValidTimestamps(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	// Check that 'thisUpdate' of 'GENERALIZEDTIME 20500706164338Z' is
+	// considered valid.
+	crl = loadPEMCRL(t, "testdata/good_gentime_2050.pem")
+	res = hasValidTimestamps(crl)
+	test.AssertEquals(t, res.Status, lint.Pass)
+
+	// Check that 'thisUpdate' of 'GENERALIZEDTIME 20490706164338Z' (before
+	// 2050) is considered invalid.
+	crl = loadPEMCRL(t, "testdata/gentime_2049.pem")
+	res = hasValidTimestamps(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "timestamps prior to 2050 MUST be encoded using UTCTime")
+
+	// Check that 'nextUpdate' of 'UTCTIME 2207061643Z' (missing seconds) is
+	// considered invalid.
+	crl = loadPEMCRL(t, "testdata/utctime_no_seconds.pem")
+	res = hasValidTimestamps(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "timestamps encoded using UTCTime MUST be specified in the format \"YYMMDDHHMMSSZ\"")
+
+	// Check that 'revocationDate' of 'GENERALIZEDTIME 20490706154338Z' (before
+	// 2050) is considered invalid.
+	crl = loadPEMCRL(t, "testdata/gentime_revoked_2049.pem")
+	res = hasValidTimestamps(crl)
+	test.AssertEquals(t, res.Status, lint.Error)
+	test.AssertContains(t, res.Details, "timestamps prior to 2050 MUST be encoded using UTCTime")
+}
