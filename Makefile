@@ -73,5 +73,5 @@ tar: build
 		--version "$(VERSION)" --iteration "$(COMMIT_ID)" --epoch "$(EPOCH)" \
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).amd64.tar.gz" \
 		--description "Boulder is an ACME-compatible X.509 Certificate Authority" \
-		--maintainer "$(MAINTAINsER)" \
+		--maintainer "$(MAINTAINER)" \
 		test/config/ sa/_db data/ $(OBJECTS)
