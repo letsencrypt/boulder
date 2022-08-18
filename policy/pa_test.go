@@ -162,7 +162,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	// Test for invalid identifier type
 	ident := identifier.ACMEIdentifier{Type: "ip", Value: "example.com"}
-	err = pa.WillingToIssue(ident)
+	err = pa.willingToIssue(ident)
 	if err != errInvalidIdentifier {
 		t.Error("Identifier was not correctly forbidden: ", ident)
 	}
@@ -170,27 +170,27 @@ func TestWillingToIssue(t *testing.T) {
 	// Test syntax errors
 	for _, tc := range testCases {
 		ident := identifier.DNSIdentifier(tc.domain)
-		err := pa.WillingToIssue(ident)
+		err := pa.willingToIssue(ident)
 		if err != tc.err {
 			t.Errorf("WillingToIssue(%q) = %q, expected %q", tc.domain, err, tc.err)
 		}
 	}
 
 	// Invalid encoding
-	err = pa.WillingToIssue(identifier.DNSIdentifier("www.xn--m.com"))
+	err = pa.willingToIssue(identifier.DNSIdentifier("www.xn--m.com"))
 	test.AssertError(t, err, "WillingToIssue didn't fail on a malformed IDN")
 	// Valid encoding
-	err = pa.WillingToIssue(identifier.DNSIdentifier("www.xn--mnich-kva.com"))
+	err = pa.willingToIssue(identifier.DNSIdentifier("www.xn--mnich-kva.com"))
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed IDN")
 	// IDN TLD
-	err = pa.WillingToIssue(identifier.DNSIdentifier("xn--example--3bhk5a.xn--p1ai"))
+	err = pa.willingToIssue(identifier.DNSIdentifier("xn--example--3bhk5a.xn--p1ai"))
 	test.AssertNotError(t, err, "WillingToIssue failed on a properly formed domain with IDN TLD")
 	features.Reset()
 
 	// Test domains that are equal to public suffixes
 	for _, domain := range shouldBeTLDError {
 		ident := identifier.DNSIdentifier(domain)
-		err := pa.WillingToIssue(ident)
+		err := pa.willingToIssue(ident)
 		if err != errICANNTLD {
 			t.Error("Identifier was not correctly forbidden: ", ident, err)
 		}
@@ -199,7 +199,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test expected blocked domains
 	for _, domain := range shouldBeBlocked {
 		ident := identifier.DNSIdentifier(domain)
-		err := pa.WillingToIssue(ident)
+		err := pa.willingToIssue(ident)
 		if err != errPolicyForbidden {
 			t.Error("Identifier was not correctly forbidden: ", ident, err)
 		}
@@ -208,7 +208,7 @@ func TestWillingToIssue(t *testing.T) {
 	// Test acceptance of good names
 	for _, domain := range shouldBeAccepted {
 		ident := identifier.DNSIdentifier(domain)
-		err := pa.WillingToIssue(ident)
+		err := pa.willingToIssue(ident)
 		test.AssertNotError(t, err, "identiier was incorrectly forbidden")
 	}
 }

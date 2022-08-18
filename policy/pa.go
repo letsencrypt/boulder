@@ -340,9 +340,9 @@ func ValidEmail(address string) error {
 	return nil
 }
 
-// WillingToIssue determines whether the CA is willing to issue for the provided
+// willingToIssue determines whether the CA is willing to issue for the provided
 // identifier. It expects domains in id to be lowercase to prevent mismatched
-// cases breaking queries.
+// cases breaking queries. It is a helper method for WillingToIssueWildcards.
 //
 // We place several criteria on identifiers we are willing to issue for:
 //   - MUST self-identify as DNS identifiers
@@ -358,12 +358,9 @@ func ValidEmail(address string) error {
 //   - MUST NOT be a label-wise suffix match for a name on the block list,
 //     where comparison is case-independent (normalized to lower case)
 //
-// If WillingToIssue returns an error, it will be of type MalformedRequestError
+// If willingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
-//
-// TODO(#5816): Consider making this method private, as it has no callers
-// outside of this package.
-func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
+func (pa *AuthorityImpl) willingToIssue(id identifier.ACMEIdentifier) error {
 	if id.Type != identifier.DNS {
 		return errInvalidIdentifier
 	}
@@ -495,13 +492,13 @@ func (pa *AuthorityImpl) willingToIssueWildcard(ident identifier.ACMEIdentifier)
 		// NOTE(@cpu): This is pretty hackish! Boulder issue #3323[0] describes
 		// a better follow-up that we should land to replace this code.
 		// [0] https://github.com/letsencrypt/boulder/issues/3323
-		return pa.WillingToIssue(identifier.ACMEIdentifier{
+		return pa.willingToIssue(identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: "x." + baseDomain,
 		})
 	}
 
-	return pa.WillingToIssue(ident)
+	return pa.willingToIssue(ident)
 }
 
 // checkWildcardHostList checks the wildcardExactBlocklist for a given domain.
