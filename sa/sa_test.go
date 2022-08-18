@@ -1483,7 +1483,7 @@ func TestGetOrderForNames(t *testing.T) {
 	// It should not error since a ready order can be reused.
 	test.AssertNotError(t, err, "sa.GetOrderForNames returned an unexpected error for ready order reuse")
 	// The order returned should have the same ID as the order we created above
-	test.AssertEquals(t, result != nil, true)
+	test.AssertNotNil(t, result, "sa.GetOrderForNames returned nil result")
 	test.AssertEquals(t, result.Id, order.Id)
 
 	// Set the order processing so it can be finalized

@@ -359,7 +359,7 @@ func TestIssuePrecertificate(t *testing.T) {
 				test.AssertNotError(t, err, "Certificate failed to parse")
 
 				poisonExtension := findExtension(cert.Extensions, OIDExtensionCTPoison)
-				test.AssertEquals(t, true, poisonExtension != nil)
+				test.AssertNotNil(t, poisonExtension, "Precert doesn't contain poison extension")
 				if poisonExtension != nil {
 					test.AssertEquals(t, poisonExtension.Critical, true)
 					test.AssertDeepEquals(t, poisonExtension.Value, []byte{0x05, 0x00}) // ASN.1 DER NULL

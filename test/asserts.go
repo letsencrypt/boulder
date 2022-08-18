@@ -22,10 +22,18 @@ func Assert(t *testing.T, result bool, message string) {
 	}
 }
 
+// AssertNil checks that an object is nil
+func AssertNil(t *testing.T, obj interface{}, message string) {
+	t.Helper()
+	if !reflect.ValueOf(obj).IsNil() {
+		t.Fatal(message)
+	}
+}
+
 // AssertNotNil checks an object to be non-nil
 func AssertNotNil(t *testing.T, obj interface{}, message string) {
 	t.Helper()
-	if obj == nil {
+	if reflect.ValueOf(obj).IsNil() {
 		t.Fatal(message)
 	}
 }
