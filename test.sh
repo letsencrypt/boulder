@@ -299,7 +299,7 @@ fi
 STAGE="make-artifacts"
 if [[ "${RUN[@]}" =~ "$STAGE" ]]; then
   print_heading "Running Make Artifacts"
-  make deb rpm
+  make deb rpm tar
 fi
 
 # Because set -e stops execution in the instance of a command or pipeline
