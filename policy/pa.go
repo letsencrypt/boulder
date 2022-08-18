@@ -199,7 +199,7 @@ var (
 	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
 )
 
-// ValidDomain checks that a domain isn't:
+// validDomain checks that a domain isn't:
 //
 // * empty
 // * prefixed with the wildcard label `*.`
@@ -213,7 +213,7 @@ var (
 // * exactly equal to an IANA registered TLD
 //
 // It does _not_ check that the domain isn't on any PA blocked lists.
-func ValidDomain(domain string) error {
+func validDomain(domain string) error {
 	if domain == "" {
 		return errEmptyName
 	}
@@ -326,7 +326,7 @@ func ValidEmail(address string) error {
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
-	err = ValidDomain(domain)
+	err = validDomain(domain)
 	if err != nil {
 		return berrors.InvalidEmailError(
 			"contact email %q has invalid domain : %s",
@@ -366,7 +366,7 @@ func (pa *AuthorityImpl) willingToIssue(id identifier.ACMEIdentifier) error {
 	}
 	domain := id.Value
 
-	err := ValidDomain(domain)
+	err := validDomain(domain)
 	if err != nil {
 		return err
 	}
