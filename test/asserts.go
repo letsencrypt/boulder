@@ -25,16 +25,30 @@ func Assert(t *testing.T, result bool, message string) {
 // AssertNil checks that an object is nil
 func AssertNil(t *testing.T, obj interface{}, message string) {
 	t.Helper()
-	if !reflect.ValueOf(obj).IsNil() {
+	if obj != nil {
 		t.Fatal(message)
+	}
+	switch reflect.TypeOf(obj).Kind() {
+	// .IsNil() only works on chan, func, interface, map, pointer, and slice.
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if !reflect.ValueOf(obj).IsNil() {
+			t.Fatal(message)
+		}
 	}
 }
 
 // AssertNotNil checks an object to be non-nil
 func AssertNotNil(t *testing.T, obj interface{}, message string) {
 	t.Helper()
-	if reflect.ValueOf(obj).IsNil() {
+	if obj == nil {
 		t.Fatal(message)
+	}
+	switch reflect.TypeOf(obj).Kind() {
+	// .IsNil() only works on chan, func, interface, map, pointer, and slice.
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if reflect.ValueOf(obj).IsNil() {
+			t.Fatal(message)
+		}
 	}
 }
 
