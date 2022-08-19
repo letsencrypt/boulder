@@ -177,7 +177,7 @@ func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.Revocat
 	if meta.IssuerNameID == 0 || meta.ThisUpdate == 0 {
 		return nil, errors.New("got incomplete metadata message")
 	}
-	number := bcrl.NewNumber(meta.ThisUpdate)
+	number := bcrl.Number(meta.ThisUpdate)
 	thisUpdate := time.Unix(0, meta.ThisUpdate)
 
 	return &crl_x509.RevocationList{

@@ -114,7 +114,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			}
 
 			shardIdx = payload.Metadata.ShardIdx
-			crlNumber = crl.NewNumber(payload.Metadata.Number)
+			crlNumber = crl.Number(payload.Metadata.Number)
 
 			var ok bool
 			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
@@ -132,7 +132,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		return errors.New("got no metadata message")
 	}
 
-	crlId, err := crl.NewId(issuer.NameID(), crlNumber, int(shardIdx))
+	crlId, err := crl.Id(issuer.NameID(), crlNumber, int(shardIdx))
 	if err != nil {
 		return err
 	}

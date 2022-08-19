@@ -12,9 +12,9 @@ import (
 // 'crlNumber' field of a CRL.
 type number *big.Int
 
-// NewNumber derives the 'CRLNumber' field for a CRL from the value of the
+// Number derives the 'CRLNumber' field for a CRL from the value of the
 // 'thisUpdate' field provided in Unix nanoseconds.
-func NewNumber(thisUpdate int64) number {
+func Number(thisUpdate int64) number {
 	// Per RFC 5280 Section 5.2.3, 'CRLNumber' is a monotonically increasing
 	// sequence number for a given CRL scope and CRL that MUST be at most 20
 	// octets. A 64-bit (8-byte) integer will never exceed that requirement but
@@ -30,7 +30,7 @@ type id struct {
 }
 
 // NewID is a utility function which constructs a new `id`.
-func NewId(issuerID issuance.IssuerNameID, crlNum number, shardIdx int) (id, error) {
+func Id(issuerID issuance.IssuerNameID, crlNum number, shardIdx int) (id, error) {
 	type info struct {
 		IssuerID issuance.IssuerNameID `json:"issuerID"`
 		CRLNum   number                `json:"crlNum"`
