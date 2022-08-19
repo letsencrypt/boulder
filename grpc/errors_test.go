@@ -51,8 +51,8 @@ func TestErrorWrapping(t *testing.T) {
 	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
 	test.AssertDeepEquals(t, err, es.err)
 
-	test.AssertEquals(t, wrapError(context.Background(), nil), nil)
-	test.AssertEquals(t, unwrapError(nil, nil), nil)
+	test.AssertNil(t, wrapError(context.Background(), nil), "Wrapping nil should still be nil")
+	test.AssertNil(t, unwrapError(nil, nil), "Unwrapping nil should still be nil")
 }
 
 // TestSubErrorWrapping tests that a boulder error with suberrors can be

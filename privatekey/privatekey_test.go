@@ -57,6 +57,6 @@ func TestLoad(t *testing.T) {
 
 	signer, public, err = Load("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertError(t, err, "Should have failed, file is a certificate")
-	test.AssertEquals(t, signer, nil)
-	test.AssertEquals(t, public, nil)
+	test.AssertNil(t, signer, "Signer should be nil")
+	test.AssertNil(t, public, "Public should be nil")
 }
