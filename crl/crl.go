@@ -29,7 +29,7 @@ type id struct {
 	crlId string
 }
 
-// NewID is a utility function which constructs a new `id`.
+// Id is a utility function which constructs a new `id`.
 func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) (id, error) {
 	type info struct {
 		IssuerID  issuance.IssuerNameID `json:"issuerID"`
