@@ -62,37 +62,37 @@ func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []err
 	var monitors []*monitor
 	proberSpecificMetrics := make(map[string]map[string]prometheus.Collector)
 	for e, m := range c.MonConfs {
+		entry := strconv.Itoa(e + 1)
+		proberConf, err := probers.GetConfigurer(m.Kind)
+		if err != nil {
+			// append error to errs
+			errs = append(errs, fmt.Errorf("'monitors' entry #%s couldn't be validated: %w", entry, err))
+			// increment metrics
+			countMonitors.WithLabelValues(m.Kind, "false").Inc()
+			// bail out before constructing the monitor. with no configurer, it will fail
+			continue
+		}
+		kind := proberConf.Kind()
+
 		// set up custom metrics internal to each prober kind
-		kind := probers.NormalizedKind(m.Kind)
 		_, exist := proberSpecificMetrics[kind]
 		if !exist {
 			// we haven't seen this prober kind before, so we need to request
 			// any custom metrics it may have and register them with the
 			// prometheus registry
-			proberConf, err := probers.GetConfigurer(kind)
-			if err != nil {
-				// append error to errs
-				message := fmt.Errorf("metrics for prober kind '%s' couldn't be registered: %v", kind, err)
-				errs = append(errs, message)
-			} else {
-				collectors := proberConf.Instrument()
-				for name, collector := range collectors {
-					// register the collector with the prometheus registry
-					metrics.MustRegister(collector)
-					// store the registered collector so we can pass it to every
-					// monitor that will construct this kind of prober
-					proberSpecificMetrics[kind][name] = collector
-				}
+			for name, collector := range proberConf.Instrument() {
+				// register the collector with the prometheus registry
+				metrics.MustRegister(collector)
+				// store the registered collector so we can pass it to every
+				// monitor that will construct this kind of prober
+				proberSpecificMetrics[kind][name] = collector
 			}
 		}
 
-		entry := strconv.Itoa(e + 1)
 		monitor, err := m.makeMonitor(proberSpecificMetrics[kind])
 		if err != nil {
 			// append validation error to errs
-			errs = append(
-				errs, fmt.Errorf(
-					"'monitors' entry #%s couldn't be validated: %v", entry, err))
+			errs = append(errs, fmt.Errorf("'monitors' entry #%s couldn't be validated: %w", entry, err))
 
 			// increment metrics
 			countMonitors.WithLabelValues(kind, "false").Inc()

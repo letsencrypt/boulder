@@ -25,6 +25,11 @@ type DNSConf struct {
 	QType   string `yaml:"query_type"`
 }
 
+// Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
+func (p DNSConf) Kind() string {
+	return "DNS"
+}
+
 // UnmarshalSettings constructs a DNSConf object from YAML as bytes.
 func (c DNSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf DNSConf
@@ -135,5 +140,5 @@ func (c DNSConf) Instrument() map[string]prometheus.Collector {
 // init is called at runtime and registers `DNSConf`, a `Prober`
 // `Configurer` type, as "DNS".
 func init() {
-	probers.Register("DNS", DNSConf{})
+	probers.Register(DNSConf{})
 }

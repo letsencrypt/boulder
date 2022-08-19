@@ -33,6 +33,10 @@ type Prober interface {
 
 // Configurer is the interface for `Configurer` types.
 type Configurer interface {
+	// Kind returns a name that uniquely identifies the `Kind` of
+	// `Configurer`.
+	Kind() string
+
 	// UnmarshalSettings unmarshals YAML as bytes to a `Configurer`
 	// object.
 	UnmarshalSettings([]byte) (Configurer, error)
@@ -78,13 +82,13 @@ func GetConfigurer(kind string) (Configurer, error) {
 // add the caller to the global `Registry` map. If the caller attempts
 // to add a `Configurer` to the registry using the same name as a prior
 // `Configurer` Observer will exit after logging an error.
-func Register(kind string, c Configurer) {
+func Register(c Configurer) {
 	// normalize
-	name := NormalizedKind(kind)
+	name := NormalizedKind(c.Kind())
 	// check for name collision
 	if _, exists := Registry[name]; exists {
 		cmd.Fail(fmt.Sprintf(
-			"problem registering configurer %s: name collision", kind))
+			"problem registering configurer %s: name collision", c.Kind()))
 	}
 	Registry[name] = c
 }

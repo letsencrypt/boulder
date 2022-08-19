@@ -16,6 +16,11 @@ type HTTPConf struct {
 	UserAgent string `yaml:"useragent"`
 }
 
+// Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
+func (p HTTPConf) Kind() string {
+	return "HTTP"
+}
+
 // UnmarshalSettings takes YAML as bytes and unmarshals it to the to an
 // HTTPConf object.
 func (c HTTPConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
@@ -86,5 +91,5 @@ func (c HTTPConf) Instrument() map[string]prometheus.Collector {
 // init is called at runtime and registers `HTTPConf`, a `Prober`
 // `Configurer` type, as "HTTP".
 func init() {
-	probers.Register("HTTP", HTTPConf{})
+	probers.Register(HTTPConf{})
 }
