@@ -22,12 +22,10 @@ func Number(thisUpdate int64) number {
 	return number(big.NewInt(thisUpdate))
 }
 
-// id implements the `Stringer` interface to expose a unique identifier for a
-// CRL which is primarily used for logging. This identifier is composed of the
-// 'Issuer', 'CRLNumber', and shard index of a CRL.
-type id struct {
-	crlId string
-}
+// id is a unique identifier for a CRL which is primarily used for logging. This
+// identifier is composed of the 'Issuer', 'CRLNumber', and the shard index
+// (e.g. {"issuerID": 123, "crlNum": 456, "shardIdx": 78})
+type id string
 
 // Id is a utility function which constructs a new `id`.
 func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) (id, error) {
@@ -38,13 +36,7 @@ func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) (id, err
 	}
 	jsonBytes, err := json.Marshal(info{issuerID, crlNumber, shardIdx})
 	if err != nil {
-		return id{}, fmt.Errorf("computing CRL Id: %w", err)
+		return "", fmt.Errorf("computing CRL Id: %w", err)
 	}
-	return id{string(jsonBytes)}, nil
-}
-
-// String returns a string representation of the id. (e.g. {"issuerID": 123,
-// "crlNum": 456, "shardIdx": 78})
-func (c id) String() string {
-	return c.crlId
+	return id(jsonBytes), nil
 }
