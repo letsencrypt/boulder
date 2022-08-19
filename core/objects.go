@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"math/big"
 	"net"
 	"strings"
 	"time"
@@ -539,4 +540,36 @@ type SuggestedWindow struct {
 // endpoint specified in draft-aaron-ari.
 type RenewalInfo struct {
 	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
+}
+
+// crlNumber is a monotonically increasing sequence number for a given CRL scope
+// and CRL that MUST be at most 20 octets.
+type crlNumber *big.Int
+
+// NewCRLNumber derives the 'crlNumber' field for a CRL from the value of the
+// 'thisUpdate' field provided in Unix nanoseconds.
+func NewCRLNumber(thisUpdate int64) crlNumber {
+	return crlNumber(big.NewInt(thisUpdate))
+}
+
+// crlId implements the Stringer interface to expose an inner crlID.
+type crlId struct {
+	id string
+}
+
+func (c crlId) String() string {
+	return c.id
+}
+
+func NewCRLId(issuerID int64, crlNum crlNumber, shardIdx int) (crlId, error) {
+	type info struct {
+		IssuerID int64     `json:"issuerID"`
+		CRLNum   crlNumber `json:"crlNum"`
+		ShardIdx int       `json:"shardIdx"`
+	}
+	jsonBytes, err := json.Marshal(info{issuerID, crlNum, shardIdx})
+	if err != nil {
+		return crlId{}, err
+	}
+	return crlId{string(jsonBytes)}, nil
 }
