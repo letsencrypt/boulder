@@ -31,10 +31,6 @@ func (pa *mockPA) ChallengesFor(identifier identifier.ACMEIdentifier) (challenge
 	return
 }
 
-func (pa *mockPA) WillingToIssue(id identifier.ACMEIdentifier) error {
-	return nil
-}
-
 func (pa *mockPA) WillingToIssueWildcards(idents []identifier.ACMEIdentifier) error {
 	for _, ident := range idents {
 		if ident.Value == "bad-name.com" || ident.Value == "other-bad-name.com" {
