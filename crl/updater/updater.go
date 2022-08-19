@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
@@ -254,7 +253,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 
 func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) error {
 	start := cu.clk.Now()
-	crlId, err := crl.NewId(int64(issuerNameID), crl.NewNumber(atTime.UnixNano()), shardIdx)
+	crlId, err := crl.NewId(issuerNameID, crl.NewNumber(atTime.UnixNano()), shardIdx)
 	if err != nil {
 		return err
 	}
@@ -315,7 +314,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		})
 		if err != nil {
 			result = "failed"
-			return fmt.Errorf("sending entry to CA for for %s: %w", crlId, err)
+			return fmt.Errorf("sending entry to CA for %s: %w", crlId, err)
 		}
 	}
 
@@ -374,9 +373,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		crlHash.Write(out.Chunk)
 	}
 
-	cu.log.Infof(
-		"Generated CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
-		issuerNameID, core.NewCRLNumber(atTime.Unix()), shardIdx, crlLen, crlHash.Sum(nil))
+	cu.log.Infof("Generated CRL: id=[%s] size=[%d] hash=[%x]", crlId, crlLen, crlHash.Sum(nil))
 
 	_, err = csStream.CloseAndRecv()
 	if err != nil {
