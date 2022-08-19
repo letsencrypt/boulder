@@ -172,9 +172,3 @@ func TestFindChallengeByType(t *testing.T) {
 	test.AssertEquals(t, 1, authz.FindChallengeByStringID(authz.Challenges[1].StringID()))
 	test.AssertEquals(t, -1, authz.FindChallengeByStringID("hello"))
 }
-
-func Test_crlId_DumpAsJSON(t *testing.T) {
-	out, err := NewCRLId(1337, NewCRLNumber(42), 1)
-	test.AssertNotError(t, err, "Failed to create CRLId")
-	test.AssertEquals(t, out.String(), "{\"issuerID\":1337,\"crlNum\":42,\"shardIdx\":1}")
-}
