@@ -10,7 +10,7 @@ import (
 func TestId(t *testing.T) {
 	out, err := Id(1337, Number(42), 1)
 	test.AssertNotError(t, err, "Failed to create CRLId")
-	test.AssertEquals(t, out.String(), "{\"issuerID\":1337,\"crlNum\":42,\"shardIdx\":1}")
+	test.AssertEquals(t, out.String(), "{\"issuerID\":1337,\"crlNumber\":42,\"shardIdx\":1}")
 }
 
 func TestNumber(t *testing.T) {

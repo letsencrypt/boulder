@@ -7,8 +7,9 @@ import (
 	"net"
 	"testing"
 
-	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/square/go-jose.v2"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func TestExpectedKeyAuthorization(t *testing.T) {

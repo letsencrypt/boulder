@@ -30,13 +30,13 @@ type id struct {
 }
 
 // NewID is a utility function which constructs a new `id`.
-func Id(issuerID issuance.IssuerNameID, crlNum number, shardIdx int) (id, error) {
+func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) (id, error) {
 	type info struct {
-		IssuerID issuance.IssuerNameID `json:"issuerID"`
-		CRLNum   number                `json:"crlNum"`
-		ShardIdx int                   `json:"shardIdx"`
+		IssuerID  issuance.IssuerNameID `json:"issuerID"`
+		CRLNumber number                `json:"crlNumber"`
+		ShardIdx  int                   `json:"shardIdx"`
 	}
-	jsonBytes, err := json.Marshal(info{issuerID, crlNum, shardIdx})
+	jsonBytes, err := json.Marshal(info{issuerID, crlNumber, shardIdx})
 	if err != nil {
 		return id{}, fmt.Errorf("computing CRL Id: %w", err)
 	}
