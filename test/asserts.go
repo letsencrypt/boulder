@@ -22,22 +22,19 @@ func Assert(t *testing.T, result bool, message string) {
 	}
 }
 
-// AssertNil checks that an object is nil
+// AssertNil checks that an object is nil. Being a "boxed nil" (a nil value
+// wrapped in a non-nil interface type) is not good enough.
 func AssertNil(t *testing.T, obj interface{}, message string) {
 	t.Helper()
 	if obj != nil {
 		t.Fatal(message)
 	}
-	switch reflect.TypeOf(obj).Kind() {
-	// .IsNil() only works on chan, func, interface, map, pointer, and slice.
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		if !reflect.ValueOf(obj).IsNil() {
-			t.Fatal(message)
-		}
-	}
 }
 
-// AssertNotNil checks an object to be non-nil
+// AssertNotNil checks an object to be non-nil. Being a "boxed nil" (a nil value
+// wrapped in a non-nil interface type) is not good enough.
+// Note that there is a gap between AssertNil and AssertNotNil. Both fail when
+// called with a boxed nil. This is intentional: we want to avoid boxed nils.
 func AssertNotNil(t *testing.T, obj interface{}, message string) {
 	t.Helper()
 	if obj == nil {
