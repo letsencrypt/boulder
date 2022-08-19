@@ -12,6 +12,7 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -253,9 +254,9 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 
 func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) error {
 	start := cu.clk.Now()
-	crlId, err := core.NewCRLId(int64(issuerNameID), core.NewCRLNumber(atTime.UnixNano()), shardIdx)
+	crlId, err := crl.NewId(int64(issuerNameID), crl.NewNumber(atTime.UnixNano()), shardIdx)
 	if err != nil {
-		return fmt.Errorf("computing CRL ID: %w", err)
+		return err
 	}
 	result := "success"
 	defer func() {

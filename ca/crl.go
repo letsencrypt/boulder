@@ -12,6 +12,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	bcrl "github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -176,7 +177,7 @@ func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.Revocat
 	if meta.IssuerNameID == 0 || meta.ThisUpdate == 0 {
 		return nil, errors.New("got incomplete metadata message")
 	}
-	number := core.NewCRLNumber(meta.ThisUpdate)
+	number := bcrl.NewNumber(meta.ThisUpdate)
 	thisUpdate := time.Unix(0, meta.ThisUpdate)
 
 	return &crl_x509.RevocationList{
