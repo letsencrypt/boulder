@@ -557,10 +557,6 @@ type crlId struct {
 	id string
 }
 
-func (c crlId) String() string {
-	return c.id
-}
-
 func NewCRLId(issuerID int64, crlNum crlNumber, shardIdx int) (crlId, error) {
 	type info struct {
 		IssuerID int64     `json:"issuerID"`
@@ -569,7 +565,11 @@ func NewCRLId(issuerID int64, crlNum crlNumber, shardIdx int) (crlId, error) {
 	}
 	jsonBytes, err := json.Marshal(info{issuerID, crlNum, shardIdx})
 	if err != nil {
-		return crlId{}, err
+		return crlId{}, fmt.Errorf("computing CRL Id: %w", err)
 	}
 	return crlId{string(jsonBytes)}, nil
+}
+
+func (c crlId) String() string {
+	return c.id
 }
