@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
@@ -113,7 +114,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			}
 
 			shardIdx = payload.Metadata.ShardIdx
-			crlNumber = big.NewInt(payload.Metadata.Number)
+			crlNumber = crl.NewNumber(payload.Metadata.Number)
 
 			var ok bool
 			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
@@ -131,11 +132,16 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		return errors.New("got no metadata message")
 	}
 
+	crlId, err := crl.NewId(issuer.NameID(), crlNumber, int(shardIdx))
+	if err != nil {
+		return err
+	}
+
 	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
 
 	crl, err := crl_x509.ParseRevocationList(crlBytes)
 	if err != nil {
-		return fmt.Errorf("parsing CRL for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("parsing CRL for %s: %w", crlId, err)
 	}
 
 	if crl.Number.Cmp(crlNumber) != 0 {
@@ -144,7 +150,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 
 	err = crl.CheckSignatureFrom(issuer.Certificate)
 	if err != nil {
-		return fmt.Errorf("validating signature for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("validating signature for %s: %w", crlId, err)
 	}
 
 	start := cs.clk.Now()
@@ -164,16 +170,12 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	})
 	if err != nil {
 		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed")
-		cs.log.AuditErrf(
-			"CRL upload failed: issuer=[%s] number=[%s] shard=[%d] err=[%s]",
-			issuer.Subject.CommonName, crlNumber, shardIdx, err,
-		)
+		cs.log.AuditErrf("CRL upload failed: id=[%s] err=[%s]", crlId, err)
 	} else {
 		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success")
 		cs.log.AuditInfof(
-			"CRL uploaded: issuer=[%s] number=[%s] shard=[%d] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-			issuer.Subject.CommonName, crlNumber, shardIdx,
-			crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
+			"CRL uploaded: issuerCN=[%s] id=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
+			issuer.Subject.CommonName, crlId, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
 		)
 	}
 
