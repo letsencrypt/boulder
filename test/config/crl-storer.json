@@ -20,9 +20,9 @@
       "/hierarchy/intermediate-cert-ecdsa-a.pem"
     ],
     "s3Endpoint": "http://localhost:7890",
-    "s3Region": "us-west-1",
     "s3Bucket": "lets-encrypt-crls",
-    "s3CredsFile": "test/secrets/aws_creds.ini"
+    "awsConfigFile": "test/config/crl-storer.ini",
+    "awsCredsFile": "test/secrets/aws_creds.ini"
   },
 
   "syslog": {

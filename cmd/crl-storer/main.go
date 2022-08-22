@@ -37,15 +37,17 @@ type Config struct {
 		// service, or to point to a fake service for testing. It should be left
 		// blank by default.
 		S3Endpoint string
-		// S3Region is the AWS Region (e.g. us-west-1) that uploads should go to.
-		S3Region string
 		// S3Bucket is the AWS Bucket that uploads should go to. Must be created
 		// (and have appropriate permissions set) beforehand.
 		S3Bucket string
-		// S3CredsFile is the path to a file on disk containing AWS credentials.
+		// AWSConfigFile is the path to a file on disk containing an AWS config.
+		// The format of the configuration file is specified at
+		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
+		AWSConfigFile string
+		// AWSCredsFile is the path to a file on disk containing AWS credentials.
 		// The format of the credentials file is specified at
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
-		S3CredsFile string
+		AWSCredsFile string
 
 		Features map[string]bool
 	}
@@ -110,9 +112,8 @@ func main() {
 	// Note that it *will* still load configuration from environment variables.
 	awsConfig, err := config.LoadDefaultConfig(
 		context.Background(),
-		config.WithSharedConfigFiles([]string{}),
-		config.WithSharedCredentialsFiles([]string{c.CRLStorer.S3CredsFile}),
-		config.WithRegion(c.CRLStorer.S3Region),
+		config.WithSharedConfigFiles([]string{c.CRLStorer.AWSConfigFile}),
+		config.WithSharedCredentialsFiles([]string{c.CRLStorer.AWSCredsFile}),
 		config.WithHTTPClient(new(http.Client)),
 		config.WithLogger(awsLogger{logger}),
 		config.WithClientLogMode(aws.LogRequestEventMessage|aws.LogResponseEventMessage),
