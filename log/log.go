@@ -133,11 +133,7 @@ func LogLineChecksum(line string) string {
 // Log the provided message at the appropriate level, writing to
 // both stdout and the Logger
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
-	var prefix string
 	var err error
-
-	const red = "\033[31m\033[1m"
-	const yellow = "\033[33m"
 
 	// Since messages are delimited by newlines, we have to escape any internal or
 	// trailing newlines before generating the checksum or outputting the message.
@@ -149,42 +145,32 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 		if syslogAllowed {
 			err = w.Err(msg)
 		}
-		prefix = red + "E"
 	case syslog.LOG_WARNING:
 		if syslogAllowed {
 			err = w.Warning(msg)
 		}
-		prefix = yellow + "W"
 	case syslog.LOG_INFO:
 		if syslogAllowed {
 			err = w.Info(msg)
 		}
-		prefix = "I"
 	case syslog.LOG_DEBUG:
 		if syslogAllowed {
 			err = w.Debug(msg)
 		}
-		prefix = "D"
 	default:
 		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %s (%s)\n", msg, err)
-	}
-
-	var reset string
-	if strings.HasPrefix(prefix, "\033") {
-		reset = "\033[0m"
+		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %d %s (%s)\n", int(level), msg, err)
 	}
 
 	if int(level) <= w.stdoutLevel {
-		if _, err := fmt.Fprintf(w.stdout, "%s%s %s %s%s\n",
-			prefix,
-			w.clk.Now().Format("150405"),
+		if _, err := fmt.Fprintf(w.stdout, "%s %d %s %s\n",
+			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
+			int(level),
 			path.Base(os.Args[0]),
-			msg,
-			reset); err != nil {
+			msg); err != nil {
 			panic(fmt.Sprintf("failed to write to stdout: %v\n", err))
 		}
 	}

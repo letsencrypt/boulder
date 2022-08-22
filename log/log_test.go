@@ -106,10 +106,10 @@ func ExampleLogger() {
 	}
 	bw.clk = clock.NewFake()
 	impl.AuditErr("Error Audit")
-	impl.Warning("Warning Audit")
+	impl.Warning("Warning log")
 	// Output:
-	// [31m[1mE000000 log.test 46_ghQg [AUDIT] Error Audit[0m
-	// [33mW000000 log.test 9rr1xwQ Warning Audit[0m
+	// 1970-01-01T00:00:00+07:00 3 log.test 46_ghQg [AUDIT] Error Audit
+	// 1970-01-01T00:00:00+07:00 4 log.test 97r2xAw Warning log
 }
 
 func TestSyslogMethods(t *testing.T) {
