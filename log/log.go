@@ -61,7 +61,14 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
 	return &impl{
-		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.New(), os.Stdout},
+		&bothWriter{
+			sync.Mutex{},
+			log,
+			stdoutLogLevel,
+			syslogLogLevel,
+			clock.New(),
+			os.Stdout,
+		},
 	}, nil
 }
 
@@ -114,6 +121,7 @@ type writer interface {
 
 // bothWriter implements writer and writes to both syslog and stdout.
 type bothWriter struct {
+	sync.Mutex
 	*syslog.Writer
 	stdoutLevel int
 	syslogLevel int
@@ -139,6 +147,9 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	// trailing newlines before generating the checksum or outputting the message.
 	msg = strings.Replace(msg, "\n", "\\n", -1)
 	msg = fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
+
+	w.Lock()
+	defer w.Unlock()
 
 	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:
