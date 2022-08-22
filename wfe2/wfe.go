@@ -2278,6 +2278,34 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
+	// Check if the serial is part of an ongoing incident. If so, return a
+	// renewal window in the past. The client should immediately attempt to
+	// renew the certificate.
+	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to query if serial is impacted by an incident"), err)
+		return
+	}
+	if len(result.Incidents) > 0 {
+		oneHourAgo := wfe.clk.Now().Add(-1 * time.Hour)
+		ri := core.RenewalInfo{
+			SuggestedWindow: core.SuggestedWindow{
+				Start: oneHourAgo,
+				End:   oneHourAgo.Add(time.Minute * 30),
+			},
+		}
+
+		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
+			return
+		}
+
+		pollPeriod := int(6 * time.Hour / time.Second)
+		response.Header().Set("Retry-After", fmt.Sprintf("%d", pollPeriod))
+		return
+	}
+
 	// We use GetCertificate, not GetPrecertificate, because we don't intend to
 	// serve ARI for certs that never made it past the precert stage.
 	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
