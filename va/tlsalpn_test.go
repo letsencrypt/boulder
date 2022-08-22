@@ -61,6 +61,8 @@ func makeACert(names []string) *tls.Certificate {
 
 // tlssniSrvWithNames is kept around for the use of TestValidateTLSALPN01UnawareSrv
 func tlssniSrvWithNames(t *testing.T, chall core.Challenge, names ...string) *httptest.Server {
+	t.Helper()
+
 	cert := makeACert(names)
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{*cert},
@@ -84,6 +86,8 @@ func tlsalpn01SrvWithCert(
 	names []string,
 	acmeCert *tls.Certificate,
 	tlsVersion uint16) *httptest.Server {
+	t.Helper()
+
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{},
 		ClientAuth:   tls.NoClientCert,

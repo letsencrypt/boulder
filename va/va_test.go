@@ -177,6 +177,7 @@ func (s *multiSrv) setAllowedUAs(allowedUAs map[string]bool) {
 const slowRemoteSleepMillis = 1000
 
 func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multiSrv {
+	t.Helper()
 	m := http.NewServeMux()
 
 	server := httptest.NewUnstartedServer(m)

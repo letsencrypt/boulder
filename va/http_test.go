@@ -491,6 +491,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 
 // A more concise version of httpSrv() that supports http.go tests
 func httpTestSrv(t *testing.T) *httptest.Server {
+	t.Helper()
 	mux := http.NewServeMux()
 	server := httptest.NewUnstartedServer(mux)
 
