@@ -878,18 +878,19 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 
 // failOrder marks an order as failed by setting the problem details field of
 // the order & persisting it through the SA. If an error occurs doing this we
-// log it and return the order as-is. There aren't any alternatives if we can't
-// add the error to the order.
+// log it and don't modify the input order. There aren't any alternatives if we
+// can't add the error to the order. This function MUST only be called when we
+// are already returning an error for another reason.
 func (ra *RegistrationAuthorityImpl) failOrder(
 	ctx context.Context,
 	order *corepb.Order,
-	prob *probs.ProblemDetails) *corepb.Order {
+	prob *probs.ProblemDetails) {
 
 	// Convert the problem to a protobuf problem for the *corepb.Order field
 	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
 	if err != nil {
 		ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
-		return order
+		return
 	}
 
 	// Assign the protobuf problem to the field and save it via the SA
@@ -901,7 +902,6 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 	if err != nil {
 		ra.log.AuditErrf("Could not persist order error: %q", err)
 	}
-	return order
 }
 
 // FinalizeOrder accepts a request to finalize an order object and, if possible,
