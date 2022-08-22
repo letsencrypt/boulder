@@ -466,11 +466,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			outDialer, outRecord, err := va.setupHTTPValidation(
-				context.Background(),
-				tc.InputURL,
-				tc.InputTarget)
-
+			outDialer, outRecord, err := va.setupHTTPValidation(tc.InputURL, tc.InputTarget)
 			if err != nil && tc.ExpectedError == nil {
 				t.Errorf("Expected nil error, got %v", err)
 			} else if err == nil && tc.ExpectedError != nil {

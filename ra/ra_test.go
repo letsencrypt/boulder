@@ -373,55 +373,55 @@ func TestValidateContacts(t *testing.T) {
 	unparsable := "mailto:a@email.com, b@email.com"
 	forbidden := "mailto:a@example.org"
 
-	err := ra.validateContacts(context.Background(), []string{})
+	err := ra.validateContacts([]string{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), []string{validEmail, otherValidEmail})
+	err = ra.validateContacts([]string{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts(context.Background(), []string{validEmail})
+	err = ra.validateContacts([]string{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts(context.Background(), []string{malformedEmail})
+	err = ra.validateContacts([]string{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts(context.Background(), []string{ansible})
+	err = ra.validateContacts([]string{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts(context.Background(), []string{""})
+	err = ra.validateContacts([]string{""})
 	test.AssertError(t, err, "Empty URL")
 
-	err = ra.validateContacts(context.Background(), []string{nonASCII})
+	err = ra.validateContacts([]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
 
-	err = ra.validateContacts(context.Background(), []string{unparsable})
+	err = ra.validateContacts([]string{unparsable})
 	test.AssertError(t, err, "Unparsable email")
 
-	err = ra.validateContacts(context.Background(), []string{forbidden})
+	err = ra.validateContacts([]string{forbidden})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@localhost"})
+	err = ra.validateContacts([]string{"mailto:admin@localhost"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@example.not.a.iana.suffix"})
+	err = ra.validateContacts([]string{"mailto:admin@example.not.a.iana.suffix"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@1.2.3.4"})
+	err = ra.validateContacts([]string{"mailto:admin@1.2.3.4"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@[1.2.3.4]"})
+	err = ra.validateContacts([]string{"mailto:admin@[1.2.3.4]"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@a.com?no-reminder-emails"})
+	err = ra.validateContacts([]string{"mailto:admin@a.com?no-reminder-emails"})
 	test.AssertError(t, err, "No hfields in email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com?"})
+	err = ra.validateContacts([]string{"mailto:example@a.com?"})
 	test.AssertError(t, err, "No hfields in email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#"})
+	err = ra.validateContacts([]string{"mailto:example@a.com#"})
 	test.AssertError(t, err, "No fragment")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#optional"})
+	err = ra.validateContacts([]string{"mailto:example@a.com#optional"})
 	test.AssertError(t, err, "No fragment")
 
 	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
@@ -434,7 +434,7 @@ func TestValidateContacts(t *testing.T) {
 	}
 	longStringBuf.WriteString("@a.com")
 
-	err = ra.validateContacts(context.Background(), []string{longStringBuf.String()})
+	err = ra.validateContacts([]string{longStringBuf.String()})
 	test.AssertError(t, err, "Too long contacts")
 }
 

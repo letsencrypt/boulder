@@ -410,7 +410,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if err != nil {
 		return nil, err
 	}
-	err = ra.validateContacts(ctx, request.Contact)
+	err = ra.validateContacts(request.Contact)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +445,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 // * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
 // * A list containing a contact that doesn't pass `policy.ValidEmail`
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []string) error {
+func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 	if len(contacts) == 0 {
 		return nil // Nothing to validate
 	}
@@ -1451,7 +1451,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	err = ra.validateContacts(ctx, req.Update.Contact)
+	err = ra.validateContacts(req.Update.Contact)
 	if err != nil {
 		return nil, err
 	}
@@ -2569,7 +2569,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
 	for _, name := range missingAuthzNames {
-		pb, err := ra.createPendingAuthz(ctx, newOrder.RegistrationID, identifier.ACMEIdentifier{
+		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: name,
 		})
@@ -2632,7 +2632,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
 	authz := &corepb.Authorization{
 		Identifier:     identifier.Value,
 		RegistrationID: reg,

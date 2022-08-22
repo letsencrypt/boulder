@@ -1062,7 +1062,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challenge := authz.Challenges[challengeIndex]
 	switch request.Method {
 	case "GET", "HEAD":
-		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
+		wfe.getChallenge(response, request, authz, &challenge, logEvent)
 
 	case "POST":
 		logEvent.ChallengeType = string(challenge.Type)
@@ -1146,7 +1146,6 @@ func (wfe *WebFrontEndImpl) prepAuthorizationForDisplay(request *http.Request, a
 }
 
 func (wfe *WebFrontEndImpl) getChallenge(
-	ctx context.Context,
 	response http.ResponseWriter,
 	request *http.Request,
 	authz core.Authorization,
@@ -1198,7 +1197,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 	// challenge details, not a POST to initiate a challenge
 	if string(body) == "" {
 		challenge := authz.Challenges[challengeIndex]
-		wfe.getChallenge(ctx, response, request, authz, &challenge, logEvent)
+		wfe.getChallenge(response, request, authz, &challenge, logEvent)
 		return
 	}
 
