@@ -105,11 +105,10 @@ func main() {
 		issuers = append(issuers, cert)
 	}
 
-	// Load the "default" AWS configuration, but override the set of config files
-	// it reads from to be the empty set, and override the set of credentials
-	// files it reads from to be just the one file specified in the Config. This
-	// helps stop us from accidentally loading unexpected or undesired config.
-	// Note that it *will* still load configuration from environment variables.
+	// Load the "default" AWS configuration, but override the set of config and
+	// credential files it reads from to just those specified in our JSON config,
+	// to ensure that it's not accidentally reading anything from the homedir or
+	// its other default config locations.
 	awsConfig, err := config.LoadDefaultConfig(
 		context.Background(),
 		config.WithSharedConfigFiles([]string{c.CRLStorer.AWSConfigFile}),
