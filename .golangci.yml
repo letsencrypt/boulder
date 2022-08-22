@@ -11,7 +11,7 @@ linters:
     - stylecheck
     - typecheck
     - unconvert
-    # TODO(#6104): Enable 'unparam' linter
+    - unparam
     - unused
     # TODO(#6202): Re-enable 'wastedassign' linter
 linters-settings:
