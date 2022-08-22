@@ -24,6 +24,7 @@ type mailSrv struct {
 	allMailMutex    sync.Mutex
 	connNumber      uint
 	connNumberMutex sync.RWMutex
+	logger          blog.Logger
 }
 
 type rcvdMail struct {
@@ -53,8 +54,7 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 	srv.connNumberMutex.Lock()
 	srv.connNumber++
 	srv.connNumberMutex.Unlock()
-	auditlogger := blog.Get()
-	auditlogger.Infof("mail-test-srv: Got connection from %s", conn.RemoteAddr())
+	srv.logger.Infof("mail-test-srv: Got connection from %s", conn.RemoteAddr())
 
 	readBuf := bufio.NewReader(conn)
 	conn.Write([]byte("220 smtp.example.com ESMTP\r\n"))
@@ -74,7 +74,7 @@ func (srv *mailSrv) handleConn(conn net.Conn) {
 		return
 	}
 	conn.Write([]byte("235 2.7.0 Authentication successful\r\n"))
-	auditlogger.Infof("mail-test-srv: Successful auth from %s", conn.RemoteAddr())
+	srv.logger.Infof("mail-test-srv: Successful auth from %s", conn.RemoteAddr())
 
 	// necessary commands:
 	// MAIL RCPT DATA QUIT
@@ -219,6 +219,7 @@ func main() {
 
 	srv := mailSrv{
 		closeFirst: *closeFirst,
+		logger:     cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7}),
 	}
 
 	srv.setupHTTP(http.DefaultServeMux)
