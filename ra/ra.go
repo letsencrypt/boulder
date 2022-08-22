@@ -1260,7 +1260,7 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
 // for the purpose of rate limiting. It also de-duplicates the output
 // domains. Exact public suffix matches are included.
-func domainsForRateLimiting(names []string) ([]string, error) {
+func domainsForRateLimiting(names []string) []string {
 	var domains []string
 	for _, name := range names {
 		domain, err := publicsuffix.Domain(name)
@@ -1274,7 +1274,7 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 			domains = append(domains, domain)
 		}
 	}
-	return core.UniqueLowerNames(domains), nil
+	return core.UniqueLowerNames(domains)
 }
 
 // enforceNameCounts uses the provided count RPC to find a count of certificates
@@ -1325,11 +1325,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		return nil
 	}
 
-	tldNames, err := domainsForRateLimiting(names)
-	if err != nil {
-		return err
-	}
-
+	tldNames := domainsForRateLimiting(names)
 	namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
 		return fmt.Errorf("checking certificates per name limit for %q: %s",

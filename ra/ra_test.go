@@ -1040,28 +1040,22 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
-	domains, err := domainsForRateLimiting([]string{})
-	test.AssertNotError(t, err, "failed on empty")
+	domains := domainsForRateLimiting([]string{})
 	test.AssertEquals(t, len(domains), 0)
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com"})
-	test.AssertNotError(t, err, "failed on example.com")
+	domains = domainsForRateLimiting([]string{"www.example.com", "example.com"})
 	test.AssertDeepEquals(t, domains, []string{"example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
-	test.AssertNotError(t, err, "failed on example.co.uk")
+	domains = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
 	test.AssertDeepEquals(t, domains, []string{"example.co.uk", "example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
-	test.AssertNotError(t, err, "should not fail on public suffix")
+	domains = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
 	test.AssertDeepEquals(t, domains, []string{"co.uk", "example.co.uk", "example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
-	test.AssertNotError(t, err, "failed on foo.bar.baz")
+	domains = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertDeepEquals(t, domains, []string{"example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
-	test.AssertNotError(t, err, "failed on public suffix private domain")
+	domains = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
 	test.AssertDeepEquals(t, domains, []string{"bar.github.io", "foo.github.io", "github.io"})
 }
 
