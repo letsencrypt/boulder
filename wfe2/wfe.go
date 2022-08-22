@@ -2278,15 +2278,18 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
-	// Check if the serial is part of an ongoing incident. If so, return a
-	// renewal window in the past. The client should immediately attempt to
-	// renew the certificate.
+	// Check if the serial is part of an ongoing incident.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to query if serial is impacted by an incident"), err)
+		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to check if the serial is impacted by an incident"), err)
 		return
 	}
+
 	if len(result.Incidents) > 0 {
+		// Since IncidentsForSerial() only returns enabled incidents we can
+		// assume that this serial is impacted by an ongoing incident. Per the
+		// ARI spec clients should attempt to renew immediately if the suggested
+		// window is in the past.
 		oneHourAgo := wfe.clk.Now().Add(-1 * time.Hour)
 		ri := core.RenewalInfo{
 			SuggestedWindow: core.SuggestedWindow{
