@@ -4,27 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/letsencrypt/boulder/issuance"
 )
 
-// number must be constructed by calling `NewNumber`. It represents the
-// 'crlNumber' field of a CRL.
+// number represents the 'crlNumber' field of a CRL. It must be constructed by
+// calling `Number()`.
 type number *big.Int
 
 // Number derives the 'CRLNumber' field for a CRL from the value of the
-// 'thisUpdate' field provided in Unix nanoseconds.
-func Number(thisUpdate int64) number {
+// 'thisUpdate' field provided as a `time.Time`.
+func Number(thisUpdate time.Time) number {
 	// Per RFC 5280 Section 5.2.3, 'CRLNumber' is a monotonically increasing
 	// sequence number for a given CRL scope and CRL that MUST be at most 20
-	// octets. A 64-bit (8-byte) integer will never exceed that requirement but
-	// let's guarantee this.
-	return number(big.NewInt(thisUpdate))
+	// octets. A 64-bit (8-byte) integer will never exceed that requirement, but
+	// lets us guarantee that the CRL Number is always increasing without having
+	// to store or look up additional state.
+	return number(big.NewInt(thisUpdate.UnixNano()))
 }
 
 // id is a unique identifier for a CRL which is primarily used for logging. This
 // identifier is composed of the 'Issuer', 'CRLNumber', and the shard index
-// (e.g. {"issuerID": 123, "crlNum": 456, "shardIdx": 78})
+// (e.g. {"issuerID": 123, "crlNum": 456, "shardIdx": 78}). It must be constructed
+// by calling `Id()`.
 type id string
 
 // Id is a utility function which constructs a new `id`.

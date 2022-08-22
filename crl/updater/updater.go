@@ -253,7 +253,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 
 func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) error {
 	start := cu.clk.Now()
-	crlId, err := crl.Id(issuerNameID, crl.Number(atTime.UnixNano()), shardIdx)
+	crlId, err := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
 	if err != nil {
 		return err
 	}

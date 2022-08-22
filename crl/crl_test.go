@@ -1,19 +1,18 @@
 package crl
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/test"
 )
 
 func TestId(t *testing.T) {
-	out, err := Id(1337, Number(42), 1)
+	thisUpdate := time.Now()
+	out, err := Id(1337, Number(thisUpdate), 1)
 	test.AssertNotError(t, err, "Failed to create CRLId")
-	test.AssertEquals(t, string(out), "{\"issuerID\":1337,\"crlNumber\":42,\"shardIdx\":1}")
-}
-
-func TestNumber(t *testing.T) {
-	out := Number(42)
-	test.AssertDeepEquals(t, *out, *big.NewInt(42))
+	expectCRLId := fmt.Sprintf("{\"issuerID\":1337,\"crlNumber\":%d,\"shardIdx\":1}", big.NewInt(thisUpdate.UnixNano()))
+	test.AssertEquals(t, string(out), expectCRLId)
 }

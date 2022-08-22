@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -114,7 +115,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			}
 
 			shardIdx = payload.Metadata.ShardIdx
-			crlNumber = crl.Number(payload.Metadata.Number)
+			crlNumber = crl.Number(time.Unix(0, payload.Metadata.Number))
 
 			var ok bool
 			issuer, ok = cs.issuers[issuance.IssuerNameID(payload.Metadata.IssuerNameID)]
