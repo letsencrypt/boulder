@@ -691,7 +691,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
-	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, int64(acctID), ra.clk.Now()); err != nil {
+	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, ra.clk.Now()); err != nil {
 		return nil, err
 	}
 
@@ -720,7 +720,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	ctx context.Context,
 	names []string,
 	authzs map[string]*core.Authorization,
-	regID int64,
 	now time.Time) error {
 	// badNames contains the names that were unauthorized
 	var badNames []string

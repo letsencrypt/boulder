@@ -276,7 +276,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c Config, logger blog.Logger, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c Config, stats prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 	clientMetrics := bgrpc.NewClientMetrics(stats)
@@ -387,7 +387,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, rns, npm := setupWFE(c, logger, stats, clk)
+	rac, sac, rns, npm := setupWFE(c, stats, clk)
 
 	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")

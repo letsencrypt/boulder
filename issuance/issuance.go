@@ -314,7 +314,7 @@ var defaultEKU = []x509.ExtKeyUsage{
 	x509.ExtKeyUsageClientAuth,
 }
 
-func (p *Profile) generateTemplate(clk clock.Clock) *x509.Certificate {
+func (p *Profile) generateTemplate() *x509.Certificate {
 	template := &x509.Certificate{
 		SignatureAlgorithm:    p.sigAlg,
 		ExtKeyUsage:           defaultEKU,
@@ -610,7 +610,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	}
 
 	// generate template from the issuance profile
-	template := i.Profile.generateTemplate(i.Clk)
+	template := i.Profile.generateTemplate()
 
 	// populate template from the issuance request
 	template.NotBefore, template.NotAfter = req.NotBefore, req.NotAfter

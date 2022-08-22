@@ -1734,22 +1734,22 @@ func TestRecheckCAADates(t *testing.T) {
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
 	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
-	err := ra.checkAuthorizationsCAA(context.Background(), names, authzs, 999, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), names, authzs, fc.Now())
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"twochallenges.com"}, authzs, 999, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), []string{"twochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"nochallenges.com"}, authzs, 999, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), []string{"nochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
 
 	// Should error if authorization's challenge has no validated timestamp
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"novalidationtime.com"}, authzs, 999, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), []string{"novalidationtime.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
 
 	// Test to make sure the authorization lifetime codepath was not used

@@ -1803,7 +1803,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	}
 
 	// Validate the inner JWS as a key rollover request for the outer JWS
-	rolloverOperation, prob := wfe.validKeyRollover(ctx, outerJWS, innerJWS, oldKey, logEvent)
+	rolloverOperation, prob := wfe.validKeyRollover(ctx, outerJWS, innerJWS, oldKey)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return
