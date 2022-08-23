@@ -34,10 +34,6 @@ type generateArgs struct {
 	publicAttrs  []*pkcs11.Attribute
 }
 
-const (
-	rsaExp = 65537
-)
-
 // keyInfo is a struct used to pass around information about the public key
 // associated with the generated private key. der contains the DER encoding
 // of the SubjectPublicKeyInfo structure for the public key. id contains the
@@ -60,7 +56,7 @@ func generateKey(session *pkcs11helpers.Session, label string, outputPath string
 	var keyID []byte
 	switch config.Type {
 	case "rsa":
-		pubKey, keyID, err = rsaGenerate(session, label, config.RSAModLength, rsaExp)
+		pubKey, keyID, err = rsaGenerate(session, label, config.RSAModLength)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate RSA key pair: %s", err)
 		}
