@@ -1782,6 +1782,39 @@ func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Seri
 	}, nil
 }
 
+type mockSAWithIncident struct {
+	sapb.StorageAuthorityGetterClient
+	incidents map[string]*sapb.Incidents
+}
+
+// newMockSAWithIncident returns a mock SA with an enabled (ongoing) incident
+// for each of the provided serials.
+func newMockSAWithIncident(t *testing.T, sa sapb.StorageAuthorityGetterClient, serial []string) *mockSAWithIncident {
+	incidents := make(map[string]*sapb.Incidents)
+	for _, s := range serial {
+		incidents[s] = &sapb.Incidents{
+			Incidents: []*sapb.Incident{
+				{
+					Id:          0,
+					SerialTable: "incident_foo",
+					Url:         agreementURL,
+					RenewBy:     0,
+					Enabled:     true,
+				},
+			},
+		}
+	}
+	return &mockSAWithIncident{sa, incidents}
+}
+
+func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
+	incidents, ok := sa.incidents[req.Serial]
+	if ok {
+		return incidents, nil
+	}
+	return &sapb.Incidents{}, nil
+}
+
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
@@ -3189,7 +3222,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type: "dns",
+				Type:                     "dns",
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
@@ -3518,7 +3551,8 @@ func TestARI(t *testing.T) {
 	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
 	test.AssertNotError(t, err, "failed to parse ocsp request")
 
-	// Ensure that a correct query results in a 200.
+	// Ensure that a correct query results in a 200 with a suggested renewal
+	// window in the future.
 	path := fmt.Sprintf(
 		"%s/%s/%s",
 		hex.EncodeToString(ocspReq.IssuerKeyHash),
@@ -3530,6 +3564,13 @@ func TestARI(t *testing.T) {
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 200)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	var ri core.RenewalInfo
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	// The start of the window should be in the past.
+	test.AssertEquals(t, ri.SuggestedWindow.Start.Before(wfe.clk.Now()), true)
+	// The end of the window should be in the future.
+	test.AssertEquals(t, ri.SuggestedWindow.End.After(wfe.clk.Now()), true)
 
 	// Ensure that a mangled query (wrong serial) results in a 404.
 	path = fmt.Sprintf(
@@ -3543,6 +3584,44 @@ func TestARI(t *testing.T) {
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 404)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
+}
+
+// TestARI tests that requests certs impacted by an ongoing revocation incident
+// result in a 200 with a retry-after header and a suggested retry window in the
+// past.
+func TestIncidentARI(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	expectSerial := big.NewInt(12345)
+	expectSerialString := core.SerialToString(expectSerial)
+	wfe.sa = newMockSAWithIncident(t, wfe.sa, []string{expectSerialString})
+
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+	}
+	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
+	defer features.Reset()
+
+	path := fmt.Sprintf(
+		"%s/%s/%s",
+		hex.EncodeToString([]byte("foo")),
+		hex.EncodeToString([]byte("baz")),
+		expectSerialString,
+	)
+	req, event := makeGet(path, renewalInfoPath)
+	resp := httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 200)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	var ri core.RenewalInfo
+	err := json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	// The start of the window should be in the past.
+	test.AssertEquals(t, ri.SuggestedWindow.Start.Before(wfe.clk.Now()), true)
+	// The end of the window should be after the start.
+	test.AssertEquals(t, ri.SuggestedWindow.End.After(ri.SuggestedWindow.Start), true)
+	// The end of the window should also be in the past.
+	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
 }
 
 // TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
