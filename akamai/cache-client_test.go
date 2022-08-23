@@ -43,7 +43,6 @@ func TestMakeAuthHeader(t *testing.T) {
 		"/testapi/v1/t3",
 		"nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
 	)
-	test.AssertNotError(t, err, "Failed to create authorization header")
 	test.AssertEquals(t, authHeader, expectedHeader)
 }
 
