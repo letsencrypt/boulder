@@ -3222,7 +3222,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type:                     "dns",
+				Type: "dns",
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
