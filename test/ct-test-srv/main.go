@@ -40,7 +40,7 @@ type integrationSrv struct {
 	userAgent     string
 }
 
-func readJSON(w http.ResponseWriter, r *http.Request, output interface{}) error {
+func readJSON(r *http.Request, output interface{}) error {
 	if r.Method != "POST" {
 		return fmt.Errorf("incorrect method; only POST allowed")
 	}
@@ -66,7 +66,7 @@ func (is *integrationSrv) addRejectHost(w http.ResponseWriter, r *http.Request) 
 	var rejectHostReq struct {
 		Host string
 	}
-	err := readJSON(w, r, &rejectHostReq)
+	err := readJSON(r, &rejectHostReq)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

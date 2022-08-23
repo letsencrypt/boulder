@@ -29,7 +29,6 @@ type Config struct {
 	DNSAddrs          []string // addresses to listen for DNS requests on
 	FakeDNS           string   // IPv6 address to use for all DNS A requests
 	RealIP            string   // value of the Real-IP header to use when bypassing CDN
-	CertKeySize       int      // size of the key to use when creating CSRs
 	RegEmail          string   // email to use in registrations
 	Results           string   // path to save metrics to
 	MaxRegs           int      // maximum number of registrations to create
@@ -78,7 +77,6 @@ func main() {
 
 	s, err := New(
 		config.DirectoryURL,
-		config.CertKeySize,
 		config.DomainBase,
 		config.RealIP,
 		config.MaxRegs,

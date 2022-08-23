@@ -343,7 +343,6 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 // the validation target is nil or has no available IP addresses, an error will
 // be returned.
 func (va *ValidationAuthorityImpl) setupHTTPValidation(
-	ctx context.Context,
 	reqURL string,
 	target *httpValidationTarget) (*preresolvedDialer, core.ValidationRecord, error) {
 	if reqURL == "" {
@@ -483,7 +482,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	initialReq.Header.Set("Accept", "*/*")
 
 	// Set up the initial validation request and a base validation record
-	dialer, baseRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
+	dialer, baseRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
 	if err != nil {
 		return nil, []core.ValidationRecord{}, newIPError(target, err)
 	}
@@ -569,7 +568,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// Setup validation for the target. This will produce a preresolved dialer we can
 		// assign to the client transport in order to connect to the redirect target using
 		// the IP address we selected.
-		redirDialer, redirRecord, err := va.setupHTTPValidation(ctx, req.URL.String(), redirTarget)
+		redirDialer, redirRecord, err := va.setupHTTPValidation(req.URL.String(), redirTarget)
 		records = append(records, redirRecord)
 		if err != nil {
 			return err
@@ -604,7 +603,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 		// setup another validation to retry the target with the new IP and append
 		// the retry record.
-		retryDialer, retryRecord, err := va.setupHTTPValidation(ctx, initialReq.URL.String(), target)
+		retryDialer, retryRecord, err := va.setupHTTPValidation(initialReq.URL.String(), target)
 		records = append(records, retryRecord)
 		if err != nil {
 			return nil, records, newIPError(target, err)

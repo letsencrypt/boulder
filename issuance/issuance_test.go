@@ -417,11 +417,10 @@ func TestGenerateTemplate(t *testing.T) {
 			},
 		},
 	}
-	fc := clock.NewFake()
-	fc.Set(time.Time{}.Add(time.Hour))
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			template := tc.profile.generateTemplate(fc)
+			template := tc.profile.generateTemplate()
 			test.AssertDeepEquals(t, *template, *tc.expectedTemplate)
 		})
 	}

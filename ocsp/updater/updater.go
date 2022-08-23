@@ -322,7 +322,7 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *core.Cert
 	// Update the certificateStatus table with the new OCSP response, the status
 	// WHERE is used make sure we don't overwrite a revoked response with a one
 	// containing a 'good' status.
-	_, err := updater.db.Exec(
+	_, err := updater.db.WithContext(ctx).Exec(
 		`UPDATE certificateStatus
 		 SET ocspResponse=?,ocspLastUpdated=?
 		 WHERE id=?
@@ -337,8 +337,8 @@ func (updater *OCSPUpdater) storeResponse(ctx context.Context, status *core.Cert
 }
 
 // markExpired updates a given CertificateStatus to have `isExpired` set.
-func (updater *OCSPUpdater) markExpired(meta *sa.CertStatusMetadata) error {
-	_, err := updater.db.Exec(
+func (updater *OCSPUpdater) markExpired(ctx context.Context, meta *sa.CertStatusMetadata) error {
+	_, err := updater.db.WithContext(ctx).Exec(
 		`UPDATE certificateStatus
  		SET isExpired = TRUE
  		WHERE id = ?`,
@@ -356,7 +356,7 @@ func (updater *OCSPUpdater) processExpired(ctx context.Context, staleStatusesIn 
 		defer close(staleStatusesOut)
 		for meta := range staleStatusesIn {
 			if !meta.IsExpired && tickStart.After(meta.NotAfter) {
-				err := updater.markExpired(meta)
+				err := updater.markExpired(ctx, meta)
 				if err != nil {
 					// Update error counters and log
 					updater.log.AuditErrf("Failed to set certificate expired: %s", err)

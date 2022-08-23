@@ -731,8 +731,7 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	ctx context.Context,
 	outerJWS *jose.JSONWebSignature,
 	innerJWS *jose.JSONWebSignature,
-	oldKey *jose.JSONWebKey,
-	logEvent *web.RequestEvent) (*rolloverOperation, *probs.ProblemDetails) {
+	oldKey *jose.JSONWebKey) (*rolloverOperation, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS
 	jwk, prob := wfe.extractJWK(innerJWS)

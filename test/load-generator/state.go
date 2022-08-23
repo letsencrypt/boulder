@@ -277,7 +277,6 @@ func (s *State) Restore(filename string) error {
 // New returns a pointer to a new State struct or an error
 func New(
 	directoryURL string,
-	keySize int,
 	domainBase string,
 	realIP string,
 	maxRegs, maxNamesPerCert int,
