@@ -98,14 +98,14 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 	return getAuthorization(t, fmt.Sprint(ids.Ids[0]), sa)
 }
 
-func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, status string, attemptedAt time.Time) int64 {
+func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, attemptedAt time.Time) int64 {
 	t.Helper()
 	pending := createPendingAuthorization(t, sa, domain, exp)
 	pendingID, err := strconv.ParseInt(pending.Id, 10, 64)
 	test.AssertNotError(t, err, "strconv.ParseInt failed")
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:          pendingID,
-		Status:      status,
+		Status:      "valid",
 		Expires:     exp.UnixNano(),
 		Attempted:   string(core.ChallengeTypeHTTP01),
 		AttemptedAt: attemptedAt.UnixNano(),
@@ -123,19 +123,19 @@ func getAuthorization(t *testing.T, id string, sa sapb.StorageAuthorityClient) *
 	return dbAuthz
 }
 
-func challTypeIndex(t *testing.T, challenges []*corepb.Challenge, typ core.AcmeChallenge) int64 {
+func dnsChallIdx(t *testing.T, challenges []*corepb.Challenge) int64 {
 	t.Helper()
 	var challIdx int64
 	var set bool
 	for i, ch := range challenges {
-		if core.AcmeChallenge(ch.Type) == typ {
+		if core.AcmeChallenge(ch.Type) == core.ChallengeTypeDNS01 {
 			challIdx = int64(i)
 			set = true
 			break
 		}
 	}
 	if !set {
-		t.Errorf("challTypeIndex didn't find challenge of type: %s", typ)
+		t.Errorf("dnsChallIdx didn't find challenge of type DNS-01")
 	}
 	return challIdx
 }
@@ -794,7 +794,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
-	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
@@ -820,7 +820,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
-	challIdx = challTypeIndex(t, dbAuthzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
 	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
 	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
 
@@ -844,7 +844,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	va.ResultError = fmt.Errorf("Something went wrong")
 
-	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
@@ -871,7 +871,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
-	challIdx = challTypeIndex(t, dbAuthzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
 	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
 	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
 	test.Assert(t, challenge.Status == core.StatusInvalid, "challenge was not marked as invalid")
@@ -889,7 +889,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	authzID := createFinalizedAuthorization(t, sa, "www.example.com", exp, "valid", ra.clk.Now())
+	authzID := createFinalizedAuthorization(t, sa, "www.example.com", exp, ra.clk.Now())
 
 	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
@@ -1548,7 +1548,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, ra.clk.Now())
 	dbAuthzPB := getAuthorization(t, fmt.Sprint(authzID), sa)
 	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
@@ -2543,8 +2543,8 @@ func TestFinalizeOrder(t *testing.T) {
 	// Create one finalized authorization for not-example.com and one finalized
 	// authorization for www.not-example.org
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid", ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, ra.clk.Now())
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -2804,8 +2804,8 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 
 	// Create one finalized authorization for Registration.Id for not-example.com and
 	// one finalized authorization for Registration.Id for www.not-example.org
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid", ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, ra.clk.Now())
 
 	// Create a new order to finalize with names in SAN and CN
 	mixedOrder, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
@@ -2904,7 +2904,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 
 	// Create one standard finalized authorization for Registration.Id for zombo.com
-	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, "valid", ra.clk.Now())
+	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, ra.clk.Now())
 
 	// Finalizing the order should *not* work since the existing validated authz
 	// is not a special DNS-01-Wildcard challenge authz, so the order will be
@@ -3195,8 +3195,8 @@ func TestCTPolicyMeasurements(t *testing.T) {
 
 	// Create valid authorizations for not-example.com and www.not-example.com
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, ssa, "not-example.com", exp, "valid", ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, "valid", ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, ssa, "not-example.com", exp, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, ra.clk.Now())
 
 	order, err := ra.SA.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
