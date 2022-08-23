@@ -64,12 +64,24 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 		&bothWriter{
 			sync.Mutex{},
 			log,
-			stdoutLogLevel,
+			&stdoutWriter{
+				level:  stdoutLogLevel,
+				clk:    clock.New(),
+				stdout: os.Stdout,
+			},
 			syslogLogLevel,
-			clock.New(),
-			os.Stdout,
 		},
 	}, nil
+}
+
+func StdoutLogger(level int) Logger {
+	return &impl{
+		&stdoutWriter{
+			level:  level,
+			clk:    clock.New(),
+			stdout: os.Stdout,
+		},
+	}
 }
 
 // initialize is used in unit tests and called by `Get` before the logger
@@ -123,10 +135,15 @@ type writer interface {
 type bothWriter struct {
 	sync.Mutex
 	*syslog.Writer
-	stdoutLevel int
+	*stdoutWriter
 	syslogLevel int
-	clk         clock.Clock
-	stdout      io.Writer
+}
+
+// stdoutWriter implements writer and writes just to stdout.
+type stdoutWriter struct {
+	level  int
+	clk    clock.Clock
+	stdout io.Writer
 }
 
 func LogLineChecksum(line string) string {
@@ -176,7 +193,11 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %d %s (%s)\n", int(level), msg, err)
 	}
 
-	if int(level) <= w.stdoutLevel {
+	w.stdoutWriter.logAtLevel(level, msg)
+}
+
+func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
+	if int(level) <= w.level {
 		if _, err := fmt.Fprintf(w.stdout, "%s %d %s %s\n",
 			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
 			int(level),

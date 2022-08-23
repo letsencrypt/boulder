@@ -161,19 +161,24 @@ func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, 
 }
 
 func NewLogger(logConf SyslogConfig) blog.Logger {
-	tag := path.Base(os.Args[0])
-	syslogger, err := syslog.Dial(
-		"",
-		"",
-		syslog.LOG_INFO, // default, not actually used
-		tag)
-	FailOnError(err, "Could not connect to Syslog")
-	syslogLevel := int(syslog.LOG_INFO)
-	if logConf.SyslogLevel != 0 {
-		syslogLevel = logConf.SyslogLevel
+	var logger blog.Logger
+	if logConf.SyslogLevel >= 0 {
+		tag := path.Base(os.Args[0])
+		syslogger, err := syslog.Dial(
+			"",
+			"",
+			syslog.LOG_INFO, // default, not actually used
+			tag)
+		FailOnError(err, "Could not connect to Syslog")
+		syslogLevel := int(syslog.LOG_INFO)
+		if logConf.SyslogLevel != 0 {
+			syslogLevel = logConf.SyslogLevel
+		}
+		logger, err = blog.New(syslogger, logConf.StdoutLevel, syslogLevel)
+		FailOnError(err, "Could not connect to Syslog")
+	} else {
+		logger = blog.StdoutLogger(logConf.StdoutLevel)
 	}
-	logger, err := blog.New(syslogger, logConf.StdoutLevel, syslogLevel)
-	FailOnError(err, "Could not connect to Syslog")
 
 	_ = blog.Set(logger)
 	_ = mysql.SetLogger(mysqlLogger{logger})
