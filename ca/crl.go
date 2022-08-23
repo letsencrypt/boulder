@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"strings"
 	"time"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	bcrl "github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -177,13 +177,8 @@ func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.Revocat
 	if meta.IssuerNameID == 0 || meta.ThisUpdate == 0 {
 		return nil, errors.New("got incomplete metadata message")
 	}
-
-	// The CRL Number MUST be at most 20 octets, per RFC 5280 Section 5.2.3.
-	// A 64-bit (8-byte) integer will never exceed that requirement, but lets
-	// us guarantee that the CRL Number is always increasing without having to
-	// store or look up additional state.
-	number := big.NewInt(meta.ThisUpdate)
 	thisUpdate := time.Unix(0, meta.ThisUpdate)
+	number := bcrl.Number(thisUpdate)
 
 	return &crl_x509.RevocationList{
 		Number:     number,
