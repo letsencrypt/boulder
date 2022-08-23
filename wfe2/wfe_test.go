@@ -1789,7 +1789,7 @@ type mockSAWithIncident struct {
 
 // newMockSAWithIncident returns a mock SA with an enabled (ongoing) incident
 // for each of the provided serials.
-func newMockSAWithIncident(t *testing.T, sa sapb.StorageAuthorityGetterClient, serial []string) *mockSAWithIncident {
+func newMockSAWithIncident(sa sapb.StorageAuthorityGetterClient, serial []string) *mockSAWithIncident {
 	incidents := make(map[string]*sapb.Incidents)
 	for _, s := range serial {
 		incidents[s] = &sapb.Incidents{
@@ -1812,7 +1812,7 @@ func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Se
 	if ok {
 		return incidents, nil
 	}
-	return &sapb.Incidents{}, nil
+	return nil, berrors.NotFoundError("No incidents for serial %q", req.Serial)
 }
 
 func TestGetCertificate(t *testing.T) {
@@ -3593,7 +3593,7 @@ func TestIncidentARI(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	expectSerial := big.NewInt(12345)
 	expectSerialString := core.SerialToString(expectSerial)
-	wfe.sa = newMockSAWithIncident(t, wfe.sa, []string{expectSerialString})
+	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},

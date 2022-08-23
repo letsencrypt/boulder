@@ -2635,7 +2635,7 @@ func TestIncidentsForSerial(t *testing.T) {
 	// No incidents are enabled, so this should return in error.
 	result, err := sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
 	test.AssertErrorIs(t, err, berrors.NotFound)
-	test.Assert(t, len(result.Incidents) == 0, "There should be 0 incidents")
+	test.Assert(t, result == nil, "Expected nil result")
 
 	// Add an enabled incident.
 	err = sa.dbMap.Insert(&incidentModel{
@@ -2667,7 +2667,7 @@ func TestIncidentsForSerial(t *testing.T) {
 	// The incident table should not contain a row with serial '1337'.
 	result, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
 	test.AssertErrorIs(t, err, berrors.NotFound)
-	test.Assert(t, len(result.Incidents) == 0, "There should be 0 incidents matching serial '1337'")
+	test.Assert(t, result == nil, "Expected nil result")
 
 	// Add a row to the incident table with serial '1337'.
 	affectedCertB := incidentSerialModel{
