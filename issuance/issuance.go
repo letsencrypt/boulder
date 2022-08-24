@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"strconv"
@@ -87,6 +88,43 @@ type IssuerLoc struct {
 	NumSessions int
 }
 
+// checkedSigner implements the crypto.Signer interface by wrapping another
+// crypto.Signer. All calls to its .Sign() method check the resulting signature
+// to prevent signature-fault attacks against the private key.
+type checkedSigner struct {
+	wrapped crypto.Signer
+}
+
+// Public implements the Signer interface by passing the call through to the
+// underlying wrapped crypto.Signer
+func (cs checkedSigner) Public() crypto.PublicKey {
+	return cs.wrapped.Public()
+}
+
+func (cs checkedSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	sig, err := cs.wrapped.Sign(rand, digest, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	switch pk := cs.wrapped.Public().(type) {
+	case *rsa.PublicKey:
+		err = rsa.VerifyPKCS1v15(pk, opts.HashFunc(), digest, sig)
+		if err != nil {
+			return nil, fmt.Errorf("signature fault: %w", err)
+		}
+	case *ecdsa.PublicKey:
+		ok := ecdsa.VerifyASN1(pk, digest, sig)
+		if !ok {
+			return nil, errors.New("signature fault")
+		}
+	default:
+		return nil, errors.New("unsupported public key type")
+	}
+
+	return sig, nil
+}
+
 // LoadIssuer loads a signer (private key) and certificate from the locations specified.
 func LoadIssuer(location IssuerLoc) (*Certificate, crypto.Signer, error) {
 	issuerCert, err := LoadCertificate(location.CertFile)
@@ -102,9 +140,11 @@ func LoadIssuer(location IssuerLoc) (*Certificate, crypto.Signer, error) {
 	if !core.KeyDigestEquals(signer.Public(), issuerCert.PublicKey) {
 		return nil, nil, fmt.Errorf("Issuer key did not match issuer cert %s", location.CertFile)
 	}
-	return issuerCert, signer, err
+
+	return issuerCert, checkedSigner{signer}, err
 }
 
+// LoadCertificate loads an issuer Certificate from a path on disk.
 func LoadCertificate(path string) (*Certificate, error) {
 	cert, err := core.LoadCert(path)
 	if err != nil {

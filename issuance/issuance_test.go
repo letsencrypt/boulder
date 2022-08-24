@@ -8,11 +8,13 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"strings"
@@ -808,4 +810,48 @@ func TestLoadChain_InvalidSig(t *testing.T) {
 		fmt.Sprintf("Expected error to mention filename, got: %s", err))
 	test.Assert(t, strings.Contains(err.Error(), "signature from \"CN=happy hacker fake CA\""),
 		fmt.Sprintf("Expected error to mention subject, got: %s", err))
+}
+
+type faultSigner struct {
+	wrapped crypto.Signer
+}
+
+func (fs faultSigner) Public() crypto.PublicKey {
+	return fs.wrapped.Public()
+}
+
+func (fs faultSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	sig, err := fs.wrapped.Sign(rand, digest, opts)
+	return sig[:len(sig)-1], err
+}
+
+func TestCheckedSigner(t *testing.T) {
+	msg := "hello world"
+	dig := sha256.Sum256([]byte(msg))
+
+	// It should correctly check signatures from an underlying RSA signer.
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "failed to generate RSA keypair")
+	cs := checkedSigner{rsaKey}
+	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
+	test.AssertNotError(t, err, "failed to sign with RSA")
+
+	// It should correctly check signatures from an underlying ECDSA signer.
+	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate RSA keypair")
+	cs = checkedSigner{ecdsaKey}
+	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
+	test.AssertNotError(t, err, "failed to sign with RSA")
+
+	// It should fail to check signatures from an underlying ed25519 signer.
+	_, edPriv, err := ed25519.GenerateKey(rand.Reader)
+	test.AssertNotError(t, err, "failed to generate RSA keypair")
+	cs = checkedSigner{edPriv}
+	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
+	test.AssertError(t, err, "should have failed to sign with ed25519")
+
+	// It should fail to check signatures from a signer which truncates signatures.
+	cs = checkedSigner{faultSigner{rsaKey}}
+	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
+	test.AssertError(t, err, "should have failed with truncated signature")
 }
