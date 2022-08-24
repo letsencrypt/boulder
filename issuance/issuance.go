@@ -95,12 +95,15 @@ type checkedSigner struct {
 	wrapped crypto.Signer
 }
 
-// Public implements the Signer interface by passing the call through to the
-// underlying wrapped crypto.Signer
+// Public implements the crypto.Signer interface by passing the call through to
+// the wrapped crypto.Signer.
 func (cs checkedSigner) Public() crypto.PublicKey {
 	return cs.wrapped.Public()
 }
 
+// Sign implements the crypto.Signer interface by passing the call through to
+// the wrapped crypto.Signer, then verifying the result. It only works with
+// RSA and ECDSA signers at this time.
 func (cs checkedSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	sig, err := cs.wrapped.Sign(rand, digest, opts)
 	if err != nil {
