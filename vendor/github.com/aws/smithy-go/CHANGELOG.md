@@ -1,3 +1,9 @@
+# Release (v1.12.1)
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.12.1
+  * **Bug Fix**: Fixes a bug where JSON object keys were not escaped.
+
 # Release (v1.12.0)
 
 ## Module Highlights

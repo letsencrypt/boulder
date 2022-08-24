@@ -97,9 +97,9 @@ func (e computeInputHeaderChecksumError) Error() string {
 func (e computeInputHeaderChecksumError) Unwrap() error { return e.Err }
 
 // HandleBuild handles computing the payload's checksum, in the following cases:
-//   * Is HTTP, not HTTPS
-//   * RequireChecksum is true, and no checksums were specified via the Input
-//   * Trailing checksums are not supported
+//   - Is HTTP, not HTTPS
+//   - RequireChecksum is true, and no checksums were specified via the Input
+//   - Trailing checksums are not supported
 //
 // The build handler must be inserted in the stack before ContentPayloadHash
 // and after ComputeContentLength.
@@ -246,9 +246,9 @@ func (e computeInputTrailingChecksumError) Error() string {
 func (e computeInputTrailingChecksumError) Unwrap() error { return e.Err }
 
 // HandleFinalize handles computing the payload's checksum, in the following cases:
-//   * Is HTTPS, not HTTP
-//   * A checksum was specified via the Input
-//   * Trailing checksums are supported.
+//   - Is HTTPS, not HTTP
+//   - A checksum was specified via the Input
+//   - Trailing checksums are supported.
 //
 // The finalize handler must be inserted in the stack before Signing, and after Retry.
 func (m *computeInputPayloadChecksum) HandleFinalize(
