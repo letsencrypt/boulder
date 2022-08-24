@@ -822,7 +822,10 @@ func (fs faultSigner) Public() crypto.PublicKey {
 
 func (fs faultSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	sig, err := fs.wrapped.Sign(rand, digest, opts)
-	return sig[:len(sig)-1], err
+	if err != nil {
+		return nil, err
+	}
+	return sig[:len(sig)-1], nil
 }
 
 func TestCheckedSigner(t *testing.T) {
@@ -838,14 +841,14 @@ func TestCheckedSigner(t *testing.T) {
 
 	// It should correctly check signatures from an underlying ECDSA signer.
 	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "failed to generate RSA keypair")
+	test.AssertNotError(t, err, "failed to generate ECDSA keypair")
 	cs = checkedSigner{ecdsaKey}
 	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
-	test.AssertNotError(t, err, "failed to sign with RSA")
+	test.AssertNotError(t, err, "failed to sign with ECDSA")
 
 	// It should fail to check signatures from an underlying ed25519 signer.
 	_, edPriv, err := ed25519.GenerateKey(rand.Reader)
-	test.AssertNotError(t, err, "failed to generate RSA keypair")
+	test.AssertNotError(t, err, "failed to generate ed25519 keypair")
 	cs = checkedSigner{edPriv}
 	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
 	test.AssertError(t, err, "should have failed to sign with ed25519")
