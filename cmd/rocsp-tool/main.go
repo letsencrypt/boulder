@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"encoding/base64"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -141,10 +142,15 @@ func main2() error {
 			}
 			parsed, err := ocsp.ParseResponse(resp, nil)
 			if err != nil {
-				logger.Infof("parsing error on %x: %s", resp, err)
+				fmt.Fprintf(os.Stderr, "parsing error on %x: %s", resp, err)
 				continue
 			} else {
-				logger.Infof("%s", helper.PrettyResponse(parsed))
+				block := pem.Block{
+					Bytes: resp,
+					Type:  "OCSP RESPONSE",
+				}
+				pem.Encode(os.Stdout, &block)
+				fmt.Printf("%s\n", helper.PrettyResponse(parsed))
 			}
 		}
 	case "store":
