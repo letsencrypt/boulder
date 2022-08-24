@@ -48,7 +48,7 @@ var (
 
 func init() {
 	var err error
-	pa, err = policy.New(map[core.AcmeChallenge]bool{})
+	pa, err = policy.New(map[core.AcmeChallenge]bool{}, blog.NewMock())
 	if err != nil {
 		log.Fatal(err)
 	}

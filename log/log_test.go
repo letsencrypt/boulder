@@ -345,7 +345,15 @@ func TestStdoutFailure(t *testing.T) {
 
 func TestLogAtLevelEscapesNewlines(t *testing.T) {
 	var buf bytes.Buffer
-	w := &bothWriter{sync.Mutex{}, nil, 6, 0, clock.New(), &buf}
+	w := &bothWriter{sync.Mutex{},
+		nil,
+		&stdoutWriter{
+			stdout: &buf,
+			clk:    clock.NewFake(),
+			level:  6,
+		},
+		0,
+	}
 	w.logAtLevel(6, "foo\nbar")
 
 	test.Assert(t, strings.Contains(buf.String(), "foo\\nbar"), "failed to escape newline")
