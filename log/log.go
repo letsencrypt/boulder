@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/jmhodges/clock"
+	"golang.org/x/term"
 )
 
 // A Logger logs messages with explicit priority levels. It is
@@ -70,6 +71,7 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 				clk:    clock.New(),
 				stdout: os.Stdout,
 				stderr: os.Stderr,
+				isatty: term.IsTerminal(int(os.Stdout.Fd())),
 			},
 			syslogLogLevel,
 		},
@@ -85,6 +87,7 @@ func StdoutLogger(level int) Logger {
 			clk:    clock.New(),
 			stdout: os.Stdout,
 			stderr: os.Stderr,
+			isatty: term.IsTerminal(int(os.Stdout.Fd())),
 		},
 	}
 }
@@ -150,6 +153,7 @@ type stdoutWriter struct {
 	clk    clock.Clock
 	stdout io.Writer
 	stderr io.Writer
+	isatty bool
 }
 
 func LogLineChecksum(line string) string {
@@ -209,11 +213,30 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 		if int(level) <= int(syslog.LOG_WARNING) {
 			output = w.stderr
 		}
-		if _, err := fmt.Fprintf(output, "%s %d %s %s\n",
+
+		var color string
+		var reset string
+
+		const red = "\033[31m\033[1m"
+		const yellow = "\033[33m"
+
+		if w.isatty {
+			if int(level) == int(syslog.LOG_WARNING) {
+				color = yellow
+				reset = "\033[0m"
+			} else if int(level) <= int(syslog.LOG_ERR) {
+				color = red
+				reset = "\033[0m"
+			}
+		}
+
+		if _, err := fmt.Fprintf(output, "%s%s %d %s %s%s\n",
+			color,
 			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
 			int(level),
 			path.Base(os.Args[0]),
-			msg); err != nil {
+			msg,
+			reset); err != nil {
 			panic(fmt.Sprintf("failed to write to stdout: %v\n", err))
 		}
 	}
