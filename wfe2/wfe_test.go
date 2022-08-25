@@ -1812,7 +1812,7 @@ func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Se
 	if ok {
 		return incidents, nil
 	}
-	return nil, berrors.NotFoundError("No incidents for serial %q", req.Serial)
+	return &sapb.Incidents{}, nil
 }
 
 func TestGetCertificate(t *testing.T) {
@@ -3591,9 +3591,8 @@ func TestARI(t *testing.T) {
 // past.
 func TestIncidentARI(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	expectSerial := big.NewInt(12345)
-	expectSerialString := core.SerialToString(expectSerial)
-	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
+	expectSerial := core.SerialToString(big.NewInt(12345))
+	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerial})
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3606,7 +3605,7 @@ func TestIncidentARI(t *testing.T) {
 		"%s/%s/%s",
 		hex.EncodeToString([]byte("foo")),
 		hex.EncodeToString([]byte("baz")),
-		expectSerialString,
+		expectSerial,
 	)
 	req, event := makeGet(path, renewalInfoPath)
 	resp := httptest.NewRecorder()

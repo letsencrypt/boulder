@@ -2147,7 +2147,7 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	_, err := ssa.dbMap.Select(&activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("no active incidents found")
+			return &sapb.Incidents{}, nil
 		}
 		return nil, err
 	}
@@ -2170,7 +2170,7 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 
 	}
 	if len(incidentsForSerial) == 0 {
-		return nil, berrors.NotFoundError("no active incidents found for serial %q", req.Serial)
+		return &sapb.Incidents{}, nil
 	}
 	return &sapb.Incidents{Incidents: incidentsForSerial}, nil
 }

@@ -540,3 +540,33 @@ type SuggestedWindow struct {
 type RenewalInfo struct {
 	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
 }
+
+// RenewalInfoSimple constucts a `RenewalInfo` object with a suggested window
+// using a very simple renewal calculation: Calculate a point 2/3rds of the way
+// through the validity period, then give a 2-day window around that.
+func RenewalInfoSimple(issued time.Time, expires time.Time) RenewalInfo {
+	validity := expires.Add(time.Second).Sub(issued)
+	renewalOffset := time.Duration(int64(0.33 * validity.Seconds()))
+	idealRenewal := expires.UTC().Add(-renewalOffset)
+	return RenewalInfo{
+		SuggestedWindow: SuggestedWindow{
+			Start: idealRenewal.Add(-24 * time.Hour),
+			End:   idealRenewal.Add(24 * time.Hour),
+		},
+	}
+}
+
+// RenewalInfoImmediate constructs a `RenewalInfo` object with a suggested
+// window in the past. The passed `now` is assumed to be a timestamp
+// representing the current moment in time. Per the draft-aaron-ari spec,
+// clients should attempt to renew immediately if the suggested window is in the
+// past.
+func RenewalInfoImmediate(now time.Time) RenewalInfo {
+	oneHourAgo := now.Add(-1 * time.Hour)
+	return RenewalInfo{
+		SuggestedWindow: SuggestedWindow{
+			Start: oneHourAgo,
+			End:   oneHourAgo.Add(time.Minute * 30),
+		},
+	}
+}

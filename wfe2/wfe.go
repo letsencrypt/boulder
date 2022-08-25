@@ -2278,34 +2278,28 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
+	setDefaultRetryAfterHeader := func(response http.ResponseWriter) {
+		response.Header().Set("Retry-After", fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+	}
+
 	// Check if the serial is part of an ongoing incident.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
-	if err != nil && !errors.Is(err, berrors.NotFound) {
+	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to check if the serial is impacted by an incident"), err)
 		return
 	}
 
-	if result != nil && len(result.Incidents) > 0 {
+	if len(result.Incidents) > 0 {
 		// Since IncidentsForSerial() only returns enabled incidents we can
-		// assume that this serial is impacted by an ongoing incident. Per the
-		// ARI spec clients should attempt to renew immediately if the suggested
-		// window is in the past.
-		oneHourAgo := wfe.clk.Now().Add(-1 * time.Hour)
-		ri := core.RenewalInfo{
-			SuggestedWindow: core.SuggestedWindow{
-				Start: oneHourAgo,
-				End:   oneHourAgo.Add(time.Minute * 30),
-			},
-		}
+		// assume that this serial is impacted by an ongoing incident.
+		ri := core.RenewalInfoImmediate(wfe.clk.Now())
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 			return
 		}
-
-		pollPeriod := int(6 * time.Hour / time.Second)
-		response.Header().Set("Retry-After", fmt.Sprintf("%d", pollPeriod))
+		setDefaultRetryAfterHeader(response)
 		return
 	}
 
@@ -2321,26 +2315,13 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// This is a very simple renewal calculation: Calculate a point 2/3rds of the
-	// way through the validity period, then give a 2-day window around that.
-	validity := time.Unix(0, cert.Expires).Add(time.Second).Sub(time.Unix(0, cert.Issued))
-	renewalOffset := time.Duration(int64(0.33 * validity.Seconds()))
-	idealRenewal := time.Unix(0, cert.Expires).UTC().Add(-renewalOffset)
-	ri := core.RenewalInfo{
-		SuggestedWindow: core.SuggestedWindow{
-			Start: idealRenewal.Add(-24 * time.Hour),
-			End:   idealRenewal.Add(24 * time.Hour),
-		},
-	}
-
+	ri := core.RenewalInfoSimple(time.Unix(0, cert.Issued), time.Unix(0, cert.Expires))
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 		return
 	}
-
-	pollPeriod := int(6 * time.Hour / time.Second)
-	response.Header().Set("Retry-After", fmt.Sprintf("%d", pollPeriod))
+	setDefaultRetryAfterHeader(response)
 }
 
 func extractRequesterIP(req *http.Request) (net.IP, error) {
