@@ -541,7 +541,7 @@ type RenewalInfo struct {
 	SuggestedWindow SuggestedWindow `json:"suggestedWindow"`
 }
 
-// RenewalInfoSimple constucts a `RenewalInfo` object with a suggested window
+// RenewalInfoSimple constructs a `RenewalInfo` object and suggested window
 // using a very simple renewal calculation: Calculate a point 2/3rds of the way
 // through the validity period, then give a 2-day window around that.
 func RenewalInfoSimple(issued time.Time, expires time.Time) RenewalInfo {
