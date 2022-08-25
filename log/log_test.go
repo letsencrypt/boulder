@@ -3,7 +3,6 @@ package log
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"log/syslog"
 	"net"
 	"os"
@@ -84,33 +83,24 @@ func TestEmitEmpty(t *testing.T) {
 	log.AuditInfo("")
 }
 
-func ExampleLogger() {
-	// Write all logs to UDP on a high port so as to not bother the system
-	// which is running the test
-	writer, err := syslog.Dial("udp", "127.0.0.1:65530", syslog.LOG_INFO|syslog.LOG_LOCAL0, "")
-	if err != nil {
-		log.Fatal(err)
+func TestStdoutLogger(t *testing.T) {
+	stdout := bytes.NewBuffer(nil)
+	stderr := bytes.NewBuffer(nil)
+	logger := &impl{
+		&stdoutWriter{
+			level:  7,
+			clk:    clock.NewFake(),
+			stdout: stdout,
+			stderr: stderr,
+		},
 	}
 
-	logger, err := New(writer, stdoutLevel, syslogLevel)
-	if err != nil {
-		log.Fatal(err)
-	}
-	impl, ok := logger.(*impl)
-	if !ok {
-		log.Fatalf("Wrong type returned from New: %T", logger)
-	}
+	logger.AuditErr("Error Audit")
+	logger.Warning("Warning log")
+	logger.Info("Info log")
 
-	bw, ok := impl.w.(*bothWriter)
-	if !ok {
-		log.Fatalf("Wrong type of impl's writer: %T\n", impl.w)
-	}
-	bw.clk = clock.NewFake()
-	impl.AuditErr("Error Audit")
-	impl.Warning("Warning log")
-	// Output:
-	// 1970-01-01T00:00:00+07:00 3 log.test 46_ghQg [AUDIT] Error Audit
-	// 1970-01-01T00:00:00+07:00 4 log.test 97r2xAw Warning log
+	test.AssertEquals(t, stdout.String(), "1970-01-01T00:00:00+07:00 6 log.test Info log\n")
+	test.AssertEquals(t, stderr.String(), "1970-01-01T00:00:00+07:00 3 log.test [AUDIT] Error Audit\n1970-01-01T00:00:00+07:00 4 log.test Warning log\n")
 }
 
 func TestSyslogMethods(t *testing.T) {
@@ -352,7 +342,7 @@ func TestLogAtLevelEscapesNewlines(t *testing.T) {
 			clk:    clock.NewFake(),
 			level:  6,
 		},
-		0,
+		-1,
 	}
 	w.logAtLevel(6, "foo\nbar")
 

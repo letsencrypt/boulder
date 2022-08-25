@@ -55,7 +55,8 @@ var _Singleton singleton
 // The constant used to identify audit-specific messages
 const auditTag = "[AUDIT]"
 
-// New returns a new Logger that uses the given syslog.Writer as a backend.
+// New returns a new Logger that uses the given syslog.Writer as a backend
+// and also writes to stdout/stderr. It is safe for concurrent use.
 func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
@@ -68,18 +69,22 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 				level:  stdoutLogLevel,
 				clk:    clock.New(),
 				stdout: os.Stdout,
+				stderr: os.Stderr,
 			},
 			syslogLogLevel,
 		},
 	}, nil
 }
 
+// StdoutLogger returns a Logger that writes solely to stdout and stderr.
+// It is safe for concurrent use.
 func StdoutLogger(level int) Logger {
 	return &impl{
 		&stdoutWriter{
 			level:  level,
 			clk:    clock.New(),
 			stdout: os.Stdout,
+			stderr: os.Stderr,
 		},
 	}
 }
@@ -144,6 +149,7 @@ type stdoutWriter struct {
 	level  int
 	clk    clock.Clock
 	stdout io.Writer
+	stderr io.Writer
 }
 
 func LogLineChecksum(line string) string {
@@ -155,7 +161,7 @@ func LogLineChecksum(line string) string {
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
-// Log the provided message at the appropriate level, writing to
+// logAtLevel logs the provided message at the appropriate level, writing to
 // both stdout and the Logger
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	var err error
@@ -196,9 +202,14 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	w.stdoutWriter.logAtLevel(level, msg)
 }
 
+// logAtLevel logs the provided message to stdout, or stderr if it is at Warning or Error level.
 func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 	if int(level) <= w.level {
-		if _, err := fmt.Fprintf(w.stdout, "%s %d %s %s\n",
+		output := w.stdout
+		if int(level) <= int(syslog.LOG_WARNING) {
+			output = w.stderr
+		}
+		if _, err := fmt.Fprintf(output, "%s %d %s %s\n",
 			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
 			int(level),
 			path.Base(os.Args[0]),
