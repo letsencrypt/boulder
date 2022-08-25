@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"os/user"
 	"testing"
 	"time"
 
@@ -347,7 +348,8 @@ func TestPrivateKeyBlock(t *testing.T) {
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// With dryRun=false this should block the key.
-	err = privateKeyBlock(&testCtx.revoker, false, "", count, spkiHash1, testKey1File.Name())
+	comment := "key blocked as part of test"
+	err = privateKeyBlock(&testCtx.revoker, false, comment, count, spkiHash1, testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// With dryRun=false this should result in an error as the key is already blocked.
@@ -358,6 +360,13 @@ func TestPrivateKeyBlock(t *testing.T) {
 	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
+
+	// Ensure that the comment was set as expected
+	commentFromDB, err := testCtx.dbMap.SelectStr("SELECT comment from blockedKeys WHERE keyHash = ?", spkiHash1)
+	u, err := user.Current()
+	dbUserComment := fmt.Sprintf("%s: %s", u.Username, comment)
+	test.AssertNotError(t, err, "Failed to get current user")
+	test.AssertEquals(t, commentFromDB, dbUserComment)
 }
 
 func TestPrivateKeyRevoke(t *testing.T) {
