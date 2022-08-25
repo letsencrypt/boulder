@@ -257,7 +257,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Block issuance for the key.
-	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1File.Name())
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), "", testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
@@ -266,7 +266,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Ensure that blocking issuance is idempotent.
-	err = testCtx.revoker.blockByPrivateKey(context.Background(), testKey1File.Name())
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), "", testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 }
 
@@ -338,7 +338,7 @@ func TestPrivateKeyBlock(t *testing.T) {
 	test.AssertEquals(t, count, 2)
 
 	// With dryRun=true this should not block the key.
-	err = privateKeyBlock(&testCtx.revoker, true, count, spkiHash1, testKey1File.Name())
+	err = privateKeyBlock(&testCtx.revoker, true, "", count, spkiHash1, testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is not blocked, yet.
@@ -347,11 +347,11 @@ func TestPrivateKeyBlock(t *testing.T) {
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// With dryRun=false this should block the key.
-	err = privateKeyBlock(&testCtx.revoker, false, count, spkiHash1, testKey1File.Name())
+	err = privateKeyBlock(&testCtx.revoker, false, "", count, spkiHash1, testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// With dryRun=false this should result in an error as the key is already blocked.
-	err = privateKeyBlock(&testCtx.revoker, false, count, spkiHash1, testKey1File.Name())
+	err = privateKeyBlock(&testCtx.revoker, false, "", count, spkiHash1, testKey1File.Name())
 	test.AssertError(t, err, "Attempting to block a key which is already blocked should have failed.")
 
 	// Ensure that the key is now blocked.
@@ -428,7 +428,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.AssertEquals(t, count, 2)
 
 	// With dryRun=true this should not revoke certificates or block issuance.
-	err = privateKeyRevoke(&testCtx.revoker, true, count, testKey1File.Name())
+	err = privateKeyRevoke(&testCtx.revoker, true, "", count, testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is not blocked, yet.
@@ -437,7 +437,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// With dryRun=false this should revoke matching certificates and block the key.
-	err = privateKeyRevoke(&testCtx.revoker, false, count, testKey1File.Name())
+	err = privateKeyRevoke(&testCtx.revoker, false, "", count, testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
