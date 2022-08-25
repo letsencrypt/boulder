@@ -112,11 +112,12 @@ func (cs checkedSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOp
 
 	switch pk := cs.wrapped.Public().(type) {
 	case *rsa.PublicKey:
-		err = rsa.VerifyPKCS1v15(pk, opts.HashFunc(), digest, sig)
-		if err != nil {
-			return nil, fmt.Errorf("signature fault: %w", err)
-		}
+		// The go stdlib's rsa.Sign implementation already checks for faults:
+		// https://cs.opensource.google/go/go/+/40ac3690efe420ff7665c6fe1eec0933c41d1413
+		// We don't re-check here because doing so is computationally expensive.
+		break
 	case *ecdsa.PublicKey:
+		// The go stdlib does not *yet* check ECDSA signatures for faults.
 		ok := ecdsa.VerifyASN1(pk, digest, sig)
 		if !ok {
 			return nil, errors.New("signature fault")

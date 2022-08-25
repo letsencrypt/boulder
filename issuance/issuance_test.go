@@ -853,8 +853,8 @@ func TestCheckedSigner(t *testing.T) {
 	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
 	test.AssertError(t, err, "should have failed to sign with ed25519")
 
-	// It should fail to check signatures from a signer which truncates signatures.
-	cs = checkedSigner{faultSigner{rsaKey}}
+	// It should check and fail on a truncated signature from an ECDSA signer.
+	cs = checkedSigner{faultSigner{ecdsaKey}}
 	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
 	test.AssertError(t, err, "should have failed with truncated signature")
 }
