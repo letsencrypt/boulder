@@ -3567,10 +3567,8 @@ func TestARI(t *testing.T) {
 	var ri core.RenewalInfo
 	err = json.Unmarshal(resp.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
-	// The start of the window should be in the past.
-	test.AssertEquals(t, ri.SuggestedWindow.Start.Before(wfe.clk.Now()), true)
-	// The end of the window should be in the future.
-	test.AssertEquals(t, ri.SuggestedWindow.End.After(wfe.clk.Now()), true)
+	// Ensure the duration between the start and the end of the window is 2 days.
+	test.AssertEquals(t, ri.SuggestedWindow.End.Sub(ri.SuggestedWindow.Start), 48*time.Hour)
 
 	// Ensure that a mangled query (wrong serial) results in a 404.
 	path = fmt.Sprintf(
