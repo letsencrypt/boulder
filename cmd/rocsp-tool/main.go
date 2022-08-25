@@ -3,6 +3,7 @@ package notmain
 import (
 	"context"
 	"encoding/base64"
+	"encoding/pem"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -90,7 +91,6 @@ func main2() error {
 
 	_, logger := cmd.StatsAndLogging(c.Syslog, c.ROCSPTool.DebugAddr)
 	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString())
 
 	clk := cmd.Clock()
 	redisClient, err := rocsp_config.MakeClient(&c.ROCSPTool.Redis, clk, metrics.NoopRegisterer)
@@ -141,18 +141,32 @@ func main2() error {
 			}
 			parsed, err := ocsp.ParseResponse(resp, nil)
 			if err != nil {
-				logger.Infof("parsing error on %x: %s", resp, err)
+				fmt.Fprintf(os.Stderr, "parsing error on %x: %s", resp, err)
 				continue
 			} else {
-				logger.Infof("%s", helper.PrettyResponse(parsed))
+				fmt.Printf("%s\n", helper.PrettyResponse(parsed))
 			}
 		}
+	case "get-pem":
+		for _, serial := range flag.Args()[1:] {
+			resp, err := cl.redis.GetResponse(ctx, serial)
+			if err != nil {
+				return err
+			}
+			block := pem.Block{
+				Bytes: resp,
+				Type:  "OCSP RESPONSE",
+			}
+			pem.Encode(os.Stdout, &block)
+		}
 	case "store":
+		logger.Info(cmd.VersionString())
 		err := cl.storeResponsesFromFiles(ctx, flag.Args()[1:])
 		if err != nil {
 			return err
 		}
 	case "load-from-db":
+		logger.Info(cmd.VersionString())
 		if c.ROCSPTool.LoadFromDB == nil {
 			return fmt.Errorf("config field LoadFromDB was missing")
 		}
@@ -161,6 +175,7 @@ func main2() error {
 			return fmt.Errorf("loading OCSP responses from DB: %w", err)
 		}
 	case "scan-responses":
+		logger.Info(cmd.VersionString())
 		results := cl.redis.ScanResponses(ctx, "*")
 		for r := range results {
 			if r.Err != nil {
