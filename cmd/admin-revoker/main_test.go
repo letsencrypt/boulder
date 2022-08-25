@@ -363,9 +363,10 @@ func TestPrivateKeyBlock(t *testing.T) {
 
 	// Ensure that the comment was set as expected
 	commentFromDB, err := testCtx.dbMap.SelectStr("SELECT comment from blockedKeys WHERE keyHash = ?", spkiHash1)
+	test.AssertNotError(t, err, "Failed to get comment from database")
 	u, err := user.Current()
-	dbUserComment := fmt.Sprintf("%s: %s", u.Username, comment)
 	test.AssertNotError(t, err, "Failed to get current user")
+	dbUserComment := fmt.Sprintf("%s: %s", u.Username, comment)
 	test.AssertEquals(t, commentFromDB, dbUserComment)
 }
 
@@ -446,13 +447,22 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// With dryRun=false this should revoke matching certificates and block the key.
-	err = privateKeyRevoke(&testCtx.revoker, false, "", count, testKey1File.Name())
+	comment := "key blocked as part of test"
+	err = privateKeyRevoke(&testCtx.revoker, false, comment, count, testKey1File.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
 	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
 	test.AssertNotError(t, err, "spkiHashInBlockedKeys failed for key that should now be blocked")
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
+
+	// Ensure that the comment was set as expected
+	commentFromDB, err := testCtx.dbMap.SelectStr("SELECT comment from blockedKeys WHERE keyHash = ?", spkiHash1)
+	test.AssertNotError(t, err, "Failed to get comment from database")
+	u, err := user.Current()
+	test.AssertNotError(t, err, "Failed to get current user")
+	dbUserComment := fmt.Sprintf("%s: %s", u.Username, comment)
+	test.AssertEquals(t, commentFromDB, dbUserComment)
 }
 
 type testCtx struct {
