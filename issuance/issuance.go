@@ -103,7 +103,8 @@ func (cs checkedSigner) Public() crypto.PublicKey {
 }
 
 // Sign implements the crypto.Signer interface by passing the call through to
-// the wrapped crypto.Signer, then verifying the result. It only recognizes
+// the wrapped crypto.Signer and ensuring (either directly or via the stdlib
+// implementation) that the resulting signature is valid. It only recognizes
 // RSA and ECDSA signers at this time.
 func (cs checkedSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	sig, err := cs.wrapped.Sign(rand, digest, opts)
