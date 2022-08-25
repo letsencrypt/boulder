@@ -90,7 +90,8 @@ type IssuerLoc struct {
 
 // checkedSigner implements the crypto.Signer interface by wrapping another
 // crypto.Signer. All calls to its .Sign() method check the resulting signature
-// to prevent signature-fault attacks against the private key.
+// (either directly or in the underlying stdlib implementation) to prevent
+// signature-fault attacks against the private key.
 type checkedSigner struct {
 	wrapped crypto.Signer
 }
@@ -102,7 +103,7 @@ func (cs checkedSigner) Public() crypto.PublicKey {
 }
 
 // Sign implements the crypto.Signer interface by passing the call through to
-// the wrapped crypto.Signer, then verifying the result. It only works with
+// the wrapped crypto.Signer, then verifying the result. It only recognizes
 // RSA and ECDSA signers at this time.
 func (cs checkedSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
 	sig, err := cs.wrapped.Sign(rand, digest, opts)

@@ -832,29 +832,33 @@ func TestCheckedSigner(t *testing.T) {
 	msg := "hello world"
 	dig := sha256.Sum256([]byte(msg))
 
-	// It should correctly check signatures from an underlying RSA signer.
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
-	test.AssertNotError(t, err, "failed to generate RSA keypair")
-	cs := checkedSigner{rsaKey}
-	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
-	test.AssertNotError(t, err, "failed to sign with RSA")
-
 	// It should correctly check signatures from an underlying ECDSA signer.
 	ecdsaKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate ECDSA keypair")
-	cs = checkedSigner{ecdsaKey}
+	cs := checkedSigner{ecdsaKey}
 	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
-	test.AssertNotError(t, err, "failed to sign with ECDSA")
+	test.AssertNotError(t, err, "ECDSA signing should succeed")
+
+	// It should check and fail on a truncated signature from an ECDSA signer.
+	cs = checkedSigner{faultSigner{ecdsaKey}}
+	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
+	test.AssertError(t, err, "truncated ECDSA signing should fail")
+
+	// It should allow through all signatures from an RSA signer, since we know
+	// that the stdlib's RSA implementation already checks for signature faults.
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "failed to generate RSA keypair")
+	cs = checkedSigner{rsaKey}
+	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
+	test.AssertNotError(t, err, "RSA signing should succeed")
+	cs = checkedSigner{faultSigner{rsaKey}}
+	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
+	test.AssertNotError(t, err, "truncated RSA signing should pass through")
 
 	// It should fail to check signatures from an underlying ed25519 signer.
 	_, edPriv, err := ed25519.GenerateKey(rand.Reader)
 	test.AssertNotError(t, err, "failed to generate ed25519 keypair")
 	cs = checkedSigner{edPriv}
 	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
-	test.AssertError(t, err, "should have failed to sign with ed25519")
-
-	// It should check and fail on a truncated signature from an ECDSA signer.
-	cs = checkedSigner{faultSigner{ecdsaKey}}
-	_, err = cs.Sign(rand.Reader, dig[:], crypto.SHA256)
-	test.AssertError(t, err, "should have failed with truncated signature")
+	test.AssertError(t, err, "ed25519 signing should be unrecognized")
 }
