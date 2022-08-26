@@ -366,8 +366,8 @@ func TestPrivateKeyBlock(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get comment from database")
 	u, err := user.Current()
 	test.AssertNotError(t, err, "Failed to get current user")
-	dbUserComment := fmt.Sprintf("%s: %s", u.Username, comment)
-	test.AssertEquals(t, commentFromDB, dbUserComment)
+	expectedDBComment := fmt.Sprintf("%s: %s", u.Username, comment)
+	test.AssertEquals(t, commentFromDB, expectedDBComment)
 }
 
 func TestPrivateKeyRevoke(t *testing.T) {
@@ -461,8 +461,8 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to get comment from database")
 	u, err := user.Current()
 	test.AssertNotError(t, err, "Failed to get current user")
-	dbUserComment := fmt.Sprintf("%s: %s", u.Username, comment)
-	test.AssertEquals(t, commentFromDB, dbUserComment)
+	expectedDBComment := fmt.Sprintf("%s: %s", u.Username, comment)
+	test.AssertEquals(t, commentFromDB, expectedDBComment)
 }
 
 type testCtx struct {
