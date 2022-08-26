@@ -2314,8 +2314,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		}
 		return
 	}
+	ri := core.RenewalInfoSimple(time.Unix(0, cert.Issued).UTC(), time.Unix(0, cert.Expires).UTC())
 
-	ri := core.RenewalInfoSimple(time.Unix(0, cert.Issued), time.Unix(0, cert.Expires))
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)

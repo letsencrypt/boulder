@@ -1746,8 +1746,13 @@ type mockSAWithCert struct {
 	status core.OCSPStatus
 }
 
-func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, status core.OCSPStatus) *mockSAWithCert {
+func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, status core.OCSPStatus, zeroNotBefore bool) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	if zeroNotBefore {
+		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the
+		// Issued timestamp of this certificate to be very old (the year 0).
+		cert.NotBefore = time.Time{}
+	}
 	test.AssertNotError(t, err, "Failed to load test cert")
 	return &mockSAWithCert{sa, cert, status}
 }
@@ -1762,10 +1767,9 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
-		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the Issued
-		// timestamp of this certificate to be very old (the year 0).
-		Issued: time.Time{}.UnixNano(),
-		Der:    sa.cert.Raw,
+		Issued:         sa.cert.NotBefore.UnixNano(),
+		Expires:        sa.cert.NotAfter.UnixNano(),
+		Der:            sa.cert.Raw,
 	}, nil
 }
 
@@ -1817,7 +1821,7 @@ func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Se
 
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -2166,7 +2170,7 @@ func TestGetCertificateNew(t *testing.T) {
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 
 	certPemBytes, _ := os.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -2935,7 +2939,7 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 // issuing account key.
 func TestRevokeCertificateByApplicantValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -2960,7 +2964,7 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 // certificate private key.
 func TestRevokeCertificateByKeyValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -2990,7 +2994,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -3026,7 +3030,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3052,7 +3056,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 	ra := wfe.ra.(*MockRegistrationAuthority)
 
 	reason0 := revocation.Reason(ocsp.Unspecified)
@@ -3119,7 +3123,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // A revocation request signed by an incorrect certificate private key.
 func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-e1.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3508,7 +3512,7 @@ func TestIndexGet404(t *testing.T) {
 // enough that we're no longer worried about stale info being cached.
 func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, true)
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3530,7 +3534,7 @@ func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 // requests for certs that don't exist result in errors.
 func TestARI(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, core.OCSPStatusGood, false)
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3567,8 +3571,8 @@ func TestARI(t *testing.T) {
 	var ri core.RenewalInfo
 	err = json.Unmarshal(resp.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
-	test.AssertEquals(t, ri.SuggestedWindow.Start.After(cert.NotBefore), true)
-	test.AssertEquals(t, ri.SuggestedWindow.End.Before(cert.NotAfter), true)
+	test.Assert(t, ri.SuggestedWindow.Start.After(cert.NotBefore), "suggested window begins before cert issuance")
+	test.Assert(t, ri.SuggestedWindow.End.Before(cert.NotAfter), "suggested window ends after cert expiry")
 
 	// Ensure that a mangled query (wrong serial) results in a 404.
 	path = fmt.Sprintf(
