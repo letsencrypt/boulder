@@ -57,7 +57,7 @@ var _Singleton singleton
 const auditTag = "[AUDIT]"
 
 // New returns a new Logger that uses the given syslog.Writer as a backend
-// and also writes to stdout/stderr. It is safe for concurrent use.
+// and also writes to stdout. It is safe for concurrent use.
 func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
@@ -70,7 +70,6 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 				level:  stdoutLogLevel,
 				clk:    clock.New(),
 				stdout: os.Stdout,
-				stderr: os.Stderr,
 				isatty: term.IsTerminal(int(os.Stdout.Fd())),
 			},
 			syslogLogLevel,
@@ -78,7 +77,7 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 	}, nil
 }
 
-// StdoutLogger returns a Logger that writes solely to stdout and stderr.
+// StdoutLogger returns a Logger that writes solely to stdout.
 // It is safe for concurrent use.
 func StdoutLogger(level int) Logger {
 	return &impl{
@@ -86,7 +85,6 @@ func StdoutLogger(level int) Logger {
 			level:  level,
 			clk:    clock.New(),
 			stdout: os.Stdout,
-			stderr: os.Stderr,
 			isatty: term.IsTerminal(int(os.Stdout.Fd())),
 		},
 	}
@@ -152,7 +150,6 @@ type stdoutWriter struct {
 	level  int
 	clk    clock.Clock
 	stdout io.Writer
-	stderr io.Writer
 	isatty bool
 }
 
@@ -206,14 +203,9 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	w.stdoutWriter.logAtLevel(level, msg)
 }
 
-// logAtLevel logs the provided message to stdout, or stderr if it is at Warning or Error level.
+// logAtLevel logs the provided message to stdout.
 func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 	if int(level) <= w.level {
-		output := w.stdout
-		if int(level) <= int(syslog.LOG_WARNING) {
-			output = w.stderr
-		}
-
 		var color string
 		var reset string
 
@@ -230,7 +222,7 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 			}
 		}
 
-		if _, err := fmt.Fprintf(output, "%s%s %d %s %s%s\n",
+		if _, err := fmt.Fprintf(w.stdout, "%s%s %d %s %s%s\n",
 			color,
 			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
 			int(level),
