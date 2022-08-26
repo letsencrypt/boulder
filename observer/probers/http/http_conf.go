@@ -17,7 +17,7 @@ type HTTPConf struct {
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
-func (p HTTPConf) Kind() string {
+func (c HTTPConf) Kind() string {
 	return "HTTP"
 }
 

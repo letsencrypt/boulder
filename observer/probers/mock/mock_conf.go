@@ -19,7 +19,7 @@ type MockConfigurer struct {
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
-func (p MockConfigurer) Kind() string {
+func (c MockConfigurer) Kind() string {
 	return "Mock"
 }
 

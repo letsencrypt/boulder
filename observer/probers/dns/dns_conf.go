@@ -26,7 +26,7 @@ type DNSConf struct {
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
-func (p DNSConf) Kind() string {
+func (c DNSConf) Kind() string {
 	return "DNS"
 }
 
