@@ -381,12 +381,12 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 	return request
 }
 
-// signAndPost constructs a JWS signed by the given account ID, over the given
+// signAndPost constructs a JWS signed by the account with ID 1, over the given
 // payload, with the protected URL set to the provided signedURL. An HTTP
 // request constructed to the provided path with the encoded JWS body as the
 // POST body is returned.
-func signAndPost(t *testing.T, path, signedURL, payload string, accountID int64, ns *nonce.NonceService) *http.Request {
-	_, _, body := signRequestKeyID(t, accountID, nil, signedURL, payload, ns)
+func signAndPost(t *testing.T, path, signedURL, payload string, ns *nonce.NonceService) *http.Request {
+	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, ns)
 	return makePostRequestWithPath(path, body)
 }
 
@@ -1754,7 +1754,7 @@ func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, statu
 		cert.NotBefore = time.Time{}
 	}
 	test.AssertNotError(t, err, "Failed to load test cert")
-	return &mockSAWithCert{sa, cert, status}
+	return &mockSAWithCert{sa, cert, core.OCSPStatusGood}
 }
 
 // GetCertificate returns the mock SA's hard-coded certificate, issued by the
@@ -2469,37 +2469,37 @@ func TestNewOrder(t *testing.T) {
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
-			Request:      signAndPost(t, targetPath, signedURL, "foo", 1, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, "foo", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "POST, empty domain name identifier",
-			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`, 1, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
 		},
 		{
 			Name:         "POST, no identifiers in payload",
-			Request:      signAndPost(t, targetPath, signedURL, "{}", 1, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, "{}", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
 		},
 		{
 			Name:         "POST, invalid identifier in payload",
-			Request:      signAndPost(t, targetPath, signedURL, nonDNSIdentifierBody, 1, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, nonDNSIdentifierBody, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
 			Name:         "POST, notAfter and notBefore in payload",
-			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`, 1, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
 		},
 		{
 			Name:         "POST, no potential CNs 64 bytes or smaller",
-			Request:      signAndPost(t, targetPath, signedURL, tooLongCNBody, 1, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, tooLongCNBody, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
 		},
 		{
 			Name:    "POST, good payload, one potential CNs less than 64 bytes and one longer",
-			Request: signAndPost(t, targetPath, signedURL, oneLongOneShortCNBody, 1, wfe.nonceService),
+			Request: signAndPost(t, targetPath, signedURL, oneLongOneShortCNBody, wfe.nonceService),
 			ExpectedBody: `
 			{
 				"status": "pending",
@@ -2516,7 +2516,7 @@ func TestNewOrder(t *testing.T) {
 		},
 		{
 			Name:    "POST, good payload",
-			Request: signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService),
+			Request: signAndPost(t, targetPath, signedURL, validOrderBody, wfe.nonceService),
 			ExpectedBody: `
 					{
 						"status": "pending",
@@ -2549,7 +2549,7 @@ func TestNewOrder(t *testing.T) {
 
 	// Test that we log the "Created" field.
 	responseWriter.Body.Reset()
-	request := signAndPost(t, targetPath, signedURL, validOrderBody, 1, wfe.nonceService)
+	request := signAndPost(t, targetPath, signedURL, validOrderBody, wfe.nonceService)
 	requestEvent := newRequestEvent()
 	wfe.NewOrder(ctx, requestEvent, responseWriter, request)
 
@@ -2600,17 +2600,17 @@ func TestFinalizeOrder(t *testing.T) {
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
-			Request:      signAndPost(t, targetPath, signedURL, "foo", 1, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, "foo", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "Invalid path",
-			Request:      signAndPost(t, "1", "http://localhost/1", "{}", 1, wfe.nonceService),
+			Request:      signAndPost(t, "1", "http://localhost/1", "{}", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:         "Bad acct ID in path",
-			Request:      signAndPost(t, "a/1", "http://localhost/a/1", "{}", 1, wfe.nonceService),
+			Request:      signAndPost(t, "a/1", "http://localhost/a/1", "{}", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
 		},
 		{
@@ -2620,40 +2620,40 @@ func TestFinalizeOrder(t *testing.T) {
 			// handler directly and it normally has the initial path component
 			// stripped by the global WFE2 handler. We need the JWS URL to match the request
 			// URL so we fudge both such that the finalize-order prefix has been removed.
-			Request:      signAndPost(t, "2/1", "http://localhost/2/1", "{}", 1, wfe.nonceService),
+			Request:      signAndPost(t, "2/1", "http://localhost/2/1", "{}", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
 		},
 		{
 			Name:         "Order ID is invalid",
-			Request:      signAndPost(t, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}", 1, wfe.nonceService),
+			Request:      signAndPost(t, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
 		},
 		{
 			Name: "Order doesn't exist",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 2 as missing
-			Request:      signAndPost(t, "1/2", "http://localhost/1/2", "{}", 1, wfe.nonceService),
+			Request:      signAndPost(t, "1/2", "http://localhost/1/2", "{}", wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order for ID 2","status":404}`,
 		},
 		{
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
-			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, 1, wfe.nonceService),
+			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"valid\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name: "Order is expired",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 7 as an Order that has already expired
-			Request:      signAndPost(t, "1/7", "http://localhost/1/7", goodCertCSRPayload, 1, wfe.nonceService),
+			Request:      signAndPost(t, "1/7", "http://localhost/1/7", goodCertCSRPayload, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
 		},
 		{
 			Name:         "Good CSR, Pending Order",
-			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, 1, wfe.nonceService),
+			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, wfe.nonceService),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name:            "Good CSR, Ready Order",
-			Request:         signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService),
+			Request:         signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, wfe.nonceService),
 			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/8"},
 			ExpectedBody: `
 {
@@ -2689,7 +2689,7 @@ func TestFinalizeOrder(t *testing.T) {
 	// to match the whole response body because the "detail" of a bad CSR problem
 	// contains a verbose Go error message that can change between versions (e.g.
 	// Go 1.10.4 to 1.11 changed the expected format)
-	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, 1, wfe.nonceService)
+	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, wfe.nonceService)
 	responseWriter.Body.Reset()
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
 	responseBody := responseWriter.Body.String()
@@ -3283,7 +3283,7 @@ func TestFinalizeSCTError(t *testing.T) {
 	}`
 
 	// Create a finalization request with the above payload
-	request := signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, 1, wfe.nonceService)
+	request := signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, wfe.nonceService)
 
 	// POST the finalize order request.
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, request)

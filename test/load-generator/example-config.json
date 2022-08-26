@@ -14,7 +14,6 @@
     "domainBase": "com",
     "httpOneAddr": "localhost:5002",
     "regKeySize": 2048,
-    "certKeySize": 2048,
     "regEmail": "loadtesting@letsencrypt.org",
     "maxRegs": 20,
     "maxNamesPerCert": 20,

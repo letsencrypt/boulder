@@ -38,12 +38,11 @@ func TestMakeAuthHeader(t *testing.T) {
 	fc.Set(wantedTimestamp)
 
 	expectedHeader := "EG1-HMAC-SHA256 client_token=akab-client-token-xxx-xxxxxxxxxxxxxxxx;access_token=akab-access-token-xxx-xxxxxxxxxxxxxxxx;timestamp=20140321T19:34:21+0000;nonce=nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx;signature=hXm4iCxtpN22m4cbZb4lVLW5rhX8Ca82vCFqXzSTPe4="
-	authHeader, err := cpc.makeAuthHeader(
+	authHeader := cpc.makeAuthHeader(
 		[]byte("datadatadatadatadatadatadatadata"),
 		"/testapi/v1/t3",
 		"nonce-xx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
 	)
-	test.AssertNotError(t, err, "Failed to create authorization header")
 	test.AssertEquals(t, authHeader, expectedHeader)
 }
 

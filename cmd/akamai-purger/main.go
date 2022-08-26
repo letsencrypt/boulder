@@ -373,7 +373,7 @@ func main() {
 	scope.MustRegister(gaugePurgeQueueLength)
 
 	if manualMode {
-		manualPurge(ccu, *tag, *tagFile, logger)
+		manualPurge(ccu, *tag, *tagFile)
 	} else {
 		daemon(c, ap, logger, scope)
 	}
@@ -383,7 +383,7 @@ func main() {
 // passed on the CLI. All tags will be added to a single request, please ensure
 // that you don't violate the Fast-Purge API limits for tags detailed here:
 // https://techdocs.akamai.com/purge-cache/reference/rate-limiting
-func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string, logger blog.Logger) {
+func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string) {
 	var tags []string
 	if tag != "" {
 		tags = []string{tag}

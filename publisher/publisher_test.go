@@ -162,7 +162,7 @@ func setup(t *testing.T) (*Impl, *x509.Certificate, *ecdsa.PrivateKey) {
 	return pub, leaf, k
 }
 
-func addLog(t *testing.T, pub *Impl, port int, pubKey *ecdsa.PublicKey) *Log {
+func addLog(t *testing.T, port int, pubKey *ecdsa.PublicKey) *Log {
 	uri := fmt.Sprintf("http://localhost:%d", port)
 	der, err := x509.MarshalPKIXPublicKey(pubKey)
 	test.AssertNotError(t, err, "Failed to marshal key")
@@ -217,7 +217,7 @@ func TestTimestampVerificationFuture(t *testing.T) {
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
-	testLog := addLog(t, pub, port, &k.PublicKey)
+	testLog := addLog(t, port, &k.PublicKey)
 
 	// Precert
 	issuerBundles, precert, err := makePrecert(k)
@@ -240,7 +240,7 @@ func TestTimestampVerificationPast(t *testing.T) {
 	defer server.Close()
 	port, err := getPort(server.URL)
 	test.AssertNotError(t, err, "Failed to get test server port")
-	testLog := addLog(t, pub, port, &k.PublicKey)
+	testLog := addLog(t, port, &k.PublicKey)
 
 	// Precert
 	issuerBundles, precert, err := makePrecert(k)

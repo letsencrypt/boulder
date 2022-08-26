@@ -26,7 +26,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/canceled"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -249,12 +248,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 
 	isPrecert := req.Precert
 
-	sct, err := pub.singleLogSubmit(
-		ctx,
-		chain,
-		isPrecert,
-		core.SerialToString(cert.SerialNumber),
-		ctLog)
+	sct, err := pub.singleLogSubmit(ctx, chain, isPrecert, ctLog)
 	if err != nil {
 		if canceled.Is(err) {
 			return nil, err
@@ -280,7 +274,6 @@ func (pub *Impl) singleLogSubmit(
 	ctx context.Context,
 	chain []ct.ASN1Cert,
 	isPrecert bool,
-	serial string,
 	ctLog *Log,
 ) (*ct.SignedCertificateTimestamp, error) {
 	var submissionMethod func(context.Context, []ct.ASN1Cert) (*ct.SignedCertificateTimestamp, error)

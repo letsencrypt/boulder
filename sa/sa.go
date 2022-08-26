@@ -557,7 +557,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-			err := ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
+			err := ssa.addCertificatesPerName(txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
 			if err != nil {
 				return nil, err
 			}
@@ -594,7 +594,7 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.Count
 	}
 
 	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ctx, ssa.dbReadOnlyMap, req)
+		return countNewOrders(ssa.dbReadOnlyMap.WithContext(ctx), req)
 	}
 
 	var count int64
@@ -934,7 +934,7 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrder
 
 	if features.Enabled(features.FasterNewOrdersRateLimit) {
 		// Increment the order creation count
-		err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+		err := addNewOrdersRateLimit(ssa.dbMap.WithContext(ctx), req.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
 		if err != nil {
 			return nil, err
 		}
@@ -1090,7 +1090,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 	if features.Enabled(features.FasterNewOrdersRateLimit) {
 		// Increment the order creation count
-		err := addNewOrdersRateLimit(ctx, ssa.dbMap, req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+		err := addNewOrdersRateLimit(ssa.dbMap.WithContext(ctx), req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
 		if err != nil {
 			return nil, err
 		}

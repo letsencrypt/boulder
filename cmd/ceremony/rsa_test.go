@@ -60,7 +60,7 @@ func TestRSAGenerate(t *testing.T) {
 	ctx.GenerateKeyPairFunc = func(pkcs11.SessionHandle, []*pkcs11.Mechanism, []*pkcs11.Attribute, []*pkcs11.Attribute) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
 		return 0, 0, errors.New("bad")
 	}
-	_, _, err = rsaGenerate(s, "", 1024, 65537)
+	_, _, err = rsaGenerate(s, "", 1024)
 	test.AssertError(t, err, "rsaGenerate didn't fail on GenerateKeyPair error")
 
 	// Test rsaGenerate fails when rsaPub fails
@@ -70,7 +70,7 @@ func TestRSAGenerate(t *testing.T) {
 	ctx.GetAttributeValueFunc = func(pkcs11.SessionHandle, pkcs11.ObjectHandle, []*pkcs11.Attribute) ([]*pkcs11.Attribute, error) {
 		return nil, errors.New("bad")
 	}
-	_, _, err = rsaGenerate(s, "", 1024, 65537)
+	_, _, err = rsaGenerate(s, "", 1024)
 	test.AssertError(t, err, "rsaGenerate didn't fail on rsaPub error")
 
 	// Test rsaGenerate fails when rsaVerify fails
@@ -83,7 +83,7 @@ func TestRSAGenerate(t *testing.T) {
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("yup")
 	}
-	_, _, err = rsaGenerate(s, "", 1024, 65537)
+	_, _, err = rsaGenerate(s, "", 1024)
 	test.AssertError(t, err, "rsaGenerate didn't fail on rsaVerify error")
 
 	// Test rsaGenerate doesn't fail when everything works
@@ -97,6 +97,6 @@ func TestRSAGenerate(t *testing.T) {
 		// Chop of the hash identifier and feed back into rsa.SignPKCS1v15
 		return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, msg[19:])
 	}
-	_, _, err = rsaGenerate(s, "", 1024, 65537)
+	_, _, err = rsaGenerate(s, "", 1024)
 	test.AssertNotError(t, err, "rsaGenerate didn't succeed when everything worked as expected")
 }

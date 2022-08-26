@@ -417,7 +417,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 	results chan *remoteValidationResult) {
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
-		go func(rva RemoteVA, index int) {
+		go func(rva RemoteVA) {
 			result := &remoteValidationResult{
 				VAHostname: rva.Address,
 			}
@@ -444,7 +444,7 @@ func (va *ValidationAuthorityImpl) performRemoteValidation(
 				}
 			}
 			results <- result
-		}(remoteVA, i)
+		}(remoteVA)
 	}
 }
 

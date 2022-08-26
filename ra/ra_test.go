@@ -98,14 +98,14 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 	return getAuthorization(t, fmt.Sprint(ids.Ids[0]), sa)
 }
 
-func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, status string, attemptedAt time.Time) int64 {
+func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time, attemptedAt time.Time) int64 {
 	t.Helper()
 	pending := createPendingAuthorization(t, sa, domain, exp)
 	pendingID, err := strconv.ParseInt(pending.Id, 10, 64)
 	test.AssertNotError(t, err, "strconv.ParseInt failed")
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:          pendingID,
-		Status:      status,
+		Status:      "valid",
 		Expires:     exp.UnixNano(),
 		Attempted:   string(core.ChallengeTypeHTTP01),
 		AttemptedAt: attemptedAt.UnixNano(),
@@ -123,19 +123,19 @@ func getAuthorization(t *testing.T, id string, sa sapb.StorageAuthorityClient) *
 	return dbAuthz
 }
 
-func challTypeIndex(t *testing.T, challenges []*corepb.Challenge, typ core.AcmeChallenge) int64 {
+func dnsChallIdx(t *testing.T, challenges []*corepb.Challenge) int64 {
 	t.Helper()
 	var challIdx int64
 	var set bool
 	for i, ch := range challenges {
-		if core.AcmeChallenge(ch.Type) == typ {
+		if core.AcmeChallenge(ch.Type) == core.ChallengeTypeDNS01 {
 			challIdx = int64(i)
 			set = true
 			break
 		}
 	}
 	if !set {
-		t.Errorf("challTypeIndex didn't find challenge of type: %s", typ)
+		t.Errorf("dnsChallIdx didn't find challenge of type DNS-01")
 	}
 	return challIdx
 }
@@ -373,55 +373,55 @@ func TestValidateContacts(t *testing.T) {
 	unparsable := "mailto:a@email.com, b@email.com"
 	forbidden := "mailto:a@example.org"
 
-	err := ra.validateContacts(context.Background(), []string{})
+	err := ra.validateContacts([]string{})
 	test.AssertNotError(t, err, "No Contacts")
 
-	err = ra.validateContacts(context.Background(), []string{validEmail, otherValidEmail})
+	err = ra.validateContacts([]string{validEmail, otherValidEmail})
 	test.AssertError(t, err, "Too Many Contacts")
 
-	err = ra.validateContacts(context.Background(), []string{validEmail})
+	err = ra.validateContacts([]string{validEmail})
 	test.AssertNotError(t, err, "Valid Email")
 
-	err = ra.validateContacts(context.Background(), []string{malformedEmail})
+	err = ra.validateContacts([]string{malformedEmail})
 	test.AssertError(t, err, "Malformed Email")
 
-	err = ra.validateContacts(context.Background(), []string{ansible})
+	err = ra.validateContacts([]string{ansible})
 	test.AssertError(t, err, "Unknown scheme")
 
-	err = ra.validateContacts(context.Background(), []string{""})
+	err = ra.validateContacts([]string{""})
 	test.AssertError(t, err, "Empty URL")
 
-	err = ra.validateContacts(context.Background(), []string{nonASCII})
+	err = ra.validateContacts([]string{nonASCII})
 	test.AssertError(t, err, "Non ASCII email")
 
-	err = ra.validateContacts(context.Background(), []string{unparsable})
+	err = ra.validateContacts([]string{unparsable})
 	test.AssertError(t, err, "Unparsable email")
 
-	err = ra.validateContacts(context.Background(), []string{forbidden})
+	err = ra.validateContacts([]string{forbidden})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@localhost"})
+	err = ra.validateContacts([]string{"mailto:admin@localhost"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@example.not.a.iana.suffix"})
+	err = ra.validateContacts([]string{"mailto:admin@example.not.a.iana.suffix"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@1.2.3.4"})
+	err = ra.validateContacts([]string{"mailto:admin@1.2.3.4"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@[1.2.3.4]"})
+	err = ra.validateContacts([]string{"mailto:admin@[1.2.3.4]"})
 	test.AssertError(t, err, "Forbidden email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:admin@a.com?no-reminder-emails"})
+	err = ra.validateContacts([]string{"mailto:admin@a.com?no-reminder-emails"})
 	test.AssertError(t, err, "No hfields in email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com?"})
+	err = ra.validateContacts([]string{"mailto:example@a.com?"})
 	test.AssertError(t, err, "No hfields in email")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#"})
+	err = ra.validateContacts([]string{"mailto:example@a.com#"})
 	test.AssertError(t, err, "No fragment")
 
-	err = ra.validateContacts(context.Background(), []string{"mailto:example@a.com#optional"})
+	err = ra.validateContacts([]string{"mailto:example@a.com#optional"})
 	test.AssertError(t, err, "No fragment")
 
 	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
@@ -434,7 +434,7 @@ func TestValidateContacts(t *testing.T) {
 	}
 	longStringBuf.WriteString("@a.com")
 
-	err = ra.validateContacts(context.Background(), []string{longStringBuf.String()})
+	err = ra.validateContacts([]string{longStringBuf.String()})
 	test.AssertError(t, err, "Too long contacts")
 }
 
@@ -794,7 +794,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
-	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
@@ -820,7 +820,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
-	challIdx = challTypeIndex(t, dbAuthzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
 	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
 	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
 
@@ -844,7 +844,7 @@ func TestPerformValidationVAError(t *testing.T) {
 
 	va.ResultError = fmt.Errorf("Something went wrong")
 
-	challIdx := challTypeIndex(t, authzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: challIdx,
@@ -871,7 +871,7 @@ func TestPerformValidationVAError(t *testing.T) {
 	t.Log("dbAuthz:", dbAuthzPB)
 
 	// Verify that the responses are reflected
-	challIdx = challTypeIndex(t, dbAuthzPB.Challenges, core.ChallengeTypeDNS01)
+	challIdx = dnsChallIdx(t, dbAuthzPB.Challenges)
 	challenge, err := bgrpc.PBToChallenge(dbAuthzPB.Challenges[challIdx])
 	test.AssertNotError(t, err, "Failed to marshall corepb.Challenge to core.Challenge.")
 	test.Assert(t, challenge.Status == core.StatusInvalid, "challenge was not marked as invalid")
@@ -889,7 +889,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
 
-	authzID := createFinalizedAuthorization(t, sa, "www.example.com", exp, "valid", ra.clk.Now())
+	authzID := createFinalizedAuthorization(t, sa, "www.example.com", exp, ra.clk.Now())
 
 	order, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,
@@ -1040,28 +1040,22 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 }
 
 func TestDomainsForRateLimiting(t *testing.T) {
-	domains, err := domainsForRateLimiting([]string{})
-	test.AssertNotError(t, err, "failed on empty")
+	domains := domainsForRateLimiting([]string{})
 	test.AssertEquals(t, len(domains), 0)
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com"})
-	test.AssertNotError(t, err, "failed on example.com")
+	domains = domainsForRateLimiting([]string{"www.example.com", "example.com"})
 	test.AssertDeepEquals(t, domains, []string{"example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
-	test.AssertNotError(t, err, "failed on example.co.uk")
+	domains = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk"})
 	test.AssertDeepEquals(t, domains, []string{"example.co.uk", "example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
-	test.AssertNotError(t, err, "should not fail on public suffix")
+	domains = domainsForRateLimiting([]string{"www.example.com", "example.com", "www.example.co.uk", "co.uk"})
 	test.AssertDeepEquals(t, domains, []string{"co.uk", "example.co.uk", "example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
-	test.AssertNotError(t, err, "failed on foo.bar.baz")
+	domains = domainsForRateLimiting([]string{"foo.bar.baz.www.example.com", "baz.example.com"})
 	test.AssertDeepEquals(t, domains, []string{"example.com"})
 
-	domains, err = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
-	test.AssertNotError(t, err, "failed on public suffix private domain")
+	domains = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
 	test.AssertDeepEquals(t, domains, []string{"bar.github.io", "foo.github.io", "github.io"})
 }
 
@@ -1554,7 +1548,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	defer cleanUp()
 
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
+	authzID := createFinalizedAuthorization(t, sa, "not-example.com", exp, ra.clk.Now())
 	dbAuthzPB := getAuthorization(t, fmt.Sprint(authzID), sa)
 	_, err := ra.DeactivateAuthorization(ctx, dbAuthzPB)
 	test.AssertNotError(t, err, "Could not deactivate authorization")
@@ -1740,22 +1734,22 @@ func TestRecheckCAADates(t *testing.T) {
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
 	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
-	err := ra.checkAuthorizationsCAA(context.Background(), names, authzs, 999, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), names, authzs, fc.Now())
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"twochallenges.com"}, authzs, 999, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), []string{"twochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"nochallenges.com"}, authzs, 999, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), []string{"nochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
 
 	// Should error if authorization's challenge has no validated timestamp
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"novalidationtime.com"}, authzs, 999, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), []string{"novalidationtime.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
 
 	// Test to make sure the authorization lifetime codepath was not used
@@ -2549,8 +2543,8 @@ func TestFinalizeOrder(t *testing.T) {
 	// Create one finalized authorization for not-example.com and one finalized
 	// authorization for www.not-example.org
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid", ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, ra.clk.Now())
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
@@ -2810,8 +2804,8 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 
 	// Create one finalized authorization for Registration.Id for not-example.com and
 	// one finalized authorization for Registration.Id for www.not-example.org
-	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, "valid", ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, "valid", ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, ra.clk.Now())
 
 	// Create a new order to finalize with names in SAN and CN
 	mixedOrder, err := sa.NewOrder(context.Background(), &sapb.NewOrderRequest{
@@ -2910,7 +2904,7 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "NewOrder failed for wildcard domain order")
 
 	// Create one standard finalized authorization for Registration.Id for zombo.com
-	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, "valid", ra.clk.Now())
+	_ = createFinalizedAuthorization(t, sa, "zombo.com", exp, ra.clk.Now())
 
 	// Finalizing the order should *not* work since the existing validated authz
 	// is not a special DNS-01-Wildcard challenge authz, so the order will be
@@ -3201,8 +3195,8 @@ func TestCTPolicyMeasurements(t *testing.T) {
 
 	// Create valid authorizations for not-example.com and www.not-example.com
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
-	authzIDA := createFinalizedAuthorization(t, ssa, "not-example.com", exp, "valid", ra.clk.Now())
-	authzIDB := createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, "valid", ra.clk.Now())
+	authzIDA := createFinalizedAuthorization(t, ssa, "not-example.com", exp, ra.clk.Now())
+	authzIDB := createFinalizedAuthorization(t, ssa, "www.not-example.com", exp, ra.clk.Now())
 
 	order, err := ra.SA.NewOrder(context.Background(), &sapb.NewOrderRequest{
 		RegistrationID:   Registration.Id,

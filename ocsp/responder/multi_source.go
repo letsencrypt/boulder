@@ -112,7 +112,7 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 
 	// The primary response was fresh enough to serve, go ahead and serve it.
 	if time.Since(primaryResponse.ThisUpdate) < src.expectedFreshness {
-		src.checkSecondary(primaryResponse, secondaryChan)
+		src.checkSecondary(secondaryChan)
 		src.counter.WithLabelValues("primary_result").Inc()
 		return primaryResponse, nil
 	}
@@ -163,7 +163,7 @@ func (src *multiSource) Response(ctx context.Context, req *ocsp.Request) (*Respo
 // checkSecondary updates the src.counter metrics when we're planning to return
 // a primary response. It checks if the secondary result has already arrived
 // (without blocking on it) and updates the metrics accordingly.
-func (src *multiSource) checkSecondary(primaryResponse *Response, secondaryChan <-chan responseResult) {
+func (src *multiSource) checkSecondary(secondaryChan <-chan responseResult) {
 	select {
 	case secondaryResult := <-secondaryChan:
 		if secondaryResult.err != nil {
