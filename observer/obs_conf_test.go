@@ -15,7 +15,7 @@ import (
 const (
 	debugAddr = ":8040"
 	errDBZMsg = "over 9000"
-	mockConf  = "MockConf"
+	mockConf  = "Mock"
 )
 
 func TestObsConf_makeMonitors(t *testing.T) {
