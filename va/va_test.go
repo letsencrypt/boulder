@@ -153,12 +153,9 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 	return va, logger
 }
 
-func setupRemote(srv *httptest.Server, maxRemoteFailures int, userAgent string) (vapb.VAClient, *blog.Mock) {
-	innerVA, mockLog := setup(srv, maxRemoteFailures, userAgent, nil)
-	res := localRemoteVA{
-		remote: *innerVA,
-	}
-	return &res, mockLog
+func setupRemote(srv *httptest.Server, userAgent string) vapb.VAClient {
+	innerVA, _ := setup(srv, 0, userAgent, nil)
+	return &localRemoteVA{remote: *innerVA}
 }
 
 type multiSrv struct {
@@ -177,6 +174,7 @@ func (s *multiSrv) setAllowedUAs(allowedUAs map[string]bool) {
 const slowRemoteSleepMillis = 1000
 
 func httpMultiSrv(t *testing.T, token string, allowedUAs map[string]bool) *multiSrv {
+	t.Helper()
 	m := http.NewServeMux()
 
 	server := httptest.NewUnstartedServer(m)
@@ -328,8 +326,8 @@ func TestMultiVA(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setupRemote(ms.Server, 0, remoteUA1)
-	remoteVA2, _ := setupRemote(ms.Server, 0, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -538,8 +536,8 @@ func TestMultiVAEarlyReturn(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setupRemote(ms.Server, 0, remoteUA1)
-	remoteVA2, _ := setupRemote(ms.Server, 0, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -626,8 +624,8 @@ func TestMultiVAPolicy(t *testing.T) {
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
 	defer ms.Close()
 
-	remoteVA1, _ := setupRemote(ms.Server, 0, remoteUA1)
-	remoteVA2, _ := setupRemote(ms.Server, 0, remoteUA2)
+	remoteVA1 := setupRemote(ms.Server, remoteUA1)
+	remoteVA2 := setupRemote(ms.Server, remoteUA2)
 
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
@@ -709,9 +707,9 @@ func TestDetailedError(t *testing.T) {
 
 func TestLogRemoteValidationDifferentials(t *testing.T) {
 	// Create some remote VAs
-	remoteVA1, _ := setupRemote(nil, 0, "remote 1")
-	remoteVA2, _ := setupRemote(nil, 0, "remote 2")
-	remoteVA3, _ := setupRemote(nil, 0, "remote 3")
+	remoteVA1 := setupRemote(nil, "remote 1")
+	remoteVA2 := setupRemote(nil, "remote 2")
+	remoteVA3 := setupRemote(nil, "remote 3")
 	remoteVAs := []RemoteVA{
 		{remoteVA1, "remote 1"},
 		{remoteVA2, "remote 2"},

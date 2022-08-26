@@ -153,7 +153,7 @@ func checkDER(sai sapb.StorageAuthorityCertificateClient, der []byte) (*x509.Cer
 	return nil, orphanTyp, fmt.Errorf("Existing %s lookup failed: %s", orphanTyp, err)
 }
 
-func parseLogLine(line string, logger blog.Logger) (parsedLine, error) {
+func parseLogLine(line string) (parsedLine, error) {
 	derStr := derOrphan.FindStringSubmatch(line)
 	if len(derStr) <= 1 {
 		return parsedLine{}, fmt.Errorf("unable to find cert der: %s", line)
@@ -286,7 +286,7 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 		return false, false, unknownOrphan
 	}
 
-	parsed, err := parseLogLine(line, opf.logger)
+	parsed, err := parseLogLine(line)
 	if err != nil {
 		opf.logger.AuditErr(fmt.Sprintf("Couldn't parse log line: %s", err))
 		return true, false, unknownOrphan

@@ -143,7 +143,7 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 
 	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
-	metas := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	metas := findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(metas), 1)
 	meta := <-metas
@@ -157,8 +157,8 @@ func TestGenerateAndStoreOCSPResponse(t *testing.T) {
 // findStaleOCSPResponsesBuffered runs findStaleOCSPResponses and returns
 // it as a buffered channel. This is helpful for tests that want to test
 // the length of the channel.
-func findStaleOCSPResponsesBuffered(ctx context.Context, updater *OCSPUpdater, earliest time.Time, batchSize int) <-chan *sa.CertStatusMetadata {
-	out := make(chan *sa.CertStatusMetadata, batchSize)
+func findStaleOCSPResponsesBuffered(ctx context.Context, updater *OCSPUpdater, earliest time.Time) <-chan *sa.CertStatusMetadata {
+	out := make(chan *sa.CertStatusMetadata, 10)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -205,7 +205,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour)
 
 	// We should have 2 stale responses now.
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 2)
 
@@ -225,7 +225,7 @@ func TestGenerateOCSPResponses(t *testing.T) {
 
 	// generateOCSPResponses should have updated the ocspLastUpdate for each
 	// cert, so there shouldn't be any stale responses anymore.
-	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 0)
@@ -236,7 +236,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	defer cleanUp()
 
 	// With no rows in the CertificateStatus table we shouldn't get an error.
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, fc.Now(), 10)
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, fc.Now())
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 0)
 
@@ -258,7 +258,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour)
 
 	// We should have 1 stale response now.
-	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 1)
 	status := <-statuses
@@ -271,7 +271,7 @@ func TestFindStaleOCSPResponses(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't store OCSP response")
 
 	// We should have 0 stale responses now.
-	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 0)
 }
@@ -303,7 +303,7 @@ func TestFindStaleOCSPResponsesRevokedReason(t *testing.T) {
 	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
 
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 1)
 	status := <-statuses
@@ -331,7 +331,7 @@ func TestPipelineTick(t *testing.T) {
 	updater.generateOCSPResponses(ctx, updater.processExpired(ctx, updater.findStaleOCSPResponses(ctx, earliest, 10)))
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 
-	certs := findStaleOCSPResponsesBuffered(ctx, updater, fc.Now().Add(-updater.ocspMinTimeToExpiry), 10)
+	certs := findStaleOCSPResponsesBuffered(ctx, updater, fc.Now().Add(-updater.ocspMinTimeToExpiry))
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(certs), 0)
 }
@@ -373,7 +373,7 @@ func TestProcessExpired(t *testing.T) {
 	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
 
 	test.AssertEquals(t, cs.IsExpired, false)
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 1)
 
@@ -393,7 +393,7 @@ func TestProcessExpired(t *testing.T) {
 	test.AssertNotError(t, err, "Count't convert the certificateStatus from a PB")
 
 	test.AssertEquals(t, cs.IsExpired, true)
-	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	statuses = findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 0)
 }
@@ -416,7 +416,7 @@ func TestStoreResponseGuard(t *testing.T) {
 
 	fc.Set(fc.Now().Add(2 * time.Hour))
 	earliest := fc.Now().Add(-time.Hour)
-	metas := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	metas := findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(metas), 1)
 	meta := <-metas
@@ -483,7 +483,7 @@ func TestGenerateOCSPResponsePrecert(t *testing.T) {
 	earliest := fc.Now().Add(-time.Hour)
 
 	// There should be one stale ocsp response found for the precert
-	certs := findStaleOCSPResponsesBuffered(ctx, updater, earliest, 10)
+	certs := findStaleOCSPResponsesBuffered(ctx, updater, earliest)
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(certs), 1)
 	cert := <-certs
@@ -533,7 +533,7 @@ func TestIssuerInfo(t *testing.T) {
 	test.AssertNotError(t, err, "sa.AddPrecertificate failed")
 
 	fc.Add(time.Hour * 24 * 4)
-	statuses := findStaleOCSPResponsesBuffered(ctx, updater, fc.Now().Add(-time.Hour), 10)
+	statuses := findStaleOCSPResponsesBuffered(ctx, updater, fc.Now().Add(-time.Hour))
 
 	test.AssertEquals(t, updater.readFailures.Value(), 0)
 	test.AssertEquals(t, len(statuses), 1)

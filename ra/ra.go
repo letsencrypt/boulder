@@ -410,7 +410,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	if err != nil {
 		return nil, err
 	}
-	err = ra.validateContacts(ctx, request.Contact)
+	err = ra.validateContacts(request.Contact)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +445,7 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 // * A list containing a mailto contact that contains hfields
 // * A list containing a contact that has non-ascii characters
 // * A list containing a contact that doesn't pass `policy.ValidEmail`
-func (ra *RegistrationAuthorityImpl) validateContacts(ctx context.Context, contacts []string) error {
+func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 	if len(contacts) == 0 {
 		return nil // Nothing to validate
 	}
@@ -691,7 +691,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	// Ensure the names from the CSR are free of duplicates & lowercased.
 	names = core.UniqueLowerNames(names)
 	// Check the authorizations to ensure validity for the names required.
-	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, int64(acctID), ra.clk.Now()); err != nil {
+	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, ra.clk.Now()); err != nil {
 		return nil, err
 	}
 
@@ -720,7 +720,6 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	ctx context.Context,
 	names []string,
 	authzs map[string]*core.Authorization,
-	regID int64,
 	now time.Time) error {
 	// badNames contains the names that were unauthorized
 	var badNames []string
@@ -879,18 +878,19 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 
 // failOrder marks an order as failed by setting the problem details field of
 // the order & persisting it through the SA. If an error occurs doing this we
-// log it and return the order as-is. There aren't any alternatives if we can't
-// add the error to the order.
+// log it and don't modify the input order. There aren't any alternatives if we
+// can't add the error to the order. This function MUST only be called when we
+// are already returning an error for another reason.
 func (ra *RegistrationAuthorityImpl) failOrder(
 	ctx context.Context,
 	order *corepb.Order,
-	prob *probs.ProblemDetails) *corepb.Order {
+	prob *probs.ProblemDetails) {
 
 	// Convert the problem to a protobuf problem for the *corepb.Order field
 	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
 	if err != nil {
 		ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
-		return order
+		return
 	}
 
 	// Assign the protobuf problem to the field and save it via the SA
@@ -902,7 +902,6 @@ func (ra *RegistrationAuthorityImpl) failOrder(
 	if err != nil {
 		ra.log.AuditErrf("Could not persist order error: %q", err)
 	}
-	return order
 }
 
 // FinalizeOrder accepts a request to finalize an order object and, if possible,
@@ -1260,7 +1259,7 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 // domainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
 // for the purpose of rate limiting. It also de-duplicates the output
 // domains. Exact public suffix matches are included.
-func domainsForRateLimiting(names []string) ([]string, error) {
+func domainsForRateLimiting(names []string) []string {
 	var domains []string
 	for _, name := range names {
 		domain, err := publicsuffix.Domain(name)
@@ -1274,7 +1273,7 @@ func domainsForRateLimiting(names []string) ([]string, error) {
 			domains = append(domains, domain)
 		}
 	}
-	return core.UniqueLowerNames(domains), nil
+	return core.UniqueLowerNames(domains)
 }
 
 // enforceNameCounts uses the provided count RPC to find a count of certificates
@@ -1325,11 +1324,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		return nil
 	}
 
-	tldNames, err := domainsForRateLimiting(names)
-	if err != nil {
-		return err
-	}
-
+	tldNames := domainsForRateLimiting(names)
 	namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
 		return fmt.Errorf("checking certificates per name limit for %q: %s",
@@ -1455,7 +1450,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 	if err != nil {
 		return nil, err
 	}
-	err = ra.validateContacts(ctx, req.Update.Contact)
+	err = ra.validateContacts(req.Update.Contact)
 	if err != nil {
 		return nil, err
 	}
@@ -2573,7 +2568,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorization for each.
 	var newAuthzs []*corepb.Authorization
 	for _, name := range missingAuthzNames {
-		pb, err := ra.createPendingAuthz(ctx, newOrder.RegistrationID, identifier.ACMEIdentifier{
+		pb, err := ra.createPendingAuthz(newOrder.RegistrationID, identifier.ACMEIdentifier{
 			Type:  identifier.DNS,
 			Value: name,
 		})
@@ -2636,7 +2631,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // createPendingAuthz checks that a name is allowed for issuance and creates the
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
-func (ra *RegistrationAuthorityImpl) createPendingAuthz(ctx context.Context, reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
+func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
 	authz := &corepb.Authorization{
 		Identifier:     identifier.Value,
 		RegistrationID: reg,

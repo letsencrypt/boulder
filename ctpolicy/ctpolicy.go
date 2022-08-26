@@ -176,15 +176,15 @@ func (ctp *CTPolicy) getGoogleSCTs(ctx context.Context, cert core.CertDER, expir
 	results := make(chan result, len(ctp.groups))
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	for i, g := range ctp.groups {
-		go func(i int, g ctconfig.CTGroup) {
+	for _, g := range ctp.groups {
+		go func(g ctconfig.CTGroup) {
 			sct, err := ctp.race(subCtx, cert, g, expiration)
 			// Only one of these will be non-nil
 			if err != nil {
 				results <- result{err: berrors.MissingSCTsError("CT log group %q: %s", g.Name, err)}
 			}
 			results <- result{sct: sct}
-		}(i, g)
+		}(g)
 	}
 
 	go ctp.submitPrecertInformational(cert, expiration)

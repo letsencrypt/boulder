@@ -42,14 +42,14 @@ type ocspImpl struct {
 // nearly-unique identifiers of those issuers to the issuers themselves. Note
 // that, if two issuers have the same nearly-unique ID, the *latter* one in
 // the input list "wins".
-func makeOCSPIssuerMaps(issuers []*issuance.Issuer) (ocspIssuerMaps, error) {
+func makeOCSPIssuerMaps(issuers []*issuance.Issuer) ocspIssuerMaps {
 	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		issuersByID[issuer.ID()] = issuer
 		issuersByNameID[issuer.Cert.NameID()] = issuer
 	}
-	return ocspIssuerMaps{issuersByID, issuersByNameID}, nil
+	return ocspIssuerMaps{issuersByID, issuersByNameID}
 }
 
 func NewOCSPImpl(
@@ -73,10 +73,7 @@ func NewOCSPImpl(
 		ocspLogQueue = newOCSPLogQueue(ocspLogMaxLength, ocspLogPeriod, stats, logger)
 	}
 
-	issuerMaps, err := makeOCSPIssuerMaps(issuers)
-	if err != nil {
-		return nil, err
-	}
+	issuerMaps := makeOCSPIssuerMaps(issuers)
 
 	oi := &ocspImpl{
 		issuers:        issuerMaps,

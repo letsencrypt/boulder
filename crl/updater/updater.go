@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -252,6 +253,10 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 
 func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) error {
 	start := cu.clk.Now()
+	crlId, err := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+	if err != nil {
+		return err
+	}
 	result := "success"
 	defer func() {
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
@@ -269,13 +274,13 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	})
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("connecting to SA for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("connecting to SA for %s: %w", crlId, err)
 	}
 
 	caStream, err := cu.ca.GenerateCRL(ctx)
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("connecting to CA for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("connecting to CA for %s: %w", crlId, err)
 	}
 
 	err = caStream.Send(&capb.GenerateCRLRequest{
@@ -289,7 +294,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	})
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("sending CA metadata for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("sending CA metadata for %s: %w", crlId, err)
 	}
 
 	for {
@@ -299,7 +304,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 				break
 			}
 			result = "failed"
-			return fmt.Errorf("retrieving entry from SA for shard %d: %w", shardIdx, err)
+			return fmt.Errorf("retrieving entry from SA for %s: %w", crlId, err)
 		}
 
 		err = caStream.Send(&capb.GenerateCRLRequest{
@@ -309,7 +314,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		})
 		if err != nil {
 			result = "failed"
-			return fmt.Errorf("sending entry to CA for shard %d: %w", shardIdx, err)
+			return fmt.Errorf("sending entry to CA for %s: %w", crlId, err)
 		}
 	}
 
@@ -319,13 +324,13 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	err = caStream.CloseSend()
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("closing CA request stream for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("closing CA request stream for %s: %w", crlId, err)
 	}
 
 	csStream, err := cu.cs.UploadCRL(ctx)
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("connecting to CRLStorer for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("connecting to CRLStorer for %s: %w", crlId, err)
 	}
 
 	err = csStream.Send(&cspb.UploadCRLRequest{
@@ -339,7 +344,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	})
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("sending CRLStorer metadata for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("sending CRLStorer metadata for %s: %w", crlId, err)
 	}
 
 	crlLen := 0
@@ -351,7 +356,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 				break
 			}
 			result = "failed"
-			return fmt.Errorf("receiving CRL bytes for shard %d: %w", shardIdx, err)
+			return fmt.Errorf("receiving CRL bytes for %s: %w", crlId, err)
 		}
 
 		err = csStream.Send(&cspb.UploadCRLRequest{
@@ -361,21 +366,19 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		})
 		if err != nil {
 			result = "failed"
-			return fmt.Errorf("uploading CRL bytes for shard %d: %w", shardIdx, err)
+			return fmt.Errorf("uploading CRL bytes for %s: %w", crlId, err)
 		}
 
 		crlLen += len(out.Chunk)
 		crlHash.Write(out.Chunk)
 	}
 
-	cu.log.Infof(
-		"Generated CRL: issuerID=[%d] number=[%d] shard=[%d] size=[%d] hash=[%x]",
-		issuerNameID, atTime.UnixNano(), shardIdx, crlLen, crlHash.Sum(nil))
+	cu.log.Infof("Generated CRL: id=[%s] size=[%d] hash=[%x]", crlId, crlLen, crlHash.Sum(nil))
 
 	_, err = csStream.CloseAndRecv()
 	if err != nil {
 		result = "failed"
-		return fmt.Errorf("closing CRLStorer upload stream for shard %d: %w", shardIdx, err)
+		return fmt.Errorf("closing CRLStorer upload stream for %s: %w", crlId, err)
 	}
 
 	return nil
