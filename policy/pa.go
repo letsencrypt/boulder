@@ -39,10 +39,10 @@ type AuthorityImpl struct {
 }
 
 // New constructs a Policy Authority.
-func New(challengeTypes map[core.AcmeChallenge]bool) (*AuthorityImpl, error) {
+func New(challengeTypes map[core.AcmeChallenge]bool, log blog.Logger) (*AuthorityImpl, error) {
 
 	pa := AuthorityImpl{
-		log:               blog.Get(),
+		log:               log,
 		enabledChallenges: challengeTypes,
 		// We don't need real randomness for this.
 		pseudoRNG: rand.New(rand.NewSource(99)),

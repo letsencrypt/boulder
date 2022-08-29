@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/jmhodges/clock"
+	"golang.org/x/term"
 )
 
 // A Logger logs messages with explicit priority levels. It is
@@ -55,14 +56,38 @@ var _Singleton singleton
 // The constant used to identify audit-specific messages
 const auditTag = "[AUDIT]"
 
-// New returns a new Logger that uses the given syslog.Writer as a backend.
+// New returns a new Logger that uses the given syslog.Writer as a backend
+// and also writes to stdout. It is safe for concurrent use.
 func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, error) {
 	if log == nil {
 		return nil, errors.New("Attempted to use a nil System Logger.")
 	}
 	return &impl{
-		&bothWriter{log, stdoutLogLevel, syslogLogLevel, clock.New(), os.Stdout},
+		&bothWriter{
+			sync.Mutex{},
+			log,
+			&stdoutWriter{
+				level:  stdoutLogLevel,
+				clk:    clock.New(),
+				stdout: os.Stdout,
+				isatty: term.IsTerminal(int(os.Stdout.Fd())),
+			},
+			syslogLogLevel,
+		},
 	}, nil
+}
+
+// StdoutLogger returns a Logger that writes solely to stdout.
+// It is safe for concurrent use.
+func StdoutLogger(level int) Logger {
+	return &impl{
+		&stdoutWriter{
+			level:  level,
+			clk:    clock.New(),
+			stdout: os.Stdout,
+			isatty: term.IsTerminal(int(os.Stdout.Fd())),
+		},
+	}
 }
 
 // initialize is used in unit tests and called by `Get` before the logger
@@ -114,11 +139,18 @@ type writer interface {
 
 // bothWriter implements writer and writes to both syslog and stdout.
 type bothWriter struct {
+	sync.Mutex
 	*syslog.Writer
-	stdoutLevel int
+	*stdoutWriter
 	syslogLevel int
-	clk         clock.Clock
-	stdout      io.Writer
+}
+
+// stdoutWriter implements writer and writes just to stdout.
+type stdoutWriter struct {
+	level  int
+	clk    clock.Clock
+	stdout io.Writer
+	isatty bool
 }
 
 func LogLineChecksum(line string) string {
@@ -130,58 +162,70 @@ func LogLineChecksum(line string) string {
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
-// Log the provided message at the appropriate level, writing to
+// logAtLevel logs the provided message at the appropriate level, writing to
 // both stdout and the Logger
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
-	var prefix string
 	var err error
-
-	const red = "\033[31m\033[1m"
-	const yellow = "\033[33m"
 
 	// Since messages are delimited by newlines, we have to escape any internal or
 	// trailing newlines before generating the checksum or outputting the message.
 	msg = strings.Replace(msg, "\n", "\\n", -1)
 	msg = fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
 
+	w.Lock()
+	defer w.Unlock()
+
 	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:
 		if syslogAllowed {
 			err = w.Err(msg)
 		}
-		prefix = red + "E"
 	case syslog.LOG_WARNING:
 		if syslogAllowed {
 			err = w.Warning(msg)
 		}
-		prefix = yellow + "W"
 	case syslog.LOG_INFO:
 		if syslogAllowed {
 			err = w.Info(msg)
 		}
-		prefix = "I"
 	case syslog.LOG_DEBUG:
 		if syslogAllowed {
 			err = w.Debug(msg)
 		}
-		prefix = "D"
 	default:
 		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %s (%s)\n", msg, err)
+		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %d %s (%s)\n", int(level), msg, err)
 	}
 
-	var reset string
-	if strings.HasPrefix(prefix, "\033") {
-		reset = "\033[0m"
-	}
+	w.stdoutWriter.logAtLevel(level, msg)
+}
 
-	if int(level) <= w.stdoutLevel {
-		if _, err := fmt.Fprintf(w.stdout, "%s%s %s %s%s\n",
-			prefix,
-			w.clk.Now().Format("150405"),
+// logAtLevel logs the provided message to stdout.
+func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
+	if int(level) <= w.level {
+		var color string
+		var reset string
+
+		const red = "\033[31m\033[1m"
+		const yellow = "\033[33m"
+
+		if w.isatty {
+			if int(level) == int(syslog.LOG_WARNING) {
+				color = yellow
+				reset = "\033[0m"
+			} else if int(level) <= int(syslog.LOG_ERR) {
+				color = red
+				reset = "\033[0m"
+			}
+		}
+
+		if _, err := fmt.Fprintf(w.stdout, "%s%s %d %s %s%s\n",
+			color,
+			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
+			int(level),
 			path.Base(os.Args[0]),
 			msg,
 			reset); err != nil {

@@ -200,7 +200,7 @@ func main() {
 
 	cmd.FailOnError(c.PA.CheckChallenges(), "Invalid PA configuration")
 
-	pa, err := policy.New(c.PA.Challenges)
+	pa, err := policy.New(c.PA.Challenges, logger)
 	cmd.FailOnError(err, "Couldn't create PA")
 
 	if c.CA.HostnamePolicyFile == "" {

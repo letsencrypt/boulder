@@ -11,6 +11,6 @@
   },
   "syslog": {
     "stdoutLevel": 7,
-    "syslogLevel": 7
+    "syslogLevel": -1
   }
 }

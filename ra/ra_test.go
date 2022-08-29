@@ -321,7 +321,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	pa, err := policy.New(map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
 		core.ChallengeTypeDNS01:  true,
-	})
+	}, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
@@ -3150,7 +3150,7 @@ func TestUpdateMissingAuthorization(t *testing.T) {
 func TestPerformValidationBadChallengeType(t *testing.T) {
 	_, _, ra, fc, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	pa, err := policy.New(map[core.AcmeChallenge]bool{})
+	pa, err := policy.New(map[core.AcmeChallenge]bool{}, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
 	ra.PA = pa
 
