@@ -85,11 +85,13 @@ func TestEmitEmpty(t *testing.T) {
 
 func TestStdoutLogger(t *testing.T) {
 	stdout := bytes.NewBuffer(nil)
+	stderr := bytes.NewBuffer(nil)
 	logger := &impl{
 		&stdoutWriter{
 			level:  7,
 			clk:    clock.NewFake(),
 			stdout: stdout,
+			stderr: stderr,
 		},
 	}
 
@@ -97,7 +99,8 @@ func TestStdoutLogger(t *testing.T) {
 	logger.Warning("Warning log")
 	logger.Info("Info log")
 
-	test.AssertEquals(t, stdout.String(), "1970-01-01T00:00:00+07:00 3 log.test [AUDIT] Error Audit\n1970-01-01T00:00:00+07:00 4 log.test Warning log\n1970-01-01T00:00:00+07:00 6 log.test Info log\n")
+	test.AssertEquals(t, stdout.String(), "1970-01-01T00:00:00+07:00 6 log.test Info log\n")
+	test.AssertEquals(t, stderr.String(), "1970-01-01T00:00:00+07:00 3 log.test [AUDIT] Error Audit\n1970-01-01T00:00:00+07:00 4 log.test Warning log\n")
 }
 
 func TestSyslogMethods(t *testing.T) {
