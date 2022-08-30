@@ -3,10 +3,14 @@ package wfe2
 import (
 	"context"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"strconv"
@@ -66,7 +70,7 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 
 	// Draft or likely-to-change paths
-	renewalInfoPath = getAPIPrefix + "draft-aaron-ari/renewalInfo/"
+	renewalInfoPath = getAPIPrefix + "draft-ietf-acme-ari-00/renewalInfo/"
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
@@ -2252,6 +2256,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 }
 
+// certID matches the ASN.1 structure of the CertID sequence defined by RFC6960.
+type certID struct {
+	HashAlgorithm  pkix.AlgorithmIdentifier
+	IssuerNameHash []byte
+	IssuerKeyHash  []byte
+	SerialNumber   *big.Int
+}
+
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
@@ -2260,16 +2272,30 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	uid := strings.SplitN(request.URL.Path, "/", 3)
-	if len(uid) != 3 {
-		wfe.sendError(response, logEvent, probs.Malformed("Path did not include exactly issuerKeyHash, issuerNameHash, and serialNumber"), nil)
+	// The path prefix has already been stripped, so request.URL.Path here is just
+	// the base64url-encoded DER CertID sequence.
+	der, err := base64.RawURLEncoding.DecodeString(request.URL.Path)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded: %w", err), nil)
 		return
 	}
 
-	// For now, discard issuerKeyHash and issuerNameHash, because *we* know
-	// (Boulder implementation-specific) that we do not re-use the same serial
-	// number across multiple different issuers.
-	serial := uid[2]
+	var id certID
+	rest, err := asn1.Unmarshal(der, &id)
+	if err != nil || len(rest) != 0 {
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence: %w", err), nil)
+		return
+	}
+
+	// Verify that the hash algorithm is SHA-256, so people don't use SHA-1 here.
+	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
+		wfe.sendError(response, logEvent, probs.Malformed("Request used hash algorithm other than SHA-256"), nil)
+		return
+	}
+
+	// We can do all of our processing based just on the serial, because Boulder
+	// does not re-use the same serial across multiple issuers.
+	serial := core.SerialToString(id.SerialNumber)
 	if !core.ValidSerial(serial) {
 		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		return
@@ -2288,6 +2314,11 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		}
 		return
 	}
+
+	// TODO(#6033): Consider parsing cert.Der, using that to get its IssuerNameID,
+	// using that to look up the actual issuer cert in wfe.issuerCertificates,
+	// using that to compute the actual issuerNameHash and issuerKeyHash, and
+	// comparing those to the ones in the request.
 
 	// This is a very simple renewal calculation: Calculate a point 2/3rds of the
 	// way through the validity period, then give a 2-day window around that.
