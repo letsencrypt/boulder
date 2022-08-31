@@ -8,6 +8,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/yaml.v3"
 )
@@ -18,7 +19,7 @@ var enabledChallenges = map[core.AcmeChallenge]bool{
 }
 
 func paImpl(t *testing.T) *AuthorityImpl {
-	pa, err := New(enabledChallenges)
+	pa, err := New(enabledChallenges, blog.NewMock())
 	if err != nil {
 		t.Fatalf("Couldn't create policy implementation: %s", err)
 	}
@@ -394,7 +395,7 @@ func TestChallengesForWildcard(t *testing.T) {
 	}
 
 	mustConstructPA := func(t *testing.T, enabledChallenges map[core.AcmeChallenge]bool) *AuthorityImpl {
-		pa, err := New(enabledChallenges)
+		pa, err := New(enabledChallenges, blog.NewMock())
 		test.AssertNotError(t, err, "Couldn't create policy implementation")
 		return pa
 	}

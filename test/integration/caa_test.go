@@ -26,12 +26,12 @@ func TestCAALogChecker(t *testing.T) {
 
 	// Should be no specific output, since everything is good
 	cmd := exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", "/var/log/boulder-va.log")
-	var stdErr bytes.Buffer
-	cmd.Stderr = &stdErr
+	stdErr := new(bytes.Buffer)
+	cmd.Stderr = stdErr
 	out, err := cmd.Output()
 	test.AssertNotError(t, err, "caa-log-checker failed")
-	test.AssertEquals(t, string(out), "")
 	test.AssertEquals(t, stdErr.String(), "")
+	test.AssertEquals(t, string(out), "")
 
 	// Should be output, issuances in boulder-ra.log won't match an empty
 	// va log. Because we can't control what happens before this test
@@ -42,11 +42,13 @@ func TestCAALogChecker(t *testing.T) {
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmp.Name())
 	cmd = exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", tmp.Name())
-	stdErr.Reset()
-	cmd.Stderr = &stdErr
+	stdErr = new(bytes.Buffer)
+	cmd.Stderr = stdErr
 	out, err = cmd.Output()
 	test.AssertError(t, err, "caa-log-checker didn't fail")
 
-	test.AssertNotEquals(t, string(out), "")
-	test.AssertEquals(t, stdErr.String(), "")
+	if stdErr.String() == "" || string(out) == "" {
+		t.Errorf("expected caa-log-checker to emit an error on stderr and an info log on stdout. Stdout:\n%s\n\nStderr:\n%s",
+			string(out), stdErr)
+	}
 }

@@ -259,6 +259,17 @@
             "start_inclusive": "1970-01-01T00:00:01Z",
             "end_exclusive": "2070-01-01T00:00:01Z"
           }
+        },
+        {
+          "description": "This Log Is Missing State To Ensure We Can Handle It",
+          "log_id": "SomeOtherFakeLogID=",
+          "key": "SomeOtherFakeKey=",
+          "url": "https://example.net/ct/",
+          "mmd": 86400,
+          "temporal_interval": {
+            "start_inclusive": "1970-01-01T00:00:01Z",
+            "end_exclusive": "2070-01-01T00:00:01Z"
+          }
         }
       ]
     }

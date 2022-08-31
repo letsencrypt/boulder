@@ -3,21 +3,32 @@
 package integration
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/hex"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/base64"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
 )
+
+// certID matches the ASN.1 structure of the CertID sequence defined by RFC6960.
+type certID struct {
+	HashAlgorithm  pkix.AlgorithmIdentifier
+	IssuerNameHash []byte
+	IssuerKeyHash  []byte
+	SerialNumber   *big.Int
+}
 
 func TestARI(t *testing.T) {
 	t.Parallel()
@@ -44,17 +55,25 @@ func TestARI(t *testing.T) {
 	// Leverage OCSP to get components of ARI request path.
 	issuer, err := ocsp_helper.GetIssuer(cert)
 	test.AssertNotError(t, err, "failed to get issuer cert")
-	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, nil)
+	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{Hash: crypto.SHA256})
 	test.AssertNotError(t, err, "failed to build ocsp request")
 	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
 	test.AssertNotError(t, err, "failed to parse ocsp request")
 
 	// Make ARI request.
+	pathBytes, err := asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		cert.SerialNumber,
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
 	url := fmt.Sprintf(
-		"http://boulder:4001/get/draft-aaron-ari/renewalInfo/%s/%s/%s",
-		hex.EncodeToString(ocspReq.IssuerKeyHash),
-		hex.EncodeToString(ocspReq.IssuerNameHash),
-		core.SerialToString(cert.SerialNumber),
+		"http://boulder:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
+		base64.RawURLEncoding.EncodeToString(pathBytes),
 	)
 	resp, err := http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
@@ -73,17 +92,25 @@ func TestARI(t *testing.T) {
 	// Get ARI path components.
 	issuer, err = ocsp_helper.GetIssuer(cert)
 	test.AssertNotError(t, err, "failed to get issuer cert")
-	ocspReqBytes, err = ocsp.CreateRequest(cert, issuer, nil)
+	ocspReqBytes, err = ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{Hash: crypto.SHA256})
 	test.AssertNotError(t, err, "failed to build ocsp request")
 	ocspReq, err = ocsp.ParseRequest(ocspReqBytes)
 	test.AssertNotError(t, err, "failed to parse ocsp request")
 
 	// Make ARI request.
+	pathBytes, err = asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		cert.SerialNumber,
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
 	url = fmt.Sprintf(
-		"http://boulder:4001/get/draft-aaron-ari/renewalInfo/%s/%s/%s",
-		hex.EncodeToString(ocspReq.IssuerKeyHash),
-		hex.EncodeToString(ocspReq.IssuerNameHash),
-		core.SerialToString(cert.SerialNumber),
+		"http://boulder:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
+		base64.RawURLEncoding.EncodeToString(pathBytes),
 	)
 	resp, err = http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")

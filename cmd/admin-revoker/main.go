@@ -37,8 +37,8 @@ usage:
   serial-revoke          -config <path> <serial>           <reason-code>
   batched-serial-revoke  -config <path> <serial-file-path> <reason-code>   <parallelism>
   reg-revoke             -config <path> <registration-id>  <reason-code>
-  private-key-block      -config <path> -dry-run=<bool>    <priv-key-path>
-  private-key-revoke     -config <path> -dry-run=<bool>    <priv-key-path>
+  private-key-block      -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
+  private-key-revoke     -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
 
 
 descriptions:
@@ -49,7 +49,6 @@ descriptions:
   private-key-block      Adds the SPKI hash, derived from the provided private key, to the
                          blocked keys table. <priv-key-path> is expected to be the path
                          to a PEM formatted file containing an RSA or ECDSA private key
-
   private-key-revoke     Revokes all certificates matching the SPKI hash derived from the
                          provided private key. Then adds the hash to the blocked keys
                          table. <priv-key-path> is expected to be the path to a PEM
@@ -63,6 +62,7 @@ flags:
     -dry-run             true (default): only queries for affected certificates. false: will
                          perform the requested block or revoke action. Only implemented for
                          private-key-block and private-key-revoke.
+    -comment             Comment to include in the blocked keys table entry. (default: "")
 `
 
 type Config struct {
@@ -240,7 +240,7 @@ func (r *revoker) revokeMalformedBySerial(ctx context.Context, serial string, re
 // not revoke any certificates directly. However, 'bad-key-revoker', which
 // references the 'blockedKeys' table, will eventually revoke certificates with
 // a matching SPKI hash.
-func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey string) error {
+func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, privateKey string) error {
 	_, publicKey, err := privatekey.Load(privateKey)
 	if err != nil {
 		return err
@@ -256,11 +256,13 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, privateKey string) erro
 		return err
 	}
 
+	dbcomment := fmt.Sprintf("%s: %s", u.Username, comment)
+
 	req := &sapb.AddBlockedKeyRequest{
 		KeyHash:   spkiHash,
 		Added:     r.clk.Now().UnixNano(),
 		Source:    "admin-revoker",
-		Comment:   fmt.Sprintf("blocked by %s", u),
+		Comment:   dbcomment,
 		RevokedBy: 0,
 	}
 
@@ -368,7 +370,7 @@ func (rc revocationCodes) Len() int           { return len(rc) }
 func (rc revocationCodes) Less(i, j int) bool { return rc[i] < rc[j] }
 func (rc revocationCodes) Swap(i, j int)      { rc[i], rc[j] = rc[j], rc[i] }
 
-func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, keyPath string) error {
+func privateKeyBlock(r *revoker, dryRun bool, comment string, count int, spkiHash []byte, keyPath string) error {
 	keyExists, err := r.spkiHashInBlockedKeys(spkiHash)
 	if err != nil {
 		return fmt.Errorf("while checking if the provided key already exists in the 'blockedKeys' table: %s", err)
@@ -387,7 +389,7 @@ func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, keyPat
 	}
 
 	r.log.AuditInfo("Attempting to block issuance for the provided key")
-	err = r.blockByPrivateKey(context.Background(), keyPath)
+	err = r.blockByPrivateKey(context.Background(), comment, keyPath)
 	if err != nil {
 		return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
 	}
@@ -395,7 +397,7 @@ func privateKeyBlock(r *revoker, dryRun bool, count int, spkiHash []byte, keyPat
 	return nil
 }
 
-func privateKeyRevoke(r *revoker, dryRun bool, count int, keyPath string) error {
+func privateKeyRevoke(r *revoker, dryRun bool, comment string, count int, keyPath string) error {
 	if dryRun {
 		r.log.AuditInfof(
 			"To immediately revoke %d certificates and block issuance for this key, run with -dry-run=false",
@@ -420,7 +422,7 @@ func privateKeyRevoke(r *revoker, dryRun bool, count int, keyPath string) error 
 
 	// Block future issuance.
 	r.log.AuditInfo("Attempting to block issuance for the provided key")
-	err = r.blockByPrivateKey(context.Background(), keyPath)
+	err = r.blockByPrivateKey(context.Background(), comment, keyPath)
 	if err != nil {
 		return fmt.Errorf("while attempting to block issuance for the provided key: %s", err)
 	}
@@ -456,6 +458,7 @@ func main() {
 		true,
 		"true (default): only queries for affected certificates. false: will perform the requested block or revoke action",
 	)
+	comment := flagSet.String("comment", "", "Comment to include in the blocked key database entry ")
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
 
@@ -544,12 +547,12 @@ func main() {
 		r.log.AuditInfof("Found %d certificates matching the provided key", count)
 
 		if command == "private-key-block" {
-			err := privateKeyBlock(r, *dryRun, count, spkiHash, keyPath)
+			err := privateKeyBlock(r, *dryRun, *comment, count, spkiHash, keyPath)
 			cmd.FailOnError(err, "")
 		}
 
 		if command == "private-key-revoke" {
-			err := privateKeyRevoke(r, *dryRun, count, keyPath)
+			err := privateKeyRevoke(r, *dryRun, *comment, count, keyPath)
 			cmd.FailOnError(err, "")
 		}
 

@@ -9,6 +9,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -3226,7 +3229,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type: "dns",
+				Type:                     "dns",
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
@@ -3550,23 +3553,26 @@ func TestARI(t *testing.T) {
 	test.AssertNotError(t, err, "failed to load test issuer")
 
 	// Take advantage of OCSP to build the issuer hashes.
-	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, nil)
+	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{Hash: crypto.SHA256})
 	test.AssertNotError(t, err, "failed to create ocsp request")
 	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
 	test.AssertNotError(t, err, "failed to parse ocsp request")
 
-	// Ensure that a correct query results in a 200 with a suggested renewal
-	// window in the future.
-	path := fmt.Sprintf(
-		"%s/%s/%s",
-		hex.EncodeToString(ocspReq.IssuerKeyHash),
-		hex.EncodeToString(ocspReq.IssuerNameHash),
-		core.SerialToString(cert.SerialNumber),
-	)
-	req, event := makeGet(path, renewalInfoPath)
+	// Ensure that a correct query results in a 200.
+	idBytes, err := asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		cert.SerialNumber,
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+	req, event := makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
 	resp := httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
-	test.AssertEquals(t, resp.Code, 200)
+	test.AssertEquals(t, resp.Code, http.StatusOK)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
 	var ri core.RenewalInfo
 	err = json.Unmarshal(resp.Body.Bytes(), &ri)
@@ -3574,18 +3580,58 @@ func TestARI(t *testing.T) {
 	test.Assert(t, ri.SuggestedWindow.Start.After(cert.NotBefore), "suggested window begins before cert issuance")
 	test.Assert(t, ri.SuggestedWindow.End.Before(cert.NotAfter), "suggested window ends after cert expiry")
 
-	// Ensure that a mangled query (wrong serial) results in a 404.
-	path = fmt.Sprintf(
-		"%s/%s/%s",
-		hex.EncodeToString(ocspReq.IssuerKeyHash),
-		hex.EncodeToString(ocspReq.IssuerNameHash),
-		core.SerialToString(big.NewInt(0).Add(cert.SerialNumber, big.NewInt(1))),
-	)
-	req, event = makeGet(path, renewalInfoPath)
+	// Ensure that a query for a non-existent serial results in a 404.
+	idBytes, err = asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		big.NewInt(0).Add(cert.SerialNumber, big.NewInt(1)),
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+	req, event = makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
-	test.AssertEquals(t, resp.Code, 404)
+	test.AssertEquals(t, resp.Code, http.StatusNotFound)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "")
+
+	// Ensure that a query with a bad hash algorithm fails.
+	idBytes, err = asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA-1
+			Algorithm:  asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		big.NewInt(0).Add(cert.SerialNumber, big.NewInt(1)),
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+	req, event = makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+
+	// Ensure that a query with a non-CertID path fails.
+	req, event = makeGet(base64.RawURLEncoding.EncodeToString(ocspReqBytes), renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+
+	// Ensure that a query with a non-Base64URL path (including one in the old
+	// request path style, which included slashes) fails.
+	req, event = makeGet(
+		fmt.Sprintf(
+			"%s/%s/%s",
+			base64.RawURLEncoding.EncodeToString(ocspReq.IssuerNameHash),
+			base64.RawURLEncoding.EncodeToString(ocspReq.IssuerKeyHash),
+			base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes()),
+		),
+		renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
 }
 
 // TestARI tests that requests certs impacted by an ongoing revocation incident

@@ -4,7 +4,7 @@
         "noncePrefix": "taro",
         "syslog": {
             "stdoutLevel": 6,
-            "syslogLevel": 6
+            "syslogLevel": -1
         },
         "beeline": {
             "mute": true,

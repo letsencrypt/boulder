@@ -30,7 +30,7 @@
 
   "syslog": {
     "stdoutlevel": 6,
-    "sysloglevel": 6
+    "sysloglevel": -1
   },
   "beeline": {
       "mute": true,

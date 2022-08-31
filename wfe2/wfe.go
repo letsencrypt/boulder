@@ -3,10 +3,12 @@ package wfe2
 import (
 	"context"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"strconv"
@@ -66,7 +68,7 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 
 	// Draft or likely-to-change paths
-	renewalInfoPath = getAPIPrefix + "draft-aaron-ari/renewalInfo/"
+	renewalInfoPath = getAPIPrefix + "draft-ietf-acme-ari-00/renewalInfo/"
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
@@ -2252,6 +2254,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 }
 
+// certID matches the ASN.1 structure of the CertID sequence defined by RFC6960.
+type certID struct {
+	HashAlgorithm  pkix.AlgorithmIdentifier
+	IssuerNameHash []byte
+	IssuerKeyHash  []byte
+	SerialNumber   *big.Int
+}
+
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
@@ -2313,6 +2323,12 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		}
 		return
 	}
+
+	// TODO(#6033): Consider parsing cert.Der, using that to get its IssuerNameID,
+	// using that to look up the actual issuer cert in wfe.issuerCertificates,
+	// using that to compute the actual issuerNameHash and issuerKeyHash, and
+	// comparing those to the ones in the request.
+
 	ri := core.RenewalInfoSimple(time.Unix(0, cert.Issued).UTC(), time.Unix(0, cert.Expires).UTC())
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
