@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/jmhodges/clock"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -40,7 +41,7 @@ func TestErrorWrapping(t *testing.T) {
 
 	conn, err := grpc.Dial(
 		lis.Addr().String(),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.intercept),
 	)
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
@@ -71,7 +72,7 @@ func TestSubErrorWrapping(t *testing.T) {
 
 	conn, err := grpc.Dial(
 		lis.Addr().String(),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.intercept),
 	)
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
