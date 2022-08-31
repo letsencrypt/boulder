@@ -3633,9 +3633,9 @@ func TestARI(t *testing.T) {
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
 }
 
-// TestARI tests that requests certs impacted by an ongoing revocation incident
-// result in a 200 with a retry-after header and a suggested retry window in the
-// past.
+// TestIncidentARI tests that requests certs impacted by an ongoing revocation
+// incident result in a 200 with a retry-after header and a suggested retry
+// window in the past.
 func TestIncidentARI(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	expectSerial := big.NewInt(12345)
