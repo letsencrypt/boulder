@@ -52,6 +52,7 @@ type StorageAuthorityClient interface {
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
 	GetRevokedCerts(ctx context.Context, in *GetRevokedCertsRequest, opts ...grpc.CallOption) (StorageAuthority_GetRevokedCertsClient, error)
+	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	// Adders
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
 	UpdateRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -353,6 +354,15 @@ func (x *storageAuthorityGetRevokedCertsClient) Recv() (*proto.CRLEntry, error) 
 	return m, nil
 }
 
+func (c *storageAuthorityClient) IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error) {
+	out := new(Incidents)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/IncidentsForSerial", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error) {
 	out := new(proto.Registration)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/NewRegistration", in, out, opts...)
@@ -556,6 +566,7 @@ type StorageAuthorityServer interface {
 	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
 	GetRevokedCerts(*GetRevokedCertsRequest, StorageAuthority_GetRevokedCertsServer) error
+	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	// Adders
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
 	UpdateRegistration(context.Context, *proto.Registration) (*emptypb.Empty, error)
@@ -657,6 +668,9 @@ func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForInciden
 }
 func (UnimplementedStorageAuthorityServer) GetRevokedCerts(*GetRevokedCertsRequest, StorageAuthority_GetRevokedCertsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetRevokedCerts not implemented")
+}
+func (UnimplementedStorageAuthorityServer) IncidentsForSerial(context.Context, *Serial) (*Incidents, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method IncidentsForSerial not implemented")
 }
 func (UnimplementedStorageAuthorityServer) NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NewRegistration not implemented")
@@ -1184,6 +1198,24 @@ func (x *storageAuthorityGetRevokedCertsServer) Send(m *proto.CRLEntry) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _StorageAuthority_IncidentsForSerial_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).IncidentsForSerial(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/IncidentsForSerial",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).IncidentsForSerial(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_NewRegistration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(proto.Registration)
 	if err := dec(in); err != nil {
@@ -1624,6 +1656,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "KeyBlocked",
 			Handler:    _StorageAuthority_KeyBlocked_Handler,
+		},
+		{
+			MethodName: "IncidentsForSerial",
+			Handler:    _StorageAuthority_IncidentsForSerial_Handler,
 		},
 		{
 			MethodName: "NewRegistration",

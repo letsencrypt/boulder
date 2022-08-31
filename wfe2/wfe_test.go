@@ -1748,8 +1748,13 @@ type mockSAWithCert struct {
 	status core.OCSPStatus
 }
 
-func newMockSAWithGoodCert(t *testing.T, sa sapb.StorageAuthorityGetterClient) *mockSAWithCert {
+func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, zeroNotBefore bool) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	if zeroNotBefore {
+		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the
+		// Issued timestamp of this certificate to be very old (the year 0).
+		cert.NotBefore = time.Time{}
+	}
 	test.AssertNotError(t, err, "Failed to load test cert")
 	return &mockSAWithCert{sa, cert, core.OCSPStatusGood}
 }
@@ -1764,10 +1769,9 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
-		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the Issued
-		// timestamp of this certificate to be very old (the year 0).
-		Issued: time.Time{}.UnixNano(),
-		Der:    sa.cert.Raw,
+		Issued:         sa.cert.NotBefore.UnixNano(),
+		Expires:        sa.cert.NotAfter.UnixNano(),
+		Der:            sa.cert.Raw,
 	}, nil
 }
 
@@ -1784,9 +1788,42 @@ func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Seri
 	}, nil
 }
 
+type mockSAWithIncident struct {
+	sapb.StorageAuthorityGetterClient
+	incidents map[string]*sapb.Incidents
+}
+
+// newMockSAWithIncident returns a mock SA with an enabled (ongoing) incident
+// for each of the provided serials.
+func newMockSAWithIncident(sa sapb.StorageAuthorityGetterClient, serial []string) *mockSAWithIncident {
+	incidents := make(map[string]*sapb.Incidents)
+	for _, s := range serial {
+		incidents[s] = &sapb.Incidents{
+			Incidents: []*sapb.Incident{
+				{
+					Id:          0,
+					SerialTable: "incident_foo",
+					Url:         agreementURL,
+					RenewBy:     0,
+					Enabled:     true,
+				},
+			},
+		}
+	}
+	return &mockSAWithIncident{sa, incidents}
+}
+
+func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
+	incidents, ok := sa.incidents[req.Serial]
+	if ok {
+		return incidents, nil
+	}
+	return &sapb.Incidents{}, nil
+}
+
 func TestGetCertificate(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -2135,7 +2172,7 @@ func TestGetCertificateNew(t *testing.T) {
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 
 	certPemBytes, _ := os.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -2904,7 +2941,7 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 // issuing account key.
 func TestRevokeCertificateByApplicantValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -2929,7 +2966,7 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 // certificate private key.
 func TestRevokeCertificateByKeyValid(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -2959,7 +2996,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -2995,7 +3032,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3021,7 +3058,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 	ra := wfe.ra.(*MockRegistrationAuthority)
 
 	reason0 := revocation.Reason(ocsp.Unspecified)
@@ -3088,7 +3125,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // A revocation request signed by an incorrect certificate private key.
 func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-e1.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3477,7 +3514,7 @@ func TestIndexGet404(t *testing.T) {
 // enough that we're no longer worried about stale info being cached.
 func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, true)
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3499,7 +3536,7 @@ func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 // requests for certs that don't exist result in errors.
 func TestARI(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithGoodCert(t, wfe.sa)
+	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3536,6 +3573,11 @@ func TestARI(t *testing.T) {
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusOK)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	var ri core.RenewalInfo
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	test.Assert(t, ri.SuggestedWindow.Start.After(cert.NotBefore), "suggested window begins before cert issuance")
+	test.Assert(t, ri.SuggestedWindow.End.Before(cert.NotAfter), "suggested window ends after cert expiry")
 
 	// Ensure that a query for a non-existent serial results in a 404.
 	idBytes, err = asn1.Marshal(certID{
@@ -3589,6 +3631,49 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+}
+
+// TestIncidentARI tests that requests certs impacted by an ongoing revocation
+// incident result in a 200 with a retry-after header and a suggested retry
+// window in the past.
+func TestIncidentARI(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	expectSerial := big.NewInt(12345)
+	expectSerialString := core.SerialToString(big.NewInt(12345))
+	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
+
+	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
+		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
+			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
+	}
+	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
+	defer features.Reset()
+
+	idBytes, err := asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		[]byte("foo"),
+		[]byte("baz"),
+		expectSerial,
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+
+	req, event := makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
+	resp := httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, 200)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	var ri core.RenewalInfo
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	// The start of the window should be in the past.
+	test.AssertEquals(t, ri.SuggestedWindow.Start.Before(wfe.clk.Now()), true)
+	// The end of the window should be after the start.
+	test.AssertEquals(t, ri.SuggestedWindow.End.After(ri.SuggestedWindow.Start), true)
+	// The end of the window should also be in the past.
+	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
 }
 
 // TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.

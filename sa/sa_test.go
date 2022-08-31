@@ -2633,9 +2633,9 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to insert disabled incident")
 
 	// No incidents are enabled, so this should return in error.
-	incidentsForSerial, err := sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
-	test.AssertErrorIs(t, err, berrors.NotFound)
-	test.Assert(t, len(incidentsForSerial) == 0, "There should be 0 incidents")
+	result, err := sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
+	test.AssertNil(t, err, "expected nil err")
+	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add an enabled incident.
 	err = sa.dbMap.Insert(&incidentModel{
@@ -2665,9 +2665,9 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Error while inserting row for '1338' into incident table")
 
 	// The incident table should not contain a row with serial '1337'.
-	incidentsForSerial, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
-	test.AssertErrorIs(t, err, berrors.NotFound)
-	test.Assert(t, len(incidentsForSerial) == 0, "There should be 0 incidents matching serial '1337'")
+	result, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
+	test.AssertNil(t, err, "expected nil err")
+	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add a row to the incident table with serial '1337'.
 	affectedCertB := incidentSerialModel{
@@ -2688,9 +2688,9 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Error while inserting row for '1337' into incident table")
 
 	// The incident table should now contain a row with serial '1337'.
-	incidentsForSerial, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
+	result, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
 	test.AssertNotError(t, err, "Failed to retrieve incidents for serial")
-	test.Assert(t, len(incidentsForSerial) == 1, "No active incidents returned")
+	test.AssertEquals(t, len(result.Incidents), 1)
 }
 
 type mockSerialsForIncidentServerStream struct {

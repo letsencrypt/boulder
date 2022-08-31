@@ -2138,7 +2138,7 @@ func (ssa *SQLStorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlo
 
 // IncidentsForSerial queries each active incident table and returns every
 // incident that currently impacts `req.Serial`.
-func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sapb.Serial) ([]sapb.Incident, error) {
+func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sapb.Serial) (*sapb.Incidents, error) {
 	if req == nil {
 		return nil, errIncompleteRequest
 	}
@@ -2147,12 +2147,12 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	_, err := ssa.dbMap.Select(&activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("no active incidents found")
+			return &sapb.Incidents{}, nil
 		}
 		return nil, err
 	}
 
-	var incidentsForSerial []sapb.Incident
+	var incidentsForSerial []*sapb.Incident
 	for _, i := range activeIncidents {
 		var count int
 		err := ssa.dbMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
@@ -2164,14 +2164,15 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 			return nil, err
 		}
 		if count > 0 {
-			incidentsForSerial = append(incidentsForSerial, incidentModelToPB(i))
+			incident := incidentModelToPB(i)
+			incidentsForSerial = append(incidentsForSerial, &incident)
 		}
 
 	}
 	if len(incidentsForSerial) == 0 {
-		return nil, berrors.NotFoundError("no active incidents found for serial %q", req.Serial)
+		return &sapb.Incidents{}, nil
 	}
-	return incidentsForSerial, nil
+	return &sapb.Incidents{Incidents: incidentsForSerial}, nil
 }
 
 // SerialsForIncident queries the provided incident table and returns the
