@@ -12,7 +12,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -3229,7 +3228,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type:                     "dns",
+				Type: "dns",
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
@@ -3639,8 +3638,9 @@ func TestARI(t *testing.T) {
 // past.
 func TestIncidentARI(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	expectSerial := core.SerialToString(big.NewInt(12345))
-	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerial})
+	expectSerial := big.NewInt(12345)
+	expectSerialString := core.SerialToString(big.NewInt(12345))
+	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3649,19 +3649,24 @@ func TestIncidentARI(t *testing.T) {
 	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
 	defer features.Reset()
 
-	path := fmt.Sprintf(
-		"%s/%s/%s",
-		hex.EncodeToString([]byte("foo")),
-		hex.EncodeToString([]byte("baz")),
+	idBytes, err := asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		[]byte("foo"),
+		[]byte("baz"),
 		expectSerial,
-	)
-	req, event := makeGet(path, renewalInfoPath)
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+
+	req, event := makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
 	resp := httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, 200)
 	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
 	var ri core.RenewalInfo
-	err := json.Unmarshal(resp.Body.Bytes(), &ri)
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
 	test.AssertNotError(t, err, "unmarshalling renewal info")
 	// The start of the window should be in the past.
 	test.AssertEquals(t, ri.SuggestedWindow.Start.Before(wfe.clk.Now()), true)
