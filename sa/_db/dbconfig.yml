@@ -1,3 +1,4 @@
+# https://github.com/rubenv/sql-migrate#readme
 boulder_sa_test:
   dialect: mysql
   datasource: root@tcp(boulder-mysql:3306)/boulder_sa_test?parseTime=true
