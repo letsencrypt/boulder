@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/vmihailenco/msgpack/v4"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 type Event struct {
@@ -74,7 +74,9 @@ func (e *Event) MarshalMsgpack() (byts []byte, err error) {
 	}()
 
 	var buf bytes.Buffer
-	err = msgpack.NewEncoder(&buf).UseJSONTag(true).Encode(struct {
+	encoder := msgpack.NewEncoder(&buf)
+	encoder.SetCustomStructTag("json")
+	err = encoder.Encode(struct {
 		Data       map[string]interface{} `msgpack:"data"`
 		SampleRate uint                   `msgpack:"samplerate,omitempty"`
 		Timestamp  *time.Time             `msgpack:"time,omitempty"`

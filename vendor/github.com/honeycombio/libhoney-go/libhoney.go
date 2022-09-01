@@ -13,6 +13,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"reflect"
 	"sort"
@@ -30,10 +31,11 @@ func init() {
 }
 
 const (
-	defaultSampleRate = 1
-	defaultAPIHost    = "https://api.honeycomb.io/"
-	defaultDataset    = "libhoney-go dataset"
-	version           = "1.15.2"
+	defaultSampleRate     = 1
+	defaultAPIHost        = "https://api.honeycomb.io/"
+	defaultClassicDataset = "libhoney-go dataset"
+	defaultDataset        = "unknown_dataset"
+	version               = "1.16.0"
 
 	// DefaultMaxBatchSize how many events to collect in a batch
 	DefaultMaxBatchSize = 50
@@ -146,6 +148,28 @@ type Config struct {
 	Logger Logger
 }
 
+func (c *Config) getDataset() string {
+	if c.isClassic() {
+		if strings.TrimSpace(c.Dataset) == "" {
+			return defaultClassicDataset
+		}
+		return c.Dataset
+	}
+	trimmedDataset := strings.TrimSpace(c.Dataset)
+	if trimmedDataset == "" {
+		fmt.Fprintln(os.Stderr, "WARN: Dataset is empty or whitespace, using default:", defaultDataset)
+		return defaultDataset
+	}
+	if c.Dataset != trimmedDataset {
+		fmt.Fprintln(os.Stderr, "WARN: Dataset has unexpected whitespace, using trimmed version:", trimmedDataset)
+	}
+	return trimmedDataset
+}
+
+func (c *Config) isClassic() bool {
+	return c.APIKey == "" || len(c.APIKey) == 32
+}
+
 // Init is called on app initialization and passed a Config struct, which
 // configures default behavior. Use of package-level functions (e.g. SendNow())
 // require that WriteKey and Dataset are defined.
@@ -170,7 +194,7 @@ func Init(conf Config) error {
 	default:
 	}
 
-	clientConf.Dataset = conf.Dataset
+	clientConf.Dataset = conf.getDataset()
 	clientConf.SampleRate = conf.SampleRate
 	clientConf.APIHost = conf.APIHost
 
@@ -293,10 +317,31 @@ func VerifyWriteKey(config Config) (team string, err error) {
 // rejected.
 func VerifyAPIKey(config Config) (team string, err error) {
 	dc.ensureLogger()
-	defer func() { dc.logger.Printf("verify write key got back %s with err=%s", team, err) }()
+	auth, err := getAuth(config)
+	dc.logger.Printf("verify write key got back %s with err=%s", auth.Team.Slug, err)
+	if err != nil {
+		return "", err
+	}
+	return auth.Team.Slug, nil
+}
+
+// GetTeamAndEnvironment calls out to the Honeycomb API to validate the API key
+// and retrieve the associated team and environment names.
+func GetTeamAndEnvironment(config Config) (team string, environment string, err error) {
+	dc.ensureLogger()
+	auth, err := getAuth(config)
+	dc.logger.Printf("verify API key got back %s with err=%s", auth.Team.Slug, err)
+	if err != nil {
+		return "", "", err
+	}
+	return auth.Team.Slug, auth.Environment.Slug, nil
+}
+
+func getAuth(config Config) (authInfo, error) {
+	auth := authInfo{}
 	if config.APIKey == "" {
 		if config.WriteKey == "" {
-			return team, errors.New("config.APIKey and config.WriteKey are both empty; can't verify empty key")
+			return auth, errors.New("config.APIKey and config.WriteKey are both empty; can't verify empty key")
 		}
 		config.APIKey = config.WriteKey
 	}
@@ -305,35 +350,46 @@ func VerifyAPIKey(config Config) (team string, err error) {
 	}
 	u, err := url.Parse(config.APIHost)
 	if err != nil {
-		return team, fmt.Errorf("Error parsing API URL: %s", err)
+		return auth, fmt.Errorf("Error parsing API URL: %s", err)
 	}
-	u.Path = path.Join(u.Path, "1", "team_slug")
+	u.Path = path.Join(u.Path, "1", "auth")
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
-		return team, err
+		return auth, err
 	}
 	req.Header.Set("User-Agent", UserAgentAddition)
 	req.Header.Add("X-Honeycomb-Team", config.APIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return team, err
+		return auth, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {
-		return team, errors.New("Write key provided is invalid")
+		return auth, errors.New("Write key provided is invalid")
 	}
 	body, _ := ioutil.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return team, fmt.Errorf(`Abnormal non-200 response verifying Honeycomb write key: %d
+		return auth, fmt.Errorf(`Abnormal non-200 response verifying Honeycomb write/API key: %d
 Response body: %s`, resp.StatusCode, string(body))
 	}
-	ret := map[string]string{}
-	if err := json.Unmarshal(body, &ret); err != nil {
-		return team, err
+	if err := json.Unmarshal(body, &auth); err != nil {
+		return auth, fmt.Errorf("failed to JSON decode of AuthInfo response from Honeycomb API")
 	}
+	return auth, nil
+}
 
-	return ret["team_slug"], nil
+type teamInfo struct {
+	Slug string `json:"slug"`
+}
+
+type environmentInfo struct {
+	Slug string `json:"slug"`
+}
+
+type authInfo struct {
+	Team        teamInfo        `json:"team"`
+	Environment environmentInfo `json:"environment"`
 }
 
 // Deprecated: Response is deprecated; please use transmission.Response instead.
