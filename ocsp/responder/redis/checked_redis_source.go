@@ -123,7 +123,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	}
 
 	// Otherwise, the DB is authoritative. Trigger a fresh signing.
-	freshResult, err := src.base.signAndSave(ctx, req, serialString)
+	freshResult, err := src.base.signAndSave(ctx, req, "stale_redis")
 	if err != nil {
 		src.counter.WithLabelValues("sign_and_save_error").Inc()
 		return nil, err
