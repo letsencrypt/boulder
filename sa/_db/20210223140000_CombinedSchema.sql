@@ -1,4 +1,4 @@
--- +goose Up
+-- +migrate Up
 -- SQL in section 'Up' is executed when this migration is applied
 
 CREATE TABLE `authz2` (
@@ -213,7 +213,7 @@ CREATE TABLE `serials` (
   CONSTRAINT `regId_serials` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
--- +goose Down
+-- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
 -- First set of tables have foreign key constraints, so are dropped first.

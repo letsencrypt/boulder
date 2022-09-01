@@ -1,10 +1,19 @@
-test:
-  driver: mysql
-  open: root@tcp(boulder-mysql:3306)/boulder_sa_test
-integration:
-  driver: mysql
-  open: root@tcp(boulder-mysql:3306)/boulder_sa_integration
-# what goose uses by default, even during migration creation
-development:
-  driver: mysql
-  open: root@tcp(boulder-mysql:3306)/boulder_sa_integration
+boulder_sa_test:
+  dialect: mysql
+  datasource: root@tcp(boulder-mysql:3306)/boulder_sa_test
+  dir: boulder_sa
+
+boulder_sa_integration:
+  dialect: mysql
+  datasource: root@tcp(boulder-mysql:3306)/boulder_sa_integration
+  dir: boulder_sa
+
+incidents_sa_test:
+  dialect: mysql
+  datasource: root@tcp(boulder-mysql:3306)/incidents_sa_test
+  dir: incidents_sa
+
+incidents_sa_integration:
+  dialect: mysql
+  datasource: root@tcp(boulder-mysql:3306)/incidents_sa_integration
+  dir: incidents_sa

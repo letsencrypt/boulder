@@ -1,4 +1,4 @@
--- +goose Up
+-- +migrate Up
 -- SQL in section 'Up' is executed when this migration is applied
 
 CREATE TABLE `incidents` (
@@ -30,7 +30,7 @@ CREATE TABLE `incident_bar` (
     KEY `orderID_idx` (`orderID`)
 ) CHARSET=utf8mb4;
 
--- +goose Down
+-- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
 DROP TABLE `incidents`

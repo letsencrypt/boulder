@@ -297,10 +297,10 @@ Finally, edit the resulting file
 (`sa/_db/migrations/20160915101011_AddWizards.sql`) to define your migration:
 
 ```mysql
--- +goose Up
+-- +migrate Up
 ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
 
--- +goose Down
+-- +migrate Down
 ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
 ```
 
