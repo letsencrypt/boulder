@@ -104,7 +104,7 @@ function get_promotable_migrations() {
 
 function get_demotable_migrations() {
   local migrations=()
-  for file in "${DB_NEXT_PATH}/${1}"*.sql; do
+  for file in "${DB_NEXT_PATH}/${1}"/*.sql; do
     [[ -L "${file}" ]] || continue
     migrations+=("${file}")
   done
@@ -199,14 +199,14 @@ if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
   then
     print_heading "Promoting Migration"
     promote_mig_name="$(basename -- "${mig_file_path}")"
-    promoted_mig_file_path="${DB_PATH}/${promote_mig_name}"
-    symlink_relpath="$(realpath --relative-to=${DB_NEXT_PATH} ${promoted_mig_file_path})"
+    promoted_mig_file_path="${DB_PATH}/${DB}/${promote_mig_name}"
+    symlink_relpath="$(realpath --relative-to=${DB_NEXT_PATH}/${DB} ${promoted_mig_file_path})"
 
     print_moving "${mig_file_path}" "${promoted_mig_file_path}"
     mv "${mig_file_path}" "${promoted_mig_file_path}"
     
     print_linking "${mig_file_path}" "${symlink_relpath}"
-    ln -s "${symlink_relpath}" "${DB_NEXT_PATH}"
+    ln -s "${symlink_relpath}" "${DB_NEXT_PATH}/${DB}"
   fi
 fi
 
@@ -234,7 +234,7 @@ if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
   then
     print_heading "Demoting Migration"
     demote_mig_name="$(basename -- "${mig_link_path}")"
-    demote_mig_from="${DB_PATH}/${demote_mig_name}"
+    demote_mig_from="${DB_PATH}/${DB}/${demote_mig_name}"
 
     print_unlinking "${mig_link_path}"
     rm "${mig_link_path}"
