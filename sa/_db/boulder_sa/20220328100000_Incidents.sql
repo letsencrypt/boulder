@@ -33,6 +33,6 @@ CREATE TABLE `incident_bar` (
 -- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
-DROP TABLE `incidents`
-DROP TABLE `incident_foo`
-DROP TABLE `incident_bar`
+DROP TABLE `incidents`;
+DROP TABLE `incident_foo`;
+DROP TABLE `incident_bar`;

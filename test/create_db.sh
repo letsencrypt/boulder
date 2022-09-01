@@ -1,9 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -o errexit
 cd $(dirname $0)/..
 
 DBENVS="test
 integration"
+
+# Should point to /path/to/boulder, given that this script
+# lives in the //grpc subdirectory of the boulder repo.
+root_dir=$(dirname $(dirname $(readlink -f "$0")))
 
 # posix compliant escape sequence
 esc=$'\033'"["
@@ -50,20 +54,6 @@ function create_empty_db() {
   echo "created empty "$db" database"
 }
 
-function apply_migrations() {
-  local migrations="${1}"
-  local dbpath="${2}"
-  local dbenv="${3}"
-  local db="${4}"
-  if [[ "${migrations[@]}" ]]
-  then
-    echo "applying migrations from ${db_mig_path}"
-    goose -path="${dbpath}" -env="${dbenv}" up || exit_err "unable to migrate ${db} with ${dbpath}"
-  else
-    echo "no migrations at ${dbpath}"
-  fi
-}
-
 # set db connection for if running in a separate container or not
 dbconn="-u root"
 if [[ $MYSQL_CONTAINER ]]; then
@@ -81,13 +71,13 @@ mysql $dbconn -e "SET GLOBAL binlog_format = 'MIXED';"
 mysql $dbconn -e "SET GLOBAL max_connections = 500;"
 
 for dbenv in $DBENVS; do
-  db="boulder_sa_${dbenv}"
-  print_heading "Checking if ${db} exists"
-  if mysql ${dbconn} -e 'show databases;' | grep "${db}" > /dev/null; then
-    echo "${db} already exists - skipping create"
+  db="boulder_sa"
+  print_heading "Checking if ${db}_${dbenv} exists"
+  if mysql ${dbconn} -e 'show databases;' | grep "${db}_${dbenv}" > /dev/null; then
+    echo "${db}_${dbenv} already exists - skipping create"
   else
-    echo "${db} doesn't exist - creating"
-    create_empty_db "${db}" "${dbconn}"
+    echo "${db}_${dbenv} doesn't exist - creating"
+    create_empty_db "${db}_${dbenv}" "${dbconn}"
   fi
 
   # Determine which $dbpath and $db_mig_path to use.
@@ -97,37 +87,39 @@ for dbenv in $DBENVS; do
   else
     dbpath="./sa/_db"
   fi
-  db_mig_path="${dbpath}/migrations"
+  db_mig_path="${dbpath}"
 
   # Populate an array with schema files present at $dbpath.
-  migrations=($(get_migrations "${db_mig_path}"))
+  # migrations=($(get_migrations "${db_mig_path}"))
 
-  # Goose up, this will work if there are schema files present at
-  # $dbpath with a newer timestamp than the current goose dbversion.
-  apply_migrations "${migrations}" "${dbpath}" "${dbenv}" "${db}"
+  cd "${dbpath}"
+  pwd
+  ls -lah
+
+  sql-migrate up -env="${db}_${dbenv}" || exit_err "unable to migrate ${db} with ${dbpath}"
 
   # The (actual) latest migration should always be the last file or
   # symlink at $db_mig_path.
-  latest_mig_path_filename="$(basename -- "${migrations[-1]}")"
+  # latest_mig_path_filename="$(basename -- "${migrations[-1]}")"
 
   # Goose's dbversion is the timestamp (first 14 characters) of the file
   # that it last migrated to. We can figure out which goose dbversion we
   # should be on by parsing the timestamp of the latest file at
   # $db_mig_path.
-  latest_db_mig_version="${latest_mig_path_filename:0:14}"
+  # latest_db_mig_version="${latest_mig_path_filename:0:14}"
   
   # Ask Goose the timestamp (dbversion) our database is currently
   # migrated to.
-  goose_dbversion="$(goose -path=${dbpath} -env=${dbenv} dbversion | sed 's/goose: dbversion //')"
+  # goose_dbversion="$(goose -path=${dbpath} -env=${dbenv} dbversion | sed 's/goose: dbversion //')"
 
   # If the $goose_dbversion does not match the $latest_in_db_mig_path,
   # trigger recreate
-  if [[ "${latest_db_mig_version}" != "${goose_dbversion}" ]]; then
-    print_heading "Detected latest migration version mismatch"
-    echo "dropping and recreating from migrations at ${db_mig_path}"
-    create_empty_db "${db}" "${dbconn}"
-    apply_migrations "${migrations}" "${dbpath}" "${dbenv}" "${db}"
-  fi
+  # if [[ "${latest_db_mig_version}" != "${goose_dbversion}" ]]; then
+  #   print_heading "Detected latest migration version mismatch"
+  #   echo "dropping and recreating from migrations at ${db_mig_path}"
+  #   create_empty_db "${db}" "${dbconn}"
+  #   apply_migrations "${migrations}" "${dbpath}" "${dbenv}" "${db}"
+  # fi
 
   # With MYSQL_CONTAINER, patch the GRANT statements to
   # use 127.0.0.1, not localhost, as MySQL may interpret
@@ -135,15 +127,19 @@ for dbenv in $DBENVS; do
   # socket connections. Use '-f' to ignore errors while
   # we have migrations that haven't been applied but
   # add new tables (TODO(#2931): remove -f).
+
+  # Return to the root of the repo.
+  cd "${root_dir}"
+
   USERS_SQL=test/sa_db_users.sql
   if [[ ${MYSQL_CONTAINER} ]]; then
     sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \
-      mysql $dbconn -D $db -f || exit_err "unable to add users to ${db}"
+      mysql $dbconn -D "${db}_${dbenv}" -f || exit_err "unable to add users to ${db}_${dbenv}"
   else
     sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
-      mysql $dbconn -D $db -f < $USERS_SQL || exit_err "unable to add users to ${db}"
+      mysql $dbconn -D "${db}_${dbenv}" -f < $USERS_SQL || exit_err "unable to add users to ${db}_${dbenv}"
   fi
-  echo "added users to ${db}"
+  echo "added users to ${db}_${dbenv}"
 done
 
 echo

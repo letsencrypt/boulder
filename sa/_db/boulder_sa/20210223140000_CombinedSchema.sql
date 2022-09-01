@@ -217,21 +217,21 @@ CREATE TABLE `serials` (
 -- SQL section 'Down' is executed when this migration is rolled back
 
 -- First set of tables have foreign key constraints, so are dropped first.
-DROP TABLE `certificates`
-DROP TABLE `orderFqdnSets`
-DROP TABLE `precertificates`
-DROP TABLE `requestedNames`
-DROP TABLE `serials`
+DROP TABLE `certificates`;
+DROP TABLE `orderFqdnSets`;
+DROP TABLE `precertificates`;
+DROP TABLE `requestedNames`;
+DROP TABLE `serials`;
 
-DROP TABLE `authz2`
-DROP TABLE `blockedKeys`
-DROP TABLE `certificateStatus`
-DROP TABLE `certificatesPerName`
-DROP TABLE `crls`
-DROP TABLE `fqdnSets`
-DROP TABLE `issuedNames`
-DROP TABLE `keyHashToSerial`
-DROP TABLE `newOrdersRL`
-DROP TABLE `orderToAuthz2`
-DROP TABLE `orders`
-DROP TABLE `registrations`
+DROP TABLE `authz2`;
+DROP TABLE `blockedKeys`;
+DROP TABLE `certificateStatus`;
+DROP TABLE `certificatesPerName`;
+DROP TABLE `crls`;
+DROP TABLE `fqdnSets`;
+DROP TABLE `issuedNames`;
+DROP TABLE `keyHashToSerial`;
+DROP TABLE `newOrdersRL`;
+DROP TABLE `orderToAuthz2`;
+DROP TABLE `orders`;
+DROP TABLE `registrations`;
