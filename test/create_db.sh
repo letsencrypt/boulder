@@ -61,7 +61,12 @@ for db in $DBS; do
   for env in $ENVS; do
     dbname="${db}_${env}"
     print_heading "${dbname}"
-    create_empty_db "${dbname}" "${dbconn}"
+    if mysql ${dbconn} -e 'show databases;' | grep "${dbname}" > /dev/null; then
+      echo "Already exists - skipping create"
+    else
+      echo "Doesn't exist - creating"
+      create_empty_db "${dbname}" "${dbconn}"
+    fi
 
     if [[ "${BOULDER_CONFIG_DIR}" == "test/config-next" ]]
     then
@@ -73,18 +78,26 @@ for db in $DBS; do
     # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
     # as relative.
     cd "${dbpath}"
-    sql-migrate up -env="${dbname}" || exit_err "unable to migrate ${dbname} with migrations at ${dbpath}/${db}"
+    r=`sql-migrate up -env="${dbname}" | xargs echo`
+    if [[ "${r}" == "Migration failed"* ]]
+    then
+      echo "Migration failed - dropping and recreating"
+      create_empty_db "${dbname}" "${dbconn}"
+      sql-migrate up -env="${dbname}"
+    else
+      echo "${r}"
+    fi
 
     USERS_SQL="../_db-users/${db}.sql"
     if [[ ${MYSQL_CONTAINER} ]]
     then
       sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \
-        mysql ${dbconn} -D "${dbname}" -f || exit_err "unable to add users to ${dbname}"
+        mysql ${dbconn} -D "${dbname}" -f || exit_err "Unable to add users from ${USERS_SQL}"
     else
       sed -e "s/'localhost'/'127.%'/g" < $USERS_SQL | \
-        mysql ${dbconn} -D "${dbname}" -f < $USERS_SQL || exit_err "unable to add users to ${dbname}"
+        mysql ${dbconn} -D "${dbname}" -f < $USERS_SQL || exit_err "Unable to add users from ${USERS_SQL}"
     fi
-    echo "Added users from ${USERS_SQL} to ${dbname}"
+    echo "Added users from ${USERS_SQL}"
     
     # return to the root directory
     cd "${root_dir}"
@@ -92,4 +105,4 @@ for db in $DBS; do
 done
 
 echo
-echo "database setup complete"
+echo "Database setup completed"
