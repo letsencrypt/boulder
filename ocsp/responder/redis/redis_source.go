@@ -66,7 +66,7 @@ func NewRedisSource(
 		Name: "ocsp_redis_sign_and_save",
 		Help: "Count of OCSP sign and save requests",
 	}, []string{"cause", "result"})
-	stats.MustRegister(counter)
+	stats.MustRegister(signAndSaveCounter)
 
 	// Set up 12-hour-wide buckets, measured in seconds.
 	buckets := make([]float64, 14)
