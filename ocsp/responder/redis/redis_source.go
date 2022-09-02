@@ -106,7 +106,7 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 	if err != nil {
 		if errors.Is(err, rocsp.ErrRedisNotFound) {
 			src.counter.WithLabelValues("not_found").Inc()
-			return src.signAndSave(ctx, req, "not_found_redis")
+			return src.signAndSave(ctx, req, causeNotFound)
 		}
 		src.counter.WithLabelValues("lookup_error").Inc()
 		return nil, err
@@ -120,7 +120,7 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 
 	if src.isStale(resp) {
 		src.counter.WithLabelValues("stale").Inc()
-		freshResp, err := src.signAndSave(ctx, req, "stale_redis")
+		freshResp, err := src.signAndSave(ctx, req, causeStale)
 		if err != nil {
 			return &responder.Response{Response: resp, Raw: respBytes}, nil
 		}
