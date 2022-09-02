@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/connectivity"
 )
 
@@ -31,6 +32,7 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 	// will never exit.
 	sigterm := func() {
 		purgerCmd.Process.Signal(syscall.SIGTERM)
+		purgerCmd.Wait()
 	}
 
 	s := func(input string) *string {
@@ -48,6 +50,7 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, "akamai-purger.boulder")
 	conn, err := grpc.Dial(
 		"dns:///akamai-purger.boulder:9199",
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(creds),
 	)
 	if err != nil {
@@ -60,7 +63,7 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 		}
 		if i > 40 {
 			sigterm()
-			return nil, nil, nil, fmt.Errorf("timed out waiting for akamai-purger to come up")
+			return nil, nil, nil, fmt.Errorf("timed out waiting for akamai-purger to come up: %s", outputBuffer.String())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

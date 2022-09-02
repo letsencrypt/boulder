@@ -170,10 +170,10 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
 	})
 	if err != nil {
-		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed")
+		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
 		cs.log.AuditErrf("CRL upload failed: id=[%s] err=[%s]", crlId, err)
 	} else {
-		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success")
+		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
 		cs.log.AuditInfof(
 			"CRL uploaded: issuerCN=[%s] id=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
 			issuer.Subject.CommonName, crlId, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),

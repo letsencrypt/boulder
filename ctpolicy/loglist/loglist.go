@@ -71,7 +71,9 @@ const (
 )
 
 func stateFromState(s *schema.LogListSchemaJsonOperatorsElemLogsElemState) state {
-	if s.Rejected != nil {
+	if s == nil {
+		return unknown
+	} else if s.Rejected != nil {
 		return rejected
 	} else if s.Retired != nil {
 		return retired

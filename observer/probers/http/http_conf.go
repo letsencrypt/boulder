@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -13,6 +14,11 @@ type HTTPConf struct {
 	URL       string `yaml:"url"`
 	RCodes    []int  `yaml:"rcodes"`
 	UserAgent string `yaml:"useragent"`
+}
+
+// Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
+func (c HTTPConf) Kind() string {
+	return "HTTP"
 }
 
 // UnmarshalSettings takes YAML as bytes and unmarshals it to the to an
@@ -57,7 +63,7 @@ func (c HTTPConf) validateRCodes() error {
 // MakeProber constructs a `HTTPProbe` object from the contents of the
 // bound `HTTPConf` object. If the `HTTPConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
-func (c HTTPConf) MakeProber() (probers.Prober, error) {
+func (c HTTPConf) MakeProber(_ map[string]prometheus.Collector) (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
 	if err != nil {
@@ -77,8 +83,13 @@ func (c HTTPConf) MakeProber() (probers.Prober, error) {
 	return HTTPProbe{c.URL, c.RCodes, c.UserAgent}, nil
 }
 
+// Instrument is a no-op to implement the `Configurer` interface.
+func (c HTTPConf) Instrument() map[string]prometheus.Collector {
+	return nil
+}
+
 // init is called at runtime and registers `HTTPConf`, a `Prober`
 // `Configurer` type, as "HTTP".
 func init() {
-	probers.Register("HTTP", HTTPConf{})
+	probers.Register(HTTPConf{})
 }

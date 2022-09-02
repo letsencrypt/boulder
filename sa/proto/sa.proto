@@ -36,6 +36,7 @@ service StorageAuthority {
   rpc KeyBlocked(KeyBlockedRequest) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
+  rpc IncidentsForSerial(Serial) returns (Incidents) {}
   // Adders
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc UpdateRegistration(core.Registration) returns (google.protobuf.Empty) {}
@@ -287,6 +288,10 @@ message Incident {
   string url = 3;
   int64 renewBy = 4; // Unix timestamp (nanoseconds)
   bool enabled = 5;
+}
+
+message Incidents {
+  repeated Incident incidents = 1;
 }
 
 message SerialsForIncidentRequest {

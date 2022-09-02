@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -56,26 +57,51 @@ func (c *ObsConf) validateDebugAddr() error {
 	return nil
 }
 
-func (c *ObsConf) makeMonitors() ([]*monitor, []error, error) {
+func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []error, error) {
 	var errs []error
 	var monitors []*monitor
+	proberSpecificMetrics := make(map[string]map[string]prometheus.Collector)
 	for e, m := range c.MonConfs {
 		entry := strconv.Itoa(e + 1)
-		monitor, err := m.makeMonitor()
+		proberConf, err := probers.GetConfigurer(m.Kind)
 		if err != nil {
-			// append validation error to errs
-			errs = append(
-				errs, fmt.Errorf(
-					"'monitors' entry #%s couldn't be validated: %v", entry, err))
-
+			// append error to errs
+			errs = append(errs, fmt.Errorf("'monitors' entry #%s couldn't be validated: %w", entry, err))
 			// increment metrics
 			countMonitors.WithLabelValues(m.Kind, "false").Inc()
+			// bail out before constructing the monitor. with no configurer, it will fail
+			continue
+		}
+		kind := proberConf.Kind()
+
+		// set up custom metrics internal to each prober kind
+		_, exist := proberSpecificMetrics[kind]
+		if !exist {
+			// we haven't seen this prober kind before, so we need to request
+			// any custom metrics it may have and register them with the
+			// prometheus registry
+			for name, collector := range proberConf.Instrument() {
+				// register the collector with the prometheus registry
+				metrics.MustRegister(collector)
+				// store the registered collector so we can pass it to every
+				// monitor that will construct this kind of prober
+				proberSpecificMetrics[kind][name] = collector
+			}
+		}
+
+		monitor, err := m.makeMonitor(proberSpecificMetrics[kind])
+		if err != nil {
+			// append validation error to errs
+			errs = append(errs, fmt.Errorf("'monitors' entry #%s couldn't be validated: %w", entry, err))
+
+			// increment metrics
+			countMonitors.WithLabelValues(kind, "false").Inc()
 		} else {
 			// append monitor to monitors
 			monitors = append(monitors, monitor)
 
 			// increment metrics
-			countMonitors.WithLabelValues(m.Kind, "true").Inc()
+			countMonitors.WithLabelValues(kind, "true").Inc()
 		}
 	}
 	if len(c.MonConfs) == len(errs) {
@@ -121,7 +147,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	logger.Infof("Initializing boulder-observer daemon")
 	logger.Debugf("Using config: %+v", c)
 
-	monitors, errs, err := c.makeMonitors()
+	monitors, errs, err := c.makeMonitors(metrics)
 	if len(errs) != 0 {
 		logger.Errf("%d of %d monitors failed validation", len(errs), len(c.MonConfs))
 		for _, err := range errs {

@@ -9,8 +9,29 @@ things we separate all of Boulder's build dependencies into its own
 
 To build boulder-tools images, you'll need a Docker set up to do cross-platform
 builds (we build for both amd64 and arm64 so developers with Apple silicon can use
-boulder-tools in their dev environment). On Ubuntu the setup steps are:
+boulder-tools in their dev environment).
 
+### Dockerd configuration (all platforms):
+You may encounter and error like the following when executing the gem install
+steps of `build.sh`:
+
+```shell
++ gem install --no-document fpm
+ERROR:  Could not find a valid gem 'fpm' (>= 0), here is why:
+          Unable to download data from https://rubygems.org/ - timed out (https://rubygems.org/specs.4.8.gz)
+```
+
+You can fix this by adding the following lines to your `dockerd` configuration
+file (default: "/etc/docker/daemon.json"):
+
+```json
+  "dns-opts": [
+    "single-request",
+    "single-request-reopen"
+  ],
+```
+
+### Ubuntu steps:
 ```sh
 sudo apt-get install qemu binfmt-support qemu-user-static
 docker buildx create --use --name=cross
@@ -29,7 +50,11 @@ cross0  unix:///var/run/docker.sock stopped
 ```
 
 That's probably fine; the instance will be started when you run
-tag_and_upload.sh (which runs `docker buildx build`).
+`tag_and_upload.sh` (which runs `docker buildx build`).
+
+### macOS steps:
+Developers running macOS 12 and later with Docker Desktop 4 and later should
+be able to use boulder-tools without any pre-setup.
 
 ## Go Versions
 

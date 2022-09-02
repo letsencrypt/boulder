@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -32,6 +33,10 @@ type Prober interface {
 
 // Configurer is the interface for `Configurer` types.
 type Configurer interface {
+	// Kind returns a name that uniquely identifies the `Kind` of
+	// `Configurer`.
+	Kind() string
+
 	// UnmarshalSettings unmarshals YAML as bytes to a `Configurer`
 	// object.
 	UnmarshalSettings([]byte) (Configurer, error)
@@ -39,8 +44,15 @@ type Configurer interface {
 	// MakeProber constructs a `Prober` object from the contents of the
 	// bound `Configurer` object. If the `Configurer` cannot be
 	// validated, an error appropriate for end-user consumption is
-	// returned instead.
-	MakeProber() (Prober, error)
+	// returned instead. The map of `prometheus.Collector` objects passed to
+	// MakeProber should be the same as the return value from Instrument()
+	MakeProber(map[string]prometheus.Collector) (Prober, error)
+
+	// Instrument constructs any `prometheus.Collector` objects that a prober of
+	// the configured type will need to report its own metrics. A map is
+	// returned containing the constructed objects, indexed by the name of the
+	// prometheus metric. If no objects were constructed, nil is returned.
+	Instrument() map[string]prometheus.Collector
 }
 
 // Settings is exported as a temporary receiver for the `settings` field
@@ -49,11 +61,16 @@ type Configurer interface {
 // the `MonConf`.
 type Settings map[string]interface{}
 
+// normalizeKind normalizes the input string by stripping spaces and
+// transforming it into lowercase
+func normalizeKind(kind string) string {
+	return strings.Trim(strings.ToLower(kind), " ")
+}
+
 // GetConfigurer returns the probe configurer specified by name from
 // `Registry`.
 func GetConfigurer(kind string) (Configurer, error) {
-	// normalize
-	name := strings.Trim(strings.ToLower(kind), " ")
+	name := normalizeKind(kind)
 	// check if exists
 	if _, ok := Registry[name]; ok {
 		return Registry[name], nil
@@ -65,13 +82,12 @@ func GetConfigurer(kind string) (Configurer, error) {
 // add the caller to the global `Registry` map. If the caller attempts
 // to add a `Configurer` to the registry using the same name as a prior
 // `Configurer` Observer will exit after logging an error.
-func Register(kind string, c Configurer) {
-	// normalize
-	name := strings.Trim(strings.ToLower(kind), " ")
+func Register(c Configurer) {
+	name := normalizeKind(c.Kind())
 	// check for name collision
 	if _, exists := Registry[name]; exists {
 		cmd.Fail(fmt.Sprintf(
-			"problem registering configurer %s: name collision", kind))
+			"problem registering configurer %s: name collision", c.Kind()))
 	}
 	Registry[name] = c
 }

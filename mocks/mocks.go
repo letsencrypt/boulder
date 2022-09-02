@@ -565,6 +565,11 @@ func (sa *StorageAuthority) KeyBlocked(ctx context.Context, req *sapb.KeyBlocked
 	return &sapb.Exists{Exists: false}, nil
 }
 
+// IncidentsForSerial is a mock.
+func (sa *StorageAuthority) IncidentsForSerial(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
+	return &sapb.Incidents{}, nil
+}
+
 // Publisher is a mock
 type PublisherClient struct {
 	// empty

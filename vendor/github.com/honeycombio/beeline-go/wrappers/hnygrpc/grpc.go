@@ -2,6 +2,7 @@ package hnygrpc
 
 import (
 	"context"
+	"net"
 	"reflect"
 	"runtime"
 
@@ -13,8 +14,26 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
+
+// This is a map of GRPC request header names whose values will be retrieved
+// and added to handler spans as fields with the corresponding name.
+//
+// Header names must be lowercase as the metadata.MD API will have normalized
+// incoming headers to lower.
+//
+// The field names should turn dashes (-) into underscores (_) to follow
+// precident in HTTP request headers and the patterns established and in
+// naming patterns in OTel attributes for requests.
+var headersToFields = map[string]string{
+	"content-type":      "request.content_type",
+	":authority":        "request.header.authority",
+	"user-agent":        "request.header.user_agent",
+	"x-forwarded-for":   "request.header.x_forwarded_for",
+	"x-forwarded-proto": "request.header.x_forwarded_proto",
+}
 
 // getMetadataStringValue is a simpler helper method that checks the provided
 // metadata for a value associated with the provided key. If the value exists,
@@ -72,16 +91,20 @@ func addFields(ctx context.Context, info *grpc.UnaryServerInfo, handler grpc.Una
 	span.AddField("handler.name", handlerName)
 	span.AddField("handler.method", info.FullMethod)
 
+	pr, ok := peer.FromContext(ctx)
+	if ok {
+		// if we have an address, put it on the span
+		if pr.Addr != net.Addr(nil) {
+			span.AddField("request.remote_addr", pr.Addr.String())
+		}
+	}
+
 	md, ok := metadata.FromIncomingContext(ctx)
 	if ok {
-		if val, ok := md["content-type"]; ok {
-			span.AddField("request.content_type", val[0])
-		}
-		if val, ok := md[":authority"]; ok {
-			span.AddField("request.header.authority", val[0])
-		}
-		if val, ok := md["user-agent"]; ok {
-			span.AddField("request.header.user_agent", val[0])
+		for headerName, fieldName := range headersToFields {
+			if val, ok := md[headerName]; ok {
+				span.AddField(fieldName, val[0])
+			}
 		}
 	}
 }
@@ -109,7 +132,9 @@ func UnaryServerInterceptorWithConfig(cfg config.GRPCIncomingConfig) grpc.UnaryS
 		if err != nil {
 			span.AddTraceField("handler_error", err.Error())
 		}
-		span.AddField("response.grpc_status_code", status.Code(err))
+		code := status.Code(err)
+		span.AddField("response.grpc_status_code", code)
+		span.AddField("response.grpc_status_message", code.String())
 		return resp, err
 	}
 }

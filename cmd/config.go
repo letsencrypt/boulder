@@ -187,8 +187,16 @@ func (t *TLSConfig) Load() (*tls.Config, error) {
 }
 
 // SyslogConfig defines the config for syslogging.
+// 3 means "error", 4 means "warning", 6 is "info" and 7 is "debug".
+// Configuring a given level causes all messages at that level and below to
+// be logged.
 type SyslogConfig struct {
+	// When absent or zero, this causes no logs to be emitted on stdout/stderr.
+	// Errors and warnings will be emitted on stderr if the configured level
+	// allows.
 	StdoutLevel int
+	// When absent or zero, this defaults to logging all messages of level 6
+	// or below. To disable syslog logging entirely, set this to -1.
 	SyslogLevel int
 }
 
