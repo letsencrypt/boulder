@@ -6,8 +6,7 @@ CREATE USER IF NOT EXISTS 'sa'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 
 -- Storage Authority
-GRANT SELECT,INSERT,UPDATE ON incident_foo TO 'sa'@'localhost';
-GRANT SELECT,INSERT,UPDATE ON incident_bar TO 'sa'@'localhost';
+GRANT SELECT ON * TO 'sa'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';
