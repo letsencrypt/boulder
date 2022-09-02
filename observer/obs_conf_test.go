@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/observer/probers"
 	_ "github.com/letsencrypt/boulder/observer/probers/mock"
 	"github.com/letsencrypt/boulder/test"
@@ -14,7 +15,7 @@ import (
 const (
 	debugAddr = ":8040"
 	errDBZMsg = "over 9000"
-	mockConf  = "MockConf"
+	mockConf  = "Mock"
 )
 
 func TestObsConf_makeMonitors(t *testing.T) {
@@ -58,7 +59,7 @@ func TestObsConf_makeMonitors(t *testing.T) {
 				DebugAddr: tt.fields.DebugAddr,
 				MonConfs:  tt.fields.MonConfs,
 			}
-			_, errs, err := c.makeMonitors()
+			_, errs, err := c.makeMonitors(metrics.NoopRegisterer)
 			if len(errs) != len(tt.errs) {
 				t.Errorf("ObsConf.validateMonConfs() errs = %d, want %d", len(errs), len(tt.errs))
 				t.Logf("%v", errs)
