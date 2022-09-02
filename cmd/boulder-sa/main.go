@@ -83,7 +83,7 @@ func main() {
 		dbReadOnlyMap = dbMap
 	} else {
 		dbReadOnlyMap, err = sa.InitWrappedDb(c.SA.ReadOnlyDB, scope, logger)
-		cmd.FailOnError(err, "While initializing dbMap")
+		cmd.FailOnError(err, "While initializing dbReadOnlyMap")
 	}
 
 	var dbIncidentsMap *db.WrappedMap
@@ -91,7 +91,7 @@ func main() {
 		dbIncidentsMap = dbMap
 	} else {
 		dbIncidentsMap, err = sa.InitWrappedDb(c.SA.IncidentsDB, scope, logger)
-		cmd.FailOnError(err, "While initializing dbMap")
+		cmd.FailOnError(err, "While initializing dbIncidentsMap")
 	}
 
 	clk := cmd.Clock()
