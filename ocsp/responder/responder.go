@@ -40,11 +40,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"time"
-
-	"math/rand"
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"

@@ -2,6 +2,7 @@ package responder
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-gorp/gorp/v3"
 	"github.com/letsencrypt/boulder/core"
@@ -62,10 +63,10 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) (*Response
 
 	if certStatus.IsExpired {
 		src.counter.WithLabelValues("expired").Inc()
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("certificate is expired: %w", ErrNotFound)
 	} else if certStatus.OCSPLastUpdated.IsZero() {
 		src.counter.WithLabelValues("never_updated").Inc()
-		return nil, ErrNotFound
+		return nil, fmt.Errorf("certificate has a zero OCSPLastUpdated: %w", ErrNotFound)
 	}
 
 	resp, err := ocsp.ParseResponse(certStatus.OCSPResponse, nil)
