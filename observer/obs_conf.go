@@ -80,6 +80,7 @@ func (c *ObsConf) makeMonitors(metrics prometheus.Registerer) ([]*monitor, []err
 			// we haven't seen this prober kind before, so we need to request
 			// any custom metrics it may have and register them with the
 			// prometheus registry
+			proberSpecificMetrics[kind] = make(map[string]prometheus.Collector)
 			for name, collector := range proberConf.Instrument() {
 				// register the collector with the prometheus registry
 				metrics.MustRegister(collector)
