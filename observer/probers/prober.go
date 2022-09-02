@@ -44,7 +44,8 @@ type Configurer interface {
 	// MakeProber constructs a `Prober` object from the contents of the
 	// bound `Configurer` object. If the `Configurer` cannot be
 	// validated, an error appropriate for end-user consumption is
-	// returned instead.
+	// returned instead. The map of `prometheus.Collector` objects passed to
+	// MakeProber should be the same as the return value from Instrument()
 	MakeProber(map[string]prometheus.Collector) (Prober, error)
 
 	// Instrument constructs any `prometheus.Collector` objects that a prober of
