@@ -2,7 +2,6 @@ package responder
 
 import (
 	"context"
-	"encoding/hex"
 
 	"github.com/go-gorp/gorp/v3"
 	"github.com/letsencrypt/boulder/core"
@@ -62,11 +61,9 @@ func (src *dbSource) Response(ctx context.Context, req *ocsp.Request) (*Response
 	}
 
 	if certStatus.IsExpired {
-		src.log.Infof("OCSP Response not sent (expired) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		src.counter.WithLabelValues("expired").Inc()
 		return nil, ErrNotFound
 	} else if certStatus.OCSPLastUpdated.IsZero() {
-		src.log.Warningf("OCSP Response not sent (ocspLastUpdated is zero) for CA=%s, Serial=%s", hex.EncodeToString(req.IssuerKeyHash), serialString)
 		src.counter.WithLabelValues("never_updated").Inc()
 		return nil, ErrNotFound
 	}

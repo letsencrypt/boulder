@@ -40,7 +40,7 @@ func TestMux(t *testing.T) {
 	src, err := responder.NewMemorySource(responses, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create inMemorySource")
 
-	h := mux("/foobar/", src, time.Second, metrics.NoopRegisterer, blog.NewMock())
+	h := mux("/foobar/", src, time.Second, metrics.NoopRegisterer, blog.NewMock(), 1000)
 
 	type muxTest struct {
 		method   string
