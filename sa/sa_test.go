@@ -2761,11 +2761,11 @@ func TestSerialsForIncident(t *testing.T) {
 	// Assert that the error is a MySQL error so we can inspect the error code.
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) {
-		// We expect the error code to be 1142 (ER_TABLEACCESS_DENIED_ERROR):
+		// We expect the error code to be 1146 (ER_NO_SUCH_TABLE):
 		// https://mariadb.com/kb/en/mariadb-error-codes/
-		test.AssertEquals(t, mysqlErr.Number, uint16(1142))
+		test.AssertEquals(t, mysqlErr.Number, uint16(1146))
 	} else {
-		t.Fatalf("Expected MySQL Error 1142 (ER_TABLEACCESS_DENIED_ERROR) from Recv(), got %q", err)
+		t.Fatalf("Expected MySQL Error 1142 (ER_NO_SUCH_TABLE) from Recv(), got %q", err)
 	}
 
 	// Request serials from table 'incident_foo', which we expect to exist but
