@@ -61,15 +61,24 @@ func StartSpanOrTraceFromHTTPWithTraceParserHook(r *http.Request, parserHook con
 		// there is no trace yet. We should make one! and use the root span.
 		var tr *trace.Trace
 		if parserHook == nil {
-			beelineHeader := r.Header.Get(propagation.TracePropagationHTTPHeader)
-			prop, _ := propagation.UnmarshalHoneycombTraceContext(beelineHeader)
+			beelineHeaderValue := r.Header.Get(propagation.TracePropagationHTTPHeader)
+			w3cHeaderValue := r.Header.Get(propagation.TraceparentHeader)
+			var prop *propagation.PropagationContext
+			if beelineHeaderValue != "" {
+				prop, _ = propagation.UnmarshalHoneycombTraceContext(beelineHeaderValue)
+			} else if w3cHeaderValue != "" {
+				headers := map[string]string{
+					propagation.TraceparentHeader: w3cHeaderValue,
+				}
+				_, prop, _ = propagation.UnmarshalW3CTraceContext(ctx, headers)
+			}
 			ctx, tr = trace.NewTrace(ctx, prop)
 		} else {
 			// Call the provided TraceParserHook to get the propagation context
 			// from the incoming request. This information will then be used when
 			// create the new trace.
 			prop := parserHook(r)
-			ctx, tr = trace.NewTraceFromPropagationContext(ctx, prop)
+			ctx, tr = trace.NewTrace(ctx, prop)
 		}
 		span = tr.GetRootSpan()
 	} else {
@@ -121,46 +130,117 @@ func GetRequestProps(req *http.Request) map[string]interface{} {
 	return reqProps
 }
 
-// getCallersNames grabs the current call stack, skips up a few levels, then
-// grabs as many function names as depth. Suggested use is something like 1, 2
-// meaning "get my parent and its parent". skip=0 means the function calling
-// this one.
-func getCallersNames(skip, depth int) []string {
-	callers := make([]string, 0, depth)
+var dbNames = map[string]interface{}{
+	"BindNamed":           nil,
+	"Beginx":              nil,
+	"BeginTxx":            nil,
+	"Exec":                nil,
+	"ExecContext":         nil,
+	"Get":                 nil,
+	"GetContext":          nil,
+	"MapperFunc":          nil,
+	"MustBegin":           nil,
+	"MustBeginTx":         nil,
+	"MustExec":            nil,
+	"MustExecContext":     nil,
+	"NamedExec":           nil,
+	"NamedExecContext":    nil,
+	"NamedQuery":          nil,
+	"NamedQueryContext":   nil,
+	"Ping":                nil,
+	"PingContext":         nil,
+	"PrepareNamed":        nil,
+	"PrepareNamedContext": nil,
+	"Preparex":            nil,
+	"PreparexContext":     nil,
+	"Query":               nil,
+	"QueryContext":        nil,
+	"QueryRow":            nil,
+	"QueryRowContext":     nil,
+	"Queryx":              nil,
+	"QueryxContext":       nil,
+	"QueryRowx":           nil,
+	"QueryRowxContext":    nil,
+	"Rebind":              nil,
+	"Select":              nil,
+	"SelectContext":       nil,
+	"Close":               nil,
+	"Driver":              nil,
+	"SetConnMaxLifetime":  nil,
+	"SetMaxIdleConns":     nil,
+	"SetMaxOpenConns":     nil,
+	// and now some function names from this instrumentation
+	"getNonDBCallerName": nil,
+	"sharedDBEvent":      nil,
+	"BuildDBEvent":       nil,
+	"BuildDBSpan":        nil,
+	// and now some unnamed functions
+	"func1": nil,
+}
+
+var localNames = map[string]interface{}{
+	// and now some function names from this instrumentation
+	"getNonDBCallerName": nil,
+	"sharedDBEvent":      nil,
+	"BuildDBEvent":       nil,
+	"BuildDBSpan":        nil,
+	// and now some unnamed functions
+	"func1": nil,
+}
+
+// getCallersNames grabs the current call stack, skips up out of runtime, then
+// grabs as many function names as depth. It then walks up the tree until it
+// finds a name that is not one of the official sqlx names or a name from this
+// instrumentation. It uses that for the name of the span to indicate who is
+// calling into the sqlx instrumentation.
+func getCallersNames() (dbcall string, caller string) {
+	depth := 10 // how big a stack do we want to check
+	skip := 1   // how many steps do we jump up from here? skip runtime.
+
 	callerPcs := make([]uintptr, depth)
 	// add 2 to skip to account for runtime.Callers and getCallersNames
 	numCallers := runtime.Callers(skip+2, callerPcs)
 	// If there are no callers, the entire stacktrace is nil
 	if numCallers == 0 {
-		return callers
+		return
 	}
 	callersFrames := runtime.CallersFrames(callerPcs)
 	for i := 0; i < depth; i++ {
 		fr, more := callersFrames.Next()
 		// store the function's name
 		nameParts := strings.Split(fr.Function, ".")
-		callers = append(callers, nameParts[len(nameParts)-1])
+		caller = nameParts[len(nameParts)-1]
+		if _, ok := dbNames[caller]; ok {
+			// we've found the DB call, record the first one to ensure it's the lowest
+			// skip the names in this wrapper though
+			if _, ok := localNames[caller]; !ok {
+				if dbcall == "" {
+					dbcall = caller
+				}
+			}
+		} else {
+			// we've found a function name that's not a DB call, return it
+			return
+		}
 		if !more {
 			break
 		}
 	}
-	return callers
+	// well we didn't find one but let's return what we've got
+	return
 }
 
 func sharedDBEvent(bld *libhoney.Builder, query string, args ...interface{}) *libhoney.Event {
 	ev := bld.NewEvent()
 
 	// skip 2 - this one and the buildDB*, so we get the sqlx function and its parent
-	callerNames := getCallersNames(2, 2)
-	switch len(callerNames) {
-	case 2:
-		ev.AddField("db.call", callerNames[0])
-		ev.AddField("name", callerNames[0])
-		ev.AddField("db.caller", callerNames[1])
-	case 1:
-		ev.AddField("db.call", callerNames[0])
-		ev.AddField("name", callerNames[0])
-	default:
+	dbcall, dbcaller := getCallersNames()
+	ev.AddField("db.call", dbcall)
+	ev.AddField("db.caller", dbcaller)
+	ev.AddField("name", dbcall)
+
+	// in case we got nothin, use a default for name. the db.* will be empty it's fine
+	if dbcall == "" {
 		ev.AddField("name", "db")
 	}
 
