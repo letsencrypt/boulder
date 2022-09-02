@@ -61,17 +61,16 @@ type Configurer interface {
 // the `MonConf`.
 type Settings map[string]interface{}
 
-// NormalizedKind normalizes the input string by stripping spaces and
+// normalizeKind normalizes the input string by stripping spaces and
 // transforming it into lowercase
-func NormalizedKind(kind string) string {
+func normalizeKind(kind string) string {
 	return strings.Trim(strings.ToLower(kind), " ")
 }
 
 // GetConfigurer returns the probe configurer specified by name from
 // `Registry`.
 func GetConfigurer(kind string) (Configurer, error) {
-	// normalize
-	name := NormalizedKind(kind)
+	name := normalizeKind(kind)
 	// check if exists
 	if _, ok := Registry[name]; ok {
 		return Registry[name], nil
@@ -84,8 +83,7 @@ func GetConfigurer(kind string) (Configurer, error) {
 // to add a `Configurer` to the registry using the same name as a prior
 // `Configurer` Observer will exit after logging an error.
 func Register(c Configurer) {
-	// normalize
-	name := NormalizedKind(c.Kind())
+	name := normalizeKind(c.Kind())
 	// check for name collision
 	if _, exists := Registry[name]; exists {
 		cmd.Fail(fmt.Sprintf(
