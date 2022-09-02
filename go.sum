@@ -80,8 +80,9 @@ github.com/aws/aws-sdk-go-v2/service/sso v1.11.17/go.mod h1:mS5xqLZc/6kc06IpXn5v
 github.com/aws/aws-sdk-go-v2/service/sts v1.16.13 h1:dl8T0PJlN92rvEGOEUiD0+YPYdPEaCZK0TqHukvSfII=
 github.com/aws/aws-sdk-go-v2/service/sts v1.16.13/go.mod h1:Ru3QVMLygVs/07UQ3YDur1AQZZp2tUNje8wfloFttC0=
 github.com/aws/smithy-go v1.12.0/go.mod h1:Tg+OJXh4MB2R/uN61Ko2f6hTZwB/ZYGOtib8J3gBHzA=
-github.com/aws/smithy-go v1.12.1 h1:yQRC55aXN/y1W10HgwHle01DRuV9Dpf31iGkotjt3Ag=
 github.com/aws/smithy-go v1.12.1/go.mod h1:Tg+OJXh4MB2R/uN61Ko2f6hTZwB/ZYGOtib8J3gBHzA=
+github.com/aws/smithy-go v1.13.1 h1:q09BdpUiaqpothcv393ACfWJJHzlzjB5HaNL1XHKmoQ=
+github.com/aws/smithy-go v1.13.1/go.mod h1:Tg+OJXh4MB2R/uN61Ko2f6hTZwB/ZYGOtib8J3gBHzA=
 github.com/aymerick/douceur v0.2.0/go.mod h1:wlT5vV2O3h55X9m7iVYN0TBM0NH/MmbLnd30/FjWUq4=
 github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af h1:XbgLdZvVbWsK9HAhAYOp6rksTAdOVYDBQtGSVOLlJrw=
 github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af/go.mod h1:84CWnaDz4g1tEVnFLnuBigmGK15oPohy0RfvSN8d4eg=
