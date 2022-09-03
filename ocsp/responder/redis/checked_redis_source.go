@@ -28,7 +28,7 @@ type dbSelector interface {
 // This allows checkedRedisSource to trigger a live signing if the DB disagrees with Redis.
 type rocspSourceInterface interface {
 	Response(ctx context.Context, req *ocsp.Request) (*responder.Response, error)
-	signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error)
+	signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error)
 }
 
 // checkedRedisSource implements the Source interface. It relies on two
@@ -123,20 +123,20 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	}
 
 	// Otherwise, the DB is authoritative. Trigger a fresh signing.
-	freshResult, err := src.base.signAndSave(ctx, req, "stale_redis")
+	freshResult, err := src.base.signAndSave(ctx, req, causeMismatch)
 	if err != nil {
-		src.counter.WithLabelValues("sign_and_save_error").Inc()
+		src.counter.WithLabelValues("revocation_re_sign_error").Inc()
 		return nil, err
 	}
 
 	if agree(dbStatus, freshResult.Response) {
-		src.counter.WithLabelValues("sign_and_save_success").Inc()
+		src.counter.WithLabelValues("revocation_re_sign_success").Inc()
 		return freshResult, nil
 	}
 
 	// This could happen for instance with replication lag, or if the
 	// RA was talking to a different DB.
-	src.counter.WithLabelValues("sign_and_save_mismatch").Inc()
+	src.counter.WithLabelValues("revocation_re_sign_mismatch").Inc()
 	return nil, errors.New("freshly signed status did not match DB")
 
 }

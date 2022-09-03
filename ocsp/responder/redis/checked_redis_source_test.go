@@ -34,7 +34,7 @@ func (es echoSource) Response(ctx context.Context, req *ocsp.Request) (*responde
 	return &responder.Response{Response: es.resp, Raw: es.resp.Raw}, nil
 }
 
-func (es echoSource) signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error) {
+func (es echoSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	panic("should not happen")
 }
 
@@ -46,7 +46,7 @@ type recordingEchoSource struct {
 	ch         chan string
 }
 
-func (res recordingEchoSource) signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error) {
+func (res recordingEchoSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	res.ch <- req.SerialNumber.String()
 	return res.secondResp, nil
 }
@@ -58,7 +58,7 @@ func (es errorSource) Response(ctx context.Context, req *ocsp.Request) (*respond
 	return nil, errors.New("sad trombone")
 }
 
-func (es errorSource) signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error) {
+func (es errorSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	panic("should not happen")
 }
 
