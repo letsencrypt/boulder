@@ -105,4 +105,4 @@ for db in $DBS; do
 done
 
 echo
-echo "Database setup completed"
+echo "database setup complete"
