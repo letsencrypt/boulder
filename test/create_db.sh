@@ -4,7 +4,7 @@ cd $(dirname $0)/..
 
 
 # If you modify DBS or ENVS, you must also modify the corresponding keys in
-# sa/_db/dbconfig.yml, see: https://github.com/rubenv/sql-migrate#readme
+# sa/db/dbconfig.yml, see: https://github.com/rubenv/sql-migrate#readme
 
 DBS="boulder_sa
 incidents_sa"
@@ -70,9 +70,9 @@ for db in $DBS; do
 
     if [[ "${BOULDER_CONFIG_DIR}" == "test/config-next" ]]
     then
-      dbpath="./sa/_db-next"
+      dbpath="./sa/db-next"
     else
-      dbpath="./sa/_db"
+      dbpath="./sa/db"
     fi
 
     # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
@@ -88,7 +88,7 @@ for db in $DBS; do
       echo "${r}"
     fi
 
-    USERS_SQL="../_db-users/${db}.sql"
+    USERS_SQL="../db-users/${db}.sql"
     if [[ ${MYSQL_CONTAINER} ]]
     then
       sed -e "s/'localhost'/'%'/g" < ${USERS_SQL} | \

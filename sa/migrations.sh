@@ -13,8 +13,8 @@ res="${esc}0m"
 #
 # Defaults
 #
-DB_NEXT_PATH="_db-next"
-DB_PATH="_db"
+DB_NEXT_PATH="db-next"
+DB_PATH="db"
 OUTCOME="ERROR"
 PROMOTE=()
 RUN=()
@@ -128,10 +128,10 @@ Usage:
 
   ./$(basename "${0}") [OPTION]...
   -b  --db                  Name of the database, this is required (e.g. boulder_sa or incidents_sa)
-  -n, --list-next           Lists migration files present in sa/_db-next/<db>
-  -c, --list-current        Lists migration files promoted from sa/_db-next/<db> to sa/_db/<db> 
-  -p, --promote             Select and promote a migration from sa/_db-next/<db> to sa/_db/<db>
-  -d, --demote              Select and demote a migration from sa/_db/<db> to sa/_db-next/<db>
+  -n, --list-next           Lists migration files present in sa/db-next/<db>
+  -c, --list-current        Lists migration files promoted from sa/db-next/<db> to sa/db/<db> 
+  -p, --promote             Select and promote a migration from sa/db-next/<db> to sa/db/<db>
+  -d, --demote              Select and demote a migration from sa/db/<db> to sa/db-next/<db>
   -h, --help                Shows this help message
 
 EOM
