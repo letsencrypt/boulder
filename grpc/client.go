@@ -3,6 +3,7 @@ package grpc
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 
 	// Import for its init function, which causes clients to rely on the
 	// Health Service for load-balancing.
+	"google.golang.org/grpc/balancer/roundrobin"
 	_ "google.golang.org/grpc/health"
 )
 
@@ -59,7 +61,7 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
 	return grpc.Dial(
 		target,
-		grpc.WithBalancerName("round_robin"),
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithChainUnaryInterceptor(allInterceptors...),
 	)

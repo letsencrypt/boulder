@@ -40,6 +40,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"time"
@@ -78,12 +79,13 @@ type Responder struct {
 	responseTypes *prometheus.CounterVec
 	responseAges  prometheus.Histogram
 	requestSizes  prometheus.Histogram
+	sampleRate    int
 	clk           clock.Clock
 	log           blog.Logger
 }
 
 // NewResponder instantiates a Responder with the give Source.
-func NewResponder(source Source, timeout time.Duration, stats prometheus.Registerer, logger blog.Logger) *Responder {
+func NewResponder(source Source, timeout time.Duration, stats prometheus.Registerer, logger blog.Logger, sampleRate int) *Responder {
 	requestSizes := prometheus.NewHistogram(
 		prometheus.HistogramOpts{
 			Name:    "ocsp_request_sizes",
@@ -122,6 +124,7 @@ func NewResponder(source Source, timeout time.Duration, stats prometheus.Registe
 		requestSizes:  requestSizes,
 		clk:           clock.New(),
 		log:           logger,
+		sampleRate:    sampleRate,
 	}
 }
 
@@ -148,6 +151,12 @@ var hashToString = map[crypto.Hash]string{
 	crypto.SHA256: "SHA256",
 	crypto.SHA384: "SHA384",
 	crypto.SHA512: "SHA512",
+}
+
+func (rs Responder) sampledError(format string, a ...interface{}) {
+	if rs.sampleRate > 0 && rand.Intn(rs.sampleRate) == 0 {
+		rs.log.Errf(format, a...)
+	}
 }
 
 // A Responder can process both GET and POST requests. The mapping from an OCSP
@@ -290,13 +299,13 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	ocspResponse, err := rs.Source.Response(ctx, ocspRequest)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			rs.log.Infof("No response found for request: serial %x, request body %s",
+			rs.sampledError("No response found for request: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
 			response.Write(ocsp.UnauthorizedErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return
 		} else if errors.Is(err, errOCSPResponseExpired) {
-			rs.log.Infof("Requested ocsp response is expired: serial %x, request body %s",
+			rs.sampledError("Requested ocsp response is expired: serial %x, request body %s",
 				ocspRequest.SerialNumber, b64Body)
 			// HTTP StatusCode - unassigned
 			response.WriteHeader(533)
@@ -304,7 +313,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return
 		}
-		rs.log.Infof("Error retrieving response for request: serial %x, request body %s, error: %s",
+		rs.sampledError("Error retrieving response for request: serial %x, request body %s, error: %s",
 			ocspRequest.SerialNumber, b64Body, err)
 		response.WriteHeader(http.StatusInternalServerError)
 		response.Write(ocsp.InternalErrorErrorResponse)

@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -15,7 +16,9 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -103,8 +106,8 @@ func TestFailFastFalse(t *testing.T) {
 		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
-		grpc.WithInsecure(),
-		grpc.WithBalancerName("round_robin"),
+		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
@@ -170,7 +173,7 @@ func TestTimeouts(t *testing.T) {
 		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
@@ -232,7 +235,7 @@ func TestRequestTimeTagging(t *testing.T) {
 		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
@@ -318,7 +321,7 @@ func TestInFlightRPCStat(t *testing.T) {
 		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(ci.intercept))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)

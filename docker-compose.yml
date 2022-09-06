@@ -55,7 +55,7 @@ services:
         aliases:
           - boulder-mysql
     environment:
-        MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     # Send slow queries to a table so we can check for them in the
     # integration tests. For now we ignore queries not using indexes,
     # because that seems to trigger based on the optimizer's choice to not
@@ -141,9 +141,9 @@ services:
   netaccess:
     image: *boulder_image
     environment:
-        GO111MODULE: "on"
-        GOFLAGS: -mod=vendor
-        BOULDER_CONFIG_DIR: test/config
+      GO111MODULE: "on"
+      GOFLAGS: -mod=vendor
+      BOULDER_CONFIG_DIR: test/config
     networks:
       - bluenet
     volumes:

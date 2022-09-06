@@ -157,7 +157,7 @@ func TestDNSConf_MakeProber(t *testing.T) {
 				QName:   tt.fields.QName,
 				QType:   tt.fields.QType,
 			}
-			_, err := c.MakeProber()
+			_, err := c.MakeProber(nil)
 			if tt.wantErr {
 				test.AssertError(t, err, "DNSConf.MakeProber() should have errored")
 			} else {
