@@ -100,7 +100,7 @@ Boulder test suite CLI, intended to be run inside of a Docker container:
 
   docker-compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
 
-With no options passed, runs standard battery of tests (lint, unit, and integation)
+With no options passed, runs standard battery of tests (lint, unit, and integration)
 
     -l, --lints                           Adds lint to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
