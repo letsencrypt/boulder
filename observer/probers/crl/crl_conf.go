@@ -1,7 +1,6 @@
 package probers
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 
@@ -49,55 +48,6 @@ func (c CRLConf) validateURL() error {
 	return nil
 }
 
-func (c CRLConf) validateCollectors(colls map[string]prometheus.Collector) (*prometheus.GaugeVec, *prometheus.GaugeVec, *prometheus.GaugeVec, error) {
-	if colls == nil {
-		message := "crl prober defines metrics but received nil collector map"
-		return nil, nil, nil, errors.New(message)
-	}
-	var nu, tu, rcc *prometheus.GaugeVec
-	for name, coll := range colls {
-		switch name {
-		case nextUpdateName:
-			_, ok := coll.(*prometheus.GaugeVec)
-			if !ok {
-				message := fmt.Sprintf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, nu)
-				return nil, nil, nil, errors.New(message)
-			}
-			nu = coll.(*prometheus.GaugeVec)
-		case thisUpdateName:
-			_, ok := coll.(*prometheus.GaugeVec)
-			if !ok {
-				message := fmt.Sprintf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, tu)
-				return nil, nil, nil, errors.New(message)
-			}
-			tu = coll.(*prometheus.GaugeVec)
-		case certCountName:
-			_, ok := coll.(*prometheus.GaugeVec)
-			if !ok {
-				message := fmt.Sprintf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, rcc)
-				return nil, nil, nil, errors.New(message)
-			}
-			rcc = coll.(*prometheus.GaugeVec)
-		default:
-			message := fmt.Sprintf("crl prober received unexpected collector '%s'", name)
-			return nil, nil, nil, errors.New(message)
-		}
-	}
-	if nu == nil {
-		message := fmt.Sprintf("crl prober did not receive collector '%s'", nextUpdateName)
-		return nil, nil, nil, errors.New(message)
-	}
-	if tu == nil {
-		message := fmt.Sprintf("crl prober did not receive collector '%s'", thisUpdateName)
-		return nil, nil, nil, errors.New(message)
-	}
-	if rcc == nil {
-		message := fmt.Sprintf("crl prober did not receive collector '%s'", certCountName)
-		return nil, nil, nil, errors.New(message)
-	}
-	return nu, tu, rcc, nil
-}
-
 // MakeProber constructs a `CRLProbe` object from the contents of the
 // bound `CRLConf` object. If the `CRLConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
@@ -107,12 +57,44 @@ func (c CRLConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	if err != nil {
 		return nil, err
 	}
+	probe := CRLProbe{c.URL, nil, nil, nil}
+
 	// validate the prometheus collectors that were passed in
-	nu, tu, rcc, err := c.validateCollectors(collectors)
-	if err != nil {
-		return nil, err
+	for name, coll := range collectors {
+		switch name {
+		case nextUpdateName:
+			_, ok := coll.(*prometheus.GaugeVec)
+			if !ok {
+				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
+			}
+			probe.cNextUpdate = coll.(*prometheus.GaugeVec)
+		case thisUpdateName:
+			_, ok := coll.(*prometheus.GaugeVec)
+			if !ok {
+				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
+			}
+			probe.cThisUpdate = coll.(*prometheus.GaugeVec)
+		case certCountName:
+			_, ok := coll.(*prometheus.GaugeVec)
+			if !ok {
+				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
+			}
+			probe.cCertCount = coll.(*prometheus.GaugeVec)
+		default:
+			return nil, fmt.Errorf("crl prober received unexpected collector '%s'", name)
+		}
 	}
-	return CRLProbe{c.URL, nu, tu, rcc}, nil
+	if probe.cNextUpdate == nil {
+		return nil, fmt.Errorf("crl prober did not receive collector '%s'", nextUpdateName)
+	}
+	if probe.cThisUpdate == nil {
+		return nil, fmt.Errorf("crl prober did not receive collector '%s'", thisUpdateName)
+	}
+	if probe.cCertCount == nil {
+		return nil, fmt.Errorf("crl prober did not receive collector '%s'", certCountName)
+	}
+
+	return probe, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `CRLProbe` will
