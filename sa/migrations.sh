@@ -91,27 +91,29 @@ function exit_msg() {
 #
 function get_promotable_migrations() {
   local migrations=()
-  for file in "${DB_NEXT_PATH}/${1}"/*.sql; do
+  local migpath="${DB_NEXT_PATH}/${1}"
+  for file in "${migpath}"/*.sql; do
     [[ -f "${file}" && ! -L "${file}" ]] || continue
     migrations+=("${file}")
   done
   if [[ "${migrations[@]}" ]]; then
     echo "${migrations[@]}"
   else
-    exit_msg "There are no promotable migrations at path: "\"${DB_NEXT_PATH}/${1}\"""
+    exit_msg "There are no promotable migrations at path: "\"${migpath}\"""
   fi
 }
 
 function get_demotable_migrations() {
   local migrations=()
-  for file in "${DB_NEXT_PATH}/${1}"/*.sql; do
+  local migpath="${DB_NEXT_PATH}/${1}"
+  for file in "${migpath}"/*.sql; do
     [[ -L "${file}" ]] || continue
     migrations+=("${file}")
   done
   if [[ "${migrations[@]}" ]]; then
     echo "${migrations[@]}"
   else
-    exit_msg "There are no demotable migrations at path: "\"${DB_NEXT_PATH}/${1}\"""
+    exit_msg "There are no demotable migrations at path: "\"${migpath}\"""
   fi
 }
 
