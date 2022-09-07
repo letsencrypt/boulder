@@ -124,11 +124,11 @@ func NewUpdater(
 	}, nil
 }
 
-// Run causes the crl-updater to run immediately, and then re-run continuously
-// on the frequency specified by crlUpdater.updatePeriod. The provided context
-// can be used to gracefully stop (cancel) the process.
+// Run causes the crlUpdater to enter its processing loop. It waits until the
+// next scheduled run time based on the current time and the updateOffset, then
+// begins running once every updatePeriod.
 func (cu *crlUpdater) Run(ctx context.Context) {
-	// We don't want the times at which crl-updater runs to be dependent on when
+	// We don't want the times at which crlUpdater runs to be dependent on when
 	// the process starts. So wait until the appropriate time before kicking off
 	// the first run and the main ticker loop.
 	currOffset := cu.clk.Now().UnixNano() % cu.updatePeriod.Nanoseconds()
@@ -138,6 +138,7 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 	} else {
 		waitNanos = cu.updatePeriod.Nanoseconds() - currOffset + cu.updateOffset.Nanoseconds()
 	}
+	cu.log.Infof("Running, next tick in %ds", waitNanos*int64(time.Second)/int64(time.Nanosecond))
 	select {
 	case <-ctx.Done():
 		return
