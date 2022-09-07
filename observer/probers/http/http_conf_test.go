@@ -35,7 +35,7 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 				URL:    tt.fields.URL,
 				RCodes: tt.fields.RCodes,
 			}
-			if _, err := c.MakeProber(); (err != nil) != tt.wantErr {
+			if _, err := c.MakeProber(nil); (err != nil) != tt.wantErr {
 				t.Errorf("HTTPConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -88,7 +88,7 @@ useragent: ""
 	c := HTTPConf{}
 	configurer, err := c.UnmarshalSettings([]byte(proberYAML))
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	prober, err := configurer.MakeProber()
+	prober, err := configurer.MakeProber(nil)
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-letsencrypt/boulder-observer-http-client")
 
@@ -101,7 +101,7 @@ useragent: fancy-custom-http-client
 	c = HTTPConf{}
 	configurer, err = c.UnmarshalSettings([]byte(proberYAML))
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	prober, err = configurer.MakeProber()
+	prober, err = configurer.MakeProber(nil)
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client")
 

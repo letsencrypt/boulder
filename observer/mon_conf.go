@@ -2,11 +2,11 @@ package observer
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,8 +30,7 @@ func (c *MonConf) validatePeriod() error {
 // `UnmarshalSettings` method of the `Configurer` type specified by the
 // `Kind` field.
 func (c MonConf) unmarshalConfigurer() (probers.Configurer, error) {
-	kind := strings.Trim(strings.ToLower(c.Kind), " ")
-	configurer, err := probers.GetConfigurer(kind)
+	configurer, err := probers.GetConfigurer(c.Kind)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +45,7 @@ func (c MonConf) unmarshalConfigurer() (probers.Configurer, error) {
 // makeMonitor constructs a `monitor` object from the contents of the
 // bound `MonConf`. If the `MonConf` cannot be validated, an error
 // appropriate for end-user consumption is returned instead.
-func (c MonConf) makeMonitor() (*monitor, error) {
+func (c MonConf) makeMonitor(collectors map[string]prometheus.Collector) (*monitor, error) {
 	err := c.validatePeriod()
 	if err != nil {
 		return nil, err
@@ -55,7 +54,7 @@ func (c MonConf) makeMonitor() (*monitor, error) {
 	if err != nil {
 		return nil, err
 	}
-	prober, err := probeConf.MakeProber()
+	prober, err := probeConf.MakeProber(collectors)
 	if err != nil {
 		return nil, err
 	}

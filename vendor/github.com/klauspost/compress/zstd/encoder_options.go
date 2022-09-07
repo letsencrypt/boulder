@@ -24,33 +24,45 @@ type encoderOptions struct {
 	allLitEntropy   bool
 	customWindow    bool
 	customALEntropy bool
+	customBlockSize bool
+	lowMem          bool
 	dict            *dict
 }
 
 func (o *encoderOptions) setDefault() {
 	*o = encoderOptions{
-		// use less ram: true for now, but may change.
 		concurrent:    runtime.GOMAXPROCS(0),
 		crc:           true,
 		single:        nil,
-		blockSize:     1 << 16,
+		blockSize:     maxCompressedBlockSize,
 		windowSize:    8 << 20,
 		level:         SpeedDefault,
 		allLitEntropy: true,
+		lowMem:        false,
 	}
 }
 
 // encoder returns an encoder with the selected options.
 func (o encoderOptions) encoder() encoder {
 	switch o.level {
-	case SpeedDefault:
-		return &doubleFastEncoder{fastEncoder: fastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize)}}}
-	case SpeedBetterCompression:
-		return &betterFastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize)}}
-	case SpeedBestCompression:
-		return &bestFastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize)}}
 	case SpeedFastest:
-		return &fastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize)}}
+		if o.dict != nil {
+			return &fastEncoderDict{fastEncoder: fastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize), lowMem: o.lowMem}}}
+		}
+		return &fastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize), lowMem: o.lowMem}}
+
+	case SpeedDefault:
+		if o.dict != nil {
+			return &doubleFastEncoderDict{fastEncoderDict: fastEncoderDict{fastEncoder: fastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize), lowMem: o.lowMem}}}}
+		}
+		return &doubleFastEncoder{fastEncoder: fastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize), lowMem: o.lowMem}}}
+	case SpeedBetterCompression:
+		if o.dict != nil {
+			return &betterFastEncoderDict{betterFastEncoder: betterFastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize), lowMem: o.lowMem}}}
+		}
+		return &betterFastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize), lowMem: o.lowMem}}
+	case SpeedBestCompression:
+		return &bestFastEncoder{fastBase: fastBase{maxMatchOff: int32(o.windowSize), lowMem: o.lowMem}}
 	}
 	panic("unknown compression level")
 }
@@ -62,8 +74,9 @@ func WithEncoderCRC(b bool) EOption {
 }
 
 // WithEncoderConcurrency will set the concurrency,
-// meaning the maximum number of decoders to run concurrently.
+// meaning the maximum number of encoders to run concurrently.
 // The value supplied must be at least 1.
+// For streams, setting a value of 1 will disable async compression.
 // By default this will be set to GOMAXPROCS.
 func WithEncoderConcurrency(n int) EOption {
 	return func(o *encoderOptions) error {
@@ -95,6 +108,7 @@ func WithWindowSize(n int) EOption {
 		o.customWindow = true
 		if o.blockSize > o.windowSize {
 			o.blockSize = o.windowSize
+			o.customBlockSize = true
 		}
 		return nil
 	}
@@ -177,10 +191,9 @@ func EncoderLevelFromZstd(level int) EncoderLevel {
 		return SpeedDefault
 	case level >= 6 && level < 10:
 		return SpeedBetterCompression
-	case level >= 10:
-		return SpeedBetterCompression
+	default:
+		return SpeedBestCompression
 	}
-	return SpeedDefault
 }
 
 // String provides a string representation of the compression level.
@@ -211,6 +224,9 @@ func WithEncoderLevel(l EncoderLevel) EOption {
 			switch o.level {
 			case SpeedFastest:
 				o.windowSize = 4 << 20
+				if !o.customBlockSize {
+					o.blockSize = 1 << 16
+				}
 			case SpeedDefault:
 				o.windowSize = 8 << 20
 			case SpeedBetterCompression:
@@ -272,6 +288,17 @@ func WithNoEntropyCompression(b bool) EOption {
 func WithSingleSegment(b bool) EOption {
 	return func(o *encoderOptions) error {
 		o.single = &b
+		return nil
+	}
+}
+
+// WithLowerEncoderMem will trade in some memory cases trade less memory usage for
+// slower encoding speed.
+// This will not change the window size which is the primary function for reducing
+// memory usage. See WithWindowSize.
+func WithLowerEncoderMem(b bool) EOption {
+	return func(o *encoderOptions) error {
+		o.lowMem = b
 		return nil
 	}
 }

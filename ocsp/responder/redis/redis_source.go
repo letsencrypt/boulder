@@ -37,6 +37,7 @@ type redisSource struct {
 	client             rocspClient
 	signer             responder.Source
 	counter            *prometheus.CounterVec
+	signAndSaveCounter *prometheus.CounterVec
 	cachedResponseAges prometheus.Histogram
 	clk                clock.Clock
 	liveSigningPeriod  time.Duration
@@ -61,6 +62,12 @@ func NewRedisSource(
 	}, []string{"result"})
 	stats.MustRegister(counter)
 
+	signAndSaveCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ocsp_redis_sign_and_save",
+		Help: "Count of OCSP sign and save requests",
+	}, []string{"cause", "result"})
+	stats.MustRegister(signAndSaveCounter)
+
 	// Set up 12-hour-wide buckets, measured in seconds.
 	buckets := make([]float64, 14)
 	for i := range buckets {
@@ -82,6 +89,7 @@ func NewRedisSource(
 		client:             rocspReader,
 		signer:             signer,
 		counter:            counter,
+		signAndSaveCounter: signAndSaveCounter,
 		cachedResponseAges: cachedResponseAges,
 		liveSigningPeriod:  liveSigningPeriod,
 		clk:                clk,
@@ -97,7 +105,8 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 	respBytes, err := src.client.GetResponse(ctx, serialString)
 	if err != nil {
 		if errors.Is(err, rocsp.ErrRedisNotFound) {
-			return src.signAndSave(ctx, req, "not_found_redis")
+			src.counter.WithLabelValues("not_found").Inc()
+			return src.signAndSave(ctx, req, causeNotFound)
 		}
 		src.counter.WithLabelValues("lookup_error").Inc()
 		return nil, err
@@ -111,7 +120,7 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 
 	if src.isStale(resp) {
 		src.counter.WithLabelValues("stale").Inc()
-		freshResp, err := src.signAndSave(ctx, req, "stale_redis")
+		freshResp, err := src.signAndSave(ctx, req, causeStale)
 		if err != nil {
 			return &responder.Response{Response: resp, Raw: respBytes}, nil
 		}
@@ -128,17 +137,25 @@ func (src *redisSource) isStale(resp *ocsp.Response) bool {
 	return age > src.liveSigningPeriod
 }
 
-func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause string) (*responder.Response, error) {
+type signAndSaveCause string
+
+const (
+	causeStale    signAndSaveCause = "stale"
+	causeNotFound signAndSaveCause = "not_found"
+	causeMismatch signAndSaveCause = "mismatch"
+)
+
+func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	resp, err := src.signer.Response(ctx, req)
 	if err != nil {
 		if errors.Is(err, rocsp.ErrRedisNotFound) {
-			src.counter.WithLabelValues(cause + "_certificate_not_found").Inc()
+			src.signAndSaveCounter.WithLabelValues(string(cause), "certificate_not_found").Inc()
 			return nil, responder.ErrNotFound
 		}
-		src.counter.WithLabelValues(cause + "_signing_error").Inc()
+		src.signAndSaveCounter.WithLabelValues(string(cause), "signing_error").Inc()
 		return nil, err
 	}
-	src.counter.WithLabelValues(cause + "_signing_success").Inc()
+	src.signAndSaveCounter.WithLabelValues(string(cause), "signing_success").Inc()
 	go src.client.StoreResponse(context.Background(), resp.Response)
 	return resp, nil
 }

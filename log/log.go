@@ -66,13 +66,7 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 		&bothWriter{
 			sync.Mutex{},
 			log,
-			&stdoutWriter{
-				level:  stdoutLogLevel,
-				clk:    clock.New(),
-				stdout: os.Stdout,
-				stderr: os.Stderr,
-				isatty: term.IsTerminal(int(os.Stdout.Fd())),
-			},
+			newStdoutWriter(stdoutLogLevel),
 			syslogLogLevel,
 		},
 	}, nil
@@ -81,14 +75,30 @@ func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, er
 // StdoutLogger returns a Logger that writes solely to stdout and stderr.
 // It is safe for concurrent use.
 func StdoutLogger(level int) Logger {
-	return &impl{
-		&stdoutWriter{
-			level:  level,
-			clk:    clock.New(),
-			stdout: os.Stdout,
-			stderr: os.Stderr,
-			isatty: term.IsTerminal(int(os.Stdout.Fd())),
-		},
+	return &impl{newStdoutWriter(level)}
+}
+
+func newStdoutWriter(level int) *stdoutWriter {
+	shortHostname := "unknown"
+	datacenter := "unknown"
+	hostname, err := os.Hostname()
+	if err == nil {
+		splits := strings.SplitN(hostname, ".", 3)
+		shortHostname = splits[0]
+		if len(splits) > 1 {
+			datacenter = splits[1]
+		}
+	}
+
+	prefix := fmt.Sprintf("%s %s %s[%d]:", shortHostname, datacenter, path.Base(os.Args[0]), os.Getpid())
+
+	return &stdoutWriter{
+		prefix: prefix,
+		level:  level,
+		clk:    clock.New(),
+		stdout: os.Stdout,
+		stderr: os.Stderr,
+		isatty: term.IsTerminal(int(os.Stdout.Fd())),
 	}
 }
 
@@ -149,6 +159,9 @@ type bothWriter struct {
 
 // stdoutWriter implements writer and writes just to stdout.
 type stdoutWriter struct {
+	// prefix is a set of information that is the same for every log line,
+	// imitating what syslog emits for us when we use the syslog writer.
+	prefix string
 	level  int
 	clk    clock.Clock
 	stdout io.Writer
@@ -230,9 +243,10 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 			}
 		}
 
-		if _, err := fmt.Fprintf(output, "%s%s %d %s %s%s\n",
+		if _, err := fmt.Fprintf(output, "%s%s %s %d %s %s%s\n",
 			color,
 			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
+			w.prefix,
 			int(level),
 			path.Base(os.Args[0]),
 			msg,

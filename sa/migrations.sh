@@ -13,8 +13,8 @@ res="${esc}0m"
 #
 # Defaults
 #
-DB_NEXT_PATH="_db-next"
-DB_PATH="_db"
+DB_NEXT_PATH="db-next"
+DB_PATH="db"
 OUTCOME="ERROR"
 PROMOTE=()
 RUN=()
@@ -91,27 +91,29 @@ function exit_msg() {
 #
 function get_promotable_migrations() {
   local migrations=()
-  for file in "${DB_NEXT_PATH}/${1}"/*.sql; do
+  local migpath="${DB_NEXT_PATH}/${1}"
+  for file in "${migpath}"/*.sql; do
     [[ -f "${file}" && ! -L "${file}" ]] || continue
     migrations+=("${file}")
   done
   if [[ "${migrations[@]}" ]]; then
     echo "${migrations[@]}"
   else
-    exit_msg "There are no promotable migrations at path: "\"${DB_NEXT_PATH}/${1}\"""
+    exit_msg "There are no promotable migrations at path: "\"${migpath}\"""
   fi
 }
 
 function get_demotable_migrations() {
   local migrations=()
-  for file in "${DB_NEXT_PATH}/${1}"/*.sql; do
+  local migpath="${DB_NEXT_PATH}/${1}"
+  for file in "${migpath}"/*.sql; do
     [[ -L "${file}" ]] || continue
     migrations+=("${file}")
   done
   if [[ "${migrations[@]}" ]]; then
     echo "${migrations[@]}"
   else
-    exit_msg "There are no demotable migrations at path: "\"${DB_NEXT_PATH}/${1}\"""
+    exit_msg "There are no demotable migrations at path: "\"${migpath}\"""
   fi
 }
 
@@ -128,10 +130,10 @@ Usage:
 
   ./$(basename "${0}") [OPTION]...
   -b  --db                  Name of the database, this is required (e.g. boulder_sa or incidents_sa)
-  -n, --list-next           Lists migration files present in sa/_db-next/<db>
-  -c, --list-current        Lists migration files promoted from sa/_db-next/<db> to sa/_db/<db> 
-  -p, --promote             Select and promote a migration from sa/_db-next/<db> to sa/_db/<db>
-  -d, --demote              Select and demote a migration from sa/_db/<db> to sa/_db-next/<db>
+  -n, --list-next           Lists migration files present in sa/db-next/<db>
+  -c, --list-current        Lists migration files promoted from sa/db-next/<db> to sa/db/<db> 
+  -p, --promote             Select and promote a migration from sa/db-next/<db> to sa/db/<db>
+  -d, --demote              Select and demote a migration from sa/db/<db> to sa/db-next/<db>
   -h, --help                Shows this help message
 
 EOM
