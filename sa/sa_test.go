@@ -90,7 +90,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetSATestDatabase(t)
+	cleanUp := test.ResetBoulderTestDatabase(t)
 	return sa, fc, cleanUp
 }
 
@@ -2633,6 +2633,7 @@ func TestIncidentsForSerial(t *testing.T) {
 
 	testIncidentsDbMap, err := NewDbMap(vars.DBConnIncidentsFullPerms, DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
+	defer test.ResetIncidentsTestDatabase(t)
 
 	// Add a disabled incident.
 	err = testSADbMap.Insert(&incidentModel{
@@ -2722,8 +2723,9 @@ func TestSerialsForIncident(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	testDbMap, err := NewDbMap(vars.DBConnIncidentsFullPerms, DbSettings{})
+	testIncidentsDbMap, err := NewDbMap(vars.DBConnIncidentsFullPerms, DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
+	defer test.ResetIncidentsTestDatabase(t)
 
 	// Request serials from a malformed incident table name.
 	mockServerStream := mockSerialsForIncidentServerStream{}
@@ -2793,7 +2795,7 @@ func TestSerialsForIncident(t *testing.T) {
 	for i := range expectedSerials {
 		mrand.Seed(time.Now().Unix())
 		randInt := func() int64 { return mrand.Int63() }
-		_, err := testDbMap.Exec(
+		_, err := testIncidentsDbMap.Exec(
 			fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
 				"serial, registrationID, orderID, lastNoticeSent",
 				i,

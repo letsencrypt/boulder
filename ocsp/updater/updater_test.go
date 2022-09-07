@@ -49,7 +49,7 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 	test.AssertNotError(t, err, "Failed to create dbMap")
 	readOnlyDb, err := sa.NewDbMap(vars.DBConnSAOcspUpdateRO, sa.DbSettings{})
 	test.AssertNotError(t, err, "Failed to create dbMap")
-	cleanUp := test.ResetSATestDatabase(t)
+	cleanUp := test.ResetBoulderTestDatabase(t)
 	sa.SetSQLDebug(dbMap, log)
 
 	fc := clock.NewFake()

@@ -445,7 +445,7 @@ func setup(t *testing.T) testCtx {
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
-	cleanUp := test.ResetSATestDatabase(t)
+	cleanUp := test.ResetBoulderTestDatabase(t)
 
 	fc := newFakeClock(t)
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)

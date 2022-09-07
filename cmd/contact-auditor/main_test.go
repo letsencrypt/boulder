@@ -192,7 +192,7 @@ func setup(t *testing.T) testCtx {
 	}
 
 	cleanUp := func() {
-		test.ResetSATestDatabase(t)
+		test.ResetBoulderTestDatabase(t)
 		file.Close()
 		os.Remove(file.Name())
 	}

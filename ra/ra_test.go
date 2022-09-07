@@ -314,7 +314,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	}
 	sa := &isa.SA{Impl: ssa}
 
-	saDBCleanUp := test.ResetSATestDatabase(t)
+	saDBCleanUp := test.ResetBoulderTestDatabase(t)
 
 	va := &DummyValidationAuthority{request: make(chan *vapb.PerformValidationRequest, 1)}
 

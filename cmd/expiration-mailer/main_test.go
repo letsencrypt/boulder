@@ -892,7 +892,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
-	cleanUp := test.ResetSATestDatabase(t)
+	cleanUp := test.ResetBoulderTestDatabase(t)
 
 	mc := &mocks.Mailer{}
 

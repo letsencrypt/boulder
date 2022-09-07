@@ -50,7 +50,7 @@ func TestGetStartingID(t *testing.T) {
 	clk := clock.NewFake()
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "failed setting up db client")
-	defer test.ResetSATestDatabase(t)()
+	defer test.ResetBoulderTestDatabase(t)()
 	sa.SetSQLDebug(dbMap, blog.Get())
 
 	cs := core.CertificateStatus{
@@ -123,7 +123,7 @@ func TestLoadFromDB(t *testing.T) {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 
-	defer test.ResetSATestDatabase(t)
+	defer test.ResetBoulderTestDatabase(t)
 
 	for i := 0; i < 100; i++ {
 		err = dbMap.Insert(&core.CertificateStatus{

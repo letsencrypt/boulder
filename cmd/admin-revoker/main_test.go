@@ -71,7 +71,7 @@ func TestRevokeBatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	defer test.ResetSATestDatabase(t)
+	defer test.ResetBoulderTestDatabase(t)
 	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: ssa})
 
 	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
@@ -536,7 +536,7 @@ func setup(t *testing.T) testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetSATestDatabase(t)
+	cleanUp := test.ResetBoulderTestDatabase(t)
 
 	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")
