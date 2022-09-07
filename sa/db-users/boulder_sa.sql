@@ -1,4 +1,4 @@
--- sa_db_users.sql is run by test/create_db.sh to create users for each
+-- this file is run by test/create_db.sh to create users for each
 -- component with the appropriate permissions.
 
 -- These lines require MariaDB 10.1+
