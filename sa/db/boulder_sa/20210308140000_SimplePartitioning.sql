@@ -1,5 +1,5 @@
 
--- +goose Up
+-- +migrate Up
 -- SQL in section 'Up' is executed when this migration is applied
 
 ALTER TABLE authz2 DROP INDEX IF EXISTS token;
@@ -39,7 +39,7 @@ ALTER TABLE precertificates DROP INDEX IF EXISTS serial, ADD INDEX serial (seria
 ALTER TABLE precertificates PARTITION BY RANGE(id) (
     PARTITION p_start VALUES LESS THAN MAXVALUE);
 
--- +goose Down
+-- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
 ALTER TABLE authz2 REMOVE PARTITIONING;

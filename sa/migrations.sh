@@ -13,11 +13,12 @@ res="${esc}0m"
 #
 # Defaults
 #
-DB_NEXT_PATH="_db-next/migrations"
-DB_PATH="_db/migrations"
+DB_NEXT_PATH="db-next"
+DB_PATH="db"
 OUTCOME="ERROR"
 PROMOTE=()
 RUN=()
+DB=""
 
 #
 # Print Functions
@@ -63,7 +64,14 @@ function print_linking () {
   echo -e "to:        ${esc}0;39;1m${to}${res}"
 }
 
-function print_migrations(){
+function check_arg() {
+  if [ -z "${OPTARG}" ]
+  then
+    exit_msg "No arg for --${OPT} option, use: -h for help">&2
+  fi
+}
+
+function print_migrations() {
   iter=1
   for file in "${migrations[@]}"
   do
@@ -83,27 +91,29 @@ function exit_msg() {
 #
 function get_promotable_migrations() {
   local migrations=()
-  for file in "${DB_NEXT_PATH}"/*.sql; do
+  local migpath="${DB_NEXT_PATH}/${1}"
+  for file in "${migpath}"/*.sql; do
     [[ -f "${file}" && ! -L "${file}" ]] || continue
     migrations+=("${file}")
   done
   if [[ "${migrations[@]}" ]]; then
     echo "${migrations[@]}"
   else
-    exit_msg "There are no promotable migrations at path: "\"${DB_NEXT_PATH}\"""
+    exit_msg "There are no promotable migrations at path: "\"${migpath}\"""
   fi
 }
 
 function get_demotable_migrations() {
   local migrations=()
-  for file in "${DB_NEXT_PATH}"/*.sql; do
+  local migpath="${DB_NEXT_PATH}/${1}"
+  for file in "${migpath}"/*.sql; do
     [[ -L "${file}" ]] || continue
     migrations+=("${file}")
   done
   if [[ "${migrations[@]}" ]]; then
     echo "${migrations[@]}"
   else
-    exit_msg "There are no demotable migrations at path: "\"${DB_NEXT_PATH}\"""
+    exit_msg "There are no demotable migrations at path: "\"${migpath}\"""
   fi
 }
 
@@ -116,26 +126,27 @@ Usage:
   
   Boulder DB Migrations CLI
 
-  Helper for listing, promoting, and demoting Boulder schema files
+  Helper for listing, promoting, and demoting migration files
 
   ./$(basename "${0}") [OPTION]...
-
-  -l, --list-next           Lists schema files present in sa/_db-next
-  -c, --list-current        Lists schema files promoted from sa/_db-next to sa/_db 
-  -p, --promote             Select and promote a schema from sa/_db-next to sa/_db
-  -d, --demote              Select and demote a schema from sa/_db to sa/_db-next
+  -b  --db                  Name of the database, this is required (e.g. boulder_sa or incidents_sa)
+  -n, --list-next           Lists migration files present in sa/db-next/<db>
+  -c, --list-current        Lists migration files promoted from sa/db-next/<db> to sa/db/<db> 
+  -p, --promote             Select and promote a migration from sa/db-next/<db> to sa/db/<db>
+  -d, --demote              Select and demote a migration from sa/db/<db> to sa/db-next/<db>
   -h, --help                Shows this help message
 
 EOM
 )"
 
-while getopts nchpd-: OPT; do
+while getopts nchpd-:b:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
     OPTARG="${OPTARG#=}"      # if long option argument, remove assigning `=`
   fi
   case "${OPT}" in
+    b | db )                  check_arg; DB="${OPTARG}" ;;
     n | list-next )           RUN+=("list_next") ;;
     c | list-current )        RUN+=("list_current") ;;
     p | promote )             RUN+=("promote") ;;
@@ -150,24 +161,26 @@ shift $((OPTIND-1)) # remove parsed opts and args from $@ list
 # On EXIT, trap and print outcome
 trap "print_outcome" EXIT
 
+[ -z "${DB}" ] && exit_msg "You must specify a database with flag -b \"foo\" or --db=\"foo\""
+
 STEP="list_next"
 if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
-  print_heading "Next Schemas"
-  migrations=($(get_promotable_migrations))
+  print_heading "Next Migrations"
+  migrations=($(get_promotable_migrations "${DB}"))
   print_migrations "${migrations[@]}"
 fi
 
 STEP="list_current"
 if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
-  print_heading "Current Schemas"
-  migrations=($(get_demotable_migrations))
+  print_heading "Current Migrations"
+  migrations=($(get_demotable_migrations "${DB}"))
   print_migrations "${migrations[@]}"
 fi
 
 STEP="promote"
 if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
-  print_heading "Promote Schema"
-  migrations=($(get_promotable_migrations))
+  print_heading "Promote Migration"
+  migrations=($(get_promotable_migrations "${DB}"))
   declare -a mig_index=()
   declare -A mig_file=()
   for i in "${!migrations[@]}"; do
@@ -176,7 +189,7 @@ if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
   done
 
   promote=""
-  PS3='Which schema would you like to promote? (q to cancel): '
+  PS3='Which migration would you like to promote? (q to cancel): '
   
   select opt in "${mig_index[@]}"; do
     case "${opt}" in
@@ -186,23 +199,23 @@ if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
   done
   if [[ "${mig_file_path}" ]]
   then
-    print_heading "Promoting Schema"
+    print_heading "Promoting Migration"
     promote_mig_name="$(basename -- "${mig_file_path}")"
-    promoted_mig_file_path="${DB_PATH}/${promote_mig_name}"
-    symlink_relpath="$(realpath --relative-to=${DB_NEXT_PATH} ${promoted_mig_file_path})"
+    promoted_mig_file_path="${DB_PATH}/${DB}/${promote_mig_name}"
+    symlink_relpath="$(realpath --relative-to=${DB_NEXT_PATH}/${DB} ${promoted_mig_file_path})"
 
     print_moving "${mig_file_path}" "${promoted_mig_file_path}"
     mv "${mig_file_path}" "${promoted_mig_file_path}"
     
     print_linking "${mig_file_path}" "${symlink_relpath}"
-    ln -s "${symlink_relpath}" "${DB_NEXT_PATH}"
+    ln -s "${symlink_relpath}" "${DB_NEXT_PATH}/${DB}"
   fi
 fi
 
 STEP="demote"
 if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
-  print_heading "Demote Schema"
-  migrations=($(get_demotable_migrations))
+  print_heading "Demote Migration"
+  migrations=($(get_demotable_migrations "${DB}"))
   declare -a mig_index=()
   declare -A mig_file=()
   for i in "${!migrations[@]}"; do
@@ -211,7 +224,7 @@ if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
   done
 
   demote_mig=""
-  PS3='Which schema would you like to demote? (q to cancel): '
+  PS3='Which migration would you like to demote? (q to cancel): '
   
   select opt in "${mig_index[@]}"; do
     case "${opt}" in
@@ -221,9 +234,9 @@ if [[ "${RUN[@]}" =~ "${STEP}" ]] ; then
   done
   if [[ "${mig_link_path}" ]]
   then
-    print_heading "Demoting Schema"
+    print_heading "Demoting Migration"
     demote_mig_name="$(basename -- "${mig_link_path}")"
-    demote_mig_from="${DB_PATH}/${demote_mig_name}"
+    demote_mig_from="${DB_PATH}/${DB}/${demote_mig_name}"
 
     print_unlinking "${mig_link_path}"
     rm "${mig_link_path}"

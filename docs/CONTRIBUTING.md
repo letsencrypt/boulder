@@ -289,18 +289,22 @@ func initTables(dbMap *gorp.DbMap) {
 }
 ```
 
-You can then add a migration with:
+New migrations should be added at `./sa/db-next`:
 
-`$ goose -path ./sa/_db/ create AddWizards sql`
+```shell
+$ cd sa/db
+$ sql-migrate new -env="boulder_sa_test" AddWizards
+Created migration boulder_sa/20220906165519-AddWizards.sql
+```
 
 Finally, edit the resulting file
-(`sa/_db/migrations/20160915101011_AddWizards.sql`) to define your migration:
+(`sa/db-next/boulder_sa/20220906165519-AddWizards.sql`) to define your migration:
 
 ```mysql
--- +goose Up
+-- +migrate Up
 ALTER TABLE people ADD isWizard BOOLEAN SET DEFAULT false;
 
--- +goose Down
+-- +migrate Down
 ALTER TABLE people DROP isWizard BOOLEAN SET DEFAULT false;
 ```
 
