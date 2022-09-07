@@ -7,6 +7,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -21,14 +22,14 @@ import (
 )
 
 var (
-	method             = flag.String("method", "GET", "Method to use for fetching OCSP")
-	urlOverride        = flag.String("url", "", "URL of OCSP responder to override")
-	hostOverride       = flag.String("host", "", "Host header to override in HTTP request")
-	tooSoon            = flag.Int("too-soon", 76, "If NextUpdate is fewer than this many hours in future, warn.")
-	ignoreExpiredCerts = flag.Bool("ignore-expired-certs", false, "If a cert is expired, don't bother requesting OCSP.")
-	expectStatus       = flag.Int("expect-status", -1, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown); or -1 for no enforcement.")
-	expectReason       = flag.Int("expect-reason", -1, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc); or -1 for no enforcement.")
-	issuerFile         = flag.String("issuer-file", "", "Path to issuer file. Use as an alternative to automatic fetch of issuer from the certificate.")
+	method             *string
+	urlOverride        *string
+	hostOverride       *string
+	tooSoon            *int
+	ignoreExpiredCerts *bool
+	expectStatus       *int
+	expectReason       *int
+	issuerFile         *string
 )
 
 // Config contains fields which control various behaviors of the
@@ -48,27 +49,42 @@ type Config struct {
 // DefaultConfig is a Config populated with a set of curated default values
 // intended for library test usage of this package.
 var DefaultConfig = Config{
-	method:             *method,
-	urlOverride:        *urlOverride,
-	hostOverride:       *hostOverride,
-	tooSoon:            *tooSoon,
-	ignoreExpiredCerts: *ignoreExpiredCerts,
-	expectStatus:       *expectStatus,
-	expectReason:       *expectReason,
+	method:             "GET",
+	urlOverride:        "",
+	hostOverride:       "",
+	tooSoon:            76,
+	ignoreExpiredCerts: false,
+	expectStatus:       -1,
+	expectReason:       -1,
 	output:             io.Discard,
-	issuerFile:         *issuerFile,
+	issuerFile:         "",
 }
 
 var parseFlagsOnce sync.Once
+
+// RegisterFlags registers command-line flags that affect OCSP checking.
+func RegisterFlags() {
+	method = flag.String("method", DefaultConfig.method, "Method to use for fetching OCSP")
+	urlOverride = flag.String("url", DefaultConfig.urlOverride, "URL of OCSP responder to override")
+	hostOverride = flag.String("host", DefaultConfig.hostOverride, "Host header to override in HTTP request")
+	tooSoon = flag.Int("too-soon", DefaultConfig.tooSoon, "If NextUpdate is fewer than this many hours in future, warn.")
+	ignoreExpiredCerts = flag.Bool("ignore-expired-certs", DefaultConfig.ignoreExpiredCerts, "If a cert is expired, don't bother requesting OCSP.")
+	expectStatus = flag.Int("expect-status", DefaultConfig.expectStatus, "Expect response to have this numeric status (0=Good, 1=Revoked, 2=Unknown); or -1 for no enforcement.")
+	expectReason = flag.Int("expect-reason", DefaultConfig.expectReason, "Expect response to have this numeric revocation reason (0=Unspecified, 1=KeyCompromise, etc); or -1 for no enforcement.")
+	issuerFile = flag.String("issuer-file", DefaultConfig.issuerFile, "Path to issuer file. Use as an alternative to automatic fetch of issuer from the certificate.")
+}
 
 // ConfigFromFlags returns a Config whose values are populated from any command
 // line flags passed by the user, or default values if not passed.  However, it
 // replaces io.Discard with os.Stdout so that CLI usages of this package
 // will produce output on stdout by default.
-func ConfigFromFlags() Config {
+func ConfigFromFlags() (Config, error) {
 	parseFlagsOnce.Do(func() {
 		flag.Parse()
 	})
+	if method == nil || urlOverride == nil || hostOverride == nil || tooSoon == nil || ignoreExpiredCerts == nil || expectStatus == nil || expectReason == nil || issuerFile == nil {
+		return DefaultConfig, errors.New("ConfigFromFlags was called without registering flags. Call RegisterFlags before flag.Parse()")
+	}
 	return Config{
 		method:             *method,
 		urlOverride:        *urlOverride,
@@ -79,7 +95,7 @@ func ConfigFromFlags() Config {
 		expectReason:       *expectReason,
 		output:             os.Stdout,
 		issuerFile:         *issuerFile,
-	}
+	}, nil
 }
 
 // WithExpectStatus returns a new Config with the given expectStatus,
