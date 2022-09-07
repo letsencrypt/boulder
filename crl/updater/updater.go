@@ -138,7 +138,7 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 	} else {
 		waitNanos = cu.updatePeriod.Nanoseconds() - currOffset + cu.updateOffset.Nanoseconds()
 	}
-	cu.log.Infof("Running, next tick in %ds", waitNanos*int64(time.Second)/int64(time.Nanosecond))
+	cu.log.Infof("Running, next tick in %ds", waitNanos*int64(time.Nanosecond)/int64(time.Second))
 	select {
 	case <-ctx.Done():
 		return
