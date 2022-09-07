@@ -76,11 +76,12 @@ func main() {
 func main2() error {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	startFromID := flag.Int64("start-from-id", 0, "For load-from-db, the first ID in the certificateStatus table to scan")
+	flag.Usage = helpExit
 	flag.Parse()
-	if *configFile == "" {
-		flag.Usage()
-		os.Exit(1)
+	if *configFile == "" || len(flag.Args()) < 1 {
+		helpExit()
 	}
+
 	rand.Seed(time.Now().UnixNano())
 
 	var c Config
@@ -117,10 +118,6 @@ func main2() error {
 		setDefault(&lfd.Speed.ParallelSigns, 100)
 		setDefault(&lfd.Speed.ScanBatchSize, 10000)
 		scanBatchSize = lfd.Speed.ScanBatchSize
-	}
-
-	if len(flag.Args()) < 1 {
-		helpExit()
 	}
 
 	ctx := context.Background()
@@ -194,6 +191,7 @@ func helpExit() {
 	fmt.Fprintf(os.Stderr, "Usage: %s [store|copy-from-db|scan-metadata|scan-responses] --config path/to/config.json\n", os.Args[0])
 	fmt.Fprintln(os.Stderr, "  store -- for each filename on command line, read the file as an OCSP response and store it in Redis")
 	fmt.Fprintln(os.Stderr, "  get -- for each serial on command line, fetch that serial's response and pretty-print it")
+	fmt.Fprintln(os.Stderr, "  get-pem -- for each serial on command line, fetch that serial's response and print it PEM-encoded")
 	fmt.Fprintln(os.Stderr, "  load-from-db -- scan the database for all OCSP entries for unexpired certificates, and store in Redis")
 	fmt.Fprintln(os.Stderr, "  scan-metadata -- scan Redis for metadata entries. For each entry, print the serial and the age in hours")
 	fmt.Fprintln(os.Stderr, "  scan-responses -- scan Redis for OCSP response entries. For each entry, print the serial and base64-encoded response")
