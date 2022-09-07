@@ -83,7 +83,7 @@ for db in $DBS; do
     then
       echo "Migration failed - dropping and recreating"
       create_empty_db "${dbname}" "${dbconn}"
-      sql-migrate up -env="${dbname}"
+      sql-migrate up -env="${dbname}" || exit_err "Migration failed after dropping and recreating"
     else
       echo "${r}"
     fi
