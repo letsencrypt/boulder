@@ -31,9 +31,8 @@ type crlUpdater struct {
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
 
-	tickHistogram       *prometheus.HistogramVec
-	updatedCounter      *prometheus.CounterVec
-	secondsSinceSuccess *prometheus.GaugeVec
+	tickHistogram  *prometheus.HistogramVec
+	updatedCounter *prometheus.CounterVec
 
 	log blog.Logger
 	clk clock.Clock
@@ -104,14 +103,8 @@ func NewUpdater(
 	updatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "crl_updater_generated",
 		Help: "A counter of CRL generation calls labeled by result",
-	}, []string{"result"})
+	}, []string{"issuer", "result"})
 	stats.MustRegister(updatedCounter)
-
-	secondsSinceSuccess := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "crl_updater_secs_since_success",
-		Help: "The number of seconds since crl-updater last succeeded labeled by issuer",
-	}, []string{"issuer"})
-	stats.MustRegister(secondsSinceSuccess)
 
 	return &crlUpdater{
 		issuersByNameID,
@@ -126,7 +119,6 @@ func NewUpdater(
 		cs,
 		tickHistogram,
 		updatedCounter,
-		secondsSinceSuccess,
 		log,
 		clk,
 	}, nil
@@ -260,7 +252,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	result := "success"
 	defer func() {
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
-		cu.updatedCounter.WithLabelValues(result).Inc()
+		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
 	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerNameID, atTime)
 
