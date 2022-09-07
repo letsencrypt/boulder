@@ -61,25 +61,23 @@ func (c CRLConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 
 	// validate the prometheus collectors that were passed in
 	for name, coll := range collectors {
+		var ok bool
 		switch name {
 		case nextUpdateName:
-			_, ok := coll.(*prometheus.GaugeVec)
+			probe.cNextUpdate, ok = coll.(*prometheus.GaugeVec)
 			if !ok {
 				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
 			}
-			probe.cNextUpdate = coll.(*prometheus.GaugeVec)
 		case thisUpdateName:
-			_, ok := coll.(*prometheus.GaugeVec)
+			probe.cThisUpdate, ok = coll.(*prometheus.GaugeVec)
 			if !ok {
 				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
 			}
-			probe.cThisUpdate = coll.(*prometheus.GaugeVec)
 		case certCountName:
-			_, ok := coll.(*prometheus.GaugeVec)
+			probe.cCertCount, ok = coll.(*prometheus.GaugeVec)
 			if !ok {
 				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
 			}
-			probe.cCertCount = coll.(*prometheus.GaugeVec)
 		default:
 			return nil, fmt.Errorf("crl prober received unexpected collector '%s'", name)
 		}

@@ -45,9 +45,9 @@ func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, time.Since(start)
 	}
-
 	dur := time.Since(start)
 
+	// Report metrics for this CRL
 	p.cThisUpdate.WithLabelValues(p.url).Set(float64(crl.ThisUpdate.Unix()))
 	p.cNextUpdate.WithLabelValues(p.url).Set(float64(crl.NextUpdate.Unix()))
 	p.cCertCount.WithLabelValues(p.url).Set(float64(len(crl.RevokedCertificates)))
