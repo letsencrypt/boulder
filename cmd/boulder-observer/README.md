@@ -245,6 +245,19 @@ Unix timestamp value of the thisUpdate field for a CRL.
 
 `url`: Url of the CRL
 
+**Example Usage:**
+
+This is a sample rule that alerts when a CRL has a thisUpdate timestamp in the future, signalling that something may have gone wrong during its creation:
+
+```yaml
+- alert: CRLThisUpdateInFuture
+  expr: obs_crl_this_update{url="http://x1.c.lencr.org/"} > time()
+  labels:
+    severity: critical
+  annotations:
+    description: 'CRL thisUpdate is in the future'
+```
+
 #### obs_crl_next_update
 
 Unix timestamp value of the nextUpdate field for a CRL.
@@ -252,6 +265,21 @@ Unix timestamp value of the nextUpdate field for a CRL.
 **Labels:**
 
 `url`: Url of the CRL
+
+**Example Usage:**
+
+This is a sample rule that alerts when a CRL has a nextUpdate timestamp in the past, signalling that the CRL was not updated on time:
+
+```yaml
+- alert: CRLNextUpdateInPast
+  expr: obs_crl_next_update{url="http://x1.c.lencr.org/"} < time()
+  labels:
+    severity: critical
+  annotations:
+    description: 'CRL nextUpdate is in the past'
+```
+
+Another potentially useful rule would be to notify when nextUpdate is within X days from the current time, as a reminder that the update is coming up soon.
 
 #### obs_crl_revoked_cert_count
 
