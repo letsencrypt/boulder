@@ -146,20 +146,27 @@ type clientInterceptor struct {
 	clk     clock.Clock
 }
 
-// intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
-// is currently experimental the metrics it reports should be kept as stable as can be, *within reason*.
+// clientIntercepted is a function type representing a partially-applied call to
+// either the intercepted unary method (i.e. `invoker(...)`) or the intercepted
+// stream method (i.e. `streamer(...)`). It takes two arguments, ctx and opts,
+// which are intended to be used as the first and last arguments respectively to
+// the partially-applied function. It returns a client stream, which should be
+// nil if a unary method is being clientIntercepted, and an error which is
+// applicable for both kinds of clientIntercepted method.
+type clientIntercepted func(context.Context, ...grpc.CallOption) (grpc.ClientStream, error)
+
+// intercept modifies the context and grpc call options of an intercepted unary
+// or stream gRPC method. It also handles incrementing and decrementing the
+// in-flight RPCs metric.
 func (ci *clientInterceptor) intercept(
 	ctx context.Context,
+	callable clientIntercepted,
 	fullMethod string,
-	req,
-	reply interface{},
-	cc *grpc.ClientConn,
-	invoker grpc.UnaryInvoker,
-	opts ...grpc.CallOption) error {
+	opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	// This should not occur but fail fast with a clear error if it does (e.g.
 	// because of buggy unit test code) instead of a generic nil panic later!
 	if ci.metrics.inFlightRPCs == nil {
-		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
+		return nil, berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
 	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
@@ -183,10 +190,10 @@ func (ci *clientInterceptor) intercept(
 	// types in the server interceptor later on.
 	opts = append(opts, grpc.Trailer(&respMD))
 
-	// Split the method and service name from the fullMethod.
-	// UnaryClientInterceptor's receive a `method` arg of the form
-	// "/ServiceName/MethodName"
+	// Split the method and service name from the fullMethod. It is always of
+	// the form "/package.Service/Method", although this is undocumented.
 	service, method := splitMethodName(fullMethod)
+
 	// Slice the inFlightRPC inc/dec calls by method and service
 	labels := prometheus.Labels{
 		"method":  method,
@@ -197,20 +204,58 @@ func (ci *clientInterceptor) intercept(
 	ci.metrics.inFlightRPCs.With(labels).Inc()
 	// And defer decrementing it when we're done
 	defer ci.metrics.inFlightRPCs.With(labels).Dec()
+
 	// Handle the RPC
 	begin := ci.clk.Now()
-	err := invoker(localCtx, fullMethod, req, reply, cc, opts...)
+	csp, err := callable(localCtx, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
 		if status.Code(err) == codes.DeadlineExceeded {
-			return deadlineDetails{
+			return nil, deadlineDetails{
 				service: service,
 				method:  method,
 				latency: ci.clk.Since(begin),
 			}
 		}
 	}
+
+	return csp, err
+}
+
+// interceptUnary fulfils the grpc.UnaryClientInterceptor interface.
+func (ci *clientInterceptor) interceptUnary(
+	ctx context.Context,
+	fullMethod string,
+	req,
+	reply interface{},
+	cc *grpc.ClientConn,
+	invoker grpc.UnaryInvoker,
+	opts ...grpc.CallOption) error {
+	// Create a callable to handle the actual wrapped inner call.
+	i := func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		return nil, invoker(ctx, fullMethod, req, reply, cc, opts...)
+	}
+
+	// Do the actual interception and wrapped call.
+	_, err := ci.intercept(ctx, i, fullMethod, opts...)
 	return err
+}
+
+// interceptUnary fulfils the grpc.StreamClientInterceptor interface.
+func (ci *clientInterceptor) interceptStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	cc *grpc.ClientConn,
+	fullMethod string,
+	streamer grpc.Streamer,
+	opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	// Create a callable to handle the actual wrapped inner call.
+	i := func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		return streamer(ctx, desc, cc, fullMethod, opts...)
+	}
+
+	// Do the actual interception and wrapped call.
+	return ci.intercept(ctx, i, fullMethod, opts...)
 }
 
 // CancelTo408Interceptor calls the underlying invoker, checks to see if the

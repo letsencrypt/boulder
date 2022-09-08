@@ -42,7 +42,7 @@ func TestErrorWrapping(t *testing.T) {
 	conn, err := grpc.Dial(
 		lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.intercept),
+		grpc.WithUnaryInterceptor(ci.interceptUnary),
 	)
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := test_proto.NewChillerClient(conn)
@@ -73,7 +73,7 @@ func TestSubErrorWrapping(t *testing.T) {
 	conn, err := grpc.Dial(
 		lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.intercept),
+		grpc.WithUnaryInterceptor(ci.interceptUnary),
 	)
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := test_proto.NewChillerClient(conn)

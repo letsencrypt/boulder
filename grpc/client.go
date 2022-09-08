@@ -39,12 +39,18 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	}
 
 	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
-	allInterceptors := []grpc.UnaryClientInterceptor{
-		ci.intercept,
+
+	unaryInterceptors := append(interceptors, []grpc.UnaryClientInterceptor{
+		ci.interceptUnary,
 		ci.metrics.grpcMetrics.UnaryClientInterceptor(),
 		hnygrpc.UnaryClientInterceptor(),
+	}...)
+
+	streamInterceptors := []grpc.StreamClientInterceptor{
+		ci.interceptStream,
+		ci.metrics.grpcMetrics.StreamClientInterceptor(),
+		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
-	allInterceptors = append(interceptors, allInterceptors...)
 
 	var target string
 	var hostOverride string
@@ -63,7 +69,8 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		target,
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(creds),
-		grpc.WithChainUnaryInterceptor(allInterceptors...),
+		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
+		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	)
 
 }
