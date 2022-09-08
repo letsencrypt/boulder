@@ -45,6 +45,7 @@
   },
   "beeline": {
       "mute": true,
-      "dataset": "Test"
+      "serviceName": "Test",
+      "writeKey": {"passwordFile": "test/secrets/honeycomb_fake_password"}
   }
 }
