@@ -60,8 +60,8 @@ func (c CRLConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	probe := CRLProbe{c.URL, nil, nil, nil}
 
 	// validate the prometheus collectors that were passed in
+	var ok bool
 	for name, coll := range collectors {
-		var ok bool
 		switch name {
 		case nextUpdateName:
 			probe.cNextUpdate, ok = coll.(*prometheus.GaugeVec)
