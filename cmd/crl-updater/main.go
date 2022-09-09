@@ -155,11 +155,12 @@ func main() {
 
 	if *runOnce {
 		err = u.Tick(ctx, clk.Now())
+		cmd.FailOnError(err, "")
 	} else {
 		err = u.Run(ctx)
-	}
-	if err != nil {
-		logger.Err(err.Error())
+		if err != nil {
+			logger.Err(err.Error())
+		}
 	}
 }
 
