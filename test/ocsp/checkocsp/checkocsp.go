@@ -23,14 +23,19 @@ stale.
 `)
 		flag.PrintDefaults()
 	}
+	helper.RegisterFlags()
 	flag.Parse()
 	var errors bool
 	if len(flag.Args()) == 0 {
 		flag.Usage()
 		os.Exit(0)
 	}
+	config, err := helper.ConfigFromFlags()
+	if err != nil {
+		log.Fatal(err)
+	}
 	for _, f := range flag.Args() {
-		_, err := helper.ReqFile(f, helper.ConfigFromFlags())
+		_, err := helper.ReqFile(f, config)
 		if err != nil {
 			log.Printf("error for %s: %s\n", f, err)
 			errors = true

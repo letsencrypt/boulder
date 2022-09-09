@@ -68,6 +68,11 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 
+	dbIncidentsMap, err := NewDbMap(vars.DBConnIncidents, DbSettings{})
+	if err != nil {
+		t.Fatalf("Failed to create dbMap: %s", err)
+	}
+
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
@@ -81,11 +86,11 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	if err != nil {
 		t.Fatalf("failed to load issuers: %s", err)
 	}
-	sa, err := NewSQLStorageAuthority(dbMap, dbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	sa, err := NewSQLStorageAuthority(dbMap, dbMap, dbIncidentsMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetSATestDatabase(t)
+	cleanUp := test.ResetBoulderTestDatabase(t)
 	return sa, fc, cleanUp
 }
 
@@ -2623,8 +2628,15 @@ func TestIncidentsForSerial(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	testSADbMap, err := NewDbMap(vars.DBConnSAFullPerms, DbSettings{})
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+
+	testIncidentsDbMap, err := NewDbMap(vars.DBConnIncidentsFullPerms, DbSettings{})
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+	defer test.ResetIncidentsTestDatabase(t)
+
 	// Add a disabled incident.
-	err := sa.dbMap.Insert(&incidentModel{
+	err = testSADbMap.Insert(&incidentModel{
 		SerialTable: "incident_foo",
 		URL:         "https://example.com/foo-incident",
 		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
@@ -2638,7 +2650,7 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add an enabled incident.
-	err = sa.dbMap.Insert(&incidentModel{
+	err = testSADbMap.Insert(&incidentModel{
 		SerialTable: "incident_bar",
 		URL:         "https://example.com/test-incident",
 		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
@@ -2653,7 +2665,7 @@ func TestIncidentsForSerial(t *testing.T) {
 		OrderID:        1,
 		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
 	}
-	_, err = sa.dbMap.Exec(
+	_, err = testIncidentsDbMap.Exec(
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertA.Serial,
@@ -2676,7 +2688,7 @@ func TestIncidentsForSerial(t *testing.T) {
 		OrderID:        2,
 		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
 	}
-	_, err = sa.dbMap.Exec(
+	_, err = testIncidentsDbMap.Exec(
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertB.Serial,
@@ -2711,9 +2723,13 @@ func TestSerialsForIncident(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
+	testIncidentsDbMap, err := NewDbMap(vars.DBConnIncidentsFullPerms, DbSettings{})
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+	defer test.ResetIncidentsTestDatabase(t)
+
 	// Request serials from a malformed incident table name.
 	mockServerStream := mockSerialsForIncidentServerStream{}
-	err := sa.SerialsForIncident(
+	err = sa.SerialsForIncident(
 		&sapb.SerialsForIncidentRequest{
 			IncidentTable: "incidesnt_Baz",
 		},
@@ -2747,11 +2763,11 @@ func TestSerialsForIncident(t *testing.T) {
 	// Assert that the error is a MySQL error so we can inspect the error code.
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) {
-		// We expect the error code to be 1142 (ER_TABLEACCESS_DENIED_ERROR):
+		// We expect the error code to be 1146 (ER_NO_SUCH_TABLE):
 		// https://mariadb.com/kb/en/mariadb-error-codes/
-		test.AssertEquals(t, mysqlErr.Number, uint16(1142))
+		test.AssertEquals(t, mysqlErr.Number, uint16(1146))
 	} else {
-		t.Fatalf("Expected MySQL Error 1142 (ER_TABLEACCESS_DENIED_ERROR) from Recv(), got %q", err)
+		t.Fatalf("Expected MySQL Error 1146 (ER_NO_SUCH_TABLE) from Recv(), got %q", err)
 	}
 
 	// Request serials from table 'incident_foo', which we expect to exist but
@@ -2779,7 +2795,7 @@ func TestSerialsForIncident(t *testing.T) {
 	for i := range expectedSerials {
 		mrand.Seed(time.Now().Unix())
 		randInt := func() int64 { return mrand.Int63() }
-		_, err := sa.dbMap.Exec(
+		_, err := testIncidentsDbMap.Exec(
 			fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
 				"serial, registrationID, orderID, lastNoticeSent",
 				i,

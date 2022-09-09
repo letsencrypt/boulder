@@ -33,9 +33,8 @@ type crlUpdater struct {
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
 
-	tickHistogram       *prometheus.HistogramVec
-	updatedCounter      *prometheus.CounterVec
-	secondsSinceSuccess *prometheus.GaugeVec
+	tickHistogram  *prometheus.HistogramVec
+	updatedCounter *prometheus.CounterVec
 
 	log blog.Logger
 	clk clock.Clock
@@ -106,14 +105,8 @@ func NewUpdater(
 	updatedCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "crl_updater_generated",
 		Help: "A counter of CRL generation calls labeled by result",
-	}, []string{"result"})
+	}, []string{"issuer", "result"})
 	stats.MustRegister(updatedCounter)
-
-	secondsSinceSuccess := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "crl_updater_secs_since_success",
-		Help: "The number of seconds since crl-updater last succeeded labeled by issuer",
-	}, []string{"issuer"})
-	stats.MustRegister(secondsSinceSuccess)
 
 	return &crlUpdater{
 		issuersByNameID,
@@ -128,17 +121,16 @@ func NewUpdater(
 		cs,
 		tickHistogram,
 		updatedCounter,
-		secondsSinceSuccess,
 		log,
 		clk,
 	}, nil
 }
 
-// Run causes the crl-updater to run immediately, and then re-run continuously
-// on the frequency specified by crlUpdater.updatePeriod. The provided context
-// can be used to gracefully stop (cancel) the process.
+// Run causes the crlUpdater to enter its processing loop. It waits until the
+// next scheduled run time based on the current time and the updateOffset, then
+// begins running once every updatePeriod.
 func (cu *crlUpdater) Run(ctx context.Context) error {
-	// We don't want the times at which crl-updater runs to be dependent on when
+	// We don't want the times at which crlUpdater runs to be dependent on when
 	// the process starts. So wait until the appropriate time before kicking off
 	// the first run and the main ticker loop.
 	currOffset := cu.clk.Now().UnixNano() % cu.updatePeriod.Nanoseconds()
@@ -148,6 +140,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 	} else {
 		waitNanos = cu.updatePeriod.Nanoseconds() - currOffset + cu.updateOffset.Nanoseconds()
 	}
+	cu.log.Infof("Running, next tick in %ds", waitNanos*int64(time.Nanosecond)/int64(time.Second))
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -285,6 +278,9 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
 func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) (err error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	start := cu.clk.Now()
 	defer func() {
 		// Each return statement in this function assigns its returned value to the
@@ -296,7 +292,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 			err = fmt.Errorf("%d: %w", shardIdx, err)
 		}
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
-		cu.updatedCounter.WithLabelValues(result).Inc()
+		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
 	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerNameID, atTime)
 

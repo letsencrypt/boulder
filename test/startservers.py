@@ -53,7 +53,7 @@ SERVICES = (
     Service('ocsp-responder',
         8005, None,
         ('./bin/ocsp-responder', '--config', os.path.join(config_dir, 'ocsp-responder.json')),
-        None),
+        ('boulder-ra-1', 'boulder-ra-2')),
     Service('boulder-va-1',
         8004, 'va1.boulder:9092',
         ('./bin/boulder-va', '--config', os.path.join(config_dir, 'va.json'), '--addr', 'va1.boulder:9092', '--debug-addr', ':8004'),

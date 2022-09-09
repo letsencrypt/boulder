@@ -308,13 +308,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 	sa := &isa.SA{Impl: ssa}
 
-	saDBCleanUp := test.ResetSATestDatabase(t)
+	saDBCleanUp := test.ResetBoulderTestDatabase(t)
 
 	va := &DummyValidationAuthority{request: make(chan *vapb.PerformValidationRequest, 1)}
 

@@ -55,9 +55,9 @@ func init() {
 	prom.MustRegister(response_age_seconds_summary)
 }
 
-func do(f string) {
+func do(f string, config helper.Config) {
 	start := time.Now()
-	resp, err := helper.ReqFile(f, helper.ConfigFromFlags())
+	resp, err := helper.ReqFile(f, config)
 	latency := time.Since(start)
 	if err != nil {
 		errors_count.With(prom.Labels{}).Inc()
@@ -73,7 +73,13 @@ func do(f string) {
 }
 
 func main() {
+	helper.RegisterFlags()
 	flag.Parse()
+
+	config, err := helper.ConfigFromFlags()
+	if err != nil {
+		log.Fatal(err)
+	}
 	sleepTime, err := time.ParseDuration(*interval)
 	if err != nil {
 		log.Fatal(err)
@@ -97,7 +103,7 @@ func main() {
 			// Loop through the available files (potentially hundreds or thousands),
 			// requesting one response per `sleepTime`
 			for _, f := range files {
-				do(f)
+				do(f, config)
 				time.Sleep(sleepTime)
 			}
 		}

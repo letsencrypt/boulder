@@ -192,7 +192,7 @@ func setup(t *testing.T) testCtx {
 	}
 
 	cleanUp := func() {
-		test.ResetSATestDatabase(t)
+		test.ResetBoulderTestDatabase(t)
 		file.Close()
 		os.Remove(file.Name())
 	}
@@ -202,7 +202,7 @@ func setup(t *testing.T) testCtx {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
 
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, clock.New(), log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, clock.New(), log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}

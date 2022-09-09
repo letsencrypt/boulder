@@ -92,7 +92,7 @@ func BenchmarkCheckCert(b *testing.B) {
 func TestCheckWildcardCert(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	saCleanup := test.ResetSATestDatabase(t)
+	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {
 		saCleanup()
 	}()
@@ -138,7 +138,7 @@ func TestCheckWildcardCert(t *testing.T) {
 func TestCheckCertReturnsDNSNames(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	saCleanup := test.ResetSATestDatabase(t)
+	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {
 		saCleanup()
 	}()
@@ -187,7 +187,7 @@ func (*rsa2048Generator) genKey() (crypto.Signer, error) {
 func TestCheckCert(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	saCleanup := test.ResetSATestDatabase(t)
+	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {
 		saCleanup()
 	}()
@@ -331,9 +331,9 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc.Set(fc.Now().Add(time.Hour))
 
 	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, blog.NewMock())
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, nil, fc, blog.NewMock(), metrics.NoopRegisterer, 1)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
-	saCleanUp := test.ResetSATestDatabase(t)
+	saCleanUp := test.ResetBoulderTestDatabase(t)
 	defer func() {
 		saCleanUp()
 	}()
@@ -522,7 +522,7 @@ func TestIsForbiddenDomain(t *testing.T) {
 func TestIgnoredLint(t *testing.T) {
 	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't connect to database")
-	saCleanup := test.ResetSATestDatabase(t)
+	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {
 		saCleanup()
 	}()
