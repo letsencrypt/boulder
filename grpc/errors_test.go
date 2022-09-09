@@ -31,7 +31,7 @@ func TestErrorWrapping(t *testing.T) {
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	ci := clientInterceptor{time.Second, NewClientMetrics(metrics.NoopRegisterer), clock.NewFake()}
-	srv := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
+	srv := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
 	lis, err := net.Listen("tcp", "127.0.0.1:")
@@ -62,7 +62,7 @@ func TestSubErrorWrapping(t *testing.T) {
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	ci := clientInterceptor{time.Second, NewClientMetrics(metrics.NoopRegisterer), clock.NewFake()}
-	srv := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
+	srv := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
 	lis, err := net.Listen("tcp", "127.0.0.1:")

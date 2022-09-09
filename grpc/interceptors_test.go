@@ -56,16 +56,16 @@ func TestServerInterceptor(t *testing.T) {
 	md := metadata.New(map[string]string{clientRequestTimeKey: "0"})
 	ctxWithMetadata := metadata.NewIncomingContext(context.Background(), md)
 
-	_, err := si.intercept(context.Background(), nil, nil, testHandler)
+	_, err := si.interceptUnary(context.Background(), nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a context missing metadata")
 
-	_, err = si.intercept(ctxWithMetadata, nil, nil, testHandler)
+	_, err = si.interceptUnary(ctxWithMetadata, nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a nil grpc.UnaryServerInfo")
 
-	_, err = si.intercept(ctxWithMetadata, nil, &grpc.UnaryServerInfo{FullMethod: "-service-test"}, testHandler)
+	_, err = si.interceptUnary(ctxWithMetadata, nil, &grpc.UnaryServerInfo{FullMethod: "-service-test"}, testHandler)
 	test.AssertNotError(t, err, "si.intercept failed with a non-nil grpc.UnaryServerInfo")
 
-	_, err = si.intercept(ctxWithMetadata, 0, &grpc.UnaryServerInfo{FullMethod: "brokeTest"}, testHandler)
+	_, err = si.interceptUnary(ctxWithMetadata, 0, &grpc.UnaryServerInfo{FullMethod: "brokeTest"}, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail when handler returned a error")
 }
 
@@ -155,7 +155,7 @@ func TestTimeouts(t *testing.T) {
 
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, &testServer{})
 	go func() {
 		start := time.Now()
@@ -216,7 +216,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	// Create a new ChillerServer
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clk)
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, &testServer{})
 	// Chill until ill
 	go func() {
@@ -302,7 +302,7 @@ func TestInFlightRPCStat(t *testing.T) {
 
 	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clk)
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.intercept))
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, server)
 	// Chill until ill
 	go func() {

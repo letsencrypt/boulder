@@ -45,15 +45,23 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 	}
 
 	si := newServerInterceptor(metrics, clk)
-	allInterceptors := []grpc.UnaryServerInterceptor{
-		si.intercept,
+
+	unaryInterceptors := append([]grpc.UnaryServerInterceptor{
+		si.interceptUnary,
 		si.metrics.grpcMetrics.UnaryServerInterceptor(),
 		hnygrpc.UnaryServerInterceptor(),
+	}, interceptors...)
+
+	streamInterceptors := []grpc.StreamServerInterceptor{
+		si.interceptStream,
+		si.metrics.grpcMetrics.StreamServerInterceptor(),
+		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
-	allInterceptors = append(allInterceptors, interceptors...)
+
 	options := []grpc.ServerOption{
 		grpc.Creds(creds),
-		grpc.ChainUnaryInterceptor(allInterceptors...),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamInterceptors...),
 	}
 	if c.MaxConnectionAge.Duration > 0 {
 		options = append(options,

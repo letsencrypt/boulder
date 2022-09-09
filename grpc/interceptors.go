@@ -57,11 +57,22 @@ func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverIntercep
 	}
 }
 
-func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	if info == nil {
-		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
-	}
+// serverIntercepted is a function type representing a partially-applied call to
+// either the intercepted unary method (i.e. `handler(ctx, req)`) or the
+// intercepted stream method (i.e. `handler(srv, ss)`). It takes one argument,
+// ctx, which is intended to be used to set the context of the inner call,
+// either by being used as the context for the unary method, or incorporated
+// into the ServerStream of the streaming method. It returns a result object,
+// which should be nil when a streaming method is being intercepted, and an
+// error which is applicable to both kinds of intercepted method.
+type serverIntercepted func(context.Context) (interface{}, error)
 
+// intercept records the latency from when the client made this request to when
+// this server received it, and modifies the context deadline to ensure that we
+// can return a helpful error message even if one of our child calls times out.
+func (si *serverInterceptor) intercept(
+	ctx context.Context,
+	callable serverIntercepted) (interface{}, error) {
 	// Extract the grpc metadata from the context. If the context has
 	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
 	// latency with Prometheus.
@@ -94,11 +105,47 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	ctx, cancel = context.WithDeadline(ctx, deadline)
 	defer cancel()
 
-	resp, err := handler(ctx, req)
+	resp, err := callable(ctx)
 	if err != nil {
 		err = wrapError(ctx, err)
 	}
 	return resp, err
+}
+
+// interceptUnary fulfils the grpc.UnaryServerInterceptor interface.
+func (si *serverInterceptor) interceptUnary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	if info == nil {
+		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
+	}
+
+	i := func(ctx context.Context) (interface{}, error) {
+		return handler(ctx, req)
+	}
+
+	return si.intercept(ctx, i)
+
+}
+
+// serverStreamWithContext wraps an existing server stream, but replaces its
+// context with its own.
+type serverStreamWithContext struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+// Context implements part of the grpc.ServerStream interface.
+func (sswc *serverStreamWithContext) Context() context.Context {
+	return sswc.ctx
+}
+
+// interceptStream fulfils the grpc.StreamServerInterceptor interface.
+func (si *serverInterceptor) interceptStream(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	i := func(ctx context.Context) (interface{}, error) {
+		return nil, handler(serverStreamWithContext{ss, ctx}, ss)
+	}
+
+	_, err := si.intercept(ss.Context(), i)
+	return err
 }
 
 // splitMethodName is borrowed directly from
