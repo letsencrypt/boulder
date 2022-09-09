@@ -8,6 +8,10 @@
       "dbConnectFile": "test/secrets/sa_ro_dburl",
       "maxOpenConns": 100
     },
+    "incidentsDB": {
+      "dbConnectFile": "test/secrets/incidents_dburl",
+      "maxOpenConns": 100
+    },
     "ParallelismPerRPC": 20,
     "debugAddr": ":8003",
     "tls": {

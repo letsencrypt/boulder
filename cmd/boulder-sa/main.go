@@ -20,10 +20,11 @@ import (
 type Config struct {
 	SA struct {
 		cmd.ServiceConfig
-		DB         cmd.DBConfig
-		ReadOnlyDB cmd.DBConfig
-		Redis      *rocsp_config.RedisConfig
-		Issuers    map[string]int
+		DB          cmd.DBConfig
+		ReadOnlyDB  cmd.DBConfig
+		IncidentsDB cmd.DBConfig
+		Redis       *rocsp_config.RedisConfig
+		Issuers     map[string]int
 
 		Features map[string]bool
 
@@ -74,12 +75,23 @@ func main() {
 	dbReadOnlyURL, err := c.SA.ReadOnlyDB.URL()
 	cmd.FailOnError(err, "Couldn't load read-only DB URL")
 
+	dbIncidentsURL, err := c.SA.IncidentsDB.URL()
+	cmd.FailOnError(err, "Couldn't load incidents DB URL")
+
 	var dbReadOnlyMap *db.WrappedMap
 	if dbReadOnlyURL == "" {
 		dbReadOnlyMap = dbMap
 	} else {
 		dbReadOnlyMap, err = sa.InitWrappedDb(c.SA.ReadOnlyDB, scope, logger)
-		cmd.FailOnError(err, "While initializing dbMap")
+		cmd.FailOnError(err, "While initializing dbReadOnlyMap")
+	}
+
+	var dbIncidentsMap *db.WrappedMap
+	if dbIncidentsURL == "" {
+		dbIncidentsMap = dbMap
+	} else {
+		dbIncidentsMap, err = sa.InitWrappedDb(c.SA.IncidentsDB, scope, logger)
+		cmd.FailOnError(err, "While initializing dbIncidentsMap")
 	}
 
 	clk := cmd.Clock()
@@ -91,7 +103,7 @@ func main() {
 	if parallel < 1 {
 		parallel = 1
 	}
-	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, shortIssuers, clk, logger, scope, parallel)
+	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, dbIncidentsMap, shortIssuers, clk, logger, scope, parallel)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
 	tls, err := c.SA.TLS.Load()

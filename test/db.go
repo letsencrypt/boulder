@@ -22,20 +22,25 @@ type CleanUpDB interface {
 	io.Closer
 }
 
-// ResetSATestDatabase deletes all rows in all tables in the SA DB.
-// If fails the tests if that errors and returns a clean up function
-// that will delete all rows again and close the database.
-// "Tables available" means all tables that can be seen in the MariaDB
-// configuration by the database user except for ones that are
-// configuration only like goose_db_version (for migrations) or
-// the ones describing the internal configuration of the server. To be
-// used only in test code.
-func ResetSATestDatabase(t testing.TB) func() {
-	return resetTestDatabase(t, "sa")
+// ResetBoulderTestDatabase returns a cleanup function which deletes all rows in
+// all tables of the 'boulder_sa_test' database. Omits the 'gorp_migrations'
+// table as this is used by sql-migrate (https://github.com/rubenv/sql-migrate)
+// to track migrations. If it encounters an error it fails the tests.
+func ResetBoulderTestDatabase(t testing.TB) func() {
+	return resetTestDatabase(t, "boulder")
 }
 
-func resetTestDatabase(t testing.TB, dbType string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-mysql:3306)/boulder_%s_test", dbType))
+// ResetIncidentsTestDatabase returns a cleanup function which deletes all rows
+// in all tables of the 'incidents_sa_test' database. Omits the
+// 'gorp_migrations' table as this is used by sql-migrate
+// (https://github.com/rubenv/sql-migrate) to track migrations. If it encounters
+// an error it fails the tests.
+func ResetIncidentsTestDatabase(t testing.TB) func() {
+	return resetTestDatabase(t, "incidents")
+}
+
+func resetTestDatabase(t testing.TB, dbPrefix string) func() {
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-mysql:3306)/%s_sa_test", dbPrefix))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
@@ -99,14 +104,11 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 	return err
 }
 
-// allTableNamesInDB returns the names of the tables available to the
-// CleanUpDB passed in. "Tables available" means all tables that can
-// be seen in the MariaDB configuration by the database user except
-// for ones that are configuration only like goose_db_version (for
-// migrations) or the ones describing the internal configuration of
-// the server. To be used only in test code.
+// allTableNamesInDB returns the names of the tables available to the passed
+// CleanUpDB. Omits the 'gorp_migrations' table as this is used by sql-migrate
+// (https://github.com/rubenv/sql-migrate) to track migrations.
 func allTableNamesInDB(db CleanUpDB) ([]string, error) {
-	r, err := db.Query("select table_name from information_schema.tables t where t.table_schema = DATABASE() and t.table_name != 'goose_db_version';")
+	r, err := db.Query("select table_name from information_schema.tables t where t.table_schema = DATABASE() and t.table_name != 'gorp_migrations';")
 	if err != nil {
 		return nil, err
 	}

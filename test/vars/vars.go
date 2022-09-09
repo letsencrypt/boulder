@@ -17,4 +17,8 @@ var (
 	DBConnSAOcspUpdateRO = fmt.Sprintf(dbURL, "ocsp_update_ro", "boulder_sa_test")
 	// DBInfoSchemaRoot is the root user and the information_schema connection.
 	DBInfoSchemaRoot = fmt.Sprintf(dbURL, "root", "information_schema")
+	// DBConnIncidents is the incidents database connection.
+	DBConnIncidents = fmt.Sprintf(dbURL, "incidents_sa", "incidents_sa_test")
+	// DBConnIncidentsFullPerms is the incidents database connection with full perms.
+	DBConnIncidentsFullPerms = fmt.Sprintf(dbURL, "test_setup", "incidents_sa_test")
 )

@@ -43,8 +43,9 @@ type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (i
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
 	sapb.UnimplementedStorageAuthorityServer
-	dbMap         *db.WrappedMap
-	dbReadOnlyMap *db.WrappedMap
+	dbMap          *db.WrappedMap
+	dbReadOnlyMap  *db.WrappedMap
+	dbIncidentsMap *db.WrappedMap
 
 	// Short issuer map used by rocsp.
 	shortIssuers []rocsp_config.ShortIDIssuer
@@ -90,6 +91,7 @@ type orderFQDNSet struct {
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,
+	dbIncidentsMap *db.WrappedMap,
 	shortIssuers []rocsp_config.ShortIDIssuer,
 	clk clock.Clock,
 	logger blog.Logger,
@@ -113,6 +115,7 @@ func NewSQLStorageAuthority(
 	ssa := &SQLStorageAuthority{
 		dbMap:                dbMap,
 		dbReadOnlyMap:        dbReadOnlyMap,
+		dbIncidentsMap:       dbIncidentsMap,
 		shortIssuers:         shortIssuers,
 		clk:                  clk,
 		log:                  logger,
@@ -2155,7 +2158,7 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 	var incidentsForSerial []*sapb.Incident
 	for _, i := range activeIncidents {
 		var count int
-		err := ssa.dbMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
+		err := ssa.dbIncidentsMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
 			i.SerialTable), req.Serial)
 		if err != nil {
 			if db.IsNoRows(err) {
@@ -2189,7 +2192,7 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 		return fmt.Errorf("malformed table name %q", req.IncidentTable)
 	}
 
-	selector, err := db.NewMappedSelector[incidentSerialModel](ssa.dbReadOnlyMap)
+	selector, err := db.NewMappedSelector[incidentSerialModel](ssa.dbIncidentsMap)
 	if err != nil {
 		return fmt.Errorf("initializing db map: %w", err)
 	}

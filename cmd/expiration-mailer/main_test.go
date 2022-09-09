@@ -888,11 +888,11 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 
 	fc := newFakeClock(t)
 	log := blog.NewMock()
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
-	cleanUp := test.ResetSATestDatabase(t)
+	cleanUp := test.ResetBoulderTestDatabase(t)
 
 	mc := &mocks.Mailer{}
 
