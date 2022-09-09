@@ -53,62 +53,27 @@ func TestCRLConf_MakeProber(t *testing.T) {
 			c := CRLConf{
 				URL: tt.fields.URL,
 			}
-			if _, err := c.MakeProber(tt.colls); (err != nil) != tt.wantErr {
-				t.Errorf("CRLConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			p, err := c.MakeProber(tt.colls)
+			if err == nil {
+				if tt.wantErr {
+					t.Errorf("CRLConf.MakeProber() error = %v, wantErr %v", err, tt.wantErr)
+				} else {
+					prober := p.(CRLProbe)
+					if prober.cThisUpdate == nil {
+						t.Errorf("CRLConf.MakeProber() returned CRLProbe with nil cThisUpdate")
+					}
+					if prober.cNextUpdate == nil {
+						t.Errorf("CRLConf.MakeProber() returned CRLProbe with nil cNextUpdate")
+					}
+					if prober.cCertCount == nil {
+						t.Errorf("CRLConf.MakeProber() returned CRLProbe with nil cCertCount")
+					}
+				}
+			} else if err != nil && !tt.wantErr {
+				t.Errorf("CRLConf.MakeProber() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
-}
-
-func TestCRLConf_Instrument(t *testing.T) {
-	t.Run("instrument", func(t *testing.T) {
-		conf := CRLConf{}
-		colls := conf.Instrument()
-		if colls == nil {
-			t.Errorf("crl prober defines metrics but received nil collector map")
-			return
-		}
-		var nu, tu, rcc *prometheus.GaugeVec
-		for name, coll := range colls {
-			switch name {
-			case nextUpdateName:
-				_, ok := coll.(*prometheus.GaugeVec)
-				if !ok {
-					t.Errorf("CRLConf.Instrument() returned collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, nu)
-					return
-				}
-				nu = coll.(*prometheus.GaugeVec)
-			case thisUpdateName:
-				_, ok := coll.(*prometheus.GaugeVec)
-				if !ok {
-					t.Errorf("CRLConf.Instrument() returned collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, tu)
-					return
-				}
-				tu = coll.(*prometheus.GaugeVec)
-			case certCountName:
-				_, ok := coll.(*prometheus.GaugeVec)
-				if !ok {
-					t.Errorf("CRLConf.Instrument() returned collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, rcc)
-					return
-				}
-				rcc = coll.(*prometheus.GaugeVec)
-			default:
-				t.Errorf("CRLConf.Instrument() returned unexpected collector '%s'", name)
-				return
-			}
-		}
-		if nu == nil {
-			t.Errorf("CRLConf.Instrument() did not return collector '%s'", nextUpdateName)
-			return
-		}
-		if tu == nil {
-			t.Errorf("CRLConf.Instrument() did not return collector '%s'", thisUpdateName)
-			return
-		}
-		if rcc == nil {
-			t.Errorf("CRLConf.Instrument() did not return collector '%s'", certCountName)
-		}
-	})
 }
 
 func TestCRLConf_UnmarshalSettings(t *testing.T) {
