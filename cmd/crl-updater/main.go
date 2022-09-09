@@ -6,8 +6,6 @@ import (
 	"os"
 
 	"github.com/honeycombio/beeline-go"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -125,14 +123,9 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLGenerator")
 	cac := capb.NewCRLGeneratorClient(caConn)
 
-	var csc cspb.CRLStorerClient
-	if c.CRLUpdater.CRLStorerService != nil {
-		csConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLStorerService, tlsConfig, clientMetrics, clk)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLStorer")
-		csc = cspb.NewCRLStorerClient(csConn)
-	} else {
-		csc = &fakeStorerClient{}
-	}
+	csConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLStorerService, tlsConfig, clientMetrics, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLStorer")
+	csc := cspb.NewCRLStorerClient(csConn)
 
 	u, err := updater.NewUpdater(
 		issuers,
@@ -158,30 +151,6 @@ func main() {
 	} else {
 		u.Run(ctx)
 	}
-}
-
-// fakeStorerClient implements the cspb.CRLStorerClient interface. It is used
-// to replace a real client if the CRLStorerService config stanza is not
-// populated.
-type fakeStorerClient struct{}
-
-func (*fakeStorerClient) UploadCRL(ctx context.Context, opts ...grpc.CallOption) (cspb.CRLStorer_UploadCRLClient, error) {
-	return &fakeStorerStream{}, nil
-}
-
-// fakeStorerStream implements the cspb.CRLStorer_UploadCRLClient interface.
-// It is used to replace a real client stream when the CRLStorerService config
-// stanza is not populated.
-type fakeStorerStream struct {
-	grpc.ClientStream
-}
-
-func (*fakeStorerStream) Send(*cspb.UploadCRLRequest) error {
-	return nil
-}
-
-func (*fakeStorerStream) CloseAndRecv() (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
 }
 
 func init() {
