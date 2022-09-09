@@ -57,7 +57,12 @@ func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverIntercep
 	}
 }
 
-func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+// interceptUnary implements the grpc.UnaryServerInterceptor interface.
+func (si *serverInterceptor) interceptUnary(
+	ctx context.Context,
+	req interface{},
+	info *grpc.UnaryServerInfo,
+	handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
 		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
@@ -90,15 +95,76 @@ func (si *serverInterceptor) intercept(ctx context.Context, req interface{}, inf
 	if remaining < meaningfulWorkOverhead {
 		return nil, status.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
 	}
-	var cancel func()
-	ctx, cancel = context.WithDeadline(ctx, deadline)
+
+	localCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 
-	resp, err := handler(ctx, req)
+	resp, err := handler(localCtx, req)
 	if err != nil {
-		err = wrapError(ctx, err)
+		err = wrapError(localCtx, err)
 	}
 	return resp, err
+}
+
+// interceptedServerStream wraps an existing server stream, but replaces its
+// context with its own.
+type interceptedServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+// Context implements part of the grpc.ServerStream interface.
+func (iss interceptedServerStream) Context() context.Context {
+	return iss.ctx
+}
+
+// interceptStream implements the grpc.StreamServerInterceptor interface.
+func (si *serverInterceptor) interceptStream(
+	srv interface{},
+	ss grpc.ServerStream,
+	info *grpc.StreamServerInfo,
+	handler grpc.StreamHandler) error {
+	ctx := ss.Context()
+
+	// Extract the grpc metadata from the context. If the context has
+	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
+	// latency with Prometheus.
+	if md, ok := metadata.FromIncomingContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
+		err := si.observeLatency(md[clientRequestTimeKey][0])
+		if err != nil {
+			return err
+		}
+	}
+
+	// Shave 20 milliseconds off the deadline to ensure that if the RPC server times
+	// out any sub-calls it makes (like DNS lookups, or onwards RPCs), it has a
+	// chance to report that timeout to the client. This allows for more specific
+	// errors, e.g "the VA timed out looking up CAA for example.com" (when called
+	// from RA.NewCertificate, which was called from WFE.NewCertificate), as
+	// opposed to "RA.NewCertificate timed out" (causing a 500).
+	// Once we've shaved the deadline, we ensure we have we have at least another
+	// 100ms left to do work; otherwise we abort early.
+	deadline, ok := ctx.Deadline()
+	// Should never happen: there was no deadline.
+	if !ok {
+		deadline = time.Now().Add(100 * time.Second)
+	}
+	deadline = deadline.Add(-returnOverhead)
+	remaining := time.Until(deadline)
+	if remaining < meaningfulWorkOverhead {
+		return status.Errorf(codes.DeadlineExceeded, "not enough time left on clock: %s", remaining)
+	}
+
+	// Server stream interceptors are synchronous (they return their error, if
+	// any, when the stream is done) so defer cancel() is safe here.
+	localCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+
+	err := handler(srv, interceptedServerStream{ss, localCtx})
+	if err != nil {
+		err = wrapError(localCtx, err)
+	}
+	return err
 }
 
 // splitMethodName is borrowed directly from
@@ -146,9 +212,8 @@ type clientInterceptor struct {
 	clk     clock.Clock
 }
 
-// intercept fulfils the grpc.UnaryClientInterceptor interface, it should be noted that while this API
-// is currently experimental the metrics it reports should be kept as stable as can be, *within reason*.
-func (ci *clientInterceptor) intercept(
+// interceptUnary implements the grpc.UnaryClientInterceptor interface.
+func (ci *clientInterceptor) interceptUnary(
 	ctx context.Context,
 	fullMethod string,
 	req,
@@ -162,20 +227,21 @@ func (ci *clientInterceptor) intercept(
 		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
+	// Ensure that the context has a deadline set.
 	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
 	defer cancel()
-	// Disable fail-fast so RPCs will retry until deadline, even if all backends
-	// are down.
-	opts = append(opts, grpc.WaitForReady(true))
 
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
 	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
-
 	// Create a grpc/metadata.Metadata instance for the request metadata.
 	// Initialize it with the request time.
 	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
 	// Configure the localCtx with the metadata so it gets sent along in the request
 	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
+
+	// Disable fail-fast so RPCs will retry until deadline, even if all backends
+	// are down.
+	opts = append(opts, grpc.WaitForReady(true))
 
 	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
 	respMD := metadata.New(nil)
@@ -192,11 +258,11 @@ func (ci *clientInterceptor) intercept(
 		"method":  method,
 		"service": service,
 	}
-
 	// Increment the inFlightRPCs gauge for this method/service
 	ci.metrics.inFlightRPCs.With(labels).Inc()
 	// And defer decrementing it when we're done
 	defer ci.metrics.inFlightRPCs.With(labels).Dec()
+
 	// Handle the RPC
 	begin := ci.clk.Now()
 	err := invoker(localCtx, fullMethod, req, reply, cc, opts...)
@@ -211,6 +277,122 @@ func (ci *clientInterceptor) intercept(
 		}
 	}
 	return err
+}
+
+// interceptedClientStream wraps an existing client stream, and calls finish
+// when the stream ends or any operation on it fails.
+type interceptedClientStream struct {
+	grpc.ClientStream
+	finish func(error) error
+}
+
+// Header implements part of the grpc.ClientStream interface.
+func (ics interceptedClientStream) Header() (metadata.MD, error) {
+	md, err := ics.ClientStream.Header()
+	if err != nil {
+		err = ics.finish(err)
+	}
+	return md, err
+}
+
+// SendMsg implements part of the grpc.ClientStream interface.
+func (ics interceptedClientStream) SendMsg(m interface{}) error {
+	err := ics.ClientStream.SendMsg(m)
+	if err != nil {
+		err = ics.finish(err)
+	}
+	return err
+}
+
+// RecvMsg implements part of the grpc.ClientStream interface.
+func (ics interceptedClientStream) RecvMsg(m interface{}) error {
+	err := ics.ClientStream.RecvMsg(m)
+	if err != nil {
+		err = ics.finish(err)
+	}
+	return err
+}
+
+// CloseSend implements part of the grpc.ClientStream interface.
+func (ics interceptedClientStream) CloseSend() error {
+	err := ics.ClientStream.CloseSend()
+	if err != nil {
+		err = ics.finish(err)
+	}
+	return err
+}
+
+// interceptUnary implements the grpc.StreamClientInterceptor interface.
+func (ci *clientInterceptor) interceptStream(
+	ctx context.Context,
+	desc *grpc.StreamDesc,
+	cc *grpc.ClientConn,
+	fullMethod string,
+	streamer grpc.Streamer,
+	opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	// This should not occur but fail fast with a clear error if it does (e.g.
+	// because of buggy unit test code) instead of a generic nil panic later!
+	if ci.metrics.inFlightRPCs == nil {
+		return nil, berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
+	}
+
+	// We don't defer cancel() here, because this function is going to return
+	// immediately. Instead we store it in the interceptedClientStream.
+	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
+
+	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
+	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
+	// Create a grpc/metadata.Metadata instance for the request metadata.
+	// Initialize it with the request time.
+	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
+	// Configure the localCtx with the metadata so it gets sent along in the request
+	localCtx = metadata.NewOutgoingContext(localCtx, reqMD)
+
+	// Disable fail-fast so RPCs will retry until deadline, even if all backends
+	// are down.
+	opts = append(opts, grpc.WaitForReady(true))
+
+	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
+	respMD := metadata.New(nil)
+	// Configure a grpc Trailer with respMD. This allows us to wrap error
+	// types in the server interceptor later on.
+	opts = append(opts, grpc.Trailer(&respMD))
+
+	// Split the method and service name from the fullMethod.
+	// UnaryClientInterceptor's receive a `method` arg of the form
+	// "/ServiceName/MethodName"
+	service, method := splitMethodName(fullMethod)
+	// Slice the inFlightRPC inc/dec calls by method and service
+	labels := prometheus.Labels{
+		"method":  method,
+		"service": service,
+	}
+	// Increment the inFlightRPCs gauge for this method/service
+	ci.metrics.inFlightRPCs.With(labels).Inc()
+	begin := ci.clk.Now()
+
+	// Cancel the local context and decrement the metric when we're done. Also
+	// transform the error into a more usable form, if necessary.
+	finish := func(err error) error {
+		cancel()
+		ci.metrics.inFlightRPCs.With(labels).Dec()
+		if err != nil {
+			err = unwrapError(err, respMD)
+			if status.Code(err) == codes.DeadlineExceeded {
+				return deadlineDetails{
+					service: service,
+					method:  method,
+					latency: ci.clk.Since(begin),
+				}
+			}
+		}
+		return err
+	}
+
+	// Handle the RPC
+	cs, err := streamer(localCtx, desc, cc, fullMethod, opts...)
+	ics := interceptedClientStream{cs, finish}
+	return ics, err
 }
 
 // CancelTo408Interceptor calls the underlying invoker, checks to see if the
