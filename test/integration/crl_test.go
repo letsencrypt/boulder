@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
@@ -34,15 +33,7 @@ func runUpdater(t *testing.T, configFile string) {
 // to our fake S3 service.
 func TestCRLPipeline(t *testing.T) {
 	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")
-	if !ok {
-		t.Fatal("failed to look up test config directory")
-	}
-
-	// The crl-updater and crl-storer are not yet deployed in Prod, so only run
-	// this test in config-next.
-	if !strings.Contains(configDir, "config-next") {
-		return
-	}
+	test.Assert(t, ok, "failed to look up test config directory")
 
 	// Basic setup.
 	os.Setenv("DIRECTORY", "http://boulder:4001/directory")

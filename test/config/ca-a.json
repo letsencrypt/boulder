@@ -24,6 +24,14 @@
         "orphan-finder.boulder"
       ]
     },
+    "grpcCRLGenerator": {
+      "maxConnectionAge": "30s",
+      "address": ":9106",
+      "clientNames": [
+        "health-checker.boulder",
+        "crl-updater.boulder"
+      ]
+    },
     "saService": {
       "serverAddress": "sa.boulder:9095",
       "timeout": "15s"

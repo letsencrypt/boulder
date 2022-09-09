@@ -14,6 +14,10 @@
       "serverAddress": "ca.boulder:9106",
       "timeout": "15s"
     },
+    "crlStorerService": {
+      "serverAddress": "crl-storer.boulder:9109",
+      "timeout": "15s"
+    },
     "issuerCerts": [
       "/hierarchy/intermediate-cert-rsa-a.pem",
       "/hierarchy/intermediate-cert-rsa-b.pem",
