@@ -2767,7 +2767,7 @@ func TestSerialsForIncident(t *testing.T) {
 		// https://mariadb.com/kb/en/mariadb-error-codes/
 		test.AssertEquals(t, mysqlErr.Number, uint16(1146))
 	} else {
-		t.Fatalf("Expected MySQL Error 1142 (ER_NO_SUCH_TABLE) from Recv(), got %q", err)
+		t.Fatalf("Expected MySQL Error 1146 (ER_NO_SUCH_TABLE) from Recv(), got %q", err)
 	}
 
 	// Request serials from table 'incident_foo', which we expect to exist but
