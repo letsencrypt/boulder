@@ -31,7 +31,6 @@ import (
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/letsencrypt/boulder/sa/satest"
 	"github.com/letsencrypt/boulder/test"
 	ira "github.com/letsencrypt/boulder/test/inmem/ra"
 	isa "github.com/letsencrypt/boulder/test/inmem/sa"
@@ -54,93 +53,26 @@ func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.Cal
 	return &emptypb.Empty{}, nil
 }
 
-func TestRevokeBatch(t *testing.T) {
-	log := blog.UseMock()
-	fc := clock.NewFake()
-	// Set to some non-zero time.
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
-	if err != nil {
-		t.Fatalf("Failed to create dbMap: %s", err)
-	}
-	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
-		"../../test/hierarchy/int-r3.cert.pem": 102,
-	})
-	test.AssertNotError(t, err, "error loading issuers")
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
-	if err != nil {
-		t.Fatalf("Failed to create SA: %s", err)
-	}
-	defer test.ResetBoulderTestDatabase(t)
-	reg := satest.CreateWorkingRegistration(t, isa.SA{Impl: ssa})
+func TestRevokeSerialBatchFile(t *testing.T) {
+	testCtx := setup(t)
+	defer testCtx.cleanUp()
 
-	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
-	test.AssertNotError(t, err, "Failed to load test issuer")
-	signer, err := test.LoadSigner("../../test/hierarchy/int-r3.key.pem")
-	test.AssertNotError(t, err, "failed to load test signer")
-
-	ra := ra.NewRegistrationAuthorityImpl(fc,
-		log,
-		metrics.NoopRegisterer,
-		1,
-		goodkey.KeyPolicy{},
-		100,
-		true,
-		300*24*time.Hour,
-		7*24*time.Hour,
-		nil,
-		nil,
-		0,
-		nil,
-		&mockPurger{},
-		[]*issuance.Certificate{issuer},
-	)
-	ra.SA = isa.SA{Impl: ssa}
-	ra.CA = &mockCA{}
-	rac := ira.RA{Impl: ra}
-
-	r := revoker{
-		rac:   rac,
-		sac:   isa.SA{Impl: ssa},
-		dbMap: dbMap,
-		clk:   fc,
-		log:   log,
-	}
+	entries, _ := setupTestEntries(t)
+	testCtx.createAndRegisterEntries(t, entries)
 
 	serialFile, err := os.CreateTemp("", "serials")
 	test.AssertNotError(t, err, "failed to open temp file")
 	defer os.Remove(serialFile.Name())
 
-	serials := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
-	for _, serial := range serials {
-		template := &x509.Certificate{
-			SerialNumber: serial,
-			DNSNames:     []string{"asd"},
-		}
-		der, err := x509.CreateCertificate(rand.Reader, template, issuer.Certificate, signer.Public(), signer)
-		test.AssertNotError(t, err, "failed to generate test cert")
-		_, err = ssa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:      der,
-			RegID:    reg.Id,
-			Issued:   time.Now().UnixNano(),
-			IssuerID: 1,
-		})
-		test.AssertNotError(t, err, "failed to add test cert")
-		_, err = ssa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:    der,
-			RegID:  reg.Id,
-			Issued: time.Now().UnixNano(),
-		})
-		test.AssertNotError(t, err, "failed to add test cert")
-		_, err = serialFile.WriteString(fmt.Sprintf("%s\n", core.SerialToString(serial)))
+	for _, e := range entries {
+		_, err = serialFile.WriteString(fmt.Sprintf("%s\n", core.SerialToString(e.serial)))
 		test.AssertNotError(t, err, "failed to write serial to temp file")
 	}
-
-	err = r.revokeBySerialBatch(context.Background(), serialFile.Name(), 0, 2)
+	err = testCtx.revoker.revokeSerialBatchFile(context.Background(), serialFile.Name(), 0, 2)
 	test.AssertNotError(t, err, "revokeBatch failed")
 
-	for _, serial := range serials {
-		status, err := ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(serial)})
+	for _, e := range entries {
+		status, err := testCtx.ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(e.serial)})
 		test.AssertNotError(t, err, "failed to retrieve certificate status")
 		test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	}
@@ -150,20 +82,16 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	// Unique keys for each of our test certificates.
-	testKey1, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 1")
-	testKey2, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 2")
-	testKey3, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 3")
+	uniqueEntries, duplicateEntry := setupTestEntries(t)
+	testCtx.createAndRegisterEntries(t, uniqueEntries)
+	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
 	// Write the contents of testKey1 to a temp file.
-	testKey1File, err := os.CreateTemp("", "key")
+	duplicateKeyFile, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
-	der, err := x509.MarshalPKCS8PrivateKey(testKey1)
+	der, err := x509.MarshalPKCS8PrivateKey(duplicateEntry.testKey)
 	test.AssertNotError(t, err, "failed to marshal testKey1 to DER")
-	err = pem.Encode(testKey1File,
+	err = pem.Encode(duplicateKeyFile,
 		&pem.Block{
 			Type:  "PRIVATE KEY",
 			Bytes: der,
@@ -171,48 +99,10 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "failed to PEM encode test key 1")
 	test.AssertNotError(t, err, "failed to write to temp file")
-	defer os.Remove(testKey1File.Name())
-
-	// Unique JWKs so we can register each of our entries.
-	testJWK1 := `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
-	testJWK2 := `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
-	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
-	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
-
-	type entry struct {
-		jwk      string
-		serial   *big.Int
-		names    []string
-		testKey  *rsa.PrivateKey
-		spkiHash []byte
-	}
-
-	entries := []*entry{
-		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: testKey1},
-		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: testKey2},
-		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: testKey3},
-	}
-
-	// Register and insert our first 3 certificates.
-	for _, entry := range entries {
-		regId := testCtx.addRegistation(t, entry.names, entry.jwk)
-		cert := testCtx.addCertificate(t, entry.serial, entry.names, entry.testKey.PublicKey, regId)
-
-		entry.spkiHash, err = getPublicKeySPKIHash(cert.PublicKey)
-		test.AssertNotError(t, err, "Failed to get SPKI hash for test cert")
-
-		count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
-		test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
-		test.AssertEquals(t, count, 1)
-	}
-
-	// Register and insert a certificate which re-uses the same public key as
-	// our first test certificate.
-	regId := testCtx.addRegistation(t, []string{"example-1336.com"}, testJWK4)
-	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
+	defer os.Remove(duplicateKeyFile.Name())
 
 	// Get the SPKI hash for the provided keypair.
-	spkiHash, err := getPublicKeySPKIHash(&testKey1.PublicKey)
+	spkiHash, err := getPublicKeySPKIHash(&duplicateEntry.testKey.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
 
 	// Ensure that the SPKI hash hasn't already been added to the blockedKeys
@@ -223,20 +113,20 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 
 	// For some additional validation let's ensure that counts for all test
 	// entries, except our known duplicate, are 1.
-	for _, entry := range entries {
-		switch entry.names[0] {
+	for _, e := range uniqueEntries {
+		switch e.names[0] {
 		case "example-1337.com":
-			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
+			count, err := testCtx.revoker.countCertsMatchingSPKIHash(e.spkiHash)
 			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 2)
 
 		case "example-1338.com":
-			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
+			count, err := testCtx.revoker.countCertsMatchingSPKIHash(e.spkiHash)
 			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 1)
 
 		case "example-1339.com":
-			count, err := testCtx.revoker.countCertsMatchingSPKIHash(entry.spkiHash)
+			count, err := testCtx.revoker.countCertsMatchingSPKIHash(e.spkiHash)
 			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 1)
 		}
@@ -249,7 +139,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.AssertNotError(t, err, "While attempting to revoke 1 of our matching certificates ahead of time")
 
 	// Revoke the certificates, but do not block issuance.
-	err = testCtx.revoker.revokeByPrivateKey(context.Background(), testKey1File.Name())
+	err = testCtx.revoker.revokeByPrivateKey(context.Background(), duplicateKeyFile.Name())
 	test.AssertNotError(t, err, "While attempting to revoke certificates for the provided key")
 
 	// Ensure that the key is not blocked, yet.
@@ -258,7 +148,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Block issuance for the key.
-	err = testCtx.revoker.blockByPrivateKey(context.Background(), "", testKey1File.Name())
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), "", duplicateKeyFile.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is now blocked.
@@ -267,7 +157,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Ensure that blocking issuance is idempotent.
-	err = testCtx.revoker.blockByPrivateKey(context.Background(), "", testKey1File.Name())
+	err = testCtx.revoker.blockByPrivateKey(context.Background(), "", duplicateKeyFile.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 }
 
@@ -275,20 +165,16 @@ func TestPrivateKeyBlock(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	// Unique keys for each of our test certificates.
-	testKey1, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 1")
-	testKey2, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 2")
-	testKey3, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 3")
+	uniqueEntries, duplicateEntry := setupTestEntries(t)
+	testCtx.createAndRegisterEntries(t, uniqueEntries)
+	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
 	// Write the contents of testKey1 to a temp file.
-	testKey1File, err := os.CreateTemp("", "key")
+	duplicateKeyFile, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
-	der, err := x509.MarshalPKCS8PrivateKey(testKey1)
+	der, err := x509.MarshalPKCS8PrivateKey(duplicateEntry.testKey)
 	test.AssertNotError(t, err, "failed to marshal testKey1 to DER")
-	err = pem.Encode(testKey1File,
+	err = pem.Encode(duplicateKeyFile,
 		&pem.Block{
 			Type:  "PRIVATE KEY",
 			Bytes: der,
@@ -296,73 +182,43 @@ func TestPrivateKeyBlock(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "failed to PEM encode test key 1")
 	test.AssertNotError(t, err, "failed to write to temp file")
-	defer os.Remove(testKey1File.Name())
-
-	// Unique JWKs so we can register each of our entries.
-	testJWK1 := `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
-	testJWK2 := `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
-	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
-	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
-
-	type entry struct {
-		jwk     string
-		serial  *big.Int
-		names   []string
-		testKey *rsa.PrivateKey
-	}
-
-	entries := []*entry{
-		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: testKey1},
-		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: testKey2},
-		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: testKey3},
-	}
-
-	// Register and insert our first 3 certificates.
-	for _, entry := range entries {
-		regId := testCtx.addRegistation(t, entry.names, entry.jwk)
-		testCtx.addCertificate(t, entry.serial, entry.names, entry.testKey.PublicKey, regId)
-	}
-
-	// Register and insert a certificate which re-uses the same public key as
-	// our first test certificate.
-	regId := testCtx.addRegistation(t, []string{"example-1336.com"}, testJWK4)
-	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
+	defer os.Remove(duplicateKeyFile.Name())
 
 	// Get the SPKI hash for the provided keypair.
-	spkiHash1, err := getPublicKeySPKIHash(&testKey1.PublicKey)
+	duplicateKeySPKI, err := getPublicKeySPKIHash(&duplicateEntry.testKey.PublicKey)
 	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
 
 	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
 	// hash. We expect that since this key was re-used we'll find 2 matches.
-	count, err := testCtx.revoker.countCertsMatchingSPKIHash(spkiHash1)
+	count, err := testCtx.revoker.countCertsMatchingSPKIHash(duplicateKeySPKI)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.AssertEquals(t, count, 2)
 
 	// With dryRun=true this should not block the key.
-	err = privateKeyBlock(&testCtx.revoker, true, "", count, spkiHash1, testKey1File.Name())
+	err = privateKeyBlock(&testCtx.revoker, true, "", count, duplicateKeySPKI, duplicateKeyFile.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// Ensure that the key is not blocked, yet.
-	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(duplicateKeySPKI)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
 
 	// With dryRun=false this should block the key.
 	comment := "key blocked as part of test"
-	err = privateKeyBlock(&testCtx.revoker, false, comment, count, spkiHash1, testKey1File.Name())
+	err = privateKeyBlock(&testCtx.revoker, false, comment, count, duplicateKeySPKI, duplicateKeyFile.Name())
 	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
 
 	// With dryRun=false this should result in an error as the key is already blocked.
-	err = privateKeyBlock(&testCtx.revoker, false, "", count, spkiHash1, testKey1File.Name())
+	err = privateKeyBlock(&testCtx.revoker, false, "", count, duplicateKeySPKI, duplicateKeyFile.Name())
 	test.AssertError(t, err, "Attempting to block a key which is already blocked should have failed.")
 
 	// Ensure that the key is now blocked.
-	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(duplicateKeySPKI)
 	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
 	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
 
 	// Ensure that the comment was set as expected
-	commentFromDB, err := testCtx.dbMap.SelectStr("SELECT comment from blockedKeys WHERE keyHash = ?", spkiHash1)
+	commentFromDB, err := testCtx.dbMap.SelectStr("SELECT comment from blockedKeys WHERE keyHash = ?", duplicateKeySPKI)
 	test.AssertNotError(t, err, "Failed to get comment from database")
 	u, err := user.Current()
 	test.AssertNotError(t, err, "Failed to get current user")
@@ -374,20 +230,16 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	// Unique keys for each of our test certificates.
-	testKey1, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 1")
-	testKey2, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 2")
-	testKey3, err := rsa.GenerateKey(rand.Reader, 2048)
-	test.AssertNotError(t, err, "Failed to generate test key 3")
+	uniqueEntries, duplicateEntry := setupTestEntries(t)
+	testCtx.createAndRegisterEntries(t, uniqueEntries)
+	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
 	// Write the contents of testKey1 to a temp file.
-	testKey1File, err := os.CreateTemp("", "key")
+	duplicateKeyFile, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
-	der, err := x509.MarshalPKCS8PrivateKey(testKey1)
+	der, err := x509.MarshalPKCS8PrivateKey(duplicateEntry.testKey)
 	test.AssertNotError(t, err, "failed to marshal testKey1 to DER")
-	err = pem.Encode(testKey1File,
+	err = pem.Encode(duplicateKeyFile,
 		&pem.Block{
 			Type:  "PRIVATE KEY",
 			Bytes: der,
@@ -395,7 +247,63 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "failed to PEM encode test key 1")
 	test.AssertNotError(t, err, "failed to write to temp file")
-	defer os.Remove(testKey1File.Name())
+	defer os.Remove(duplicateKeyFile.Name())
+
+	// Get the SPKI hash for the provided keypair.
+	duplicateKeySPKI, err := getPublicKeySPKIHash(&duplicateEntry.testKey.PublicKey)
+	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
+
+	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
+	// hash. We expect that since this key was re-used we'll find 2 matches.
+	count, err := testCtx.revoker.countCertsMatchingSPKIHash(duplicateKeySPKI)
+	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
+	test.AssertEquals(t, count, 2)
+
+	// With dryRun=true this should not revoke certificates or block issuance.
+	err = privateKeyRevoke(&testCtx.revoker, true, "", count, duplicateKeyFile.Name())
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
+
+	// Ensure that the key is not blocked, yet.
+	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(duplicateKeySPKI)
+	test.AssertNotError(t, err, "spkiHashInBlockedKeys failed for key that shouldn't be blocked yet")
+	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
+
+	// With dryRun=false this should revoke matching certificates and block the key.
+	comment := "key blocked as part of test"
+	err = privateKeyRevoke(&testCtx.revoker, false, comment, count, duplicateKeyFile.Name())
+	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
+
+	// Ensure that the key is now blocked.
+	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(duplicateKeySPKI)
+	test.AssertNotError(t, err, "spkiHashInBlockedKeys failed for key that should now be blocked")
+	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
+
+	// Ensure that the comment was set as expected
+	commentFromDB, err := testCtx.dbMap.SelectStr("SELECT comment from blockedKeys WHERE keyHash = ?", duplicateKeySPKI)
+	test.AssertNotError(t, err, "Failed to get comment from database")
+	u, err := user.Current()
+	test.AssertNotError(t, err, "Failed to get current user")
+	expectedDBComment := fmt.Sprintf("%s: %s", u.Username, comment)
+	test.AssertEquals(t, commentFromDB, expectedDBComment)
+}
+
+type entry struct {
+	jwk      string
+	serial   *big.Int
+	names    []string
+	testKey  *rsa.PrivateKey
+	regId    int64
+	spkiHash []byte
+}
+
+func setupTestEntries(t *testing.T) ([]*entry, *entry) {
+	// Unique keys for each of our test certificates.
+	key1, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Generating test key 1")
+	key2, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Generating test key 2")
+	key3, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "Generating test key 3")
 
 	// Unique JWKs so we can register each of our entries.
 	testJWK1 := `{"kty":"RSA","n":"yNWVhtYEKJR21y9xsHV-PD_bYwbXSeNuFal46xYxVfRL5mqha7vttvjB_vc7Xg2RvgCxHPCqoxgMPTzHrZT75LjCwIW2K_klBYN8oYvTwwmeSkAz6ut7ZxPv-nZaT5TJhGk0NT2kh_zSpdriEJ_3vW-mqxYbbBmpvHqsa1_zx9fSuHYctAZJWzxzUZXykbWMWQZpEiE0J4ajj51fInEzVn7VxV-mzfMyboQjujPh7aNJxAWSq4oQEJJDgWwSh9leyoJoPpONHxh5nEE5AjE01FkGICSxjpZsF-w8hOTI3XXohUdu29Se26k2B0PolDSuj0GIQU6-W9TdLXSjBb2SpQ","e":"AQAB"}`
@@ -403,66 +311,12 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
 	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
 
-	type entry struct {
-		jwk     string
-		serial  *big.Int
-		names   []string
-		testKey *rsa.PrivateKey
-	}
+	return []*entry{
+		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: key1},
+		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: key2},
+		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: key3},
+	}, &entry{jwk: testJWK4, serial: big.NewInt(4), names: []string{"example-1336.com"}, testKey: key1}
 
-	entries := []*entry{
-		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: testKey1},
-		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: testKey2},
-		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: testKey3},
-	}
-
-	// Register and insert our first 3 certificates.
-	for _, entry := range entries {
-		regId := testCtx.addRegistation(t, entry.names, entry.jwk)
-		testCtx.addCertificate(t, entry.serial, entry.names, entry.testKey.PublicKey, regId)
-	}
-
-	// Register and insert a certificate which re-uses the same public key as
-	// our first test certificate.
-	regId := testCtx.addRegistation(t, []string{"example-1336.com"}, testJWK4)
-	testCtx.addCertificate(t, big.NewInt(4), []string{"example-1336.com"}, testKey1.PublicKey, regId)
-
-	// Get the SPKI hash for the provided keypair.
-	spkiHash1, err := getPublicKeySPKIHash(&testKey1.PublicKey)
-	test.AssertNotError(t, err, "Failed to get SPKI hash for dupe.")
-
-	// Query the 'keyHashToSerial' table for certificates with a matching SPKI
-	// hash. We expect that since this key was re-used we'll find 2 matches.
-	count, err := testCtx.revoker.countCertsMatchingSPKIHash(spkiHash1)
-	test.AssertNotError(t, err, "countCertsMatchingSPKIHash for dupe failed")
-	test.AssertEquals(t, count, 2)
-
-	// With dryRun=true this should not revoke certificates or block issuance.
-	err = privateKeyRevoke(&testCtx.revoker, true, "", count, testKey1File.Name())
-	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
-
-	// Ensure that the key is not blocked, yet.
-	keyExists, err := testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
-	test.AssertNotError(t, err, "spkiHashInBlockedKeys failed for key that shouldn't be blocked yet")
-	test.Assert(t, !keyExists, "SPKI hash should not be in blockedKeys")
-
-	// With dryRun=false this should revoke matching certificates and block the key.
-	comment := "key blocked as part of test"
-	err = privateKeyRevoke(&testCtx.revoker, false, comment, count, testKey1File.Name())
-	test.AssertNotError(t, err, "While attempting to block issuance for the provided key")
-
-	// Ensure that the key is now blocked.
-	keyExists, err = testCtx.revoker.spkiHashInBlockedKeys(spkiHash1)
-	test.AssertNotError(t, err, "spkiHashInBlockedKeys failed for key that should now be blocked")
-	test.Assert(t, keyExists, "SPKI hash should not be in blockedKeys")
-
-	// Ensure that the comment was set as expected
-	commentFromDB, err := testCtx.dbMap.SelectStr("SELECT comment from blockedKeys WHERE keyHash = ?", spkiHash1)
-	test.AssertNotError(t, err, "Failed to get comment from database")
-	u, err := user.Current()
-	test.AssertNotError(t, err, "Failed to get current user")
-	expectedDBComment := fmt.Sprintf("%s: %s", u.Username, comment)
-	test.AssertEquals(t, commentFromDB, expectedDBComment)
 }
 
 type testCtx struct {
@@ -515,6 +369,20 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 	cert, err := x509.ParseCertificate(rawCert)
 	test.AssertNotError(t, err, "Failed to parse test cert")
 	return cert
+}
+
+func (c testCtx) createAndRegisterEntries(t *testing.T, entries []*entry) {
+	for _, entry := range entries {
+		c.createAndRegisterEntry(t, entry)
+	}
+}
+
+func (c testCtx) createAndRegisterEntry(t *testing.T, e *entry) {
+	e.regId = c.addRegistation(t, e.names, e.jwk)
+	cert := c.addCertificate(t, e.serial, e.names, e.testKey.PublicKey, e.regId)
+	var err error
+	e.spkiHash, err = getPublicKeySPKIHash(cert.PublicKey)
+	test.AssertNotError(t, err, "Failed to get SPKI hash")
 }
 
 func setup(t *testing.T) testCtx {
