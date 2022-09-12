@@ -1,10 +1,10 @@
 package probers
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
@@ -54,23 +54,16 @@ func TestCRLConf_MakeProber(t *testing.T) {
 				URL: tt.fields.URL,
 			}
 			p, err := c.MakeProber(tt.colls)
-			if err == nil {
-				if tt.wantErr {
-					t.Errorf("CRLConf.MakeProber() error = %v, wantErr %v", err, tt.wantErr)
-				} else {
-					prober := p.(CRLProbe)
-					if prober.cThisUpdate == nil {
-						t.Errorf("CRLConf.MakeProber() returned CRLProbe with nil cThisUpdate")
-					}
-					if prober.cNextUpdate == nil {
-						t.Errorf("CRLConf.MakeProber() returned CRLProbe with nil cNextUpdate")
-					}
-					if prober.cCertCount == nil {
-						t.Errorf("CRLConf.MakeProber() returned CRLProbe with nil cCertCount")
-					}
-				}
-			} else if err != nil && !tt.wantErr {
-				t.Errorf("CRLConf.MakeProber() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				test.AssertError(t, err, "CRLConf.MakeProber()")
+			} else {
+				test.AssertNotError(t, err, "CRLConf.MakeProber()")
+
+				test.AssertNotNil(t, p, "CRLConf.MakeProber(): nil prober")
+				prober := p.(CRLProbe)
+				test.AssertNotNil(t, prober.cThisUpdate, "CRLConf.MakeProber(): nil cThisUpdate")
+				test.AssertNotNil(t, prober.cNextUpdate, "CRLConf.MakeProber(): nil cNextUpdate")
+				test.AssertNotNil(t, prober.cCertCount, "CRLConf.MakeProber(): nil cCertCount")
 			}
 		})
 	}
@@ -99,13 +92,12 @@ func TestCRLConf_UnmarshalSettings(t *testing.T) {
 			t.Log(string(settingsBytes))
 			c := CRLConf{}
 			got, err := c.UnmarshalSettings(settingsBytes)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("CRLConf.UnmarshalSettings() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				test.AssertError(t, err, "CRLConf.UnmarshalSettings()")
+			} else {
+				test.AssertNotError(t, err, "CRLConf.UnmarshalSettings()")
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("CRLConf.UnmarshalSettings() = %v, want %v", got, tt.want)
-			}
+			test.AssertDeepEquals(t, got, tt.want)
 		})
 	}
 }
