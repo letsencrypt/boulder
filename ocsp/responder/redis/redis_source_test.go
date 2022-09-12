@@ -228,7 +228,7 @@ func TestCertificateNotFound(t *testing.T) {
 	}
 }
 
-func TestServeStale(t *testing.T) {
+func TestNoServeStale(t *testing.T) {
 	clk := clock.NewFake()
 	src, err := NewRedisSource(nil, errorSigner{}, time.Second, clk, metrics.NoopRegisterer, log.NewMock())
 	test.AssertNotError(t, err, "making source")
@@ -242,5 +242,5 @@ func TestServeStale(t *testing.T) {
 	_, err = src.Response(context.Background(), &ocsp.Request{
 		SerialNumber: serial,
 	})
-	test.AssertNotError(t, err, "expected to serve stale response when signer was down")
+	test.AssertError(t, err, "expected to error when signer was down")
 }
