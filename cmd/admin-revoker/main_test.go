@@ -89,7 +89,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 
-	// Test that an empty incident table results in the expected log output.
+	// Ensure that an empty incident table results in the expected log output.
 	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", 0, 1)
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
 	test.Assert(t, len(testCtx.log.GetAllMatching("No serials found in incident table")) > 0, "Expected log output not found")
@@ -109,7 +109,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", 0, 1)
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
 
-	// Test that a populated incident table results in the expected log output.
+	// Ensure that a populated incident table results in the expected log output.
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
 	test.Assert(t, len(testCtx.log.GetAllMatching("No serials found in incident table")) <= 0, "Expected log output not found")
 
@@ -126,7 +126,7 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	testCtx.createAndRegisterEntries(t, uniqueEntries)
 	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
-	// Write the contents of testKey1 to a temp file.
+	// Write the key contents of our duplicate entry to a temp file.
 	duplicateKeyFile, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
 	der, err := x509.MarshalPKCS8PrivateKey(duplicateEntry.testKey)
@@ -155,27 +155,30 @@ func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	// entries, except our known duplicate, are 1.
 	for _, e := range uniqueEntries {
 		switch e.names[0] {
-		case "example-1337.com":
+		case uniqueEntries[0].names[0]:
+			// example-1337.com
 			count, err := testCtx.revoker.countCertsMatchingSPKIHash(e.spkiHash)
 			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 2)
 
-		case "example-1338.com":
+		case uniqueEntries[1].names[0]:
+			// example-1338.com
 			count, err := testCtx.revoker.countCertsMatchingSPKIHash(e.spkiHash)
 			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 1)
 
-		case "example-1339.com":
+		case uniqueEntries[2].names[0]:
+			// example-1339.com
 			count, err := testCtx.revoker.countCertsMatchingSPKIHash(e.spkiHash)
 			test.AssertNotError(t, err, "countCertsMatchingSPKIHash for entry failed")
 			test.AssertEquals(t, count, 1)
 		}
 	}
 
-	// Revoke one of our two testKey1 certificates by serial. This is to test
+	// Revoke one of our two duplicate certificates by serial. This is to test
 	// that revokeByPrivateKey will continue if one of the two matching
 	// certificates has already been revoked.
-	err = testCtx.revoker.revokeBySerial(context.Background(), core.SerialToString(big.NewInt(1)), 1, true)
+	err = testCtx.revoker.revokeBySerial(context.Background(), core.SerialToString(duplicateEntry.serial), 1, true)
 	test.AssertNotError(t, err, "While attempting to revoke 1 of our matching certificates ahead of time")
 
 	// Revoke the certificates, but do not block issuance.
@@ -209,7 +212,7 @@ func TestPrivateKeyBlock(t *testing.T) {
 	testCtx.createAndRegisterEntries(t, uniqueEntries)
 	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
-	// Write the contents of testKey1 to a temp file.
+	// Write the key contents of our duplicate entry to a temp file.
 	duplicateKeyFile, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
 	der, err := x509.MarshalPKCS8PrivateKey(duplicateEntry.testKey)
@@ -220,7 +223,7 @@ func TestPrivateKeyBlock(t *testing.T) {
 			Bytes: der,
 		},
 	)
-	test.AssertNotError(t, err, "failed to PEM encode test key 1")
+	test.AssertNotError(t, err, "failed to PEM encode test key")
 	test.AssertNotError(t, err, "failed to write to temp file")
 	defer os.Remove(duplicateKeyFile.Name())
 
@@ -274,7 +277,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	testCtx.createAndRegisterEntries(t, uniqueEntries)
 	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
-	// Write the contents of testKey1 to a temp file.
+	// Write the key contents of our duplicate entry to a temp file.
 	duplicateKeyFile, err := os.CreateTemp("", "key")
 	test.AssertNotError(t, err, "failed to create temp file")
 	der, err := x509.MarshalPKCS8PrivateKey(duplicateEntry.testKey)
@@ -285,7 +288,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 			Bytes: der,
 		},
 	)
-	test.AssertNotError(t, err, "failed to PEM encode test key 1")
+	test.AssertNotError(t, err, "failed to PEM encode test key")
 	test.AssertNotError(t, err, "failed to write to temp file")
 	defer os.Remove(duplicateKeyFile.Name())
 
@@ -352,11 +355,11 @@ func setupUniqueTestEntries(t *testing.T) ([]*entry, *entry) {
 	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
 
 	return []*entry{
-		{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: key1},
-		{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: key2},
-		{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: key3},
-	}, &entry{jwk: testJWK4, serial: big.NewInt(4), names: []string{"example-1336.com"}, testKey: key1}
-
+			{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: key1},
+			{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: key2},
+			{jwk: testJWK3, serial: big.NewInt(3), names: []string{"example-1339.com"}, testKey: key3},
+		},
+		&entry{jwk: testJWK4, serial: big.NewInt(4), names: []string{"example-1336.com"}, testKey: key1}
 }
 
 type testCtx struct {
