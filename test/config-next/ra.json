@@ -64,6 +64,7 @@
       "StreamlineOrderAndAuthzs": true,
       "AllowReRevocation": true,
       "MozRevocationReasons": true,
+      "SHA1CSRs": false,
       "RejectDuplicateCSRExtensions": true
     },
     "ctLogs": {
