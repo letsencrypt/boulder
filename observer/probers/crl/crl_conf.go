@@ -66,30 +66,30 @@ func (c CRLConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		case nextUpdateName:
 			probe.cNextUpdate, ok = coll.(*prometheus.GaugeVec)
 			if !ok {
-				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
+				return nil, fmt.Errorf("crl prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
 			}
 		case thisUpdateName:
 			probe.cThisUpdate, ok = coll.(*prometheus.GaugeVec)
 			if !ok {
-				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
+				return nil, fmt.Errorf("crl prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
 			}
 		case certCountName:
 			probe.cCertCount, ok = coll.(*prometheus.GaugeVec)
 			if !ok {
-				return nil, fmt.Errorf("crl prober received collector '%s' of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
+				return nil, fmt.Errorf("crl prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", name, coll)
 			}
 		default:
-			return nil, fmt.Errorf("crl prober received unexpected collector '%s'", name)
+			return nil, fmt.Errorf("crl prober received unexpected collector %q", name)
 		}
 	}
 	if probe.cNextUpdate == nil {
-		return nil, fmt.Errorf("crl prober did not receive collector '%s'", nextUpdateName)
+		return nil, fmt.Errorf("crl prober did not receive collector %q", nextUpdateName)
 	}
 	if probe.cThisUpdate == nil {
-		return nil, fmt.Errorf("crl prober did not receive collector '%s'", thisUpdateName)
+		return nil, fmt.Errorf("crl prober did not receive collector %q", thisUpdateName)
 	}
 	if probe.cCertCount == nil {
-		return nil, fmt.Errorf("crl prober did not receive collector '%s'", certCountName)
+		return nil, fmt.Errorf("crl prober did not receive collector %q", certCountName)
 	}
 
 	return probe, nil
