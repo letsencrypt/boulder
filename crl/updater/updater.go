@@ -281,6 +281,11 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	crlId, err := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+	if err != nil {
+		return err
+	}
+
 	start := cu.clk.Now()
 	defer func() {
 		// Each return statement in this function assigns its returned value to the
@@ -288,6 +293,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		// variable, and so can reference and modify it.
 		result := "success"
 		if err != nil {
+			cu.log.AuditErrf("Generating CRL failed: id=[%s] err=[%s]", crlId, err)
 			result = "failed"
 			err = fmt.Errorf("%d: %w", shardIdx, err)
 		}
@@ -400,10 +406,6 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
 	}
 
-	crlId, err := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
-	if err != nil {
-		return err
-	}
 	cu.log.Infof("Generated CRL: id=[%s] size=[%d] hash=[%x]", crlId, crlLen, crlHash.Sum(nil))
 	return nil
 }
