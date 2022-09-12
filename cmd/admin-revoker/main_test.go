@@ -57,7 +57,7 @@ func TestRevokeSerialBatchFile(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	entries, _ := setupTestEntries(t)
+	entries, _ := setupUniqueTestEntries(t)
 	testCtx.createAndRegisterEntries(t, entries)
 
 	serialFile, err := os.CreateTemp("", "serials")
@@ -82,20 +82,24 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	uniqueEntries, duplicateEntry := setupTestEntries(t)
-	testCtx.createAndRegisterEntries(t, uniqueEntries)
-	testCtx.createAndRegisterEntry(t, duplicateEntry)
+	entries, _ := setupUniqueTestEntries(t)
+	testCtx.createAndRegisterEntries(t, entries)
 
 	testIncidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidentsFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 
-	// Add a row to the incidents table.
+	// Test that an empty incident table results in the expected log output.
+	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", 0, 1)
+	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
+	test.Assert(t, len(testCtx.log.GetAllMatching("No serials found in incident table")) > 0, "Expected log output not found")
+	testCtx.log.Clear()
+
 	_, err = testIncidentsDbMap.Exec(
 		fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
-			core.SerialToString(duplicateEntry.serial),
-			duplicateEntry.regId,
+			core.SerialToString(entries[0].serial),
+			entries[0].regId,
 			42,
 			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format("2006-01-02 15:04:05"),
 		),
@@ -104,13 +108,21 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 
 	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", 0, 1)
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
+
+	// Test that a populated incident table results in the expected log output.
+	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
+	test.Assert(t, len(testCtx.log.GetAllMatching("No serials found in incident table")) <= 0, "Expected log output not found")
+
+	status, err := testCtx.ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(entries[0].serial)})
+	test.AssertNotError(t, err, "failed to retrieve certificate status")
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 }
 
 func TestBlockAndRevokeByPrivateKey(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	uniqueEntries, duplicateEntry := setupTestEntries(t)
+	uniqueEntries, duplicateEntry := setupUniqueTestEntries(t)
 	testCtx.createAndRegisterEntries(t, uniqueEntries)
 	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
@@ -193,7 +205,7 @@ func TestPrivateKeyBlock(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	uniqueEntries, duplicateEntry := setupTestEntries(t)
+	uniqueEntries, duplicateEntry := setupUniqueTestEntries(t)
 	testCtx.createAndRegisterEntries(t, uniqueEntries)
 	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
@@ -258,7 +270,7 @@ func TestPrivateKeyRevoke(t *testing.T) {
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
-	uniqueEntries, duplicateEntry := setupTestEntries(t)
+	uniqueEntries, duplicateEntry := setupUniqueTestEntries(t)
 	testCtx.createAndRegisterEntries(t, uniqueEntries)
 	testCtx.createAndRegisterEntry(t, duplicateEntry)
 
@@ -324,7 +336,7 @@ type entry struct {
 	spkiHash []byte
 }
 
-func setupTestEntries(t *testing.T) ([]*entry, *entry) {
+func setupUniqueTestEntries(t *testing.T) ([]*entry, *entry) {
 	// Unique keys for each of our test certificates.
 	key1, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Generating test key 1")
@@ -354,6 +366,7 @@ type testCtx struct {
 	cleanUp func()
 	issuer  *issuance.Certificate
 	signer  crypto.Signer
+	log     *blog.Mock
 }
 
 func (c testCtx) addRegistation(t *testing.T, names []string, jwk string) int64 {
@@ -471,5 +484,6 @@ func setup(t *testing.T) testCtx {
 		cleanUp: cleanUp,
 		issuer:  issuer,
 		signer:  signer,
+		log:     log,
 	}
 }

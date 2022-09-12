@@ -37,6 +37,7 @@ usage:
   list-reasons           -config <path>
   serial-revoke          -config <path> <serial>           <reason-code>
   batched-serial-revoke  -config <path> <serial-file-path> <reason-code>   <parallelism>
+  incident-table-revoke  -config <path> <table-name>       <reason-code>   <parallelism>
   reg-revoke             -config <path> <registration-id>  <reason-code>
   private-key-block      -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
   private-key-revoke     -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
@@ -46,6 +47,7 @@ descriptions:
   list-reasons           List all revocation reason codes
   serial-revoke          Revoke a single certificate by the hex serial number
   batched-serial-revoke  Revokes all certificates contained in a file of hex serial numbers
+  incident-table-revoke  Revokes all certificates in the provided incident table
   reg-revoke             Revoke all certificates associated with a registration ID
   private-key-block      Adds the SPKI hash, derived from the provided private key, to the
                          blocked keys table. <priv-key-path> is expected to be the path
@@ -599,7 +601,7 @@ func main() {
 			cmd.FailOnError(err, "")
 		}
 
-	case command == "incident-revoke" && len(args) == 3:
+	case command == "incident-table-revoke" && len(args) == 3:
 		// 1: tableName, 2: reasonCode, 3: parallelism
 		tableName := args[0]
 
