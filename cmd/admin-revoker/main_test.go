@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
+	"github.com/letsencrypt/boulder/revocation"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -76,6 +77,34 @@ func TestRevokeSerialBatchFile(t *testing.T) {
 		test.AssertNotError(t, err, "failed to retrieve certificate status")
 		test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	}
+}
+
+func TestRevokeIncidentTableSerials(t *testing.T) {
+	testCtx := setup(t)
+	defer testCtx.cleanUp()
+
+	uniqueEntries, duplicateEntry := setupTestEntries(t)
+	testCtx.createAndRegisterEntries(t, uniqueEntries)
+	testCtx.createAndRegisterEntry(t, duplicateEntry)
+
+	testIncidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidentsFullPerms, sa.DbSettings{})
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+	defer test.ResetIncidentsTestDatabase(t)
+
+	// Add a row to the incidents table.
+	_, err = testIncidentsDbMap.Exec(
+		fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
+			"serial, registrationID, orderID, lastNoticeSent",
+			core.SerialToString(duplicateEntry.serial),
+			duplicateEntry.regId,
+			42,
+			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format("2006-01-02 15:04:05"),
+		),
+	)
+	test.AssertNotError(t, err, "while inserting row into incident table")
+
+	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", revocation.Reason(1), 0)
+	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
 }
 
 func TestBlockAndRevokeByPrivateKey(t *testing.T) {
@@ -396,11 +425,14 @@ func setup(t *testing.T) testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
+	incidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidents, sa.DbSettings{})
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+	defer test.ResetIncidentsTestDatabase(t)
 	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
 		"../../test/hierarchy/int-r3.cert.pem": 102,
 	})
 	test.AssertNotError(t, err, "error loading issuers")
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
