@@ -74,6 +74,17 @@
         },
         {
           "useForRSALeaves": false,
+          "useForECDSALeaves": true,
+          "issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
+          "ocspURL": "http://127.0.0.1:4002/",
+          "location": {
+            "configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
+            "certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
+            "numSessions": 2
+          }
+        },
+        {
+          "useForRSALeaves": false,
           "useForECDSALeaves": false,
           "issuerURL": "http://127.0.0.1:4001/aia/issuer/41127673797486028",
           "ocspURL": "http://127.0.0.1:4002/",

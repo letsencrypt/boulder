@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -24,8 +25,8 @@ func runUpdater(t *testing.T, configFile string) {
 	test.AssertNotError(t, err, "computing crl-updater path")
 
 	c := exec.Command(binPath, "-config", configFile, "-debug-addr", ":8022", "-runOnce")
-	err = c.Run()
-	test.AssertNotError(t, err, "failed to run crl-updater")
+	out, err := c.CombinedOutput()
+	test.AssertNotError(t, err, fmt.Sprintf("crl-updater failed: %s", out))
 }
 
 // TestCRLPipeline runs an end-to-end test of the crl issuance process, ensuring

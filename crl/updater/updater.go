@@ -3,8 +3,10 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -127,7 +129,7 @@ func NewUpdater(
 // Run causes the crlUpdater to enter its processing loop. It waits until the
 // next scheduled run time based on the current time and the updateOffset, then
 // begins running once every updatePeriod.
-func (cu *crlUpdater) Run(ctx context.Context) {
+func (cu *crlUpdater) Run(ctx context.Context) error {
 	// We don't want the times at which crlUpdater runs to be dependent on when
 	// the process starts. So wait until the appropriate time before kicking off
 	// the first run and the main ticker loop.
@@ -141,64 +143,88 @@ func (cu *crlUpdater) Run(ctx context.Context) {
 	cu.log.Infof("Running, next tick in %ds", waitNanos*int64(time.Nanosecond)/int64(time.Second))
 	select {
 	case <-ctx.Done():
-		return
+		return ctx.Err()
 	case <-time.After(time.Duration(waitNanos)):
 	}
 
 	// Tick once immediately, but create the ticker first so that it starts
 	// counting from the appropriate time.
 	ticker := time.NewTicker(cu.updatePeriod)
-	cu.Tick(ctx)
+	cu.Tick(ctx, cu.clk.Now())
 
 	for {
 		// If we have overrun *and* been canceled, both of the below cases could be
 		// selectable at the same time, so check for context cancellation first.
 		if ctx.Err() != nil {
 			ticker.Stop()
-			return
+			return ctx.Err()
 		}
 		select {
 		case <-ticker.C:
-			cu.Tick(ctx)
+			atTime := cu.clk.Now()
+			err := cu.Tick(ctx, atTime)
+			if err != nil {
+				// We only log, rather than return, so that the long-lived process can
+				// continue and try again at the next tick.
+				cu.log.AuditErrf("tick at time %s failed: %s", atTime, err)
+			}
 		case <-ctx.Done():
 			ticker.Stop()
-			return
+			return ctx.Err()
 		}
 	}
 }
 
-// TODO(#6261): Unify all error messages to identify the shard they're working
-// on as a JSON object including issuer, crl number, and shard number.
-
-func (cu *crlUpdater) Tick(ctx context.Context) {
-	atTime := cu.clk.Now()
-	result := "success"
+// Tick runs the entire update process once immediately. It processes each
+// configured issuer serially, and processes all of them even if an early one
+// encounters an error. All errors encountered are returned as a single combined
+// error at the end.
+func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 	defer func() {
+		// Each return statement in this function assigns its returned value to the
+		// named return variable `err`. This deferred function closes over that
+		// variable, and so can reference and modify it.
+		result := "success"
+		if err != nil {
+			result = "failed"
+			err = fmt.Errorf("tick %s: %w", atTime.Format(time.RFC3339Nano), err)
+		}
 		cu.tickHistogram.WithLabelValues("all", result).Observe(cu.clk.Since(atTime).Seconds())
 	}()
 	cu.log.Debugf("Ticking at time %s", atTime)
 
-	for id, iss := range cu.issuers {
+	var errStrs []string
+	for id := range cu.issuers {
 		// For now, process each issuer serially. This keeps the worker pool system
 		// simple, and processing all of the issuers in parallel likely wouldn't
 		// meaningfully speed up the overall process.
 		err := cu.tickIssuer(ctx, atTime, id)
 		if err != nil {
-			cu.log.AuditErrf(
-				"tick for issuer %s at time %s failed: %s",
-				iss.Subject.CommonName,
-				atTime.Format(time.RFC3339Nano),
-				err)
-			result = "failed"
+			errStrs = append(errStrs, err.Error())
 		}
 	}
+
+	if len(errStrs) != 0 {
+		return errors.New(strings.Join(errStrs, "; "))
+	}
+	return nil
 }
 
-// tickIssuer performs the full CRL issuance cycle for a single issuer cert.
-func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) error {
+// tickIssuer performs the full CRL issuance cycle for a single issuer cert. It
+// processes all of the shards of this issuer's CRL concurrently, and processes
+// all of them even if an early one encounters an error. All errors encountered
+// are returned as a single combined error at the end.
+func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) (err error) {
 	start := cu.clk.Now()
-	result := "success"
 	defer func() {
+		// Each return statement in this function assigns its returned value to the
+		// named return variable `err`. This deferred function closes over that
+		// variable, and so can reference and modify it.
+		result := "success"
+		if err != nil {
+			result = "failed"
+			err = fmt.Errorf("%s: %w", cu.issuers[issuerNameID].Subject.CommonName, err)
+		}
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
 	}()
 	cu.log.Debugf("Ticking issuer %d at time %s", issuerNameID, atTime)
@@ -233,28 +259,38 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 	}
 	close(shardIdxs)
 
+	var errStrs []string
 	for i := 0; i < cu.numShards; i++ {
 		res := <-shardResults
 		if res.err != nil {
-			result = "failed"
-			return fmt.Errorf("updating shard %d: %w", res.shardIdx, res.err)
+			errStrs = append(errStrs, res.err.Error())
 		}
 	}
 
+	if len(errStrs) != 0 {
+		return errors.New(strings.Join(errStrs, "; "))
+	}
 	return nil
 }
 
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) error {
+// tickShard processes a single shard. It computes the shard's boundaries, gets
+// the list of revoked certs in that shard from the SA, gets the CA to sign the
+// resulting CRL, and gets the crl-storer to upload it. It returns an error if
+// any of these operations fail.
+func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	start := cu.clk.Now()
-	crlId, err := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
-	if err != nil {
-		return err
-	}
-	result := "success"
 	defer func() {
+		// Each return statement in this function assigns its returned value to the
+		// named return variable `err`. This deferred function closes over that
+		// variable, and so can reference and modify it.
+		result := "success"
+		if err != nil {
+			result = "failed"
+			err = fmt.Errorf("%d: %w", shardIdx, err)
+		}
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
 		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
@@ -269,14 +305,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		RevokedBefore: atTime.UnixNano(),
 	})
 	if err != nil {
-		result = "failed"
-		return fmt.Errorf("connecting to SA for %s: %w", crlId, err)
+		return fmt.Errorf("connecting to SA: %w", err)
 	}
 
 	caStream, err := cu.ca.GenerateCRL(ctx)
 	if err != nil {
-		result = "failed"
-		return fmt.Errorf("connecting to CA for %s: %w", crlId, err)
+		return fmt.Errorf("connecting to CA: %w", err)
 	}
 
 	err = caStream.Send(&capb.GenerateCRLRequest{
@@ -289,8 +323,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		},
 	})
 	if err != nil {
-		result = "failed"
-		return fmt.Errorf("sending CA metadata for %s: %w", crlId, err)
+		return fmt.Errorf("sending CA metadata: %w", err)
 	}
 
 	for {
@@ -299,8 +332,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 			if err == io.EOF {
 				break
 			}
-			result = "failed"
-			return fmt.Errorf("retrieving entry from SA for %s: %w", crlId, err)
+			return fmt.Errorf("retrieving entry from SA: %w", err)
 		}
 
 		err = caStream.Send(&capb.GenerateCRLRequest{
@@ -309,8 +341,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 			},
 		})
 		if err != nil {
-			result = "failed"
-			return fmt.Errorf("sending entry to CA for %s: %w", crlId, err)
+			return fmt.Errorf("sending entry to CA: %w", err)
 		}
 	}
 
@@ -319,14 +350,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	// in memory before it can sign it and start returning the real CRL.
 	err = caStream.CloseSend()
 	if err != nil {
-		result = "failed"
-		return fmt.Errorf("closing CA request stream for %s: %w", crlId, err)
+		return fmt.Errorf("closing CA request stream: %w", err)
 	}
 
 	csStream, err := cu.cs.UploadCRL(ctx)
 	if err != nil {
-		result = "failed"
-		return fmt.Errorf("connecting to CRLStorer for %s: %w", crlId, err)
+		return fmt.Errorf("connecting to CRLStorer: %w", err)
 	}
 
 	err = csStream.Send(&cspb.UploadCRLRequest{
@@ -339,8 +368,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		},
 	})
 	if err != nil {
-		result = "failed"
-		return fmt.Errorf("sending CRLStorer metadata for %s: %w", crlId, err)
+		return fmt.Errorf("sending CRLStorer metadata: %w", err)
 	}
 
 	crlLen := 0
@@ -351,8 +379,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 			if err == io.EOF {
 				break
 			}
-			result = "failed"
-			return fmt.Errorf("receiving CRL bytes for %s: %w", crlId, err)
+			return fmt.Errorf("receiving CRL bytes: %w", err)
 		}
 
 		err = csStream.Send(&cspb.UploadCRLRequest{
@@ -361,22 +388,23 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 			},
 		})
 		if err != nil {
-			result = "failed"
-			return fmt.Errorf("uploading CRL bytes for %s: %w", crlId, err)
+			return fmt.Errorf("uploading CRL bytes: %w", err)
 		}
 
 		crlLen += len(out.Chunk)
 		crlHash.Write(out.Chunk)
 	}
 
-	cu.log.Infof("Generated CRL: id=[%s] size=[%d] hash=[%x]", crlId, crlLen, crlHash.Sum(nil))
-
 	_, err = csStream.CloseAndRecv()
 	if err != nil {
-		result = "failed"
-		return fmt.Errorf("closing CRLStorer upload stream for %s: %w", crlId, err)
+		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
 	}
 
+	crlId, err := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+	if err != nil {
+		return err
+	}
+	cu.log.Infof("Generated CRL: id=[%s] size=[%d] hash=[%x]", crlId, crlLen, crlHash.Sum(nil))
 	return nil
 }
 

@@ -147,9 +147,13 @@ func main() {
 	go cmd.CatchSignals(logger, cancel)
 
 	if *runOnce {
-		u.Tick(ctx)
+		err = u.Tick(ctx, clk.Now())
+		cmd.FailOnError(err, "")
 	} else {
-		u.Run(ctx)
+		err = u.Run(ctx)
+		if err != nil {
+			logger.Err(err.Error())
+		}
 	}
 }
 
