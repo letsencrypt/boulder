@@ -121,8 +121,14 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 	if src.isStale(resp) {
 		src.counter.WithLabelValues("stale").Inc()
 		freshResp, err := src.signAndSave(ctx, req, causeStale)
+		// Note: we could choose to return the stale response (up to its actual
+		// NextUpdate date), but if we pass the BR/root program limits, that
+		// becomes a compliance problem; returning an error is an availability
+		// problem and only becomes a compliance problem if we serve too many
+		// of them for too long (the exact conditions are not clearly defined
+		// by the BRs or root programs).
 		if err != nil {
-			return &responder.Response{Response: resp, Raw: respBytes}, nil
+			return nil, err
 		}
 		return freshResp, nil
 	}

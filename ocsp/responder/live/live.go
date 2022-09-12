@@ -2,9 +2,11 @@ package live
 
 import (
 	"context"
+	"errors"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"golang.org/x/crypto/ocsp"
@@ -42,6 +44,9 @@ func (s *Source) Response(ctx context.Context, req *ocsp.Request) (*responder.Re
 		Serial: core.SerialToString(req.SerialNumber),
 	})
 	if err != nil {
+		if errors.Is(err, berrors.NotFound) {
+			return nil, responder.ErrNotFound
+		}
 		return nil, err
 	}
 	parsed, err := ocsp.ParseResponse(resp.Response, nil)
