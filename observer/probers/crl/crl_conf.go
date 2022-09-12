@@ -103,13 +103,13 @@ func (c CRLConf) Instrument() map[string]prometheus.Collector {
 	nextUpdate := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: nextUpdateName,
-			Help: "CRL nextUpdate unix timestamp",
+			Help: "CRL nextUpdate Unix timestamp in seconds",
 		}, []string{"url"},
 	))
 	thisUpdate := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: thisUpdateName,
-			Help: "CRL thisUpdate unix timestamp",
+			Help: "CRL thisUpdate Unix timestamp in seconds",
 		}, []string{"url"},
 	))
 	certCount := prometheus.Collector(prometheus.NewGaugeVec(
