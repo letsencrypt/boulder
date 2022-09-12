@@ -309,7 +309,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 				ocspRequest.SerialNumber, b64Body)
 			// HTTP StatusCode - unassigned
 			response.WriteHeader(533)
-			response.Write(ocsp.UnauthorizedErrorResponse)
+			response.Write(ocsp.InternalErrorErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return
 		}

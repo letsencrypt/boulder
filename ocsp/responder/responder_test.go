@@ -112,7 +112,7 @@ func TestResponseExpired(t *testing.T) {
 			if rw.Code != tc.expected {
 				t.Errorf("Incorrect response code: got %d, wanted %d", rw.Code, tc.expected)
 			}
-			test.AssertByteEquals(t, ocsp.UnauthorizedErrorResponse, rw.Body.Bytes())
+			test.AssertByteEquals(t, ocsp.InternalErrorErrorResponse, rw.Body.Bytes())
 		})
 	}
 }
