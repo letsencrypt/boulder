@@ -2,7 +2,6 @@ package sa
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -156,7 +155,6 @@ type mockSerialForIncidentStream_Server struct {
 }
 
 func (s mockSerialForIncidentStream_Server) Send(serial *sapb.IncidentSerial) error {
-	fmt.Println("Sending serial", serial)
 	s.stream <- mockSerialForIncidentStream_Result{serial, nil}
 	return nil
 }

@@ -87,7 +87,7 @@ func (src *filterSource) Response(ctx context.Context, req *ocsp.Request) (*Resp
 
 	err = src.checkResponse(iss, resp)
 	if err != nil {
-		src.log.Warningf("OCSP Response not sent for CA=%s, Serial=%s, err: %w", hex.EncodeToString(req.IssuerKeyHash), core.SerialToString(req.SerialNumber), err)
+		src.log.Warningf("OCSP Response not sent for CA=%s, Serial=%s, err: %s", hex.EncodeToString(req.IssuerKeyHash), core.SerialToString(req.SerialNumber), err)
 		src.counter.WithLabelValues("response_filtered").Inc()
 		return nil, err
 	}

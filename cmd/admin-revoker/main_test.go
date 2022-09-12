@@ -28,7 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
-	"github.com/letsencrypt/boulder/revocation"
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -103,7 +102,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "while inserting row into incident table")
 
-	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", revocation.Reason(1), 0)
+	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", 0, 1)
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
 }
 
