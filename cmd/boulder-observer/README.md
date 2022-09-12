@@ -239,7 +239,7 @@ These metrics will be available whenever a valid CRL prober is configured.
 
 #### obs_crl_this_update
 
-Unix timestamp value of the thisUpdate field for a CRL.
+Unix timestamp value (in seconds) of the thisUpdate field for a CRL.
 
 **Labels:**
 
@@ -260,7 +260,7 @@ This is a sample rule that alerts when a CRL has a thisUpdate timestamp in the f
 
 #### obs_crl_next_update
 
-Unix timestamp value of the nextUpdate field for a CRL.
+Unix timestamp value (in seconds) of the nextUpdate field for a CRL.
 
 **Labels:**
 
