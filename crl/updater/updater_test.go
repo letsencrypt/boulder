@@ -68,10 +68,7 @@ type fakeGCC struct {
 }
 
 func (f *fakeGCC) Send(*capb.GenerateCRLRequest) error {
-	if f.sendErr != nil {
-		return f.sendErr
-	}
-	return nil
+	return f.sendErr
 }
 
 func (f *fakeGCC) CloseSend() error {
@@ -109,10 +106,7 @@ type fakeUCC struct {
 }
 
 func (f *fakeUCC) Send(*cspb.UploadCRLRequest) error {
-	if f.sendErr != nil {
-		return f.sendErr
-	}
-	return nil
+	return f.sendErr
 }
 
 func (f *fakeUCC) CloseAndRecv() (*emptypb.Empty, error) {
