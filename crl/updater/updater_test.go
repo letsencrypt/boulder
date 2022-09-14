@@ -213,6 +213,38 @@ func TestTickShard(t *testing.T) {
 	cu.updatedCounter.Reset()
 }
 
+func TestTickIssuer(t *testing.T) {
+	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
+	test.AssertNotError(t, err, "loading test issuer")
+	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "loading test issuer")
+
+	cu, err := NewUpdater(
+		[]*issuance.Certificate{e1, r3}, 2, 10*24*time.Hour, 24*time.Hour, 0, 1,
+		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}},
+		&fakeCGC{gcc: fakeGCC{}},
+		&fakeCSC{ucc: fakeUCC{}},
+		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
+	)
+	test.AssertNotError(t, err, "building test crlUpdater")
+
+	// An error that affects all shards should have every shard reflected in the
+	// combined error message.
+	err = cu.tickIssuer(context.Background(), cu.clk.Now(), e1.NameID())
+	test.AssertError(t, err, "database error")
+	test.AssertContains(t, err.Error(), "(TEST) Elegant Elephant E1:")
+	test.AssertContains(t, err.Error(), "0: retrieving entry from SA: db no worky")
+	test.AssertContains(t, err.Error(), ";")
+	test.AssertContains(t, err.Error(), "1: retrieving entry from SA: db no worky")
+	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
+		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
+	}, 2)
+	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
+		"issuer": "(TEST) Elegant Elephant E1 (Overall)", "result": "failed",
+	}, 1)
+	cu.tickHistogram.Reset()
+}
+
 func TestGetWindowForShard(t *testing.T) {
 	// Our test updater divides a 107-day window into 107 shards, resulting in a
 	// shard width of 24 hours.
