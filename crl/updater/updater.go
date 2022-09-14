@@ -166,7 +166,9 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
-				cu.log.AuditErrf("tick at time %s failed: %s", atTime, err)
+				cu.log.AuditErrf(
+					"Generating CRLs failed: number=[%d] err=[%s]",
+					crl.Number(atTime), err)
 			}
 		case <-ctx.Done():
 			ticker.Stop()
@@ -181,6 +183,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 // error at the end.
 func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 	defer func() {
+		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
 			result = "failed"
@@ -216,6 +219,7 @@ func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) (err error) {
 	start := cu.clk.Now()
 	defer func() {
+		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
 			result = "failed"
@@ -282,6 +286,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 
 	start := cu.clk.Now()
 	defer func() {
+		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
 			result = "failed"
