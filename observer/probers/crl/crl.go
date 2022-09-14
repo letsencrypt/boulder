@@ -44,7 +44,7 @@ func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 
 	crl, err := crl_x509.ParseRevocationList(body)
 	if err != nil {
-		return false, time.Since(start)
+		return false, dur
 	}
 
 	// Report metrics for this CRL
