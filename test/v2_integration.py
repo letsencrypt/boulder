@@ -1416,19 +1416,22 @@ def test_ocsp_exp_unauth():
     if 'cert_file' not in ocsp_exp_unauth_setup_data:
         raise Exception("ocsp_exp_unauth_setup didn't run")
     cert_file = ocsp_exp_unauth_setup_data['cert_file']
+    last_error = ""
     while tries < 5:
         try:
             verify_ocsp(cert_file, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
             raise(Exception("Unexpected return from verify_ocsp"))
         except subprocess.CalledProcessError as cpe:
+            last_error = cpe.output
             if cpe.output == b"Responder Error: unauthorized (6)\n":
                 break
-        except:
+        except e:
+            last_error = e
             pass
         tries += 1
         time.sleep(0.25)
     else:
-        raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate"))
+        raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
 
 def test_blocked_key_account():
     # Only config-next has a blocked keys file configured.
