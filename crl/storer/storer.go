@@ -133,10 +133,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		return errors.New("got no metadata message")
 	}
 
-	crlId, err := crl.Id(issuer.NameID(), crlNumber, int(shardIdx))
-	if err != nil {
-		return err
-	}
+	crlId := crl.Id(issuer.NameID(), crlNumber, int(shardIdx))
 
 	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
 
