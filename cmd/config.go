@@ -9,7 +9,6 @@ import (
 	"hash/fnv"
 	"math"
 	"os"
-	"path"
 	"strings"
 	"time"
 
@@ -295,8 +294,10 @@ type BeelineConfig struct {
 	// directly in the JSON config for local development, or as a path to a
 	// separate file for production deployment.
 	WriteKey PasswordConfig
-	// Dataset is the event collection, e.g. Staging or Prod.
+	// Dataset deprecated.
 	Dataset string
+	// ServiceName is the event collection, e.g. Staging or Prod.
+	ServiceName string
 	// SampleRate is the (positive integer) denominator of the sample rate.
 	// Default: 1 (meaning all traces are sent). Set higher to send fewer traces.
 	SampleRate uint32
@@ -329,11 +330,6 @@ func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
 // Load converts a BeelineConfig to a beeline.Config, loading the api WriteKey
 // and setting the ServiceName automatically.
 func (bc *BeelineConfig) Load() (beeline.Config, error) {
-	exec, err := os.Executable()
-	if err != nil {
-		return beeline.Config{}, fmt.Errorf("failed to get executable name: %w", err)
-	}
-
 	writekey, err := bc.WriteKey.Pass()
 	if err != nil {
 		return beeline.Config{}, fmt.Errorf("failed to get write key: %w", err)
@@ -341,8 +337,7 @@ func (bc *BeelineConfig) Load() (beeline.Config, error) {
 
 	return beeline.Config{
 		WriteKey:    writekey,
-		Dataset:     bc.Dataset,
-		ServiceName: path.Base(exec),
+		ServiceName: bc.ServiceName,
 		SamplerHook: makeSampler(bc.SampleRate),
 		Mute:        bc.Mute,
 	}, nil

@@ -178,6 +178,10 @@ func LogLineChecksum(line string) string {
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
+func checkSummed(msg string) string {
+	return fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
+}
+
 // logAtLevel logs the provided message at the appropriate level, writing to
 // both stdout and the Logger
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
@@ -186,7 +190,6 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	// Since messages are delimited by newlines, we have to escape any internal or
 	// trailing newlines before generating the checksum or outputting the message.
 	msg = strings.Replace(msg, "\n", "\\n", -1)
-	msg = fmt.Sprintf("%s %s", LogLineChecksum(msg), msg)
 
 	w.Lock()
 	defer w.Unlock()
@@ -194,26 +197,26 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 	switch syslogAllowed := int(level) <= w.syslogLevel; level {
 	case syslog.LOG_ERR:
 		if syslogAllowed {
-			err = w.Err(msg)
+			err = w.Err(checkSummed(msg))
 		}
 	case syslog.LOG_WARNING:
 		if syslogAllowed {
-			err = w.Warning(msg)
+			err = w.Warning(checkSummed(msg))
 		}
 	case syslog.LOG_INFO:
 		if syslogAllowed {
-			err = w.Info(msg)
+			err = w.Info(checkSummed(msg))
 		}
 	case syslog.LOG_DEBUG:
 		if syslogAllowed {
-			err = w.Debug(msg)
+			err = w.Debug(checkSummed(msg))
 		}
 	default:
-		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", msg, int(level)))
+		err = w.Err(fmt.Sprintf("%s (unknown logging level: %d)", checkSummed(msg), int(level)))
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %d %s (%s)\n", int(level), msg, err)
+		fmt.Fprintf(os.Stderr, "Failed to write to syslog: %d %s (%s)\n", int(level), checkSummed(msg), err)
 	}
 
 	w.stdoutWriter.logAtLevel(level, msg)
@@ -226,6 +229,8 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 		if int(level) <= int(syslog.LOG_WARNING) {
 			output = w.stderr
 		}
+
+		msg = strings.Replace(msg, "\n", "\\n", -1)
 
 		var color string
 		var reset string
@@ -249,7 +254,7 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 			w.prefix,
 			int(level),
 			path.Base(os.Args[0]),
-			msg,
+			checkSummed(msg),
 			reset); err != nil {
 			panic(fmt.Sprintf("failed to write to stdout: %v\n", err))
 		}
