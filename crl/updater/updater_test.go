@@ -3,7 +3,6 @@ package updater
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -162,7 +161,7 @@ func TestTickShard(t *testing.T) {
 	cu.cs = &fakeCSC{ucc: fakeUCC{recvErr: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
 	test.AssertError(t, err, "storer error")
-	test.AssertContains(t, err.Error(), "0: closing CRLStorer upload stream")
+	test.AssertContains(t, err.Error(), "closing CRLStorer upload stream")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
@@ -173,7 +172,7 @@ func TestTickShard(t *testing.T) {
 	cu.ca = &fakeCGC{gcc: fakeGCC{recvErr: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
 	test.AssertError(t, err, "CA error")
-	test.AssertContains(t, err.Error(), "0: receiving CRL bytes")
+	test.AssertContains(t, err.Error(), "receiving CRL bytes")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
@@ -184,7 +183,7 @@ func TestTickShard(t *testing.T) {
 	cu.cs = &fakeCSC{ucc: fakeUCC{sendErr: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
 	test.AssertError(t, err, "storer error")
-	test.AssertContains(t, err.Error(), "0: sending CRLStorer metadata")
+	test.AssertContains(t, err.Error(), "sending CRLStorer metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
@@ -195,7 +194,7 @@ func TestTickShard(t *testing.T) {
 	cu.sa = &fakeSAC{grcc: fakeGRCC{err: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
 	test.AssertError(t, err, "database error")
-	test.AssertContains(t, err.Error(), "0: retrieving entry from SA")
+	test.AssertContains(t, err.Error(), "retrieving entry from SA")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
@@ -206,7 +205,7 @@ func TestTickShard(t *testing.T) {
 	cu.ca = &fakeCGC{gcc: fakeGCC{sendErr: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
 	test.AssertError(t, err, "CA error")
-	test.AssertContains(t, err.Error(), "0: sending CA metadata")
+	test.AssertContains(t, err.Error(), "sending CA metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
@@ -220,12 +219,13 @@ func TestTickIssuer(t *testing.T) {
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 
+	mockLog := blog.NewMock()
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3}, 2, 10*24*time.Hour, 24*time.Hour, 0, 1,
 		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
-		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
+		metrics.NoopRegisterer, mockLog, clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "building test crlUpdater")
 
@@ -233,10 +233,9 @@ func TestTickIssuer(t *testing.T) {
 	// combined error message.
 	err = cu.tickIssuer(context.Background(), cu.clk.Now(), e1.NameID())
 	test.AssertError(t, err, "database error")
-	test.AssertContains(t, err.Error(), "(TEST) Elegant Elephant E1:")
-	test.AssertContains(t, err.Error(), "0: retrieving entry from SA: db no worky")
-	test.AssertContains(t, err.Error(), ";")
-	test.AssertContains(t, err.Error(), "1: retrieving entry from SA: db no worky")
+	test.AssertContains(t, err.Error(), "2 shards failed")
+	test.AssertContains(t, err.Error(), "[0 1]")
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 2)
 	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
 	}, 2)
@@ -252,12 +251,13 @@ func TestTick(t *testing.T) {
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 
+	mockLog := blog.NewMock()
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3}, 2, 10*24*time.Hour, 24*time.Hour, 0, 1,
 		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
-		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
+		metrics.NoopRegisterer, mockLog, clock.NewFake(),
 	)
 	test.AssertNotError(t, err, "building test crlUpdater")
 
@@ -266,10 +266,11 @@ func TestTick(t *testing.T) {
 	now := cu.clk.Now()
 	err = cu.Tick(context.Background(), now)
 	test.AssertError(t, err, "database error")
-	test.AssertContains(t, err.Error(), fmt.Sprintf("tick %s:", now.Format(time.RFC3339Nano)))
-	test.AssertContains(t, err.Error(), "(TEST) Elegant Elephant E1:")
-	test.AssertContains(t, err.Error(), ";")
-	test.AssertContains(t, err.Error(), "(TEST) Radical Rhino R3:")
+	test.AssertContains(t, err.Error(), "2 issuers failed")
+	test.AssertContains(t, err.Error(), "(TEST) Elegant Elephant E1")
+	test.AssertContains(t, err.Error(), "(TEST) Radical Rhino R3")
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 4)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRLs for issuer failed:")), 2)
 	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1 (Overall)", "result": "failed",
 	}, 1)
