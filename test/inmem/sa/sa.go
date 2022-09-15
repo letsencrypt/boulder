@@ -133,46 +133,46 @@ func (sa SA) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, 
 	return sa.Impl.FQDNSetExists(ctx, req)
 }
 
-type mockSerialForIncidentStream_Result struct {
+type mockSerialsForIncidentStream_Result struct {
 	serial *sapb.IncidentSerial
 	err    error
 }
 
-type mockSerialForIncidentStream_Client struct {
+type mockSerialsForIncidentStream_Client struct {
 	grpc.ClientStream
-	stream <-chan mockSerialForIncidentStream_Result
+	stream <-chan mockSerialsForIncidentStream_Result
 }
 
-func (c mockSerialForIncidentStream_Client) Recv() (*sapb.IncidentSerial, error) {
+func (c mockSerialsForIncidentStream_Client) Recv() (*sapb.IncidentSerial, error) {
 	sfiData := <-c.stream
 	return sfiData.serial, sfiData.err
 }
 
-type mockSerialForIncidentStream_Server struct {
+type mockSerialsForIncidentStream_Server struct {
 	grpc.ServerStream
 	context context.Context
-	stream  chan<- mockSerialForIncidentStream_Result
+	stream  chan<- mockSerialsForIncidentStream_Result
 }
 
-func (s mockSerialForIncidentStream_Server) Send(serial *sapb.IncidentSerial) error {
-	s.stream <- mockSerialForIncidentStream_Result{serial, nil}
+func (s mockSerialsForIncidentStream_Server) Send(serial *sapb.IncidentSerial) error {
+	s.stream <- mockSerialsForIncidentStream_Result{serial, nil}
 	return nil
 }
 
-func (s mockSerialForIncidentStream_Server) Context() context.Context {
+func (s mockSerialsForIncidentStream_Server) Context() context.Context {
 	return s.context
 }
 
 func (sa SA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
-	streamChan := make(chan mockSerialForIncidentStream_Result)
-	client := mockSerialForIncidentStream_Client{stream: streamChan}
-	server := mockSerialForIncidentStream_Server{context: ctx, stream: streamChan}
+	streamChan := make(chan mockSerialsForIncidentStream_Result)
+	client := mockSerialsForIncidentStream_Client{stream: streamChan}
+	server := mockSerialsForIncidentStream_Server{context: ctx, stream: streamChan}
 	go func() {
 		err := sa.Impl.SerialsForIncident(req, server)
 		if err != nil {
-			streamChan <- mockSerialForIncidentStream_Result{nil, err}
+			streamChan <- mockSerialsForIncidentStream_Result{nil, err}
 		}
-		streamChan <- mockSerialForIncidentStream_Result{nil, io.EOF}
+		streamChan <- mockSerialsForIncidentStream_Result{nil, io.EOF}
 		close(streamChan)
 	}()
 	return client, nil

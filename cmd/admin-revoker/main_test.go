@@ -87,7 +87,6 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 
 	testIncidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidentsFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	defer test.ResetIncidentsTestDatabase(t)
 
 	// Ensure that an empty incident table results in the expected log output.
 	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", 0, 1)
@@ -340,6 +339,8 @@ type entry struct {
 }
 
 func setupUniqueTestEntries(t *testing.T) ([]*entry, *entry) {
+	t.Helper()
+
 	// Unique keys for each of our test certificates.
 	key1, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Generating test key 1")
@@ -353,7 +354,6 @@ func setupUniqueTestEntries(t *testing.T) ([]*entry, *entry) {
 	testJWK2 := `{"kty":"RSA","n":"qnARLrT7Xz4gRcKyLdydmCr-ey9OuPImX4X40thk3on26FkMznR3fRjs66eLK7mmPcBZ6uOJseURU6wAaZNmemoYx1dMvqvWWIyiQleHSD7Q8vBrhR6uIoO4jAzJZR-ChzZuSDt7iHN-3xUVspu5XGwXU_MVJZshTwp4TaFx5elHIT_ObnTvTOU3Xhish07AbgZKmWsVbXh5s-CrIicU4OexJPgunWZ_YJJueOKmTvnLlTV4MzKR2oZlBKZ27S0-SfdV_QDx_ydle5oMAyKVtlAV35cyPMIsYNwgUGBCdY_2Uzi5eX0lTc7MPRwz6qR1kip-i59VcGcUQgqHV6Fyqw","e":"AQAB"}`
 	testJWK3 := `{"kty":"RSA","n":"uTQER6vUA1RDixS8xsfCRiKUNGRzzyIK0MhbS2biClShbb0hSx2mPP7gBvis2lizZ9r-y9hL57kNQoYCKndOBg0FYsHzrQ3O9AcoV1z2Mq-XhHZbFrVYaXI0M3oY9BJCWog0dyi3XC0x8AxC1npd1U61cToHx-3uSvgZOuQA5ffEn5L38Dz1Ti7OV3E4XahnRJvejadUmTkki7phLBUXm5MnnyFm0CPpf6ApV7zhLjN5W-nV0WL17o7v8aDgV_t9nIdi1Y26c3PlCEtiVHZcebDH5F1Deta3oLLg9-g6rWnTqPbY3knffhp4m0scLD6e33k8MtzxDX_D7vHsg0_X1w","e":"AQAB"}`
 	testJWK4 := `{"kty":"RSA","n":"qih-cx32M0wq8MhhN-kBi2xPE-wnw4_iIg1hWO5wtBfpt2PtWikgPuBT6jvK9oyQwAWbSfwqlVZatMPY_-3IyytMNb9R9OatNr6o5HROBoyZnDVSiC4iMRd7bRl_PWSIqj_MjhPNa9cYwBdW5iC3jM5TaOgmp0-YFm4tkLGirDcIBDkQYlnv9NKILvuwqkapZ7XBixeqdCcikUcTRXW5unqygO6bnapzw-YtPsPPlj4Ih3SvK4doyziPV96U8u5lbNYYEzYiW1mbu9n0KLvmKDikGcdOpf6-yRa_10kMZyYQatY1eclIKI0xb54kbluEl0GQDaL5FxLmiKeVnsapzw","e":"AQAB"}`
-
 	return []*entry{
 			{jwk: testJWK1, serial: big.NewInt(1), names: []string{"example-1337.com"}, testKey: key1},
 			{jwk: testJWK2, serial: big.NewInt(2), names: []string{"example-1338.com"}, testKey: key2},
@@ -373,6 +373,7 @@ type testCtx struct {
 }
 
 func (c testCtx) addRegistation(t *testing.T, names []string, jwk string) int64 {
+	t.Helper()
 	initialIP, err := net.ParseIP("127.0.0.1").MarshalText()
 	test.AssertNotError(t, err, "Failed to create initialIP")
 
@@ -389,6 +390,7 @@ func (c testCtx) addRegistation(t *testing.T, names []string, jwk string) int64 
 }
 
 func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, pubKey rsa.PublicKey, regId int64) *x509.Certificate {
+	t.Helper()
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{Organization: []string{"tests"}},
@@ -416,12 +418,14 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 }
 
 func (c testCtx) createAndRegisterEntries(t *testing.T, entries []*entry) {
+	t.Helper()
 	for _, entry := range entries {
 		c.createAndRegisterEntry(t, entry)
 	}
 }
 
 func (c testCtx) createAndRegisterEntry(t *testing.T, e *entry) {
+	t.Helper()
 	e.regId = c.addRegistation(t, e.names, e.jwk)
 	cert := c.addCertificate(t, e.serial, e.names, e.testKey.PublicKey, e.regId)
 	var err error
@@ -430,6 +434,7 @@ func (c testCtx) createAndRegisterEntry(t *testing.T, e *entry) {
 }
 
 func setup(t *testing.T) testCtx {
+	t.Helper()
 	log := blog.UseMock()
 	fc := clock.NewFake()
 
@@ -442,7 +447,6 @@ func setup(t *testing.T) testCtx {
 	}
 	incidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidents, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	defer test.ResetIncidentsTestDatabase(t)
 	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
 		"../../test/hierarchy/int-r3.cert.pem": 102,
 	})
@@ -451,7 +455,10 @@ func setup(t *testing.T) testCtx {
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetBoulderTestDatabase(t)
+	cleanUp := func() {
+		test.ResetBoulderTestDatabase(t)
+		test.ResetIncidentsTestDatabase(t)
+	}
 
 	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test issuer")

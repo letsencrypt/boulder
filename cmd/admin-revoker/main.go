@@ -239,15 +239,15 @@ func (r *revoker) revokeIncidentTableSerials(ctx context.Context, tableName stri
 		is, err := stream.Recv()
 		if err != nil {
 			if err == io.EOF {
-				if !atLeastOne {
-					r.log.AuditInfof("No serials found in incident table %q", tableName)
-				}
 				break
 			}
 			return fmt.Errorf("streaming serials from incident table %q: %s", tableName, err)
 		}
 		atLeastOne = true
 		work <- is.Serial
+	}
+	if !atLeastOne {
+		r.log.AuditInfof("No serials found in incident table %q", tableName)
 	}
 	close(work)
 	wg.Wait()
