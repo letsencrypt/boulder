@@ -58,7 +58,7 @@ func makeClient(contacts ...string) (*client, error) {
 }
 
 func addHTTP01Response(token, keyAuthorization string) error {
-	resp, err := http.Post("http://boulder:8055/add-http01", "",
+	resp, err := http.Post("http://boulder.service.consul:8055/add-http01", "",
 		bytes.NewBufferString(fmt.Sprintf(`{
 		"token": "%s",
 		"content": "%s"
@@ -74,7 +74,7 @@ func addHTTP01Response(token, keyAuthorization string) error {
 }
 
 func delHTTP01Response(token string) error {
-	resp, err := http.Post("http://boulder:8055/del-http01", "",
+	resp, err := http.Post("http://boulder.service.consul:8055/del-http01", "",
 		bytes.NewBufferString(fmt.Sprintf(`{
 		"token": "%s"
 	}`, token)))

@@ -40,7 +40,7 @@ func TestOCSPBadIssuerCert(t *testing.T) {
 func TestOCSPBadSerialPrefix(t *testing.T) {
 	t.Parallel()
 	domain := random_domain()
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	res, err := authAndIssue(nil, nil, []string{domain})
 	if err != nil || len(res.certs) < 1 {
 		t.Fatal("Failed to issue dummy cert for OCSP testing")
@@ -74,7 +74,7 @@ func TestOCSPRejectedPrecertificate(t *testing.T) {
 		t.Fatalf("adding ct-test-srv reject host: %s", err)
 	}
 
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	_, err = authAndIssue(nil, nil, []string{domain})
 	if err != nil {
 		if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||

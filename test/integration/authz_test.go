@@ -21,7 +21,7 @@ const (
 // expires time.
 func TestValidAuthzExpires(t *testing.T) {
 	t.Parallel()
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	c, err := makeClient()
 	test.AssertNotError(t, err, "makeClient failed")
 

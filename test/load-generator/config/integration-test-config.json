@@ -11,7 +11,7 @@
         "runtime": "10s",
         "rateDelta": "5/1m"
     },
-    "directoryURL": "http://boulder:4001/directory",
+    "directoryURL": "http://boulder.service.consul:4001/directory",
     "domainBase": "com",
     "challengeStrategy": "random",
     "httpOneAddrs": [":5002"],

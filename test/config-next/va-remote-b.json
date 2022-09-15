@@ -8,21 +8,21 @@
       "tlsPort": 5001
     },
     "dnsTries": 3,
-    "dnsResolver": "boulder",
+    "dnsResolver": "service.consul",
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true,
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/va.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/va.boulder/key.pem"
+      "certFile": "test/grpc-creds/rva.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/rva.service.consul/key.pem"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9098",
       "clientNames": [
-        "health-checker.boulder",
-        "va.boulder"
+        "health-checker.service.consul",
+        "va.service.consul"
       ]
     },
     "features": {
@@ -30,8 +30,8 @@
       "CAAAccountURI": true
     },
     "accountURIPrefixes": [
-      "http://boulder:4000/acme/reg/",
-      "http://boulder:4001/acme/acct/"
+      "http://boulder.service.consul:4000/acme/reg/",
+      "http://boulder.service.consul:4001/acme/acct/"
     ]
   },
 

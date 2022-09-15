@@ -3,8 +3,8 @@
     "debugAddr": ":8021",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/crl-updater.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/crl-updater.boulder/key.pem"
+      "certFile": "test/grpc-creds/crl-updater.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/crl-updater.service.consul/key.pem"
     },
     "saService": {
       "serverIPAddresses": [
@@ -14,11 +14,11 @@
       "timeout": "15s"
     },
     "crlGeneratorService": {
-      "serverAddress": "ca.boulder:9106",
+      "serverAddress": "ca.service.consul:9106",
       "timeout": "15s"
     },
     "crlStorerService": {
-      "serverAddress": "crl-storer.boulder:9109",
+      "serverAddress": "crl-storer.service.consul:9109",
       "timeout": "15s"
     },
     "issuerCerts": [

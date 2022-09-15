@@ -6,25 +6,25 @@
     "serverKeyPath": "test/wfe-tls/boulder/key.pem",
     "allowOrigins": ["*"],
     "shutdownStopTimeout": "10s",
-    "subscriberAgreementURL": "https://boulder:4431/terms/v7",
+    "subscriberAgreementURL": "https://boulder.service.consul:4431/terms/v7",
     "debugAddr": ":8013",
     "directoryCAAIdentity": "happy-hacker-ca.invalid",
     "directoryWebsite": "https://github.com/letsencrypt/boulder",
-    "legacyKeyIDPrefix": "http://boulder:4000/reg/",
+    "legacyKeyIDPrefix": "http://boulder.service.consul:4000/reg/",
     "goodkey": {
       "blockedKeyFile": "test/example-blocked-keys.yaml"
     },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
+      "certFile": "test/grpc-creds/wfe.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/wfe.service.consul/key.pem"
     },
     "raService": {
-      "serverAddress": "ra.boulder:9094",
+      "serverAddress": "ra.service.consul:9094",
       "timeout": "15s"
     },
     "saService": {
-      "serverAddress": "sa.boulder:9095",
+      "serverAddress": "sa.service.consul:9095",
       "timeout": "15s"
     },
     "accountCache": {
@@ -32,16 +32,16 @@
       "ttl": "5s"
     },
     "getNonceService": {
-      "serverAddress": "nonce.boulder:9101",
+      "serverAddress": "nonce.service.consul:9101",
       "timeout": "15s"
     },
     "redeemNonceServices": {
       "taro": {
-        "serverAddress": "nonce1.boulder:9101",
+        "serverAddress": "nonce1.service.consul:9101",
         "timeout": "15s"
       },
       "zinc": {
-        "serverAddress": "nonce2.boulder:9101",
+        "serverAddress": "nonce2.service.consul:9101",
         "timeout": "15s"
       }
     },

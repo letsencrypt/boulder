@@ -61,6 +61,7 @@ func dnsHandler(w dns.ResponseWriter, r *dns.Msg) {
 		} else {
 			m.Rcode = dns.RcodeServerFailure
 		}
+
 		err := w.WriteMsg(m)
 		if err != nil {
 			log.Printf("ERROR: Failed to write message %q: %v", m, err)

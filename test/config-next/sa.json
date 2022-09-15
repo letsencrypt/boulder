@@ -16,23 +16,23 @@
     "debugAddr": ":8003",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/sa.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/sa.boulder/key.pem"
+      "certFile": "test/grpc-creds/sa.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/sa.service.consul/key.pem"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9095",
       "clientNames": [
-        "admin-revoker.boulder",
-        "ca.boulder",
-        "crl-updater.boulder",
-        "expiration-mailer.boulder",
-        "health-checker.boulder",
-        "ocsp-responder.boulder",
-        "orphan-finder.boulder",
-        "ra.boulder",
-        "sa.boulder",
-        "wfe.boulder"
+        "admin-revoker.service.consul",
+        "ca.service.consul",
+        "crl-updater.service.consul",
+        "expiration-mailer.service.consul",
+        "health-checker.service.consul",
+        "ocsp-responder.service.consul",
+        "orphan-finder.service.consul",
+        "ra.service.consul",
+        "sa.service.consul",
+        "wfe.service.consul"
       ]
     },
     "redis": {
