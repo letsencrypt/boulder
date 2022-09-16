@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/honeycombio/beeline-go"
-	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -296,7 +296,7 @@ func mux(responderPath string, source responder.Source, timeout time.Duration, s
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return hnynethttp.WrapHandler(measured_http.New(&ocspMux{h}, cmd.Clock(), stats))
+	return otelhttp.NewHandler(measured_http.New(&ocspMux{h}, cmd.Clock(), stats), "server")
 }
 
 func init() {
