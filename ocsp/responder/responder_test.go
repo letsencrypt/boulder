@@ -43,6 +43,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/ocsp"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -94,8 +95,9 @@ func TestResponseExpired(t *testing.T) {
 			},
 			[]string{"type"},
 		),
-		clk: clock.NewFake(),
-		log: blog.NewMock(),
+		clk:    clock.NewFake(),
+		log:    blog.NewMock(),
+		tracer: otel.Tracer("test"),
 	}
 
 	for _, tc := range cases {
@@ -149,8 +151,9 @@ func TestOCSP(t *testing.T) {
 				Buckets: []float64{43200},
 			},
 		),
-		clk: clock.NewFake(),
-		log: blog.NewMock(),
+		clk:    clock.NewFake(),
+		log:    blog.NewMock(),
+		tracer: otel.Tracer("test"),
 	}
 
 	for _, tc := range cases {
@@ -195,8 +198,9 @@ func TestRequestTooBig(t *testing.T) {
 				Buckets: []float64{43200},
 			},
 		),
-		clk: clock.NewFake(),
-		log: blog.NewMock(),
+		clk:    clock.NewFake(),
+		log:    blog.NewMock(),
+		tracer: otel.Tracer("test"),
 	}
 
 	rw := httptest.NewRecorder()
@@ -231,8 +235,9 @@ func TestCacheHeaders(t *testing.T) {
 				Buckets: []float64{43200},
 			},
 		),
-		clk: fc,
-		log: blog.NewMock(),
+		clk:    fc,
+		log:    blog.NewMock(),
+		tracer: otel.Tracer("test"),
 	}
 
 	rw := httptest.NewRecorder()

@@ -45,9 +45,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
@@ -82,6 +84,7 @@ type Responder struct {
 	sampleRate    int
 	clk           clock.Clock
 	log           blog.Logger
+	tracer        trace.Tracer
 }
 
 // NewResponder instantiates a Responder with the give Source.
@@ -125,6 +128,7 @@ func NewResponder(source Source, timeout time.Duration, stats prometheus.Registe
 		clk:           clock.New(),
 		log:           logger,
 		sampleRate:    sampleRate,
+		tracer:        otel.Tracer("github.com/letsencrypt/boulder/ocsp/responder"),
 	}
 }
 
@@ -193,10 +197,16 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		Path:     request.URL.Path,
 		Received: time.Now(),
 	}
-	beeline.AddFieldToTrace(ctx, "real_ip", request.RemoteAddr)
-	beeline.AddFieldToTrace(ctx, "method", request.Method)
-	beeline.AddFieldToTrace(ctx, "user_agent", request.UserAgent())
-	beeline.AddFieldToTrace(ctx, "path", request.URL.Path)
+
+	ctx, span := rs.tracer.Start(ctx, "ServeHTTP")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("real_ip", request.RemoteAddr),
+		attribute.String("method", request.Method),
+		attribute.String("user_agent", request.UserAgent()),
+		attribute.String("path", request.URL.Path))
+
 	defer func() {
 		le.Headers = response.Header()
 		le.Took = time.Since(le.Received)
@@ -287,13 +297,13 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	le.Serial = fmt.Sprintf("%x", ocspRequest.SerialNumber.Bytes())
-	beeline.AddFieldToTrace(ctx, "request.serial", core.SerialToString(ocspRequest.SerialNumber))
+	span.SetAttributes(attribute.String("request.serial", le.Serial))
 	le.IssuerKeyHash = fmt.Sprintf("%x", ocspRequest.IssuerKeyHash)
-	beeline.AddFieldToTrace(ctx, "ocsp.issuer_key_hash", ocspRequest.IssuerKeyHash)
+	span.SetAttributes(attribute.String("ocsp.issuer_key_hash", le.IssuerKeyHash))
 	le.IssuerNameHash = fmt.Sprintf("%x", ocspRequest.IssuerNameHash)
-	beeline.AddFieldToTrace(ctx, "ocsp.issuer_name_hash", ocspRequest.IssuerNameHash)
+	span.SetAttributes(attribute.String("ocsp.issuer_name_hash", le.IssuerNameHash))
 	le.HashAlg = hashToString[ocspRequest.HashAlgorithm]
-	beeline.AddFieldToTrace(ctx, "ocsp.hash_alg", hashToString[ocspRequest.HashAlgorithm])
+	span.SetAttributes(attribute.String("ocsp.hash_alg", le.HashAlg))
 
 	// Look up OCSP response from source
 	ocspResponse, err := rs.Source.Response(ctx, ocspRequest)
