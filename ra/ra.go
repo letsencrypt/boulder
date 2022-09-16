@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
@@ -44,6 +43,8 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -1053,18 +1054,32 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 		Requester:   int64(acctID),
 		RequestTime: ra.clk.Now(),
 	}
-	beeline.AddFieldToTrace(ctx, "issuance.id", logEvent.ID)
-	beeline.AddFieldToTrace(ctx, "order.id", oID)
-	beeline.AddFieldToTrace(ctx, "acct.id", acctID)
+
+	span := trace.SpanFromContext(ctx)
+
 	var result string
 	cert, err := ra.issueCertificateInner(ctx, req, acctID, oID, issuerNameID, &logEvent)
 	if err != nil {
 		logEvent.Error = err.Error()
-		beeline.AddFieldToTrace(ctx, "issuance.error", err)
+		span.RecordError(err)
 		result = "error"
 	} else {
 		result = "successful"
 	}
+
+	span.SetAttributes(
+		attribute.String("issuance.id", logEvent.ID),
+		attribute.Int64("order.id", logEvent.OrderID),
+		attribute.Int64("acct.id", logEvent.Requester),
+		attribute.String("csr.cn", req.CSR.Subject.CommonName),
+		attribute.StringSlice("csr.dns_names", req.CSR.DNSNames),
+		attribute.StringSlice("cert.dns_names", logEvent.Names),
+		attribute.String("cert.serial", logEvent.SerialNumber),
+		attribute.String("cert.common_name", logEvent.CommonName),
+		attribute.Int64("cert.not_before", logEvent.NotBefore.Unix()),
+		attribute.Int64("cert.not_after", logEvent.NotAfter.Unix()),
+	)
+
 	logEvent.ResponseTime = ra.clk.Now()
 	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
 	return cert, err
@@ -1109,8 +1124,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	csr := req.CSR
-	beeline.AddFieldToTrace(ctx, "csr.cn", csr.Subject.CommonName)
-	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
 
 	// Validate that authorization key is authorized for all domains in the CSR
 	names := make([]string, len(csr.DNSNames))
@@ -1215,15 +1228,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
-	beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(parsedCertificate.SerialNumber))
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
-	beeline.AddFieldToTrace(ctx, "cert.common_name", parsedCertificate.Subject.CommonName)
 	logEvent.Names = parsedCertificate.DNSNames
-	beeline.AddFieldToTrace(ctx, "cert.dns_names", parsedCertificate.DNSNames)
 	logEvent.NotBefore = parsedCertificate.NotBefore
-	beeline.AddFieldToTrace(ctx, "cert.not_before", parsedCertificate.NotBefore)
 	logEvent.NotAfter = parsedCertificate.NotAfter
-	beeline.AddFieldToTrace(ctx, "cert.not_after", parsedCertificate.NotAfter)
 
 	ra.newCertCounter.Inc()
 	res, err := bgrpc.PBToCert(cert)
