@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
@@ -31,6 +30,8 @@ import (
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -636,9 +637,13 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		Requester: req.Authz.RegID,
 		Hostname:  req.Domain,
 	}
-	beeline.AddFieldToTrace(ctx, "authz.id", req.Authz.Id)
-	beeline.AddFieldToTrace(ctx, "acct.id", req.Authz.RegID)
-	beeline.AddFieldToTrace(ctx, "authz.dnsname", req.Domain)
+	span := trace.SpanFromContext(ctx)
+
+	span.SetAttributes(
+		attribute.String("authz.id", req.Authz.Id),
+		attribute.Int64("acct.id", req.Authz.RegID),
+		attribute.String("authz.dnsname", req.Domain))
+
 	vStart := va.clk.Now()
 
 	var remoteResults chan *remoteValidationResult
@@ -667,7 +672,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		challenge.Status = core.StatusInvalid
 		challenge.Error = prob
 		logEvent.Error = prob.Error()
-		beeline.AddFieldToTrace(ctx, "challenge.error", prob.Error())
+		span.RecordError(prob)
 	} else if remoteResults != nil {
 		if !features.Enabled(features.EnforceMultiVA) && features.Enabled(features.MultiVAFullResults) {
 			// If we're not going to enforce multi VA but we are logging the
@@ -701,7 +706,7 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 				challenge.Status = core.StatusInvalid
 				challenge.Error = remoteProb
 				logEvent.Error = remoteProb.Error()
-				beeline.AddFieldToTrace(ctx, "challenge.error", remoteProb.Error())
+				span.RecordError(remoteProb)
 				va.log.Infof("Validation failed due to remote failures: identifier=%v err=%s",
 					req.Domain, remoteProb)
 				va.metrics.remoteValidationFailures.Inc()
@@ -714,8 +719,11 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 	}
 
 	logEvent.Challenge = challenge
-	beeline.AddFieldToTrace(ctx, "challenge.type", challenge.Type)
-	beeline.AddFieldToTrace(ctx, "challenge.status", challenge.Status)
+
+	span.SetAttributes(
+		attribute.String("challenge.type", string(challenge.Type)),
+		attribute.String("challenge.status", string(challenge.Status)),
+	)
 
 	validationLatency := time.Since(vStart)
 	logEvent.ValidationLatency = validationLatency.Round(time.Millisecond).Seconds()
