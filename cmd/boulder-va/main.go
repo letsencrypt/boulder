@@ -37,8 +37,9 @@ type Config struct {
 		AccountURIPrefixes []string
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 
 	// TODO(#6716): Remove Config.Common once all instances of it have been
 	// removed from production config files.
@@ -74,7 +75,8 @@ func main() {
 		c.VA.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.VA.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("va", c.Syslog, c.OpenTelemetry, c.VA.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

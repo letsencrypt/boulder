@@ -49,8 +49,9 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 // awsLogger implements the github.com/aws/smithy-go/logging.Logger interface.
@@ -85,7 +86,8 @@ func main() {
 	tlsConfig, err := c.CRLStorer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CRLStorer.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("crl-storer", c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()

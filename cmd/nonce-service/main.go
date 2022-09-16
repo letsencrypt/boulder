@@ -42,6 +42,8 @@ type Config struct {
 
 		Syslog  cmd.SyslogConfig
 		Beeline cmd.BeelineConfig
+
+		OpenTelemetry cmd.OpenTelemetryConfig
 	}
 }
 
@@ -93,7 +95,8 @@ func main() {
 		cmd.FailOnError(err, "Failed to derive nonce prefix")
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("nonce-service", c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

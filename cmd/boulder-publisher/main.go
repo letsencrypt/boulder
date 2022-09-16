@@ -33,8 +33,9 @@ type Config struct {
 		Chains [][]string
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func main() {
@@ -65,7 +66,8 @@ func main() {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("publisher", c.Syslog, c.OpenTelemetry, c.Publisher.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

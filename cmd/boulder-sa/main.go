@@ -30,8 +30,9 @@ type Config struct {
 		LagFactor config.Duration
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func main() {
@@ -58,7 +59,8 @@ func main() {
 		c.SA.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("sa", c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

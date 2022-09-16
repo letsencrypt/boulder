@@ -129,9 +129,10 @@ func (tl tailLogger) Println(v ...interface{}) {
 type Config struct {
 	Files []string
 
-	DebugAddr string
-	Syslog    cmd.SyslogConfig
-	Beeline   cmd.BeelineConfig
+	DebugAddr     string
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func main() {
@@ -151,7 +152,8 @@ func main() {
 	err = json.Unmarshal(configBytes, &config)
 	cmd.FailOnError(err, "failed to parse config file")
 
-	stats, logger := cmd.StatsAndLogging(config.Syslog, config.DebugAddr)
+	stats, logger, shutdown := cmd.StatsAndLogging("log-validator", config.Syslog, config.OpenTelemetry, config.DebugAddr)
+	defer shutdown()
 	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",
