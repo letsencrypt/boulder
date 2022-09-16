@@ -5,8 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/honeycombio/beeline-go"
-
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -60,8 +58,9 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func main() {
@@ -80,12 +79,7 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
-
-	stats, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, conf.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

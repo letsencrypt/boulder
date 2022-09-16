@@ -12,7 +12,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -122,8 +121,9 @@ type Config struct {
 		AccountCache *CacheConfig
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 type CacheConfig struct {
@@ -376,12 +376,7 @@ func main() {
 		}
 	}
 
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
-
-	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
+	stats, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

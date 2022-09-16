@@ -18,7 +18,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
@@ -513,8 +512,9 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func initStats(stats prometheus.Registerer) mailerStats {
@@ -612,12 +612,7 @@ func main() {
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
-
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Mailer.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

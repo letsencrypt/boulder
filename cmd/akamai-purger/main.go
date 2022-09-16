@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -158,8 +157,9 @@ type Config struct {
 		// purged.
 		PurgeRetryBackoff cmd.ConfigDuration
 	}
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 // TODO(#6003) remove entirely.
@@ -311,12 +311,7 @@ func main() {
 		apc.DebugAddr = *debugAddr
 	}
 
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
-
-	scope, logger := cmd.StatsAndLogging(c.Syslog, apc.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, apc.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

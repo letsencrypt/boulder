@@ -7,7 +7,6 @@ import (
 	"runtime"
 
 	ct "github.com/google/certificate-transparency-go"
-	"github.com/honeycombio/beeline-go"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -36,8 +35,9 @@ type Config struct {
 		Chains [][]string
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func main() {
@@ -68,12 +68,7 @@ func main() {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
 
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
-
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Publisher.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

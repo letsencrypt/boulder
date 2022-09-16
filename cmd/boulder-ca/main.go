@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/beeker1121/goque"
-	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -104,8 +103,9 @@ type Config struct {
 
 	PA cmd.PAConfig
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []issuance.IssuerConfig, ignoredLints []string) ([]*issuance.Issuer, error) {
@@ -173,12 +173,7 @@ func main() {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
-
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CA.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

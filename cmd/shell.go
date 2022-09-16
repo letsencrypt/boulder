@@ -155,8 +155,12 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 // the mysql and grpc packages to use our logger.
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
-func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, blog.Logger) {
+// TODO: Plus it also sets up a global opentelemetry TracerProvider
+func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger) {
 	logger := NewLogger(logConf)
+
+	newOpenTelemetry(otConf)
+
 	return newStatsRegistry(addr, logger), logger
 }
 
@@ -239,6 +243,11 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 		}
 	}()
 	return registry
+}
+
+// newOpenTelemetry sets up our OpenTelemtry tracing
+func newOpenTelemetry(config OpenTelemetryConfig) {
+	// TODO!
 }
 
 // Fail exits and prints an error message to stderr and the logger audit log.

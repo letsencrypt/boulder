@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 
-	"github.com/honeycombio/beeline-go"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -22,8 +21,9 @@ type Config struct {
 		MaxUsed     int
 		NoncePrefix string
 
-		Syslog  cmd.SyslogConfig
-		Beeline cmd.BeelineConfig
+		Syslog        cmd.SyslogConfig
+		OpenTelemetry cmd.OpenTelemetryConfig
+		Beeline       cmd.BeelineConfig
 	}
 }
 
@@ -65,12 +65,7 @@ func main() {
 		c.NonceService.NoncePrefix = *prefixOverride
 	}
 
-	bc, err := c.NonceService.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
-
-	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

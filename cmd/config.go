@@ -6,14 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
-	"math"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/core"
 )
 
@@ -287,58 +284,35 @@ type PortConfig struct {
 	TLSPort   int
 }
 
-// BeelineConfig provides config options for the Honeycomb beeline-go library,
-// which are passed to its beeline.Init() method.
+// OpenTelemetryConfig provides config options for the OpenTelemetry library
+// The configuration parameters are documented here:
+// https://github.com/open-telemetry/opentelemetry-go/tree/main/exporters/otlp/otlptrace#configuration
+type OpenTelemetryConfig struct {
+	// Endpoint to connect to for
+	OLTPEndpoint string
+
+	// SampleRatio is the ratio of traces to sample.
+	// Set to something between 0 and 1, where 1 is sampling all traces.
+	// See otel trace.TraceIDRatioBased for details.
+	SampleRatio float32
+
+	// We will probably want more configuration parameters
+	// Note that the oltptrace exporter also supports using environment
+	// variables for configuration, but are overridden by the values that are
+	// present here.
+}
+
+// BeelineConfig is deprecated and will be removed in a future release.
+// Beeline has been replaced with OpenTelemetry tracing.
 type BeelineConfig struct {
-	// WriteKey is the API key needed to send data Honeycomb. This can be given
-	// directly in the JSON config for local development, or as a path to a
-	// separate file for production deployment.
+	// WriteKey deprecated.
 	WriteKey PasswordConfig
 	// Dataset deprecated.
 	Dataset string
-	// ServiceName is the event collection, e.g. Staging or Prod.
+	// ServiceName deprecated.
 	ServiceName string
-	// SampleRate is the (positive integer) denominator of the sample rate.
-	// Default: 1 (meaning all traces are sent). Set higher to send fewer traces.
+	// SampleRate deprecated.
 	SampleRate uint32
-	// Mute disables honeycomb entirely; useful in test environments.
+	// Mute deprecated.
 	Mute bool
-	// Many other fields of beeline.Config are omitted as they are not yet used.
-}
-
-// makeSampler constructs a SamplerHook which will deterministically decide if
-// any given span should be sampled based on its TraceID, which is shared by all
-// spans within a trace. If a trace_id can't be found, the span will be sampled.
-// A sample rate of 0 defaults to a sample rate of 1 (i.e. all events are sent).
-func makeSampler(rate uint32) func(fields map[string]interface{}) (bool, int) {
-	if rate == 0 {
-		rate = 1
-	}
-	upperBound := math.MaxUint32 / rate
-
-	return func(fields map[string]interface{}) (bool, int) {
-		id, ok := fields["trace.trace_id"].(string)
-		if !ok {
-			return true, 1
-		}
-		h := fnv.New32()
-		h.Write([]byte(id))
-		return h.Sum32() < upperBound, int(rate)
-	}
-}
-
-// Load converts a BeelineConfig to a beeline.Config, loading the api WriteKey
-// and setting the ServiceName automatically.
-func (bc *BeelineConfig) Load() (beeline.Config, error) {
-	writekey, err := bc.WriteKey.Pass()
-	if err != nil {
-		return beeline.Config{}, fmt.Errorf("failed to get write key: %w", err)
-	}
-
-	return beeline.Config{
-		WriteKey:    writekey,
-		ServiceName: bc.ServiceName,
-		SamplerHook: makeSampler(bc.SampleRate),
-		Mute:        bc.Mute,
-	}, nil
 }

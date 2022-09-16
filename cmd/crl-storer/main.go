@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	awsl "github.com/aws/smithy-go/logging"
-	"github.com/honeycombio/beeline-go"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
@@ -52,8 +51,9 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 // awsLogger implements the github.com/aws/smithy-go/logging.Logger interface.
@@ -88,15 +88,10 @@ func main() {
 	tlsConfig, err := c.CRLStorer.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CRLStorer.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLStorer.IssuerCerts))
 	for _, filepath := range c.CRLStorer.IssuerCerts {

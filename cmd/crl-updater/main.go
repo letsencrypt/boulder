@@ -5,8 +5,6 @@ import (
 	"flag"
 	"os"
 
-	"github.com/honeycombio/beeline-go"
-
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
@@ -68,8 +66,9 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
+	Beeline       cmd.BeelineConfig
 }
 
 func main() {
@@ -96,15 +95,10 @@ func main() {
 	tlsConfig, err := c.CRLUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CRLUpdater.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLUpdater.IssuerCerts))
 	for _, filepath := range c.CRLUpdater.IssuerCerts {
