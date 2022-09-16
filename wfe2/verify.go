@@ -13,8 +13,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -483,10 +484,11 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	// Update the logEvent with the account information and return the JWK
 	logEvent.Requester = account.Id
-	beeline.AddFieldToTrace(ctx, "acct.id", account.Id)
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Int64("acct.id", accountID))
 	if account.Contact != nil {
 		logEvent.Contacts = account.Contact
-		beeline.AddFieldToTrace(ctx, "contacts", account.Contact)
+		span.SetAttributes(attribute.StringSlice("contacts", account.Contact))
 	}
 
 	acct, err := grpc.PbToRegistration(account)
@@ -530,7 +532,8 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	}
 	// Store the verified payload in the logEvent
 	logEvent.Payload = string(payload)
-	beeline.AddFieldToTrace(ctx, "payload", string(payload))
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("payload", string(payload)))
 
 	// Check that the JWS contains a correct Nonce header
 	if prob := wfe.validNonce(ctx, jws); prob != nil {
@@ -625,7 +628,8 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 	// method "POST-as-GET" to the logEvent's Method, replacing the
 	// http.MethodPost value.
 	logEvent.Method = "POST-as-GET"
-	beeline.AddFieldToTrace(ctx, "method", "POST-as-GET")
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("method", "POST-as-GET"))
 	return reg, prob
 }
 

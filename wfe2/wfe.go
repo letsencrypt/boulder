@@ -10,6 +10,9 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"math/big"
 	"net"
 	"net/http"
@@ -17,8 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
-	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -230,11 +231,13 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+			span := trace.SpanFromContext(ctx)
+			span.SetName(pattern)
+
 			logEvent.Endpoint = pattern
-			beeline.AddFieldToTrace(ctx, "endpoint", pattern)
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
-				beeline.AddFieldToTrace(ctx, "slug", request.URL.Path)
+				span.SetAttributes(attribute.String("slug", request.URL.Path))
 			}
 			if !features.Enabled(features.OldTLSInbound) {
 				tls := request.Header.Get("TLS-Version")
@@ -428,7 +431,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return hnynethttp.WrapHandler(measured_http.New(m, wfe.clk, stats))
+	return otelhttp.NewHandler(measured_http.New(m, wfe.clk, stats), "server")
 }
 
 // Method implementations
@@ -496,6 +499,8 @@ func (wfe *WebFrontEndImpl) Directory(
 		"keyChange":  rolloverPath,
 	}
 
+	span := trace.SpanFromContext(ctx)
+
 	if features.Enabled(features.ServeRenewalInfo) {
 		directoryEndpoints["renewalInfo"] = renewalInfoPath
 	}
@@ -507,7 +512,7 @@ func (wfe *WebFrontEndImpl) Directory(
 			return
 		}
 		logEvent.Requester = acct.ID
-		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
+		span.SetAttributes(attribute.Int64("acct.id", acct.ID))
 	}
 
 	// Add a random key to the directory in order to make sure that clients don't hardcode an
@@ -558,6 +563,9 @@ func (wfe *WebFrontEndImpl) Nonce(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+
+	span := trace.SpanFromContext(ctx)
+
 	if request.Method == http.MethodPost {
 		acct, prob := wfe.validPOSTAsGETForAccount(request, ctx, logEvent)
 		if prob != nil {
@@ -565,7 +573,7 @@ func (wfe *WebFrontEndImpl) Nonce(
 			return
 		}
 		logEvent.Requester = acct.ID
-		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
+		span.SetAttributes(attribute.Int64("acct.id", acct.ID))
 	}
 
 	statusCode := http.StatusNoContent
@@ -598,6 +606,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+
+	span := trace.SpanFromContext(ctx)
 
 	// NewAccount uses `validSelfAuthenticatedPOST` instead of
 	// `validPOSTforAccount` because there is no account to authenticate against
@@ -633,7 +643,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acctPB.Id)))
 		logEvent.Requester = acctPB.Id
-		beeline.AddFieldToTrace(ctx, "acct.id", acctPB.Id)
+		span.SetAttributes(attribute.Int64("acct.id", acctPB.Id))
 		addRequesterHeader(response, acctPB.Id)
 
 		acct, err := bgrpc.PbToRegistration(acctPB)
@@ -750,11 +760,11 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 	logEvent.Requester = acct.ID
-	beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
+	span.SetAttributes(attribute.Int64("acct.id", acct.ID))
 	addRequesterHeader(response, acct.ID)
 	if acct.Contact != nil {
 		logEvent.Contacts = *acct.Contact
-		beeline.AddFieldToTrace(ctx, "contacts", *acct.Contact)
+		span.SetAttributes(attribute.StringSlice("contacts", *acct.Contact))
 	}
 
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
@@ -782,6 +792,8 @@ func (wfe *WebFrontEndImpl) NewAccount(
 // metadata fields on the given logEvent.
 func (wfe *WebFrontEndImpl) parseRevocation(
 	ctx context.Context, jwsBody []byte, logEvent *web.RequestEvent) (*x509.Certificate, revocation.Reason, *probs.ProblemDetails) {
+	span := trace.SpanFromContext(ctx)
+
 	// Read the revoke request from the JWS payload
 	var revokeRequest struct {
 		CertificateDER core.JSONBuffer    `json:"certificate"`
@@ -801,7 +813,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	// Compute and record the serial number of the provided certificate
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.Extra["CertificateSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
+	span.SetAttributes(attribute.String("cert.serial", serial))
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
@@ -815,7 +827,7 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 		return nil, 0, probs.NotFound("No such certificate")
 	}
 	logEvent.Extra["CertificateDNSNames"] = parsedCertificate.DNSNames
-	beeline.AddFieldToTrace(ctx, "cert.dnsnames", parsedCertificate.DNSNames)
+	span.SetAttributes(attribute.StringSlice("cert.dnsnames", parsedCertificate.DNSNames))
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return nil, 0, probs.Unauthorized("Certificate is expired")
@@ -998,6 +1010,9 @@ func (wfe *WebFrontEndImpl) Challenge(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+
+	span := trace.SpanFromContext(ctx)
+
 	notFound := func() {
 		wfe.sendError(response, logEvent, probs.NotFound("No such challenge"), nil)
 	}
@@ -1058,10 +1073,10 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
-		beeline.AddFieldToTrace(ctx, "authz.dnsname", authz.Identifier.Value)
+		span.SetAttributes(attribute.String("authz.dnsname", authz.Identifier.Value))
 	}
 	logEvent.Status = string(authz.Status)
-	beeline.AddFieldToTrace(ctx, "authz.status", authz.Status)
+	span.SetAttributes(attribute.String("authz.status", logEvent.Status))
 
 	challenge := authz.Challenges[challengeIndex]
 	switch request.Method {
@@ -1070,7 +1085,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	case "POST":
 		logEvent.ChallengeType = string(challenge.Type)
-		beeline.AddFieldToTrace(ctx, "authz.challenge.type", challenge.Type)
+		span.SetAttributes(attribute.String("authz.challenge.type", logEvent.ChallengeType))
 		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }
@@ -1444,6 +1459,8 @@ func (wfe *WebFrontEndImpl) Authorization(
 	response http.ResponseWriter,
 	request *http.Request) {
 
+	span := trace.SpanFromContext(ctx)
+
 	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
 		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
@@ -1492,10 +1509,10 @@ func (wfe *WebFrontEndImpl) Authorization(
 
 	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
 		logEvent.DNSName = authzPB.Identifier
-		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
+		span.SetAttributes(attribute.String("authz.dnsname", authzPB.Identifier))
 	}
 	logEvent.Status = authzPB.Status
-	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
+	span.SetAttributes(attribute.String("authz.status", authzPB.Status))
 
 	// After expiring, authorizations are inaccessible
 	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
@@ -1554,6 +1571,8 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
+	span := trace.SpanFromContext(ctx)
+
 	var requesterAccount *core.Registration
 	// Any POSTs to the Certificate endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
@@ -1596,7 +1615,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "request.serial", serial)
+	span.SetAttributes(attribute.String("request.serial", serial))
 
 	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
@@ -1961,6 +1980,9 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
+
+	span := trace.SpanFromContext(ctx)
+
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
 	addRequesterHeader(response, logEvent.Requester)
 	if prob != nil {
@@ -2035,7 +2057,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
-	beeline.AddFieldToTrace(ctx, "order.id", order.Id)
+	span.SetAttributes(attribute.Int64("order.id", order.Id))
 
 	orderURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, order.Id))
@@ -2132,6 +2154,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 // Most processing of the order details is handled by the RA but
 // we do attempt to throw away requests with invalid CSRs here.
 func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	span := trace.SpanFromContext(ctx)
+
 	// Validate the POST body signature and get the authenticated account for this
 	// finalize order request
 	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
@@ -2220,13 +2244,14 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	logEvent.Extra["CSRDNSNames"] = csr.DNSNames
-	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
 	logEvent.Extra["CSREmailAddresses"] = csr.EmailAddresses
-	beeline.AddFieldToTrace(ctx, "csr.email_addrs", csr.EmailAddresses)
 	logEvent.Extra["CSRIPAddresses"] = csr.IPAddresses
-	beeline.AddFieldToTrace(ctx, "csr.ip_addrs", csr.IPAddresses)
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
-	beeline.AddFieldToTrace(ctx, "csr.key_type", web.KeyTypeToString(csr.PublicKey))
+	span.SetAttributes(
+		attribute.StringSlice("csr.dnsnames", csr.DNSNames),
+		attribute.StringSlice("csr.email_addrs", csr.EmailAddresses),
+		//attribute.StringSlice("csr.ip_addrs", csr.IPAddresses), // TODO: no attribute type for this
+		attribute.String("csr.key_type", web.KeyTypeToString(csr.PublicKey)))
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Csr:   rawCSR.CSR,
@@ -2267,6 +2292,8 @@ type certID struct {
 // RenewalInfo is used to get information about the suggested renewal window
 // for the given certificate. It only accepts unauthenticated GET requests.
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	span := trace.SpanFromContext(ctx)
+
 	if !features.Enabled(features.ServeRenewalInfo) {
 		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
 		return
@@ -2301,7 +2328,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "request.serial", serial)
+	span.SetAttributes(attribute.String("request.serial", serial))
 
 	setDefaultRetryAfterHeader := func(response http.ResponseWriter) {
 		response.Header().Set("Retry-After", fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
