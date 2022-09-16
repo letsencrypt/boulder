@@ -33,7 +33,8 @@ type Config struct {
 		// and the CA. Otherwise, it's optional.
 		LoadFromDB *LoadFromDBConfig
 	}
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // LoadFromDBConfig provides the credentials and configuration needed to load
@@ -93,7 +94,8 @@ func main2() error {
 		return fmt.Errorf("reading JSON config file: %w", err)
 	}
 
-	_, logger := cmd.StatsAndLogging(conf.Syslog, conf.ROCSPTool.DebugAddr)
+	_, logger, shutdown := cmd.StatsAndLogging("rocsp-tool", conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 
 	clk := cmd.Clock()

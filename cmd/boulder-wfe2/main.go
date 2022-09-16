@@ -156,7 +156,8 @@ type Config struct {
 		AccountCache *CacheConfig
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 type CacheConfig struct {
@@ -444,7 +445,8 @@ func main() {
 		}
 	}
 
-	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
+	stats, logger, shutdown := cmd.StatsAndLogging("wfe2", c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

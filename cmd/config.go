@@ -426,3 +426,31 @@ type GRPCServiceConfig struct {
 	// RPC calls for this service from clients which are not listed here.
 	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
 }
+
+// OpenTelemetryConfig provides config options for the OpenTelemetry library
+// The configuration parameters are documented here:
+// https://github.com/open-telemetry/opentelemetry-go/tree/main/exporters/otlp/otlptrace#configuration
+type OpenTelemetryConfig struct {
+	// Endpoint to connect to with the OTLP protocol
+	OTLPEndpoint string
+
+	// SampleRatio is the ratio of new traces to head sample.
+	// Set to something between 0 and 1, where 1 is sampling all traces.
+	// See otel trace.TraceIDRatioBased for details.
+	SampleRatio float64
+
+	// If true, disable the parent sampler.  Should be true anywhere untrusted
+	// requests are accepted, like the WFE and OCSP Responder.  The default
+	// value of false is the best practice elsewhere.  If true, the SampleRatio
+	// parameter will be used for all new spans.
+	DisableParentSampler bool
+
+	// StdoutExporter prints traces to stdout if this is true.
+	// Useful in test or dev environments without an OTLP endpoint available
+	StdoutExporter bool
+
+	// We will probably want more configuration parameters
+	// Note that the oltptrace exporter also supports using environment
+	// variables for configuration, but are overridden by the values that are
+	// present here.
+}

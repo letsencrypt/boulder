@@ -24,10 +24,11 @@ var (
 
 // ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
-	DebugAddr string           `yaml:"debugaddr" validate:"required,hostname_port"`
-	Buckets   []float64        `yaml:"buckets" validate:"min=1,dive"`
-	Syslog    cmd.SyslogConfig `yaml:"syslog"`
-	MonConfs  []*MonConf       `yaml:"monitors" validate:"min=1,dive"`
+	DebugAddr     string           `yaml:"debugaddr" validate:"required,hostname_port"`
+	Buckets       []float64        `yaml:"buckets" validate:"min=1,dive"`
+	Syslog        cmd.SyslogConfig `yaml:"syslog"`
+	OpenTelemetry cmd.OpenTelemetryConfig
+	MonConfs      []*MonConf `yaml:"monitors" validate:"min=1,dive"`
 }
 
 // validateSyslog ensures the the `Syslog` field received by `ObsConf`
@@ -134,7 +135,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	}
 
 	// Start monitoring and logging.
-	metrics, logger := cmd.StatsAndLogging(c.Syslog, c.DebugAddr)
+	metrics, logger, shutdown := cmd.StatsAndLogging("observer", c.Syslog, c.OpenTelemetry, c.DebugAddr)
 	histObservations = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "obs_observations",
@@ -160,5 +161,5 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Observer{logger, monitors}, nil
+	return &Observer{logger, monitors, shutdown}, nil
 }

@@ -110,7 +110,8 @@ type Config struct {
 
 	PA cmd.PAConfig
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []issuance.IssuerConfig, ignoredLints []string) ([]*issuance.Issuer, error) {
@@ -169,7 +170,8 @@ func main() {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CA.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("ca", c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

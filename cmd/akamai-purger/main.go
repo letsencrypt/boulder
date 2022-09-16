@@ -146,7 +146,8 @@ type Config struct {
 		// purged.
 		PurgeRetryBackoff config.Duration `validate:"-"`
 	}
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // cachePurgeClient is testing interface.
@@ -292,7 +293,8 @@ func main() {
 		apc.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, apc.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("akamai-purger", c.Syslog, c.OpenTelemetry, apc.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
