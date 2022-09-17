@@ -5,4 +5,7 @@
 if type realpath >/dev/null 2>&1 ; then
   cd "$(realpath -- $(dirname -- "$0"))"
 fi
-exec docker-compose run boulder ./test.sh "$@"
+# Use a predictable name for the container so we can grab the logs later
+# for use when testing logs analysis tools.
+docker rm boulder_tests
+exec docker-compose run --name boulder_tests boulder ./test.sh "$@"

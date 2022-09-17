@@ -250,7 +250,7 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 
 		if _, err := fmt.Fprintf(output, "%s%s %s %d %s %s%s\n",
 			color,
-			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
+			w.clk.Now().UTC().Format("2006-01-02T15:04:05.000000+00:00Z"),
 			w.prefix,
 			int(level),
 			path.Base(os.Args[0]),

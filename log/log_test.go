@@ -99,8 +99,8 @@ func TestStdoutLogger(t *testing.T) {
 	logger.Warning("Warning log")
 	logger.Info("Info log")
 
-	test.AssertEquals(t, stdout.String(), "1970-01-01T00:00:00+07:00  6 log.test pcbo7wk Info log\n")
-	test.AssertEquals(t, stderr.String(), "1970-01-01T00:00:00+07:00  3 log.test 46_ghQg [AUDIT] Error Audit\n1970-01-01T00:00:00+07:00  4 log.test 97r2xAw Warning log\n")
+	test.AssertEquals(t, stdout.String(), "1970-01-01T00:00:00.000000+00:00Z  6 log.test pcbo7wk Info log\n")
+	test.AssertEquals(t, stderr.String(), "1970-01-01T00:00:00.000000+00:00Z  3 log.test 46_ghQg [AUDIT] Error Audit\n1970-01-01T00:00:00.000000+00:00Z  4 log.test 97r2xAw Warning log\n")
 }
 
 func TestSyslogMethods(t *testing.T) {
