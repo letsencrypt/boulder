@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
 	// Import for its init function, which causes clients to rely on the
@@ -43,13 +43,13 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	unaryInterceptors := append(interceptors, []grpc.UnaryClientInterceptor{
 		ci.interceptUnary,
 		ci.metrics.grpcMetrics.UnaryClientInterceptor(),
-		hnygrpc.UnaryClientInterceptor(),
+		otelgrpc.UnaryClientInterceptor(),
 	}...)
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
 		ci.interceptStream,
 		ci.metrics.grpcMetrics.StreamClientInterceptor(),
-		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
+		otelgrpc.StreamClientInterceptor(),
 	}
 
 	var target string

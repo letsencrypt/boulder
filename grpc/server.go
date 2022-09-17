@@ -6,11 +6,11 @@ import (
 	"net"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
@@ -49,13 +49,13 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 	unaryInterceptors := append([]grpc.UnaryServerInterceptor{
 		si.interceptUnary,
 		si.metrics.grpcMetrics.UnaryServerInterceptor(),
-		hnygrpc.UnaryServerInterceptor(),
+		otelgrpc.UnaryServerInterceptor(),
 	}, interceptors...)
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		si.interceptStream,
 		si.metrics.grpcMetrics.StreamServerInterceptor(),
-		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
+		otelgrpc.StreamServerInterceptor(),
 	}
 
 	options := []grpc.ServerOption{
