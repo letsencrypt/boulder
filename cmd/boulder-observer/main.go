@@ -32,6 +32,7 @@ func main() {
 
 	// Start the `Observer` daemon.
 	observer.Start()
+	defer observer.Stop()
 }
 
 func init() {

@@ -65,7 +65,8 @@ func main() {
 		c.NonceService.NoncePrefix = *prefixOverride
 	}
 
-	scope, logger := cmd.StatsAndLogging("nonce-service", c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("nonce-service", c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

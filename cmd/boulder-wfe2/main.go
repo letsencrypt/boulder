@@ -376,7 +376,8 @@ func main() {
 		}
 	}
 
-	stats, logger := cmd.StatsAndLogging("wfe2", c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
+	stats, logger, shutdown := cmd.StatsAndLogging("wfe2", c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

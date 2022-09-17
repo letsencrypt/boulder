@@ -162,13 +162,14 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 // the mysql and grpc packages to use our logger.
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
-// TODO: Plus it also sets up a global opentelemetry TracerProvider
-func StatsAndLogging(serviceName string, logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger) {
+// Also it sets up OpenTelemetry tracing.  It returns a shutdown function that
+// should be called at process shutdown, probably in a defer.
+func StatsAndLogging(serviceName string, logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func()) {
 	logger := NewLogger(logConf)
 
-	newOpenTelemetry(serviceName, otConf)
+	shutdown := newOpenTelemetry(serviceName, otConf)
 
-	return newStatsRegistry(addr, logger), logger
+	return newStatsRegistry(addr, logger), logger, shutdown
 }
 
 func NewLogger(logConf SyslogConfig) blog.Logger {
@@ -253,13 +254,14 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 }
 
 // newOpenTelemetry sets up our OpenTelemtry tracing
-func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) {
+// It returns an object that should be called to shutdown the tracer
+func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 	r, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceNameKey.String(serviceName),
-			semconv.ServiceVersionKey.String(VersionString()),
+			semconv.ServiceVersionKey.String(core.GetBuildID()),
 		),
 	)
 	if err != nil {
@@ -300,7 +302,12 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) {
 	tc := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 	otel.SetTextMapPropagator(tc)
 
-	// TODO:  We should return a shutdown function or something to clean up at exit
+	return func() {
+		err := tp.Shutdown(context.Background())
+		if err != nil {
+			blog.Get().AuditErrf("Error while shutting down Opentelemetry: %v", err)
+		}
+	}
 }
 
 // Fail exits and prints an error message to stderr and the logger audit log.

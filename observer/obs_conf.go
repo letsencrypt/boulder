@@ -135,7 +135,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	}
 
 	// Start monitoring and logging.
-	metrics, logger := cmd.StatsAndLogging("observer", c.Syslog, c.OpenTelemetry, c.DebugAddr)
+	metrics, logger, shutdown := cmd.StatsAndLogging("observer", c.Syslog, c.OpenTelemetry, c.DebugAddr)
 	histObservations = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "obs_observations",
@@ -161,5 +161,5 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Observer{logger, monitors}, nil
+	return &Observer{logger, monitors, shutdown}, nil
 }

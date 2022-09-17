@@ -612,7 +612,8 @@ func main() {
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging("expiration-mailer", c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("expiration-mailer", c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
+	defer shutdown()
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

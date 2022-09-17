@@ -11,6 +11,7 @@ import (
 type Observer struct {
 	logger   blog.Logger
 	monitors []*monitor
+	shutdown func()
 }
 
 // Start spins off a goroutine for each monitor and then runs forever.
@@ -19,4 +20,8 @@ func (o Observer) Start() {
 		go mon.start(o.logger)
 	}
 	select {}
+}
+
+func (o Observer) Stop() {
+	o.shutdown()
 }
