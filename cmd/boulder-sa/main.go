@@ -60,7 +60,7 @@ func main() {
 		c.SA.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
+	scope, logger := cmd.StatsAndLogging("sa", c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

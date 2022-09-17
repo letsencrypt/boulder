@@ -288,13 +288,17 @@ type PortConfig struct {
 // The configuration parameters are documented here:
 // https://github.com/open-telemetry/opentelemetry-go/tree/main/exporters/otlp/otlptrace#configuration
 type OpenTelemetryConfig struct {
-	// Endpoint to connect to for
-	OLTPEndpoint string
+	// Endpoint to connect to with the OTLP protocol
+	OTLPEndpoint string
 
 	// SampleRatio is the ratio of traces to sample.
 	// Set to something between 0 and 1, where 1 is sampling all traces.
 	// See otel trace.TraceIDRatioBased for details.
-	SampleRatio float32
+	SampleRatio float64
+
+	// StdoutExporter prints traces to stdout if this is true.
+	// Useful in test or dev environments without an OTLP endpoint available
+	StdoutExporter bool
 
 	// We will probably want more configuration parameters
 	// Note that the oltptrace exporter also supports using environment

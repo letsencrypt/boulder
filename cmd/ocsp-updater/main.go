@@ -79,7 +79,7 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, conf.DebugAddr)
+	stats, logger := cmd.StatsAndLogging("ocsp-updater", c.Syslog, c.OpenTelemetry, conf.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

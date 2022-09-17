@@ -6,6 +6,10 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -25,6 +29,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -156,10 +163,10 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 // This must be called before any gRPC code is called, because gRPC's SetLogger
 // doesn't use any locking.
 // TODO: Plus it also sets up a global opentelemetry TracerProvider
-func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger) {
+func StatsAndLogging(serviceName string, logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger) {
 	logger := NewLogger(logConf)
 
-	newOpenTelemetry(otConf)
+	newOpenTelemetry(serviceName, otConf)
 
 	return newStatsRegistry(addr, logger), logger
 }
@@ -246,8 +253,54 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 }
 
 // newOpenTelemetry sets up our OpenTelemtry tracing
-func newOpenTelemetry(config OpenTelemetryConfig) {
-	// TODO!
+func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) {
+	r, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(serviceName),
+			semconv.ServiceVersionKey.String(VersionString()),
+		),
+	)
+	if err != nil {
+		FailOnError(err, "Could not create OpenTelemetry resource")
+	}
+
+	// Use a ParentBased sampler to respect the sample decisions on incoming
+	// traces, and TraceIDRatioBased to randomly sample new traces.
+	sampler := trace.ParentBased(trace.TraceIDRatioBased(config.SampleRatio))
+
+	opts := []trace.TracerProviderOption{
+		trace.WithResource(r),
+		trace.WithSampler(sampler),
+	}
+
+	if config.StdoutExporter {
+		exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+		if err != nil {
+			FailOnError(err, "Could not create OpenTelemetry stdout exporter")
+		}
+		opts = append(opts, trace.WithBatcher(exporter))
+	}
+
+	if config.OTLPEndpoint != "" {
+		exporter, err := otlptracegrpc.New(context.Background(),
+			otlptracegrpc.WithInsecure(), // TODO: We might want secure (TLS/authed) grpc for non-localhost connections!
+			otlptracegrpc.WithEndpoint(config.OTLPEndpoint))
+		if err != nil {
+			FailOnError(err, "Could not create OpenTelemetry OTLP exporter")
+		}
+
+		opts = append(opts, trace.WithBatcher(exporter))
+	}
+
+	tp := trace.NewTracerProvider(opts...)
+	otel.SetTracerProvider(tp)
+
+	tc := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
+	otel.SetTextMapPropagator(tc)
+
+	// TODO:  We should return a shutdown function or something to clean up at exit
 }
 
 // Fail exits and prints an error message to stderr and the logger audit log.

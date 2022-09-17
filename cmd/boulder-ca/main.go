@@ -173,7 +173,7 @@ func main() {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
+	scope, logger := cmd.StatsAndLogging("ca", c.Syslog, c.OpenTelemetry, c.CA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

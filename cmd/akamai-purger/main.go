@@ -311,7 +311,7 @@ func main() {
 		apc.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, apc.DebugAddr)
+	scope, logger := cmd.StatsAndLogging("akamai-purger", c.Syslog, c.OpenTelemetry, apc.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
