@@ -11,6 +11,10 @@
             "serviceName": "Test",
             "writeKey": {"passwordFile": "test/secrets/honeycomb_fake_password"}
         },
+        "opentelemetry": {
+            "sampleratio": 1,
+            "otlpendpoint": "10.77.77.17:4317"
+        },
         "debugAddr": ":8111",
         "grpc": {
             "maxConnectionAge": "30s",

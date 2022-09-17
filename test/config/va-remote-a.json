@@ -46,5 +46,9 @@
   "common": {
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true
+  },
+  "opentelemetry": {
+    "sampleratio": 1,
+    "otlpendpoint": "10.77.77.17:4317"
   }
 }

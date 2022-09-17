@@ -161,6 +161,18 @@ services:
     working_dir: *boulder_working_dir
     entrypoint: test/entrypoint-netaccess.sh
 
+  jaegar:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      bluenet:
+        ipv4_address: 10.77.77.17
+    ports:
+      - "16686:16686" # Jaegar UI
+      - "4317:4317"  # OTLP grpc
+      - "4318:4318"  # OTLP http
+
 networks:
   bluenet:
     driver: bridge
