@@ -17,6 +17,7 @@ import (
 
 	// Import for its init function, which causes clients to rely on the
 	// Health Service for load-balancing.
+	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 	"google.golang.org/grpc/balancer/roundrobin"
 	_ "google.golang.org/grpc/health"
 )
