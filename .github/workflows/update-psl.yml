@@ -14,7 +14,7 @@ jobs:
   create-pr:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       # This is the real username and email used by github-actions elsewhere.
       - run: git config user.name "github-actions[bot]"
