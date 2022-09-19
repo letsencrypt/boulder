@@ -38,7 +38,7 @@ func TestARI(t *testing.T) {
 	}
 
 	// Create an account.
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 
@@ -72,7 +72,7 @@ func TestARI(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "failed to marshal certID")
 	url := fmt.Sprintf(
-		"http://boulder:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
+		"http://boulder.service.consul:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
 		base64.RawURLEncoding.EncodeToString(pathBytes),
 	)
 	resp, err := http.Get(url)
@@ -109,7 +109,7 @@ func TestARI(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "failed to marshal certID")
 	url = fmt.Sprintf(
-		"http://boulder:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
+		"http://boulder.service.consul:4001/get/draft-ietf-acme-ari-00/renewalInfo/%s",
 		base64.RawURLEncoding.EncodeToString(pathBytes),
 	)
 	resp, err = http.Get(url)

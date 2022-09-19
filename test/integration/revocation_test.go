@@ -46,7 +46,7 @@ func TestRevocation(t *testing.T) {
 	}
 
 	// Create a base account to use for revocation tests.
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type authMethod string
 	var (
@@ -210,7 +210,7 @@ func TestMozRevocation(t *testing.T) {
 	}
 
 	// Create a base account to use for revocation tests.
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type authMethod string
 	var (
@@ -375,7 +375,7 @@ func TestDoubleRevocationOff(t *testing.T) {
 	}
 
 	// Create a base account to use for revocation tests.
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	client, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
@@ -429,7 +429,7 @@ func TestDoubleRevocationOn(t *testing.T) {
 	}
 
 	// Create a base account to use for revocation tests.
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type authMethod string
 	var (
@@ -560,7 +560,7 @@ func TestDoubleRevocationOn(t *testing.T) {
 
 func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 	t.Parallel()
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type authMethod string
 	var (
@@ -618,7 +618,7 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 }
 
 func TestBadKeyRevoker(t *testing.T) {
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	// Both accounts have two email addresses, one of which is shared between
 	// them. All three addresses should receive mail, because the revocation
@@ -676,21 +676,21 @@ func TestBadKeyRevoker(t *testing.T) {
 		}
 	}
 
-	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee@letsencrypt.org&from=bad-key-revoker@test.org")
+	revokeeCount, err := http.Get("http://boulder.service.consul:9381/count?to=revokee@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokeeCount.Body.Close() }()
 	body, err := io.ReadAll(revokeeCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "1\n")
 
-	revokerCount, err := http.Get("http://boulder:9381/count?to=revoker@letsencrypt.org&from=bad-key-revoker@test.org")
+	revokerCount, err := http.Get("http://boulder.service.consul:9381/count?to=revoker@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokerCount.Body.Close() }()
 	body, err = io.ReadAll(revokerCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "1\n")
 
-	sharedCount, err := http.Get("http://boulder:9381/count?to=shared@letsencrypt.org&from=bad-key-revoker@test.org")
+	sharedCount, err := http.Get("http://boulder.service.consul:9381/count?to=shared@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = sharedCount.Body.Close() }()
 	body, err = io.ReadAll(sharedCount.Body)
@@ -699,7 +699,7 @@ func TestBadKeyRevoker(t *testing.T) {
 }
 
 func TestBadKeyRevokerByAccount(t *testing.T) {
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	// This test is gated on the MozRevocationReasons feature flag being set.
 	// It does not replace the test above, it complements it by testing new
@@ -764,21 +764,21 @@ func TestBadKeyRevokerByAccount(t *testing.T) {
 		}
 	}
 
-	revokeeCount, err := http.Get("http://boulder:9381/count?to=revokee-moz@letsencrypt.org&from=bad-key-revoker@test.org")
+	revokeeCount, err := http.Get("http://boulder.service.consul:9381/count?to=revokee-moz@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokeeCount.Body.Close() }()
 	body, err := io.ReadAll(revokeeCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "0\n")
 
-	revokerCount, err := http.Get("http://boulder:9381/count?to=revoker-moz@letsencrypt.org&from=bad-key-revoker@test.org")
+	revokerCount, err := http.Get("http://boulder.service.consul:9381/count?to=revoker-moz@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = revokerCount.Body.Close() }()
 	body, err = io.ReadAll(revokerCount.Body)
 	test.AssertNotError(t, err, "failed to read body")
 	test.AssertEquals(t, string(body), "0\n")
 
-	sharedCount, err := http.Get("http://boulder:9381/count?to=shared-moz@letsencrypt.org&from=bad-key-revoker@test.org")
+	sharedCount, err := http.Get("http://boulder.service.consul:9381/count?to=shared-moz@letsencrypt.org&from=bad-key-revoker@test.org")
 	test.AssertNotError(t, err, "mail-test-srv GET /count failed")
 	defer func() { _ = sharedCount.Body.Close() }()
 	body, err = io.ReadAll(sharedCount.Body)

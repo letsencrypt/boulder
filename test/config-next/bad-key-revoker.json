@@ -7,11 +7,11 @@
         "debugAddr": ":8020",
         "tls": {
             "caCertFile": "test/grpc-creds/minica.pem",
-            "certFile": "test/grpc-creds/bad-key-revoker.boulder/cert.pem",
-            "keyFile": "test/grpc-creds/bad-key-revoker.boulder/key.pem"
+            "certFile": "test/grpc-creds/bad-key-revoker.service.consul/cert.pem",
+            "keyFile": "test/grpc-creds/bad-key-revoker.service.consul/key.pem"
         },
         "raService": {
-            "serverAddress": "ra.boulder:9094",
+            "serverAddress": "ra.service.consul:9094",
             "timeout": "15s"
         },
         "mailer": {

@@ -6,15 +6,15 @@
     },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/admin-revoker.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/admin-revoker.boulder/key.pem"
+      "certFile": "test/grpc-creds/admin-revoker.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/admin-revoker.service.consul/key.pem"
     },
     "raService": {
-      "serverAddress": "ra.boulder:9094",
+      "serverAddress": "ra.service.consul:9094",
       "timeout": "15s"
     },
     "saService": {
-      "serverAddress": "sa.boulder:9095",
+      "serverAddress": "sa.service.consul:9095",
       "timeout": "15s"
     },
     "features": {

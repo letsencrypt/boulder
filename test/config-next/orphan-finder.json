@@ -13,12 +13,12 @@
 
   "tls": {
     "caCertFile": "test/grpc-creds/minica.pem",
-    "certFile": "test/grpc-creds/orphan-finder.boulder/cert.pem",
-    "keyFile": "test/grpc-creds/orphan-finder.boulder/key.pem"
+    "certFile": "test/grpc-creds/orphan-finder.service.consul/cert.pem",
+    "keyFile": "test/grpc-creds/orphan-finder.service.consul/key.pem"
   },
 
   "ocspGeneratorService": {
-    "serverAddress": "ca.boulder:9096",
+    "serverAddress": "ca.service.consul:9096",
     "timeout": "15s"
   },
   "saService": {

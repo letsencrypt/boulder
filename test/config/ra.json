@@ -21,37 +21,37 @@
     ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ra.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/ra.boulder/key.pem"
+      "certFile": "test/grpc-creds/ra.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/ra.service.consul/key.pem"
     },
     "vaService": {
-      "serverAddress": "va.boulder:9092",
+      "serverAddress": "va.service.consul:9092",
       "timeout": "20s"
     },
     "caService": {
-      "serverAddress": "ca.boulder:9093",
+      "serverAddress": "ca.service.consul:9093",
       "timeout": "15s"
     },
     "publisherService": {
-      "serverAddress": "publisher.boulder:9091",
+      "serverAddress": "publisher.service.consul:9091",
       "timeout": "300s"
     },
     "saService": {
-      "serverAddress": "sa.boulder:9095",
+      "serverAddress": "sa.service.consul:9095",
       "timeout": "15s"
     },
     "akamaiPurgerService": {
-      "serverAddress": "akamai-purger.boulder:9099",
+      "serverAddress": "akamai-purger.service.consul:9099",
       "timeout": "15s"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9094",
       "clientNames": [
-        "admin-revoker.boulder",
-        "bad-key-revoker.boulder",
-        "health-checker.boulder",
-        "wfe.boulder"
+        "admin-revoker.service.consul",
+        "bad-key-revoker.service.consul",
+        "health-checker.service.consul",
+        "wfe.service.consul"
       ]
     },
     "features": {
@@ -65,12 +65,12 @@
         "stagger": "500ms",
         "logs": [
           {
-            "uri": "http://boulder:4500",
+            "uri": "http://boulder.service.consul:4500",
             "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q==",
             "submitFinalCert": false
           },
           {
-            "uri": "http://boulder:4501",
+            "uri": "http://boulder.service.consul:4501",
             "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA==",
             "submitFinalCert": false
           }
@@ -81,7 +81,7 @@
         "stagger": "500ms",
         "logs": [
           {
-            "uri": "http://boulder:4510",
+            "uri": "http://boulder.service.consul:4510",
             "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEyw1HymhJkuxSIgt3gqW3sVXqMqB3EFsXcMfPFo0vYwjNiRmCJDXKsR0Flp7MAK+wc3X/7Hpc8liUbMhPet7tEA==",
             "submitFinalCert": true
           },
@@ -89,19 +89,19 @@
             "name": "temporal test set",
             "shards": [
               {
-                "uri": "http://boulder:4511",
+                "uri": "http://boulder.service.consul:4511",
                 "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
                 "windowStart": "2006-01-02T15:04:05Z",
                 "windowEnd": "2017-01-02T15:04:05Z"
               },
               {
-                "uri": "http://boulder:4511",
+                "uri": "http://boulder.service.consul:4511",
                 "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
                 "windowStart": "2017-01-02T15:04:05Z",
                 "windowEnd": "2022-01-02T15:04:05Z"
               },
               {
-                "uri": "http://boulder:4511",
+                "uri": "http://boulder.service.consul:4511",
                 "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
                 "windowStart": "2022-01-02T15:04:05Z",
                 "windowEnd": "2050-01-02T15:04:05Z"
@@ -114,7 +114,7 @@
     ],
     "InformationalCTLogs": [
       {
-        "uri": "http://boulder:4512",
+        "uri": "http://boulder.service.consul:4512",
         "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
         "submitFinalCert": true
       }

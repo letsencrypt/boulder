@@ -21,11 +21,11 @@
     },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ocsp-responder.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
+      "certFile": "test/grpc-creds/ocsp-responder.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/ocsp-responder.service.consul/key.pem"
     },
     "raService": {
-      "serverAddress": "ra.boulder:9094",
+      "serverAddress": "ra.service.consul:9094",
       "timeout": "15s"
     },
     "saService": {

@@ -40,16 +40,16 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 	}
 	tlsConfig, err := (&cmd.TLSConfig{
 		CACertFile: s("test/grpc-creds/minica.pem"),
-		CertFile:   s("test/grpc-creds/ra.boulder/cert.pem"),
-		KeyFile:    s("test/grpc-creds/ra.boulder/key.pem"),
+		CertFile:   s("test/grpc-creds/ra.service.consul/cert.pem"),
+		KeyFile:    s("test/grpc-creds/ra.service.consul/key.pem"),
 	}).Load()
 	if err != nil {
 		sigterm()
 		return nil, nil, nil, err
 	}
-	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, "akamai-purger.boulder")
+	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, "akamai-purger.service.consul")
 	conn, err := grpc.Dial(
-		"dns:///akamai-purger.boulder:9199",
+		"dns:///akamai-purger.service.consul:9199",
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(creds),
 	)

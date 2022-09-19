@@ -21,19 +21,19 @@
     ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ra.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/ra.boulder/key.pem"
+      "certFile": "test/grpc-creds/ra.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/ra.service.consul/key.pem"
     },
     "vaService": {
-      "serverAddress": "va.boulder:9092",
+      "serverAddress": "va.service.consul:9092",
       "timeout": "20s"
     },
     "caService": {
-      "serverAddress": "ca.boulder:9093",
+      "serverAddress": "ca.service.consul:9093",
       "timeout": "15s"
     },
     "publisherService": {
-      "serverAddress": "publisher.boulder:9091",
+      "serverAddress": "publisher.service.consul:9091",
       "timeout": "300s"
     },
     "saService": {
@@ -44,18 +44,18 @@
       "timeout": "15s"
     },
     "akamaiPurgerService": {
-      "serverAddress": "akamai-purger.boulder:9099",
+      "serverAddress": "akamai-purger.service.consul:9099",
       "timeout": "15s"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9094",
       "clientNames": [
-        "admin-revoker.boulder",
-        "bad-key-revoker.boulder",
-        "health-checker.boulder",
-        "ocsp-responder.boulder",
-        "wfe.boulder"
+        "admin-revoker.service.consul",
+        "bad-key-revoker.service.consul",
+        "health-checker.service.consul",
+        "ocsp-responder.service.consul",
+        "wfe.service.consul"
       ]
     },
     "features": {

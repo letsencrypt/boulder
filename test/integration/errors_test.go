@@ -17,7 +17,7 @@ import (
 // produces the expected problem result.
 func TestTooBigOrderError(t *testing.T) {
 	t.Parallel()
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	var domains []string
 	for i := 0; i < 101; i++ {
@@ -38,7 +38,7 @@ func TestTooBigOrderError(t *testing.T) {
 // result to ACME clients.
 func TestAccountEmailError(t *testing.T) {
 	t.Parallel()
-	os.Setenv("DIRECTORY", "http://boulder:4001/directory")
+	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	// The registrations.contact field is VARCHAR(191). 175 'a' characters plus
 	// the prefix "mailto:" and the suffix "@a.com" makes exactly 191 bytes of

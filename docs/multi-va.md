@@ -27,11 +27,11 @@ Primary VA instances know they are a primary based on the presence of the
 addresses for other VA instances to use as remotes. There's also a handful of
 feature flags that control how the primary VAs handle the remote VAs.
 
-In the development environment with `config-next` the two primary VAs are `va1.boulder:9092` and
-`va2.boulder:9092` and use
+In the development environment with `config-next` the two primary VAs are `va1.service.consul:9092` and
+`va2.service.consul:9092` and use
 [`test/config-next/va.json`](https://github.com/letsencrypt/boulder/blob/ea231adc36746cce97f860e818c2cdf92f060543/test/config-next/va.json)
 as their configuration. This config file specifies two `"remoteVA"s`,
-`va1.boulder:9097` and `va2.boulder:9098` and enforces
+`rva1.service.consul:9097` and `va2.service.consul:9098` and enforces
 [that a maximum of 1 of the 2 remote VAs disagree](https://github.com/letsencrypt/boulder/blob/ea231adc36746cce97f860e818c2cdf92f060543/test/config-next/va.json#L44)
 with the primary VA for all validations. The remote VA instances use
 [`test/config-next/va-remote-a.json`](https://github.com/letsencrypt/boulder/blob/ea231adc36746cce97f860e818c2cdf92f060543/test/config-next/va-remote-a.json)

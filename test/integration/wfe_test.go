@@ -16,7 +16,7 @@ import (
 func TestWFECORS(t *testing.T) {
 	// Construct a GET request with an Origin header to sollicit an
 	// Access-Control-Allow-Origin response header.
-	getReq, _ := http.NewRequest("GET", "http://boulder:4001/directory", nil)
+	getReq, _ := http.NewRequest("GET", "http://boulder.service.consul:4001/directory", nil)
 	getReq.Header.Set("Origin", "*")
 
 	// Performing the GET should return status 200.
@@ -37,12 +37,12 @@ func TestWFECORS(t *testing.T) {
 // endpoint before checking the /metrics endpoint.
 func TestWFEHTTPMetrics(t *testing.T) {
 	// Check boulder-wfe2
-	resp, err := http.Get("http://boulder:4001/directory")
+	resp, err := http.Get("http://boulder.service.consul:4001/directory")
 	test.AssertNotError(t, err, "GET boulder-wfe2 directory")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 	resp.Body.Close()
 
-	resp, err = http.Get("http://boulder:8013/metrics")
+	resp, err = http.Get("http://boulder.service.consul:8013/metrics")
 	test.AssertNotError(t, err, "GET boulder-wfe2 metrics")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
 	body, err := io.ReadAll(resp.Body)

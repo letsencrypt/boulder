@@ -27,17 +27,17 @@ services:
         ipv4_address: 10.88.88.88
       redisnet:
         ipv4_address: 10.33.33.33
+      consulnet:
+        ipv4_address: 10.55.55.55
     extra_hosts:
       # This is used by TestOldTLS in va/http_test.go
       # TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
       - "example.com:127.0.0.1"
-    # Use sd-test-srv as a backup to Docker's embedded DNS server
+    # Use consul as a backup to Docker's embedded DNS server If there's a name
+    # Docker's DNS server doesn't know about, it will forward the query to this
+    # IP (running consul).
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
-    # If there's a name Docker's DNS server doesn't know about, it will
-    # forward the query to this IP (running sd-test-srv). We have
-    # special logic there that will return multiple IP addresses for
-    # service names.
-    dns: 10.77.77.77
+    dns: 10.55.55.10
     ports:
       - 4001:4001 # ACMEv2
       - 4002:4002 # OCSP
@@ -45,6 +45,7 @@ services:
     depends_on:
       - bmysql
       - bredis_clusterer
+      - bconsul
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -133,10 +134,19 @@ services:
       - bredis_5
       - bredis_6
     networks:
-        redisnet:
+      redisnet:
           ipv4_address: 10.33.33.10
           aliases:
             - boulder-redis-clusterer
+
+  bconsul:
+    image: hashicorp/consul:1.13.1
+    volumes:
+     - ./test/:/test/:cached
+    networks:
+      consulnet:
+        ipv4_address: 10.55.55.10
+    command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
   netaccess:
     image: *boulder_image
@@ -171,3 +181,10 @@ networks:
       driver: default
       config:
         - subnet: 10.33.33.0/24
+
+  consulnet:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.55.55.0/24

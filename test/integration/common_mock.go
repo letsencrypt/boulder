@@ -20,7 +20,7 @@ var ctSrvPorts = []int{4500, 4501, 4510, 4511, 4600, 4601, 4602, 4603, 4604, 460
 // lists. If this fails the test is aborted with a fatal error.
 func ctAddRejectHost(domain string) error {
 	for _, port := range ctSrvPorts {
-		url := fmt.Sprintf("http://boulder:%d/add-reject-host", port)
+		url := fmt.Sprintf("http://boulder.service.consul:%d/add-reject-host", port)
 		body := []byte(fmt.Sprintf(`{"host": %q}`, domain))
 		resp, err := http.Post(url, "", bytes.NewBuffer(body))
 		if err != nil {
@@ -37,7 +37,7 @@ func ctAddRejectHost(domain string) error {
 // ctGetRejections returns a slice of base64 encoded certificates that were
 // rejected by the CT test server at the specified port or an error.
 func ctGetRejections(port int) ([]string, error) {
-	url := fmt.Sprintf("http://boulder:%d/get-rejections", port)
+	url := fmt.Sprintf("http://boulder.service.consul:%d/get-rejections", port)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err

@@ -14,15 +14,15 @@
     "v3Network": "staging",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/akamai-purger.boulder/cert.pem",
-      "keyFile": "test/grpc-creds/akamai-purger.boulder/key.pem"
+      "certFile": "test/grpc-creds/akamai-purger.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/akamai-purger.service.consul/key.pem"
     },
     "grpc": {
       "address": ":9099",
       "maxConnectionAge": "30s",
       "clientNames": [
-        "health-checker.boulder",
-        "ra.boulder"
+        "health-checker.service.consul",
+        "ra.service.consul"
       ]
     }
   },

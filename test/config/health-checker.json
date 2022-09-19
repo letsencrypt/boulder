@@ -4,7 +4,7 @@
   },
   "tls": {
     "caCertFile": "test/grpc-creds/minica.pem",
-    "certFile": "test/grpc-creds/health-checker.boulder/cert.pem",
-    "keyFile": "test/grpc-creds/health-checker.boulder/key.pem"
+    "certFile": "test/grpc-creds/health-checker.service.consul/cert.pem",
+    "keyFile": "test/grpc-creds/health-checker.service.consul/key.pem"
   }
 }
