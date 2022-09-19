@@ -146,7 +146,7 @@ services:
     networks:
       consulnet:
         ipv4_address: 10.55.55.10
-    command: "consul agent -dev -config-format=hcl -config-file=test/consul/config.hcl"
+    command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
   netaccess:
     image: *boulder_image
