@@ -1,74 +1,31 @@
-/*
- *
- * Copyright 2018 gRPC authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- */
+// Forked from the default internal DNS resolver in the grpc-go package. The
+// original source can be found at:
+// https://pkg.go.dev/google.golang.org/grpc/internal/resolver/dns/dns_resolver.go
 
-// Package dns implements a dns resolver to be installed as "srv" in grpc. It
-// is forked from https://pkg.go.dev/google.golang.org/grpc/resolver/dns to
-// support resolution of SRV records.
 package dns
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/grpc/internal/backoff"
-	"github.com/letsencrypt/boulder/grpc/internal/envconfig"
-	"github.com/letsencrypt/boulder/grpc/internal/grpcrand"
-	grpclbstate "google.golang.org/grpc/balancer/grpclb/state"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
-	"google.golang.org/grpc/serviceconfig"
 )
 
-// EnableSRVLookups controls whether the DNS resolver attempts to fetch gRPCLB
-// addresses from SRV records.  Must not be changed after init time.
-var EnableSRVLookups = false
-
-var logger = grpclog.Component("dns")
-
-// Globals to stub out in tests. TODO: Perhaps these two can be combined into a
-// single variable for testing the resolver?
-var (
-	newTimer           = time.NewTimer
-	newTimerDNSResRate = time.NewTimer
-)
+var logger = grpclog.Component("srv")
 
 func init() {
 	resolver.Register(NewBuilder())
 }
 
-const (
-	defaultPort       = "443"
-	defaultDNSSvrPort = "53"
-	golang            = "GO"
-	// txtPrefix is the prefix string to be prepended to the host name for txt record lookup.
-	txtPrefix = "_grpc_config."
-	// In DNS, service config is encoded in a TXT record via the mechanism
-	// described in RFC-1464 using the attribute name grpc_config.
-	txtAttribute = "grpc_config="
-)
+const defaultDNSSvrPort = "53"
 
 var (
 	errMissingAddr = errors.New("dns resolver: missing address")
@@ -81,30 +38,26 @@ var (
 )
 
 var (
-	defaultResolver netResolver = net.DefaultResolver
 	// To prevent excessive re-resolution, we enforce a rate limit on DNS
 	// resolution requests.
 	minDNSResRate = 30 * time.Second
 )
 
-var customAuthorityDialler = func(authority string) func(ctx context.Context, network, address string) (net.Conn, error) {
+var customAuthorityDialer = func(authority string) func(ctx context.Context, network, address string) (net.Conn, error) {
 	return func(ctx context.Context, network, address string) (net.Conn, error) {
 		var dialer net.Dialer
 		return dialer.DialContext(ctx, network, authority)
 	}
 }
 
-var customAuthorityResolver = func(authority string) (netResolver, error) {
+var customAuthorityResolver = func(authority string) (*net.Resolver, error) {
 	host, port, err := parseTarget(authority, defaultDNSSvrPort)
 	if err != nil {
 		return nil, err
 	}
-
-	authorityWithPort := net.JoinHostPort(host, port)
-
 	return &net.Resolver{
 		PreferGo: true,
-		Dial:     customAuthorityDialler(authorityWithPort),
+		Dial:     customAuthorityDialer(net.JoinHostPort(host, port)),
 	}, nil
 }
 
@@ -117,32 +70,23 @@ type dnsBuilder struct{}
 
 // Build creates and starts a DNS resolver that watches the name resolution of the target.
 func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
-	host, port, err := parseTarget(target.Endpoint, defaultPort)
+	service, domain, err := parseServiceDomain(target.Endpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	// IP address.
-	if ipAddr, ok := formatIP(host); ok {
-		addr := []resolver.Address{{Addr: ipAddr + ":" + port}}
-		cc.UpdateState(resolver.State{Addresses: addr})
-		return deadResolver{}, nil
-	}
-
-	// DNS address (non-IP).
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &dnsResolver{
-		host:                 host,
-		port:                 port,
-		ctx:                  ctx,
-		cancel:               cancel,
-		cc:                   cc,
-		rn:                   make(chan struct{}, 1),
-		disableServiceConfig: opts.DisableServiceConfig,
+		service: service,
+		domain:  domain,
+		ctx:     ctx,
+		cancel:  cancel,
+		cc:      cc,
+		rn:      make(chan struct{}, 1),
 	}
 
 	if target.Authority == "" {
-		d.resolver = defaultResolver
+		d.resolver = net.DefaultResolver
 	} else {
 		d.resolver, err = customAuthorityResolver(target.Authority)
 		if err != nil {
@@ -155,29 +99,16 @@ func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts 
 	return d, nil
 }
 
-// Scheme returns the naming scheme of this resolver builder, which is "dns".
+// Scheme returns the naming scheme of this resolver builder, which is "srv".
 func (b *dnsBuilder) Scheme() string {
-	return "dns"
+	return "srv"
 }
-
-type netResolver interface {
-	LookupHost(ctx context.Context, host string) (addrs []string, err error)
-	LookupSRV(ctx context.Context, service, proto, name string) (cname string, addrs []*net.SRV, err error)
-	LookupTXT(ctx context.Context, name string) (txts []string, err error)
-}
-
-// deadResolver is a resolver that does nothing.
-type deadResolver struct{}
-
-func (deadResolver) ResolveNow(resolver.ResolveNowOptions) {}
-
-func (deadResolver) Close() {}
 
 // dnsResolver watches for the name resolution update for a non-IP target.
 type dnsResolver struct {
-	host     string
-	port     string
-	resolver netResolver
+	service  string
+	domain   string
+	resolver *net.Resolver
 	ctx      context.Context
 	cancel   context.CancelFunc
 	cc       resolver.ClientConn
@@ -189,8 +120,7 @@ type dnsResolver struct {
 	// If Close() doesn't wait for watcher() goroutine finishes, race detector sometimes
 	// will warns lookup (READ the lookup function pointers) inside watcher() goroutine
 	// has data race with replaceNetFunc (WRITE the lookup function pointers).
-	wg                   sync.WaitGroup
-	disableServiceConfig bool
+	wg sync.WaitGroup
 }
 
 // ResolveNow invoke an immediate resolution of the target that this dnsResolver watches.
@@ -224,7 +154,7 @@ func (d *dnsResolver) watcher() {
 			// Success resolving, wait for the next ResolveNow. However, also wait 30 seconds at the very least
 			// to prevent constantly re-resolving.
 			backoffIndex = 1
-			timer = newTimerDNSResRate(minDNSResRate)
+			timer = time.NewTimer(minDNSResRate)
 			select {
 			case <-d.ctx.Done():
 				timer.Stop()
@@ -233,7 +163,7 @@ func (d *dnsResolver) watcher() {
 			}
 		} else {
 			// Poll on an error found in DNS Resolver or an error received from ClientConn.
-			timer = newTimer(backoff.DefaultExponential.Backoff(backoffIndex))
+			timer = time.NewTimer(backoff.DefaultExponential.Backoff(backoffIndex))
 			backoffIndex++
 		}
 		select {
@@ -246,17 +176,14 @@ func (d *dnsResolver) watcher() {
 }
 
 func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
-	if !EnableSRVLookups {
-		return nil, nil
-	}
 	var newAddrs []resolver.Address
-	_, srvs, err := d.resolver.LookupSRV(d.ctx, "grpclb", "tcp", d.host)
+	_, srvs, err := d.resolver.LookupSRV(d.ctx, d.service, "tcp", d.domain)
 	if err != nil {
 		err = handleDNSError(err, "SRV") // may become nil
 		return nil, err
 	}
 	for _, s := range srvs {
-		lbAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
+		backendAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
 		if err != nil {
 			err = handleDNSError(err, "A") // may become nil
 			if err == nil {
@@ -266,10 +193,10 @@ func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
 			}
 			return nil, err
 		}
-		for _, a := range lbAddrs {
+		for _, a := range backendAddrs {
 			ip, ok := formatIP(a)
 			if !ok {
-				return nil, fmt.Errorf("dns: error parsing A record IP address %v", a)
+				return nil, fmt.Errorf("srv: error parsing A record IP address %v", a)
 			}
 			addr := ip + ":" + strconv.Itoa(int(s.Port))
 			newAddrs = append(newAddrs, resolver.Address{Addr: addr, ServerName: s.Target})
@@ -286,71 +213,18 @@ func handleDNSError(err error, lookupType string) error {
 		return nil
 	}
 	if err != nil {
-		err = fmt.Errorf("dns: %v record lookup error: %v", lookupType, err)
+		err = fmt.Errorf("srv: %v record lookup error: %v", lookupType, err)
 		logger.Info(err)
 	}
 	return err
 }
 
-func (d *dnsResolver) lookupTXT() *serviceconfig.ParseResult {
-	ss, err := d.resolver.LookupTXT(d.ctx, txtPrefix+d.host)
+func (d *dnsResolver) lookup() (*resolver.State, error) {
+	addrs, err := d.lookupSRV()
 	if err != nil {
-		if envconfig.TXTErrIgnore {
-			return nil
-		}
-		if err = handleDNSError(err, "TXT"); err != nil {
-			return &serviceconfig.ParseResult{Err: err}
-		}
-		return nil
-	}
-	var res string
-	for _, s := range ss {
-		res += s
-	}
-
-	// TXT record must have "grpc_config=" attribute in order to be used as service config.
-	if !strings.HasPrefix(res, txtAttribute) {
-		logger.Warningf("dns: TXT record %v missing %v attribute", res, txtAttribute)
-		// This is not an error; it is the equivalent of not having a service config.
-		return nil
-	}
-	sc := canaryingSC(strings.TrimPrefix(res, txtAttribute))
-	return d.cc.ParseServiceConfig(sc)
-}
-
-func (d *dnsResolver) lookupHost() ([]resolver.Address, error) {
-	addrs, err := d.resolver.LookupHost(d.ctx, d.host)
-	if err != nil {
-		err = handleDNSError(err, "A")
 		return nil, err
 	}
-	newAddrs := make([]resolver.Address, 0, len(addrs))
-	for _, a := range addrs {
-		ip, ok := formatIP(a)
-		if !ok {
-			return nil, fmt.Errorf("dns: error parsing A record IP address %v", a)
-		}
-		addr := ip + ":" + d.port
-		newAddrs = append(newAddrs, resolver.Address{Addr: addr})
-	}
-	return newAddrs, nil
-}
-
-func (d *dnsResolver) lookup() (*resolver.State, error) {
-	srv, srvErr := d.lookupSRV()
-	addrs, hostErr := d.lookupHost()
-	if hostErr != nil && (srvErr != nil || len(srv) == 0) {
-		return nil, hostErr
-	}
-
-	state := resolver.State{Addresses: addrs}
-	if len(srv) > 0 {
-		state = grpclbstate.Set(state, &grpclbstate.State{BalancerAddresses: srv})
-	}
-	if !d.disableServiceConfig {
-		state.ServiceConfig = d.lookupTXT()
-	}
-	return &state, nil
+	return &resolver.State{Addresses: addrs}, nil
 }
 
 // formatIP returns ok = false if addr is not a valid textual representation of an IP address.
@@ -403,57 +277,15 @@ func parseTarget(target, defaultPort string) (host, port string, err error) {
 	return "", "", fmt.Errorf("invalid target address %v, error info: %v", target, err)
 }
 
-type rawChoice struct {
-	ClientLanguage *[]string        `json:"clientLanguage,omitempty"`
-	Percentage     *int             `json:"percentage,omitempty"`
-	ClientHostName *[]string        `json:"clientHostName,omitempty"`
-	ServiceConfig  *json.RawMessage `json:"serviceConfig,omitempty"`
-}
-
-func containsString(a *[]string, b string) bool {
-	if a == nil {
-		return true
+// parseTarget takes the user input target string and parses the service domain
+// names for SRV lookup. Input is expected to be a hostname containing at least
+// two labels (e.g. "foo.bar", "foo.bar.baz"). The first label is the service
+// name and the rest is the domain name. If the target is not in the expected
+// format, an error is returned.
+func parseServiceDomain(target string) (string, string, error) {
+	sd := strings.SplitN(target, ".", 2)
+	if len(sd) < 2 || sd[0] == "" || sd[1] == "" {
+		return "", "", fmt.Errorf("srv: hostname %q contains < 2 labels", target)
 	}
-	for _, c := range *a {
-		if c == b {
-			return true
-		}
-	}
-	return false
-}
-
-func chosenByPercentage(a *int) bool {
-	if a == nil {
-		return true
-	}
-	return grpcrand.Intn(100)+1 <= *a
-}
-
-func canaryingSC(js string) string {
-	if js == "" {
-		return ""
-	}
-	var rcs []rawChoice
-	err := json.Unmarshal([]byte(js), &rcs)
-	if err != nil {
-		logger.Warningf("dns: error parsing service config json: %v", err)
-		return ""
-	}
-	cliHostname, err := os.Hostname()
-	if err != nil {
-		logger.Warningf("dns: error getting client hostname: %v", err)
-		return ""
-	}
-	var sc string
-	for _, c := range rcs {
-		if !containsString(c.ClientLanguage, golang) ||
-			!chosenByPercentage(c.Percentage) ||
-			!containsString(c.ClientHostName, cliHostname) ||
-			c.ServiceConfig == nil {
-			continue
-		}
-		sc = string(*c.ServiceConfig)
-		break
-	}
-	return sc
+	return sd[0], sd[1], nil
 }

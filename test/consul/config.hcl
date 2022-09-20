@@ -183,6 +183,7 @@ services {
   name    = "ra"
   address = "10.77.77.77"
   port    = 9094
+  tags    = ["tcp"]
 }
 
 services {
@@ -190,6 +191,7 @@ services {
   name    = "ra"
   address = "10.88.88.88"
   port    = 9094
+  tags    = ["tcp"]
 }
 
 services {
@@ -197,6 +199,7 @@ services {
   name    = "ra1"
   address = "10.77.77.77"
   port    = 9094
+  tags    = ["tcp"]
 }
 
 services {
@@ -204,6 +207,7 @@ services {
   name    = "ra2"
   address = "10.88.88.88"
   port    = 9094
+  tags    = ["tcp"]
 }
 
 services {
