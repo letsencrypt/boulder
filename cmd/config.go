@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -251,17 +252,64 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	// ServerAddress is a single host:port combination that the gRPC client
-	// will, if necessary, resolve via DNS and then connect to. This field
-	// cannot be used in combination with `ServerIPAddresses` field.
+	// DNSAuthority is the server address to dial for gRPC DNS lookups. This
+	// field is optional and can only specified along with `ServiceDomain` and
+	// `ServerAddress`.
+	DNSAuthority string
+
+	// ServiceDomain is the service and domain name to use for resolving gRPC
+	// backends via DNS SRV records. For example, if the hostname is 'foo.bar',
+	// then the service is 'foo' and the domain is 'bar'. This field can only be
+	// specified along with `DNSAuthority` and `Timeout` fields.
+	ServiceDomain struct {
+		Service string
+		Domain  string
+	}
+
+	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> combination that
+	// the gRPC client will, if necessary, resolve via DNS and then connect to.
+	// This field can only be specified along with `DNSAuthority` and `Timeout`.
 	ServerAddress string
-	// ServerIPAddresses is a list of IPv4/6 addresses, in the format IPv4:port,
-	// [IPv6]:port or :port, that the gRPC client will connect to. Note that the
-	// server's certificate will be validated against these IP addresses, so
-	// they must be present in the SANs of the server certificate. This field
-	// cannot be used in combination with `ServerAddress`.
+
+	// ServerIPAddresses is a comma separated list of IP addresses, in the
+	// format `<IPv4|[IPv6]>:<port>` or `:<port>`, that the gRPC client will
+	// connect to. Note that the server's certificate will be validated against
+	// these IP addresses, so they must be present in the SANs of the server
+	// certificate. This field can only be specified along with `Timeout`.
 	ServerIPAddresses []string
 	Timeout           ConfigDuration
+}
+
+// MakeTarget returns a target URI and host for use in gRPC client connections.
+// If the configuration is invalid, an error is returned.
+func (c *GRPCClientConfig) MakeTarget() (string, string, error) {
+	if c.ServerIPAddresses != nil && c.ServerAddress != "" {
+		return "", "", errors.New(
+			"both 'serverIPAddresses' and 'serverAddress' are set in gRPC client config. Only one should be provided",
+		)
+	}
+	if c.ServerIPAddresses != nil && (c.ServiceDomain.Service != "" || c.ServiceDomain.Domain != "") {
+		return "", "", errors.New(
+			"both 'serverIPAddresses' and 'serverDomain' are set in gRPC client config. Only one should be provided",
+		)
+	}
+	if c.ServerAddress != "" {
+		// Lookup backends using DNS A records.
+		targetHost, _, err := net.SplitHostPort(c.ServerAddress)
+		if err != nil {
+			return "", "", err
+		}
+		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), targetHost, nil
+
+	} else if c.ServiceDomain.Service != "" && c.ServiceDomain.Domain != "" {
+		// Lookup backends using DNS SRV records.
+		targetHost := c.ServiceDomain.Service + "." + c.ServiceDomain.Domain
+		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), targetHost, nil
+
+	} else {
+		// Specify backends as a list of IP addresses.
+		return "static:///" + strings.Join(c.ServerIPAddresses, ","), "", nil
+	}
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service
