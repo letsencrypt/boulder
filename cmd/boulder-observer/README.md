@@ -22,9 +22,17 @@ Prometheus.
       * [HTTP](#http)
         * [Schema](#schema-3)
         * [Example](#example-3)
+      * [CRL](#crl)
+        * [Schema](#schema-4)
+        * [Example](#example-4)
   * [Metrics](#metrics)
-    * [obs_monitors](#obs_monitors)
-    * [obs_observations](#obs_observations)
+    * [Global Metrics](#global-metrics)
+      * [obs_monitors](#obs_monitors)
+      * [obs_observations](#obs_observations)
+    * [CRL Metrics](#crl-metrics)
+      * [obs_crl_this_update](#obs_crl_this_update)
+      * [obs_crl_next_update](#obs_crl_next_update)
+      * [obs_crl_revoked_cert_count](#obs_crl_revoked_cert_count)
   * [Development](#development)
     * [Starting Prometheus locally](#starting-prometheus-locally)
     * [Viewing metrics locally](#viewing-metrics-locally)
@@ -166,17 +174,38 @@ monitors:
   - 
     period: 2s
     kind: HTTP
-    settings: 
+    settings:
       url: http://letsencrypt.org/FOO
       rcodes: [200, 404]
       useragent: letsencrypt/boulder-observer-http-client
+```
+
+#### CRL
+
+##### Schema
+
+`url`: Scheme + Hostname to grab the CRL from (e.g. `http://x1.c.lencr.org/`).
+
+##### Example
+
+```yaml
+monitors:
+  - 
+    period: 1h
+    kind: CRL
+    settings:
+      url: http://x1.c.lencr.org/
 ```
 
 ## Metrics
 
 Observer provides the following metrics.
 
-### obs_monitors
+### Global Metrics
+
+These metrics will always be available.
+
+#### obs_monitors
 
 Count of configured monitors.
 
@@ -187,7 +216,7 @@ Count of configured monitors.
 `valid`: Bool indicating whether settings provided could be validated
 for the `kind` of Prober specified.
 
-### obs_observations
+#### obs_observations
 
 **Labels:**
 
@@ -203,6 +232,62 @@ successful.
 **Bucketed response times:**
 
 This is configurable, see `buckets` under [root/schema](#schema).
+
+### CRL Metrics
+
+These metrics will be available whenever a valid CRL prober is configured.
+
+#### obs_crl_this_update
+
+Unix timestamp value (in seconds) of the thisUpdate field for a CRL.
+
+**Labels:**
+
+`url`: Url of the CRL
+
+**Example Usage:**
+
+This is a sample rule that alerts when a CRL has a thisUpdate timestamp in the future, signalling that something may have gone wrong during its creation:
+
+```yaml
+- alert: CRLThisUpdateInFuture
+  expr: obs_crl_this_update{url="http://x1.c.lencr.org/"} > time()
+  labels:
+    severity: critical
+  annotations:
+    description: 'CRL thisUpdate is in the future'
+```
+
+#### obs_crl_next_update
+
+Unix timestamp value (in seconds) of the nextUpdate field for a CRL.
+
+**Labels:**
+
+`url`: Url of the CRL
+
+**Example Usage:**
+
+This is a sample rule that alerts when a CRL has a nextUpdate timestamp in the past, signalling that the CRL was not updated on time:
+
+```yaml
+- alert: CRLNextUpdateInPast
+  expr: obs_crl_next_update{url="http://x1.c.lencr.org/"} < time()
+  labels:
+    severity: critical
+  annotations:
+    description: 'CRL nextUpdate is in the past'
+```
+
+Another potentially useful rule would be to notify when nextUpdate is within X days from the current time, as a reminder that the update is coming up soon.
+
+#### obs_crl_revoked_cert_count
+
+Count of revoked certificates in a CRL.
+
+**Labels:**
+
+`url`: Url of the CRL
 
 ## Development
 

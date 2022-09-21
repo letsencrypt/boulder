@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"sort"
@@ -36,6 +37,7 @@ usage:
   list-reasons           -config <path>
   serial-revoke          -config <path> <serial>           <reason-code>
   batched-serial-revoke  -config <path> <serial-file-path> <reason-code>   <parallelism>
+  incident-table-revoke  -config <path> <table-name>       <reason-code>   <parallelism>
   reg-revoke             -config <path> <registration-id>  <reason-code>
   private-key-block      -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
   private-key-revoke     -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
@@ -45,6 +47,7 @@ descriptions:
   list-reasons           List all revocation reason codes
   serial-revoke          Revoke a single certificate by the hex serial number
   batched-serial-revoke  Revokes all certificates contained in a file of hex serial numbers
+  incident-table-revoke  Revokes all certificates in the provided incident table
   reg-revoke             Revoke all certificates associated with a registration ID
   private-key-block      Adds the SPKI hash, derived from the provided private key, to the
                          blocked keys table. <priv-key-path> is expected to be the path
@@ -167,7 +170,7 @@ func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode 
 	return r.revokeCertificate(ctx, certObj, reasonCode, skipBlockKey)
 }
 
-func (r *revoker) revokeBySerialBatch(ctx context.Context, serialPath string, reasonCode revocation.Reason, parallelism int) error {
+func (r *revoker) revokeSerialBatchFile(ctx context.Context, serialPath string, reasonCode revocation.Reason, parallelism int) error {
 	file, err := os.Open(serialPath)
 	if err != nil {
 		return err
@@ -203,6 +206,48 @@ func (r *revoker) revokeBySerialBatch(ctx context.Context, serialPath string, re
 			continue
 		}
 		work <- serial
+	}
+	close(work)
+	wg.Wait()
+
+	return nil
+}
+
+func (r *revoker) revokeIncidentTableSerials(ctx context.Context, tableName string, reasonCode revocation.Reason, parallelism int) error {
+	wg := new(sync.WaitGroup)
+	work := make(chan string, parallelism)
+	for i := 0; i < parallelism; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for serial := range work {
+				err := r.revokeBySerial(ctx, serial, reasonCode, false)
+				if err != nil {
+					r.log.Errf("failed to revoke %q: %s", serial, err)
+				}
+			}
+		}()
+	}
+
+	stream, err := r.sac.SerialsForIncident(ctx, &sapb.SerialsForIncidentRequest{IncidentTable: tableName})
+	if err != nil {
+		return fmt.Errorf("setting up stream of serials from incident table %q: %s", tableName, err)
+	}
+
+	var atLeastOne bool
+	for {
+		is, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("streaming serials from incident table %q: %s", tableName, err)
+		}
+		atLeastOne = true
+		work <- is.Serial
+	}
+	if !atLeastOne {
+		r.log.AuditInfof("No serials found in incident table %q", tableName)
 	}
 	close(work)
 	wg.Wait()
@@ -498,7 +543,7 @@ func main() {
 			cmd.Fail("parallelism argument must be >= 1")
 		}
 
-		err = r.revokeBySerialBatch(ctx, serialPath, revocation.Reason(reasonCode), parallelism)
+		err = r.revokeSerialBatchFile(ctx, serialPath, revocation.Reason(reasonCode), parallelism)
 		cmd.FailOnError(err, "Batch revocation failed")
 
 	case command == "reg-revoke" && len(args) == 2:
@@ -555,6 +600,20 @@ func main() {
 			err := privateKeyRevoke(r, *dryRun, *comment, count, keyPath)
 			cmd.FailOnError(err, "")
 		}
+
+	case command == "incident-table-revoke" && len(args) == 3:
+		// 1: tableName, 2: reasonCode, 3: parallelism
+		tableName := args[0]
+
+		reasonCode, err := strconv.Atoi(args[1])
+		cmd.FailOnError(err, "Reason code argument must be an integer")
+
+		parallelism, err := strconv.Atoi(args[2])
+		cmd.FailOnError(err, "parallelism argument must be an integer")
+		if parallelism < 1 {
+			cmd.Fail("parallelism argument must be >= 1")
+		}
+		r.revokeIncidentTableSerials(ctx, tableName, revocation.Reason(reasonCode), parallelism)
 
 	default:
 		usage()

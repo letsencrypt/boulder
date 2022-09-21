@@ -3,9 +3,9 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -166,7 +166,9 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
-				cu.log.AuditErrf("tick at time %s failed: %s", atTime, err)
+				cu.log.AuditErrf(
+					"Generating CRLs failed: number=[%d] err=[%s]",
+					crl.Number(atTime), err)
 			}
 		case <-ctx.Done():
 			ticker.Stop()
@@ -181,31 +183,31 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 // error at the end.
 func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 	defer func() {
-		// Each return statement in this function assigns its returned value to the
-		// named return variable `err`. This deferred function closes over that
-		// variable, and so can reference and modify it.
+		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
 			result = "failed"
-			err = fmt.Errorf("tick %s: %w", atTime.Format(time.RFC3339Nano), err)
 		}
 		cu.tickHistogram.WithLabelValues("all", result).Observe(cu.clk.Since(atTime).Seconds())
 	}()
 	cu.log.Debugf("Ticking at time %s", atTime)
 
-	var errStrs []string
+	var errIssuers []string
 	for id := range cu.issuers {
 		// For now, process each issuer serially. This keeps the worker pool system
 		// simple, and processing all of the issuers in parallel likely wouldn't
 		// meaningfully speed up the overall process.
 		err := cu.tickIssuer(ctx, atTime, id)
 		if err != nil {
-			errStrs = append(errStrs, err.Error())
+			cu.log.AuditErrf(
+				"Generating CRLs for issuer failed: number=[%d] issuer=[%s] err=[%s]",
+				crl.Number(atTime), cu.issuers[id].Subject.CommonName, err)
+			errIssuers = append(errIssuers, cu.issuers[id].Subject.CommonName)
 		}
 	}
 
-	if len(errStrs) != 0 {
-		return errors.New(strings.Join(errStrs, "; "))
+	if len(errIssuers) != 0 {
+		return fmt.Errorf("%d issuers failed: %v", len(errIssuers), strings.Join(errIssuers, ", "))
 	}
 	return nil
 }
@@ -217,13 +219,10 @@ func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) (err error) {
 	start := cu.clk.Now()
 	defer func() {
-		// Each return statement in this function assigns its returned value to the
-		// named return variable `err`. This deferred function closes over that
-		// variable, and so can reference and modify it.
+		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
 			result = "failed"
-			err = fmt.Errorf("%s: %w", cu.issuers[issuerNameID].Subject.CommonName, err)
 		}
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
 	}()
@@ -259,16 +258,20 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 	}
 	close(shardIdxs)
 
-	var errStrs []string
+	var errShards []int
 	for i := 0; i < cu.numShards; i++ {
 		res := <-shardResults
 		if res.err != nil {
-			errStrs = append(errStrs, res.err.Error())
+			cu.log.AuditErrf(
+				"Generating CRL failed: id=[%s] err=[%s]",
+				crl.Id(issuerNameID, crl.Number(atTime), res.shardIdx), err)
+			errShards = append(errShards, res.shardIdx)
 		}
 	}
 
-	if len(errStrs) != 0 {
-		return errors.New(strings.Join(errStrs, "; "))
+	if len(errShards) != 0 {
+		sort.Ints(errShards)
+		return fmt.Errorf("%d shards failed: %v", len(errShards), errShards)
 	}
 	return nil
 }
@@ -281,21 +284,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	crlId, err := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
-	if err != nil {
-		return err
-	}
-
 	start := cu.clk.Now()
 	defer func() {
-		// Each return statement in this function assigns its returned value to the
-		// named return variable `err`. This deferred function closes over that
-		// variable, and so can reference and modify it.
+		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
-			cu.log.AuditErrf("Generating CRL failed: id=[%s] err=[%s]", crlId, err)
 			result = "failed"
-			err = fmt.Errorf("%d: %w", shardIdx, err)
 		}
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
 		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
@@ -406,7 +400,9 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
 	}
 
-	cu.log.Infof("Generated CRL: id=[%s] size=[%d] hash=[%x]", crlId, crlLen, crlHash.Sum(nil))
+	cu.log.Infof(
+		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
+		crl.Id(issuerNameID, crl.Number(atTime), shardIdx), crlLen, crlHash.Sum(nil))
 	return nil
 }
 

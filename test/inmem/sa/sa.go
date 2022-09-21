@@ -2,6 +2,7 @@ package sa
 
 import (
 	"context"
+	"io"
 
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/sa"
@@ -130,4 +131,49 @@ func (sa SA) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest, 
 
 func (sa SA) FQDNSetExists(ctx context.Context, req *sapb.FQDNSetExistsRequest, _ ...grpc.CallOption) (*sapb.Exists, error) {
 	return sa.Impl.FQDNSetExists(ctx, req)
+}
+
+type mockSerialsForIncidentStream_Result struct {
+	serial *sapb.IncidentSerial
+	err    error
+}
+
+type mockSerialsForIncidentStream_Client struct {
+	grpc.ClientStream
+	stream <-chan mockSerialsForIncidentStream_Result
+}
+
+func (c mockSerialsForIncidentStream_Client) Recv() (*sapb.IncidentSerial, error) {
+	sfiData := <-c.stream
+	return sfiData.serial, sfiData.err
+}
+
+type mockSerialsForIncidentStream_Server struct {
+	grpc.ServerStream
+	context context.Context
+	stream  chan<- mockSerialsForIncidentStream_Result
+}
+
+func (s mockSerialsForIncidentStream_Server) Send(serial *sapb.IncidentSerial) error {
+	s.stream <- mockSerialsForIncidentStream_Result{serial, nil}
+	return nil
+}
+
+func (s mockSerialsForIncidentStream_Server) Context() context.Context {
+	return s.context
+}
+
+func (sa SA) SerialsForIncident(ctx context.Context, req *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
+	streamChan := make(chan mockSerialsForIncidentStream_Result)
+	client := mockSerialsForIncidentStream_Client{stream: streamChan}
+	server := mockSerialsForIncidentStream_Server{context: ctx, stream: streamChan}
+	go func() {
+		err := sa.Impl.SerialsForIncident(req, server)
+		if err != nil {
+			streamChan <- mockSerialsForIncidentStream_Result{nil, err}
+		}
+		streamChan <- mockSerialsForIncidentStream_Result{nil, io.EOF}
+		close(streamChan)
+	}()
+	return client, nil
 }

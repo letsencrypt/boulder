@@ -2,7 +2,6 @@ package crl
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"time"
 
@@ -31,7 +30,7 @@ func Number(thisUpdate time.Time) number {
 type id string
 
 // Id is a utility function which constructs a new `id`.
-func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) (id, error) {
+func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) id {
 	type info struct {
 		IssuerID  issuance.IssuerNameID `json:"issuerID"`
 		CRLNumber number                `json:"crlNumber"`
@@ -39,7 +38,7 @@ func Id(issuerID issuance.IssuerNameID, crlNumber number, shardIdx int) (id, err
 	}
 	jsonBytes, err := json.Marshal(info{issuerID, crlNumber, shardIdx})
 	if err != nil {
-		return "", fmt.Errorf("computing CRL Id: %w", err)
+		panic(err)
 	}
-	return id(jsonBytes), nil
+	return id(jsonBytes)
 }

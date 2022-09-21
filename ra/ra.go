@@ -1109,9 +1109,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	}
 
 	csr := req.CSR
-	logEvent.CommonName = csr.Subject.CommonName
 	beeline.AddFieldToTrace(ctx, "csr.cn", csr.Subject.CommonName)
-	logEvent.Names = csr.DNSNames
 	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
 
 	// Validate that authorization key is authorized for all domains in the CSR
@@ -1219,7 +1217,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent.SerialNumber = core.SerialToString(parsedCertificate.SerialNumber)
 	beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(parsedCertificate.SerialNumber))
 	logEvent.CommonName = parsedCertificate.Subject.CommonName
-	beeline.AddFieldToTrace(ctx, "cert.cn", parsedCertificate.Subject.CommonName)
+	beeline.AddFieldToTrace(ctx, "cert.common_name", parsedCertificate.Subject.CommonName)
+	logEvent.Names = parsedCertificate.DNSNames
+	beeline.AddFieldToTrace(ctx, "cert.dns_names", parsedCertificate.DNSNames)
 	logEvent.NotBefore = parsedCertificate.NotBefore
 	beeline.AddFieldToTrace(ctx, "cert.not_before", parsedCertificate.NotBefore)
 	logEvent.NotAfter = parsedCertificate.NotAfter

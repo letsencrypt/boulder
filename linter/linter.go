@@ -76,7 +76,7 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) err
 		return err
 	}
 	lintRes := zlint.LintCertificateEx(cert, l.registry)
-	return processResultSet(lintRes)
+	return ProcessResultSet(lintRes)
 }
 
 // CheckCRL signs the given RevocationList template using the Linter's fake
@@ -88,7 +88,7 @@ func (l Linter) CheckCRL(tbs *crl_x509.RevocationList) error {
 		return err
 	}
 	lintRes := crllints.LintCRL(crl)
-	return processResultSet(lintRes)
+	return ProcessResultSet(lintRes)
 }
 
 func makeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
@@ -190,7 +190,7 @@ func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer 
 	return lintCert, nil
 }
 
-func processResultSet(lintRes *zlint.ResultSet) error {
+func ProcessResultSet(lintRes *zlint.ResultSet) error {
 	if lintRes.NoticesPresent || lintRes.WarningsPresent || lintRes.ErrorsPresent || lintRes.FatalsPresent {
 		var failedLints []string
 		for lintName, result := range lintRes.Results {
