@@ -13,8 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	// Import for its init function, which causes clients to rely on the
-	// Health Service for load-balancing.
+	// 'grpc/health' is imported for its init function, which causes clients to
+	// rely on the Health Service for load-balancing.
+	// 'grpc/internal/resolver/dns' is imported for its init function, which
+	// registers the SRV resolver.
 	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 	"google.golang.org/grpc/balancer/roundrobin"
 	_ "google.golang.org/grpc/health"

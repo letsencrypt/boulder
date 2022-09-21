@@ -1,6 +1,3 @@
-// Forked from https://pkg.go.dev/google.golang.org/grpc/internal/resolver/dns/dns_resolver.go
-// to support resolution of SRV records.
-
 package dns
 
 import (

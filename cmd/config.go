@@ -252,21 +252,23 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 // GRPCClientConfig contains the information needed to talk to the gRPC service
 type GRPCClientConfig struct {
-	// DNSAuthority is the server address to dial for gRPC DNS lookups. This
-	// field is optional and can only specified along with `ServiceDomain` and
-	// `ServerAddress`.
+	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
+	// the gRPC client will, if necessary, resolve via DNS and then use for DNS
+	// lookups. This field is optional and can only specified along with
+	// `ServiceDomain` and `ServerAddress`.
 	DNSAuthority string
 
-	// ServiceDomain is the service and domain name to use for resolving gRPC
-	// backends via DNS SRV records. For example, if the hostname is 'foo.bar',
-	// then the service is 'foo' and the domain is 'bar'. This field can only be
-	// specified along with `DNSAuthority` and `Timeout` fields.
+	// ServiceDomain is the service and domain name the gRPC client will use
+	// when discovering backends via DNS SRV records. For example, if the
+	// hostname is 'foo.bar', then the service is 'foo' and the domain is 'bar'.
+	// This field can only be specified along with `DNSAuthority` and `Timeout`
+	// fields.
 	ServiceDomain struct {
 		Service string
 		Domain  string
 	}
 
-	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> combination that
+	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
 	// This field can only be specified along with `DNSAuthority` and `Timeout`.
 	ServerAddress string
