@@ -270,7 +270,10 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 
 	// Use a ParentBased sampler to respect the sample decisions on incoming
 	// traces, and TraceIDRatioBased to randomly sample new traces.
-	sampler := trace.ParentBased(trace.TraceIDRatioBased(config.SampleRatio))
+	sampler := trace.TraceIDRatioBased(config.SampleRatio)
+	if !config.DisableParentSampler {
+		sampler = trace.ParentBased(sampler)
+	}
 
 	opts := []trace.TracerProviderOption{
 		trace.WithResource(r),

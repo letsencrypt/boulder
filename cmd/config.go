@@ -291,10 +291,16 @@ type OpenTelemetryConfig struct {
 	// Endpoint to connect to with the OTLP protocol
 	OTLPEndpoint string
 
-	// SampleRatio is the ratio of traces to sample.
+	// SampleRatio is the ratio of new traces to head sample.
 	// Set to something between 0 and 1, where 1 is sampling all traces.
 	// See otel trace.TraceIDRatioBased for details.
 	SampleRatio float64
+
+	// If true, disable the parent sampler.  Should be true anywhere untrusted
+	// requests are accepted, like the WFE and OCSP Responder.  The default
+	// value of false is the best practice elsewhere.  If true, the SampleRatio
+	// parameter will be used for all new spans.
+	DisableParentSampler bool
 
 	// StdoutExporter prints traces to stdout if this is true.
 	// Useful in test or dev environments without an OTLP endpoint available
