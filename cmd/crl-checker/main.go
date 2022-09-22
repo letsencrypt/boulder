@@ -20,6 +20,9 @@ func validateShard(url string, issuer *issuance.Certificate) error {
 	if err != nil {
 		return fmt.Errorf("downloading crl: %w", err)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("downloading crl: http status %d", resp.StatusCode)
+	}
 
 	crlBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
