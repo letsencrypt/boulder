@@ -69,7 +69,7 @@ func main() {
 		err = validateShard(url, issuer)
 		if err != nil {
 			errCount += 1
-			logger.Errf("CRL %q failed: %s\n", url, err)
+			logger.Errf("CRL %q failed: %s", url, err)
 		}
 	}
 
