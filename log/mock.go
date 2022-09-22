@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/syslog"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -114,6 +115,14 @@ func (m *Mock) GetAllMatching(reString string) []string {
 		}
 	}
 	return matches
+}
+
+func (m *Mock) ExpectMatch(reString string) error {
+	results := m.GetAllMatching(reString)
+	if len(results) == 0 {
+		return fmt.Errorf("expected log line %q, got %q", reString, strings.Join(m.GetAll(), "\n"))
+	}
+	return nil
 }
 
 // Clear resets the log buffer.

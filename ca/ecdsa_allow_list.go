@@ -14,10 +14,9 @@ import (
 // safely if changes to the allow list are detected.
 type ECDSAAllowList struct {
 	sync.RWMutex
-	regIDsMap   map[int64]bool
-	reloader    *reloader.Reloader
-	logger      log.Logger
-	statusGauge *prometheus.GaugeVec
+	regIDsMap map[int64]bool
+	reloader  *reloader.Reloader
+	logger    log.Logger
 }
 
 // Update is an exported method (typically specified as a callback to a
@@ -32,24 +31,7 @@ func (e *ECDSAAllowList) Update(contents []byte) error {
 	e.Lock()
 	defer e.Unlock()
 	e.regIDsMap = makeRegIDsMap(regIDs)
-	// nil check for testing purposes
-	if e.statusGauge != nil {
-		e.statusGauge.WithLabelValues("succeeded").Set(float64(len(e.regIDsMap)))
-	}
 	return nil
-}
-
-// UpdateCallbackErr is an exported method (typically specified as a
-// callback to a file reloader) that records failed allow list file
-// reload attempts.
-func (e *ECDSAAllowList) UpdateCallbackErr(err error) {
-	e.logger.Errf("error reloading ECDSA allowed list: %s", err)
-	e.RLock()
-	defer e.RUnlock()
-	// nil check for testing purposes
-	if e.statusGauge != nil {
-		e.statusGauge.WithLabelValues("failed").Set(float64(len(e.regIDsMap)))
-	}
 }
 
 // permitted checks if ECDSA issuance is permitted for the specified
@@ -89,10 +71,10 @@ func makeRegIDsMap(regIDs []int64) map[int64]bool {
 // construct a new `ECDSAAllowList` object. An initial entry count is
 // returned to `boulder-ca` for logging purposes.
 func NewECDSAAllowListFromFile(filename string, logger log.Logger, metric *prometheus.GaugeVec) (*ECDSAAllowList, int, error) {
-	allowList := &ECDSAAllowList{logger: logger, statusGauge: metric}
+	allowList := &ECDSAAllowList{logger: logger}
 	// Create an allow list reloader. This also populates the inner
 	// allowList regIDsMap.
-	reloader, err := reloader.New(filename, allowList.Update, allowList.UpdateCallbackErr)
+	reloader, err := reloader.New(filename, allowList.Update, logger)
 	if err != nil {
 		return nil, 0, err
 	}

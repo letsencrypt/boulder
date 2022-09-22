@@ -76,14 +76,10 @@ type blockedNamesPolicy struct {
 // SetHostnamePolicyFile will load the given policy file, returning error if it
 // fails. It will also start a reloader in case the file changes
 func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
-	if _, err := reloader.New(f, pa.loadHostnamePolicy, pa.hostnamePolicyLoadError); err != nil {
+	if _, err := reloader.New(f, pa.loadHostnamePolicy, pa.log); err != nil {
 		return err
 	}
 	return nil
-}
-
-func (pa *AuthorityImpl) hostnamePolicyLoadError(err error) {
-	pa.log.AuditErrf("error loading hostname policy: %s", err)
 }
 
 // loadHostnamePolicy is a callback suitable for use with reloader.New() that
