@@ -293,8 +293,8 @@ type GRPCClientConfig struct {
 	// Consul) then you should be able to resolve the following dig query:
 	//
 	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
-	// 10.77.77.77 8080
-	// 10.88.88.88 8080
+	// 1 1 8080 0a585858.addr.dc1.consul.
+	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
 	SRVLookup *struct {
 		Service string
 		Domain  string
@@ -321,7 +321,7 @@ type GRPCClientConfig struct {
 	// If you've added the above to your Consul configuration file (and reloaded
 	// Consul) then you should be able to resolve the following dig query:
 	//
-	// $ dig @10.55.55.10 foo.service.consul +short
+	// $ dig A @10.55.55.10 foo.service.consul +short
 	// 10.77.77.77
 	// 10.88.88.88
 	ServerAddress string
