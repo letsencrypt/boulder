@@ -226,16 +226,12 @@ func NewRegistrationAuthorityImpl(
 }
 
 func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
-	_, err := reloader.New(filename, ra.rlPolicies.LoadPolicies, ra.rateLimitPoliciesLoadError)
+	_, err := reloader.New(filename, ra.rlPolicies.LoadPolicies, ra.log)
 	if err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (ra *RegistrationAuthorityImpl) rateLimitPoliciesLoadError(err error) {
-	ra.log.Errf("error reloading rate limit policy: %s", err)
 }
 
 // certificateRequestAuthz is a struct for holding information about a valid

@@ -2,8 +2,12 @@
 package reloader
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"time"
+
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // Wrap time.Tick so we can override it in tests.
@@ -24,6 +28,7 @@ func (r *Reloader) Stop() {
 
 // A pointer we can override for testing.
 var readFile = os.ReadFile
+var statFile = os.Stat
 
 // New loads the filename provided, and calls the callback.  It then spawns a
 // goroutine to check for updates to that file, calling the callback again with
@@ -31,17 +36,14 @@ var readFile = os.ReadFile
 // synchronously, so it is easy for the caller to check for errors and fail
 // fast. New will return an error if it occurs on the first load. Otherwise all
 // errors are sent to the callback.
-func New(filename string, dataCallback func([]byte) error, errorCallback func(error)) (*Reloader, error) {
-	if errorCallback == nil {
-		errorCallback = func(e error) {}
-	}
-	fileInfo, err := os.Stat(filename)
+func New(filename string, dataCallback func([]byte) error, logger blog.Logger) (*Reloader, error) {
+	fileInfo, err := statFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("statting %s: %w", filename, err)
 	}
 	b, err := readFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading %s: %w", filename, err)
 	}
 	stopChan := make(chan struct{})
 	tickerStop, tickChan := makeTicker()
@@ -52,9 +54,9 @@ func New(filename string, dataCallback func([]byte) error, errorCallback func(er
 				tickerStop()
 				return
 			case <-tickChan:
-				currentFileInfo, err := os.Stat(filename)
+				currentFileInfo, err := statFile(filename)
 				if err != nil {
-					errorCallback(err)
+					logger.Errf("statting %s: %s", filename, err)
 					continue
 				}
 				if !currentFileInfo.ModTime().After(fileInfo.ModTime()) {
@@ -62,14 +64,19 @@ func New(filename string, dataCallback func([]byte) error, errorCallback func(er
 				}
 				b, err := readFile(filename)
 				if err != nil {
-					errorCallback(err)
+					logger.Errf("reading %s: %s", filename, err)
 					continue
 				}
 				fileInfo = currentFileInfo
 				err = dataCallback(b)
 				if err != nil {
-					errorCallback(err)
+					logger.Errf("processing %s: %s", filename, err)
+					continue
 				}
+
+				hash := sha256.Sum256(b)
+				logger.Infof("reloaded %s. sha256: %x, modified: %s",
+					filename, hash[:], currentFileInfo.ModTime())
 			}
 		}
 	}
