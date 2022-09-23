@@ -13,6 +13,7 @@ services {
   name    = "akamai-purger"
   address = "10.77.77.77"
   port    = 9099
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -20,6 +21,7 @@ services {
   name    = "akamai-purger"
   address = "10.88.88.88"
   port    = 9099
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -39,6 +41,7 @@ services {
   name    = "ca"
   address = "10.77.77.77"
   port    = 9093
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -46,6 +49,7 @@ services {
   name    = "ca"
   address = "10.88.88.88"
   port    = 9093
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -53,6 +57,7 @@ services {
   name    = "ca1"
   address = "10.77.77.77"
   port    = 9093
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -60,6 +65,7 @@ services {
   name    = "ca2"
   address = "10.88.88.88"
   port    = 9093
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -67,6 +73,7 @@ services {
   name    = "ca"
   address = "10.77.77.77"
   port    = 9096
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -74,6 +81,7 @@ services {
   name    = "ca"
   address = "10.88.88.88"
   port    = 9096
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -81,6 +89,7 @@ services {
   name    = "ca"
   address = "10.77.77.77"
   port    = 9106
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -88,6 +97,7 @@ services {
   name    = "ca"
   address = "10.88.88.88"
   port    = 9106
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -95,6 +105,7 @@ services {
   name    = "crl-storer"
   address = "10.77.77.77"
   port    = 9109
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -102,6 +113,7 @@ services {
   name    = "crl-storer"
   address = "10.88.88.88"
   port    = 9109
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -109,8 +121,7 @@ services {
   name    = "dns"
   address = "10.77.77.77"
   port    = 8053
-  // Required for SRV RR support.
-  tags = ["udp", "tcp"]
+  tags    = ["udp"] // Required for SRV RR support in VA RVA.
 }
 
 services {
@@ -118,8 +129,7 @@ services {
   name    = "dns"
   address = "10.88.88.88"
   port    = 8054
-  // Required for SRV RR support.
-  tags = ["udp", "tcp"]
+  tags    = ["udp"] // Required for SRV RR support in VA RVA.
 }
 
 services {
@@ -127,6 +137,7 @@ services {
   name    = "nonce"
   address = "10.77.77.77"
   port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -134,6 +145,7 @@ services {
   name    = "nonce"
   address = "10.88.88.88"
   port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -141,6 +153,7 @@ services {
   name    = "nonce1"
   address = "10.77.77.77"
   port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -148,6 +161,7 @@ services {
   name    = "nonce2"
   address = "10.88.88.88"
   port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -155,6 +169,7 @@ services {
   name    = "publisher"
   address = "10.77.77.77"
   port    = 9091
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -162,6 +177,7 @@ services {
   name    = "publisher"
   address = "10.88.88.88"
   port    = 9091
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -169,6 +185,7 @@ services {
   name    = "publisher1"
   address = "10.77.77.77"
   port    = 9091
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -176,6 +193,7 @@ services {
   name    = "publisher2"
   address = "10.88.88.88"
   port    = 9091
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -183,6 +201,7 @@ services {
   name    = "ra"
   address = "10.77.77.77"
   port    = 9094
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -190,6 +209,7 @@ services {
   name    = "ra"
   address = "10.88.88.88"
   port    = 9094
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -197,6 +217,7 @@ services {
   name    = "ra1"
   address = "10.77.77.77"
   port    = 9094
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -204,6 +225,7 @@ services {
   name    = "ra2"
   address = "10.88.88.88"
   port    = 9094
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -211,6 +233,7 @@ services {
   name    = "rva1"
   address = "10.77.77.77"
   port    = 9097
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -218,6 +241,7 @@ services {
   name    = "rva1"
   address = "10.77.77.77"
   port    = 9098
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -225,6 +249,7 @@ services {
   name    = "sa"
   address = "10.77.77.77"
   port    = 9095
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -232,6 +257,7 @@ services {
   name    = "sa"
   address = "10.88.88.88"
   port    = 9095
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -239,6 +265,7 @@ services {
   name    = "sa1"
   address = "10.77.77.77"
   port    = 9095
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -246,6 +273,7 @@ services {
   name    = "sa2"
   address = "10.88.88.88"
   port    = 9095
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -253,6 +281,7 @@ services {
   name    = "va"
   address = "10.77.77.77"
   port    = 9092
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -260,6 +289,7 @@ services {
   name    = "va"
   address = "10.88.88.88"
   port    = 9092
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -267,6 +297,7 @@ services {
   name    = "va1"
   address = "10.77.77.77"
   port    = 9092
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
 services {
@@ -274,4 +305,5 @@ services {
   name    = "va2"
   address = "10.88.88.88"
   port    = 9092
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }

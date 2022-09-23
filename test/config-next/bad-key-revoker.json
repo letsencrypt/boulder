@@ -11,7 +11,11 @@
             "keyFile": "test/grpc-creds/bad-key-revoker.service.consul/key.pem"
         },
         "raService": {
-            "serverAddress": "ra.service.consul:9094",
+            "dnsAuthority": "10.55.55.10:53",
+            "srvLookup": {
+                "service": "ra",
+                "domain": "service.consul"
+            },
             "timeout": "15s"
         },
         "mailer": {

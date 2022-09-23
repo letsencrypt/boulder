@@ -4,8 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"net"
-	"strings"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
@@ -15,8 +13,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
-	// Import for its init function, which causes clients to rely on the
-	// Health Service for load-balancing.
+	// 'grpc/health' is imported for its init function, which causes clients to
+	// rely on the Health Service for load-balancing.
+	// 'grpc/internal/resolver/dns' is imported for its init function, which
+	// registers the SRV resolver.
+	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 	"google.golang.org/grpc/balancer/roundrobin"
 	_ "google.golang.org/grpc/health"
 )
@@ -28,11 +29,6 @@ import (
 func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientMetrics, clk clock.Clock, interceptors ...grpc.UnaryClientInterceptor) (*grpc.ClientConn, error) {
 	if c == nil {
 		return nil, errors.New("nil gRPC client config provided. JSON config is probably missing a fooService section.")
-	}
-	if c.ServerIPAddresses != nil && c.ServerAddress != "" {
-		return nil, errors.New(
-			"both 'serverIPAddresses' and 'serverAddress' are set in gRPC client config provided. Only one should be set.",
-		)
 	}
 	if tlsConfig == nil {
 		return nil, errNilTLS
@@ -52,18 +48,11 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
 
-	var target string
-	var hostOverride string
-	if c.ServerAddress != "" {
-		var splitHostPortErr error
-		hostOverride, _, splitHostPortErr = net.SplitHostPort(c.ServerAddress)
-		if splitHostPortErr != nil {
-			return nil, splitHostPortErr
-		}
-		target = "dns:///" + c.ServerAddress
-	} else {
-		target = "static:///" + strings.Join(c.ServerIPAddresses, ",")
+	target, hostOverride, err := c.MakeTargetAndHostOverride()
+	if err != nil {
+		return nil, err
 	}
+
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
 	return grpc.Dial(
 		target,
@@ -72,7 +61,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	)
-
 }
 
 type registry interface {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -249,19 +250,128 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
-// GRPCClientConfig contains the information needed to talk to the gRPC service
+// GRPCClientConfig contains the information setup a gRPC client. The following
+// combination of fields are allowed:
+//
+// ServerIPAddresses, [Timeout]
+// ServerAddress, [Timeout], [DNSAuthority]
+// SRVLookup, [Timeout], [DNSAuthority]
 type GRPCClientConfig struct {
-	// ServerAddress is a single host:port combination that the gRPC client
-	// will, if necessary, resolve via DNS and then connect to. This field
-	// cannot be used in combination with `ServerIPAddresses` field.
+	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
+	// to be used for resolution of gRPC backends. If the address contains a
+	// hostname the gRPC client will resolve it via the system DNS. If the
+	// address contains a port, the client will use it directly, otherwise port
+	// 53 is used.
+	DNSAuthority string
+
+	// SRVLookup contains the service and domain name the gRPC client will use
+	// to construct a SRV DNS query to lookup backends. For example: if the
+	// resource record is 'foo.service.consul', then the 'Service' is 'foo' and
+	// the 'Domain' is 'service.consul'. The expected dNSName to be
+	// authenticated in the server certificate would be 'foo.service.consul'.
+	//
+	// Note: The 'proto' field of the SRV record MUST be 'tcp' and the 'port'
+	// field MUST be contain valid port. In a Consul configuration file you
+	// would specify 'foo.service.consul' as:
+	//
+	// services {
+	//   id      = "some-unique-id-1"
+	//   name    = "foo"
+	//   address = "10.77.77.77"
+	//   port    = 8080
+	//   tags    = ["tcp"]
+	// }
+	// services {
+	//   id      = "some-unique-id-2"
+	//   name    = "foo"
+	//   address = "10.88.88.88"
+	//   port    = 8080
+	//   tags    = ["tcp"]
+	// }
+	//
+	// If you've added the above to your Consul configuration file (and reloaded
+	// Consul) then you should be able to resolve the following dig query:
+	//
+	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
+	// 1 1 8080 0a585858.addr.dc1.consul.
+	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
+	SRVLookup *struct {
+		Service string
+		Domain  string
+	}
+
+	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
+	// the gRPC client will, if necessary, resolve via DNS and then connect to.
+	// If the address provided is 'foo.service.consul:8080' then the dNSName to
+	// be authenticated in the server certificate would be 'foo.service.consul'.
+	//
+	// In a Consul configuration file you would specify 'foo.service.consul' as:
+	//
+	// services {
+	//   id      = "some-unique-id-1"
+	//   name    = "foo"
+	//   address = "10.77.77.77"
+	// }
+	// services {
+	//   id      = "some-unique-id-2"
+	//   name    = "foo"
+	//   address = "10.88.88.88"
+	// }
+	//
+	// If you've added the above to your Consul configuration file (and reloaded
+	// Consul) then you should be able to resolve the following dig query:
+	//
+	// $ dig A @10.55.55.10 foo.service.consul +short
+	// 10.77.77.77
+	// 10.88.88.88
 	ServerAddress string
-	// ServerIPAddresses is a list of IPv4/6 addresses, in the format IPv4:port,
-	// [IPv6]:port or :port, that the gRPC client will connect to. Note that the
-	// server's certificate will be validated against these IP addresses, so
-	// they must be present in the SANs of the server certificate. This field
-	// cannot be used in combination with `ServerAddress`.
+
+	// ServerIPAddresses is a comma separated list of IP addresses, in the
+	// format `<IPv4|[IPv6]>:<port>` or `:<port>`, that the gRPC client will
+	// connect to. If the addresses provided are ["10.77.77.77", "10.88.88.88"]
+	// then the iPAddress' to be authenticated in the server certificate would
+	// be '10.77.77.77' and '10.88.88.88'.
 	ServerIPAddresses []string
 	Timeout           ConfigDuration
+}
+
+// MakeTargetAndHostOverride constructs the target URI that the gRPC client will
+// connect to and hostname (only for 'ServerAddress' and 'SRVLookup') that will be
+// validated during the mTLS handshake. An error is returned if the provided
+// configuration is invalid.
+func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
+	if c.ServerAddress != "" {
+		if c.ServerIPAddresses != nil || c.SRVLookup != nil {
+			return "", "", errors.New(
+				"both 'serverAddress' and 'serverIPAddresses' or 'SRVLookup' in gRPC client config. Only one should be provided",
+			)
+		}
+		// Lookup backends using DNS A records.
+		targetHost, _, err := net.SplitHostPort(c.ServerAddress)
+		if err != nil {
+			return "", "", err
+		}
+		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), targetHost, nil
+
+	} else if c.SRVLookup != nil {
+		if c.ServerIPAddresses != nil {
+			return "", "", errors.New(
+				"both 'SRVLookup' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
+			)
+		}
+		// Lookup backends using DNS SRV records.
+		targetHost := c.SRVLookup.Service + "." + c.SRVLookup.Domain
+		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), targetHost, nil
+
+	} else {
+		if c.ServerIPAddresses == nil {
+			return "", "", errors.New(
+				"neither 'serverAddress', 'SRVLookup' nor 'serverIPAddresses' in gRPC client config. One should be provided",
+			)
+		}
+		// Specify backends as a list of IP addresses.
+		return "static:///" + strings.Join(c.ServerIPAddresses, ","), "", nil
+	}
 }
 
 // GRPCServerConfig contains the information needed to run a gRPC service
