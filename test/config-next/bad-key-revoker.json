@@ -12,7 +12,7 @@
         },
         "raService": {
             "dnsAuthority": "10.55.55.10:53",
-            "serviceDomain": {
+            "srvLookup": {
                 "service": "ra",
                 "domain": "service.consul"
             },

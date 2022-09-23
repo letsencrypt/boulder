@@ -48,12 +48,12 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
 
-	target, targetHost, err := c.MakeTarget()
+	target, hostOverride, err := c.MakeTargetAndHostOverride()
 	if err != nil {
 		return nil, err
 	}
 
-	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, targetHost)
+	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
 	return grpc.Dial(
 		target,
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
@@ -61,7 +61,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	)
-
 }
 
 type registry interface {

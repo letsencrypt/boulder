@@ -250,27 +250,30 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
-// GRPCClientConfig contains the information needed to talk to the gRPC service
+// GRPCClientConfig contains the information setup a gRPC client.
+// The following combination of fields are allowed:
+//
+// ServerIPAddresses, [Timeout]
+// ServerAddress, [Timeout], [DNSAuthority]
+// SRVLookup, [Timeout], [DNSAuthority]
 type GRPCClientConfig struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then use for DNS
-	// lookups. This field is optional and can only specified along with
-	// `ServiceDomain` and `ServerAddress`.
+	// lookups.
 	DNSAuthority string
 
-	// ServiceDomain is the service and domain name the gRPC client will use
-	// when discovering backends via DNS SRV records. For example, if the
-	// hostname is 'foo.bar', then the service is 'foo' and the domain is 'bar'.
-	// This field can only be specified along with `DNSAuthority` and `Timeout`
-	// fields.
-	ServiceDomain struct {
+	// SRVLookup is the service and domain name the gRPC client will use when
+	// discovering backends via DNS SRV records. For example, if the hostname is
+	// 'foo.bar.baz', then the service is 'foo' and the domain is 'bar.baz'.
+	// 'foo.bar.baz' will be the hostname validated in the certificate presented
+	// by the gRPC server regardless of the names returned in the SRV lookup.
+	SRVLookup *struct {
 		Service string
 		Domain  string
 	}
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
-	// This field can only be specified along with `DNSAuthority` and `Timeout`.
 	ServerAddress string
 
 	// ServerIPAddresses is a comma separated list of IP addresses, in the
@@ -282,20 +285,17 @@ type GRPCClientConfig struct {
 	Timeout           ConfigDuration
 }
 
-// MakeTarget returns a target URI and host for use in gRPC client connections.
-// If the configuration is invalid, an error is returned.
-func (c *GRPCClientConfig) MakeTarget() (string, string, error) {
-	if c.ServerIPAddresses != nil && c.ServerAddress != "" {
-		return "", "", errors.New(
-			"both 'serverIPAddresses' and 'serverAddress' are set in gRPC client config. Only one should be provided",
-		)
-	}
-	if c.ServerIPAddresses != nil && (c.ServiceDomain.Service != "" || c.ServiceDomain.Domain != "") {
-		return "", "", errors.New(
-			"both 'serverIPAddresses' and 'serverDomain' are set in gRPC client config. Only one should be provided",
-		)
-	}
+// MakeTargetAndHostOverride constructs the target URI that the gRPC client will
+// connect to and hostname (only for 'ServerAddress' and 'SRVLookup') that will be
+// validated during the mTLS handshake. An error is returned if the provided
+// configuration is invalid.
+func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 	if c.ServerAddress != "" {
+		if c.ServerIPAddresses != nil || c.SRVLookup != nil {
+			return "", "", errors.New(
+				"both 'serverAddress' and 'serverIPAddresses' or 'SRVLookup' in gRPC client config. Only one should be provided",
+			)
+		}
 		// Lookup backends using DNS A records.
 		targetHost, _, err := net.SplitHostPort(c.ServerAddress)
 		if err != nil {
@@ -303,12 +303,22 @@ func (c *GRPCClientConfig) MakeTarget() (string, string, error) {
 		}
 		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), targetHost, nil
 
-	} else if c.ServiceDomain.Service != "" && c.ServiceDomain.Domain != "" {
+	} else if c.SRVLookup != nil {
+		if c.ServerIPAddresses != nil {
+			return "", "", errors.New(
+				"both 'SRVLookup' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
+			)
+		}
 		// Lookup backends using DNS SRV records.
-		targetHost := c.ServiceDomain.Service + "." + c.ServiceDomain.Domain
+		targetHost := c.SRVLookup.Service + "." + c.SRVLookup.Domain
 		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), targetHost, nil
 
 	} else {
+		if c.ServerIPAddresses == nil {
+			return "", "", errors.New(
+				"neither 'serverAddress', 'SRVLookup' nor 'serverIPAddresses' in gRPC client config. One should be provided",
+			)
+		}
 		// Specify backends as a list of IP addresses.
 		return "static:///" + strings.Join(c.ServerIPAddresses, ","), "", nil
 	}

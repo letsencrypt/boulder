@@ -1,6 +1,24 @@
+/*
+ *
+ * Copyright 2018 gRPC authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
 // Forked from the default internal DNS resolver in the grpc-go package. The
 // original source can be found at:
-// https://pkg.go.dev/google.golang.org/grpc/internal/resolver/dns/dns_resolver.go
+// https://github.com/grpc/grpc-go/blob/v1.49.0/internal/resolver/dns/dns_resolver.go
 
 package dns
 
@@ -21,11 +39,20 @@ import (
 
 var logger = grpclog.Component("srv")
 
+// Globals to stub out in tests. TODO: Perhaps these two can be combined into a
+// single variable for testing the resolver?
+var (
+	newTimer           = time.NewTimer
+	newTimerDNSResRate = time.NewTimer
+)
+
 func init() {
 	resolver.Register(NewBuilder())
 }
 
 const defaultDNSSvrPort = "53"
+
+var defaultResolver netResolver = net.DefaultResolver
 
 var (
 	errMissingAddr = errors.New("dns resolver: missing address")
@@ -86,7 +113,7 @@ func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts 
 	}
 
 	if target.Authority == "" {
-		d.resolver = net.DefaultResolver
+		d.resolver = defaultResolver
 	} else {
 		d.resolver, err = customAuthorityResolver(target.Authority)
 		if err != nil {
@@ -104,11 +131,16 @@ func (b *dnsBuilder) Scheme() string {
 	return "srv"
 }
 
+type netResolver interface {
+	LookupHost(ctx context.Context, host string) (addrs []string, err error)
+	LookupSRV(ctx context.Context, service, proto, name string) (cname string, addrs []*net.SRV, err error)
+}
+
 // dnsResolver watches for the name resolution update for a non-IP target.
 type dnsResolver struct {
 	service  string
 	domain   string
-	resolver *net.Resolver
+	resolver netResolver
 	ctx      context.Context
 	cancel   context.CancelFunc
 	cc       resolver.ClientConn
@@ -154,7 +186,7 @@ func (d *dnsResolver) watcher() {
 			// Success resolving, wait for the next ResolveNow. However, also wait 30 seconds at the very least
 			// to prevent constantly re-resolving.
 			backoffIndex = 1
-			timer = time.NewTimer(minDNSResRate)
+			timer = newTimerDNSResRate(minDNSResRate)
 			select {
 			case <-d.ctx.Done():
 				timer.Stop()
@@ -163,7 +195,7 @@ func (d *dnsResolver) watcher() {
 			}
 		} else {
 			// Poll on an error found in DNS Resolver or an error received from ClientConn.
-			timer = time.NewTimer(backoff.DefaultExponential.Backoff(backoffIndex))
+			timer = newTimer(backoff.DefaultExponential.Backoff(backoffIndex))
 			backoffIndex++
 		}
 		select {
