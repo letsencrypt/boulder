@@ -131,8 +131,8 @@ func TestReload(t *testing.T) {
 	}
 }
 
-/// existingFile implements fs.FileInfo / os.FileInfo and returns information
-/// as if it were a basic file that existed. This is used to mock out os.Stat.
+// existingFile implements fs.FileInfo / os.FileInfo and returns information
+// as if it were a basic file that existed. This is used to mock out os.Stat.
 type existingFile struct{}
 
 func (e existingFile) Name() string       { return "example" }
