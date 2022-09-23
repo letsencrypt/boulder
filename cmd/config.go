@@ -257,18 +257,18 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // ServerAddress, [Timeout], [DNSAuthority]
 // SRVLookup, [Timeout], [DNSAuthority]
 type GRPCClientConfig struct {
-	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` of
-	// the DNS server to be used for resolution of gRPC backends. If the address
-	// contains a hostname the gRPC client will resolve it via the system DNS.
-	// If the address contains a port, the client will use it directly,
-	// otherwise port 53 is used.
+	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
+	// to be used for resolution of gRPC backends. If the address contains a
+	// hostname the gRPC client will resolve it via the system DNS. If the
+	// address contains a port, the client will use it directly, otherwise port
+	// 53 is used.
 	DNSAuthority string
 
 	// SRVLookup contains the service and domain name the gRPC client will use
 	// to construct a SRV DNS query to lookup backends. For example: if the
 	// resource record is 'foo.service.consul', then the 'Service' is 'foo' and
 	// the 'Domain' is 'service.consul'. The expected dNSName to be
-	// authenticated in the client certificate would be 'foo.service.consul'.
+	// authenticated in the server certificate would be 'foo.service.consul'.
 	//
 	// Note: The 'proto' field of the SRV record MUST be 'tcp' and the 'port'
 	// field MUST be contain valid port. In a Consul configuration file you
@@ -303,7 +303,7 @@ type GRPCClientConfig struct {
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
 	// If the address provided is 'foo.service.consul:8080' then the dNSName to
-	// be authenticated in the client certificate would be 'foo.service.consul'.
+	// be authenticated in the server certificate would be 'foo.service.consul'.
 	//
 	// In a Consul configuration file you would specify 'foo.service.consul' as:
 	//
@@ -329,7 +329,7 @@ type GRPCClientConfig struct {
 	// ServerIPAddresses is a comma separated list of IP addresses, in the
 	// format `<IPv4|[IPv6]>:<port>` or `:<port>`, that the gRPC client will
 	// connect to. If the addresses provided are ["10.77.77.77", "10.88.88.88"]
-	// then the iPAddress' to be authenticated in the client certificate would
+	// then the iPAddress' to be authenticated in the server certificate would
 	// be '10.77.77.77' and '10.88.88.88'.
 	ServerIPAddresses []string
 	Timeout           ConfigDuration
