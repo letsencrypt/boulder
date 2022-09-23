@@ -250,23 +250,51 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
-// GRPCClientConfig contains the information setup a gRPC client.
-// The following combination of fields are allowed:
+// GRPCClientConfig contains the information setup a gRPC client. The following
+// combination of fields are allowed:
 //
 // ServerIPAddresses, [Timeout]
 // ServerAddress, [Timeout], [DNSAuthority]
 // SRVLookup, [Timeout], [DNSAuthority]
 type GRPCClientConfig struct {
-	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
-	// the gRPC client will, if necessary, resolve via DNS and then use for DNS
-	// lookups.
+	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` of
+	// the DNS server to be used for resolution of gRPC backends. If the address
+	// contains a hostname the gRPC client will resolve it via the system DNS.
+	// If the address contains a port, the client will use it directly,
+	// otherwise port 53 is used.
 	DNSAuthority string
 
-	// SRVLookup is the service and domain name the gRPC client will use when
-	// discovering backends via DNS SRV records. For example, if the hostname is
-	// 'foo.bar.baz', then the service is 'foo' and the domain is 'bar.baz'.
-	// 'foo.bar.baz' will be the hostname validated in the certificate presented
-	// by the gRPC server regardless of the names returned in the SRV lookup.
+	// SRVLookup contains the service and domain name the gRPC client will use
+	// to construct a SRV DNS query to lookup backends. For example: if the
+	// resource record is 'foo.service.consul', then the 'Service' is 'foo' and
+	// the 'Domain' is 'service.consul'. The expected dNSName to be
+	// authenticated in the client certificate would be 'foo.service.consul'.
+	//
+	// Note: The 'proto' field of the SRV record MUST be 'tcp' and the 'port'
+	// field MUST be contain valid port. In a Consul configuration file you
+	// would specify 'foo.service.consul' as:
+	//
+	// services {
+	//   id      = "some-unique-id-1"
+	//   name    = "foo"
+	//   address = "10.77.77.77"
+	//   port    = 8080
+	//   tags    = ["tcp"]
+	// }
+	// services {
+	//   id      = "some-unique-id-2"
+	//   name    = "foo"
+	//   address = "10.88.88.88"
+	//   port    = 8080
+	//   tags    = ["tcp"]
+	// }
+	//
+	// If you've added the above to your Consul configuration file (and reloaded
+	// Consul) then you should be able to resolve the following dig query:
+	//
+	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
+	// 10.77.77.77 8080
+	// 10.88.88.88 8080
 	SRVLookup *struct {
 		Service string
 		Domain  string
@@ -274,13 +302,35 @@ type GRPCClientConfig struct {
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
+	// If the address provided is 'foo.service.consul:8080' then the dNSName to
+	// be authenticated in the client certificate would be 'foo.service.consul'.
+	//
+	// In a Consul configuration file you would specify 'foo.service.consul' as:
+	//
+	// services {
+	//   id      = "some-unique-id-1"
+	//   name    = "foo"
+	//   address = "10.77.77.77"
+	// }
+	// services {
+	//   id      = "some-unique-id-2"
+	//   name    = "foo"
+	//   address = "10.88.88.88"
+	// }
+	//
+	// If you've added the above to your Consul configuration file (and reloaded
+	// Consul) then you should be able to resolve the following dig query:
+	//
+	// $ dig @10.55.55.10 foo.service.consul +short
+	// 10.77.77.77
+	// 10.88.88.88
 	ServerAddress string
 
 	// ServerIPAddresses is a comma separated list of IP addresses, in the
 	// format `<IPv4|[IPv6]>:<port>` or `:<port>`, that the gRPC client will
-	// connect to. Note that the server's certificate will be validated against
-	// these IP addresses, so they must be present in the SANs of the server
-	// certificate. This field can only be specified along with `Timeout`.
+	// connect to. If the addresses provided are ["10.77.77.77", "10.88.88.88"]
+	// then the iPAddress' to be authenticated in the client certificate would
+	// be '10.77.77.77' and '10.88.88.88'.
 	ServerIPAddresses []string
 	Timeout           ConfigDuration
 }

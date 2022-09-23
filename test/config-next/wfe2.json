@@ -20,7 +20,7 @@
       "keyFile": "test/grpc-creds/wfe.service.consul/key.pem"
     },
     "raService": {
-      "dnsAuthority": "10.55.55.10:53",
+      "dnsAuthority": "bconsul",
       "srvLookup": {
         "service": "ra",
         "domain": "service.consul"
