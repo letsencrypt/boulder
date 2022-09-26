@@ -54,6 +54,8 @@ type mailer struct {
 	nagTimes        []time.Duration
 	parallelSends   uint
 	limit           int
+	// Maximum number of rows to update in a single SQL UPDATE statement.
+	updateChunkSize int
 	clk             clock.Clock
 	stats           mailerStats
 }
@@ -191,6 +193,19 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 // the given list. Even though it can encounter errors, it only logs them and
 // does not return them, because we always prefer to simply continue.
 func (m *mailer) updateLastNagTimestamps(ctx context.Context, certs []*x509.Certificate) {
+	for len(certs) > 0 {
+		size := len(certs)
+		if m.updateChunkSize > 0 && size > m.updateChunkSize {
+			size = m.updateChunkSize
+		}
+		chunk := certs[0:size]
+		certs = certs[size:]
+		m.updateLastNagTimestampsChunk(ctx, chunk)
+	}
+}
+
+// updateLastNagTimestampsChunk processes a single chunk (up to 65k) of certificates.
+func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509.Certificate) {
 	qmarks := make([]string, len(certs))
 	params := make([]interface{}, len(certs)+1)
 	for i, cert := range certs {
@@ -485,11 +500,21 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.SMTPConfig
 
-		From    string
+		// The "From" address for reminder messages.
+		From string
+
+		// The Subject line of reminder messages.
+		// This is a Go template with a single variable: ExpirationSubject,
+		// which contains a list of affectd hostnames, possible truncated.
 		Subject string
 
+		// Maximum number of certificates to investigate in a single batch.
 		CertLimit int
-		NagTimes  []string
+
+		// Maximum number of rows to update in a single SQL UPDATE statement.
+		UpdateChunkSize int
+
+		NagTimes []string
 
 		// TODO(#6097): Remove this
 		NagCheckInterval string
@@ -707,6 +732,7 @@ func main() {
 		emailTemplate:   tmpl,
 		nagTimes:        nags,
 		limit:           c.Mailer.CertLimit,
+		updateChunkSize: c.Mailer.UpdateChunkSize,
 		parallelSends:   c.Mailer.ParallelSends,
 		clk:             clk,
 		stats:           initStats(scope),
