@@ -500,18 +500,20 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.SMTPConfig
 
-		// The "From" address for reminder messages.
+		// From is the "From" address for reminder messages.
 		From string
 
-		// The Subject line of reminder messages.
+		// Subject is the Subject line of reminder messages.
 		// This is a Go template with a single variable: ExpirationSubject,
 		// which contains a list of affectd hostnames, possible truncated.
 		Subject string
 
-		// Maximum number of certificates to investigate in a single batch.
+		// CertLimit is the maximum number of certificates to investigate in a
+		// single batch.
 		CertLimit int
 
-		// Maximum number of rows to update in a single SQL UPDATE statement.
+		// UpdateChunkSize is the maximum number of rows to update in a single
+		// SQL UPDATE statement.
 		UpdateChunkSize int
 
 		NagTimes []string
@@ -722,6 +724,12 @@ func main() {
 	}
 	// Make sure durations are sorted in increasing order
 	sort.Sort(nags)
+
+	if c.Mailer.UpdateChunkSize > 65535 {
+		// MariaDB limits the number of placeholders parameters to max_uint16:
+		// https://github.com/MariaDB/server/blob/10.5/sql/sql_prepare.cc#L2629-L2635
+		cmd.Fail(fmt.Sprintf("UpdateChunkSize of %d is too big", c.Mailer.UpdateChunkSize))
+	}
 
 	m := mailer{
 		log:             logger,
