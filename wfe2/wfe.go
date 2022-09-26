@@ -2031,6 +2031,10 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		Names:          names,
 	})
 	if err != nil || order == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+		var bErr *berrors.BoulderError
+		if errors.As(err, &bErr) && bErr.Type == berrors.RateLimit && bErr.RetryAfterSeconds() > 0 {
+			response.Header().Add("Retry-After", strconv.Itoa(bErr.RetryAfterSeconds()))
+		}
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
