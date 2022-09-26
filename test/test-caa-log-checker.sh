@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # Run the CAA log checker over logs from an integration tests run.
 #
