@@ -264,7 +264,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 		if res.err != nil {
 			cu.log.AuditErrf(
 				"Generating CRL failed: id=[%s] err=[%s]",
-				crl.Id(issuerNameID, crl.Number(atTime), res.shardIdx), err)
+				crl.Id(issuerNameID, crl.Number(atTime), res.shardIdx), res.err)
 			errShards = append(errShards, res.shardIdx)
 		}
 	}
