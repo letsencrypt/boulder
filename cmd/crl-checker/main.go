@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
@@ -42,6 +43,10 @@ func validateShard(url string, issuer *issuance.Certificate) error {
 	err = crl.CheckSignatureFrom(issuer.Certificate)
 	if err != nil {
 		return fmt.Errorf("checking CRL signature: %w", err)
+	}
+
+	if time.Since(crl.ThisUpdate) >= 7*24*time.Hour {
+		return fmt.Errorf("thisUpdate more than 7 days in the past: %v", crl.ThisUpdate)
 	}
 
 	return nil
