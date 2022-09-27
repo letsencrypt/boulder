@@ -71,6 +71,7 @@ func main() {
 		if err != nil {
 			errCount += 1
 			logger.Errf("CRL %q failed: %s", url, err)
+			continue
 		}
 		if *emitRevoked {
 			for _, c := range crl.RevokedCertificates {
