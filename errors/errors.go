@@ -54,9 +54,13 @@ func (ErrorType) Error() string {
 
 // BoulderError represents internal Boulder errors
 type BoulderError struct {
-	Type       ErrorType
-	Detail     string
-	SubErrors  []SubBoulderError
+	Type      ErrorType
+	Detail    string
+	SubErrors []SubBoulderError
+
+	// RetryAfter is the number of milliseconds the client should wait before
+	// retrying the request. Do not return this value directly to clients, use
+	// RetryAfterSeconds instead.
 	RetryAfter int64
 }
 
