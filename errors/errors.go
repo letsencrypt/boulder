@@ -57,7 +57,7 @@ type BoulderError struct {
 	Type       ErrorType
 	Detail     string
 	SubErrors  []SubBoulderError
-	retryAfter int64
+	RetryAfter int64
 }
 
 // SubBoulderError represents sub-errors specific to an identifier that are
@@ -78,7 +78,7 @@ func (be *BoulderError) Unwrap() error {
 // RetryAfterSeconds returns the value RetryAfter (ms) as a number of seconds
 // that is non-zero unless the RetryAfter field is < 500ms.
 func (be *BoulderError) RetryAfterSeconds() int {
-	return int(time.Duration(be.retryAfter).Round(time.Second).Seconds())
+	return int(time.Duration(be.RetryAfter).Round(time.Second).Seconds())
 }
 
 // WithSubErrors returns a new BoulderError instance created by adding the
@@ -119,7 +119,7 @@ func RateLimitError(retryAfter int64, msg string, args ...interface{}) error {
 	return &BoulderError{
 		Type:       RateLimit,
 		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/", args...),
-		retryAfter: retryAfter,
+		RetryAfter: retryAfter,
 	}
 }
 
@@ -127,7 +127,7 @@ func DuplicateCertificateError(retryAfter int64, msg string, args ...interface{}
 	return &BoulderError{
 		Type:       RateLimit,
 		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/duplicate-certificate-limit/", args...),
-		retryAfter: retryAfter,
+		RetryAfter: retryAfter,
 	}
 }
 
@@ -135,7 +135,7 @@ func FailedValidationError(retryAfter int64, msg string, args ...interface{}) er
 	return &BoulderError{
 		Type:       RateLimit,
 		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/failed-validation-limit/", args...),
-		retryAfter: retryAfter,
+		RetryAfter: retryAfter,
 	}
 }
 
@@ -143,7 +143,7 @@ func RegistrationsPerIPError(retryAfter int64, msg string, args ...interface{}) 
 	return &BoulderError{
 		Type:       RateLimit,
 		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/", args...),
-		retryAfter: retryAfter,
+		RetryAfter: retryAfter,
 	}
 }
 
