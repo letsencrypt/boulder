@@ -208,7 +208,7 @@ func TestReloadFailure(t *testing.T) {
 	select {
 	case r := <-reloads:
 		if r.err != nil {
-			t.Errorf("Unexpected error: %s", err)
+			t.Errorf("Unexpected error: %s", r.err)
 		}
 		if string(r.b) != "third body" {
 			t.Errorf("Expected 'third body' reading file after restoring it.")
