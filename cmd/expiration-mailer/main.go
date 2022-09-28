@@ -62,6 +62,7 @@ type mailer struct {
 
 type mailerStats struct {
 	sendDelay                         *prometheus.GaugeVec
+	sendDelayHistogram                *prometheus.HistogramVec
 	nagsAtCapacity                    *prometheus.GaugeVec
 	errorCount                        *prometheus.CounterVec
 	sendLatency                       prometheus.Histogram
@@ -467,6 +468,12 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		m.stats.sendDelay.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(
 			sendDelay.Truncate(time.Second).Seconds())
 
+		for _, c := range certs {
+			sendDelay := expiresIn - c.Expires.Sub(m.clk.Now())
+			m.stats.sendDelayHistogram.With(prometheus.Labels{"nag_group": expiresIn.String()}).Observe(
+				sendDelay.Truncate(time.Second).Seconds())
+		}
+
 		processingStarted := m.clk.Now()
 		err = m.processCerts(ctx, certs)
 		if err != nil {
@@ -553,6 +560,15 @@ func initStats(stats prometheus.Registerer) mailerStats {
 		[]string{"nag_group"})
 	stats.MustRegister(sendDelay)
 
+	sendDelayHistogram := prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "send_delay_histogram",
+			Help:    "For each mail sent, difference between the idealized send time and actual send time. Will always be nonzero, bigger numbers are worse",
+			Buckets: prometheus.LinearBuckets(86400, 86400, 10),
+		},
+		[]string{"nag_group"})
+	stats.MustRegister(sendDelay)
+
 	nagsAtCapacity := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "nags_at_capacity",
@@ -609,6 +625,7 @@ func initStats(stats prometheus.Registerer) mailerStats {
 
 	return mailerStats{
 		sendDelay:                         sendDelay,
+		sendDelayHistogram:                sendDelayHistogram,
 		nagsAtCapacity:                    nagsAtCapacity,
 		errorCount:                        errorCount,
 		sendLatency:                       sendLatency,
