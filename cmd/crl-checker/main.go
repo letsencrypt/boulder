@@ -15,41 +15,42 @@ import (
 	crlint "github.com/letsencrypt/boulder/linter/lints/crl"
 )
 
-func validateShard(url string, issuer *issuance.Certificate) error {
+func validateShard(url string, issuer *issuance.Certificate) (*crl_x509.RevocationList, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return fmt.Errorf("downloading crl: %w", err)
+		return nil, fmt.Errorf("downloading crl: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("downloading crl: http status %d", resp.StatusCode)
+		return nil, fmt.Errorf("downloading crl: http status %d", resp.StatusCode)
 	}
 
 	crlBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("reading CRL bytes: %w", err)
+		return nil, fmt.Errorf("reading CRL bytes: %w", err)
 	}
 
 	crl, err := crl_x509.ParseRevocationList(crlBytes)
 	if err != nil {
-		return fmt.Errorf("parsing CRL: %w", err)
+		return nil, fmt.Errorf("parsing CRL: %w", err)
 	}
 
 	err = linter.ProcessResultSet(crlint.LintCRL(crl))
 	if err != nil {
-		return fmt.Errorf("linting CRL: %w", err)
+		return nil, fmt.Errorf("linting CRL: %w", err)
 	}
 
 	err = crl.CheckSignatureFrom(issuer.Certificate)
 	if err != nil {
-		return fmt.Errorf("checking CRL signature: %w", err)
+		return nil, fmt.Errorf("checking CRL signature: %w", err)
 	}
 
-	return nil
+	return crl, nil
 }
 
 func main() {
 	urlFile := flag.String("crls", "", "path to a file containing a JSON Array of CRL URLs")
 	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk")
+	emitRevoked := flag.Bool("emitRevoked", false, "emit revoked serial numbers on stdout, one per line, hex-encoded")
 	flag.Parse()
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1})
@@ -66,10 +67,16 @@ func main() {
 
 	errCount := 0
 	for _, url := range urls {
-		err = validateShard(url, issuer)
+		crl, err := validateShard(url, issuer)
 		if err != nil {
 			errCount += 1
 			logger.Errf("CRL %q failed: %s", url, err)
+			continue
+		}
+		if *emitRevoked {
+			for _, c := range crl.RevokedCertificates {
+				fmt.Printf("%x\n", c.SerialNumber)
+			}
 		}
 	}
 
