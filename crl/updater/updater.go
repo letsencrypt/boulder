@@ -299,7 +299,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	}()
 
 	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
-	cu.log.Debugf(
+	cu.log.Infof(
 		"Generating CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s]",
 		crlID, expiresAfter, expiresBefore)
 
