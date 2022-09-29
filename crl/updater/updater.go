@@ -285,6 +285,8 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+
 	start := cu.clk.Now()
 	defer func() {
 		// This func closes over the named return value `err`, so can reference it.
@@ -298,8 +300,8 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 
 	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
 	cu.log.Debugf(
-		"Ticking shard %d of issuer %d at time %s with boundaries %s - %s",
-		shardIdx, issuerNameID, atTime, expiresAfter, expiresBefore)
+		"Generating CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s]",
+		crlID, expiresAfter, expiresBefore)
 
 	// Get the full list of CRL Entries for this shard from the SA.
 	saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
@@ -323,6 +325,8 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		}
 		crlEntries = append(crlEntries, entry)
 	}
+
+	cu.log.Infof("Queried SA for CRL shard: id=[%s] numEntries=[%s]")
 
 	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
@@ -414,7 +418,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
-		crl.Id(issuerNameID, crl.Number(atTime), shardIdx), crlLen, crlHash.Sum(nil))
+		crlID, crlLen, crlHash.Sum(nil))
 	return nil
 }
 
