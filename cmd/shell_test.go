@@ -11,6 +11,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -154,4 +155,10 @@ func TestGRPCLoggerWarningFilter(t *testing.T) {
 	l.Warningln("Server.processUnaryRPC failed to write status: connection error: desc = \"transport is closing\"")
 	lines = m.GetAllMatching(".*")
 	test.AssertEquals(t, len(lines), 0)
+}
+
+func Test_newVersionCollector(t *testing.T) {
+	core.BuildID = "TestBuildID"
+	version := newVersionCollector()
+	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildId": "TestBuildID"}, 1)
 }
