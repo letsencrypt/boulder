@@ -591,6 +591,9 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 		retryAfterSeconds := int(bErr.RetryAfter.Round(time.Second).Seconds())
 		if retryAfterSeconds > 0 {
 			response.Header().Add(headerRetryAfter, strconv.Itoa(retryAfterSeconds))
+			if bErr.Type == berrors.RateLimit {
+				response.Header().Add("Link", link("https://letsencrypt.org/docs/rate-limits", "help"))
+			}
 		}
 	}
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
