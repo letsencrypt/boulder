@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
@@ -79,6 +80,7 @@ func main() {
 	cmd.FailOnError(err, "Parsing age limit")
 
 	errCount := 0
+	seenSerials := make(map[string]struct{})
 	for _, url := range urls {
 		crl, err := downloadShard(url)
 		if err != nil {
@@ -96,7 +98,15 @@ func main() {
 
 		if *emitRevoked {
 			for _, c := range crl.RevokedCertificates {
-				fmt.Printf("%x\n", c.SerialNumber)
+				serial := core.SerialToString(c.SerialNumber)
+				fmt.Println(serial)
+
+				if _, seen := seenSerials[serial]; seen {
+					errCount += 1
+					logger.Errf("Serial %s seen in multiple shards")
+				} else {
+					seenSerials[serial] = struct{}{}
+				}
 			}
 		}
 	}
