@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -38,6 +39,7 @@ func wrapError(ctx context.Context, err error) error {
 			jsonSubErrs, err := json.Marshal(berr.SubErrors)
 			if err != nil {
 				return berrors.InternalServerError(
+					0,
 					"error marshaling json SubErrors, orig error %q",
 					err)
 			}
@@ -49,7 +51,7 @@ func wrapError(ctx context.Context, err error) error {
 		// include the value.
 		if berr.RetryAfter > 0 {
 			pairs = append(pairs, "retryafter")
-			pairs = append(pairs, strconv.FormatInt(berr.RetryAfter, 10))
+			pairs = append(pairs, berr.RetryAfter.String())
 		}
 
 		// Ignoring the error return here is safe because if setting the metadata
@@ -78,6 +80,7 @@ func unwrapError(err error, md metadata.MD) error {
 	inErrMsg := status.Convert(err).Message()
 	if len(errTypeStrs) != 1 {
 		return berrors.InternalServerError(
+			0,
 			"multiple 'errortype' metadata, wrapped error %q",
 			inErrMsg,
 		)
@@ -86,27 +89,28 @@ func unwrapError(err error, md metadata.MD) error {
 	inErrType, decErr := strconv.Atoi(errTypeStrs[0])
 	if decErr != nil {
 		return berrors.InternalServerError(
+			0,
 			"failed to decode error type, decoding error %q, wrapped error %q",
 			decErr,
 			inErrMsg,
 		)
 	}
-	inErr := berrors.New(berrors.ErrorType(inErrType), inErrMsg)
-	var inBoulderErr *berrors.BoulderError
-	if !errors.As(inErr, &inBoulderErr) {
+	inErr := berrors.New(berrors.ErrorType(inErrType), 0, inErrMsg)
+	var outErr *berrors.BoulderError
+	if !errors.As(inErr, &outErr) {
 		return fmt.Errorf(
-			"expected type of unwrappedErr to be %T got %T: %q",
-			inBoulderErr,
+			"expected type of inErr to be %T got %T: %q",
+			outErr,
 			inErr,
 			inErr.Error(),
 		)
 	}
 
-	var decodedErrWithSubErrs *berrors.BoulderError
 	subErrorsVal, ok := md["suberrors"]
 	if ok {
 		if len(subErrorsVal) != 1 {
 			return berrors.InternalServerError(
+				0,
 				"multiple 'suberrors' in metadata, wrapped error %q",
 				inErrMsg,
 			)
@@ -116,40 +120,35 @@ func unwrapError(err error, md metadata.MD) error {
 		unmarshalErr := json.Unmarshal([]byte(subErrorsVal[0]), &subErrs)
 		if unmarshalErr != nil {
 			return berrors.InternalServerError(
+				0,
 				"JSON unmarshaling 'suberrors' %q, wrapped error %q: %s",
 				subErrorsVal[0],
 				inErrMsg,
 				unmarshalErr,
 			)
 		}
-		decodedErrWithSubErrs = inBoulderErr.WithSubErrors(subErrs)
+		outErr.SubErrors = subErrs
 	}
 
-	var decodedRetryAfter int64
 	retryAfterVal, ok := md["retryafter"]
 	if ok {
 		if len(retryAfterVal) != 1 {
 			return berrors.InternalServerError(
+				0,
 				"multiple 'retryafter' in metadata, wrapped error %q",
 				inErrMsg,
 			)
 		}
 		var parseErr error
-		decodedRetryAfter, parseErr = strconv.ParseInt(retryAfterVal[0], 10, 64)
+		outErr.RetryAfter, parseErr = time.ParseDuration(retryAfterVal[0])
 		if parseErr != nil {
 			return berrors.InternalServerError(
+				0,
 				"parsing 'retryafter' as int64, wrapped error %q, parsing error: %s",
 				inErrMsg,
 				parseErr,
 			)
 		}
 	}
-
-	if decodedErrWithSubErrs != nil {
-		decodedErrWithSubErrs.RetryAfter = decodedRetryAfter
-		return decodedErrWithSubErrs
-	}
-	inBoulderErr.RetryAfter = decodedRetryAfter
-
-	return inBoulderErr
+	return outErr
 }

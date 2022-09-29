@@ -181,7 +181,7 @@ func (ctp *CTPolicy) getGoogleSCTs(ctx context.Context, cert core.CertDER, expir
 			sct, err := ctp.race(subCtx, cert, g, expiration)
 			// Only one of these will be non-nil
 			if err != nil {
-				results <- result{err: berrors.MissingSCTsError("CT log group %q: %s", g.Name, err)}
+				results <- result{err: berrors.MissingSCTsError(0, "CT log group %q: %s", g.Name, err)}
 			}
 			results <- result{sct: sct}
 		}(g)
@@ -289,9 +289,9 @@ func (ctp *CTPolicy) getOperatorSCTs(ctx context.Context, cert core.CertDER, exp
 	if ctx.Err() != nil {
 		// We timed out (the calling function returned and canceled our context),
 		// thereby causing all of our getOne sub-goroutines to be cancelled.
-		return nil, berrors.MissingSCTsError("failed to get 2 SCTs before ctx finished: %s", ctx.Err())
+		return nil, berrors.MissingSCTsError(0, "failed to get 2 SCTs before ctx finished: %s", ctx.Err())
 	}
-	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got error(s): %s", strings.Join(errs, "; "))
+	return nil, berrors.MissingSCTsError(0, "failed to get 2 SCTs, got error(s): %s", strings.Join(errs, "; "))
 }
 
 // submitAllBestEffort submits the given certificate or precertificate to every

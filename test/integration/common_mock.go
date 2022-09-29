@@ -96,7 +96,7 @@ RejectionLoop:
 		break
 	}
 	if cert == nil {
-		return nil, berrors.NotFoundError("no matching ct-test-srv rejection found")
+		return nil, berrors.NotFoundError(0, "no matching ct-test-srv rejection found")
 	}
 	return cert, nil
 }

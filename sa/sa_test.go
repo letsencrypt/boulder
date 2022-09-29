@@ -314,7 +314,7 @@ func TestAddCertificateDuplicate(t *testing.T) {
 		RegID:  reg.Id,
 		Issued: issuedTime.UnixNano(),
 	})
-	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
+	test.AssertDeepEquals(t, err, berrors.DuplicateError(0, "cannot add a duplicate cert"))
 
 }
 

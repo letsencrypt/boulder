@@ -139,7 +139,7 @@ func (ssa *SQLStorageAuthority) GetRegistration(ctx context.Context, req *sapb.R
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, req.Id)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
+			return nil, berrors.NotFoundError(0, "registration with ID '%d' not found", req.Id)
 		}
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (ssa *SQLStorageAuthority) GetRegistrationByKey(ctx context.Context, req *s
 	model, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, sha)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
+			return nil, berrors.NotFoundError(0, "no registrations with public key sha256 %q", sha)
 		}
 		return nil, err
 	}
@@ -363,7 +363,7 @@ func (ssa *SQLStorageAuthority) GetCertificate(ctx context.Context, req *sapb.Se
 
 	cert, err := SelectCertificate(ssa.dbMap.WithContext(ctx), req.Serial)
 	if db.IsNoRows(err) {
-		return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
+		return nil, berrors.NotFoundError(0, "certificate with serial %q not found", req.Serial)
 	}
 	if err != nil {
 		return nil, err
@@ -385,7 +385,7 @@ func (ssa *SQLStorageAuthority) GetCertificateStatus(ctx context.Context, req *s
 
 	certStatus, err := SelectCertificateStatus(ssa.dbMap.WithContext(ctx), req.Serial)
 	if db.IsNoRows(err) {
-		return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
+		return nil, berrors.NotFoundError(0, "certificate status with serial %q not found", req.Serial)
 	}
 	if err != nil {
 		return nil, err
@@ -408,7 +408,7 @@ func (ssa *SQLStorageAuthority) GetRevocationStatus(ctx context.Context, req *sa
 	status, err := SelectRevocationStatus(ssa.dbMap.WithContext(ctx), req.Serial)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
+			return nil, berrors.NotFoundError(0, "certificate status with serial %q not found", req.Serial)
 		}
 		return nil, err
 	}
@@ -434,7 +434,7 @@ func (ssa *SQLStorageAuthority) NewRegistration(ctx context.Context, req *corepb
 		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
-			return nil, berrors.DuplicateError("key is already in use for a different account")
+			return nil, berrors.DuplicateError(0, "key is already in use for a different account")
 		}
 		return nil, err
 	}
@@ -451,7 +451,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 	curr, err := selectRegistration(ssa.dbMap.WithContext(ctx), query, req.Id)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
+			return nil, berrors.NotFoundError(0, "registration with ID '%d' not found", req.Id)
 		}
 		return nil, err
 	}
@@ -469,12 +469,12 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 		if db.IsDuplicate(err) {
 			// duplicate entry error can only happen when jwk_sha256 collides, indicate
 			// to caller that the provided key is already in use
-			return nil, berrors.DuplicateError("key is already in use for a different account")
+			return nil, berrors.DuplicateError(0, "key is already in use for a different account")
 		}
 		return nil, err
 	}
 	if n == 0 {
-		return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
+		return nil, berrors.NotFoundError(0, "registration with ID '%d' not found", req.Id)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -512,7 +512,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 			return nil, err
 		}
 		if row.Count > 0 {
-			return nil, berrors.DuplicateError("cannot add a duplicate cert")
+			return nil, berrors.DuplicateError(0, "cannot add a duplicate cert")
 		}
 
 		// Save the final certificate
@@ -678,14 +678,14 @@ func deleteOrderFQDNSet(
 	// pending/processing order that is being finalized. If there isn't one then
 	// something is amiss and should be raised as an internal server error
 	if rowsDeleted == 0 {
-		return berrors.InternalServerError("No orderFQDNSet exists to delete")
+		return berrors.InternalServerError(0, "No orderFQDNSet exists to delete")
 	}
 	return nil
 }
 
 func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error {
 	if len(cert.DNSNames) == 0 {
-		return berrors.InternalServerError("certificate has no DNSNames")
+		return berrors.InternalServerError(0, "certificate has no DNSNames")
 	}
 	var qmarks []string
 	var values []interface{}
@@ -982,7 +982,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			}
 			for _, authz := range req.NewAuthzs {
 				if authz.Status != string(core.StatusPending) {
-					return nil, berrors.InternalServerError("authorization must be pending")
+					return nil, berrors.InternalServerError(0, "authorization must be pending")
 				}
 				am, err := authzPBToModel(authz)
 				if err != nil {
@@ -1127,12 +1127,12 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 			req.Id,
 			false)
 		if err != nil {
-			return nil, berrors.InternalServerError("error updating order to beganProcessing status")
+			return nil, berrors.InternalServerError(0, "error updating order to beganProcessing status")
 		}
 
 		n, err := result.RowsAffected()
 		if err != nil || n == 0 {
-			return nil, berrors.OrderNotReadyError("Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
+			return nil, berrors.OrderNotReadyError(0, "Order was already processing. This may indicate your client finalized the same order multiple times, possibly due to a client bug.")
 		}
 
 		return nil, nil
@@ -1164,12 +1164,12 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 			om.Error,
 			om.ID)
 		if err != nil {
-			return nil, berrors.InternalServerError("error updating order error field")
+			return nil, berrors.InternalServerError(0, "error updating order error field")
 		}
 
 		n, err := result.RowsAffected()
 		if err != nil || n == 0 {
-			return nil, berrors.InternalServerError("no order updated with new error field")
+			return nil, berrors.InternalServerError(0, "no order updated with new error field")
 		}
 
 		return nil, nil
@@ -1197,12 +1197,12 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 			req.CertificateSerial,
 			req.Id)
 		if err != nil {
-			return nil, berrors.InternalServerError("error updating order for finalization")
+			return nil, berrors.InternalServerError(0, "error updating order for finalization")
 		}
 
 		n, err := result.RowsAffected()
 		if err != nil || n == 0 {
-			return nil, berrors.InternalServerError("no order updated for finalization")
+			return nil, berrors.InternalServerError(0, "no order updated for finalization")
 		}
 
 		// Delete the orderFQDNSet row for the order now that it has been finalized.
@@ -1256,12 +1256,12 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	omObj, err := ssa.dbMap.WithContext(ctx).Get(orderModel{}, req.Id)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+			return nil, berrors.NotFoundError(0, "no order found for ID %d", req.Id)
 		}
 		return nil, err
 	}
 	if omObj == nil {
-		return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		return nil, berrors.NotFoundError(0, "no order found for ID %d", req.Id)
 	}
 	order, err := modelToOrder(omObj.(*orderModel))
 	if err != nil {
@@ -1269,7 +1269,7 @@ func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderReq
 	}
 	orderExp := time.Unix(0, order.Expires)
 	if orderExp.Before(ssa.clk.Now()) {
-		return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		return nil, berrors.NotFoundError(0, "no order found for ID %d", req.Id)
 	}
 
 	v2AuthzIDs, err := ssa.authzForOrder(ctx, order.Id)
@@ -1344,7 +1344,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	// objects than the order's slice of authorization IDs something has gone
 	// wrong worth raising an internal error about.
 	if len(authzValidityInfo) != len(order.V2Authorizations) {
-		return "", berrors.InternalServerError(
+		return "", berrors.InternalServerError(0,
 			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
 				"(%d vs expected %d) for order %d",
 			len(authzValidityInfo), len(order.V2Authorizations), order.Id)
@@ -1370,7 +1370,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		case core.StatusRevoked:
 			otherAuthzs++
 		default:
-			return "", berrors.InternalServerError(
+			return "", berrors.InternalServerError(0,
 				"Order is in an invalid state. Authz has invalid status %s",
 				info.Status)
 		}
@@ -1398,8 +1398,8 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 	// early. Somehow we made it this far but also don't have the correct number
 	// of valid authzs.
 	if !fullyAuthorized {
-		return "", berrors.InternalServerError(
-			"Order has the incorrect number of valid authorizations & no pending, " +
+		return "", berrors.InternalServerError(0,
+			"Order has the incorrect number of valid authorizations & no pending, "+
 				"deactivated or invalid authorizations")
 	}
 
@@ -1419,7 +1419,7 @@ func (ssa *SQLStorageAuthority) statusForOrder(ctx context.Context, order *corep
 		return string(core.StatusReady), nil
 	}
 
-	return "", berrors.InternalServerError(
+	return "", berrors.InternalServerError(0,
 		"Order %d is in an invalid state. No state known for this order's "+
 			"authorizations", order.Id)
 }
@@ -1501,13 +1501,13 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 		fqdnHash, ssa.clk.Now())
 
 	if db.IsNoRows(err) {
-		return nil, berrors.NotFoundError("no order matching request found")
+		return nil, berrors.NotFoundError(0, "no order matching request found")
 	} else if err != nil {
 		return nil, err
 	}
 
 	if result.RegistrationID != req.AcctID {
-		return nil, berrors.NotFoundError("no order matching request found")
+		return nil, berrors.NotFoundError(0, "no order matching request found")
 	}
 
 	// Get the order
@@ -1518,7 +1518,7 @@ func (ssa *SQLStorageAuthority) GetOrderForNames(
 	// Only return a pending or ready order
 	if order.Status != string(core.StatusPending) &&
 		order.Status != string(core.StatusReady) {
-		return nil, berrors.NotFoundError("no order matching request found")
+		return nil, berrors.NotFoundError(0, "no order matching request found")
 	}
 	return order, nil
 }
@@ -1549,7 +1549,7 @@ func (ssa *SQLStorageAuthority) NewAuthorizations2(ctx context.Context, req *sap
 
 	for _, authz := range req.Authz {
 		if authz.Status != string(core.StatusPending) {
-			return nil, berrors.InternalServerError("authorization must be pending")
+			return nil, berrors.InternalServerError(0, "authorization must be pending")
 		}
 		am, err := authzPBToModel(authz)
 		if err != nil {
@@ -1615,7 +1615,7 @@ func (ssa *SQLStorageAuthority) GetAuthorization2(ctx context.Context, req *sapb
 		return nil, err
 	}
 	if obj == nil {
-		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
+		return nil, berrors.NotFoundError(0, "authorization %d not found", req.Id)
 	}
 	return modelToAuthzPB(*(obj.(*authzModel)))
 }
@@ -1710,7 +1710,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	}
 
 	if req.Status != string(core.StatusValid) && req.Status != string(core.StatusInvalid) {
-		return nil, berrors.InternalServerError("authorization must have status valid or invalid")
+		return nil, berrors.InternalServerError(0, "authorization must have status valid or invalid")
 	}
 	query := `UPDATE authz2 SET
 		status = :status,
@@ -1775,9 +1775,9 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		return nil, err
 	}
 	if rows == 0 {
-		return nil, berrors.NotFoundError("authorization with id %d not found", req.Id)
+		return nil, berrors.NotFoundError(0, "authorization with id %d not found", req.Id)
 	} else if rows > 1 {
-		return nil, berrors.InternalServerError("multiple rows updated for authorization id %d", req.Id)
+		return nil, berrors.InternalServerError(0, "multiple rows updated for authorization id %d", req.Id)
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -1822,7 +1822,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		return nil, err
 	}
 	if rows == 0 {
-		return nil, berrors.AlreadyRevokedError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+		return nil, berrors.AlreadyRevokedError(0, "no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
 	}
 
 	return &emptypb.Empty{}, nil
@@ -1874,7 +1874,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 	if rows == 0 {
 		// InternalServerError because we expected this certificate status to exist,
 		// to already be revoked for a different reason, and to have a matching date.
-		return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
+		return nil, berrors.InternalServerError(0, "no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
 	}
 
 	return &emptypb.Empty{}, nil
@@ -1908,7 +1908,7 @@ func (ssa *SQLStorageAuthority) GetPendingAuthorization2(ctx context.Context, re
 	)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError("pending authz not found")
+			return nil, berrors.NotFoundError(0, "pending authz not found")
 		}
 		return nil, err
 	}

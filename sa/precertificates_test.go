@@ -189,7 +189,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 		RegID:    reg.Id,
 		IssuerID: 1,
 	})
-	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
+	test.AssertDeepEquals(t, err, berrors.DuplicateError(0, "cannot add a duplicate cert"))
 }
 
 func TestAddPrecertificateIncomplete(t *testing.T) {

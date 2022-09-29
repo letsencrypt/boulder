@@ -14,7 +14,7 @@ func TestRollback(t *testing.T) {
 	// Commit the transaction so that a subsequent rollback will always fail.
 	_ = tx.Commit()
 
-	innerErr := berrors.NotFoundError("Gone, gone, gone")
+	innerErr := berrors.NotFoundError(0, "Gone, gone, gone")
 	result := rollback(tx, innerErr)
 
 	// Since the tx.Rollback will fail we expect the result to be a wrapped error

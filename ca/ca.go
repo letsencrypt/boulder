@@ -191,7 +191,7 @@ var ocspStatusToCode = map[string]int{
 func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
-		return nil, berrors.InternalServerError("Incomplete issue certificate request")
+		return nil, berrors.InternalServerError(0, "Incomplete issue certificate request")
 	}
 
 	serialBigInt, validity, err := ca.generateSerialNumberAndValidity()
@@ -230,7 +230,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	_, err = ca.sa.AddPrecertificate(ctx, req)
 	if err != nil {
 		ca.orphanCount.With(prometheus.Labels{"type": "precert"}).Inc()
-		err = berrors.InternalServerError(err.Error())
+		err = berrors.InternalServerError(0, err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
@@ -277,7 +277,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
-		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
+		return nil, berrors.InternalServerError(0, "Incomplete cert for precertificate request")
 	}
 
 	precert, err := x509.ParseCertificate(req.DER)
@@ -287,7 +287,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 
 	serialHex := core.SerialToString(precert.SerialNumber)
 	if _, err = ca.sa.GetCertificate(ctx, &sapb.Serial{Serial: serialHex}); err == nil {
-		err = berrors.InternalServerError("issuance of duplicate final certificate requested: %s", serialHex)
+		err = berrors.InternalServerError(0, "issuance of duplicate final certificate requested: %s", serialHex)
 		ca.log.AuditErr(err.Error())
 		return nil, err
 	} else if !errors.Is(err, berrors.NotFound) {
@@ -305,7 +305,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 
 	issuer, ok := ca.issuers.byNameID[issuance.GetIssuerNameID(precert)]
 	if !ok {
-		return nil, berrors.InternalServerError("no issuer found for Issuer Name %s", precert.Issuer)
+		return nil, berrors.InternalServerError(0, "no issuer found for Issuer Name %s", precert.Issuer)
 	}
 
 	issuanceReq, err := issuance.RequestFromPrecert(precert, scts)
@@ -323,7 +323,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
-		return nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, berrors.InternalServerError(0, "failed to sign precertificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
@@ -357,7 +357,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	serialBytes[0] = byte(ca.prefix)
 	_, err := rand.Read(serialBytes[1:])
 	if err != nil {
-		err = berrors.InternalServerError("failed to generate serial: %s", err)
+		err = berrors.InternalServerError(0, "failed to generate serial: %s", err)
 		ca.log.AuditErrf("Serial randomness failed, err=[%v]", err)
 		return nil, validity{}, err
 	}
@@ -399,17 +399,17 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		}
 		issuer, ok = ca.issuers.byAlg[alg]
 		if !ok {
-			return nil, nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
+			return nil, nil, nil, berrors.InternalServerError(0, "no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 		}
 	} else {
 		issuer, ok = ca.issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
 		if !ok {
-			return nil, nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
+			return nil, nil, nil, berrors.InternalServerError(0, "no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
 		}
 	}
 
 	if issuer.Cert.NotAfter.Before(validity.NotAfter) {
-		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
+		err = berrors.InternalServerError(0, "cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
 		return nil, nil, nil, err
 	}
@@ -423,7 +423,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		Status:   string(core.OCSPStatusGood),
 	})
 	if err != nil {
-		err = berrors.InternalServerError(err.Error())
+		err = berrors.InternalServerError(0, err.Error())
 		ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
 		return nil, nil, nil, err
 	}
@@ -445,7 +445,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
-		return nil, nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, nil, nil, berrors.InternalServerError(0, "failed to sign precertificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
@@ -470,7 +470,7 @@ func (ca *certificateAuthorityImpl) storeCertificate(
 	})
 	if err != nil {
 		ca.orphanCount.With(prometheus.Labels{"type": "cert"}).Inc()
-		err = berrors.InternalServerError(err.Error())
+		err = berrors.InternalServerError(0, err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",

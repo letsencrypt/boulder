@@ -1763,7 +1763,7 @@ func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, zeroN
 // account with regID 1, if the given serial matches. Otherwise, returns not found.
 func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
-		return nil, berrors.NotFoundError("Certificate with serial %q not found", req.Serial)
+		return nil, berrors.NotFoundError(0, "Certificate with serial %q not found", req.Serial)
 	}
 
 	return &corepb.Certificate{
@@ -1779,7 +1779,7 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 // Otherwise, returns not found.
 func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	if req.Serial != core.SerialToString(sa.cert.SerialNumber) {
-		return nil, berrors.NotFoundError("Status for certificate with serial %q not found", req.Serial)
+		return nil, berrors.NotFoundError(0, "Status for certificate with serial %q not found", req.Serial)
 	}
 
 	return &corepb.CertificateStatus{
@@ -3181,7 +3181,7 @@ type mockSAGetRegByKeyNotFound struct {
 }
 
 func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, berrors.NotFoundError("not found")
+	return nil, berrors.NotFoundError(0, "not found")
 }
 
 func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
@@ -3264,7 +3264,7 @@ type noSCTMockRA struct {
 }
 
 func (ra *noSCTMockRA) FinalizeOrder(context.Context, *rapb.FinalizeOrderRequest, ...grpc.CallOption) (*corepb.Order, error) {
-	return nil, berrors.MissingSCTsError("noSCTMockRA missing scts error")
+	return nil, berrors.MissingSCTsError(0, "noSCTMockRA missing scts error")
 }
 
 func TestFinalizeSCTError(t *testing.T) {
@@ -3700,4 +3700,28 @@ func TestOldTLSInbound(t *testing.T) {
 	responseWriter = httptest.NewRecorder()
 	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+}
+
+func Test_sendError(t *testing.T) {
+	features.Reset()
+	wfe, _ := setupWFE(t)
+	testResponse := httptest.NewRecorder()
+
+	testErr := berrors.RateLimitError(0, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 0 value RetryAfter results in no Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "")
+
+	testErr = berrors.RateLimitError(time.Millisecond*500, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 500ms RetryAfter is rounded up to a 1s Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "1")
+
+	// Clear the Retry-After header for the next test.
+	testResponse.Header().Del("Retry-After")
+
+	testErr = berrors.RateLimitError(time.Millisecond*499, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 499ms RetryAfter results in no Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "")
 }

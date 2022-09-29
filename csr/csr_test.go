@@ -113,14 +113,14 @@ func TestVerifyCSR(t *testing.T) {
 			100,
 			testingPolicy,
 			&mockPA{},
-			berrors.BadCSRError("CN was longer than %d bytes", maxCNLength),
+			berrors.BadCSRError(0, "CN was longer than %d bytes", maxCNLength),
 		},
 		{
 			signedReqWithHosts,
 			1,
 			testingPolicy,
 			&mockPA{},
-			berrors.BadCSRError("CSR contains more than 1 DNS names"),
+			berrors.BadCSRError(0, "CSR contains more than 1 DNS names"),
 		},
 		{
 			signedReqWithBadNames,

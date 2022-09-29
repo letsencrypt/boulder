@@ -3405,7 +3405,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		{
 			Name: "malformed problem during IssuePrecertificate",
 			Mock: &mockCAFailPrecert{
-				err: berrors.MalformedError("detected 1x whack attack"),
+				err: berrors.MalformedError(0, "detected 1x whack attack"),
 			},
 			ExpectedProb: &berrors.BoulderError{
 				Detail: "issuing precertificate: detected 1x whack attack",
@@ -3422,7 +3422,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		{
 			Name: "malformed problem during IssueCertificateForPrecertificate",
 			Mock: &mockCAFailCertForPrecert{
-				err: berrors.MalformedError("provided DER is DERanged"),
+				err: berrors.MalformedError(0, "provided DER is DERanged"),
 			},
 			ExpectedProb: &berrors.BoulderError{
 				Detail: "issuing certificate for precertificate: provided DER is DERanged",
@@ -3561,7 +3561,7 @@ func (msar *mockSARevocation) GetCertificateStatus(_ context.Context, req *sapb.
 
 func (msar *mockSARevocation) RevokeCertificate(_ context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if _, present := msar.revoked[req.Serial]; present {
-		return nil, berrors.AlreadyRevokedError("already revoked")
+		return nil, berrors.AlreadyRevokedError(0, "already revoked")
 	}
 	msar.revoked[req.Serial] = req.Reason
 	msar.known.Status = string(core.OCSPStatusRevoked)
@@ -3574,7 +3574,7 @@ func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *s
 		return nil, errors.New("not already revoked")
 	}
 	if present && reason == ocsp.KeyCompromise {
-		return nil, berrors.AlreadyRevokedError("already revoked for keyCompromise")
+		return nil, berrors.AlreadyRevokedError(0, "already revoked for keyCompromise")
 	}
 	msar.revoked[req.Serial] = req.Reason
 	return &emptypb.Empty{}, nil

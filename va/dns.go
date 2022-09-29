@@ -23,13 +23,13 @@ import (
 func (va ValidationAuthorityImpl) getAddrs(ctx context.Context, hostname string) ([]net.IP, error) {
 	addrs, err := va.dnsClient.LookupHost(ctx, hostname)
 	if err != nil {
-		return nil, berrors.DNSError("%v", err)
+		return nil, berrors.DNSError(0, "%v", err)
 	}
 
 	if len(addrs) == 0 {
 		// This should be unreachable, as no valid IP addresses being found results
 		// in an error being returned from LookupHost.
-		return nil, berrors.DNSError("No valid IP addresses found for %s", hostname)
+		return nil, berrors.DNSError(0, "No valid IP addresses found for %s", hostname)
 	}
 	va.log.Debugf("Resolved addresses for %s: %s", hostname, addrs)
 	return addrs, nil

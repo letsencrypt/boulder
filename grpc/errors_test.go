@@ -49,7 +49,7 @@ func TestErrorWrapping(t *testing.T) {
 	client := test_proto.NewChillerClient(conn)
 
 	// RateLimitError with a RetryAfter of 500ms.
-	expectRetryAfter := int64(500000000)
+	expectRetryAfter := time.Millisecond * 500
 	es.err = berrors.RateLimitError(expectRetryAfter, "yup")
 	_, err = client.Chill(context.Background(), &test_proto.Time{})
 	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
@@ -61,8 +61,6 @@ func TestErrorWrapping(t *testing.T) {
 	test.AssertErrorIs(t, bErr, berrors.RateLimit)
 	// Ensure our RetryAfter is still 500ms.
 	test.AssertEquals(t, bErr.RetryAfter, expectRetryAfter)
-	// Ensure that a RetryAfter of 500ms is rounded up to 1s.
-	test.AssertEquals(t, bErr.RetryAfterSeconds(), 1)
 
 	test.AssertNil(t, wrapError(context.Background(), nil), "Wrapping nil should still be nil")
 	test.AssertNil(t, unwrapError(nil, nil), "Unwrapping nil should still be nil")

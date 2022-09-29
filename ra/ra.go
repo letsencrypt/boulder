@@ -383,18 +383,18 @@ func (ra *RegistrationAuthorityImpl) NewRegistration(ctx context.Context, reques
 	var key jose.JSONWebKey
 	err := key.UnmarshalJSON(request.Key)
 	if err != nil {
-		return nil, berrors.InternalServerError("failed to unmarshal account key: %s", err.Error())
+		return nil, berrors.InternalServerError(0, "failed to unmarshal account key: %s", err.Error())
 	}
 	err = ra.keyPolicy.GoodKey(ctx, key.Key)
 	if err != nil {
-		return nil, berrors.MalformedError("invalid public key: %s", err.Error())
+		return nil, berrors.MalformedError(0, "invalid public key: %s", err.Error())
 	}
 
 	// Check IP address rate limits.
 	var ipAddr net.IP
 	err = ipAddr.UnmarshalText(request.InitialIP)
 	if err != nil {
-		return nil, berrors.InternalServerError("failed to unmarshal ip address: %s", err.Error())
+		return nil, berrors.InternalServerError(0, "failed to unmarshal ip address: %s", err.Error())
 	}
 	err = ra.checkRegistrationLimits(ctx, ipAddr)
 	if err != nil {
@@ -446,7 +446,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 		return nil // Nothing to validate
 	}
 	if ra.maxContactsPerReg > 0 && len(contacts) > ra.maxContactsPerReg {
-		return berrors.MalformedError(
+		return berrors.MalformedError(0,
 			"too many contacts provided: %d > %d",
 			len(contacts),
 			ra.maxContactsPerReg,
@@ -455,23 +455,23 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 
 	for _, contact := range contacts {
 		if contact == "" {
-			return berrors.InvalidEmailError("empty contact")
+			return berrors.InvalidEmailError(0, "empty contact")
 		}
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			return berrors.InvalidEmailError("invalid contact")
+			return berrors.InvalidEmailError(0, "invalid contact")
 		}
 		if parsed.Scheme != "mailto" {
-			return berrors.InvalidEmailError("contact method %q is not supported", parsed.Scheme)
+			return berrors.InvalidEmailError(0, "contact method %q is not supported", parsed.Scheme)
 		}
 		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
-			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)
+			return berrors.InvalidEmailError(0, "contact email %q contains a question mark", contact)
 		}
 		if parsed.Fragment != "" || contact[len(contact)-1] == '#' {
-			return berrors.InvalidEmailError("contact email %q contains a '#'", contact)
+			return berrors.InvalidEmailError(0, "contact email %q contains a '#'", contact)
 		}
 		if !core.IsASCII(contact) {
-			return berrors.InvalidEmailError(
+			return berrors.InvalidEmailError(0,
 				"contact email [%q] contains non-ASCII characters",
 				contact,
 			)
@@ -493,7 +493,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 		// return a bare error and not a berror here.
 		return fmt.Errorf("failed to marshal reg.Contact to JSON: %#v", contacts)
 	} else if len(jsonBytes) >= maxContactBytes {
-		return berrors.InvalidEmailError(
+		return berrors.InvalidEmailError(0,
 			"too many/too long contact(s). Please use shorter or fewer email addresses")
 	}
 
@@ -620,42 +620,42 @@ func (ra *RegistrationAuthorityImpl) MatchesCSR(parsedCertificate *x509.Certific
 	hostNames = core.UniqueLowerNames(hostNames)
 
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
-		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
+		return berrors.InternalServerError(0, "generated certificate public key doesn't match CSR public key")
 	}
 	if parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
-		return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
+		return berrors.InternalServerError(0, "generated certificate CommonName doesn't match CSR CommonName")
 	}
 	// Sort both slices of names before comparison.
 	parsedNames := parsedCertificate.DNSNames
 	sort.Strings(parsedNames)
 	sort.Strings(hostNames)
 	if !reflect.DeepEqual(parsedNames, hostNames) {
-		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
+		return berrors.InternalServerError(0, "generated certificate DNSNames don't match CSR DNSNames")
 	}
 	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
-		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
+		return berrors.InternalServerError(0, "generated certificate IPAddresses don't match CSR IPAddresses")
 	}
 	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
-		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
+		return berrors.InternalServerError(0, "generated certificate EmailAddresses don't match CSR EmailAddresses")
 	}
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
 		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
 		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
 		len(parsedCertificate.Subject.PostalCode) > 0 {
-		return berrors.InternalServerError("generated certificate Subject contains fields other than CommonName, or SerialNumber")
+		return berrors.InternalServerError(0, "generated certificate Subject contains fields other than CommonName, or SerialNumber")
 	}
 	now := ra.clk.Now()
 	if now.Sub(parsedCertificate.NotBefore) > time.Hour*24 {
-		return berrors.InternalServerError("generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore))
+		return berrors.InternalServerError(0, "generated certificate is back dated %s", now.Sub(parsedCertificate.NotBefore))
 	}
 	if !parsedCertificate.BasicConstraintsValid {
-		return berrors.InternalServerError("generated certificate doesn't have basic constraints set")
+		return berrors.InternalServerError(0, "generated certificate doesn't have basic constraints set")
 	}
 	if parsedCertificate.IsCA {
-		return berrors.InternalServerError("generated certificate can sign other certificates")
+		return berrors.InternalServerError(0, "generated certificate can sign other certificates")
 	}
 	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
-		return berrors.InternalServerError("generated certificate doesn't have correct key usage extensions")
+		return berrors.InternalServerError(0, "generated certificate doesn't have correct key usage extensions")
 	}
 
 	return nil
@@ -678,7 +678,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	}
 	authzMapPB, err := ra.SA.GetValidOrderAuthorizations2(ctx, req)
 	if err != nil {
-		return nil, berrors.InternalServerError("error in GetValidOrderAuthorizations: %s", err)
+		return nil, berrors.InternalServerError(0, "error in GetValidOrderAuthorizations: %s", err)
 	}
 	authzs, err := bgrpc.PBToAuthzMap(authzMapPB)
 	if err != nil {
@@ -743,11 +743,11 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 		if authz == nil {
 			badNames = append(badNames, name)
 		} else if authz.Expires == nil {
-			return berrors.InternalServerError("found an authorization with a nil Expires field: id %s", authz.ID)
+			return berrors.InternalServerError(0, "found an authorization with a nil Expires field: id %s", authz.ID)
 		} else if authz.Expires.Before(now) {
 			badNames = append(badNames, name)
 		} else if staleCAA, err := validatedBefore(authz, caaRecheckAfter); err != nil {
-			return berrors.InternalServerError(err.Error())
+			return berrors.InternalServerError(0, err.Error())
 		} else if staleCAA {
 			// Ensure that CAA is rechecked for this name
 			recheckAuthzs = append(recheckAuthzs, authz)
@@ -769,7 +769,7 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	}
 
 	if len(badNames) > 0 {
-		return berrors.UnauthorizedError(
+		return berrors.UnauthorizedError(0,
 			"authorizations for these names not found or expired: %s",
 			strings.Join(badNames, ", "),
 		)
@@ -807,7 +807,7 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			if method == "" {
 				ch <- authzCAAResult{
 					authz: authz,
-					err: berrors.InternalServerError(
+					err: berrors.InternalServerError(0,
 						"Internal error determining validation method for authorization ID %v (%v)",
 						authz.ID, name),
 				}
@@ -821,12 +821,12 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 			})
 			if err != nil {
 				ra.log.AuditErrf("Rechecking CAA: %s", err)
-				err = berrors.InternalServerError(
+				err = berrors.InternalServerError(0,
 					"Internal error rechecking CAA for authorization ID %v (%v)",
 					authz.ID, name,
 				)
 			} else if resp.Problem != nil {
-				err = berrors.CAAError(resp.Problem.Detail)
+				err = berrors.CAAError(0, resp.Problem.Detail)
 			}
 			ch <- authzCAAResult{
 				authz: authz,
@@ -915,7 +915,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	order := req.Order
 
 	if order.Status != string(core.StatusReady) {
-		return nil, berrors.OrderNotReadyError(
+		return nil, berrors.OrderNotReadyError(0,
 			"Order's status (%q) is not acceptable for finalization",
 			order.Status)
 	}
@@ -924,7 +924,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// processing the order but we check to be on the safe side, throwing an
 	// internal server error if this assumption is ever violated.
 	if len(order.Names) == 0 {
-		return nil, berrors.InternalServerError("Order has no associated names")
+		return nil, berrors.InternalServerError(0, "Order has no associated names")
 	}
 
 	// Parse the CSR from the request
@@ -947,13 +947,13 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Immediately reject the request if the number of names differ
 	if len(orderNames) != len(csrNames) {
-		return nil, berrors.UnauthorizedError("Order includes different number of names than CSR specifies")
+		return nil, berrors.UnauthorizedError(0, "Order includes different number of names than CSR specifies")
 	}
 
 	// Check that the order names and the CSR names are an exact match
 	for i, name := range orderNames {
 		if name != csrNames[i] {
-			return nil, berrors.UnauthorizedError("CSR is missing Order domain %q", name)
+			return nil, berrors.UnauthorizedError(0, "CSR is missing Order domain %q", name)
 		}
 	}
 
@@ -1088,11 +1088,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	logEvent *certificateRequestEvent) (core.Certificate, error) {
 	emptyCert := core.Certificate{}
 	if acctID <= 0 {
-		return emptyCert, berrors.MalformedError("invalid account ID: %d", acctID)
+		return emptyCert, berrors.MalformedError(0, "invalid account ID: %d", acctID)
 	}
 
 	if oID <= 0 {
-		return emptyCert, berrors.MalformedError("invalid order ID: %d", oID)
+		return emptyCert, berrors.MalformedError(0, "invalid order ID: %d", oID)
 	}
 
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: int64(acctID)})
@@ -1113,7 +1113,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	copy(names, csr.DNSNames)
 
 	if core.KeyDigestEquals(csr.PublicKey, account.Key) {
-		return emptyCert, berrors.MalformedError("certificate public key must be different than account key")
+		return emptyCert, berrors.MalformedError(0, "certificate public key must be different than account key")
 	}
 
 	// Check rate limits before checking authorizations. If someone is unable to
@@ -1199,7 +1199,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if err != nil {
 		// berrors.InternalServerError because the certificate from the CA should be
 		// parseable.
-		return emptyCert, berrors.InternalServerError("failed to parse certificate: %s", err.Error())
+		return emptyCert, berrors.InternalServerError(0, "failed to parse certificate: %s", err.Error())
 	}
 
 	// Asynchronously submit the final certificate to any configured logs
@@ -1242,7 +1242,7 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 			state = "deadlineExceeded"
 			// Convert the error to a missingSCTsError to communicate the timeout,
 			// otherwise it will be a generic serverInternalError
-			err = berrors.MissingSCTsError(err.Error())
+			err = berrors.MissingSCTsError(0, err.Error())
 		}
 		ra.log.Warningf("ctpolicy.GetSCTs failed: %s", err)
 		ra.ctpolicyResults.With(prometheus.Labels{"result": state}).Observe(took.Seconds())
@@ -1394,9 +1394,10 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 			}
 		}
 		retryTime := time.Unix(0, prevIssuances.Timestamps[0]).Add(time.Duration(nsPerToken))
-		retryAfter := retryTime.Sub(now).Milliseconds()
+		retryAfter := retryTime.Sub(now)
 		return berrors.DuplicateCertificateError(
-			retryAfter, "too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
+			retryAfter,
+			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
 		)
 	}
@@ -1464,7 +1465,7 @@ func (ra *RegistrationAuthorityImpl) UpdateRegistration(ctx context.Context, req
 	if err != nil {
 		// berrors.InternalServerError since the user-data was validated before being
 		// passed to the SA.
-		err = berrors.InternalServerError("Could not update registration: %s", err)
+		err = berrors.InternalServerError(0, "Could not update registration: %s", err)
 		return nil, err
 	}
 
@@ -1604,20 +1605,20 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 	// Refuse to update expired authorizations
 	if authz.Expires == nil || authz.Expires.Before(ra.clk.Now()) {
-		return nil, berrors.MalformedError("expired authorization")
+		return nil, berrors.MalformedError(0, "expired authorization")
 	}
 
 	challIndex := int(req.ChallengeIndex)
 	if challIndex >= len(authz.Challenges) {
 		return nil,
-			berrors.MalformedError("invalid challenge index '%d'", challIndex)
+			berrors.MalformedError(0, "invalid challenge index '%d'", challIndex)
 	}
 
 	ch := &authz.Challenges[challIndex]
 
 	// This challenge type may have been disabled since the challenge was created.
 	if !ra.PA.ChallengeTypeEnabled(ch.Type) {
-		return nil, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
+		return nil, berrors.MalformedError(0, "challenge type %q no longer allowed", ch.Type)
 	}
 
 	// When configured with `reuseValidAuthz` we can expect some clients to try
@@ -1630,23 +1631,23 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	}
 
 	if authz.Status != core.StatusPending {
-		return nil, berrors.MalformedError("authorization must be pending")
+		return nil, berrors.MalformedError(0, "authorization must be pending")
 	}
 
 	// Look up the account key for this authorization
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: authz.RegistrationID})
 	if err != nil {
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError(0, err.Error())
 	}
 	reg, err := bgrpc.PbToRegistration(regPB)
 	if err != nil {
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError(0, err.Error())
 	}
 
 	// Compute the key authorization field based on the registration key
 	expectedKeyAuthorization, err := ch.ExpectedKeyAuthorization(reg.Key)
 	if err != nil {
-		return nil, berrors.InternalServerError("could not compute expected key authorization value")
+		return nil, berrors.InternalServerError(0, "could not compute expected key authorization value")
 	}
 
 	// Populate the ProvidedKeyAuthorization such that the VA can confirm the
@@ -1659,7 +1660,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 	// Double check before sending to VA
 	if cErr := ch.CheckConsistencyForValidation(); cErr != nil {
-		return nil, berrors.MalformedError(cErr.Error())
+		return nil, berrors.MalformedError(0, cErr.Error())
 	}
 
 	// Dispatch to the VA for service
@@ -1883,7 +1884,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
 	if err != nil {
-		return berrors.NotFoundError("unable to confirm that serial %q was ever issued: %s", serialString, err)
+		return berrors.NotFoundError(0, "unable to confirm that serial %q was ever issued: %s", serialString, err)
 	}
 
 	if status.Status != string(core.OCSPStatusRevoked) {
@@ -1892,7 +1893,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		return fmt.Errorf("unable to re-revoke serial %q which is not currently revoked", serialString)
 	}
 	if status.RevokedReason == ocsp.KeyCompromise {
-		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
+		return berrors.AlreadyRevokedError(0, "unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
 	}
 
 	// The new OCSP response has to be back-dated to the original date.
@@ -1968,7 +1969,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	}
 
 	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
-		return nil, berrors.BadRevocationReasonError(req.Code)
+		return nil, berrors.BadRevocationReasonError(0, req.Code)
 	}
 	if !features.Enabled(features.MozRevocationReasons) {
 		// By our current policy, demonstrating key compromise is the only way to
@@ -1976,7 +1977,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// policy may require us to allow the original Subscriber to assert the
 		// keyCompromise revocation reason, even without demonstrating such.
 		if req.Code == ocsp.KeyCompromise {
-			return nil, berrors.BadRevocationReasonError(req.Code)
+			return nil, berrors.BadRevocationReasonError(0, req.Code)
 		}
 	}
 
@@ -2034,7 +2035,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		}
 		for _, name := range cert.DNSNames {
 			if _, present := m[name]; !present {
-				return nil, berrors.UnauthorizedError("requester does not control all names in cert with serial %q", serialString)
+				return nil, berrors.UnauthorizedError(0, "requester does not control all names in cert with serial %q", serialString)
 			}
 		}
 
@@ -2086,7 +2087,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		reason = ocsp.KeyCompromise
 	} else {
 		if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
-			return nil, berrors.BadRevocationReasonError(req.Code)
+			return nil, berrors.BadRevocationReasonError(0, req.Code)
 		}
 		reason = req.Code
 	}
@@ -2342,11 +2343,11 @@ func (ra *RegistrationAuthorityImpl) DeactivateRegistration(ctx context.Context,
 		return nil, errIncompleteGRPCRequest
 	}
 	if reg.Status != string(core.StatusValid) {
-		return nil, berrors.MalformedError("only valid registrations can be deactivated")
+		return nil, berrors.MalformedError(0, "only valid registrations can be deactivated")
 	}
 	_, err := ra.SA.DeactivateRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	if err != nil {
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError(0, err.Error())
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -2394,7 +2395,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 
 	notAfter := time.Unix(0, status.NotAfter).UTC()
 	if ra.clk.Now().After(notAfter) {
-		return nil, berrors.NotFoundError("certificate is expired")
+		return nil, berrors.NotFoundError(0, "certificate is expired")
 	}
 
 	return ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
@@ -2418,7 +2419,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 
 	if len(newOrder.Names) > ra.maxNames {
-		return nil, berrors.MalformedError(
+		return nil, berrors.MalformedError(0,
 			"Order cannot contain more than %d DNS names", ra.maxNames)
 	}
 
@@ -2584,7 +2585,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	for _, authz := range nameToExistingAuthz {
 		// An authz without an expiry is an unexpected internal server event
 		if authz.Expires == 0 {
-			return nil, berrors.InternalServerError(
+			return nil, berrors.InternalServerError(0,
 				"SA.GetAuthorizations returned an authz (%s) with zero expiry",
 				authz.Id)
 		}
@@ -2642,7 +2643,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 		// The only time ChallengesFor errors it is a fatal configuration error
 		// where challenges required by policy for an identifier are not enabled. We
 		// want to treat this as an internal server error.
-		return nil, berrors.InternalServerError(err.Error())
+		return nil, berrors.InternalServerError(0, err.Error())
 	}
 	// Check each challenge for sanity.
 	for _, challenge := range challenges {
@@ -2650,7 +2651,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 		if err != nil {
 			// berrors.InternalServerError because we generated these challenges, they should
 			// be OK.
-			err = berrors.InternalServerError("challenge didn't pass sanity check: %+v", challenge)
+			err = berrors.InternalServerError(0, "challenge didn't pass sanity check: %+v", challenge)
 			return nil, err
 		}
 		challPB, err := bgrpc.ChallengeToPB(challenge)
@@ -2676,7 +2677,7 @@ func wildcardOverlap(dnsNames []string) error {
 		labels := strings.Split(name, ".")
 		labels[0] = "*"
 		if nameMap[strings.Join(labels, ".")] {
-			return berrors.MalformedError(
+			return berrors.MalformedError(0,
 				"Domain name %q is redundant with a wildcard domain in the same request. Remove one or the other from the certificate request.", name)
 		}
 	}
@@ -2692,7 +2693,7 @@ func wildcardOverlap(dnsNames []string) error {
 // error here.
 func validateContactsPresent(contacts []string, contactsPresent bool) error {
 	if len(contacts) > 0 && !contactsPresent {
-		return berrors.InternalServerError("account contacts present but contactsPresent false")
+		return berrors.InternalServerError(0, "account contacts present but contactsPresent false")
 	}
 	return nil
 }

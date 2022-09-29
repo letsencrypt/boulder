@@ -174,25 +174,25 @@ func isDNSCharacter(ch byte) bool {
 // If these values change, the related error messages should be updated.
 
 var (
-	errInvalidIdentifier    = berrors.MalformedError("Invalid identifier type")
-	errNonPublic            = berrors.MalformedError("Domain name does not end with a valid public suffix (TLD)")
-	errICANNTLD             = berrors.MalformedError("Domain name is an ICANN TLD")
-	errPolicyForbidden      = berrors.RejectedIdentifierError("The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
-	errInvalidDNSCharacter  = berrors.MalformedError("Domain name contains an invalid character")
-	errNameTooLong          = berrors.MalformedError("Domain name is longer than 253 bytes")
-	errIPAddress            = berrors.MalformedError("The ACME server can not issue a certificate for an IP address")
-	errTooManyLabels        = berrors.MalformedError("Domain name has more than 10 labels (parts)")
-	errEmptyName            = berrors.MalformedError("Domain name is empty")
-	errNameEndsInDot        = berrors.MalformedError("Domain name ends in a dot")
-	errTooFewLabels         = berrors.MalformedError("Domain name needs at least one dot")
-	errLabelTooShort        = berrors.MalformedError("Domain name can not have two dots in a row")
-	errLabelTooLong         = berrors.MalformedError("Domain has a label (component between dots) longer than 63 bytes")
-	errMalformedIDN         = berrors.MalformedError("Domain name contains malformed punycode")
-	errInvalidRLDH          = berrors.RejectedIdentifierError("Domain name contains an invalid label in a reserved format (R-LDH: '??--')")
-	errTooManyWildcards     = berrors.MalformedError("Domain name has more than one wildcard")
-	errMalformedWildcard    = berrors.MalformedError("Domain name contains an invalid wildcard. A wildcard is only permitted before the first dot in a domain name")
-	errICANNTLDWildcard     = berrors.MalformedError("Domain name is a wildcard for an ICANN TLD")
-	errWildcardNotSupported = berrors.MalformedError("Wildcard domain names are not supported")
+	errInvalidIdentifier    = berrors.MalformedError(0, "Invalid identifier type")
+	errNonPublic            = berrors.MalformedError(0, "Domain name does not end with a valid public suffix (TLD)")
+	errICANNTLD             = berrors.MalformedError(0, "Domain name is an ICANN TLD")
+	errPolicyForbidden      = berrors.RejectedIdentifierError(0, "The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy")
+	errInvalidDNSCharacter  = berrors.MalformedError(0, "Domain name contains an invalid character")
+	errNameTooLong          = berrors.MalformedError(0, "Domain name is longer than 253 bytes")
+	errIPAddress            = berrors.MalformedError(0, "The ACME server can not issue a certificate for an IP address")
+	errTooManyLabels        = berrors.MalformedError(0, "Domain name has more than 10 labels (parts)")
+	errEmptyName            = berrors.MalformedError(0, "Domain name is empty")
+	errNameEndsInDot        = berrors.MalformedError(0, "Domain name ends in a dot")
+	errTooFewLabels         = berrors.MalformedError(0, "Domain name needs at least one dot")
+	errLabelTooShort        = berrors.MalformedError(0, "Domain name can not have two dots in a row")
+	errLabelTooLong         = berrors.MalformedError(0, "Domain has a label (component between dots) longer than 63 bytes")
+	errMalformedIDN         = berrors.MalformedError(0, "Domain name contains malformed punycode")
+	errInvalidRLDH          = berrors.RejectedIdentifierError(0, "Domain name contains an invalid label in a reserved format (R-LDH: '??--')")
+	errTooManyWildcards     = berrors.MalformedError(0, "Domain name has more than one wildcard")
+	errMalformedWildcard    = berrors.MalformedError(0, "Domain name contains an invalid wildcard. A wildcard is only permitted before the first dot in a domain name")
+	errICANNTLDWildcard     = berrors.MalformedError(0, "Domain name is a wildcard for an ICANN TLD")
+	errWildcardNotSupported = berrors.MalformedError(0, "Wildcard domain names are not supported")
 )
 
 // validDomain checks that a domain isn't:
@@ -318,18 +318,20 @@ func ValidEmail(address string) error {
 		if len(address) > 254 {
 			address = address[:254] + "..."
 		}
-		return berrors.InvalidEmailError("%q is not a valid e-mail address", address)
+		return berrors.InvalidEmailError(0, "%q is not a valid e-mail address", address)
 	}
 	splitEmail := strings.SplitN(email.Address, "@", -1)
 	domain := strings.ToLower(splitEmail[len(splitEmail)-1])
 	err = validDomain(domain)
 	if err != nil {
 		return berrors.InvalidEmailError(
+			0,
 			"contact email %q has invalid domain : %s",
 			email.Address, err)
 	}
 	if forbiddenMailDomains[domain] {
 		return berrors.InvalidEmailError(
+			0,
 			"invalid contact domain. Contact emails @%s are forbidden",
 			domain)
 	}
@@ -418,7 +420,7 @@ func (pa *AuthorityImpl) WillingToIssueWildcards(idents []identifier.ACMEIdentif
 		// If there was only one error, then use it as the top level error that is
 		// returned.
 		if len(subErrors) == 1 {
-			return berrors.RejectedIdentifierError(
+			return berrors.RejectedIdentifierError(0,
 				"Cannot issue for %q: %s",
 				subErrors[0].Identifier.Value,
 				subErrors[0].BoulderError.Detail,

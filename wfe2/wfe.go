@@ -74,6 +74,8 @@ const (
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
+
+	headerRetryAfter = "Retry-After"
 )
 
 var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
@@ -584,6 +586,13 @@ func (wfe *WebFrontEndImpl) Nonce(
 
 // sendError wraps web.SendError
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
+	var bErr *berrors.BoulderError
+	if errors.As(ierr, &bErr) {
+		retryAfterSeconds := int(bErr.RetryAfter.Round(time.Second).Seconds())
+		if retryAfterSeconds > 0 {
+			response.Header().Add(headerRetryAfter, strconv.Itoa(retryAfterSeconds))
+		}
+	}
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
 	web.SendError(wfe.log, probs.V2ErrorNS, response, logEvent, prob, ierr)
 }
@@ -981,7 +990,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	case embeddedJWK:
 		err = wfe.revokeCertByCertKey(ctx, jws, request, logEvent)
 	default:
-		err = berrors.MalformedError("Malformed JWS, no KeyID or embedded JWK")
+		err = berrors.MalformedError(0, "Malformed JWS, no KeyID or embedded JWK")
 	}
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to revoke"), nil)
@@ -2031,10 +2040,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		Names:          names,
 	})
 	if err != nil || order == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
-		var bErr *berrors.BoulderError
-		if errors.As(err, &bErr) && bErr.Type == berrors.RateLimit && bErr.RetryAfterSeconds() > 0 {
-			response.Header().Add("Retry-After", strconv.Itoa(bErr.RetryAfterSeconds()))
-		}
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2308,7 +2313,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
 	setDefaultRetryAfterHeader := func(response http.ResponseWriter) {
-		response.Header().Set("Retry-After", fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
 	}
 
 	// Check if the serial is part of an ongoing incident.

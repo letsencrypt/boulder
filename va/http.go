@@ -271,6 +271,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// The redirect request must use HTTP or HTTPs protocol schemes regardless of the port..
 	if reqScheme != "http" && reqScheme != "https" {
 		return "", 0, berrors.ConnectionFailureError(
+			0,
 			"Invalid protocol scheme in redirect target. "+
 				`Only "http" and "https" protocol schemes are supported, not %q`, reqScheme)
 	}
@@ -290,6 +291,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 		// The explicit port must match the VA's configured HTTP or HTTPS port.
 		if reqPort != va.httpPort && reqPort != va.httpsPort {
 			return "", 0, berrors.ConnectionFailureError(
+				0,
 				"Invalid port in redirect target. Only ports %d and %d are supported, not %d",
 				va.httpPort, va.httpsPort, reqPort)
 		}
@@ -304,14 +306,14 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	}
 
 	if reqHost == "" {
-		return "", 0, berrors.ConnectionFailureError("Invalid empty hostname in redirect target")
+		return "", 0, berrors.ConnectionFailureError(0, "Invalid empty hostname in redirect target")
 	}
 
 	// Check that the request host isn't a bare IP address. We only follow
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
 		return "", 0, berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
+			0, "Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -325,6 +327,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// for this case by detecting the reqHost ending in ".well-known".
 	if strings.HasSuffix(reqHost, ".well-known") {
 		return "", 0, berrors.ConnectionFailureError(
+			0,
 			"Invalid host in redirect target %q. Check webserver config for missing '/' in redirect target.",
 			reqHost,
 		)
@@ -332,7 +335,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 
 	if _, err := iana.ExtractSuffix(reqHost); err != nil {
 		return "", 0, berrors.ConnectionFailureError(
-			"Invalid hostname in redirect target, must end in IANA registered TLD")
+			0, "Invalid hostname in redirect target, must end in IANA registered TLD")
 	}
 
 	return reqHost, reqPort, nil
@@ -504,7 +507,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
 		// Only process up to maxRedirect redirects
 		if numRedirects > maxRedirect {
-			return berrors.ConnectionFailureError("Too many redirects")
+			return berrors.ConnectionFailureError(0, "Too many redirects")
 		}
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
@@ -524,7 +527,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			301: {}, 302: {}, 307: {}, 308: {},
 		}
 		if _, present := acceptableRedirects[req.Response.StatusCode]; !present {
-			return berrors.ConnectionFailureError("received disallowed redirect status code")
+			return berrors.ConnectionFailureError(0, "received disallowed redirect status code")
 		}
 
 		// Lowercase the redirect host immediately, as the dialer and redirect
@@ -540,7 +543,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 
 		redirPath := req.URL.Path
 		if len(redirPath) > maxPathSize {
-			return berrors.ConnectionFailureError("Redirect target too long")
+			return berrors.ConnectionFailureError(0, "Redirect target too long")
 		}
 
 		// If the redirect URL has query parameters we need to preserve
@@ -554,7 +557,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		// redirect limit, return error.
 		for _, record := range records {
 			if req.URL.String() == record.URL {
-				return berrors.ConnectionFailureError("Redirect loop detected")
+				return berrors.ConnectionFailureError(0, "Redirect loop detected")
 			}
 		}
 
@@ -626,7 +629,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	}
 
 	if httpResponse.StatusCode != 200 {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %d",
+		return nil, records, newIPError(target, berrors.UnauthorizedError(0, "Invalid response from %s: %d",
 			records[len(records)-1].URL, httpResponse.StatusCode))
 	}
 
@@ -635,8 +638,9 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		oldTLS = true
 		if !features.Enabled(features.OldTLSOutbound) {
 			return nil, records, berrors.MalformedError(
-				"validation attempt was redirected to an HTTPS server that doesn't " +
-					"support TLSv1.2 or better. See " +
+				0,
+				"validation attempt was redirected to an HTTPS server that doesn't "+
+					"support TLSv1.2 or better. See "+
 					"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144")
 		}
 	}
@@ -653,13 +657,13 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		err = closeErr
 	}
 	if err != nil {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Error reading HTTP response body: %v", err))
+		return nil, records, newIPError(target, berrors.UnauthorizedError(0, "Error reading HTTP response body: %v", err))
 	}
 
 	// io.LimitedReader will silently truncate a Reader so if the
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
-		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
+		return nil, records, newIPError(target, berrors.UnauthorizedError(0, "Invalid response from %s: %q",
 			records[len(records)-1].URL, replaceInvalidUTF8(body)))
 	}
 	return body, records, nil

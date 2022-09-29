@@ -58,10 +58,9 @@ type BoulderError struct {
 	Detail    string
 	SubErrors []SubBoulderError
 
-	// RetryAfter is the number of milliseconds the client should wait before
-	// retrying the request. Do not return this value directly to clients, use
-	// RetryAfterSeconds instead.
-	RetryAfter int64
+	// RetryAfter the duration a client should wait before retrying the request
+	// which resulted in this error.
+	RetryAfter time.Duration
 }
 
 // SubBoulderError represents sub-errors specific to an identifier that are
@@ -79,122 +78,118 @@ func (be *BoulderError) Unwrap() error {
 	return be.Type
 }
 
-// RetryAfterSeconds returns the value RetryAfter (ms) as a number of seconds
-// that is non-zero unless the RetryAfter field is < 500ms.
-func (be *BoulderError) RetryAfterSeconds() int {
-	return int(time.Duration(be.RetryAfter).Round(time.Second).Seconds())
-}
-
 // WithSubErrors returns a new BoulderError instance created by adding the
 // provided subErrs to the existing BoulderError.
 func (be *BoulderError) WithSubErrors(subErrs []SubBoulderError) *BoulderError {
 	return &BoulderError{
-		Type:      be.Type,
-		Detail:    be.Detail,
-		SubErrors: append(be.SubErrors, subErrs...),
+		Type:       be.Type,
+		Detail:     be.Detail,
+		SubErrors:  append(be.SubErrors, subErrs...),
+		RetryAfter: be.RetryAfter,
 	}
 }
 
 // New is a convenience function for creating a new BoulderError
-func New(errType ErrorType, msg string, args ...interface{}) error {
+func New(errType ErrorType, retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
-		Type:   errType,
-		Detail: fmt.Sprintf(msg, args...),
-	}
-}
-
-func InternalServerError(msg string, args ...interface{}) error {
-	return New(InternalServer, msg, args...)
-}
-
-func MalformedError(msg string, args ...interface{}) error {
-	return New(Malformed, msg, args...)
-}
-
-func UnauthorizedError(msg string, args ...interface{}) error {
-	return New(Unauthorized, msg, args...)
-}
-
-func NotFoundError(msg string, args ...interface{}) error {
-	return New(NotFound, msg, args...)
-}
-
-func RateLimitError(retryAfter int64, msg string, args ...interface{}) error {
-	return &BoulderError{
-		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/", args...),
+		Type:       errType,
+		Detail:     fmt.Sprintf(msg, args...),
 		RetryAfter: retryAfter,
 	}
 }
 
-func DuplicateCertificateError(retryAfter int64, msg string, args ...interface{}) error {
-	return &BoulderError{
-		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/duplicate-certificate-limit/", args...),
-		RetryAfter: retryAfter,
-	}
+func InternalServerError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(InternalServer, retryAfter, msg, args...)
 }
 
-func FailedValidationError(retryAfter int64, msg string, args ...interface{}) error {
-	return &BoulderError{
-		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/failed-validation-limit/", args...),
-		RetryAfter: retryAfter,
-	}
+func MalformedError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(Malformed, retryAfter, msg, args...)
 }
 
-func RegistrationsPerIPError(retryAfter int64, msg string, args ...interface{}) error {
-	return &BoulderError{
-		Type:       RateLimit,
-		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/", args...),
-		RetryAfter: retryAfter,
-	}
+func UnauthorizedError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(Unauthorized, retryAfter, msg, args...)
 }
 
-func RejectedIdentifierError(msg string, args ...interface{}) error {
-	return New(RejectedIdentifier, msg, args...)
+func NotFoundError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(NotFound, retryAfter, msg, args...)
 }
 
-func InvalidEmailError(msg string, args ...interface{}) error {
-	return New(InvalidEmail, msg, args...)
+func RateLimitError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(
+		RateLimit,
+		retryAfter,
+		fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/", args...),
+	)
 }
 
-func ConnectionFailureError(msg string, args ...interface{}) error {
-	return New(ConnectionFailure, msg, args...)
+func DuplicateCertificateError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(
+		RateLimit,
+		retryAfter,
+		fmt.Sprintf(msg+": see https://letsencrypt.org/docs/duplicate-certificate-limit/", args...),
+	)
 }
 
-func CAAError(msg string, args ...interface{}) error {
-	return New(CAA, msg, args...)
+func FailedValidationError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(
+		RateLimit,
+		retryAfter,
+		fmt.Sprintf(msg+": see https://letsencrypt.org/docs/failed-validation-limit/", args...),
+	)
 }
 
-func MissingSCTsError(msg string, args ...interface{}) error {
-	return New(MissingSCTs, msg, args...)
+func RegistrationsPerIPError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(
+		RateLimit,
+		retryAfter,
+		fmt.Sprintf(msg+": see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/", args...),
+	)
 }
 
-func DuplicateError(msg string, args ...interface{}) error {
-	return New(Duplicate, msg, args...)
+func RejectedIdentifierError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(RejectedIdentifier, retryAfter, msg, args...)
 }
 
-func OrderNotReadyError(msg string, args ...interface{}) error {
-	return New(OrderNotReady, msg, args...)
+func InvalidEmailError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(InvalidEmail, retryAfter, msg, args...)
 }
 
-func DNSError(msg string, args ...interface{}) error {
-	return New(DNS, msg, args...)
+func ConnectionFailureError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(ConnectionFailure, retryAfter, msg, args...)
 }
 
-func BadPublicKeyError(msg string, args ...interface{}) error {
-	return New(BadPublicKey, msg, args...)
+func CAAError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(CAA, retryAfter, msg, args...)
 }
 
-func BadCSRError(msg string, args ...interface{}) error {
-	return New(BadCSR, msg, args...)
+func MissingSCTsError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(MissingSCTs, retryAfter, msg, args...)
 }
 
-func AlreadyRevokedError(msg string, args ...interface{}) error {
-	return New(AlreadyRevoked, msg, args...)
+func DuplicateError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(Duplicate, retryAfter, msg, args...)
 }
 
-func BadRevocationReasonError(reason int64) error {
-	return New(BadRevocationReason, "disallowed revocation reason: %d", reason)
+func OrderNotReadyError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(OrderNotReady, retryAfter, msg, args...)
+}
+
+func DNSError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(DNS, retryAfter, msg, args...)
+}
+
+func BadPublicKeyError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(BadPublicKey, retryAfter, msg, args...)
+}
+
+func BadCSRError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(BadCSR, retryAfter, msg, args...)
+}
+
+func AlreadyRevokedError(retryAfter time.Duration, msg string, args ...interface{}) error {
+	return New(AlreadyRevoked, retryAfter, msg, args...)
+}
+
+func BadRevocationReasonError(retryAfter time.Duration, reason int64) error {
+	return New(BadRevocationReason, retryAfter, "disallowed revocation reason: %d", reason)
 }
