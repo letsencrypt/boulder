@@ -30,6 +30,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+var command = path.Base(os.Args[0])
+
 // Because we don't know when this init will be called with respect to
 // flag.Parse() and other flag definitions, we can't rely on the regular
 // flag mechanism. But this one is fine.
@@ -163,7 +165,7 @@ func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, 
 func NewLogger(logConf SyslogConfig) blog.Logger {
 	var logger blog.Logger
 	if logConf.SyslogLevel >= 0 {
-		tag := path.Base(os.Args[0])
+		tag := command
 		syslogger, err := syslog.Dial(
 			"",
 			"",
@@ -197,11 +199,28 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	return logger
 }
 
+func newVersionCollector() prometheus.Collector {
+	return prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "version",
+			Help: fmt.Sprintf(
+				"A metric with a constant value of '1' labeled by the short commit Id from which %s was built.",
+				command,
+			),
+			ConstLabels: prometheus.Labels{
+				"buildId": core.BuildID,
+			},
+		},
+		func() float64 { return 1 },
+	)
+}
+
 func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(
 		collectors.ProcessCollectorOpts{}))
+	registry.MustRegister(newVersionCollector())
 
 	mux := http.NewServeMux()
 	// Register the available pprof handlers. These are all registered on
@@ -280,8 +299,7 @@ func ReadConfigFile(filename string, out interface{}) error {
 
 // VersionString produces a friendly Application version string.
 func VersionString() string {
-	name := path.Base(os.Args[0])
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command, core.BuildID, core.BuildTime, runtime.Version(), core.GetBuildHost())
 }
 
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
