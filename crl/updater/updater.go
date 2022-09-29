@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
@@ -284,6 +285,8 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+
 	start := cu.clk.Now()
 	defer func() {
 		// This func closes over the named return value `err`, so can reference it.
@@ -294,10 +297,13 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
 		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
-	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerNameID, atTime)
 
 	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
+	cu.log.Infof(
+		"Generating CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s]",
+		crlID, expiresAfter, expiresBefore)
 
+	// Get the full list of CRL Entries for this shard from the SA.
 	saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
 		IssuerNameID:  int64(issuerNameID),
 		ExpiresAfter:  expiresAfter.UnixNano(),
@@ -308,6 +314,21 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("connecting to SA: %w", err)
 	}
 
+	var crlEntries []*proto.CRLEntry
+	for {
+		entry, err := saStream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("retrieving entry from SA: %w", err)
+		}
+		crlEntries = append(crlEntries, entry)
+	}
+
+	cu.log.Infof("Queried SA for CRL shard: id=[%s] numEntries=[%s]")
+
+	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
 	if err != nil {
 		return fmt.Errorf("connecting to CA: %w", err)
@@ -326,15 +347,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("sending CA metadata: %w", err)
 	}
 
-	for {
-		entry, err := saStream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("retrieving entry from SA: %w", err)
-		}
-
+	for _, entry := range crlEntries {
 		err = caStream.Send(&capb.GenerateCRLRequest{
 			Payload: &capb.GenerateCRLRequest_Entry{
 				Entry: entry,
@@ -345,14 +358,30 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		}
 	}
 
-	// It's okay to close the CA send stream before we start reading from the
-	// receive stream, because we know that the CA has to hold the entire tbsCRL
-	// in memory before it can sign it and start returning the real CRL.
 	err = caStream.CloseSend()
 	if err != nil {
 		return fmt.Errorf("closing CA request stream: %w", err)
 	}
 
+	// Receive the full bytes of the signed CRL from the CA.
+	crlLen := 0
+	crlHash := sha256.New()
+	var crlChunks [][]byte
+	for {
+		out, err := caStream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("receiving CRL bytes: %w", err)
+		}
+
+		crlLen += len(out.Chunk)
+		crlHash.Write(out.Chunk)
+		crlChunks = append(crlChunks, out.Chunk)
+	}
+
+	// Send the full bytes of the signed CRL to the Storer.
 	csStream, err := cu.cs.UploadCRL(ctx)
 	if err != nil {
 		return fmt.Errorf("connecting to CRLStorer: %w", err)
@@ -371,28 +400,15 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("sending CRLStorer metadata: %w", err)
 	}
 
-	crlLen := 0
-	crlHash := sha256.New()
-	for {
-		out, err := caStream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("receiving CRL bytes: %w", err)
-		}
-
+	for _, chunk := range crlChunks {
 		err = csStream.Send(&cspb.UploadCRLRequest{
 			Payload: &cspb.UploadCRLRequest_CrlChunk{
-				CrlChunk: out.Chunk,
+				CrlChunk: chunk,
 			},
 		})
 		if err != nil {
 			return fmt.Errorf("uploading CRL bytes: %w", err)
 		}
-
-		crlLen += len(out.Chunk)
-		crlHash.Write(out.Chunk)
 	}
 
 	_, err = csStream.CloseAndRecv()
@@ -402,7 +418,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
-		crl.Id(issuerNameID, crl.Number(atTime), shardIdx), crlLen, crlHash.Sum(nil))
+		crlID, crlLen, crlHash.Sum(nil))
 	return nil
 }
 
