@@ -10,7 +10,7 @@ import (
 
 // number represents the 'crlNumber' field of a CRL. It must be constructed by
 // calling `Number()`.
-type number *big.Int
+type number = *big.Int
 
 // Number derives the 'CRLNumber' field for a CRL from the value of the
 // 'thisUpdate' field provided as a `time.Time`.
