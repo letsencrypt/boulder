@@ -21,11 +21,12 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-// startTime is used as a universal starting point against which other times
-// can be compared, because the Go zero time is too far in the past for math
-// to work correctly. The significance of 2009-11-10 23:00:00 is left as an
-// exercise to the reader.
-var startTime = time.Date(2009, time.November, 10, 23, 00, 00, 0, time.UTC)
+// startTime is used as a universal starting point against which other times can
+// be compared. This time must be less than 290 years (2^63-1 nanoseconds) in
+// the past, to ensure that Go's time.Duration can represent that difference.
+// The significance of 2015-06-04 11:04:38 UTC is left as an exercise to the
+// reader.
+var startTime = time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC)
 
 type crlUpdater struct {
 	issuers           map[issuance.IssuerNameID]*issuance.Certificate
