@@ -251,7 +251,7 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 }
 
 // GRPCClientConfig contains the information necessary to setup a gRPC client
-// connection. The following field cominations are allowed:
+// connection. The following field combinations are allowed:
 //
 // ServerIPAddresses, [Timeout]
 // ServerAddress, [Timeout], [DNSAuthority], [HostOverride]
