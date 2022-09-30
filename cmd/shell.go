@@ -14,7 +14,6 @@ import (
 	"os/signal"
 	"path"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -213,14 +212,14 @@ func newVersionCollector() prometheus.Collector {
 			// Should never happen unless the Makefile is changed.
 			buildTime = "Unparsable"
 		} else {
-			buildTime = strconv.FormatInt(bt.Unix(), 10)
+			buildTime = bt.Format(time.RFC3339)
 		}
 	}
 	return prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Name: "version",
 			Help: fmt.Sprintf(
-				"A metric with a constant value of '1' labeled by the buildId=[short commit-id], buildTime=[unix timestamp in seconds], and goVersion=[release tag like 'go1.3']  from which %s was built.",
+				"A metric with a constant value of '1' labeled by the short commit-id (buildId), build timestamp in RFC3339 format (buildTime), and Go release tag like 'go1.3' (goVersion) from which %s was built.",
 				command,
 			),
 			ConstLabels: prometheus.Labels{

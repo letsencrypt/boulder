@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -169,8 +168,7 @@ func Test_newVersionCollector(t *testing.T) {
 	now := time.Now().UTC()
 	core.BuildTime = now.Format(time.UnixDate)
 	version = newVersionCollector()
-	expectBuildTime := strconv.FormatInt(now.Unix(), 10)
-	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildTime": expectBuildTime}, 1)
+	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildTime": now.Format(time.RFC3339)}, 1)
 	// Unparsable timestamp should emit 'Unsparsable'.
 	core.BuildTime = "outta time"
 	version = newVersionCollector()
