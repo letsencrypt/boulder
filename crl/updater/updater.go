@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -480,11 +481,16 @@ func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.T
 
 	// Compute the width of the full window.
 	windowWidth := cu.lookbackPeriod + cu.lookforwardPeriod
+	// Compute the amount of time between the current time and the anchor time.
+	timeSinceAnchor := atTime.Sub(startTime)
+	if timeSinceAnchor == time.Duration(math.MaxInt64) {
+		panic("shard boundary math broken: anchor time too far in the past")
+	}
 	// Compute the amount of time between the left-hand edge of the most recent
 	// "0" chunk and the current time.
-	atTimeOffset := time.Duration(atTime.Sub(startTime).Nanoseconds() % windowWidth.Nanoseconds())
+	timeSinceZero := time.Duration(timeSinceAnchor.Nanoseconds() % windowWidth.Nanoseconds())
 	// Compute the left-hand edge of the most recent "0" chunk.
-	zeroStart := atTime.Add(-atTimeOffset)
+	zeroStart := atTime.Add(-timeSinceZero)
 
 	// Compute the width of a single shard.
 	shardWidth := time.Duration(windowWidth.Nanoseconds() / int64(cu.numShards))
