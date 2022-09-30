@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -158,7 +160,28 @@ func TestGRPCLoggerWarningFilter(t *testing.T) {
 }
 
 func Test_newVersionCollector(t *testing.T) {
-	core.BuildID = "TestBuildID"
+	// 'buildTime'
+	core.BuildTime = core.Unspecified
 	version := newVersionCollector()
-	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildId": "TestBuildID"}, 1)
+	// Default 'Unspecified' should emit 'Unspecified'.
+	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildTime": core.Unspecified}, 1)
+	// Parsable UnixDate should emit UnixTime.
+	now := time.Now().UTC()
+	core.BuildTime = now.Format(time.UnixDate)
+	version = newVersionCollector()
+	expectBuildTime := strconv.FormatInt(now.Unix(), 10)
+	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildTime": expectBuildTime}, 1)
+	// Unparsable timestamp should emit 'Unsparsable'.
+	core.BuildTime = "outta time"
+	version = newVersionCollector()
+	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildTime": "Unparsable"}, 1)
+
+	// 'buildId'
+	expectedBuildID := "TestBuildId"
+	core.BuildID = expectedBuildID
+	version = newVersionCollector()
+	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"buildId": expectedBuildID}, 1)
+
+	// 'goVersion'
+	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"goVersion": runtime.Version()}, 1)
 }

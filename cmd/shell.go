@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -200,15 +201,32 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 }
 
 func newVersionCollector() prometheus.Collector {
+	var buildTime string
+	if core.BuildTime == core.Unspecified {
+		// Will happen if Boulder wasn't built using the Makefile.
+		buildTime = core.Unspecified
+	} else {
+		// core.BuildTime is set by in our Makefile using the shell command 'date
+		// -u' which outputs consistently across all POSIX systems.
+		bt, err := time.Parse(time.UnixDate, core.BuildTime)
+		if err != nil {
+			// Should never happen unless the Makefile is changed.
+			buildTime = "Unparsable"
+		} else {
+			buildTime = strconv.FormatInt(bt.Unix(), 10)
+		}
+	}
 	return prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
 			Name: "version",
 			Help: fmt.Sprintf(
-				"A metric with a constant value of '1' labeled by the short commit Id from which %s was built.",
+				"A metric with a constant value of '1' labeled by the buildId=[short commit-id], buildTime=[unix timestamp in seconds], and goVersion=[release tag like 'go1.3']  from which %s was built.",
 				command,
 			),
 			ConstLabels: prometheus.Labels{
-				"buildId": core.BuildID,
+				"buildId":   core.BuildID,
+				"buildTime": buildTime,
+				"goVersion": runtime.Version(),
 			},
 		},
 		func() float64 { return 1 },
