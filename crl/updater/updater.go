@@ -328,9 +328,8 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	}
 
 	cu.log.Infof(
-		"Queried SA for CRL shard: id=[%s] numEntries=[%s]",
+		"Queried SA for CRL shard: id=[%s] numEntries=[%d]",
 		crlID, len(crlEntries))
-
 
 	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
