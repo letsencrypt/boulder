@@ -3,6 +3,7 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -306,7 +307,11 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
 
-	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
+	expiresAfter, expiresBefore, err := cu.getShardBoundaries(atTime, shardIdx)
+	if err != nil {
+		return err
+	}
+
 	cu.log.Infof(
 		"Generating CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s]",
 		crlID, expiresAfter, expiresBefore)
@@ -475,17 +480,19 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 // there is a buffer of at least one whole chunk width between the actual
 // furthest-future expiration (generally atTime+90d) and the right-hand edge of
 // the window (atTime+lookforwardPeriod).
-func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.Time, time.Time) {
+func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.Time, time.Time, error) {
 	// Ensure that the given shard index falls within the space of acceptable indices.
 	shardIdx = shardIdx % cu.numShards
 
 	// Compute the width of the full window.
 	windowWidth := cu.lookbackPeriod + cu.lookforwardPeriod
+
 	// Compute the amount of time between the current time and the anchor time.
 	timeSinceAnchor := atTime.Sub(startTime)
-	if timeSinceAnchor == time.Duration(math.MaxInt64) {
-		panic("shard boundary math broken: anchor time too far in the past")
+	if timeSinceAnchor == time.Duration(math.MaxInt64) || timeSinceAnchor == time.Duration(math.MinInt64) {
+		return time.Time{}, time.Time{}, errors.New("shard boundary math broken: anchor time too far away")
 	}
+
 	// Compute the amount of time between the left-hand edge of the most recent
 	// "0" chunk and the current time.
 	timeSinceZero := time.Duration(timeSinceAnchor.Nanoseconds() % windowWidth.Nanoseconds())
@@ -509,5 +516,5 @@ func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.T
 		shardStart = shardStart.Add(windowWidth)
 		shardEnd = shardEnd.Add(windowWidth)
 	}
-	return shardStart, shardEnd
+	return shardStart, shardEnd, nil
 }
