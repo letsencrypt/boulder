@@ -25,6 +25,7 @@
         "service": "ra",
         "domain": "service.consul"
       },
+      "hostOverride": "wrong.service.consul",
       "timeout": "15s"
     },
     "saService": {

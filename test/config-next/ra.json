@@ -21,8 +21,8 @@
     ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ra.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/ra.service.consul/key.pem"
+      "certFile": "test/grpc-creds/wrong.service.consul/cert.pem",
+      "keyFile": "test/grpc-creds/wrong.service.consul/key.pem"
     },
     "vaService": {
       "serverAddress": "va.service.consul:9092",

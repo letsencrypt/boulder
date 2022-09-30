@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -57,6 +58,10 @@ func main() {
 		select {
 		case <-ticker.C:
 			fmt.Fprintf(os.Stderr, "Connecting to %s health service\n", *serverAddr)
+
+			if strings.HasPrefix(*serverAddr, "ra") && strings.HasPrefix(*configFile, "test/config-next") {
+				c.GRPC.HostOverride = "wrong.service.consul"
+			}
 
 			// Set up the GRPC connection.
 			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, clientMetrics, clk)

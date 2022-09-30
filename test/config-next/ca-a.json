@@ -12,7 +12,8 @@
       "address": ":9093",
       "clientNames": [
         "health-checker.service.consul",
-        "ra.service.consul"
+        "ra.service.consul",
+        "wrong.service.consul"
       ]
     },
     "grpcOCSPGenerator": {

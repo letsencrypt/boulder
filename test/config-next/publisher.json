@@ -27,7 +27,8 @@
       "clientNames": [
         "health-checker.service.consul",
         "ocsp-updater.service.consul",
-        "ra.service.consul"
+        "ra.service.consul",
+        "wrong.service.consul"
       ]
     },
     "tls": {

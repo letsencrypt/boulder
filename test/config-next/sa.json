@@ -32,7 +32,8 @@
         "orphan-finder.service.consul",
         "ra.service.consul",
         "sa.service.consul",
-        "wfe.service.consul"
+        "wfe.service.consul",
+        "wrong.service.consul"
       ]
     },
     "redis": {
