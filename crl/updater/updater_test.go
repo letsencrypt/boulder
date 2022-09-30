@@ -162,17 +162,6 @@ func TestTickShard(t *testing.T) {
 	}, 1)
 	cu.updatedCounter.Reset()
 
-	// Errors reading from the CA should bubble up sooner.
-	cu.ca = &fakeCGC{gcc: fakeGCC{recvErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
-	test.AssertError(t, err, "CA error")
-	test.AssertContains(t, err.Error(), "receiving CRL bytes")
-	test.AssertErrorIs(t, err, sentinelErr)
-	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
-		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
-	}, 1)
-	cu.updatedCounter.Reset()
-
 	// Errors sending to the Storer should bubble up sooner.
 	cu.cs = &fakeCSC{ucc: fakeUCC{sendErr: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
@@ -184,22 +173,33 @@ func TestTickShard(t *testing.T) {
 	}, 1)
 	cu.updatedCounter.Reset()
 
-	// Errors reading from the SA should bubble up sooner.
-	cu.sa = &fakeSAC{grcc: fakeGRCC{err: sentinelErr}}
+	// Errors reading from the CA should bubble up sooner.
+	cu.ca = &fakeCGC{gcc: fakeGCC{recvErr: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
-	test.AssertError(t, err, "database error")
-	test.AssertContains(t, err.Error(), "retrieving entry from SA")
+	test.AssertError(t, err, "CA error")
+	test.AssertContains(t, err.Error(), "receiving CRL bytes")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
 	}, 1)
 	cu.updatedCounter.Reset()
 
-	// Errors sending to the CA should bubble up soonest.
+	// Errors sending to the CA should bubble up sooner.
 	cu.ca = &fakeCGC{gcc: fakeGCC{sendErr: sentinelErr}}
 	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "sending CA metadata")
+	test.AssertErrorIs(t, err, sentinelErr)
+	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
+		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
+	}, 1)
+	cu.updatedCounter.Reset()
+
+	// Errors reading from the SA should bubble up soonest.
+	cu.sa = &fakeSAC{grcc: fakeGRCC{err: sentinelErr}}
+	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
+	test.AssertError(t, err, "database error")
+	test.AssertContains(t, err.Error(), "retrieving entry from SA")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",

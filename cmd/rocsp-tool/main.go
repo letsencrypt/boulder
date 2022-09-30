@@ -74,10 +74,11 @@ func main() {
 	}
 }
 
-var startFromID = flag.Int64("start-from-id", 0, "For load-from-db, the first ID in the certificateStatus table to scan")
+var startFromID *int64
 
 func main2() error {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	startFromID = flag.Int64("start-from-id", 0, "For load-from-db, the first ID in the certificateStatus table to scan")
 	flag.Usage = helpExit
 	flag.Parse()
 	if *configFile == "" || len(flag.Args()) < 1 {
