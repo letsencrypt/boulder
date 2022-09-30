@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"math/big"
 	"sort"
 	"strings"
 	"time"
@@ -168,8 +169,8 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
 				cu.log.AuditErrf(
-					"Generating CRLs failed: number=[%d] err=[%s]",
-					crl.Number(atTime), err)
+					"Generating CRLs failed: number=[%s] err=[%s]",
+					(*big.Int)(crl.Number(atTime)), err)
 			}
 		case <-ctx.Done():
 			ticker.Stop()
@@ -202,7 +203,7 @@ func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 		if err != nil {
 			cu.log.AuditErrf(
 				"Generating CRLs for issuer failed: number=[%d] issuer=[%s] err=[%s]",
-				crl.Number(atTime), cu.issuers[id].Subject.CommonName, err)
+				(*big.Int)(crl.Number(atTime)), cu.issuers[id].Subject.CommonName, err)
 			errIssuers = append(errIssuers, cu.issuers[id].Subject.CommonName)
 		}
 	}
@@ -327,7 +328,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	}
 
 	cu.log.Infof(
-		"Queried SA for CRL shard: id=[%s] numEntries=[%s]",
+		"Queried SA for CRL shard: id=[%s] numEntries=[%d]",
 		crlID, len(crlEntries))
 
 	// Send the full list of CRL Entries to the CA.
