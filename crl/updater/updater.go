@@ -21,6 +21,12 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
+// startTime is used as a universal starting point against which other times
+// can be compared, because the Go zero time is too far in the past for math
+// to work correctly. The significance of 2009-11-10 23:00:00 is left as an
+// exercise to the reader.
+var startTime = time.Date(2009, time.November, 10, 23, 00, 00, 0, time.UTC)
+
 type crlUpdater struct {
 	issuers           map[issuance.IssuerNameID]*issuance.Certificate
 	numShards         int
@@ -475,7 +481,7 @@ func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.T
 	windowWidth := cu.lookbackPeriod + cu.lookforwardPeriod
 	// Compute the amount of time between the left-hand edge of the most recent
 	// "0" chunk and the current time.
-	atTimeOffset := time.Duration(atTime.Sub(time.Time{}).Nanoseconds() % windowWidth.Nanoseconds())
+	atTimeOffset := time.Duration(atTime.Sub(startTime).Nanoseconds() % windowWidth.Nanoseconds())
 	// Compute the left-hand edge of the most recent "0" chunk.
 	zeroStart := atTime.Add(-atTimeOffset)
 
