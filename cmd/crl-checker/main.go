@@ -45,9 +45,11 @@ func validateShard(crl *crl_x509.RevocationList, issuer *issuance.Certificate, a
 		return fmt.Errorf("linting CRL: %w", err)
 	}
 
-	err = crl.CheckSignatureFrom(issuer.Certificate)
-	if err != nil {
-		return fmt.Errorf("checking CRL signature: %w", err)
+	if issuer != nil {
+		err = crl.CheckSignatureFrom(issuer.Certificate)
+		if err != nil {
+			return fmt.Errorf("checking CRL signature: %w", err)
+		}
 	}
 
 	if time.Since(crl.ThisUpdate) >= ageLimit {
@@ -73,8 +75,17 @@ func main() {
 	err = json.Unmarshal(urlFileContents, &urls)
 	cmd.FailOnError(err, "Parsing JSON Array of CRL URLs")
 
-	issuer, err := issuance.LoadCertificate(*issuerFile)
-	cmd.FailOnError(err, "Loading issuer certificate")
+	if *issuerFile == "" {
+		cmd.Fail("-issuer is required, but may be '-' to disable validation")
+	}
+
+	var issuer *issuance.Certificate
+	if *issuerFile != "-" {
+		issuer, err = issuance.LoadCertificate(*issuerFile)
+		cmd.FailOnError(err, "Loading issuer certificate")
+	} else {
+		logger.Warning("CRL signature validation disabled")
+	}
 
 	ageLimit, err := time.ParseDuration(*ageLimitStr)
 	cmd.FailOnError(err, "Parsing age limit")
