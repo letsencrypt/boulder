@@ -96,18 +96,20 @@ func main() {
 			continue
 		}
 
-		if *emitRevoked {
-			for _, c := range crl.RevokedCertificates {
-				serial := core.SerialToString(c.SerialNumber)
-				fmt.Println(serial)
-
-				if _, seen := seenSerials[serial]; seen {
-					errCount += 1
-					logger.Errf("Serial %s seen in multiple shards")
-				} else {
-					seenSerials[serial] = struct{}{}
-				}
+		for _, c := range crl.RevokedCertificates {
+			serial := core.SerialToString(c.SerialNumber)
+			if _, seen := seenSerials[serial]; seen {
+				errCount += 1
+				logger.Errf("serial seen in multiple shards: %s", serial)
+				continue
 			}
+			seenSerials[serial] = struct{}{}
+		}
+	}
+
+	if *emitRevoked {
+		for serial := range seenSerials {
+			fmt.Println(serial)
 		}
 	}
 
