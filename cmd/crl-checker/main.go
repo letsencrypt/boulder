@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -64,7 +63,7 @@ func main() {
 	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk")
 	ageLimitStr := flag.String("ageLimit", "168h", "maximum allowable age of a CRL shard")
 	emitRevoked := flag.Bool("emitRevoked", false, "emit revoked serial numbers on stdout, one per line, hex-encoded")
-	save := flag.Bool("save", false, "save CRLs to files named after the last component of their URL")
+	save := flag.Bool("save", false, "save CRLs to files named after the URL")
 	flag.Parse()
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1})
@@ -97,8 +96,8 @@ func main() {
 				logger.Errf("parsing url: %s", err)
 				continue
 			}
-			filename := fmt.Sprintf("%s%s", parsedURL.Host, strings.Replace(parsedURL.Path, "/", "_", -1))
-			err = ioutil.WriteFile(filename, crl.Raw, 0660)
+			filename := fmt.Sprintf("%s%s", parsedURL.Host, strings.ReplaceAll(parsedURL.Path, "/", "_"))
+			err = os.WriteFile(filename, crl.Raw, 0660)
 			if err != nil {
 				logger.Errf("writing file: %s", err)
 				continue
