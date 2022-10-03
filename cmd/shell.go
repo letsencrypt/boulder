@@ -202,9 +202,9 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 
 func newVersionCollector() prometheus.Collector {
 	buildTime := core.Unspecified
-	if core.BuildTime != core.Unspecified {
-		// core.BuildTime is set by in our Makefile using the shell command 'date
-		// -u' which outputs consistently across all POSIX systems.
+	if core.GetBuildTime() != core.Unspecified {
+		// core.BuildTime is set by our Makefile using the shell command 'date
+		// -u' which outputs in a consistent format across all POSIX systems.
 		bt, err := time.Parse(time.UnixDate, core.BuildTime)
 		if err != nil {
 			// Should never happen unless the Makefile is changed.
@@ -221,7 +221,7 @@ func newVersionCollector() prometheus.Collector {
 				command(),
 			),
 			ConstLabels: prometheus.Labels{
-				"buildId":   core.BuildID,
+				"buildId":   core.GetBuildID(),
 				"buildTime": buildTime,
 				"goVersion": runtime.Version(),
 			},
@@ -314,7 +314,7 @@ func ReadConfigFile(filename string, out interface{}) error {
 
 // VersionString produces a friendly Application version string.
 func VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command(), core.BuildID, core.BuildTime, runtime.Version(), core.GetBuildHost())
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
