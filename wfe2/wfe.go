@@ -993,7 +993,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	case embeddedJWK:
 		err = wfe.revokeCertByCertKey(ctx, jws, request, logEvent)
 	default:
-		err = berrors.MalformedError(0, "Malformed JWS, no KeyID or embedded JWK")
+		err = berrors.MalformedError("Malformed JWS, no KeyID or embedded JWK")
 	}
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to revoke"), nil)

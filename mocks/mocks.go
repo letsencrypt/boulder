@@ -63,7 +63,7 @@ func (sa *StorageAuthority) GetRegistration(_ context.Context, req *sapb.Registr
 	}
 	if req.Id == 102 {
 		// Tag meaning "Not Found"
-		return nil, berrors.NotFoundError(0, "Dave's not here man")
+		return nil, berrors.NotFoundError("Dave's not here man")
 	}
 
 	goodReg := &corepb.Registration{
@@ -142,17 +142,17 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JS
 
 	if bytes.Equal(req.Jwk, []byte(test2KeyPublicJSON)) {
 		// No key found
-		return &corepb.Registration{Id: 2}, berrors.NotFoundError(0, "reg not found")
+		return &corepb.Registration{Id: 2}, berrors.NotFoundError("reg not found")
 	}
 
 	if bytes.Equal(req.Jwk, []byte(test4KeyPublicJSON)) {
 		// No key found
-		return &corepb.Registration{Id: 5}, berrors.NotFoundError(0, "reg not found")
+		return &corepb.Registration{Id: 5}, berrors.NotFoundError("reg not found")
 	}
 
 	if bytes.Equal(req.Jwk, test5KeyPublicJSON) {
 		// No key found
-		return &corepb.Registration{Id: 5}, berrors.NotFoundError(0, "reg not found")
+		return &corepb.Registration{Id: 5}, berrors.NotFoundError("reg not found")
 	}
 
 	if bytes.Equal(req.Jwk, []byte(testE1KeyPublicJSON)) {
@@ -160,7 +160,7 @@ func (sa *StorageAuthority) GetRegistrationByKey(_ context.Context, req *sapb.JS
 	}
 
 	if bytes.Equal(req.Jwk, []byte(testE2KeyPublicJSON)) {
-		return &corepb.Registration{Id: 4}, berrors.NotFoundError(0, "reg not found")
+		return &corepb.Registration{Id: 4}, berrors.NotFoundError("reg not found")
 	}
 
 	if bytes.Equal(req.Jwk, []byte(test3KeyPublicJSON)) {
@@ -216,7 +216,7 @@ func (sa *StorageAuthority) GetCertificate(_ context.Context, req *sapb.Serial, 
 	} else if req.Serial == "000000000000000000000000000000626164" {
 		return nil, errors.New("bad")
 	} else {
-		return nil, berrors.NotFoundError(0, "No cert")
+		return nil, berrors.NotFoundError("No cert")
 	}
 }
 
@@ -367,7 +367,7 @@ func (sa *StorageAuthority) FinalizeOrder(_ context.Context, req *sapb.FinalizeO
 // GetOrder is a mock
 func (sa *StorageAuthority) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
 	if req.Id == 2 {
-		return nil, berrors.NotFoundError(0, "bad")
+		return nil, berrors.NotFoundError("bad")
 	} else if req.Id == 3 {
 		return nil, errors.New("very bad")
 	}
@@ -542,7 +542,7 @@ func (sa *StorageAuthority) GetAuthorization2(ctx context.Context, id *sapb.Auth
 		return bgrpc.AuthzToPB(authz)
 	}
 
-	return nil, berrors.NotFoundError(0, "no authorization found with id %q", id)
+	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }
 
 // RevokeCertificate is a mock
@@ -675,5 +675,5 @@ func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sap
 		authz.Challenges[0].Error = prob
 		return bgrpc.AuthzToPB(authz)
 	}
-	return nil, berrors.NotFoundError(0, "no authorization found with id %q", id)
+	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }

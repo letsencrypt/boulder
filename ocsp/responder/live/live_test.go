@@ -37,7 +37,7 @@ func (m mockOCSPGenerator) GenerateOCSP(ctx context.Context, in *rapb.GenerateOC
 type notFoundOCSPGenerator struct{}
 
 func (n notFoundOCSPGenerator) GenerateOCSP(ctx context.Context, in *rapb.GenerateOCSPRequest, opts ...grpc.CallOption) (*capb.OCSPResponse, error) {
-	return nil, berrors.NotFoundError(0, "not found")
+	return nil, berrors.NotFoundError("not found")
 }
 
 func TestLiveResponse(t *testing.T) {

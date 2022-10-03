@@ -54,7 +54,7 @@ func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb
 	)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError(0, "serial %q not found", req.Serial)
+			return nil, berrors.NotFoundError("serial %q not found", req.Serial)
 		}
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 		if row.Count > 0 {
-			return nil, berrors.DuplicateError(0, "cannot add a duplicate cert")
+			return nil, berrors.DuplicateError("cannot add a duplicate cert")
 		}
 
 		err = txWithCtx.Insert(preCertModel)
@@ -171,7 +171,6 @@ func (ssa *SQLStorageAuthority) GetPrecertificate(ctx context.Context, req *sapb
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError(
-				0,
 				"precertificate with serial %q not found",
 				req.Serial)
 		}

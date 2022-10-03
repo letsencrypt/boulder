@@ -42,7 +42,7 @@ type fakeRegStore struct {
 func (f fakeRegStore) GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	r, ok := f.RegByID[req.Id]
 	if !ok {
-		return r, berrors.NotFoundError(0, "no registration found for %q", req.Id)
+		return r, berrors.NotFoundError("no registration found for %q", req.Id)
 	}
 	return r, nil
 }

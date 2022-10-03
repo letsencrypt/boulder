@@ -50,19 +50,19 @@ func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateReq
 
 func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if len(m.certificates) == 0 {
-		return nil, berrors.NotFoundError(0, "no certs stored")
+		return nil, berrors.NotFoundError("no certs stored")
 	}
 	for _, cert := range m.certificates {
 		if cert.Serial == req.Serial {
 			return cert, nil
 		}
 	}
-	return nil, berrors.NotFoundError(0, "no cert stored for requested serial")
+	return nil, berrors.NotFoundError("no cert stored for requested serial")
 }
 
 func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
-		return nil, berrors.InternalServerError(0, "Incomplete request")
+		return nil, berrors.InternalServerError("Incomplete request")
 	}
 	parsed, err := x509.ParseCertificate(req.Der)
 	if err != nil {
@@ -84,14 +84,14 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 
 func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
 	if len(m.precertificates) == 0 {
-		return nil, berrors.NotFoundError(0, "no precerts stored")
+		return nil, berrors.NotFoundError("no precerts stored")
 	}
 	for _, precert := range m.precertificates {
 		if precert.Serial == req.Serial {
 			return bgrpc.CertToPB(precert), nil
 		}
 	}
-	return nil, berrors.NotFoundError(0, "no precert stored for requested serial")
+	return nil, berrors.NotFoundError("no precert stored for requested serial")
 }
 
 func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {

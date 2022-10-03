@@ -137,7 +137,7 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 	// that has been administratively blocked.
 	if policy.blockedList != nil {
 		if blocked, err := policy.blockedList.blocked(key); err != nil {
-			return berrors.InternalServerError(0, "error checking blocklist for key: %v", key)
+			return berrors.InternalServerError("error checking blocklist for key: %v", key)
 		} else if blocked {
 			return badKey("public key is forbidden")
 		}

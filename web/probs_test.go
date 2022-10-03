@@ -29,14 +29,14 @@ func TestProblemDetailsFromError(t *testing.T) {
 	}{
 		// boulder/errors error types
 		//   Internal server errors expect just the `errMsg` in detail.
-		{berrors.InternalServerError(0, detailMsg), 500, probs.ServerInternalProblem, errMsg},
+		{berrors.InternalServerError(detailMsg), 500, probs.ServerInternalProblem, errMsg},
 		//   Other errors expect the full detail message
-		{berrors.MalformedError(0, detailMsg), 400, probs.MalformedProblem, fullDetail},
-		{berrors.UnauthorizedError(0, detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
-		{berrors.NotFoundError(0, detailMsg), 404, probs.MalformedProblem, fullDetail},
+		{berrors.MalformedError(detailMsg), 400, probs.MalformedProblem, fullDetail},
+		{berrors.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
+		{berrors.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
 		{berrors.RateLimitError(0, detailMsg), 429, probs.RateLimitedProblem, fullDetail + ": see https://letsencrypt.org/docs/rate-limits/"},
-		{berrors.InvalidEmailError(0, detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
-		{berrors.RejectedIdentifierError(0, detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
+		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
+		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
 	}
 	for _, c := range testCases {
 		p := ProblemDetailsForError(c.err, errMsg)

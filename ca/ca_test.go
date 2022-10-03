@@ -149,11 +149,11 @@ func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ..
 }
 
 func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError(0, "cannot find the cert")
+	return nil, berrors.NotFoundError("cannot find the cert")
 }
 
 func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError(0, "cannot find the precert")
+	return nil, berrors.NotFoundError("cannot find the precert")
 }
 
 var caKey crypto.Signer
@@ -916,7 +916,7 @@ func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRe
 	if qsa.fail {
 		return nil, errors.New("bad")
 	} else if qsa.duplicate {
-		return nil, berrors.DuplicateError(0, "is a dupe")
+		return nil, berrors.DuplicateError("is a dupe")
 	}
 	qsa.issued = time.Unix(0, req.Issued).UTC()
 	return nil, nil
@@ -926,7 +926,7 @@ func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertific
 	if qsa.fail {
 		return nil, errors.New("bad")
 	} else if qsa.duplicate {
-		return nil, berrors.DuplicateError(0, "is a dupe")
+		return nil, berrors.DuplicateError("is a dupe")
 	}
 	qsa.issuedPrecert = time.Unix(0, req.Issued).UTC()
 	return nil, nil

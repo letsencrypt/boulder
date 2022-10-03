@@ -629,7 +629,7 @@ type remoteValidationResult struct {
 // when it also contains a problem.
 func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest) (*vapb.ValidationResult, error) {
 	if core.IsAnyNilOrZero(req, req.Domain, req.Challenge, req.Authz) {
-		return nil, berrors.InternalServerError(0, "Incomplete validation request")
+		return nil, berrors.InternalServerError("Incomplete validation request")
 	}
 	logEvent := verificationRequestEvent{
 		ID:        req.Authz.Id,

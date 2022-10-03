@@ -35,13 +35,13 @@ var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 }
 
 var (
-	invalidPubKey        = berrors.BadCSRError(0, "invalid public key in CSR")
-	unsupportedSigAlg    = berrors.BadCSRError(0, "signature algorithm not supported")
-	invalidSig           = berrors.BadCSRError(0, "invalid signature on CSR")
-	invalidEmailPresent  = berrors.BadCSRError(0, "CSR contains one or more email address fields")
-	invalidIPPresent     = berrors.BadCSRError(0, "CSR contains one or more IP address fields")
-	invalidNoDNS         = berrors.BadCSRError(0, "at least one DNS name is required")
-	invalidAllSANTooLong = berrors.BadCSRError(0, "CSR doesn't contain a SAN short enough to fit in CN")
+	invalidPubKey        = berrors.BadCSRError("invalid public key in CSR")
+	unsupportedSigAlg    = berrors.BadCSRError("signature algorithm not supported")
+	invalidSig           = berrors.BadCSRError("invalid signature on CSR")
+	invalidEmailPresent  = berrors.BadCSRError("CSR contains one or more email address fields")
+	invalidIPPresent     = berrors.BadCSRError("CSR contains one or more IP address fields")
+	invalidNoDNS         = berrors.BadCSRError("at least one DNS name is required")
+	invalidAllSANTooLong = berrors.BadCSRError("CSR doesn't contain a SAN short enough to fit in CN")
 )
 
 // VerifyCSR checks the validity of a x509.CertificateRequest. Before doing checks it normalizes
@@ -56,9 +56,9 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	err := keyPolicy.GoodKey(ctx, key)
 	if err != nil {
 		if errors.Is(err, goodkey.ErrBadKey) {
-			return berrors.BadCSRError(0, "invalid public key in CSR: %s", err)
+			return berrors.BadCSRError("invalid public key in CSR: %s", err)
 		}
-		return berrors.InternalServerError(0, "error checking key validity: %s", err)
+		return berrors.InternalServerError("error checking key validity: %s", err)
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg
@@ -71,7 +71,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		oidSeen := make(map[string]bool)
 		for _, ext := range csr.Extensions {
 			if oidSeen[ext.Id.String()] {
-				return berrors.MalformedError(0, "extension OID %q appears twice in your CSR. File an issue with the maintainer of your ACME client.", ext.Id)
+				return berrors.MalformedError("extension OID %q appears twice in your CSR. File an issue with the maintainer of your ACME client.", ext.Id)
 			}
 			oidSeen[ext.Id.String()] = true
 		}
@@ -94,10 +94,10 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return invalidAllSANTooLong
 	}
 	if len(csr.Subject.CommonName) > maxCNLength {
-		return berrors.BadCSRError(0, "CN was longer than %d bytes", maxCNLength)
+		return berrors.BadCSRError("CN was longer than %d bytes", maxCNLength)
 	}
 	if len(csr.DNSNames) > maxNames {
-		return berrors.BadCSRError(0, "CSR contains more than %d DNS names", maxNames)
+		return berrors.BadCSRError("CSR contains more than %d DNS names", maxNames)
 	}
 	idents := make([]identifier.ACMEIdentifier, len(csr.DNSNames))
 	for i, dnsName := range csr.DNSNames {

@@ -109,7 +109,7 @@ func (oi *ocspImpl) Stop() {
 func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	// req.Status, req.Reason, and req.RevokedAt are often 0, for non-revoked certs.
 	if core.IsAnyNilOrZero(req, req.Serial, req.IssuerID) {
-		return nil, berrors.InternalServerError(0, "Incomplete generate OCSP request")
+		return nil, berrors.InternalServerError("Incomplete generate OCSP request")
 	}
 
 	serialInt, err := core.StringToSerial(req.Serial)

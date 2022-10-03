@@ -137,7 +137,7 @@ func TestHTTPValidationTarget(t *testing.T) {
 		{
 			Name:          "No IPs for host",
 			Host:          "always.invalid",
-			ExpectedError: berrors.DNSError(0, "No valid IP addresses found for always.invalid"),
+			ExpectedError: berrors.DNSError("No valid IP addresses found for always.invalid"),
 		},
 		{
 			Name:        "Only IPv4 addrs for host",
@@ -646,7 +646,7 @@ func (e *testNetErr) Timeout() bool {
 
 func TestFallbackErr(t *testing.T) {
 	untypedErr := errors.New("the least interesting kind of error")
-	berr := berrors.InternalServerError(0, "code violet: class neptune")
+	berr := berrors.InternalServerError("code violet: class neptune")
 	netOpErr := &net.OpError{
 		Op:  "siphon",
 		Err: fmt.Errorf("port was clogged. please empty packets"),

@@ -64,7 +64,7 @@ func (si *serverInterceptor) interceptUnary(
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler) (interface{}, error) {
 	if info == nil {
-		return nil, berrors.InternalServerError(0, "passed nil *grpc.UnaryServerInfo")
+		return nil, berrors.InternalServerError("passed nil *grpc.UnaryServerInfo")
 	}
 
 	// Extract the grpc metadata from the context. If the context has
@@ -188,7 +188,7 @@ func (si *serverInterceptor) observeLatency(clientReqTime string) error {
 	// Convert the metadata request time into an int64
 	reqTimeUnixNanos, err := strconv.ParseInt(clientReqTime, 10, 64)
 	if err != nil {
-		return berrors.InternalServerError(0, "grpc metadata had illegal %s value: %q - %s",
+		return berrors.InternalServerError("grpc metadata had illegal %s value: %q - %s",
 			clientRequestTimeKey, clientReqTime, err)
 	}
 	// Calculate the elapsed time since the client sent the RPC
@@ -224,7 +224,7 @@ func (ci *clientInterceptor) interceptUnary(
 	// This should not occur but fail fast with a clear error if it does (e.g.
 	// because of buggy unit test code) instead of a generic nil panic later!
 	if ci.metrics.inFlightRPCs == nil {
-		return berrors.InternalServerError(0, "clientInterceptor has nil inFlightRPCs gauge")
+		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
 	// Ensure that the context has a deadline set.
@@ -333,7 +333,7 @@ func (ci *clientInterceptor) interceptStream(
 	// This should not occur but fail fast with a clear error if it does (e.g.
 	// because of buggy unit test code) instead of a generic nil panic later!
 	if ci.metrics.inFlightRPCs == nil {
-		return nil, berrors.InternalServerError(0, "clientInterceptor has nil inFlightRPCs gauge")
+		return nil, berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
 	// We don't defer cancel() here, because this function is going to return

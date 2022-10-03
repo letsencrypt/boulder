@@ -163,7 +163,7 @@ func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode 
 	certObj, err := sa.SelectPrecertificate(r.dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return berrors.NotFoundError(0, "precertificate with serial %q not found", serial)
+			return berrors.NotFoundError("precertificate with serial %q not found", serial)
 		}
 		return err
 	}
@@ -401,7 +401,7 @@ func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) ([]string, error) {
 	_, err := r.dbMap.Select(&h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
 	if err != nil {
 		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError(0, "no certificates with a matching SPKI hash were found")
+			return nil, berrors.NotFoundError("no certificates with a matching SPKI hash were found")
 		}
 		return nil, err
 	}
