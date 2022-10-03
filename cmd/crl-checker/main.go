@@ -92,6 +92,8 @@ func main() {
 
 	errCount := 0
 	seenSerials := make(map[string]struct{})
+	totalBytes := 0
+	oldestTimestamp := time.Time{}
 	for _, url := range urls {
 		crl, err := downloadShard(url)
 		if err != nil {
@@ -100,11 +102,17 @@ func main() {
 			continue
 		}
 
+		totalBytes += len(crl.Raw)
+
 		err = validateShard(crl, issuer, ageLimit)
 		if err != nil {
 			errCount += 1
 			logger.Errf("checking CRL %q failed: %s", url, err)
 			continue
+		}
+
+		if oldestTimestamp.IsZero() || crl.ThisUpdate.Before(oldestTimestamp) {
+			oldestTimestamp = crl.ThisUpdate
 		}
 
 		for _, c := range crl.RevokedCertificates {
@@ -127,7 +135,10 @@ func main() {
 	if errCount != 0 {
 		cmd.Fail(fmt.Sprintf("Encountered %d errors", errCount))
 	}
-	logger.AuditInfo("All CRLs validated")
+
+	logger.AuditInfof(
+		"Validated %d CRLs, %d serials, %d bytes. Oldest CRL: %s",
+		len(urls), len(seenSerials), totalBytes, oldestTimestamp.Format(time.RFC3339))
 }
 
 func init() {
