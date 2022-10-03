@@ -30,7 +30,9 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-var command = func() string { return path.Base(os.Args[0]) }()
+func command() string {
+  return path.Base(os.Args[0])
+}
 
 // Because we don't know when this init will be called with respect to
 // flag.Parse() and other flag definitions, we can't rely on the regular
