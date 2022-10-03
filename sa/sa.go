@@ -2264,7 +2264,7 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 	defer func() {
 		err := rows.Close()
 		if err != nil {
-			ssa.log.AuditErrf("closing row reader: %w", err)
+			ssa.log.AuditErrf("closing row reader: %s", err)
 		}
 	}()
 
