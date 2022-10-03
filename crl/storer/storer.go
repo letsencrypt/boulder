@@ -166,23 +166,21 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		ContentType:       &crlContentType,
 		Metadata:          map[string]string{"crlNumber": crlNumber.String()},
 	})
-	if err != nil {
-		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
-		cs.log.AuditErrf("CRL upload failed: id=[%s] err=[%s]", crlId, err)
-	} else {
-		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
-		cs.log.AuditInfof(
-			"CRL uploaded: id=[%s] issuerCN=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-			crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
-		)
-	}
 
 	latency := cs.clk.Now().Sub(start)
 	cs.latencyHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(latency.Seconds())
 
 	if err != nil {
+		cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "failed").Inc()
+		cs.log.AuditErrf("CRL upload failed: id=[%s] err=[%s]", crlId, err)
 		return fmt.Errorf("uploading to S3: %w", err)
 	}
+
+	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
+	cs.log.AuditInfof(
+		"CRL uploaded: id=[%s] issuerCN=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
+		crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
+	)
 
 	return stream.SendAndClose(&emptypb.Empty{})
 }
