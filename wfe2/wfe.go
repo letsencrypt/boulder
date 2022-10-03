@@ -74,6 +74,8 @@ const (
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
+
+	headerRetryAfter = "Retry-After"
 )
 
 var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
@@ -584,6 +586,16 @@ func (wfe *WebFrontEndImpl) Nonce(
 
 // sendError wraps web.SendError
 func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *web.RequestEvent, prob *probs.ProblemDetails, ierr error) {
+	var bErr *berrors.BoulderError
+	if errors.As(ierr, &bErr) {
+		retryAfterSeconds := int(bErr.RetryAfter.Round(time.Second).Seconds())
+		if retryAfterSeconds > 0 {
+			response.Header().Add(headerRetryAfter, strconv.Itoa(retryAfterSeconds))
+			if bErr.Type == berrors.RateLimit {
+				response.Header().Add("Link", link("https://letsencrypt.org/docs/rate-limits", "help"))
+			}
+		}
+	}
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
 	web.SendError(wfe.log, probs.V2ErrorNS, response, logEvent, prob, ierr)
 }
@@ -2304,7 +2316,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
 	setDefaultRetryAfterHeader := func(response http.ResponseWriter) {
-		response.Header().Set("Retry-After", fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
+		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
 	}
 
 	// Check if the serial is part of an ongoing incident.
