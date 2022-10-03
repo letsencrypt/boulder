@@ -61,7 +61,7 @@ func validateShard(crl *crl_x509.RevocationList, issuer *issuance.Certificate, a
 
 func main() {
 	urlFile := flag.String("crls", "", "path to a file containing a JSON Array of CRL URLs")
-	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk")
+	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk, required, '-' to disable validation")
 	ageLimitStr := flag.String("ageLimit", "168h", "maximum allowable age of a CRL shard")
 	emitRevoked := flag.Bool("emitRevoked", false, "emit revoked serial numbers on stdout, one per line, hex-encoded")
 	flag.Parse()
