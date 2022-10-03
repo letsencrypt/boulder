@@ -21,7 +21,8 @@ import (
 
 // A Logger logs messages with explicit priority levels. It is
 // implemented by a logging back-end as provided by New() or
-// NewMock().
+// NewMock(). Any additions to this interface with format strings should be
+// added to the govet configuration in .golangci.yml
 type Logger interface {
 	Err(msg string)
 	Errf(format string, a ...interface{})
