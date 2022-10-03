@@ -21,41 +21,58 @@
     ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ra.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/ra.service.consul/key.pem"
+      "certFile": "test/grpc-creds/ra.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ra.boulder/key.pem"
     },
     "vaService": {
-      "serverAddress": "va.service.consul:9092",
-      "timeout": "20s"
+      "srvLookup": {
+        "service": "va",
+        "domain": "service.consul"
+      },
+      "timeout": "20s",
+      "hostOverride": "va.boulder"
     },
     "caService": {
-      "serverAddress": "ca.service.consul:9093",
-      "timeout": "15s"
+      "srvLookup": {
+        "service": "ca",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "ca.boulder"
     },
     "publisherService": {
-      "serverAddress": "publisher.service.consul:9091",
-      "timeout": "300s"
+      "srvLookup": {
+        "service": "publisher",
+        "domain": "service.consul"
+      },
+      "timeout": "300s",
+      "hostOverride": "publisher.boulder"
     },
     "saService": {
-      "serverIPAddresses": [
-        "10.77.77.77:9095",
-        "10.88.88.88:9095"
-      ],
-      "timeout": "15s"
+      "srvLookup": {
+        "service": "sa",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "sa.boulder"
     },
     "akamaiPurgerService": {
-      "serverAddress": "akamai-purger.service.consul:9099",
-      "timeout": "15s"
+      "srvLookup": {
+        "service": "akamai-purger",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "akamai-purger.boulder"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9094",
       "clientNames": [
-        "admin-revoker.service.consul",
-        "bad-key-revoker.service.consul",
-        "health-checker.service.consul",
-        "ocsp-responder.service.consul",
-        "wfe.service.consul"
+        "admin-revoker.boulder",
+        "bad-key-revoker.boulder",
+        "health-checker.boulder",
+        "ocsp-responder.boulder",
+        "wfe.boulder"
       ]
     },
     "features": {

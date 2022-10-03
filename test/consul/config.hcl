@@ -70,7 +70,7 @@ services {
 
 services {
   id      = "ca-ocsp-a"
-  name    = "ca"
+  name    = "ca-ocsp"
   address = "10.77.77.77"
   port    = 9096
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
@@ -78,7 +78,7 @@ services {
 
 services {
   id      = "ca-ocsp-b"
-  name    = "ca"
+  name    = "ca-ocsp"
   address = "10.88.88.88"
   port    = 9096
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
@@ -86,7 +86,7 @@ services {
 
 services {
   id      = "ca-crl-a"
-  name    = "ca"
+  name    = "ca-crl"
   address = "10.77.77.77"
   port    = 9106
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
@@ -94,7 +94,7 @@ services {
 
 services {
   id      = "ca-crl-b"
-  name    = "ca"
+  name    = "ca-crl"
   address = "10.88.88.88"
   port    = 9106
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.

@@ -3,15 +3,15 @@
     "debugAddr": ":9667",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/crl-storer.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/crl-storer.service.consul/key.pem"
+      "certFile": "test/grpc-creds/crl-storer.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/crl-storer.boulder/key.pem"
     },
     "grpc": {
       "address": ":9109",
       "maxConnectionAge": "30s",
       "clientNames": [
-        "health-checker.service.consul",
-        "crl-updater.service.consul"
+        "health-checker.boulder",
+        "crl-updater.boulder"
       ]
     },
     "issuerCerts": [

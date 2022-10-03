@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -57,6 +58,11 @@ func main() {
 		select {
 		case <-ticker.C:
 			fmt.Fprintf(os.Stderr, "Connecting to %s health service\n", *serverAddr)
+			_, hostOverride, err := c.GRPC.MakeTargetAndHostOverride()
+			cmd.FailOnError(err, "")
+
+			// Set the hostOverride to match the dNSName in the server certificate.
+			c.GRPC.HostOverride = strings.Replace(hostOverride, ".service.consul", ".boulder", 1)
 
 			// Set up the GRPC connection.
 			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, clientMetrics, clk)
