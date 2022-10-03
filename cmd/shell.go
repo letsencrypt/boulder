@@ -31,7 +31,7 @@ import (
 )
 
 func command() string {
-  return path.Base(os.Args[0])
+	return path.Base(os.Args[0])
 }
 
 // Because we don't know when this init will be called with respect to
@@ -167,12 +167,11 @@ func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, 
 func NewLogger(logConf SyslogConfig) blog.Logger {
 	var logger blog.Logger
 	if logConf.SyslogLevel >= 0 {
-		tag := command
 		syslogger, err := syslog.Dial(
 			"",
 			"",
 			syslog.LOG_INFO, // default, not actually used
-			tag)
+			command())
 		FailOnError(err, "Could not connect to Syslog")
 		syslogLevel := int(syslog.LOG_INFO)
 		if logConf.SyslogLevel != 0 {
@@ -219,7 +218,7 @@ func newVersionCollector() prometheus.Collector {
 			Name: "version",
 			Help: fmt.Sprintf(
 				"A metric with a constant value of '1' labeled by the short commit-id (buildId), build timestamp in RFC3339 format (buildTime), and Go release tag like 'go1.3' (goVersion) from which %s was built.",
-				command,
+				command(),
 			),
 			ConstLabels: prometheus.Labels{
 				"buildId":   core.BuildID,
@@ -315,7 +314,7 @@ func ReadConfigFile(filename string, out interface{}) error {
 
 // VersionString produces a friendly Application version string.
 func VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command, core.BuildID, core.BuildTime, runtime.Version(), core.GetBuildHost())
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command(), core.BuildID, core.BuildTime, runtime.Version(), core.GetBuildHost())
 }
 
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
