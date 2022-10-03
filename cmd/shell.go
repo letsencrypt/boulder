@@ -30,6 +30,10 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+func command() string {
+	return path.Base(os.Args[0])
+}
+
 // Because we don't know when this init will be called with respect to
 // flag.Parse() and other flag definitions, we can't rely on the regular
 // flag mechanism. But this one is fine.
@@ -163,12 +167,11 @@ func StatsAndLogging(logConf SyslogConfig, addr string) (prometheus.Registerer, 
 func NewLogger(logConf SyslogConfig) blog.Logger {
 	var logger blog.Logger
 	if logConf.SyslogLevel >= 0 {
-		tag := path.Base(os.Args[0])
 		syslogger, err := syslog.Dial(
 			"",
 			"",
 			syslog.LOG_INFO, // default, not actually used
-			tag)
+			command())
 		FailOnError(err, "Could not connect to Syslog")
 		syslogLevel := int(syslog.LOG_INFO)
 		if logConf.SyslogLevel != 0 {
@@ -197,11 +200,42 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 	return logger
 }
 
+func newVersionCollector() prometheus.Collector {
+	buildTime := core.Unspecified
+	if core.GetBuildTime() != core.Unspecified {
+		// core.BuildTime is set by our Makefile using the shell command 'date
+		// -u' which outputs in a consistent format across all POSIX systems.
+		bt, err := time.Parse(time.UnixDate, core.BuildTime)
+		if err != nil {
+			// Should never happen unless the Makefile is changed.
+			buildTime = "Unparsable"
+		} else {
+			buildTime = bt.Format(time.RFC3339)
+		}
+	}
+	return prometheus.NewGaugeFunc(
+		prometheus.GaugeOpts{
+			Name: "version",
+			Help: fmt.Sprintf(
+				"A metric with a constant value of '1' labeled by the short commit-id (buildId), build timestamp in RFC3339 format (buildTime), and Go release tag like 'go1.3' (goVersion) from which %s was built.",
+				command(),
+			),
+			ConstLabels: prometheus.Labels{
+				"buildId":   core.GetBuildID(),
+				"buildTime": buildTime,
+				"goVersion": runtime.Version(),
+			},
+		},
+		func() float64 { return 1 },
+	)
+}
+
 func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collectors.NewGoCollector())
 	registry.MustRegister(collectors.NewProcessCollector(
 		collectors.ProcessCollectorOpts{}))
+	registry.MustRegister(newVersionCollector())
 
 	mux := http.NewServeMux()
 	// Register the available pprof handlers. These are all registered on
@@ -280,8 +314,7 @@ func ReadConfigFile(filename string, out interface{}) error {
 
 // VersionString produces a friendly Application version string.
 func VersionString() string {
-	name := path.Base(os.Args[0])
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", name, core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
 // CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
