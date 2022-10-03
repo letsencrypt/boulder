@@ -3,8 +3,10 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"sort"
 	"strings"
@@ -299,7 +301,11 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
 
-	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
+	expiresAfter, expiresBefore, err := cu.getShardBoundaries(atTime, shardIdx)
+	if err != nil {
+		return err
+	}
+
 	cu.log.Infof(
 		"Generating CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s]",
 		crlID, expiresAfter, expiresBefore)
@@ -425,10 +431,20 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	return nil
 }
 
+// anchorTime is used as a universal starting point against which other times
+// can be compared. This time must be less than 290 years (2^63-1 nanoseconds)
+// in the past, to ensure that Go's time.Duration can represent that difference.
+// The significance of 2015-06-04 11:04:38 UTC is left as an exercise to the
+// reader.
+func anchorTime() time.Time {
+	return time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC)
+}
+
 // getShardBoundaries computes the start (inclusive) and end (exclusive) times
 // for a given integer-indexed CRL shard. The idea here is that shards should be
 // stable. Picture a timeline, divided into chunks. Number those chunks from 0
-// to cu.numShards, then repeat the cycle when you run out of numbers:
+// (starting at the anchor time) up to cu.numShards, then repeat the cycle when
+// you run out of numbers:
 //
 //	   chunk:  5     0     1     2     3     4     5     0     1     2     3
 //	...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
@@ -470,17 +486,24 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 // there is a buffer of at least one whole chunk width between the actual
 // furthest-future expiration (generally atTime+90d) and the right-hand edge of
 // the window (atTime+lookforwardPeriod).
-func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.Time, time.Time) {
+func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.Time, time.Time, error) {
 	// Ensure that the given shard index falls within the space of acceptable indices.
 	shardIdx = shardIdx % cu.numShards
 
 	// Compute the width of the full window.
 	windowWidth := cu.lookbackPeriod + cu.lookforwardPeriod
+
+	// Compute the amount of time between the current time and the anchor time.
+	timeSinceAnchor := atTime.Sub(anchorTime())
+	if timeSinceAnchor == time.Duration(math.MaxInt64) || timeSinceAnchor == time.Duration(math.MinInt64) {
+		return time.Time{}, time.Time{}, errors.New("shard boundary math broken: anchor time too far away")
+	}
+
 	// Compute the amount of time between the left-hand edge of the most recent
 	// "0" chunk and the current time.
-	atTimeOffset := time.Duration(atTime.Sub(time.Time{}).Nanoseconds() % windowWidth.Nanoseconds())
+	timeSinceZeroChunk := time.Duration(timeSinceAnchor.Nanoseconds() % windowWidth.Nanoseconds())
 	// Compute the left-hand edge of the most recent "0" chunk.
-	zeroStart := atTime.Add(-atTimeOffset)
+	zeroStart := atTime.Add(-timeSinceZeroChunk)
 
 	// Compute the width of a single shard.
 	shardWidth := time.Duration(windowWidth.Nanoseconds() / int64(cu.numShards))
@@ -499,5 +522,5 @@ func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.T
 		shardStart = shardStart.Add(windowWidth)
 		shardEnd = shardEnd.Add(windowWidth)
 	}
-	return shardStart, shardEnd
+	return shardStart, shardEnd, nil
 }
