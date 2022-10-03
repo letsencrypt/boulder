@@ -202,11 +202,8 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 }
 
 func newVersionCollector() prometheus.Collector {
-	var buildTime string
-	if core.BuildTime == core.Unspecified {
-		// Will happen if Boulder wasn't built using the Makefile.
-		buildTime = core.Unspecified
-	} else {
+	buildTime := core.Unspecified
+	if core.BuildTime != core.Unspecified {
 		// core.BuildTime is set by in our Makefile using the shell command 'date
 		// -u' which outputs consistently across all POSIX systems.
 		bt, err := time.Parse(time.UnixDate, core.BuildTime)
