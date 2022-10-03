@@ -20,6 +20,16 @@ linters-settings:
   gosimple:
     # S1029: Range over the string directly
     checks: ["all", "-S1029"]
+  govet:
+    settings:
+      printf:
+        funcs:
+          - (github.com/letsencrypt/boulder/log.Logger).Errf
+          - (github.com/letsencrypt/boulder/log.Logger).Warningf
+          - (github.com/letsencrypt/boulder/log.Logger).Infof
+          - (github.com/letsencrypt/boulder/log.Logger).Debugf
+          - (github.com/letsencrypt/boulder/log.Logger).AuditInfof
+          - (github.com/letsencrypt/boulder/log.Logger).AuditErrf
   staticcheck:
     # SA1019: Using a deprecated function, variable, constant or field
     # SA6003: Converting a string to a slice of runes before ranging over it
