@@ -58,10 +58,11 @@ func main() {
 		select {
 		case <-ticker.C:
 			fmt.Fprintf(os.Stderr, "Connecting to %s health service\n", *serverAddr)
+			_, hostOverride, err := c.GRPC.MakeTargetAndHostOverride()
+			cmd.FailOnError(err, "")
 
-			if strings.HasPrefix(*serverAddr, "ra") && strings.HasPrefix(*configFile, "test/config-next") {
-				c.GRPC.HostOverride = "wrong.service.consul"
-			}
+			// Set the hostOverride to match the dNSName in the server certificate.
+			c.GRPC.HostOverride = strings.Replace(hostOverride, ".service.consul", ".boulder", 1)
 
 			// Set up the GRPC connection.
 			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, clientMetrics, clk)
