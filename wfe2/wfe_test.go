@@ -3701,3 +3701,34 @@ func TestOldTLSInbound(t *testing.T) {
 	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
 }
+
+func Test_sendError(t *testing.T) {
+	features.Reset()
+	wfe, _ := setupWFE(t)
+	testResponse := httptest.NewRecorder()
+
+	testErr := berrors.RateLimitError(0, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 0 value RetryAfter results in no Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "")
+	// Ensure the Link header isn't populatsed.
+	test.AssertEquals(t, testResponse.Header().Get("Link"), "")
+
+	testErr = berrors.RateLimitError(time.Millisecond*500, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 500ms RetryAfter is rounded up to a 1s Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "1")
+	// Ensure the Link header is populated.
+	test.AssertEquals(t, testResponse.Header().Get("Link"), "<https://letsencrypt.org/docs/rate-limits>;rel=\"help\"")
+
+	// Clear headers for the next test.
+	testResponse.Header().Del("Retry-After")
+	testResponse.Header().Del("Link")
+
+	testErr = berrors.RateLimitError(time.Millisecond*499, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 499ms RetryAfter results in no Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "")
+	// Ensure the Link header isn't populatsed.
+	test.AssertEquals(t, testResponse.Header().Get("Link"), "")
+}

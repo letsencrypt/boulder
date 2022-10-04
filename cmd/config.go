@@ -250,12 +250,12 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
-// GRPCClientConfig contains the information setup a gRPC client. The following
-// combination of fields are allowed:
+// GRPCClientConfig contains the information necessary to setup a gRPC client
+// connection. The following field combinations are allowed:
 //
 // ServerIPAddresses, [Timeout]
-// ServerAddress, [Timeout], [DNSAuthority]
-// SRVLookup, [Timeout], [DNSAuthority]
+// ServerAddress, [Timeout], [DNSAuthority], [HostOverride]
+// SRVLookup, [Timeout], [DNSAuthority], [HostOverride]
 type GRPCClientConfig struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
 	// to be used for resolution of gRPC backends. If the address contains a
@@ -332,14 +332,19 @@ type GRPCClientConfig struct {
 	// then the iPAddress' to be authenticated in the server certificate would
 	// be '10.77.77.77' and '10.88.88.88'.
 	ServerIPAddresses []string
-	Timeout           ConfigDuration
+
+	// HostOverride is an optional override for the dNSName the client will
+	// verify in the certificate presented by the server.
+	HostOverride string
+	Timeout      ConfigDuration
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will
-// connect to and hostname (only for 'ServerAddress' and 'SRVLookup') that will be
-// validated during the mTLS handshake. An error is returned if the provided
-// configuration is invalid.
+// connect to and the hostname (only for 'ServerAddress' and 'SRVLookup') that
+// will be validated during the mTLS handshake. An error is returned if the
+// provided configuration is invalid.
 func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
+	var hostOverride string
 	if c.ServerAddress != "" {
 		if c.ServerIPAddresses != nil || c.SRVLookup != nil {
 			return "", "", errors.New(
@@ -351,7 +356,12 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), targetHost, nil
+
+		hostOverride = targetHost
+		if c.HostOverride != "" {
+			hostOverride = c.HostOverride
+		}
+		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), hostOverride, nil
 
 	} else if c.SRVLookup != nil {
 		if c.ServerIPAddresses != nil {
@@ -361,7 +371,12 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		}
 		// Lookup backends using DNS SRV records.
 		targetHost := c.SRVLookup.Service + "." + c.SRVLookup.Domain
-		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), targetHost, nil
+
+		hostOverride = targetHost
+		if c.HostOverride != "" {
+			hostOverride = c.HostOverride
+		}
+		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), hostOverride, nil
 
 	} else {
 		if c.ServerIPAddresses == nil {

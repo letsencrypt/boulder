@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"testing"
@@ -47,10 +48,19 @@ func TestErrorWrapping(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := test_proto.NewChillerClient(conn)
 
-	es.err = berrors.MalformedError("yup")
+	// RateLimitError with a RetryAfter of 500ms.
+	expectRetryAfter := time.Millisecond * 500
+	es.err = berrors.RateLimitError(expectRetryAfter, "yup")
 	_, err = client.Chill(context.Background(), &test_proto.Time{})
 	test.Assert(t, err != nil, fmt.Sprintf("nil error returned, expected: %s", err))
 	test.AssertDeepEquals(t, err, es.err)
+	var bErr *berrors.BoulderError
+	ok := errors.As(err, &bErr)
+	test.Assert(t, ok, "asserting error as boulder error")
+	// Ensure we got a RateLimitError
+	test.AssertErrorIs(t, bErr, berrors.RateLimit)
+	// Ensure our RetryAfter is still 500ms.
+	test.AssertEquals(t, bErr.RetryAfter, expectRetryAfter)
 
 	test.AssertNil(t, wrapError(context.Background(), nil), "Wrapping nil should still be nil")
 	test.AssertNil(t, unwrapError(nil, nil), "Unwrapping nil should still be nil")

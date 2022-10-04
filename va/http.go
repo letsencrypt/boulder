@@ -310,8 +310,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// Check that the request host isn't a bare IP address. We only follow
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
-		return "", 0, berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
+		return "", 0, berrors.ConnectionFailureError("Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -331,8 +330,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	}
 
 	if _, err := iana.ExtractSuffix(reqHost); err != nil {
-		return "", 0, berrors.ConnectionFailureError(
-			"Invalid hostname in redirect target, must end in IANA registered TLD")
+		return "", 0, berrors.ConnectionFailureError("Invalid hostname in redirect target, must end in IANA registered TLD")
 	}
 
 	return reqHost, reqPort, nil

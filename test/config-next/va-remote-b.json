@@ -14,15 +14,15 @@
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/rva.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/rva.service.consul/key.pem"
+      "certFile": "test/grpc-creds/rva.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/rva.boulder/key.pem"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9098",
       "clientNames": [
-        "health-checker.service.consul",
-        "va.service.consul"
+        "health-checker.boulder",
+        "va.boulder"
       ]
     },
     "features": {

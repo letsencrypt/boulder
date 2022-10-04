@@ -16,16 +16,18 @@
     },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/wfe.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/wfe.service.consul/key.pem"
+      "certFile": "test/grpc-creds/wfe.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
     },
     "raService": {
       "serverAddress": "ra.service.consul:9094",
-      "timeout": "15s"
+      "timeout": "15s",
+      "hostOverride": "ra.boulder"
     },
     "saService": {
       "serverAddress": "sa.service.consul:9095",
-      "timeout": "15s"
+      "timeout": "15s",
+      "hostOverride": "sa.boulder"
     },
     "accountCache": {
       "size": 9000,
@@ -33,16 +35,19 @@
     },
     "getNonceService": {
       "serverAddress": "nonce.service.consul:9101",
-      "timeout": "15s"
+      "timeout": "15s",
+      "hostOverride": "nonce.boulder"
     },
     "redeemNonceServices": {
       "taro": {
         "serverAddress": "nonce1.service.consul:9101",
-        "timeout": "15s"
+        "timeout": "15s",
+        "hostOverride": "nonce1.boulder"
       },
       "zinc": {
         "serverAddress": "nonce2.service.consul:9101",
-        "timeout": "15s"
+        "timeout": "15s",
+        "hostOverride": "nonce2.boulder"
       }
     },
     "chains": [

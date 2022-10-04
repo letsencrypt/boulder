@@ -328,7 +328,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	}
 
 	if count.Count >= limit.GetThreshold(ip.String(), noRegistrationID) {
-		return berrors.RegistrationsPerIPError("too many registrations for this IP")
+		return berrors.RegistrationsPerIPError(0, "too many registrations for this IP")
 	}
 
 	return nil
@@ -365,7 +365,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 		ra.log.Infof("Rate limit exceeded, RegistrationsByIPRange, IP: %s", ip)
 		// For the fuzzyRegLimit we use a new error message that specifically
 		// mentions that the limit being exceeded is applied to a *range* of IPs
-		return berrors.RateLimitError("too many registrations for this IP range")
+		return berrors.RateLimitError(0, "too many registrations for this IP range")
 	}
 	ra.rateLimitCounter.WithLabelValues("registrations_by_ip_range", "pass").Inc()
 
@@ -515,7 +515,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		if countPB.Count >= limit.GetThreshold(noKey, regID) {
 			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
-			return berrors.RateLimitError(fmt.Sprintf("too many currently pending authorizations: %d", countPB.Count))
+			return berrors.RateLimitError(0, "too many currently pending authorizations: %d", countPB.Count)
 		}
 		ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "pass").Inc()
 	}
@@ -567,7 +567,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	noKey := ""
 	if count.Count >= limit.GetThreshold(noKey, regID) {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
-		return berrors.FailedValidationError("too many failed authorizations recently")
+		return berrors.FailedValidationError(0, "too many failed authorizations recently")
 	}
 	return nil
 }
@@ -595,7 +595,7 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	noKey := ""
 	if count.Count >= limit.GetThreshold(noKey, acctID) {
 		ra.rateLimitCounter.WithLabelValues("new_order_by_registration_id", "exceeded").Inc()
-		return berrors.RateLimitError("too many new orders recently")
+		return berrors.RateLimitError(0, "too many new orders recently")
 	}
 	ra.rateLimitCounter.WithLabelValues("new_order_by_registration_id", "pass").Inc()
 	return nil
@@ -1347,12 +1347,12 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   identifier.DNSIdentifier(name),
-					BoulderError: berrors.RateLimitError("too many certificates already issued").(*berrors.BoulderError),
+					BoulderError: berrors.RateLimitError(0, "too many certificates already issued").(*berrors.BoulderError),
 				})
 			}
-			return berrors.RateLimitError("too many certificates already issued for multiple names (%s and %d others)", namesOutOfLimit[0], len(namesOutOfLimit)).(*berrors.BoulderError).WithSubErrors(subErrors)
+			return berrors.RateLimitError(0, "too many certificates already issued for multiple names (%s and %d others)", namesOutOfLimit[0], len(namesOutOfLimit)).(*berrors.BoulderError).WithSubErrors(subErrors)
 		}
-		return berrors.RateLimitError("too many certificates already issued for: %s", namesOutOfLimit[0])
+		return berrors.RateLimitError(0, "too many certificates already issued for: %s", namesOutOfLimit[0])
 	}
 	ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "pass").Inc()
 
@@ -1394,7 +1394,9 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 			}
 		}
 		retryTime := time.Unix(0, prevIssuances.Timestamps[0]).Add(time.Duration(nsPerToken))
+		retryAfter := retryTime.Sub(now)
 		return berrors.DuplicateCertificateError(
+			retryAfter,
 			"too many certificates (%d) already issued for this exact set of domains in the last %.0f hours: %s, retry after %s",
 			threshold, limit.Window.Duration.Hours(), strings.Join(names, ","), retryTime.Format(time.RFC3339),
 		)

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
@@ -46,9 +47,11 @@ func validateShard(crl *crl_x509.RevocationList, issuer *issuance.Certificate, a
 		return fmt.Errorf("linting CRL: %w", err)
 	}
 
-	err = crl.CheckSignatureFrom(issuer.Certificate)
-	if err != nil {
-		return fmt.Errorf("checking CRL signature: %w", err)
+	if issuer != nil {
+		err = crl.CheckSignatureFrom(issuer.Certificate)
+		if err != nil {
+			return fmt.Errorf("checking CRL signature: %w", err)
+		}
 	}
 
 	if time.Since(crl.ThisUpdate) >= ageLimit {
@@ -60,7 +63,7 @@ func validateShard(crl *crl_x509.RevocationList, issuer *issuance.Certificate, a
 
 func main() {
 	urlFile := flag.String("crls", "", "path to a file containing a JSON Array of CRL URLs")
-	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk")
+	issuerFile := flag.String("issuer", "", "path to an issuer certificate on disk, required, '-' to disable validation")
 	ageLimitStr := flag.String("ageLimit", "168h", "maximum allowable age of a CRL shard")
 	emitRevoked := flag.Bool("emitRevoked", false, "emit revoked serial numbers on stdout, one per line, hex-encoded")
 	save := flag.Bool("save", false, "save CRLs to files named after the URL")
@@ -75,13 +78,25 @@ func main() {
 	err = json.Unmarshal(urlFileContents, &urls)
 	cmd.FailOnError(err, "Parsing JSON Array of CRL URLs")
 
-	issuer, err := issuance.LoadCertificate(*issuerFile)
-	cmd.FailOnError(err, "Loading issuer certificate")
+	if *issuerFile == "" {
+		cmd.Fail("-issuer is required, but may be '-' to disable validation")
+	}
+
+	var issuer *issuance.Certificate
+	if *issuerFile != "-" {
+		issuer, err = issuance.LoadCertificate(*issuerFile)
+		cmd.FailOnError(err, "Loading issuer certificate")
+	} else {
+		logger.Warning("CRL signature validation disabled")
+	}
 
 	ageLimit, err := time.ParseDuration(*ageLimitStr)
 	cmd.FailOnError(err, "Parsing age limit")
 
 	errCount := 0
+	seenSerials := make(map[string]struct{})
+	totalBytes := 0
+	oldestTimestamp := time.Time{}
 	for _, u := range urls {
 		crl, err := downloadShard(u)
 		if err != nil {
@@ -104,6 +119,8 @@ func main() {
 			}
 		}
 
+		totalBytes += len(crl.Raw)
+
 		err = validateShard(crl, issuer, ageLimit)
 		if err != nil {
 			errCount += 1
@@ -111,17 +128,34 @@ func main() {
 			continue
 		}
 
-		if *emitRevoked {
-			for _, c := range crl.RevokedCertificates {
-				fmt.Printf("%x\n", c.SerialNumber)
+		if oldestTimestamp.IsZero() || crl.ThisUpdate.Before(oldestTimestamp) {
+			oldestTimestamp = crl.ThisUpdate
+		}
+
+		for _, c := range crl.RevokedCertificates {
+			serial := core.SerialToString(c.SerialNumber)
+			if _, seen := seenSerials[serial]; seen {
+				errCount += 1
+				logger.Errf("serial seen in multiple shards: %s", serial)
+				continue
 			}
+			seenSerials[serial] = struct{}{}
+		}
+	}
+
+	if *emitRevoked {
+		for serial := range seenSerials {
+			fmt.Println(serial)
 		}
 	}
 
 	if errCount != 0 {
 		cmd.Fail(fmt.Sprintf("Encountered %d errors", errCount))
 	}
-	logger.AuditInfo("All CRLs validated")
+
+	logger.AuditInfof(
+		"Validated %d CRLs, %d serials, %d bytes. Oldest CRL: %s",
+		len(urls), len(seenSerials), totalBytes, oldestTimestamp.Format(time.RFC3339))
 }
 
 func init() {

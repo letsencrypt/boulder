@@ -3,38 +3,39 @@
     "debugAddr": ":8001",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ca.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/ca.service.consul/key.pem"
+      "certFile": "test/grpc-creds/ca.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ca.boulder/key.pem"
     },
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "grpcCA": {
       "maxConnectionAge": "30s",
       "address": ":9093",
       "clientNames": [
-        "health-checker.service.consul",
-        "ra.service.consul"
+        "health-checker.boulder",
+        "ra.boulder"
       ]
     },
     "grpcOCSPGenerator": {
       "maxConnectionAge": "30s",
       "address": ":9096",
       "clientNames": [
-        "health-checker.service.consul",
-        "ocsp-updater.service.consul",
-        "orphan-finder.service.consul"
+        "health-checker.boulder",
+        "ocsp-updater.boulder",
+        "orphan-finder.boulder"
       ]
     },
     "grpcCRLGenerator": {
       "maxConnectionAge": "30s",
       "address": ":9106",
       "clientNames": [
-        "health-checker.service.consul",
-        "crl-updater.service.consul"
+        "health-checker.boulder",
+        "crl-updater.boulder"
       ]
     },
     "saService": {
       "serverAddress": "sa.service.consul:9095",
-      "timeout": "15s"
+      "timeout": "15s",
+      "hostOverride": "sa.boulder"
     },
     "issuance": {
       "profile": {

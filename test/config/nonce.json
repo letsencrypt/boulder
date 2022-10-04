@@ -16,14 +16,14 @@
             "maxConnectionAge": "30s",
             "address": ":9101",
             "clientNames": [
-                "health-checker.service.consul",
-                "wfe.service.consul"
+                "health-checker.boulder",
+                "wfe.boulder"
             ]
         },
         "tls": {
             "caCertFile": "test/grpc-creds/minica.pem",
-            "certFile": "test/grpc-creds/nonce.service.consul/cert.pem",
-            "keyFile": "test/grpc-creds/nonce.service.consul/key.pem"
+            "certFile": "test/grpc-creds/nonce.boulder/cert.pem",
+            "keyFile": "test/grpc-creds/nonce.boulder/key.pem"
         }
     }
 }
