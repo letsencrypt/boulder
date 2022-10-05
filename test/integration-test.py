@@ -189,7 +189,7 @@ def run_loadtest():
     # might benefit from the pebble-challtestsrv being restarted.
     startservers.stopChallSrv()
 
-    run(["./bin/boulder", "load-generator",
+    run(["./bin/load-generator",
         "-config", "test/load-generator/config/integration-test-config.json",
         "-results", latency_data_file])
 
