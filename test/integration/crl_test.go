@@ -21,10 +21,10 @@ import (
 func runUpdater(t *testing.T, configFile string) {
 	t.Helper()
 
-	binPath, err := filepath.Abs("bin/crl-updater")
-	test.AssertNotError(t, err, "computing crl-updater path")
+	binPath, err := filepath.Abs("bin/boulder")
+	test.AssertNotError(t, err, "computing boulder binary path")
 
-	c := exec.Command(binPath, "-config", configFile, "-debug-addr", ":8022", "-runOnce")
+	c := exec.Command(binPath, "crl-updater", "-config", configFile, "-debug-addr", ":8022", "-runOnce")
 	out, err := c.CombinedOutput()
 	test.AssertNotError(t, err, fmt.Sprintf("crl-updater failed: %s", out))
 }
