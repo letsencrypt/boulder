@@ -22,7 +22,7 @@ import (
 )
 
 func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
-	purgerCmd := exec.Command("./bin/akamai-purger", "--config", "test/integration/testdata/akamai-purger-queue-drain-config.json")
+	purgerCmd := exec.Command("./bin/boulder", "akamai-purger", "--config", "test/integration/testdata/akamai-purger-queue-drain-config.json")
 	var outputBuffer bytes.Buffer
 	purgerCmd.Stdout = &outputBuffer
 	purgerCmd.Stderr = &outputBuffer

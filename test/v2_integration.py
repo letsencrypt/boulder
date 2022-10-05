@@ -1503,7 +1503,7 @@ def test_expiration_mailer():
     requests.post("http://localhost:9381/clear", data='')
     for time in (no_reminder, first_reminder, last_reminder):
         print(get_future_output(
-            ["./bin/expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
+            ["./bin/boulder", "expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
             time))
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)
@@ -1680,7 +1680,7 @@ def test_admin_revoker_cert():
 
     # Revoke certificate by serial
     reset_akamai_purges()
-    run(["./bin/admin-revoker", "serial-revoke",
+    run(["./bin/boulder", "admin-revoker", "serial-revoke",
         "--config", "%s/admin-revoker.json" % config_dir,
         '%x' % parsed_cert.serial_number, '1'])
 
@@ -1701,7 +1701,7 @@ def test_admin_revoker_batched():
         serialFile.write("%x\n" % parse_cert(order).serial_number)
     serialFile.close()
 
-    run(["./bin/admin-revoker", "batched-serial-revoke",
+    run(["./bin/boulder", "admin-revoker", "batched-serial-revoke",
         "--config", "%s/admin-revoker.json" % config_dir,
         serialFile.name, '0', '2'])
 
