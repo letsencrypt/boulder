@@ -206,7 +206,9 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-va", main)
+	cmd.RegisterCommand("va", main)
 	// We register under two different names, because it's convenient for the
 	// remote VAs to show up under a different program name when looking at logs.
 	cmd.RegisterCommand("boulder-remoteva", main)
+	cmd.RegisterCommand("remoteva", main)
 }

@@ -373,4 +373,5 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-ca", main)
+	cmd.RegisterCommand("ca", main)
 }

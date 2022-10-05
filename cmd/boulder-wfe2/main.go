@@ -510,4 +510,5 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-wfe2", main)
+	cmd.RegisterCommand("wfe", main)
 }

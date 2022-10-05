@@ -299,4 +299,5 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-ra", main)
+	cmd.RegisterCommand("ra", main)
 }
