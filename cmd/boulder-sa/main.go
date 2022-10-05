@@ -126,5 +126,4 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-sa", main)
-	cmd.RegisterCommand("sa", main)
 }

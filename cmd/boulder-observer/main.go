@@ -36,5 +36,4 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-observer", main)
-	cmd.RegisterCommand("observer", main)
 }

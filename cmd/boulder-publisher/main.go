@@ -119,5 +119,4 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-publisher", main)
-	cmd.RegisterCommand("publisher", main)
 }
