@@ -42,16 +42,17 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder", func() {
-		if len(os.Args) > 1 {
-			subcommand := cmd.LookupCommand(os.Args[1])
-			if subcommand != nil {
-				os.Args = os.Args[1:]
-				subcommand()
-				return
-			}
-			fmt.Fprintf(os.Stderr, "Unknown subcommand '%s'.\n", os.Args[1])
+		if len(os.Args) <= 1 {
+			fmt.Fprintf(os.Stderr, "Call with --list to list available subcommands. Run them like boulder <subcommand>.\n")
+			return
 		}
-		fmt.Fprintf(os.Stderr, "Call with --list to list available subcommands. Run them like boulder <subcommand>.\n")
+		subcommand := cmd.LookupCommand(os.Args[1])
+		if subcommand == nil {
+			fmt.Fprintf(os.Stderr, "Unknown subcommand '%s'.\n", os.Args[1])
+			return
+		}
+		os.Args = os.Args[1:]
+		subcommand()
 	})
 	cmd.RegisterCommand("--list", func() {
 		for _, c := range cmd.AvailableCommands() {
