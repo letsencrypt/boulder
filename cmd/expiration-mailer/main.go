@@ -405,7 +405,13 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		m.log.Infof("expiration-mailer: Searching for certificates that expire between %s and %s and had last nag >%s before expiry",
 			left.UTC(), right.UTC(), expiresIn)
 
-		certs, err := m.getCerts(ctx, left, right, expiresIn)
+		var certs []certDERWithRegID
+		var err error
+		if features.Enabled(features.ExpirationMailerUsesJoin) {
+			certs, err = m.getCerts(ctx, left, right, expiresIn)
+		} else {
+			certs, err = m.getCerts2(ctx, left, right, expiresIn)
+		}
 		if err != nil {
 			return err
 		}
@@ -445,6 +451,40 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (m *mailer) getCerts2(ctx context.Context, left, right time.Time, expiresIn time.Duration) ([]certDERWithRegID, error) {
+	// First we do a query on the certificateStatus table to find certificates
+	// nearing expiry meeting our criteria for email notification. We later
+	// sequentially fetch the certificate details. This avoids an expensive
+	// JOIN.
+	var certs []certDERWithRegID
+	_, err := m.dbMap.WithContext(ctx).Select(
+		&certs,
+		`SELECT
+				cert.der, cert.registrationID
+				FROM certificateStatus AS cs
+				JOIN certificates as cert
+				ON cs.serial = cert.serial
+				AND cs.notAfter > :cutoffA
+				AND cs.notAfter <= :cutoffB
+				AND cs.status != "revoked"
+				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
+				ORDER BY cs.notAfter ASC
+				LIMIT :limit`,
+		map[string]interface{}{
+			"cutoffA":   left,
+			"cutoffB":   right,
+			"nagCutoff": expiresIn.Seconds(),
+			"limit":     m.limit,
+		},
+	)
+	if err != nil {
+		m.log.AuditErrf("expiration-mailer: Error loading certificate serials: %s", err)
+		return nil, err
+	}
+	m.log.Debugf("found %d certificates", len(certs))
+	return certs, nil
 }
 
 func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn time.Duration) ([]certDERWithRegID, error) {
@@ -594,7 +634,7 @@ func initStats(stats prometheus.Registerer) mailerStats {
 			Buckets: prometheus.LinearBuckets(86400, 86400, 10),
 		},
 		[]string{"nag_group"})
-	stats.MustRegister(sendDelay)
+	stats.MustRegister(sendDelayHistogram)
 
 	nagsAtCapacity := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{

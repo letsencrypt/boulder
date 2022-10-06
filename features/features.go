@@ -117,6 +117,11 @@ const (
 	// disabling ocsp-updater, this means that no ocsp response bytes will be
 	// written to the database anymore.
 	ROCSPStage6
+
+	// ExpirationMailerUsesJoin enables using a JOIN query in expiration-mailer
+	// rather than a SELECT from certificateStatus followed by thousands of
+	// one-row SELECTs from certificates.
+	ExpirationMailerUsesJoin
 )
 
 // List of features and their default value, protected by fMu
@@ -154,6 +159,7 @@ var features = map[FeatureFlag]bool{
 	ROCSPStage2:                    false,
 	ROCSPStage3:                    false,
 	ROCSPStage6:                    false,
+	ExpirationMailerUsesJoin:       false,
 }
 
 var fMu = new(sync.RWMutex)
