@@ -54,7 +54,7 @@ def test_single_ocsp():
        This is a non-API test.
     """
     p = subprocess.Popen(
-        ["./bin/ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
+        ["./bin/boulder", "ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
     waitport(4003, ' '.join(p.args))
 
     # Verify that the static OCSP responder, which answers with a
@@ -218,7 +218,7 @@ def check_balance():
                 % address)
 
 def run_cert_checker():
-    run(["./bin/cert-checker", "-config", "%s/cert-checker.json" % config_dir])
+    run(["./bin/boulder", "cert-checker", "-config", "%s/cert-checker.json" % config_dir])
 
 if __name__ == "__main__":
     main()
