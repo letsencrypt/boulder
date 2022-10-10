@@ -294,6 +294,7 @@ func main() {
 	crli, err := ca.NewCRLImpl(
 		boulderIssuers,
 		c.CA.LifespanCRL.Duration,
+		c.CA.CRLDPBase,
 		c.CA.OCSPLogMaxLength,
 		logger,
 	)

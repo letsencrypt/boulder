@@ -24,11 +24,17 @@ type crlImpl struct {
 	capb.UnimplementedCRLGeneratorServer
 	issuers   map[issuance.IssuerNameID]*issuance.Issuer
 	lifetime  time.Duration
+	idpBase   string
 	maxLogLen int
 	log       blog.Logger
 }
 
-func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, maxLogLen int, logger blog.Logger) (*crlImpl, error) {
+// NewCRLImpt returns a new object which fulfils the ca.proto CRLGenerator
+// interface. It uses the list of issuers to determine what issuers it can
+// issue CRLs from. lifetime sets the validity period (inclusive) of the
+// resulting CRLs. idpBase is the base URL from which IssuingDistributionPoint
+// URIs will constructed; it must use the http:// scheme.
+func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, idpBase string, maxLogLen int, logger blog.Logger) (*crlImpl, error) {
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		issuersByNameID[issuer.Cert.NameID()] = issuer
@@ -43,9 +49,17 @@ func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, maxLogLen in
 		return nil, fmt.Errorf("crl lifetime must be positive, got %q", lifetime)
 	}
 
+	if !strings.HasPrefix(idpBase, "http://") {
+		return nil, fmt.Errorf("issuingDistributionPoint base URI must use http:// scheme, got %q", idpBase)
+	}
+	if strings.HasSuffix(idpBase, "/") {
+		return nil, fmt.Errorf("issuingDistributionPoint base URI must not end with a slash, got %q", idpBase)
+	}
+
 	return &crlImpl{
 		issuers:   issuersByNameID,
 		lifetime:  lifetime,
+		idpBase:   idpBase,
 		maxLogLen: maxLogLen,
 		log:       logger,
 	}, nil
@@ -103,7 +117,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	}
 
 	// Add the Issuing Distribution Point extension.
-	idp, err := makeIDPExt("http://c.boulder.test", issuer.Cert.NameID(), shard)
+	idp, err := makeIDPExt(ci.idpBase, issuer.Cert.NameID(), shard)
 	if err != nil {
 		return fmt.Errorf("creating IDP extension: %w", err)
 	}
