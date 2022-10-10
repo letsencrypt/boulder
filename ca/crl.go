@@ -3,6 +3,8 @@ package ca
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"errors"
 	"fmt"
 	"io"
@@ -100,6 +102,13 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		return errors.New("no crl metadata received")
 	}
 
+	// Add the Issuing Distribution Point extension.
+	idp, err := makeIDPExt("http://c.boulder.test", issuer.Cert.NameID(), shard)
+	if err != nil {
+		return fmt.Errorf("creating IDP extension: %w", err)
+	}
+	template.ExtraExtensions = append(template.ExtraExtensions, *idp)
+
 	// Compute a unique ID for this issuer-number-shard combo, to tie together all
 	// the audit log lines related to its issuance.
 	logID := blog.LogLineChecksum(fmt.Sprintf("%d", issuer.Cert.NameID()) + template.Number.String() + fmt.Sprintf("%d", shard))
@@ -133,7 +142,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 
 	template.RevokedCertificates = rcs
 
-	err := issuer.Linter.CheckCRL(template)
+	err = issuer.Linter.CheckCRL(template)
 	if err != nil {
 		return err
 	}
@@ -185,7 +194,6 @@ func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.Revocat
 		ThisUpdate: thisUpdate,
 		NextUpdate: thisUpdate.Add(-time.Second).Add(ci.lifetime),
 	}, nil
-
 }
 
 func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*crl_x509.RevokedCertificate, error) {
@@ -209,5 +217,53 @@ func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*crl_x509.
 		SerialNumber:   serial,
 		RevocationTime: revokedAt,
 		ReasonCode:     reason,
+	}, nil
+}
+
+// distributionPointName represents the ASN.1 DistributionPointName CHOICE as
+// defined in RFC 5280 Section 4.2.1.13. We only use one of the fields, so the
+// others are omitted.
+type distributionPointName struct {
+	// Technically, FullName is of type GeneralNames, which is of type SEQUENCE OF
+	// GeneralName. But GeneralName itself is of type CHOICE, and the ans1.Marhsal
+	// function doesn't support marshalling structs to CHOICEs, so we have to use
+	// asn1.RawValue and encode the GeneralName ourselves.
+	FullName []asn1.RawValue `asn1:"optional,tag:0"`
+}
+
+// issuingDistributionPoint represents the ASN.1 IssuingDistributionPoint
+// SEQUENCE as defined in RFC 5280 Section 5.2.5. We only use two of the fields,
+// so the others are omitted.
+type issuingDistributionPoint struct {
+	DistributionPoint     distributionPointName `asn1:"optional,tag:0"`
+	OnlyContainsUserCerts bool                  `asn1:"optional,tag:1"`
+}
+
+// makeIDPExt returns a critical IssuingDistributionPoint extension containing a
+// URI built from the base url, the issuer's NameID, and the shard number. It
+// also sets the OnlyContainsUserCerts boolean to true.
+func makeIDPExt(base string, issuer issuance.IssuerNameID, shardIdx int64) (*pkix.Extension, error) {
+	val := issuingDistributionPoint{
+		DistributionPoint: distributionPointName{
+			[]asn1.RawValue{ // GeneralNames
+				{ // GeneralName
+					Class: 2, // context-specific
+					Tag:   6, // uniformResourceIdentifier, IA5String
+					Bytes: []byte(fmt.Sprintf("%s/%d/%d.crl", base, issuer, shardIdx)),
+				},
+			},
+		},
+		OnlyContainsUserCerts: true,
+	}
+
+	valBytes, err := asn1.Marshal(val)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pkix.Extension{
+		Id:       asn1.ObjectIdentifier{2, 5, 29, 28}, // id-ce-issuingDistributionPoint
+		Value:    valBytes,
+		Critical: true,
 	}, nil
 }
