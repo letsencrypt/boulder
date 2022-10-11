@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -2298,4 +2299,18 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 	}
 
 	return nil
+}
+
+func (ssa *SQLStorageAuthority) GetLastExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
+	var model struct {
+		MaxNotAfter time.Time `db:"maxNotAfter"`
+	}
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&model,
+		"SELECT MAX(notAfter) AS maxNotAfter FROM certificateStatus",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("selecting max notAfter: %w", err)
+	}
+	return timestamppb.New(model.MaxNotAfter), err
 }
