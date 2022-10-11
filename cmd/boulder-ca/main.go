@@ -99,6 +99,11 @@ type Config struct {
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 		CTLogListFile string
 
+		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
+		// across all issuers and shards. It must use the http:// scheme, and must
+		// not end with a slash. Example: "http://prod.c.lencr.org".
+		CRLDPBase string
+
 		Features map[string]bool
 	}
 
