@@ -13,10 +13,9 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/crl/checker"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/linter"
-	crlint "github.com/letsencrypt/boulder/linter/lints/crl"
 )
 
 func downloadShard(url string) (*crl_x509.RevocationList, error) {
@@ -39,26 +38,6 @@ func downloadShard(url string) (*crl_x509.RevocationList, error) {
 	}
 
 	return crl, nil
-}
-
-func validateShard(crl *crl_x509.RevocationList, issuer *issuance.Certificate, ageLimit time.Duration) error {
-	err := linter.ProcessResultSet(crlint.LintCRL(crl))
-	if err != nil {
-		return fmt.Errorf("linting CRL: %w", err)
-	}
-
-	if issuer != nil {
-		err = crl.CheckSignatureFrom(issuer.Certificate)
-		if err != nil {
-			return fmt.Errorf("checking CRL signature: %w", err)
-		}
-	}
-
-	if time.Since(crl.ThisUpdate) >= ageLimit {
-		return fmt.Errorf("thisUpdate more than %s in the past: %v", ageLimit, crl.ThisUpdate)
-	}
-
-	return nil
 }
 
 func main() {
@@ -121,7 +100,7 @@ func main() {
 
 		totalBytes += len(crl.Raw)
 
-		err = validateShard(crl, issuer, ageLimit)
+		err = checker.Validate(crl, issuer, ageLimit)
 		if err != nil {
 			errCount += 1
 			logger.Errf("checking CRL %q failed: %s", u, err)
