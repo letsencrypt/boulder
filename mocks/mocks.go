@@ -257,8 +257,8 @@ func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevo
 	return nil, nil
 }
 
-// GetLastExpiration is a mock
-func (sa *StorageAuthority) GetLastExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
+// GetMaxExpiration is a mock
+func (sa *StorageAuthority) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
 	return nil, nil
 }
 

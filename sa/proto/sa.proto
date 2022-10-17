@@ -36,7 +36,7 @@ service StorageAuthority {
   rpc KeyBlocked(KeyBlockedRequest) returns (Exists) {}
   rpc SerialsForIncident (SerialsForIncidentRequest) returns (stream IncidentSerial) {}
   rpc GetRevokedCerts(GetRevokedCertsRequest) returns (stream core.CRLEntry) {}
-  rpc GetLastExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
+  rpc GetMaxExpiration(google.protobuf.Empty) returns (google.protobuf.Timestamp) {}
   rpc IncidentsForSerial(Serial) returns (Incidents) {}
   // Adders
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
