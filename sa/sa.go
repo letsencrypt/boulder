@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -2298,4 +2299,22 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 	}
 
 	return nil
+}
+
+// GetMaxExpiration returns the timestamp of the farthest-future notAfter date
+// found in the certificateStatus table. This provides an upper bound on how far
+// forward operations that need to cover all currently-unexpired certificates
+// have to look.
+func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
+	var model struct {
+		MaxNotAfter time.Time `db:"maxNotAfter"`
+	}
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
+		&model,
+		"SELECT MAX(notAfter) AS maxNotAfter FROM certificateStatus",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("selecting max notAfter: %w", err)
+	}
+	return timestamppb.New(model.MaxNotAfter), err
 }

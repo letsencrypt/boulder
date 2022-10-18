@@ -16,6 +16,7 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -253,6 +254,11 @@ func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.Seri
 
 // GetRevokedCerts is a mock
 func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
+	return nil, nil
+}
+
+// GetMaxExpiration is a mock
+func (sa *StorageAuthority) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
 	return nil, nil
 }
 

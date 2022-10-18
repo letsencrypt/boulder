@@ -13,6 +13,7 @@ import (
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -52,6 +53,7 @@ type StorageAuthorityClient interface {
 	KeyBlocked(ctx context.Context, in *KeyBlockedRequest, opts ...grpc.CallOption) (*Exists, error)
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
 	GetRevokedCerts(ctx context.Context, in *GetRevokedCertsRequest, opts ...grpc.CallOption) (StorageAuthority_GetRevokedCertsClient, error)
+	GetMaxExpiration(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*timestamppb.Timestamp, error)
 	IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error)
 	// Adders
 	NewRegistration(ctx context.Context, in *proto.Registration, opts ...grpc.CallOption) (*proto.Registration, error)
@@ -354,6 +356,15 @@ func (x *storageAuthorityGetRevokedCertsClient) Recv() (*proto.CRLEntry, error) 
 	return m, nil
 }
 
+func (c *storageAuthorityClient) GetMaxExpiration(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*timestamppb.Timestamp, error) {
+	out := new(timestamppb.Timestamp)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/GetMaxExpiration", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) IncidentsForSerial(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*Incidents, error) {
 	out := new(Incidents)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/IncidentsForSerial", in, out, opts...)
@@ -566,6 +577,7 @@ type StorageAuthorityServer interface {
 	KeyBlocked(context.Context, *KeyBlockedRequest) (*Exists, error)
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
 	GetRevokedCerts(*GetRevokedCertsRequest, StorageAuthority_GetRevokedCertsServer) error
+	GetMaxExpiration(context.Context, *emptypb.Empty) (*timestamppb.Timestamp, error)
 	IncidentsForSerial(context.Context, *Serial) (*Incidents, error)
 	// Adders
 	NewRegistration(context.Context, *proto.Registration) (*proto.Registration, error)
@@ -668,6 +680,9 @@ func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForInciden
 }
 func (UnimplementedStorageAuthorityServer) GetRevokedCerts(*GetRevokedCertsRequest, StorageAuthority_GetRevokedCertsServer) error {
 	return status.Errorf(codes.Unimplemented, "method GetRevokedCerts not implemented")
+}
+func (UnimplementedStorageAuthorityServer) GetMaxExpiration(context.Context, *emptypb.Empty) (*timestamppb.Timestamp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMaxExpiration not implemented")
 }
 func (UnimplementedStorageAuthorityServer) IncidentsForSerial(context.Context, *Serial) (*Incidents, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IncidentsForSerial not implemented")
@@ -1198,6 +1213,24 @@ func (x *storageAuthorityGetRevokedCertsServer) Send(m *proto.CRLEntry) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _StorageAuthority_GetMaxExpiration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).GetMaxExpiration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/GetMaxExpiration",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).GetMaxExpiration(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_IncidentsForSerial_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(Serial)
 	if err := dec(in); err != nil {
@@ -1656,6 +1689,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "KeyBlocked",
 			Handler:    _StorageAuthority_KeyBlocked_Handler,
+		},
+		{
+			MethodName: "GetMaxExpiration",
+			Handler:    _StorageAuthority_GetMaxExpiration_Handler,
 		},
 		{
 			MethodName: "IncidentsForSerial",
