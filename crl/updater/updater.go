@@ -472,7 +472,7 @@ type shardMap [][]chunk
 // Because this total period of time may include multiple chunks with the same
 // number, we then coalesce these chunks into a single shard. Ideally, this
 // will never happen: it should only happen if the lookbackPeriod is very
-// large, or if the shardWidth is small compared to the lastExpir (such that
+// large, or if the shardWidth is small compared to the lastExpiry (such that
 // numShards * shardWidth is less than lastExpiry - atTime). In this example,
 // shards 0, 1, and 4 all get the contents of two chunks mapped to them, while
 // shards 2 and 3 get only one chunk each.
@@ -493,7 +493,7 @@ func (cu *crlUpdater) getShardMappings(ctx context.Context, atTime time.Time) (s
 	res := make(shardMap, cu.numShards)
 
 	// Get the farthest-future expiration timestamp to ensure we cover everything.
-	lastExpriy, err := cu.sa.GetMaxExpiration(ctx, &emptypb.Empty{})
+	lastExpiry, err := cu.sa.GetMaxExpiration(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +507,7 @@ func (cu *crlUpdater) getShardMappings(ctx context.Context, atTime time.Time) (s
 
 	// Iterate over chunks until we get completely beyond the farthest-future
 	// expiration.
-	for c.start.Before(lastExpriy.AsTime()) {
+	for c.start.Before(lastExpiry.AsTime()) {
 		res[c.idx] = append(res[c.idx], c)
 		c = chunk{
 			start: c.end,

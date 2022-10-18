@@ -61,6 +61,7 @@ type Config struct {
 		// changes downwards, the value must not change until after all certificates with
 		// the old validity period have expired.
 		// DEPRECATED: This config value is no longer used.
+		// TODO(#6438): Remove this value.
 		CertificateLifetime cmd.ConfigDuration
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
