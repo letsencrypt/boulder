@@ -2301,7 +2301,11 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 	return nil
 }
 
-func (ssa *SQLStorageAuthority) GetLastExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
+// GetMaxExpiration returns the timestamp of the farthest-future notAfter date
+// found in the certificateStatus table. This provides an upper bound on how far
+// forward operations that need to cover all currently-unexpired certificates
+// have to look.
+func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
 	var model struct {
 		MaxNotAfter time.Time `db:"maxNotAfter"`
 	}

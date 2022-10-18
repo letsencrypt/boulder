@@ -2943,7 +2943,7 @@ func TestGetRevokedCerts(t *testing.T) {
 	test.AssertEquals(t, count, 0)
 }
 
-func TestGetLastExpiration(t *testing.T) {
+func TestGetMaxExpiration(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -2962,7 +2962,7 @@ func TestGetLastExpiration(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
 
-	lastExpiry, err := sa.GetLastExpiration(context.Background(), &emptypb.Empty{})
+	lastExpiry, err := sa.GetMaxExpiration(context.Background(), &emptypb.Empty{})
 	test.AssertNotError(t, err, "getting last expriy should succeed")
 	test.Assert(t, lastExpiry.AsTime().Equal(eeCert.NotAfter), "times should be equal")
 }

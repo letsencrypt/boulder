@@ -59,7 +59,7 @@ func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRe
 	return &f.grcc, nil
 }
 
-func (f *fakeSAC) GetLastExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
+func (f *fakeSAC) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
 	return timestamppb.New(f.maxNotAfter), nil
 }
 

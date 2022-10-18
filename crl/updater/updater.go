@@ -493,7 +493,7 @@ func (cu *crlUpdater) getShardMappings(ctx context.Context, atTime time.Time) (s
 	res := make(shardMap, cu.numShards)
 
 	// Get the farthest-future expiration timestamp to ensure we cover everything.
-	lastExpriy, err := cu.sa.GetLastExpiration(ctx, &emptypb.Empty{})
+	lastExpriy, err := cu.sa.GetMaxExpiration(ctx, &emptypb.Empty{})
 	if err != nil {
 		return nil, err
 	}
