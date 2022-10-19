@@ -57,22 +57,22 @@ func Diff(old, new *crl_x509.RevocationList) (*diffResult, error) {
 		return nil, fmt.Errorf("old CRL does not precede new CRL")
 	}
 
-	if old.Number.Cmp(new.Number) <= 0 {
+	if old.Number.Cmp(new.Number) >= 0 {
 		return nil, fmt.Errorf("old CRL does not precede new CRL")
 	}
 
 	// Sort both sets of serials so we can march through them in order.
 	oldSerials := make([]*big.Int, len(old.RevokedCertificates))
-	for _, rc := range old.RevokedCertificates {
-		oldSerials = append(oldSerials, rc.SerialNumber)
+	for i, rc := range old.RevokedCertificates {
+		oldSerials[i] = rc.SerialNumber
 	}
 	sort.Slice(oldSerials, func(i, j int) bool {
 		return oldSerials[i].Cmp(oldSerials[j]) < 0
 	})
 
 	newSerials := make([]*big.Int, len(new.RevokedCertificates))
-	for _, rc := range new.RevokedCertificates {
-		newSerials = append(newSerials, rc.SerialNumber)
+	for j, rc := range new.RevokedCertificates {
+		newSerials[j] = rc.SerialNumber
 	}
 	sort.Slice(newSerials, func(i, j int) bool {
 		return newSerials[i].Cmp(newSerials[j]) < 0
