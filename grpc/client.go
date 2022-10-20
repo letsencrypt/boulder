@@ -63,10 +63,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	)
 }
 
-type registry interface {
-	MustRegister(...prometheus.Collector)
-}
-
 // clientMetrics is a struct type used to return registered metrics from
 // `NewClientMetrics`
 type clientMetrics struct {
@@ -77,20 +73,26 @@ type clientMetrics struct {
 }
 
 // NewClientMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
-// the given registry, with timing histogram enabled. It must be called a
-// maximum of once per registry, or there will be conflicting names.
-func NewClientMetrics(stats registry) clientMetrics {
+// the given registry, with timing histogram enabled. If called more than once
+// on a single registry, it will gracefully avoid registering duplicate metrics.
+func NewClientMetrics(stats prometheus.Registerer) clientMetrics {
 	// Create the grpc prometheus client metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewClientMetrics()
 	grpcMetrics.EnableClientHandlingTimeHistogram()
-	stats.MustRegister(grpcMetrics)
+	err := stats.Register(grpcMetrics)
+	if err != nil && !errors.As(err, &prometheus.AlreadyRegisteredError{}) {
+		panic(err)
+	}
 
 	// Create a gauge to track in-flight RPCs and register it.
 	inFlightGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "grpc_in_flight",
 		Help: "Number of in-flight (sent, not yet completed) RPCs",
 	}, []string{"method", "service"})
-	stats.MustRegister(inFlightGauge)
+	err = stats.Register(inFlightGauge)
+	if err != nil && !errors.As(err, &prometheus.AlreadyRegisteredError{}) {
+		panic(err)
+	}
 
 	return clientMetrics{
 		grpcMetrics:  grpcMetrics,

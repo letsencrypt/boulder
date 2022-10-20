@@ -74,7 +74,10 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry pro
 		acceptedSANs[name] = struct{}{}
 	}
 
-	metrics := newServerMetrics(statsRegistry)
+	metrics, err := newServerMetrics(statsRegistry)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
@@ -121,15 +124,18 @@ type serverMetrics struct {
 	rpcLag      prometheus.Histogram
 }
 
-// newServerMetrics registers metrics with a registry. It must be called a
-// maximum of once per registry, or there will be conflicting names.
-// It constructs and registers a *grpc_prometheus.ServerMetrics with timing
-// histogram enabled as well as a prometheus Histogram for RPC latency.
-func newServerMetrics(stats registry) serverMetrics {
+// newServerMetrics registers metrics with a registry. It constructs and
+// registers a *grpc_prometheus.ServerMetrics with timing histogram enabled as
+// well as a prometheus Histogram for RPC latency. If called more than once on a
+// single registry, it will gracefully avoid registering duplicate metrics.
+func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	// Create the grpc prometheus server metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewServerMetrics()
 	grpcMetrics.EnableHandlingTimeHistogram()
-	stats.MustRegister(grpcMetrics)
+	err := stats.Register(grpcMetrics)
+	if err != nil && !errors.As(err, &prometheus.AlreadyRegisteredError{}) {
+		return serverMetrics{}, err
+	}
 
 	// rpcLag is a prometheus histogram tracking the difference between the time
 	// the client sent an RPC and the time the server received it. Create and
@@ -139,10 +145,13 @@ func newServerMetrics(stats registry) serverMetrics {
 			Name: "grpc_lag",
 			Help: "Delta between client RPC send time and server RPC receipt time",
 		})
-	stats.MustRegister(rpcLag)
+	err = stats.Register(rpcLag)
+	if err != nil && !errors.As(err, &prometheus.AlreadyRegisteredError{}) {
+		return serverMetrics{}, err
+	}
 
 	return serverMetrics{
 		grpcMetrics: grpcMetrics,
 		rpcLag:      rpcLag,
-	}
+	}, nil
 }
