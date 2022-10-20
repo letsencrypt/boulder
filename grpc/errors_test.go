@@ -29,7 +29,7 @@ func (s *errorServer) Chill(_ context.Context, _ *test_proto.Time) (*test_proto.
 }
 
 func TestErrorWrapping(t *testing.T) {
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics := newServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	ci := clientInterceptor{time.Second, NewClientMetrics(metrics.NoopRegisterer), clock.NewFake()}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
@@ -69,7 +69,7 @@ func TestErrorWrapping(t *testing.T) {
 // TestSubErrorWrapping tests that a boulder error with suberrors can be
 // correctly wrapped and unwrapped across the RPC layer.
 func TestSubErrorWrapping(t *testing.T) {
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics := newServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	ci := clientInterceptor{time.Second, NewClientMetrics(metrics.NoopRegisterer), clock.NewFake()}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))

@@ -11,8 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	awsl "github.com/aws/smithy-go/logging"
 	"github.com/honeycombio/beeline-go"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/crl/storer"
@@ -132,20 +130,13 @@ func main() {
 	csi, err := storer.New(issuers, s3client, c.CRLStorer.S3Bucket, scope, logger, clk)
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, listener, err := bgrpc.NewServer(c.CRLStorer.GRPC, tlsConfig, serverMetrics, clk)
+	start, stop, err := bgrpc.Server[cspb.CRLStorerServer]{}.Setup(
+		c.CRLStorer.GRPC, csi, cspb.RegisterCRLStorerServer, tlsConfig, scope, clk,
+	)
 	cmd.FailOnError(err, "Unable to setup CRLStorer gRPC server")
-	cspb.RegisterCRLStorerServer(grpcSrv, csi)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
-	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-	cmd.FailOnError(err, "CRLStorer gRPC service failed")
+	go cmd.CatchSignals(logger, stop)
+	cmd.FailOnError(start(), "CRLStorer gRPC service failed")
 }
 
 func init() {

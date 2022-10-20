@@ -5,8 +5,6 @@ import (
 	"flag"
 
 	"github.com/honeycombio/beeline-go"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -81,21 +79,13 @@ func main() {
 	cmd.FailOnError(err, "tlsConfig config")
 
 	nonceServer := &nonceServer{inner: ns}
-
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, l, err := bgrpc.NewServer(c.NonceService.GRPC, tlsConfig, serverMetrics, cmd.Clock())
+	start, stop, err := bgrpc.Server[noncepb.NonceServiceServer]{}.Setup(
+		c.NonceService.GRPC, nonceServer, noncepb.RegisterNonceServiceServer, tlsConfig, scope, cmd.Clock(),
+	)
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
-	noncepb.RegisterNonceServiceServer(grpcSrv, nonceServer)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
-	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-	cmd.FailOnError(err, "Nonce service gRPC server failed")
+	go cmd.CatchSignals(logger, stop)
+	cmd.FailOnError(start(), "Nonce service gRPC server failed")
 }
 
 func init() {

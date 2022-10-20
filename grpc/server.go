@@ -8,12 +8,15 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
+
+	"github.com/letsencrypt/boulder/cmd"
 )
 
 // CodedError is a alias required to appease go vet
@@ -21,11 +24,48 @@ var CodedError = status.Errorf
 
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
+// Server is a generic type that exists solely to allow its one method, Setup,
+// to be generic over the type of server it is setting up.
+type Server[T any] struct{}
+
+// Setup creates and registers a new gRPC server. It also creates and registers
+// a corresponding health server. It returns a function to start the server (so
+// that it may be run synchronously, or started in a goroutine), a function to
+// gracefully stop both the health and primary servers at shutdown time, and an
+// error in case any of the setup fails.
+func (s Server[T]) Setup(
+	config *cmd.GRPCServerConfig,
+	impl T,
+	registerer func(grpc.ServiceRegistrar, T),
+	tlsConfig *tls.Config,
+	statsRegistry prometheus.Registerer,
+	clk clock.Clock,
+	interceptors ...grpc.UnaryServerInterceptor,
+) (func() error, func(), error) {
+	server, listener, err := NewServer(config, tlsConfig, statsRegistry, clk, interceptors...)
+	if err != nil {
+		return nil, nil, err
+	}
+	registerer(server, impl)
+
+	healthServer := health.NewServer()
+	healthpb.RegisterHealthServer(server, healthServer)
+
+	start := func() error {
+		return cmd.FilterShutdownErrors(server.Serve(listener))
+	}
+	stop := func() {
+		healthServer.Shutdown()
+		server.GracefulStop()
+	}
+	return start, stop, nil
+}
+
 // NewServer creates a gRPC server that uses the provided *tls.Config, and
 // verifies that clients present a certificate that (a) is signed by one of
 // the configured ClientCAs, and (b) contains at least one
 // subjectAlternativeName matching the accepted list from GRPCServerConfig.
-func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMetrics, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (*grpc.Server, net.Listener, error) {
+func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (*grpc.Server, net.Listener, error) {
 	if tlsConfig == nil {
 		return nil, nil, errNilTLS
 	}
@@ -33,6 +73,8 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, metrics serverMet
 	for _, name := range c.ClientNames {
 		acceptedSANs[name] = struct{}{}
 	}
+
+	metrics := newServerMetrics(statsRegistry)
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
@@ -79,11 +121,11 @@ type serverMetrics struct {
 	rpcLag      prometheus.Histogram
 }
 
-// NewServerMetrics registers metrics with a registry. It must be called a
+// newServerMetrics registers metrics with a registry. It must be called a
 // maximum of once per registry, or there will be conflicting names.
 // It constructs and registers a *grpc_prometheus.ServerMetrics with timing
 // histogram enabled as well as a prometheus Histogram for RPC latency.
-func NewServerMetrics(stats registry) serverMetrics {
+func newServerMetrics(stats registry) serverMetrics {
 	// Create the grpc prometheus server metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewServerMetrics()
 	grpcMetrics.EnableHandlingTimeHistogram()

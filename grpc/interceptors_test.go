@@ -50,7 +50,7 @@ func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.Cli
 }
 
 func TestServerInterceptor(t *testing.T) {
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics := newServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 
 	md := metadata.New(map[string]string{clientRequestTimeKey: "0"})
@@ -153,7 +153,7 @@ func TestTimeouts(t *testing.T) {
 	}
 	port := lis.Addr().(*net.TCPAddr).Port
 
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics := newServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, &testServer{})
@@ -214,7 +214,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	port := lis.Addr().(*net.TCPAddr).Port
 
 	// Create a new ChillerServer
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics := newServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clk)
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, &testServer{})
@@ -300,7 +300,7 @@ func TestInFlightRPCStat(t *testing.T) {
 	numRPCs := 5
 	server.received.Add(numRPCs)
 
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics := newServerMetrics(metrics.NoopRegisterer)
 	si := newServerInterceptor(serverMetrics, clk)
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, server)
