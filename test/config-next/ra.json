@@ -40,6 +40,14 @@
       "timeout": "15s",
       "hostOverride": "ca.boulder"
     },
+    "ocspService": {
+      "srvLookup": {
+        "service": "ca-ocsp",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "ca.boulder"
+    },
     "publisherService": {
       "srvLookup": {
         "service": "publisher",
