@@ -3630,61 +3630,6 @@ func TestGenerateOCSP(t *testing.T) {
 	}
 }
 
-func TestRevokerCertificateWithReg(t *testing.T) {
-	_, _, ra, clk, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ra.OCSP = &mockOCSPA{}
-	ra.purger = &mockPurger{}
-
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
-	digest, err := core.KeyDigest(k.Public())
-	test.AssertNotError(t, err, "core.KeyDigest failed")
-
-	template := x509.Certificate{SerialNumber: big.NewInt(257)}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
-	test.AssertNotError(t, err, "x509.CreateCertificate failed")
-	cert, err := x509.ParseCertificate(der)
-	test.AssertNotError(t, err, "x509.ParseCertificate failed")
-	ic, err := issuance.NewCertificate(cert)
-	test.AssertNotError(t, err, "failed to create issuer cert")
-	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
-		ic.NameID(): ic,
-	}
-	ra.issuersByID = map[issuance.IssuerID]*issuance.Certificate{
-		ic.ID(): ic,
-	}
-	// Revoking for an unspecified reason should work but not block the key.
-	mockSA := newMockSARevocation(cert, clk)
-	ra.SA = mockSA
-	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
-		Cert:  cert.Raw,
-		Code:  ocsp.Unspecified,
-		RegID: 0,
-	})
-	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
-	test.AssertEquals(t, len(mockSA.blocked), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 1)
-
-	// Revoking for key comprommise should work and block the key.
-	mockSA = newMockSARevocation(cert, clk)
-	ra.SA = mockSA
-	_, err = ra.RevokeCertificateWithReg(context.Background(), &rapb.RevokeCertificateWithRegRequest{
-		Cert:  cert.Raw,
-		Code:  ocsp.KeyCompromise,
-		RegID: 0,
-	})
-	test.AssertNotError(t, err, "RevokeCertificateWithReg failed")
-	test.AssertEquals(t, len(mockSA.blocked), 1)
-	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
-	test.AssertEquals(t, mockSA.blocked[0].Source, "API")
-	test.AssertEquals(t, len(mockSA.blocked[0].Comment), 0)
-	test.AssertMetricWithLabelsEquals(
-		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
-}
-
 func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()

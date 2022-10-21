@@ -197,11 +197,6 @@ func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.Pe
 	return &corepb.Authorization{}, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, in *rapb.RevokeCertificateWithRegRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	ra.lastRevocationReason = revocation.Reason(in.Code)
-	return &emptypb.Empty{}, nil
-}
-
 func (ra *MockRegistrationAuthority) RevokeCertByApplicant(ctx context.Context, in *rapb.RevokeCertByApplicantRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	ra.lastRevocationReason = revocation.Reason(in.Code)
 	return &emptypb.Empty{}, nil
