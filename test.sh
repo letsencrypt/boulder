@@ -211,20 +211,15 @@ print_heading "Starting..."
 #
 STAGE="lints"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  # TODO(#6275): Remove this conditional and globally re-enable this test.
-  if [[ $(go version) == *go1.19* ]] ; then
-    print_heading "Skipping Lints"
-  else
-    print_heading "Running Lints"
-    golangci-lint run --timeout 9m ./...
-    python3 test/grafana/lint.py
-    # Check for common spelling errors using codespell.
-    # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
-    # words should be all lowercase).
-    run_and_expect_silence codespell \
-      --ignore-words=.codespell.ignore.txt \
-      --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
-  fi
+  print_heading "Running Lints"
+  golangci-lint run --timeout 9m ./...
+  python3 test/grafana/lint.py
+  # Check for common spelling errors using codespell.
+  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
+  # words should be all lowercase).
+  run_and_expect_silence codespell \
+    --ignore-words=.codespell.ignore.txt \
+    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
 fi
 
 #
@@ -276,24 +271,19 @@ fi
 # so will fail if imports are not available in $GOPATH.
 STAGE="generate"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  # TODO(#6275): Remove this conditional and globally re-enable this test.
-  if [[ $(go version) == *go1.19* ]] ; then
-    print_heading "Skipping Generate"
-  else
-    print_heading "Running Generate"
-    # Additionally, we need to run go install before go generate because the stringer command
-    # (using in ./grpc/) checks imports, and depends on the presence of a built .a
-    # file to determine an import really exists. See
-    # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
-    # Without this, we get error messages like:
-    #   stringer: checking package: grpc/bcodes.go:6:2: could not import
-    #     github.com/letsencrypt/boulder/probs (can't find import:
-    #     github.com/letsencrypt/boulder/probs)
-    go install ./probs
-    go install ./vendor/google.golang.org/grpc/codes
-    run_and_expect_silence go generate ./...
-    run_and_expect_silence git diff --exit-code .
-  fi
+  print_heading "Running Generate"
+  # Additionally, we need to run go install before go generate because the stringer command
+  # (using in ./grpc/) checks imports, and depends on the presence of a built .a
+  # file to determine an import really exists. See
+  # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
+  # Without this, we get error messages like:
+  #   stringer: checking package: grpc/bcodes.go:6:2: could not import
+  #     github.com/letsencrypt/boulder/probs (can't find import:
+  #     github.com/letsencrypt/boulder/probs)
+  go install ./probs
+  go install ./vendor/google.golang.org/grpc/codes
+  run_and_expect_silence go generate ./...
+  run_and_expect_silence git diff --exit-code .
 fi
 
 STAGE="make-artifacts"

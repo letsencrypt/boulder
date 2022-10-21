@@ -10,11 +10,10 @@ services:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: test/config
       GOFLAGS: -mod=vendor
-      # Go 1.18 turns off SHA-1 validation on CSRs (and certs, but that doesn't
-      # affect us). It also turns off TLS 1.0 and TLS 1.1. Temporarily go back
-      # to allowing these so we can upgrade to Go 1.18 while doing a deprecation
-      # window. These overrides will stop working in Go 1.19.
-      GODEBUG: x509sha1=1,tls10default=1
+      # Go 1.18 turned off SHA-1 validation on CSRs (and certs, but that doesn't
+      # affect us) by default, but it can be turned back on with the x509sha1
+      # flag. This override will stop working in an unknown future release.
+      GODEBUG: x509sha1=1
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
