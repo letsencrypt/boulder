@@ -54,11 +54,7 @@
     "shutdownStopTimeout": "10s",
     "debugAddr": ":8005",
     "requiredSerialPrefixes": ["ff"],
-    "features": {
-      "ROCSPStage1": true,
-      "ROCSPStage2": true,
-      "ROCSPStage3": true
-    }
+    "features": {}
   },
 
   "syslog": {
