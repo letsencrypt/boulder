@@ -343,6 +343,7 @@ type GenerateCRLRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Payload:
+	//
 	//	*GenerateCRLRequest_Metadata
 	//	*GenerateCRLRequest_Entry
 	Payload isGenerateCRLRequest_Payload `protobuf_oneof:"payload"`

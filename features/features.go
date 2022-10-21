@@ -20,6 +20,8 @@ const (
 	StreamlineOrderAndAuthzs
 	V1DisableNewValidations
 	ExpirationMailerDontLookTwice
+	OldTLSInbound
+	OldTLSOutbound
 	ROCSPStage1
 	ROCSPStage2
 	ROCSPStage3
@@ -82,14 +84,6 @@ const (
 	//   with the certificate's keypair, the cert will be revoked with reason
 	//   keyCompromise, regardless of what revocation reason they request.
 	MozRevocationReasons
-	// OldTLSOutbound allows the VA to negotiate TLS 1.0 and TLS 1.1 during
-	// HTTPS redirects. When it is set to false, the VA will only connect to
-	// HTTPS servers that support TLS 1.2 or above.
-	OldTLSOutbound
-	// OldTLSInbound controls whether the WFE rejects inbound requests using
-	// TLS 1.0 and TLS 1.1. Because WFE does not terminate TLS in production,
-	// we rely on the TLS-Version header (set by our reverse proxy).
-	OldTLSInbound
 	// SHA1CSRs controls whether the /acme/finalize endpoint rejects CSRs that
 	// are self-signed using SHA1.
 	SHA1CSRs

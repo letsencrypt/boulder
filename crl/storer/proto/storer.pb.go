@@ -27,6 +27,7 @@ type UploadCRLRequest struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Types that are assignable to Payload:
+	//
 	//	*UploadCRLRequest_Metadata
 	//	*UploadCRLRequest_CrlChunk
 	Payload isUploadCRLRequest_Payload `protobuf_oneof:"payload"`
