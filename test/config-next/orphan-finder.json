@@ -32,5 +32,9 @@
     },
     "timeout": "15s",
     "hostOverride": "sa.boulder"
+  },
+
+  "features": {
+    "ROCSPStage7": true
   }
 }

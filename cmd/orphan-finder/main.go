@@ -379,6 +379,9 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 
 // generateOCSP asks the CA to generate a new OCSP response for the given cert.
 func (opf *orphanFinder) generateOCSP(ctx context.Context, cert *x509.Certificate) ([]byte, error) {
+	if features.Enabled(features.ROCSPStage7) {
+		return nil, nil
+	}
 	issuerID := issuance.GetIssuerNameID(cert)
 	_, ok := opf.issuers[issuerID]
 	if !ok {

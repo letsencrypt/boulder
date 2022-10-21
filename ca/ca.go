@@ -416,16 +416,19 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	serialHex := core.SerialToString(serialBigInt)
 
-	// Generate ocsp response before issuing precertificate
-	ocspResp, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:   serialHex,
-		IssuerID: int64(issuer.Cert.NameID()),
-		Status:   string(core.OCSPStatusGood),
-	})
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
-		return nil, nil, nil, err
+	var ocspResp *capb.OCSPResponse
+	if !features.Enabled(features.ROCSPStage7) {
+		// Generate ocsp response before issuing precertificate
+		ocspResp, err = ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+			Serial:   serialHex,
+			IssuerID: int64(issuer.Cert.NameID()),
+			Status:   string(core.OCSPStatusGood),
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
+			return nil, nil, nil, err
+		}
 	}
 
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
