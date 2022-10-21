@@ -21,7 +21,8 @@
       "clientNames": [
         "health-checker.boulder",
         "ocsp-updater.boulder",
-        "orphan-finder.boulder"
+        "orphan-finder.boulder",
+        "ra.boulder"
       ]
     },
     "grpcCRLGenerator": {

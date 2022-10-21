@@ -39,6 +39,7 @@ type Config struct {
 		SAService           *cmd.GRPCClientConfig
 		VAService           *cmd.GRPCClientConfig
 		CAService           *cmd.GRPCClientConfig
+		OCSPService         *cmd.GRPCClientConfig
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
@@ -168,6 +169,14 @@ func main() {
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
 
+	var ocspc capb.OCSPGeneratorClient
+	ocspc = cac
+	if c.RA.OCSPService != nil {
+		ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, clientMetrics, clk)
+		cmd.FailOnError(err, "Unable to create CA client")
+		ocspc = capb.NewOCSPGeneratorClient(ocspConn)
+	}
+
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
@@ -279,6 +288,7 @@ func main() {
 
 	rai.VA = vac
 	rai.CA = cac
+	rai.OCSP = ocspc
 	rai.SA = sac
 
 	serverMetrics := bgrpc.NewServerMetrics(scope)
