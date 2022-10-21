@@ -54,9 +54,10 @@ type certificateAuthorityImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
-	ocsp    *ocspImpl
-	crl     *crlImpl
 	issuers issuerMaps
+	// TODO(#6448): Remove these.
+	ocsp *ocspImpl
+	crl  *crlImpl
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -580,6 +581,7 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 // GenerateOCSP is simply a passthrough to ocspImpl.GenerateOCSP so that other
 // services which need to talk to the CA anyway can do so without configuring
 // two separate gRPC service backends.
+// TODO(#6448): Remove this passthrough to fully separate the services.
 func (ca *certificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	return ca.ocsp.GenerateOCSP(ctx, req)
 }
@@ -587,6 +589,7 @@ func (ca *certificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.
 // GenerateCRL is simply a passthrough to crlImpl.GenerateCRL so that other
 // services which need to talk to the CA anyway can do so without configuring
 // two separate gRPC service backends.
+// TODO(#6448): Remove this passthrough to fully separate the services.
 func (ca *certificateAuthorityImpl) GenerateCRL(stream capb.CertificateAuthority_GenerateCRLServer) error {
 	return ca.crl.GenerateCRL(stream)
 }
