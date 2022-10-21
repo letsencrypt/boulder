@@ -26,8 +26,8 @@ require (
 	github.com/prometheus/client_model v0.2.0
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.20.1-0.20221016123633-0ad56ba8bf2e
-	github.com/zmap/zcrypto v0.0.0-20210811211718-6f9bc4aff20f
-	github.com/zmap/zlint/v3 v3.3.1-0.20211019173530-cb17369b4628
+	github.com/zmap/zcrypto v0.0.0-20220402174210-599ec18ecbac
+	github.com/zmap/zlint/v3 v3.4.0
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
 	golang.org/x/net v0.0.0-20220926192436-02166a98028e
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
@@ -65,6 +65,7 @@ require (
 	github.com/honeycombio/libhoney-go v1.16.0 // indirect
 	github.com/klauspost/compress v1.15.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/pelletier/go-toml v1.9.3 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect

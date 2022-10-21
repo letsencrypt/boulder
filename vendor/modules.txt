@@ -221,6 +221,9 @@ github.com/miekg/dns
 # github.com/miekg/pkcs11 v1.1.1
 ## explicit; go 1.12
 github.com/miekg/pkcs11
+# github.com/pelletier/go-toml v1.9.3
+## explicit; go 1.12
+github.com/pelletier/go-toml
 # github.com/prometheus/client_golang v1.13.0
 ## explicit; go 1.17
 github.com/prometheus/client_golang/prometheus
@@ -269,7 +272,7 @@ github.com/vmihailenco/tagparser/v2/internal/parser
 # github.com/weppos/publicsuffix-go v0.20.1-0.20221016123633-0ad56ba8bf2e
 ## explicit; go 1.13
 github.com/weppos/publicsuffix-go/publicsuffix
-# github.com/zmap/zcrypto v0.0.0-20210811211718-6f9bc4aff20f
+# github.com/zmap/zcrypto v0.0.0-20220402174210-599ec18ecbac
 ## explicit; go 1.16
 github.com/zmap/zcrypto/cryptobyte
 github.com/zmap/zcrypto/cryptobyte/asn1
@@ -281,8 +284,8 @@ github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint/v3 v3.3.1-0.20211019173530-cb17369b4628
-## explicit; go 1.16
+# github.com/zmap/zlint/v3 v3.4.0
+## explicit; go 1.18
 github.com/zmap/zlint/v3
 github.com/zmap/zlint/v3/lint
 github.com/zmap/zlint/v3/lints/apple
