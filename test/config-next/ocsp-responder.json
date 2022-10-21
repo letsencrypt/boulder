@@ -48,7 +48,6 @@
       "/hierarchy/intermediate-cert-rsa-b.pem",
       "/hierarchy/intermediate-cert-ecdsa-a.pem"
     ],
-    "expectedFreshness": "61h",
     "liveSigningPeriod": "60h",
     "timeout": "4.9s",
     "shutdownStopTimeout": "10s",
