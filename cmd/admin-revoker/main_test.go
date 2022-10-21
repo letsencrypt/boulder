@@ -39,11 +39,11 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type mockCA struct {
+type mockOCSPA struct {
 	mocks.MockCA
 }
 
-func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
+func (ca *mockOCSPA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{Response: []byte("fakeocspbytes")}, nil
 }
 
@@ -484,7 +484,7 @@ func setup(t *testing.T) testCtx {
 		[]*issuance.Certificate{issuer},
 	)
 	ra.SA = isa.SA{Impl: ssa}
-	ra.CA = &mockCA{}
+	ra.OCSP = &mockOCSPA{}
 	rac := ira.RA{Impl: ra}
 
 	return testCtx{
