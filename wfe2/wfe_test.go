@@ -3223,7 +3223,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type: "dns",
+				Type:                     "dns",
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
@@ -3671,10 +3671,7 @@ func TestIncidentARI(t *testing.T) {
 	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
 }
 
-// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 func TestOldTLSInbound(t *testing.T) {
-	features.Reset()
-
 	wfe, _ := setupWFE(t)
 	req := &http.Request{
 		URL:    &url.URL{Path: "/directory"},
@@ -3683,16 +3680,8 @@ func TestOldTLSInbound(t *testing.T) {
 			http.CanonicalHeaderKey("TLS-Version"): {"TLSv1"},
 		}),
 	}
+
 	responseWriter := httptest.NewRecorder()
-	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-
-	err := features.Set(map[string]bool{"OldTLSInbound": false})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	responseWriter = httptest.NewRecorder()
 	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
 }

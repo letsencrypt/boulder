@@ -70,6 +70,7 @@ type caaChecker interface {
 type RegistrationAuthorityImpl struct {
 	rapb.UnimplementedRegistrationAuthorityServer
 	CA        capb.CertificateAuthorityClient
+	OCSP      capb.OCSPGeneratorClient
 	VA        vapb.VAClient
 	SA        sapb.StorageAuthorityClient
 	PA        core.PolicyAuthority
@@ -1739,7 +1740,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 	serialString := core.SerialToString(serial)
 	revokedAt := ra.clk.Now().UnixNano()
 
-	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+	ocspResponse, err := ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    serialString,
 		IssuerID:  issuerID,
 		Status:    string(core.OCSPStatusRevoked),
@@ -1790,7 +1791,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	}
 
 	// The new OCSP response has to be back-dated to the original date.
-	ocspResponse, err := ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+	ocspResponse, err := ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    serialString,
 		IssuerID:  issuerID,
 		Status:    string(core.OCSPStatusRevoked),
@@ -2250,7 +2251,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		return nil, berrors.NotFoundError("certificate is expired")
 	}
 
-	return ra.CA.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+	return ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
 		Serial:    req.Serial,
 		Status:    status.Status,
 		Reason:    int32(status.RevokedReason),

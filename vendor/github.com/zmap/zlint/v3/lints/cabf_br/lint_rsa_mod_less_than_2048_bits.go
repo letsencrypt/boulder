@@ -41,7 +41,7 @@ func NewRsaParsedTestsKeySize() lint.LintInterface {
 
 func (l *rsaParsedTestsKeySize) CheckApplies(c *x509.Certificate) bool {
 	_, ok := c.PublicKey.(*rsa.PublicKey)
-	return ok && c.PublicKeyAlgorithm == x509.RSA && c.NotAfter.After(util.NoRSA1024Date.Add(-1))
+	return ok && c.PublicKeyAlgorithm == x509.RSA && util.OnOrAfter(c.NotAfter, util.NoRSA1024Date)
 }
 
 func (l *rsaParsedTestsKeySize) Execute(c *x509.Certificate) *lint.LintResult {

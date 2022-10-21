@@ -355,6 +355,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
+	ra.OCSP = ca
 	ra.PA = pa
 	ra.reuseValidAuthz = true
 
@@ -3580,11 +3581,11 @@ func (msar *mockSARevocation) UpdateRevokedCertificate(_ context.Context, req *s
 	return &emptypb.Empty{}, nil
 }
 
-type mockCAOCSP struct {
+type mockOCSPA struct {
 	mocks.MockCA
 }
 
-func (mcao *mockCAOCSP) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
+func (mcao *mockOCSPA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{Response: []byte{1, 2, 3}}, nil
 }
 
@@ -3611,7 +3612,7 @@ func TestGenerateOCSP(t *testing.T) {
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.SA = &mockSAGenerateOCSP{expiration: clk.Now().Add(time.Hour)}
 
 	req := &rapb.GenerateOCSPRequest{
@@ -3636,7 +3637,7 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): false})
 	defer features.Reset()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
 	_, cert := test.ThrowAwayCert(t, 1)
@@ -3702,7 +3703,7 @@ func TestRevokeCertByApplicant_Subscriber_Moz(t *testing.T) {
 	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): true})
 	defer features.Reset()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
 	_, cert := test.ThrowAwayCert(t, 1)
@@ -3759,7 +3760,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): false})
 	defer features.Reset()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
 	_, cert := test.ThrowAwayCert(t, 1)
@@ -3800,7 +3801,7 @@ func TestRevokeCertByApplicant_Controller_Moz(t *testing.T) {
 	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): true})
 	defer features.Reset()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
 	_, cert := test.ThrowAwayCert(t, 1)
@@ -3842,7 +3843,7 @@ func TestRevokeCertByKey(t *testing.T) {
 	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): false})
 	defer features.Reset()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -3938,7 +3939,7 @@ func TestRevokeCertByKey_Moz(t *testing.T) {
 	_ = features.Set(map[string]bool{features.MozRevocationReasons.String(): true})
 	defer features.Reset()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -4011,7 +4012,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
 
-	ra.CA = &mockCAOCSP{}
+	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -25,7 +25,7 @@ var kMinTime, kMaxTime time.Time
 
 func init() {
 	var err error
-	kMinTime, err = time.Parse(time.RFC3339, "1970-01-01T00:00:00Z")
+	kMinTime, err = time.Parse(time.RFC3339, "0001-01-01T00:00:00Z")
 	if err != nil {
 		panic(err)
 	}
@@ -218,7 +218,7 @@ func (v *validity) MarshalJSON() ([]byte, error) {
 	aux := auxValidity{
 		Start:          clampTime(v.NotBefore.UTC()).Format(time.RFC3339),
 		End:            clampTime(v.NotAfter.UTC()).Format(time.RFC3339),
-		ValidityPeriod: int(v.NotAfter.Sub(v.NotBefore).Seconds()),
+		ValidityPeriod: int(v.NotAfter.Unix() - v.NotBefore.Unix()),
 	}
 	return json.Marshal(&aux)
 }
@@ -235,7 +235,6 @@ func (v *validity) UnmarshalJSON(b []byte) error {
 	if v.NotAfter, err = time.Parse(time.RFC3339, aux.End); err != nil {
 		return err
 	}
-
 	return nil
 }
 

@@ -15,6 +15,7 @@
 package lint
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +24,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/pelletier/go-toml"
 )
 
 // FilterOptions is a struct used by Registry.Filter to create a sub registry
@@ -75,6 +78,8 @@ type Registry interface {
 	// Sources returns a SourceList of registered LintSources. The list is not
 	// sorted but can be sorted by the caller with sort.Sort() if required.
 	Sources() SourceList
+	// @TODO
+	DefaultConfiguration() ([]byte, error)
 	// ByName returns a pointer to the registered lint with the given name, or nil
 	// if there is no such lint registered in the registry.
 	ByName(name string) *Lint
@@ -87,6 +92,8 @@ type Registry interface {
 	// WriteJSON writes a description of each registered lint as
 	// a JSON object, one object per line, to the provided writer.
 	WriteJSON(w io.Writer)
+	SetConfiguration(config Configuration)
+	GetConfiguration() Configuration
 }
 
 // registryImpl implements the Registry interface to provide a global collection
@@ -102,6 +109,7 @@ type registryImpl struct {
 	// lintsBySource is a map of all registered lints by source category. Lints
 	// are added to the lintsBySource map by RegisterLint.
 	lintsBySource map[LintSource][]*Lint
+	configuration Configuration
 }
 
 var (
@@ -136,7 +144,7 @@ func (r *registryImpl) register(l *Lint) error {
 	if l == nil {
 		return errNilLint
 	}
-	if l.Lint == nil {
+	if l.Lint() == nil {
 		return errNilLintPtr
 	}
 	if l.Name == "" {
@@ -225,6 +233,7 @@ func sourceListToMap(sources SourceList) map[LintSource]bool {
 //
 // FilterOptions are applied in the following order of precedence:
 //   ExcludeSources > IncludeSources > NameFilter > ExcludeNames > IncludeNames
+//nolint:cyclop
 func (r *registryImpl) Filter(opts FilterOptions) (Registry, error) {
 	// If there's no filtering to be done, return the existing Registry.
 	if opts.Empty() {
@@ -232,6 +241,7 @@ func (r *registryImpl) Filter(opts FilterOptions) (Registry, error) {
 	}
 
 	filteredRegistry := NewRegistry()
+	filteredRegistry.SetConfiguration(r.configuration)
 
 	sourceExcludes := sourceListToMap(opts.ExcludeSources)
 	sourceIncludes := sourceListToMap(opts.IncludeSources)
@@ -286,22 +296,83 @@ func (r *registryImpl) WriteJSON(w io.Writer) {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	for _, name := range r.Names() {
+		//nolint:errchkjson
 		_ = enc.Encode(r.ByName(name))
 	}
 }
 
+func (r *registryImpl) SetConfiguration(cfg Configuration) {
+	r.configuration = cfg
+}
+
+func (r *registryImpl) GetConfiguration() Configuration {
+	return r.configuration
+}
+
+// DefaultConfiguration returns a serialized copy of the default configuration for ZLint.
+//
+// This is especially useful combined with the -exampleConfig CLI argument which prints this
+// to stdout. In this way, operators can quickly see what lints are configurable and what their
+// fields are without having to dig through documentation or, even worse, code.
+func (r *registryImpl) DefaultConfiguration() ([]byte, error) {
+	return r.defaultConfiguration(defaultGlobals)
+}
+
+// defaultConfiguration is abstracted out to a private function that takes in a slice of globals
+// for the sake of making unit testing easier.
+func (r *registryImpl) defaultConfiguration(globals []GlobalConfiguration) ([]byte, error) {
+	configurables := map[string]interface{}{}
+	for name, lint := range r.lintsByName {
+		switch configurable := lint.Lint().(type) {
+		case Configurable:
+			configurables[name] = stripGlobalsFromExample(configurable.Configure())
+		default:
+		}
+	}
+	for _, config := range globals {
+		switch config.(type) {
+		case *Global:
+			// We're just using stripGlobalsFromExample here as a convenient way to
+			// recursively turn the `Global` struct type into a map.
+			//
+			// We have to do this because if we simply followed the pattern above and did...
+			//
+			//	configurables["Global"] = &Global{}
+			//
+			// ...then we would end up with a [Global] section in the resulting configuration,
+			// which is not what we are looking for (we simply want it to be flattened out into
+			// the top most context of the configuration file).
+			for k, v := range stripGlobalsFromExample(config).(map[string]interface{}) {
+				configurables[k] = v
+			}
+		default:
+			configurables[config.namespace()] = config
+		}
+
+	}
+	w := &bytes.Buffer{}
+	err := toml.NewEncoder(w).Indentation("").CompactComments(true).Encode(configurables)
+	if err != nil {
+		return nil, err
+	}
+	return w.Bytes(), nil
+}
+
 // NewRegistry constructs a Registry implementation that can be used to register
 // lints.
+//nolint:revive
 func NewRegistry() *registryImpl {
-	return &registryImpl{
+	registry := &registryImpl{
 		lintsByName:   make(map[string]*Lint),
 		lintsBySource: make(map[LintSource][]*Lint),
 	}
+	registry.SetConfiguration(NewEmptyConfig())
+	return registry
 }
 
 // globalRegistry is the Registry used by all loaded lints that call
 // RegisterLint().
-var globalRegistry *registryImpl = NewRegistry()
+var globalRegistry = NewRegistry()
 
 // RegisterLint must be called once for each lint to be executed. Normally,
 // RegisterLint is called from the Go init() function of a lint implementation.

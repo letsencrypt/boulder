@@ -48,17 +48,12 @@
       "/hierarchy/intermediate-cert-rsa-b.pem",
       "/hierarchy/intermediate-cert-ecdsa-a.pem"
     ],
-    "expectedFreshness": "61h",
     "liveSigningPeriod": "60h",
     "timeout": "4.9s",
     "shutdownStopTimeout": "10s",
     "debugAddr": ":8005",
     "requiredSerialPrefixes": ["ff"],
-    "features": {
-      "ROCSPStage1": true,
-      "ROCSPStage2": true,
-      "ROCSPStage3": true
-    }
+    "features": {}
   },
 
   "syslog": {
