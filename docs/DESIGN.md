@@ -400,11 +400,19 @@ ACME v2:
 ACME v1/v2:
 
 ```
-1: Client ---cert--> WFE/WFEv2
-2:                   WFE/WFEv2 ---RevokeCertificateWithReg--> RA
-3:                   WFE/WFEv2 <------------return----------- RA
-4: Client <--------- WFE/WFEv2
+1: Client ---cert--> WFEv2
+2:                   WFEv2 ---RevokeCertByApplicant--> RA
+3:                   WFEv2 <-----------return--------- RA
+4: Client <--------- WFEv2
 ```
+or
+```
+1: Client ---cert--> WFEv2
+2:                   WFEv2 ------RevokeCertByKey-----> RA
+3:                   WFEv2 <-----------return--------- RA
+4: Client <--------- WFEv2
+```
+
 
 * 1-2: WFE/WFEv2 do the following:
   * Verify that the request is a POST
