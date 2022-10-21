@@ -20,6 +20,9 @@ const (
 	StreamlineOrderAndAuthzs
 	V1DisableNewValidations
 	ExpirationMailerDontLookTwice
+	ROCSPStage1
+	ROCSPStage2
+	ROCSPStage3
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -98,20 +101,6 @@ const (
 	// go1.19.
 	RejectDuplicateCSRExtensions
 
-	// ROCSPStage1 enables querying Redis, live-signing response, and storing
-	// to Redis, but doesn't serve responses from Redis.
-	ROCSPStage1
-	// ROCSPStage2 enables querying Redis, live-signing a response, and storing
-	// to Redis, and does serve responses from Redis when appropriate (when
-	// they are fresh, and agree with MariaDB's status for the certificate).
-	ROCSPStage2
-	// ROCSPStage3 enables querying Redis, live-signing a response, and serving
-	// from Redis, without any fallback to serving bytes from MariaDB. In this
-	// mode we still make a parallel request to MariaDB to cross-check the
-	// _status_ of the response. If that request indicates a different status
-	// than what's stored in Redis, we'll trigger a fresh signing and serve and
-	// store the result.
-	ROCSPStage3
 	// ROCSPStage6 disables writing full OCSP Responses to MariaDB during
 	// (pre)certificate issuance and during revocation. Because Stage 4 involved
 	// disabling ocsp-updater, this means that no ocsp response bytes will be
