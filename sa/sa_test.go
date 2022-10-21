@@ -1769,7 +1769,7 @@ func TestRevokeCertificateNoResponse(t *testing.T) {
 		Date:   now.UnixNano(),
 		Reason: reason,
 	})
-	test.AssertNotError(t, err, "RevokeCertificate should succeed with no response when ROCSPStage3 is enabled")
+	test.AssertNotError(t, err, "RevokeCertificate should succeed with no response when ROCSPStage6 is enabled")
 }
 
 func TestUpdateRevokedCertificate(t *testing.T) {

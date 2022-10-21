@@ -37,7 +37,7 @@ func init() {
 		Description:   "Subscriber certificates using the SHA-1 algorithm SHOULD NOT have an expiration date later than 1 Jan 2017",
 		Citation:      "BRs: 7.1.3",
 		Source:        lint.CABFBaselineRequirements,
-		EffectiveDate: time.Date(2015, time.January, 16, 0, 0, 0, 0, time.UTC),
+		EffectiveDate: util.CABFBRs_1_2_1_Date,
 		Lint:          NewSha1ExpireLong,
 	})
 }
@@ -52,8 +52,10 @@ func (l *sha1ExpireLong) CheckApplies(c *x509.Certificate) bool {
 		c.SignatureAlgorithm == x509.ECDSAWithSHA1)
 }
 
+var sha1SunsetDate = time.Date(2017, time.January, 1, 0, 0, 0, 0, time.UTC)
+
 func (l *sha1ExpireLong) Execute(c *x509.Certificate) *lint.LintResult {
-	if c.NotAfter.After(time.Date(2017, time.January, 1, 0, 0, 0, 0, time.UTC)) {
+	if c.NotAfter.After(sha1SunsetDate) {
 		return &lint.LintResult{Status: lint.Warn}
 	} else {
 		return &lint.LintResult{Status: lint.Pass}
