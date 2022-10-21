@@ -23,7 +23,7 @@ require (
 	github.com/miekg/dns v1.1.50
 	github.com/miekg/pkcs11 v1.1.1
 	github.com/prometheus/client_golang v1.13.0
-	github.com/prometheus/client_model v0.2.0
+	github.com/prometheus/client_model v0.3.0
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.20.1-0.20221016123633-0ad56ba8bf2e
 	github.com/zmap/zcrypto v0.0.0-20220402174210-599ec18ecbac
