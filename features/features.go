@@ -100,6 +100,10 @@ const (
 	// disabling ocsp-updater, this means that no ocsp response bytes will be
 	// written to the database anymore.
 	ROCSPStage6
+	// ROCSPStage7 disables generating OCSP responses during issuance and
+	// revocation. This affects codepaths in both the RA (revocation) and the CA
+	// (precert "birth certificates").
+	ROCSPStage7
 )
 
 // List of features and their default value, protected by fMu
@@ -137,6 +141,7 @@ var features = map[FeatureFlag]bool{
 	ROCSPStage2:                    false,
 	ROCSPStage3:                    false,
 	ROCSPStage6:                    false,
+	ROCSPStage7:                    false,
 }
 
 var fMu = new(sync.RWMutex)

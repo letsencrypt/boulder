@@ -223,7 +223,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	req := &sapb.AddCertificateRequest{
 		Der:      precertDER,
 		RegID:    regID,
-		Ocsp:     ocspResp.Response,
+		Ocsp:     ocspResp,
 		Issued:   nowNanos,
 		IssuerID: int64(issuerID),
 	}
@@ -240,7 +240,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
-				OCSPResp: ocspResp.Response,
+				OCSPResp: ocspResp,
 				Precert:  true,
 				IssuerID: int64(issuerID),
 			})
@@ -374,7 +374,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *capb.OCSPResponse, *issuance.Issuer, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, nil, err
@@ -417,16 +417,20 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	serialHex := core.SerialToString(serialBigInt)
 
-	// Generate ocsp response before issuing precertificate
-	ocspResp, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:   serialHex,
-		IssuerID: int64(issuer.Cert.NameID()),
-		Status:   string(core.OCSPStatusGood),
-	})
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
-		return nil, nil, nil, err
+	var ocspResp []byte
+	if !features.Enabled(features.ROCSPStage7) {
+		// Generate ocsp response before issuing precertificate
+		ocspRespPB, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+			Serial:   serialHex,
+			IssuerID: int64(issuer.Cert.NameID()),
+			Status:   string(core.OCSPStatusGood),
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
+			return nil, nil, nil, err
+		}
+		ocspResp = ocspRespPB.Response
 	}
 
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",

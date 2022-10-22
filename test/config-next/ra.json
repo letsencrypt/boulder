@@ -90,7 +90,8 @@
       "AllowReRevocation": true,
       "MozRevocationReasons": true,
       "SHA1CSRs": false,
-      "RejectDuplicateCSRExtensions": true
+      "RejectDuplicateCSRExtensions": true,
+      "ROCSPStage7": true
     },
     "ctLogs": {
       "stagger": "500ms",

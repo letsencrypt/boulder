@@ -41,11 +41,12 @@ func _() {
 	_ = x[AllowUnrecognizedFeatures-30]
 	_ = x[RejectDuplicateCSRExtensions-31]
 	_ = x[ROCSPStage6-32]
+	_ = x[ROCSPStage7-33]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsExpirationMailerDontLookTwiceOldTLSInboundOldTLSOutboundROCSPStage1ROCSPStage2ROCSPStage3CAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstAllowReRevocationMozRevocationReasonsSHA1CSRsAllowUnrecognizedFeaturesRejectDuplicateCSRExtensionsROCSPStage6"
+const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsExpirationMailerDontLookTwiceOldTLSInboundOldTLSOutboundROCSPStage1ROCSPStage2ROCSPStage3CAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstAllowReRevocationMozRevocationReasonsSHA1CSRsAllowUnrecognizedFeaturesRejectDuplicateCSRExtensionsROCSPStage6ROCSPStage7"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 157, 170, 184, 195, 206, 217, 237, 250, 264, 282, 300, 319, 335, 354, 378, 389, 405, 421, 437, 467, 484, 504, 512, 537, 565, 576}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 157, 170, 184, 195, 206, 217, 237, 250, 264, 282, 300, 319, 335, 354, 378, 389, 405, 421, 437, 467, 484, 504, 512, 537, 565, 576, 587}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

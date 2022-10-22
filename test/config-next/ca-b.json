@@ -121,7 +121,8 @@
     "ecdsaAllowListFilename": "test/config-next/ecdsaAllowList.yml",
     "ctLogListFile": "test/ct-test-srv/log_list.json",
     "features": {
-      "RejectDuplicateCSRExtensions": true
+      "RejectDuplicateCSRExtensions": true,
+      "ROCSPStage7": true
     }
   },
 
