@@ -104,6 +104,8 @@
     "serialPrefix": 255,
     "maxNames": 100,
     "lifespanOCSP": "96h",
+    "lifespanCRL": "216h",
+    "crldpBase": "http://c.boulder.test",
     "goodkey": {
       "weakKeyFile": "test/example-weak-keys.json",
       "blockedKeyFile": "test/example-blocked-keys.yaml",
@@ -112,9 +114,9 @@
     "orphanQueueDir": "/tmp/orphaned-certificates-b",
     "ocspLogMaxLength": 4000,
     "ocspLogPeriod": "500ms",
+    "ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",
     "features": {
-    },
-    "ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml"
+    }
   },
 
   "pa": {

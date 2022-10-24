@@ -263,6 +263,7 @@ func setup(t *testing.T) *testCtx {
 	crl, err := NewCRLImpl(
 		boulderIssuers,
 		time.Hour,
+		"http://c.boulder.test",
 		100,
 		blog.NewMock(),
 	)
