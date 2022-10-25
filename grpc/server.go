@@ -118,7 +118,7 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry pro
 }
 
 // serverMetrics is a struct type used to return a few registered metrics from
-// `NewServerMetrics`
+// `newServerMetrics`
 type serverMetrics struct {
 	grpcMetrics *grpc_prometheus.ServerMetrics
 	rpcLag      prometheus.Histogram
@@ -133,8 +133,13 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	grpcMetrics := grpc_prometheus.NewServerMetrics()
 	grpcMetrics.EnableHandlingTimeHistogram()
 	err := stats.Register(grpcMetrics)
-	if err != nil && !errors.As(err, &prometheus.AlreadyRegisteredError{}) {
-		return serverMetrics{}, err
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			grpcMetrics = are.ExistingCollector.(*grpc_prometheus.ServerMetrics)
+		} else {
+			return serverMetrics{}, err
+		}
 	}
 
 	// rpcLag is a prometheus histogram tracking the difference between the time
@@ -146,8 +151,13 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 			Help: "Delta between client RPC send time and server RPC receipt time",
 		})
 	err = stats.Register(rpcLag)
-	if err != nil && !errors.As(err, &prometheus.AlreadyRegisteredError{}) {
-		return serverMetrics{}, err
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			rpcLag = are.ExistingCollector.(prometheus.Histogram)
+		} else {
+			return serverMetrics{}, err
+		}
 	}
 
 	return serverMetrics{
