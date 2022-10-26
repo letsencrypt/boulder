@@ -1010,12 +1010,13 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	_, err := ra.NewOrder(ctx, newOrder)
 	test.AssertError(t, err, "NewOrder did not apply cert rate limits with feature flag enabled")
 
+	var bErr *berrors.BoulderError
+	test.Assert(t, errors.As(err, &bErr), "NewOrder did not return a boulder error")
+	test.AssertEquals(t, bErr.RetryAfter, rateLimitDuration)
+
 	// The err should be the expected rate limit error
-	expectedErrPrefix := "too many certificates already issued for " +
-		"\"early-ratelimit-example.com\""
-	test.Assert(t,
-		strings.HasPrefix(err.Error(), expectedErrPrefix),
-		fmt.Sprintf("expected error to have prefix %q got %q", expectedErrPrefix, err))
+	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2015-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/"
+	test.AssertEquals(t, bErr.Error(), expected)
 }
 
 func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
