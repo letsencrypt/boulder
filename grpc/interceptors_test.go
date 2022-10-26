@@ -71,12 +71,15 @@ func TestServerInterceptor(t *testing.T) {
 }
 
 func TestClientInterceptor(t *testing.T) {
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
 	ci := clientInterceptor{
 		timeout: time.Second,
-		metrics: NewClientMetrics(metrics.NoopRegisterer),
+		metrics: clientMetrics,
 		clk:     clock.NewFake(),
 	}
-	err := ci.interceptUnary(context.Background(), "-service-test", nil, nil, nil, testInvoker)
+
+	err = ci.interceptUnary(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
 
 	err = ci.interceptUnary(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
@@ -101,9 +104,11 @@ func TestCancelTo408Interceptor(t *testing.T) {
 // timeout is reached, i.e. that FailFast is set to false.
 // https://github.com/grpc/grpc/blob/main/doc/wait-for-ready.md
 func TestFailFastFalse(t *testing.T) {
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientInterceptor{
 		timeout: 100 * time.Millisecond,
-		metrics: NewClientMetrics(metrics.NoopRegisterer),
+		metrics: clientMetrics,
 		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
@@ -169,9 +174,11 @@ func TestTimeouts(t *testing.T) {
 	defer s.Stop()
 
 	// make client
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientInterceptor{
 		timeout: 30 * time.Second,
-		metrics: NewClientMetrics(metrics.NoopRegisterer),
+		metrics: clientMetrics,
 		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
@@ -232,9 +239,11 @@ func TestRequestTimeTagging(t *testing.T) {
 	defer s.Stop()
 
 	// Dial the ChillerServer
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientInterceptor{
 		timeout: 30 * time.Second,
-		metrics: NewClientMetrics(metrics.NoopRegisterer),
+		metrics: clientMetrics,
 		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
@@ -319,9 +328,11 @@ func TestInFlightRPCStat(t *testing.T) {
 	defer s.Stop()
 
 	// Dial the ChillerServer
+	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientInterceptor{
 		timeout: 30 * time.Second,
-		metrics: NewClientMetrics(metrics.NoopRegisterer),
+		metrics: clientMetrics,
 		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),

@@ -101,15 +101,14 @@ func newRevoker(c Config) *revoker {
 
 	clk := cmd.Clock()
 
-	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
-	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tlsConfig, clientMetrics, clk)
+	raConn, err := bgrpc.ClientSetup(c.Revoker.RAService, tlsConfig, metrics.NoopRegisterer, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(raConn)
 
 	dbMap, err := sa.InitWrappedDb(c.Revoker.DB, nil, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tlsConfig, clientMetrics, clk)
+	saConn, err := bgrpc.ClientSetup(c.Revoker.SAService, tlsConfig, metrics.NoopRegisterer, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 

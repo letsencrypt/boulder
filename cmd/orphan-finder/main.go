@@ -209,12 +209,11 @@ func newOrphanFinder(configFile string) *orphanFinder {
 	tlsConfig, err := conf.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
-	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, clientMetrics, cmd.Clock())
+	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, metrics.NoopRegisterer, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, clientMetrics, cmd.Clock())
+	caConn, err := bgrpc.ClientSetup(conf.OCSPGeneratorService, tlsConfig, metrics.NoopRegisterer, cmd.Clock())
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	cac := capb.NewOCSPGeneratorClient(caConn)
 

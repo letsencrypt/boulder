@@ -225,9 +225,8 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
-	clientMetrics := bgrpc.NewClientMetrics(scope)
 
-	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, clientMetrics, clk)
+	conn, err := bgrpc.ClientSetup(c.CA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := sapb.NewStorageAuthorityClient(conn)
 

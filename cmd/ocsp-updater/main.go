@@ -85,11 +85,11 @@ func main() {
 	beeline.Init(bc)
 	defer beeline.Close()
 
-	stats, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, conf.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	readWriteDb, err := sa.InitWrappedDb(conf.DB, stats, logger)
+	readWriteDb, err := sa.InitWrappedDb(conf.DB, scope, logger)
 	cmd.FailOnError(err, "Failed to initialize database client")
 
 	var readOnlyDb *db.WrappedMap
@@ -97,7 +97,7 @@ func main() {
 	if readOnlyDbDSN == "" {
 		readOnlyDb = readWriteDb
 	} else {
-		readOnlyDb, err = sa.InitWrappedDb(conf.ReadOnlyDB, stats, logger)
+		readOnlyDb, err = sa.InitWrappedDb(conf.ReadOnlyDB, scope, logger)
 		cmd.FailOnError(err, "Failed to initialize read-only database client")
 	}
 
@@ -105,8 +105,8 @@ func main() {
 
 	tlsConfig, err := c.OCSPUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
-	clientMetrics := bgrpc.NewClientMetrics(stats)
-	caConn, err := bgrpc.ClientSetup(c.OCSPUpdater.OCSPGeneratorService, tlsConfig, clientMetrics, clk)
+
+	caConn, err := bgrpc.ClientSetup(c.OCSPUpdater.OCSPGeneratorService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	ogc := capb.NewOCSPGeneratorClient(caConn)
 
@@ -116,7 +116,7 @@ func main() {
 	}
 
 	updater, err := ocsp_updater.New(
-		stats,
+		scope,
 		clk,
 		readWriteDb,
 		readOnlyDb,
