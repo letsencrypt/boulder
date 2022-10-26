@@ -63,10 +63,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 	)
 }
 
-type registry interface {
-	MustRegister(...prometheus.Collector)
-}
-
 // clientMetrics is a struct type used to return registered metrics from
 // `NewClientMetrics`
 type clientMetrics struct {
@@ -79,7 +75,7 @@ type clientMetrics struct {
 // NewClientMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
 // the given registry, with timing histogram enabled. It must be called a
 // maximum of once per registry, or there will be conflicting names.
-func NewClientMetrics(stats registry) clientMetrics {
+func NewClientMetrics(stats prometheus.Registerer) clientMetrics {
 	// Create the grpc prometheus client metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewClientMetrics()
 	grpcMetrics.EnableClientHandlingTimeHistogram()

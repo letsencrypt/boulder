@@ -5,9 +5,6 @@ import (
 	"os"
 	"time"
 
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/honeycombio/beeline-go"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -291,20 +288,13 @@ func main() {
 	rai.OCSP = ocspc
 	rai.SA = sac
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics, clk)
+	start, stop, err := bgrpc.Server[rapb.RegistrationAuthorityServer]{}.Setup(
+		c.RA.GRPC, rai, rapb.RegisterRegistrationAuthorityServer, tlsConfig, scope, clk,
+	)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
-	rapb.RegisterRegistrationAuthorityServer(grpcSrv, rai)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
-	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-	cmd.FailOnError(err, "RA gRPC service failed")
+	go cmd.CatchSignals(logger, stop)
+	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 
 func init() {

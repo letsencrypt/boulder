@@ -3,16 +3,12 @@ package notmain
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"sync"
 
 	"github.com/beeker1121/goque"
 	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -262,8 +258,8 @@ func main() {
 
 	}
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
 	var wg sync.WaitGroup
+	stopFns := make([]func(), 0)
 
 	ocspi, err := ca.NewOCSPImpl(
 		boulderIssuers,
@@ -279,17 +275,16 @@ func main() {
 	cmd.FailOnError(err, "Failed to create OCSP impl")
 	go ocspi.LogOCSPLoop()
 
-	ocspSrv, ocspListener, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, serverMetrics, clk)
+	ocspStart, ocspStop, err := bgrpc.Server[capb.OCSPGeneratorServer]{}.Setup(
+		c.CA.GRPCOCSPGenerator, ocspi, capb.RegisterOCSPGeneratorServer, tlsConfig, scope, clk,
+	)
 	cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
-	capb.RegisterOCSPGeneratorServer(ocspSrv, ocspi)
-	ocspHealth := health.NewServer()
-	healthpb.RegisterHealthServer(ocspSrv, ocspHealth)
 	wg.Add(1)
 	go func() {
-		cmd.FailOnError(cmd.FilterShutdownErrors(ocspSrv.Serve(ocspListener)),
-			"OCSPGenerator gRPC service failed")
+		cmd.FailOnError(ocspStart(), "OCSPGenerator gRPC service failed")
 		wg.Done()
 	}()
+	stopFns = append(stopFns, ocspStop)
 
 	crli, err := ca.NewCRLImpl(
 		boulderIssuers,
@@ -300,26 +295,16 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create CRL impl")
 
-	// TODO(#6161): Make this unconditional after this config is deployed. We have
-	// to pre-declare crlListener even though it is only used inside the if block
-	// so that the other assignments inside the block don't shadow crlSrv and
-	// crlHealth, leaving them nil.
-	var crlSrv *grpc.Server
-	var crlHealth *health.Server
-	var crlListener net.Listener
-	if c.CA.GRPCCRLGenerator != nil {
-		crlSrv, crlListener, err = bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, serverMetrics, clk)
-		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
-		capb.RegisterCRLGeneratorServer(crlSrv, crli)
-		crlHealth = health.NewServer()
-		healthpb.RegisterHealthServer(crlSrv, crlHealth)
-		wg.Add(1)
-		go func() {
-			cmd.FailOnError(cmd.FilterShutdownErrors(crlSrv.Serve(crlListener)),
-				"CRLGenerator gRPC service failed")
-			wg.Done()
-		}()
-	}
+	crlStart, crlStop, err := bgrpc.Server[capb.CRLGeneratorServer]{}.Setup(
+		c.CA.GRPCCRLGenerator, crli, capb.RegisterCRLGeneratorServer, tlsConfig, scope, clk,
+	)
+	cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
+	wg.Add(1)
+	go func() {
+		cmd.FailOnError(crlStart(), "CRLGenerator gRPC service failed")
+		wg.Done()
+	}()
+	stopFns = append(stopFns, crlStop)
 
 	cai, err := ca.NewCertificateAuthorityImpl(
 		sa,
@@ -345,30 +330,21 @@ func main() {
 		go cai.OrphanIntegrationLoop()
 	}
 
-	caSrv, caListener, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, serverMetrics, clk)
+	caStart, caStop, err := bgrpc.Server[capb.CertificateAuthorityServer]{}.Setup(
+		c.CA.GRPCCA, cai, capb.RegisterCertificateAuthorityServer, tlsConfig, scope, clk,
+	)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	capb.RegisterCertificateAuthorityServer(caSrv, cai)
-	caHealth := health.NewServer()
-	healthpb.RegisterHealthServer(caSrv, caHealth)
 	wg.Add(1)
 	go func() {
-		cmd.FailOnError(cmd.FilterShutdownErrors(caSrv.Serve(caListener)), "CA gRPC service failed")
+		cmd.FailOnError(caStart(), "CA gRPC service failed")
 		wg.Done()
 	}()
+	stopFns = append(stopFns, caStop)
 
 	go cmd.CatchSignals(logger, func() {
-		caHealth.Shutdown()
-		ocspHealth.Shutdown()
-		// TODO(#6161): Make this unconditional.
-		if crlHealth != nil {
-			crlHealth.Shutdown()
-		}
 		ecdsaAllowList.Stop()
-		caSrv.GracefulStop()
-		ocspSrv.GracefulStop()
-		// TODO(#6161): Make this unconditional.
-		if crlSrv != nil {
-			crlSrv.GracefulStop()
+		for _, stopFn := range stopFns {
+			stopFn()
 		}
 		wg.Wait()
 		ocspi.Stop()

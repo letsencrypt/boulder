@@ -4,9 +4,6 @@ import (
 	"flag"
 	"os"
 
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -108,20 +105,14 @@ func main() {
 
 	tls, err := c.SA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, listener, err := bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics, clk, bgrpc.NoCancelInterceptor)
+
+	start, stop, err := bgrpc.Server[sapb.StorageAuthorityServer]{}.Setup(
+		c.SA.GRPC, sai, sapb.RegisterStorageAuthorityServer, tls, scope, clk, bgrpc.NoCancelInterceptor,
+	)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
-	sapb.RegisterStorageAuthorityServer(grpcSrv, sai)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
-	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-	cmd.FailOnError(err, "SA gRPC service failed")
+	go cmd.CatchSignals(logger, stop)
+	cmd.FailOnError(start(), "SA gRPC service failed")
 }
 
 func init() {

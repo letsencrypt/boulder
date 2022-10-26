@@ -13,8 +13,6 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/akamai"
@@ -437,18 +435,13 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		stopped <- true
 	}()
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-
-	grpcSrv, l, err := bgrpc.NewServer(c.AkamaiPurger.GRPC, tlsConfig, serverMetrics, clk)
+	start, stopFn, err := bgrpc.Server[akamaipb.AkamaiPurgerServer]{}.Setup(
+		c.AkamaiPurger.GRPC, ap, akamaipb.RegisterAkamaiPurgerServer, tlsConfig, scope, clk,
+	)
 	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
 
-	akamaipb.RegisterAkamaiPurgerServer(grpcSrv, ap)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
-
 	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
+		stopFn()
 
 		// Stop the ticker and signal that we want to shutdown by writing to the
 		// stop channel. We wait 15 seconds for any remaining URLs to be emptied
@@ -461,8 +454,7 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		case <-stopped:
 		}
 	})
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-	cmd.FailOnError(err, "akamai-purger gRPC service failed")
+	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
 
 	// When we get a SIGTERM, we will exit from grpcSrv.Serve as soon as all
 	// extant RPCs have been processed, but we want the process to stick around

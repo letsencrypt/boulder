@@ -50,13 +50,14 @@ func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.Cli
 }
 
 func TestServerInterceptor(t *testing.T) {
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating server metrics")
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 
 	md := metadata.New(map[string]string{clientRequestTimeKey: "0"})
 	ctxWithMetadata := metadata.NewIncomingContext(context.Background(), md)
 
-	_, err := si.interceptUnary(context.Background(), nil, nil, testHandler)
+	_, err = si.interceptUnary(context.Background(), nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a context missing metadata")
 
 	_, err = si.interceptUnary(ctxWithMetadata, nil, nil, testHandler)
@@ -153,7 +154,8 @@ func TestTimeouts(t *testing.T) {
 	}
 	port := lis.Addr().(*net.TCPAddr).Port
 
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating server metrics")
 	si := newServerInterceptor(serverMetrics, clock.NewFake())
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, &testServer{})
@@ -214,7 +216,8 @@ func TestRequestTimeTagging(t *testing.T) {
 	port := lis.Addr().(*net.TCPAddr).Port
 
 	// Create a new ChillerServer
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating server metrics")
 	si := newServerInterceptor(serverMetrics, clk)
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, &testServer{})
@@ -300,7 +303,8 @@ func TestInFlightRPCStat(t *testing.T) {
 	numRPCs := 5
 	server.received.Add(numRPCs)
 
-	serverMetrics := NewServerMetrics(metrics.NoopRegisterer)
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
+	test.AssertNotError(t, err, "creating server metrics")
 	si := newServerInterceptor(serverMetrics, clk)
 	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
 	test_proto.RegisterChillerServer(s, server)

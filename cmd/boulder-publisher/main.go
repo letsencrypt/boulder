@@ -8,8 +8,6 @@ import (
 
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/honeycombio/beeline-go"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -101,20 +99,13 @@ func main() {
 
 	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, l, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, serverMetrics, clk)
+	start, stop, err := bgrpc.Server[pubpb.PublisherServer]{}.Setup(
+		c.Publisher.GRPC, pubi, pubpb.RegisterPublisherServer, tlsConfig, scope, clk,
+	)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
-	pubpb.RegisterPublisherServer(grpcSrv, pubi)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
-	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-	cmd.FailOnError(err, "Publisher gRPC service failed")
+	go cmd.CatchSignals(logger, stop)
+	cmd.FailOnError(start(), "Publisher gRPC service failed")
 }
 
 func init() {
