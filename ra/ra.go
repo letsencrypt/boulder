@@ -1296,7 +1296,6 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 		return nil, time.Time{}, errIncompleteGRPCResponse
 	}
 
-	var earliest = time.Unix(0, response.Earliest)
 	var badNames []string
 	// Find the names that have counts at or over the threshold. Range
 	// over the names slice input to ensure the order of badNames will
@@ -1306,7 +1305,7 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 			badNames = append(badNames, name)
 		}
 	}
-	return badNames, earliest, nil
+	return badNames, response.Earliest.AsTime(), nil
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {

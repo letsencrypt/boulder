@@ -125,7 +125,7 @@ message CountCertificatesByNamesRequest {
 
 message CountByNames {
   map<string, int64> counts = 1;
-  int64 earliest = 2; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp earliest = 2; // Unix timestamp (nanoseconds)
 }
 
 message CountRegistrationsByIPRequest {

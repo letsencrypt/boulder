@@ -283,10 +283,9 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 // certificates issued in the given time range for that domain and its
 // subdomains. It returns a map from domains to counts and a timestamp. The map
 // of domains to counts is guaranteed to contain an entry for each input domain,
-// so long as err is nil. The timestamp is earliest time for which a certificate
-// was issued for any of the domains during the the provided range of time.
-// Queries will be run in parallel. If any of them error, only one error will be
-// returned.
+// so long as err is nil. The timestamp is the earliest time a certificate was
+// issued for any of the domains during the provided range of time. Queries will
+// be run in parallel. If any of them error, only one error will be returned.
 func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
 	if len(req.Names) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
 		return nil, errIncompleteRequest
@@ -338,20 +337,27 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 	}
 	wg.Wait()
 	close(results)
+
 	// Set earliest to the latest possible time, so that we can find the
 	// earliest certificate in the results.
-	earliest := time.Unix(0, req.Range.Latest)
+	earliest := timestamppb.New(time.Unix(0, req.Range.Latest))
 	counts := make(map[string]int64)
 	for r := range results {
 		if r.err != nil {
 			return nil, r.err
 		}
 		counts[r.domain] = r.count
-		if r.earliest != nil && *r.earliest.Before(earliest) {
-			earliest = *r.earliest
+		if r.earliest != nil && r.earliest.Before(earliest.AsTime()) {
+			earliest = timestamppb.New(*r.earliest)
 		}
 	}
-	return &sapb.CountByNames{Counts: counts, Earliest: earliest.UnixNano()}, nil
+
+	// If we didn't find any certificates in the range, earliest should be set
+	// to a zero value.
+	if len(counts) == 0 {
+		earliest = &timestamppb.Timestamp{}
+	}
+	return &sapb.CountByNames{Counts: counts, Earliest: earliest}, nil
 }
 
 func ReverseName(domain string) string {
