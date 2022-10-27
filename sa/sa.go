@@ -347,7 +347,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 			return nil, r.err
 		}
 		counts[r.domain] = r.count
-		if r.earliest != nil && earliest.After(*r.earliest) {
+		if r.earliest != nil && *r.earliest.Before(earliest) {
 			earliest = *r.earliest
 		}
 	}

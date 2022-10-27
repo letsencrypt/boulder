@@ -87,7 +87,7 @@ func (ssa *SQLStorageAuthority) countCertificates(dbMap db.Selector, domain stri
 	var total int64
 	for _, r := range results {
 		total += r.Count
-		if earliest.After(r.Time) {
+		if r.Time.Before(earliest) {
 			earliest = r.Time
 		}
 	}
