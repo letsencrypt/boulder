@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -46,14 +47,20 @@ func (f *fakeGRCC) Recv() (*corepb.CRLEntry, error) {
 }
 
 // fakeSAC is a fake sapb.StorageAuthorityClient which can be populated with a
-// fakeGRCC to be used as the return value for calls to GetRevokedCerts.
+// fakeGRCC to be used as the return value for calls to GetRevokedCerts, and a
+// fake timestamp to serve as the database's maximum notAfter value.
 type fakeSAC struct {
 	mocks.StorageAuthority
-	grcc fakeGRCC
+	grcc        fakeGRCC
+	maxNotAfter time.Time
 }
 
 func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
 	return &f.grcc, nil
+}
+
+func (f *fakeSAC) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
+	return timestamppb.New(f.maxNotAfter), nil
 }
 
 // fakeGCC is a fake capb.CRLGenerator_GenerateCRLClient which can be
@@ -134,17 +141,25 @@ func TestTickShard(t *testing.T) {
 
 	sentinelErr := errors.New("oops")
 
+	clk := clock.NewFake()
+	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
 	cu, err := NewUpdater(
-		[]*issuance.Certificate{e1, r3}, 2, 10*24*time.Hour, 24*time.Hour, 0, 1,
-		&fakeSAC{grcc: fakeGRCC{}},
+		[]*issuance.Certificate{e1, r3},
+		2, 18*time.Hour, 24*time.Hour,
+		6*time.Hour, 1*time.Minute, 1,
+		&fakeSAC{grcc: fakeGRCC{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
-		metrics.NoopRegisterer, blog.NewMock(), clock.NewFake(),
+		metrics.NoopRegisterer, blog.NewMock(), clk,
 	)
 	test.AssertNotError(t, err, "building test crlUpdater")
 
+	testChunks := []chunk{
+		{clk.Now(), clk.Now().Add(18 * time.Hour), 0},
+	}
+
 	// Ensure that getting no results from the SA still works.
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
+	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertNotError(t, err, "empty CRL")
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "success",
@@ -153,7 +168,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors closing the Storer upload stream should bubble up.
 	cu.cs = &fakeCSC{ucc: fakeUCC{recvErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
+	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "closing CRLStorer upload stream")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -164,7 +179,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors sending to the Storer should bubble up sooner.
 	cu.cs = &fakeCSC{ucc: fakeUCC{sendErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
+	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "sending CRLStorer metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -175,7 +190,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors reading from the CA should bubble up sooner.
 	cu.ca = &fakeCGC{gcc: fakeGCC{recvErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
+	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "receiving CRL bytes")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -186,7 +201,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors sending to the CA should bubble up sooner.
 	cu.ca = &fakeCGC{gcc: fakeGCC{sendErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
+	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "sending CA metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -196,8 +211,8 @@ func TestTickShard(t *testing.T) {
 	cu.updatedCounter.Reset()
 
 	// Errors reading from the SA should bubble up soonest.
-	cu.sa = &fakeSAC{grcc: fakeGRCC{err: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0)
+	cu.sa = &fakeSAC{grcc: fakeGRCC{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)}
+	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "retrieving entry from SA")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -214,12 +229,16 @@ func TestTickIssuer(t *testing.T) {
 	test.AssertNotError(t, err, "loading test issuer")
 
 	mockLog := blog.NewMock()
+	clk := clock.NewFake()
+	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
 	cu, err := NewUpdater(
-		[]*issuance.Certificate{e1, r3}, 2, 10*24*time.Hour, 24*time.Hour, 0, 1,
-		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}},
+		[]*issuance.Certificate{e1, r3},
+		2, 18*time.Hour, 24*time.Hour,
+		6*time.Hour, 1*time.Minute, 1,
+		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
-		metrics.NoopRegisterer, mockLog, clock.NewFake(),
+		metrics.NoopRegisterer, mockLog, clk,
 	)
 	test.AssertNotError(t, err, "building test crlUpdater")
 
@@ -246,12 +265,16 @@ func TestTick(t *testing.T) {
 	test.AssertNotError(t, err, "loading test issuer")
 
 	mockLog := blog.NewMock()
+	clk := clock.NewFake()
+	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
 	cu, err := NewUpdater(
-		[]*issuance.Certificate{e1, r3}, 2, 10*24*time.Hour, 24*time.Hour, 0, 1,
-		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}},
+		[]*issuance.Certificate{e1, r3},
+		2, 18*time.Hour, 24*time.Hour,
+		6*time.Hour, 1*time.Minute, 1,
+		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
-		metrics.NoopRegisterer, mockLog, clock.NewFake(),
+		metrics.NoopRegisterer, mockLog, clk,
 	)
 	test.AssertNotError(t, err, "building test crlUpdater")
 
@@ -277,48 +300,121 @@ func TestTick(t *testing.T) {
 	cu.tickHistogram.Reset()
 }
 
-func TestGetWindowForShard(t *testing.T) {
-	// Our test updater divides a 107-day window into 107 shards, resulting in a
-	// shard width of 24 hours.
+func TestGetShardMappings(t *testing.T) {
+	// We set atTime to be exactly one day (numShards * shardWidth) after the
+	// anchorTime for these tests, so that we know that the index of the first
+	// chunk we would normally (i.e. not taking lookback or overshoot into
+	// account) care about is 0.
+	atTime := anchorTime().Add(24 * time.Hour)
+
+	// When there is no lookback, and the maxNotAfter is exactly as far in the
+	// future as the numShards * shardWidth looks, every shard should be mapped to
+	// exactly one chunk.
 	tcu := crlUpdater{
-		numShards:         107,
-		lookbackPeriod:    7 * 24 * time.Hour,
-		lookforwardPeriod: 100 * 24 * time.Hour,
+		numShards:      24,
+		shardWidth:     1 * time.Hour,
+		sa:             &fakeSAC{maxNotAfter: atTime.Add(23*time.Hour + 30*time.Minute)},
+		lookbackPeriod: 0,
+	}
+	m, err := tcu.getShardMappings(context.Background(), atTime)
+	test.AssertNotError(t, err, "getting aligned shards")
+	test.AssertEquals(t, len(m), 24)
+	for _, s := range m {
+		test.AssertEquals(t, len(s), 1)
 	}
 
-	// At just a moment past the anchor time, the zeroth shard should start at
-	// time 0, and end exactly one day later.
-	start, end, err := tcu.getShardBoundaries(anchorTime().Add(time.Minute), 0)
-	test.AssertNotError(t, err, "")
-	test.Assert(t, start.Equal(anchorTime()), "start time should be the anchor time")
-	test.AssertEquals(t, end, anchorTime().Add(24*time.Hour))
+	// When there is 1.5 hours each of lookback and maxNotAfter overshoot, then
+	// there should be four shards which each get two chunks mapped to them.
+	tcu = crlUpdater{
+		numShards:      24,
+		shardWidth:     1 * time.Hour,
+		sa:             &fakeSAC{maxNotAfter: atTime.Add(24*time.Hour + 90*time.Minute)},
+		lookbackPeriod: 90 * time.Minute,
+	}
+	m, err = tcu.getShardMappings(context.Background(), atTime)
+	test.AssertNotError(t, err, "getting overshoot shards")
+	test.AssertEquals(t, len(m), 24)
+	for i, s := range m {
+		if i == 0 || i == 1 || i == 22 || i == 23 {
+			test.AssertEquals(t, len(s), 2)
+		} else {
+			test.AssertEquals(t, len(s), 1)
+		}
+	}
 
-	// At the same moment, the 93rd shard should start 93 days later.
-	start, end, err = tcu.getShardBoundaries(anchorTime().Add(time.Minute), 93)
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, start, anchorTime().Add(93*24*time.Hour))
-	test.AssertEquals(t, end, anchorTime().Add(94*24*time.Hour))
+	// When there is a massive amount of overshoot, many chunks should be mapped
+	// to each shard.
+	tcu = crlUpdater{
+		numShards:      24,
+		shardWidth:     1 * time.Hour,
+		sa:             &fakeSAC{maxNotAfter: atTime.Add(90 * 24 * time.Hour)},
+		lookbackPeriod: time.Minute,
+	}
+	m, err = tcu.getShardMappings(context.Background(), atTime)
+	test.AssertNotError(t, err, "getting overshoot shards")
+	test.AssertEquals(t, len(m), 24)
+	for i, s := range m {
+		if i == 23 {
+			test.AssertEquals(t, len(s), 91)
+		} else {
+			test.AssertEquals(t, len(s), 90)
+		}
+	}
 
-	// If we jump 100 days into the future, now the 0th shard should start 107
-	// days after the zero time.
-	start, end, err = tcu.getShardBoundaries(anchorTime().Add(100*24*time.Hour+time.Minute), 0)
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, start, anchorTime().Add(107*24*time.Hour))
-	test.AssertEquals(t, end, anchorTime().Add(108*24*time.Hour))
+	// An arbitrarily-chosen chunk should always end up in the same shard no
+	// matter what the current time, lookback, and overshoot are, as long as the
+	// number of shards and the shard width remains constant.
+	tcu = crlUpdater{
+		numShards:      24,
+		shardWidth:     1 * time.Hour,
+		sa:             &fakeSAC{maxNotAfter: atTime.Add(24 * time.Hour)},
+		lookbackPeriod: time.Hour,
+	}
+	m, err = tcu.getShardMappings(context.Background(), atTime)
+	test.AssertNotError(t, err, "getting consistency shards")
+	test.AssertEquals(t, m[10][0].start, anchorTime().Add(34*time.Hour))
+	tcu.lookbackPeriod = 4 * time.Hour
+	m, err = tcu.getShardMappings(context.Background(), atTime)
+	test.AssertNotError(t, err, "getting consistency shards")
+	test.AssertEquals(t, m[10][0].start, anchorTime().Add(34*time.Hour))
+	tcu.sa = &fakeSAC{maxNotAfter: atTime.Add(300 * 24 * time.Hour)}
+	m, err = tcu.getShardMappings(context.Background(), atTime)
+	test.AssertNotError(t, err, "getting consistency shards")
+	test.AssertEquals(t, m[10][0].start, anchorTime().Add(34*time.Hour))
+	atTime = atTime.Add(6 * time.Hour)
+	m, err = tcu.getShardMappings(context.Background(), atTime)
+	test.AssertNotError(t, err, "getting consistency shards")
+	test.AssertEquals(t, m[10][0].start, anchorTime().Add(34*time.Hour))
+}
 
-	// During day 100, the 93rd shard should still start at the same time (just
-	// over 7 days ago), because we haven't fully left it behind yet. The 92nd
-	// shard, however, should have jumped into the future.
-	start, end, err = tcu.getShardBoundaries(anchorTime().Add(100*24*time.Hour+time.Minute), 93)
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, start, anchorTime().Add(93*24*time.Hour))
-	test.AssertEquals(t, end, anchorTime().Add(94*24*time.Hour))
-	start, end, err = tcu.getShardBoundaries(anchorTime().Add(100*24*time.Hour+time.Minute), 92)
-	test.AssertNotError(t, err, "")
-	test.AssertEquals(t, start, anchorTime().Add(199*24*time.Hour))
-	test.AssertEquals(t, end, anchorTime().Add(200*24*time.Hour))
+func TestGetChunkAtTime(t *testing.T) {
+	// Our test updater divides time into chunks 1 day wide, numbered 0 through 9.
+	tcu := crlUpdater{
+		numShards:  10,
+		shardWidth: 24 * time.Hour,
+	}
 
-	// If we jump more than 290 years into the future, the math should break.
-	_, _, err = tcu.getShardBoundaries(anchorTime().Add(150*365*24*time.Hour).Add(150*365*24*time.Hour), 0)
-	test.AssertError(t, err, "")
+	// The chunk right at the anchor time should have index 0 and start at the
+	// anchor time. This also tests behavior when atTime is on a chunk boundary.
+	atTime := anchorTime()
+	c, err := tcu.getChunkAtTime(atTime)
+	test.AssertNotError(t, err, "getting chunk at anchor")
+	test.AssertEquals(t, c.idx, 0)
+	test.Assert(t, c.start.Equal(atTime), "getting chunk at anchor")
+	test.Assert(t, c.end.Equal(atTime.Add(24*time.Hour)), "getting chunk at anchor")
+
+	// The chunk a bit over a year in the future should have index 5.
+	atTime = anchorTime().Add(365 * 24 * time.Hour)
+	c, err = tcu.getChunkAtTime(atTime.Add(1 * time.Minute))
+	test.AssertNotError(t, err, "getting chunk")
+	test.AssertEquals(t, c.idx, 5)
+	test.Assert(t, c.start.Equal(atTime), "getting chunk")
+	test.Assert(t, c.end.Equal(atTime.Add(24*time.Hour)), "getting chunk")
+
+	// A chunk very far in the future should break the math. We have to add to
+	// the time twice, since the whole point of "very far in the future" is that
+	// it isn't representable by a time.Duration.
+	atTime = anchorTime().Add(200 * 365 * 24 * time.Hour).Add(200 * 365 * 24 * time.Hour)
+	c, err = tcu.getChunkAtTime(atTime)
+	test.AssertError(t, err, "getting far-future chunk")
 }
