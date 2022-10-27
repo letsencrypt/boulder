@@ -56,8 +56,8 @@ type certificateAuthorityImpl struct {
 	pa      core.PolicyAuthority
 	issuers issuerMaps
 	// TODO(#6448): Remove these.
-	ocsp *ocspImpl
-	crl  *crlImpl
+	ocsp capb.OCSPGeneratorServer
+	crl  capb.CRLGeneratorServer
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -102,8 +102,8 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
-	ocsp *ocspImpl,
-	crl *crlImpl,
+	ocsp capb.OCSPGeneratorServer,
+	crl capb.CRLGeneratorServer,
 	boulderIssuers []*issuance.Issuer,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
