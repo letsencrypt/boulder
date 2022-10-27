@@ -154,7 +154,7 @@ const (
 func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	resp, err := src.signer.Response(ctx, req)
 	if err != nil {
-		if errors.Is(err, rocsp.ErrRedisNotFound) {
+		if errors.Is(err, responder.ErrNotFound) {
 			src.signAndSaveCounter.WithLabelValues(string(cause), "certificate_not_found").Inc()
 			return nil, responder.ErrNotFound
 		}
