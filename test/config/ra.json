@@ -34,6 +34,11 @@
       "timeout": "15s",
       "hostOverride": "ca.boulder"
     },
+    "ocspService": {
+      "serverAddress": "ca.service.consul:9096",
+      "timeout": "15s",
+      "hostOverride": "ca.boulder"
+    },
     "publisherService": {
       "serverAddress": "publisher.service.consul:9091",
       "timeout": "300s",
