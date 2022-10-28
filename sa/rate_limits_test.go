@@ -85,11 +85,11 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 			if count != tc.expected {
 				t.Errorf("Expected count of %d for %q, got %d", tc.expected, tc.domainName, count)
 			}
-			if earliest == nil {
+			if earliest.IsZero() {
 				// The count should always be zero if earliest is nil.
 				test.AssertEquals(t, count, int64(0))
 			} else {
-				test.AssertEquals(t, *earliest, aprilFirst)
+				test.AssertEquals(t, earliest, aprilFirst)
 			}
 		})
 	}

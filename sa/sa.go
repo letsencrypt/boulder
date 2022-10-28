@@ -39,7 +39,7 @@ var (
 	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
-type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, *time.Time, error)
+type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -295,7 +295,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 	type result struct {
 		err      error
 		count    int64
-		earliest *time.Time
+		earliest time.Time
 		domain   string
 	}
 	results := make(chan result, len(req.Names))
@@ -347,8 +347,8 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 			return nil, r.err
 		}
 		counts[r.domain] = r.count
-		if r.earliest != nil && r.earliest.Before(earliest.AsTime()) {
-			earliest = timestamppb.New(*r.earliest)
+		if !r.earliest.IsZero() && r.earliest.Before(earliest.AsTime()) {
+			earliest = timestamppb.New(r.earliest)
 		}
 	}
 
