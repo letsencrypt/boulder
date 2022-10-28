@@ -46,7 +46,6 @@ func main() {
 	cmd.FailOnError(err, "failed to load TLS credentials")
 
 	// GRPC connection prerequisites.
-	clientMetrics := bgrpc.NewClientMetrics(metrics.NoopRegisterer)
 	clk := cmd.Clock()
 
 	// Health check retry and timeout.
@@ -65,7 +64,7 @@ func main() {
 			c.GRPC.HostOverride = strings.Replace(hostOverride, ".service.consul", ".boulder", 1)
 
 			// Set up the GRPC connection.
-			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, clientMetrics, clk)
+			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, metrics.NoopRegisterer, clk)
 			cmd.FailOnError(err, "failed to connect to service")
 			client := healthpb.NewHealthClient(conn)
 			ctx2, cancel2 := context.WithTimeout(ctx, c.GRPC.Timeout.Duration)

@@ -155,34 +155,33 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
-	clientMetrics := bgrpc.NewClientMetrics(scope)
 
-	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics, clk)
+	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := vapb.NewVAClient(vaConn)
 	caaClient := vapb.NewCAAClient(vaConn)
 
-	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
+	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
 
 	var ocspc capb.OCSPGeneratorClient
 	ocspc = cac
 	if c.RA.OCSPService != nil {
-		ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, clientMetrics, clk)
+		ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to create CA client")
 		ocspc = capb.NewOCSPGeneratorClient(ocspConn)
 	}
 
-	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
+	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
+	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := pubpb.NewPublisherClient(conn)
 
-	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
+	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create a Akamai Purger client")
 	apc := akamaipb.NewAkamaiPurgerClient(apConn)
 

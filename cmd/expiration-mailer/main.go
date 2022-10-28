@@ -664,8 +664,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, clientMetrics, clk)
+	conn, err := bgrpc.ClientSetup(c.Mailer.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(conn)
 

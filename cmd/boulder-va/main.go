@@ -154,12 +154,11 @@ func main() {
 	tlsConfig, err := c.VA.TLS.Load()
 	cmd.FailOnError(err, "tlsConfig config")
 
-	clientMetrics := bgrpc.NewClientMetrics(scope)
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
 			rva := rva
-			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, clientMetrics, clk)
+			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
 			remotes = append(
 				remotes,
