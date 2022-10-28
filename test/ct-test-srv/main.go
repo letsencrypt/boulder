@@ -5,6 +5,7 @@ package main
 
 import (
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -234,8 +235,9 @@ func runPersonality(p Personality) {
 		Addr:    p.Addr,
 		Handler: m,
 	}
-	log.Printf("ct-test-srv on %s with pubkey %s", p.Addr,
-		base64.StdEncoding.EncodeToString(pubKeyBytes))
+	logID := sha256.Sum256(pubKeyBytes)
+	log.Printf("ct-test-srv on %s with pubkey %s and log ID %s", p.Addr,
+		base64.StdEncoding.EncodeToString(pubKeyBytes), base64.StdEncoding.EncodeToString(logID[:]))
 	log.Fatal(srv.ListenAndServe())
 }
 
