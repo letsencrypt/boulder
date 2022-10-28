@@ -92,7 +92,7 @@ func (ssa *SQLStorageAuthority) countCertificates(dbMap db.Selector, domain stri
 		}
 	}
 	if total <= 0 && earliest == latest {
-		// If we didn't find any certificates, return nil for the earliest time.
+		// If we didn't find any certificates, return a zero time.
 		return total, time.Time{}, nil
 	}
 	return total, earliest, nil
