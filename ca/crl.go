@@ -290,10 +290,13 @@ type disabledCRLImpl struct {
 	capb.UnimplementedCRLGeneratorServer
 }
 
+// NewDiabledCRLImpl returns an object which implements the
+// capb.CRLGeneratorServer interface but alwasy returns errors.
 func NewDisabledCRLImpl() *disabledCRLImpl {
 	return &disabledCRLImpl{}
 }
 
+// GenerateCRL always returns an error because the service is disabled.
 func (ci *disabledCRLImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
 	return errors.New("the CRLGenerator gRPC service is disabled")
 }
