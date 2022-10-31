@@ -291,7 +291,7 @@ type disabledCRLImpl struct {
 }
 
 // NewDiabledCRLImpl returns an object which implements the
-// capb.CRLGeneratorServer interface but alwasy returns errors.
+// capb.CRLGeneratorServer interface but always returns errors.
 func NewDisabledCRLImpl() *disabledCRLImpl {
 	return &disabledCRLImpl{}
 }
