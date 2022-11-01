@@ -39,7 +39,7 @@ var (
 	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
-type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, error)
+type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error)
 
 // SQLStorageAuthority defines a Storage Authority
 type SQLStorageAuthority struct {
@@ -281,10 +281,11 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 
 // CountCertificatesByNames counts, for each input domain, the number of
 // certificates issued in the given time range for that domain and its
-// subdomains. It returns a map from domains to counts, which is guaranteed to
-// contain an entry for each input domain, so long as err is nil.
-// Queries will be run in parallel. If any of them error, only one error will
-// be returned.
+// subdomains. It returns a map from domains to counts and a timestamp. The map
+// of domains to counts is guaranteed to contain an entry for each input domain,
+// so long as err is nil. The timestamp is the earliest time a certificate was
+// issued for any of the domains during the provided range of time. Queries will
+// be run in parallel. If any of them error, only one error will be returned.
 func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
 	if len(req.Names) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
 		return nil, errIncompleteRequest
@@ -292,9 +293,10 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 
 	work := make(chan string, len(req.Names))
 	type result struct {
-		err    error
-		count  int64
-		domain string
+		err      error
+		count    int64
+		earliest time.Time
+		domain   string
 	}
 	results := make(chan result, len(req.Names))
 	for _, domain := range req.Names {
@@ -318,7 +320,7 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 					return
 				default:
 				}
-				currentCount, err := ssa.countCertificatesByName(ssa.dbReadOnlyMap.WithContext(ctx), domain, req.Range)
+				count, earliest, err := ssa.countCertificatesByName(ssa.dbReadOnlyMap.WithContext(ctx), domain, req.Range)
 				if err != nil {
 					results <- result{err: err}
 					// Skip any further work
@@ -326,22 +328,36 @@ func (ssa *SQLStorageAuthority) CountCertificatesByNames(ctx context.Context, re
 					return
 				}
 				results <- result{
-					count:  currentCount,
-					domain: domain,
+					count:    count,
+					earliest: earliest,
+					domain:   domain,
 				}
 			}
 		}()
 	}
 	wg.Wait()
 	close(results)
+
+	// Set earliest to the latest possible time, so that we can find the
+	// earliest certificate in the results.
+	earliest := timestamppb.New(time.Unix(0, req.Range.Latest))
 	counts := make(map[string]int64)
 	for r := range results {
 		if r.err != nil {
 			return nil, r.err
 		}
 		counts[r.domain] = r.count
+		if !r.earliest.IsZero() && r.earliest.Before(earliest.AsTime()) {
+			earliest = timestamppb.New(r.earliest)
+		}
 	}
-	return &sapb.CountByNames{Counts: counts}, nil
+
+	// If we didn't find any certificates in the range, earliest should be set
+	// to a zero value.
+	if len(counts) == 0 {
+		earliest = &timestamppb.Timestamp{}
+	}
+	return &sapb.CountByNames{Counts: counts, Earliest: earliest}, nil
 }
 
 func ReverseName(domain string) string {

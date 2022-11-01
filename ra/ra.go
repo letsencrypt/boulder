@@ -1277,7 +1277,7 @@ func domainsForRateLimiting(names []string) []string {
 // for each of the names. If the count for any of the names exceeds the limit
 // for the given registration then the names out of policy are returned to be
 // used for a rate limit error.
-func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) ([]string, error) {
+func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) ([]string, time.Time, error) {
 	now := ra.clk.Now()
 	req := &sapb.CountCertificatesByNamesRequest{
 		Names: names,
@@ -1289,11 +1289,11 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 
 	response, err := ra.SA.CountCertificatesByNames(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 
 	if len(response.Counts) == 0 {
-		return nil, errIncompleteGRPCResponse
+		return nil, time.Time{}, errIncompleteGRPCResponse
 	}
 
 	var badNames []string
@@ -1305,7 +1305,7 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 			badNames = append(badNames, name)
 		}
 	}
-	return badNames, nil
+	return badNames, response.Earliest.AsTime(), nil
 }
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
@@ -1322,7 +1322,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 	}
 
 	tldNames := domainsForRateLimiting(names)
-	namesOutOfLimit, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
+	namesOutOfLimit, earliest, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
 		return fmt.Errorf("checking certificates per name limit for %q: %s",
 			names, err)
@@ -1341,6 +1341,11 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			return nil
 		}
 
+		// Determine the amount of time until the earliest event would fall out
+		// of the window.
+		retryAfter := earliest.Add(limit.Window.Duration).Sub(ra.clk.Now())
+		retryString := earliest.Add(limit.Window.Duration).Format(time.RFC3339)
+
 		ra.log.Infof("Rate limit exceeded, CertificatesForDomain, regID: %d, domains: %s", regID, strings.Join(namesOutOfLimit, ", "))
 		ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "exceeded").Inc()
 		if len(namesOutOfLimit) > 1 {
@@ -1348,12 +1353,12 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 			for _, name := range namesOutOfLimit {
 				subErrors = append(subErrors, berrors.SubBoulderError{
 					Identifier:   identifier.DNSIdentifier(name),
-					BoulderError: berrors.RateLimitError(0, "too many certificates already issued").(*berrors.BoulderError),
+					BoulderError: berrors.RateLimitError(retryAfter, "too many certificates already issued. Retry after %s", retryString).(*berrors.BoulderError),
 				})
 			}
-			return berrors.RateLimitError(0, "too many certificates already issued for multiple names (%s and %d others)", namesOutOfLimit[0], len(namesOutOfLimit)).(*berrors.BoulderError).WithSubErrors(subErrors)
+			return berrors.RateLimitError(retryAfter, "too many certificates already issued for multiple names (%q and %d others). Retry after %s", namesOutOfLimit[0], len(namesOutOfLimit), retryString).(*berrors.BoulderError).WithSubErrors(subErrors)
 		}
-		return berrors.RateLimitError(0, "too many certificates already issued for: %s", namesOutOfLimit[0])
+		return berrors.RateLimitError(retryAfter, "too many certificates already issued for %q. Retry after %s", namesOutOfLimit[0], retryString)
 	}
 	ra.rateLimitCounter.WithLabelValues("certificates_for_domain", "pass").Inc()
 

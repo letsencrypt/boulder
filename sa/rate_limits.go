@@ -58,30 +58,44 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(db db.SelectExecer, names
 // countCertificates returns the count of certificates issued for a domain's
 // eTLD+1 (aka base domain), during a given time range. It assumes that the
 // given db already has a context associated with it.
-func (ssa *SQLStorageAuthority) countCertificates(dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, error) {
-	var counts []int64
+func (ssa *SQLStorageAuthority) countCertificates(dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
+	latest := time.Unix(0, timeRange.Latest)
+	var results []struct {
+		Count int64
+		Time  time.Time
+	}
 	_, err := dbMap.Select(
-		&counts,
-		`SELECT count FROM certificatesPerName
+		&results,
+		`SELECT count, time FROM certificatesPerName
 		 WHERE eTLDPlusOne = :baseDomain AND
 		 time > :earliest AND
 		 time <= :latest`,
 		map[string]interface{}{
 			"baseDomain": baseDomain(domain),
 			"earliest":   time.Unix(0, timeRange.Earliest),
-			"latest":     time.Unix(0, timeRange.Latest),
+			"latest":     latest,
 		})
 	if err != nil {
 		if db.IsNoRows(err) {
-			return 0, nil
+			return 0, time.Time{}, nil
 		}
-		return 0, err
+		return 0, time.Time{}, err
 	}
+	// Set earliest to the latest possible time, so that we can find the
+	// earliest certificate in the results.
+	var earliest = latest
 	var total int64
-	for _, count := range counts {
-		total += count
+	for _, r := range results {
+		total += r.Count
+		if r.Time.Before(earliest) {
+			earliest = r.Time
+		}
 	}
-	return total, nil
+	if total <= 0 && earliest == latest {
+		// If we didn't find any certificates, return a zero time.
+		return total, time.Time{}, nil
+	}
+	return total, earliest, nil
 }
 
 // addNewOrdersRateLimit adds 1 to the rate limit count for the provided ID, in
