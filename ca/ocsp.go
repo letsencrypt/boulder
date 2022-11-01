@@ -270,3 +270,38 @@ func (olq *ocspLogQueue) stop() {
 	close(olq.queue)
 	olq.wg.Wait()
 }
+
+// disabledOCSPImpl implements the capb.OCSPGeneratorServer interface, but
+// returns an error for all gRPC methods. This is only used to replace a real
+// impl when the OCSPGenerator service is disabled.
+// TODO(#6448): Remove this.
+type disabledOCSPImpl struct {
+	capb.UnimplementedOCSPGeneratorServer
+}
+
+// NewDisabledOCSPImpl returns an object which implements the
+// capb.OCSPGeneratorServer interface, but always returns errors.
+func NewDisabledOCSPImpl() *disabledOCSPImpl {
+	return &disabledOCSPImpl{}
+}
+
+// GenerateOCSP always returns an error because the service is disabled.
+func (oi *disabledOCSPImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+	return nil, errors.New("the OCSPGenerator gRPC service is disabled")
+}
+
+// LogOCSPLoop is an no-op because there is no OCSP issuance to be logged.
+func (oi *disabledOCSPImpl) LogOCSPLoop() {}
+
+// Stop is a no-op because there is no log loop to be stopped.
+func (oi *disabledOCSPImpl) Stop() {}
+
+// OCSPGenerator is an interface met by both the ocspImpl and disabledOCSPImpl
+// types. It exists only so that the caImpl can equivalently consume either
+// type, depending on whether or not the OCSP Generator service is disabled.
+// TODO(#6448): Remove this.
+type OCSPGenerator interface {
+	capb.OCSPGeneratorServer
+	LogOCSPLoop()
+	Stop()
+}

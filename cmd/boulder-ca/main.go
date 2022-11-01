@@ -100,6 +100,16 @@ type Config struct {
 		// not end with a slash. Example: "http://prod.c.lencr.org".
 		CRLDPBase string
 
+		// DisableCertService causes the CertificateAuthority gRPC service to not
+		// start, preventing any certificates or precertificates from being issued.
+		DisableCertService bool
+		// DisableCertService causes the OCSPGenerator gRPC service to not start,
+		// preventing any OCSP responses from being issued.
+		DisableOCSPService bool
+		// DisableCRLService causes the CRLGenerator gRPC service to not start,
+		// preventing any CRLs from being issued.
+		DisableCRLService bool
+
 		Features map[string]bool
 	}
 
@@ -260,85 +270,102 @@ func main() {
 	var wg sync.WaitGroup
 	stopFns := make([]func(), 0)
 
-	ocspi, err := ca.NewOCSPImpl(
-		boulderIssuers,
-		c.CA.LifespanOCSP.Duration,
-		c.CA.OCSPLogMaxLength,
-		c.CA.OCSPLogPeriod.Duration,
-		logger,
-		scope,
-		signatureCount,
-		signErrorCount,
-		clk,
-	)
-	cmd.FailOnError(err, "Failed to create OCSP impl")
-	go ocspi.LogOCSPLoop()
+	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
+	// no longer needs ocspi as an argument.
+	var ocspi ca.OCSPGenerator
+	if !c.CA.DisableOCSPService {
+		ocspiReal, err := ca.NewOCSPImpl(
+			boulderIssuers,
+			c.CA.LifespanOCSP.Duration,
+			c.CA.OCSPLogMaxLength,
+			c.CA.OCSPLogPeriod.Duration,
+			logger,
+			scope,
+			signatureCount,
+			signErrorCount,
+			clk,
+		)
+		cmd.FailOnError(err, "Failed to create OCSP impl")
+		go ocspiReal.LogOCSPLoop()
 
-	ocspStart, ocspStop, err := bgrpc.Server[capb.OCSPGeneratorServer]{}.Setup(
-		c.CA.GRPCOCSPGenerator, ocspi, capb.RegisterOCSPGeneratorServer, tlsConfig, scope, clk,
-	)
-	cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
-	wg.Add(1)
-	go func() {
-		cmd.FailOnError(ocspStart(), "OCSPGenerator gRPC service failed")
-		wg.Done()
-	}()
-	stopFns = append(stopFns, ocspStop)
-
-	crli, err := ca.NewCRLImpl(
-		boulderIssuers,
-		c.CA.LifespanCRL.Duration,
-		c.CA.CRLDPBase,
-		c.CA.OCSPLogMaxLength,
-		logger,
-	)
-	cmd.FailOnError(err, "Failed to create CRL impl")
-
-	crlStart, crlStop, err := bgrpc.Server[capb.CRLGeneratorServer]{}.Setup(
-		c.CA.GRPCCRLGenerator, crli, capb.RegisterCRLGeneratorServer, tlsConfig, scope, clk,
-	)
-	cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
-	wg.Add(1)
-	go func() {
-		cmd.FailOnError(crlStart(), "CRLGenerator gRPC service failed")
-		wg.Done()
-	}()
-	stopFns = append(stopFns, crlStop)
-
-	cai, err := ca.NewCertificateAuthorityImpl(
-		sa,
-		pa,
-		ocspi,
-		crli,
-		boulderIssuers,
-		ecdsaAllowList,
-		c.CA.Expiry.Duration,
-		c.CA.Backdate.Duration,
-		c.CA.SerialPrefix,
-		c.CA.MaxNames,
-		kp,
-		orphanQueue,
-		logger,
-		scope,
-		signatureCount,
-		signErrorCount,
-		clk)
-	cmd.FailOnError(err, "Failed to create CA impl")
-
-	if orphanQueue != nil {
-		go cai.OrphanIntegrationLoop()
+		ocspStart, ocspStop, err := bgrpc.Server[capb.OCSPGeneratorServer]{}.Setup(
+			c.CA.GRPCOCSPGenerator, ocspiReal, capb.RegisterOCSPGeneratorServer, tlsConfig, scope, clk,
+		)
+		cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
+		wg.Add(1)
+		go func() {
+			cmd.FailOnError(ocspStart(), "OCSPGenerator gRPC service failed")
+			wg.Done()
+		}()
+		stopFns = append(stopFns, ocspStop)
+		ocspi = ca.OCSPGenerator(ocspiReal)
+	} else {
+		ocspi = ca.NewDisabledOCSPImpl()
 	}
 
-	caStart, caStop, err := bgrpc.Server[capb.CertificateAuthorityServer]{}.Setup(
-		c.CA.GRPCCA, cai, capb.RegisterCertificateAuthorityServer, tlsConfig, scope, clk,
-	)
-	cmd.FailOnError(err, "Unable to setup CA gRPC server")
-	wg.Add(1)
-	go func() {
-		cmd.FailOnError(caStart(), "CA gRPC service failed")
-		wg.Done()
-	}()
-	stopFns = append(stopFns, caStop)
+	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
+	// no longer needs crli as an argument.
+	var crli capb.CRLGeneratorServer
+	if !c.CA.DisableCRLService {
+		crli, err = ca.NewCRLImpl(
+			boulderIssuers,
+			c.CA.LifespanCRL.Duration,
+			c.CA.CRLDPBase,
+			c.CA.OCSPLogMaxLength,
+			logger,
+		)
+		cmd.FailOnError(err, "Failed to create CRL impl")
+
+		crlStart, crlStop, err := bgrpc.Server[capb.CRLGeneratorServer]{}.Setup(
+			c.CA.GRPCCRLGenerator, crli, capb.RegisterCRLGeneratorServer, tlsConfig, scope, clk,
+		)
+		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
+		wg.Add(1)
+		go func() {
+			cmd.FailOnError(crlStart(), "CRLGenerator gRPC service failed")
+			wg.Done()
+		}()
+		stopFns = append(stopFns, crlStop)
+	} else {
+		crli = ca.NewDisabledCRLImpl()
+	}
+
+	if !c.CA.DisableCertService {
+		cai, err := ca.NewCertificateAuthorityImpl(
+			sa,
+			pa,
+			ocspi,
+			crli,
+			boulderIssuers,
+			ecdsaAllowList,
+			c.CA.Expiry.Duration,
+			c.CA.Backdate.Duration,
+			c.CA.SerialPrefix,
+			c.CA.MaxNames,
+			kp,
+			orphanQueue,
+			logger,
+			scope,
+			signatureCount,
+			signErrorCount,
+			clk)
+		cmd.FailOnError(err, "Failed to create CA impl")
+
+		if orphanQueue != nil {
+			go cai.OrphanIntegrationLoop()
+		}
+
+		caStart, caStop, err := bgrpc.Server[capb.CertificateAuthorityServer]{}.Setup(
+			c.CA.GRPCCA, cai, capb.RegisterCertificateAuthorityServer, tlsConfig, scope, clk,
+		)
+		cmd.FailOnError(err, "Unable to setup CA gRPC server")
+		wg.Add(1)
+		go func() {
+			cmd.FailOnError(caStart(), "CA gRPC service failed")
+			wg.Done()
+		}()
+		stopFns = append(stopFns, caStop)
+	}
 
 	go cmd.CatchSignals(logger, func() {
 		ecdsaAllowList.Stop()
@@ -346,7 +373,6 @@ func main() {
 			stopFn()
 		}
 		wg.Wait()
-		ocspi.Stop()
 	})
 
 	select {}

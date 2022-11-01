@@ -281,3 +281,22 @@ func makeIDPExt(base string, issuer issuance.IssuerNameID, shardIdx int64) (*pki
 		Critical: true,
 	}, nil
 }
+
+// disabledCRLImpl implements the capb.CRLGeneratorServer interface, but returns
+// an error for all gRPC methods. This is only used to replace a real impl when
+// the CRLGenerator service is disabled.
+// TODO(#6448): Remove this.
+type disabledCRLImpl struct {
+	capb.UnimplementedCRLGeneratorServer
+}
+
+// NewDiabledCRLImpl returns an object which implements the
+// capb.CRLGeneratorServer interface but always returns errors.
+func NewDisabledCRLImpl() *disabledCRLImpl {
+	return &disabledCRLImpl{}
+}
+
+// GenerateCRL always returns an error because the service is disabled.
+func (ci *disabledCRLImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
+	return errors.New("the CRLGenerator gRPC service is disabled")
+}
