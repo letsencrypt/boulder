@@ -69,9 +69,15 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry pro
 	if tlsConfig == nil {
 		return nil, nil, errNilTLS
 	}
+
 	acceptedSANs := make(map[string]struct{})
 	for _, name := range c.ClientNames {
 		acceptedSANs[name] = struct{}{}
+	}
+	for _, service := range c.Services {
+		for _, name := range service.ClientNames {
+			acceptedSANs[name] = struct{}{}
+		}
 	}
 
 	metrics, err := newServerMetrics(statsRegistry)
@@ -90,14 +96,17 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry pro
 	}
 
 	si := newServerInterceptor(metrics, clk)
+	ac := newServiceAuthChecker(c)
 
 	unaryInterceptors := append([]grpc.UnaryServerInterceptor{
+		ac.UnaryInterceptor(),
 		si.interceptUnary,
 		si.metrics.grpcMetrics.UnaryServerInterceptor(),
 		hnygrpc.UnaryServerInterceptor(),
 	}, interceptors...)
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
+		ac.StreamInterceptor(),
 		si.interceptStream,
 		si.metrics.grpcMetrics.StreamServerInterceptor(),
 		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
