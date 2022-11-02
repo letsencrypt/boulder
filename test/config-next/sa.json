@@ -36,6 +36,14 @@
             "wfe.boulder"
           ]
         },
+        "sa.StorageAuthorityReadOnly": {
+          "clientNames": [
+            "crl-updater.boulder",
+            "health-checker.boulder",
+            "ocsp-responder.boulder",
+            "wfe.boulder"
+          ]
+        },
         "grpc.health.v1.Health": {
           "clientNames": [
             "health-checker.boulder"
