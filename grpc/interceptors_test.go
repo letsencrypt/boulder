@@ -2,6 +2,8 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log"
@@ -18,8 +20,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	"github.com/letsencrypt/boulder/grpc/test_proto"
@@ -394,4 +398,77 @@ func TestNoCancelInterceptor(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+func TestServiceAuthChecker(t *testing.T) {
+	ac := serviceAuthChecker{
+		map[string]map[string]struct{}{
+			"package.ServiceName": {
+				"allowed.client": {},
+				"also.allowed":   {},
+			},
+		},
+	}
+
+	// No allowlist means all clients are allowed.
+	ctx := context.Background()
+	err := ac.checkContextAuth(ctx, "/package.OtherService/Method/")
+	test.AssertNotError(t, err, "checking unrestricted service")
+
+	// Context with no peering information is disallowed.
+	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")
+	test.AssertError(t, err, "checking un-peered context")
+
+	// Context with no auth info is disallowed.
+	ctx = peer.NewContext(ctx, &peer.Peer{})
+	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")
+	test.AssertError(t, err, "checking peer with no auth")
+
+	// Context with no verified chains is disallowed.
+	ctx = peer.NewContext(ctx, &peer.Peer{
+		AuthInfo: credentials.TLSInfo{
+			State: tls.ConnectionState{},
+		},
+	})
+	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")
+	test.AssertError(t, err, "checking TLS with no valid chains")
+
+	// Context with cert with wrong name is disallowed.
+	ctx = peer.NewContext(ctx, &peer.Peer{
+		AuthInfo: credentials.TLSInfo{
+			State: tls.ConnectionState{
+				VerifiedChains: [][]*x509.Certificate{
+					{
+						&x509.Certificate{
+							DNSNames: []string{
+								"disallowed.client",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")
+	test.AssertError(t, err, "checking disallowed cert")
+
+	// Context with cert with good name is allowed.
+	ctx = peer.NewContext(ctx, &peer.Peer{
+		AuthInfo: credentials.TLSInfo{
+			State: tls.ConnectionState{
+				VerifiedChains: [][]*x509.Certificate{
+					{
+						&x509.Certificate{
+							DNSNames: []string{
+								"disallowed.client",
+								"also.allowed",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")
+	test.AssertNotError(t, err, "checking allowed cert")
 }

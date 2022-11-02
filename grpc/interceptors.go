@@ -11,9 +11,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
+	"github.com/letsencrypt/boulder/cmd"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/probs"
 )
@@ -420,4 +423,91 @@ type deadlineDetails struct {
 func (dd deadlineDetails) Error() string {
 	return fmt.Sprintf("%s.%s timed out after %d ms",
 		dd.service, dd.method, int64(dd.latency/time.Millisecond))
+}
+
+// serviceAuthChecker provides two server interceptors which can check that
+// every request for a given gRPC service is being made over an mTLS connection
+// from a client which is allow-listed for that particular service.
+type serviceAuthChecker struct {
+	serviceClientNames map[string]map[string]struct{}
+}
+
+// newServiceAuthChecker takes a GRPCServerConfig and uses its Service stanzas
+// to construct a serviceAuthChecker which enforces the service/client mappings
+// contained in the config.
+func newServiceAuthChecker(c *cmd.GRPCServerConfig) *serviceAuthChecker {
+	names := make(map[string]map[string]struct{})
+	for serviceName, service := range c.Services {
+		names[serviceName] = make(map[string]struct{})
+		for _, clientName := range service.ClientNames {
+			names[serviceName][clientName] = struct{}{}
+		}
+	}
+	return &serviceAuthChecker{names}
+}
+
+// UnaryInterceptor returns a gRPC unary interceptor.
+func (ac *serviceAuthChecker) UnaryInterceptor() func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		err := ac.checkContextAuth(ctx, info.FullMethod)
+		if err != nil {
+			return nil, err
+		}
+		return handler(ctx, req)
+	}
+}
+
+// StreamInterceptor returns a gRPC stream interceptor.
+func (ac *serviceAuthChecker) StreamInterceptor() func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		err := ac.checkContextAuth(ss.Context(), info.FullMethod)
+		if err != nil {
+			return err
+		}
+		return handler(srv, ss)
+	}
+}
+
+// checkContextAuth does most of the heavy lifting. It extracts TLS information
+// from the incoming context, gets the set of DNS names contained in the client
+// mTLS cert, and returns nil if at least one of those names appears in the set
+// of allowed client names for given service (or if the set of allowed client
+// names is empty).
+func (ac *serviceAuthChecker) checkContextAuth(ctx context.Context, fullMethod string) error {
+	serviceName, _ := splitMethodName(fullMethod)
+
+	allowedClientNames, ok := ac.serviceClientNames[serviceName]
+	if !ok || len(allowedClientNames) == 0 {
+		// Don't restrict clients if no allowlist has been configured.
+		return nil
+	}
+
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return fmt.Errorf("unable to fetch peer info from grpc context")
+	}
+
+	if p.AuthInfo == nil {
+		return fmt.Errorf("grpc connection appears to be plaintext")
+	}
+
+	tlsAuth, ok := p.AuthInfo.(credentials.TLSInfo)
+	if !ok {
+		return fmt.Errorf("connection is not TLS authed")
+	}
+
+	if len(tlsAuth.State.VerifiedChains) == 0 || len(tlsAuth.State.VerifiedChains[0]) == 0 {
+		return fmt.Errorf("connection auth not verified")
+	}
+
+	cert := tlsAuth.State.VerifiedChains[0][0]
+
+	for _, clientName := range cert.DNSNames {
+		_, ok := allowedClientNames[clientName]
+		if ok {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("client is not authorized for service %q", serviceName)
 }
