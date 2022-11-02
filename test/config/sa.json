@@ -18,18 +18,30 @@
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9095",
-      "clientNames": [
-        "admin-revoker.boulder",
-        "ca.boulder",
-        "crl-updater.boulder",
-        "expiration-mailer.boulder",
-        "health-checker.boulder",
-        "ocsp-responder.boulder",
-        "orphan-finder.boulder",
-        "ra.boulder",
-        "sa.boulder",
-        "wfe.boulder"
-      ]
+      "services": {
+        "sa.StorageAuthority": {
+          "clientNames": [
+            "admin-revoker.boulder",
+            "ca.boulder",
+            "crl-updater.boulder",
+            "expiration-mailer.boulder",
+            "health-checker.boulder",
+            "ocsp-responder.boulder",
+            "orphan-finder.boulder",
+            "ra.boulder",
+            "sa.boulder",
+            "wfe.boulder"
+          ]
+        },
+        "sa.StorageAuthorityReadOnly": {
+          "clientNames": [
+            "crl-updater.boulder",
+            "health-checker.boulder",
+            "ocsp-responder.boulder",
+            "wfe.boulder"
+          ]
+        }
+      }
     },
     "features": {
       "FasterNewOrdersRateLimit": true,
