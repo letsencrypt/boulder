@@ -24,50 +24,13 @@ var CodedError = status.Errorf
 
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
-// Server is a generic type that exists solely to allow its one method, Setup,
-// to be generic over the type of server it is setting up.
-type Server[T any] struct{}
-
-// Setup creates and registers a new gRPC server. It also creates and registers
-// a corresponding health server. It returns a function to start the server (so
-// that it may be run synchronously, or started in a goroutine), a function to
-// gracefully stop both the health and primary servers at shutdown time, and an
-// error in case any of the setup fails.
-func (s Server[T]) Setup(
-	config *cmd.GRPCServerConfig,
-	impl T,
-	registerer func(grpc.ServiceRegistrar, T),
-	tlsConfig *tls.Config,
-	statsRegistry prometheus.Registerer,
-	clk clock.Clock,
-	interceptors ...grpc.UnaryServerInterceptor,
-) (func() error, func(), error) {
-	server, listener, err := NewServer(config, tlsConfig, statsRegistry, clk, interceptors...)
-	if err != nil {
-		return nil, nil, err
-	}
-	registerer(server, impl)
-
-	healthServer := health.NewServer()
-	healthpb.RegisterHealthServer(server, healthServer)
-
-	start := func() error {
-		return cmd.FilterShutdownErrors(server.Serve(listener))
-	}
-	stop := func() {
-		healthServer.Shutdown()
-		server.GracefulStop()
-	}
-	return start, stop, nil
-}
-
 // NewServer creates a gRPC server that uses the provided *tls.Config, and
 // verifies that clients present a certificate that (a) is signed by one of
 // the configured ClientCAs, and (b) contains at least one
 // subjectAlternativeName matching the accepted list from GRPCServerConfig.
-func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (*grpc.Server, net.Listener, error) {
+func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (*grpc.Server, func() error, func(), error) {
 	if tlsConfig == nil {
-		return nil, nil, errNilTLS
+		return nil, nil, nil, errNilTLS
 	}
 
 	acceptedSANs := make(map[string]struct{})
@@ -82,17 +45,17 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry pro
 
 	metrics, err := newServerMetrics(statsRegistry)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	l, err := net.Listen("tcp", c.Address)
+	listener, err := net.Listen("tcp", c.Address)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	si := newServerInterceptor(metrics, clk)
@@ -123,7 +86,21 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry pro
 				MaxConnectionAge: c.MaxConnectionAge.Duration,
 			}))
 	}
-	return grpc.NewServer(options...), l, nil
+
+	server := grpc.NewServer(options...)
+
+	healthServer := health.NewServer()
+	healthpb.RegisterHealthServer(server, healthServer)
+
+	start := func() error {
+		return cmd.FilterShutdownErrors(server.Serve(listener))
+	}
+	stop := func() {
+		healthServer.Shutdown()
+		server.GracefulStop()
+	}
+
+	return server, start, stop, nil
 }
 
 // serverMetrics is a struct type used to return a few registered metrics from

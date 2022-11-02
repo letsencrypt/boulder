@@ -99,10 +99,9 @@ func main() {
 
 	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 
-	start, stop, err := bgrpc.Server[pubpb.PublisherServer]{}.Setup(
-		c.Publisher.GRPC, pubi, pubpb.RegisterPublisherServer, tlsConfig, scope, clk,
-	)
+	srv, start, stop, err := bgrpc.NewServer(c.Publisher.GRPC, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
+	pubpb.RegisterPublisherServer(srv, pubi)
 
 	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "Publisher gRPC service failed")
