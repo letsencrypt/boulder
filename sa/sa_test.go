@@ -33,7 +33,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -52,16 +51,12 @@ var (
     "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw",
     "e": "AQAB"
 }`
-	anotherKey = `{
-	"kty":"RSA",
-	"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
-	"e":"AQAB"
-}`
 )
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
+	t.Helper()
 	features.Reset()
 
 	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{})
@@ -77,22 +72,17 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	// Load the standard list of signing certificates from the hierarchy.
-	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
-		"../test/hierarchy/int-e1.cert.pem": 100,
-		"../test/hierarchy/int-e2.cert.pem": 101,
-		"../test/hierarchy/int-r3.cert.pem": 102,
-		"../test/hierarchy/int-r4.cert.pem": 103,
-	})
-	if err != nil {
-		t.Fatalf("failed to load issuers: %s", err)
-	}
-	sa, err := NewSQLStorageAuthority(dbMap, dbMap, dbIncidentsMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetBoulderTestDatabase(t)
-	return sa, fc, cleanUp
+
+	sa, err := NewSQLStorageAuthorityWrapping(saro, saro.dbReadOnlyMap, metrics.NoopRegisterer)
+	if err != nil {
+		t.Fatalf("Failed to create SA: %s", err)
+	}
+
+	return sa, fc, test.ResetBoulderTestDatabase(t)
 }
 
 // CreateWorkingTestRegistration inserts a new, correct Registration into the
@@ -210,6 +200,12 @@ func TestAddRegistration(t *testing.T) {
 
 	test.AssertEquals(t, dbReg.Id, newReg.Id)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+
+	anotherKey := `{
+		"kty":"RSA",
+		"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
+		"e":"AQAB"
+	}`
 
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: []byte(anotherKey)})
 	test.AssertError(t, err, "Registration object for invalid key was returned")
