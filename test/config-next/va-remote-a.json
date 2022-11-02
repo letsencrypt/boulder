@@ -20,10 +20,19 @@
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9097",
-      "clientNames": [
-        "health-checker.boulder",
-        "va.boulder"
-      ]
+      "services": {
+        "va.VA": {
+          "clientNames": [
+            "health-checker.boulder",
+            "va.boulder"
+          ]
+        },
+        "va.CAA": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "features": {
       "CAAValidationMethods": true,
