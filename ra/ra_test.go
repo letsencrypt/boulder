@@ -35,7 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
-	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -346,7 +346,14 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		Status:    string(core.StatusValid),
 	})
 
-	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, nil, nil, nil, 0, log, metrics.NoopRegisterer)
+	ctp := ctpolicy.New(&mocks.PublisherClient{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
+	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
@@ -3193,7 +3200,14 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	_, ssa, ra, _, cleanup := initAuthorities(t)
 	defer cleanup()
 
-	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, []ctconfig.CTGroup{{}}, nil, nil, nil, nil, 0, log, metrics.NoopRegisterer)
+	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
+	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	// Create valid authorizations for not-example.com and www.not-example.com
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
