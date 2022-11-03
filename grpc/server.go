@@ -129,20 +129,26 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return nil, nil, err
 	}
 
-	si := newServerInterceptor(metrics, clk)
-	ac := newServiceAuthChecker(c)
+	var ai serverInterceptor
+	if len(sb.cfg.Services) > 0 {
+		ai = newServiceAuthChecker(sb.cfg)
+	} else {
+		ai = &noopServerInterceptor{}
+	}
+
+	mi := newServerMetadataInterceptor(metrics, clk)
 
 	unaryInterceptors := append([]grpc.UnaryServerInterceptor{
-		ac.UnaryInterceptor(),
-		si.interceptUnary,
-		si.metrics.grpcMetrics.UnaryServerInterceptor(),
+		mi.metrics.grpcMetrics.UnaryServerInterceptor(),
+		ai.Unary,
+		mi.Unary,
 		hnygrpc.UnaryServerInterceptor(),
 	}, interceptors...)
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
-		ac.StreamInterceptor(),
-		si.interceptStream,
-		si.metrics.grpcMetrics.StreamServerInterceptor(),
+		mi.metrics.grpcMetrics.StreamServerInterceptor(),
+		ai.Stream,
+		mi.Stream,
 		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
 
