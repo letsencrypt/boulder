@@ -287,9 +287,9 @@ func main() {
 		cmd.FailOnError(err, "Failed to create OCSP impl")
 		go ocspiReal.LogOCSPLoop()
 
-		srv, ocspStart, ocspStop, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator, tlsConfig, scope, clk)
+		ocspStart, ocspStop, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator).Add(
+			&capb.OCSPGenerator_ServiceDesc, ocspiReal).Build(tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
-		capb.RegisterOCSPGeneratorServer(srv, ocspiReal)
 
 		wg.Add(1)
 		go func() {
@@ -315,9 +315,9 @@ func main() {
 		)
 		cmd.FailOnError(err, "Failed to create CRL impl")
 
-		srv, crlStart, crlStop, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator, tlsConfig, scope, clk)
+		crlStart, crlStop, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator).Add(
+			&capb.CRLGenerator_ServiceDesc, crli).Build(tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
-		capb.RegisterCRLGeneratorServer(srv, crli)
 
 		wg.Add(1)
 		go func() {
@@ -354,9 +354,9 @@ func main() {
 			go cai.OrphanIntegrationLoop()
 		}
 
-		srv, caStart, caStop, err := bgrpc.NewServer(c.CA.GRPCCA, tlsConfig, scope, clk)
+		caStart, caStop, err := bgrpc.NewServer(c.CA.GRPCCA).Add(
+			&capb.CertificateAuthority_ServiceDesc, cai).Build(tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
-		capb.RegisterCertificateAuthorityServer(srv, cai)
 
 		wg.Add(1)
 		go func() {

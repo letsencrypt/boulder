@@ -22,18 +22,26 @@
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9095",
-      "clientNames": [
-        "admin-revoker.boulder",
-        "ca.boulder",
-        "crl-updater.boulder",
-        "expiration-mailer.boulder",
-        "health-checker.boulder",
-        "ocsp-responder.boulder",
-        "orphan-finder.boulder",
-        "ra.boulder",
-        "sa.boulder",
-        "wfe.boulder"
-      ]
+      "services": {
+        "sa.StorageAuthority": {
+          "clientNames": [
+            "admin-revoker.boulder",
+            "ca.boulder",
+            "crl-updater.boulder",
+            "expiration-mailer.boulder",
+            "ocsp-responder.boulder",
+            "orphan-finder.boulder",
+            "ra.boulder",
+            "sa.boulder",
+            "wfe.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "redis": {
       "username": "boulder-sa",

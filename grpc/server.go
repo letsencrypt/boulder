@@ -3,7 +3,9 @@ package grpc
 import (
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net"
+	"strings"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
@@ -24,32 +26,107 @@ var CodedError = status.Errorf
 
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
-// NewServer creates a gRPC server that uses the provided *tls.Config, and
-// verifies that clients present a certificate that (a) is signed by one of
-// the configured ClientCAs, and (b) contains at least one
-// subjectAlternativeName matching the accepted list from GRPCServerConfig.
-func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (*grpc.Server, func() error, func(), error) {
-	if tlsConfig == nil {
-		return nil, nil, nil, errNilTLS
+type service struct {
+	cfg  cmd.GRPCServiceConfig
+	desc *grpc.ServiceDesc
+	impl any
+}
+
+// serverBuilder
+type serverBuilder struct {
+	cfg      *cmd.GRPCServerConfig
+	services map[string]service
+	err      error
+}
+
+// NewServer returns an object which can be used to build gRPC servers. It
+// takes the server's configuration to perform initialization, and automatically
+// adds the first service, the default gRPC health service.
+func NewServer(c *cmd.GRPCServerConfig) *serverBuilder {
+	s := make(map[string]service)
+	if len(c.Services) > 0 {
+		for serviceName, serviceCfg := range c.Services {
+			s[serviceName] = service{cfg: serviceCfg}
+		}
 	}
+
+	ret := &serverBuilder{cfg: c, services: s}
+	ret = ret.Add(&healthpb.Health_ServiceDesc, health.NewServer())
+	return ret
+}
+
+// Add registers a new service (consisting of its description and its
+// implementation) to the set of services which will be exposed by this server.
+// It returns the modified-in-place serverBuilder so that calls can be chained.
+// If there is an error adding this service, it will be exposed when .Build() is
+// called.
+func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
+	s, ok := sb.services[desc.ServiceName]
+	if !ok {
+		// If this service doesn't have its own config stanza, instead initialize it
+		// with pieces from the server-level config.
+		s = service{cfg: cmd.GRPCServiceConfig{ClientNames: sb.cfg.ClientNames}}
+	}
+
+	if s.desc != nil || s.impl != nil {
+		// We've already registered a service with this same name, error out.
+		sb.err = fmt.Errorf("attempted double-registration of gRPC service %q", desc.ServiceName)
+		return sb
+	}
+
+	s.desc = desc
+	s.impl = impl
+	sb.services[desc.ServiceName] = s
+
+	return sb
+}
+
+// Build creates a gRPC server that uses the provided *tls.Config and exposes
+// all of the services added to the builder. It also exposes a health check
+// service. It returns two functions, start() and stop(), which should be used
+// to start and gracefully stop the server.
+func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (func() error, func(), error) {
+	if sb.err != nil {
+		return nil, nil, sb.err
+	}
+
+	// TODO: Remove this check once all Boulder components have their services
+	// properly configured. In theory we'd like to keep this, but we can't do both
+	// this and the desired check in .Add() for deployability reasons.
+	for serviceName := range sb.cfg.Services {
+		_, ok := sb.services[serviceName]
+		if !ok {
+			return nil, nil, fmt.Errorf("gRPC service %q configured but not registered", serviceName)
+		}
+	}
+
+	if tlsConfig == nil {
+		return nil, nil, errNilTLS
+	}
+
 	acceptedSANs := make(map[string]struct{})
-	for _, name := range c.ClientNames {
+	for _, name := range sb.cfg.ClientNames {
 		acceptedSANs[name] = struct{}{}
+	}
+	for _, service := range sb.services {
+		for _, name := range service.cfg.ClientNames {
+			acceptedSANs[name] = struct{}{}
+		}
 	}
 
 	metrics, err := newServerMetrics(statsRegistry)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	listener, err := net.Listen("tcp", c.Address)
+	listener, err := net.Listen("tcp", sb.cfg.Address)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	si := newServerInterceptor(metrics, clk)
@@ -71,27 +148,27 @@ func NewServer(c *cmd.GRPCServerConfig, tlsConfig *tls.Config, statsRegistry pro
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamInterceptors...),
 	}
-	if c.MaxConnectionAge.Duration > 0 {
+	if sb.cfg.MaxConnectionAge.Duration > 0 {
 		options = append(options,
 			grpc.KeepaliveParams(keepalive.ServerParameters{
-				MaxConnectionAge: c.MaxConnectionAge.Duration,
+				MaxConnectionAge: sb.cfg.MaxConnectionAge.Duration,
 			}))
 	}
 
 	server := grpc.NewServer(options...)
 
-	healthServer := health.NewServer()
-	healthpb.RegisterHealthServer(server, healthServer)
+	for _, service := range sb.services {
+		server.RegisterService(service.desc, service.impl)
+	}
 
 	start := func() error {
-		return cmd.FilterShutdownErrors(server.Serve(listener))
+		return filterShutdownErrors(server.Serve(listener))
 	}
 	stop := func() {
-		healthServer.Shutdown()
 		server.GracefulStop()
 	}
 
-	return server, start, stop, nil
+	return start, stop, nil
 }
 
 // serverMetrics is a struct type used to return a few registered metrics from
@@ -141,4 +218,20 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 		grpcMetrics: grpcMetrics,
 		rpcLag:      rpcLag,
 	}, nil
+}
+
+// filterShutdownErrors returns the input error, with the exception of "use of
+// closed network connection," on which it returns nil
+// Per https://github.com/grpc/grpc-go/issues/1017, a gRPC server's `Serve()`
+// will always return an error, even when GracefulStop() is called. We don't
+// want to log graceful stops as errors, so we filter out the meaningless
+// error we get in that situation.
+func filterShutdownErrors(err error) error {
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "use of closed network connection") {
+		return nil
+	}
+	return err
 }

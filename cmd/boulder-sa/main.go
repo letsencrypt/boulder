@@ -106,9 +106,9 @@ func main() {
 	tls, err := c.SA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	srv, start, stop, err := bgrpc.NewServer(c.SA.GRPC, tls, scope, clk, bgrpc.NoCancelInterceptor)
+	start, stop, err := bgrpc.NewServer(c.SA.GRPC).Add(
+		&sapb.StorageAuthority_ServiceDesc, sai).Build(tls, scope, clk, bgrpc.NoCancelInterceptor)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
-	sapb.RegisterStorageAuthorityServer(srv, sai)
 
 	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "SA gRPC service failed")
