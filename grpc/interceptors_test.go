@@ -56,37 +56,37 @@ func testInvoker(_ context.Context, method string, _, _ interface{}, _ *grpc.Cli
 func TestServerInterceptor(t *testing.T) {
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerInterceptor(serverMetrics, clock.NewFake())
+	si := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 
 	md := metadata.New(map[string]string{clientRequestTimeKey: "0"})
 	ctxWithMetadata := metadata.NewIncomingContext(context.Background(), md)
 
-	_, err = si.interceptUnary(context.Background(), nil, nil, testHandler)
+	_, err = si.Unary(context.Background(), nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a context missing metadata")
 
-	_, err = si.interceptUnary(ctxWithMetadata, nil, nil, testHandler)
+	_, err = si.Unary(ctxWithMetadata, nil, nil, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail with a nil grpc.UnaryServerInfo")
 
-	_, err = si.interceptUnary(ctxWithMetadata, nil, &grpc.UnaryServerInfo{FullMethod: "-service-test"}, testHandler)
+	_, err = si.Unary(ctxWithMetadata, nil, &grpc.UnaryServerInfo{FullMethod: "-service-test"}, testHandler)
 	test.AssertNotError(t, err, "si.intercept failed with a non-nil grpc.UnaryServerInfo")
 
-	_, err = si.interceptUnary(ctxWithMetadata, 0, &grpc.UnaryServerInfo{FullMethod: "brokeTest"}, testHandler)
+	_, err = si.Unary(ctxWithMetadata, 0, &grpc.UnaryServerInfo{FullMethod: "brokeTest"}, testHandler)
 	test.AssertError(t, err, "si.intercept didn't fail when handler returned a error")
 }
 
 func TestClientInterceptor(t *testing.T) {
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	ci := clientInterceptor{
+	ci := clientMetadataInterceptor{
 		timeout: time.Second,
 		metrics: clientMetrics,
 		clk:     clock.NewFake(),
 	}
 
-	err = ci.interceptUnary(context.Background(), "-service-test", nil, nil, nil, testInvoker)
+	err = ci.Unary(context.Background(), "-service-test", nil, nil, nil, testInvoker)
 	test.AssertNotError(t, err, "ci.intercept failed with a non-nil grpc.UnaryServerInfo")
 
-	err = ci.interceptUnary(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
+	err = ci.Unary(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
 }
 
@@ -110,7 +110,7 @@ func TestCancelTo408Interceptor(t *testing.T) {
 func TestFailFastFalse(t *testing.T) {
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientInterceptor{
+	ci := &clientMetadataInterceptor{
 		timeout: 100 * time.Millisecond,
 		metrics: clientMetrics,
 		clk:     clock.NewFake(),
@@ -118,7 +118,7 @@ func TestFailFastFalse(t *testing.T) {
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.interceptUnary))
+		grpc.WithUnaryInterceptor(ci.Unary))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
@@ -165,8 +165,8 @@ func TestTimeouts(t *testing.T) {
 
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerInterceptor(serverMetrics, clock.NewFake())
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
+	si := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
 	test_proto.RegisterChillerServer(s, &testServer{})
 	go func() {
 		start := time.Now()
@@ -180,14 +180,14 @@ func TestTimeouts(t *testing.T) {
 	// make client
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientInterceptor{
+	ci := &clientMetadataInterceptor{
 		timeout: 30 * time.Second,
 		metrics: clientMetrics,
 		clk:     clock.NewFake(),
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.interceptUnary))
+		grpc.WithUnaryInterceptor(ci.Unary))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
@@ -229,8 +229,8 @@ func TestRequestTimeTagging(t *testing.T) {
 	// Create a new ChillerServer
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerInterceptor(serverMetrics, clk)
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
+	si := newServerMetadataInterceptor(serverMetrics, clk)
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
 	test_proto.RegisterChillerServer(s, &testServer{})
 	// Chill until ill
 	go func() {
@@ -245,14 +245,14 @@ func TestRequestTimeTagging(t *testing.T) {
 	// Dial the ChillerServer
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientInterceptor{
+	ci := &clientMetadataInterceptor{
 		timeout: 30 * time.Second,
 		metrics: clientMetrics,
 		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.interceptUnary))
+		grpc.WithUnaryInterceptor(ci.Unary))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
@@ -318,8 +318,8 @@ func TestInFlightRPCStat(t *testing.T) {
 
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerInterceptor(serverMetrics, clk)
-	s := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
+	si := newServerMetadataInterceptor(serverMetrics, clk)
+	s := grpc.NewServer(grpc.UnaryInterceptor(si.Unary))
 	test_proto.RegisterChillerServer(s, server)
 	// Chill until ill
 	go func() {
@@ -334,14 +334,14 @@ func TestInFlightRPCStat(t *testing.T) {
 	// Dial the ChillerServer
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	ci := &clientInterceptor{
+	ci := &clientMetadataInterceptor{
 		timeout: 30 * time.Second,
 		metrics: clientMetrics,
 		clk:     clk,
 	}
 	conn, err := grpc.Dial(net.JoinHostPort("localhost", strconv.Itoa(port)),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.interceptUnary))
+		grpc.WithUnaryInterceptor(ci.Unary))
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
@@ -401,7 +401,7 @@ func TestNoCancelInterceptor(t *testing.T) {
 }
 
 func TestServiceAuthChecker(t *testing.T) {
-	ac := serviceAuthChecker{
+	ac := authInterceptor{
 		map[string]map[string]struct{}{
 			"package.ServiceName": {
 				"allowed.client": {},
@@ -410,10 +410,10 @@ func TestServiceAuthChecker(t *testing.T) {
 		},
 	}
 
-	// No allowlist means all clients are allowed.
+	// No allowlist is a bad configuration.
 	ctx := context.Background()
 	err := ac.checkContextAuth(ctx, "/package.OtherService/Method/")
-	test.AssertNotError(t, err, "checking unrestricted service")
+	test.AssertError(t, err, "checking empty allowlist")
 
 	// Context with no peering information is disallowed.
 	err = ac.checkContextAuth(ctx, "/package.ServiceName/Method/")

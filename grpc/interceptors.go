@@ -27,6 +27,48 @@ const (
 	clientRequestTimeKey   = "client-request-time"
 )
 
+type serverInterceptor interface {
+	Unary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error)
+	Stream(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error
+}
+
+// noopServerInterceptor provides no-op interceptors. It can be substituted for
+// an interceptor that has been disabled.
+type noopServerInterceptor struct{}
+
+// Unary is a gRPC unary interceptor.
+func (n *noopServerInterceptor) Unary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	return handler(ctx, req)
+}
+
+// Stream is a gRPC stream interceptor.
+func (n *noopServerInterceptor) Stream(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return handler(srv, ss)
+}
+
+var _ serverInterceptor = &noopServerInterceptor{}
+
+type clientInterceptor interface {
+	Unary(ctx context.Context, method string, req interface{}, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error
+	Stream(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error)
+}
+
+// noopClientInterceptor provides no-op interceptors. It can be substituted for
+// an interceptor that has been disabled.
+type noopClientInterceptor struct{}
+
+// Unary is a gRPC unary interceptor.
+func (n *noopClientInterceptor) Unary(ctx context.Context, method string, req interface{}, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return invoker(ctx, method, req, reply, cc, opts...)
+}
+
+// Stream is a gRPC stream interceptor.
+func (n *noopClientInterceptor) Stream(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	return streamer(ctx, desc, cc, method, opts...)
+}
+
+var _ clientInterceptor = &noopClientInterceptor{}
+
 // NoCancelInterceptor is a gRPC interceptor that creates a new context,
 // separate from the original context, that has the same deadline but does
 // not propagate cancellation. This is used by SA.
@@ -45,23 +87,23 @@ func NoCancelInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryS
 	return handler(ctx, req)
 }
 
-// serverInterceptor is a gRPC interceptor that adds Prometheus
+// serverMetadataInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to requests handled by a gRPC server, and wraps Boulder-specific
 // errors for transmission in a grpc/metadata trailer (see bcodes.go).
-type serverInterceptor struct {
+type serverMetadataInterceptor struct {
 	metrics serverMetrics
 	clk     clock.Clock
 }
 
-func newServerInterceptor(metrics serverMetrics, clk clock.Clock) serverInterceptor {
-	return serverInterceptor{
+func newServerMetadataInterceptor(metrics serverMetrics, clk clock.Clock) serverMetadataInterceptor {
+	return serverMetadataInterceptor{
 		metrics: metrics,
 		clk:     clk,
 	}
 }
 
-// interceptUnary implements the grpc.UnaryServerInterceptor interface.
-func (si *serverInterceptor) interceptUnary(
+// Unary implements the grpc.UnaryServerInterceptor interface.
+func (si *serverMetadataInterceptor) Unary(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
@@ -121,8 +163,8 @@ func (iss interceptedServerStream) Context() context.Context {
 	return iss.ctx
 }
 
-// interceptStream implements the grpc.StreamServerInterceptor interface.
-func (si *serverInterceptor) interceptStream(
+// Stream implements the grpc.StreamServerInterceptor interface.
+func (si *serverMetadataInterceptor) Stream(
 	srv interface{},
 	ss grpc.ServerStream,
 	info *grpc.StreamServerInfo,
@@ -187,7 +229,7 @@ func splitMethodName(fullMethodName string) (string, string) {
 // used to calculate the latency between send and receive time. The latency is
 // published to the server interceptor's rpcLag prometheus histogram. An error
 // is returned if the `clientReqTime` string is not a valid timestamp.
-func (si *serverInterceptor) observeLatency(clientReqTime string) error {
+func (si *serverMetadataInterceptor) observeLatency(clientReqTime string) error {
 	// Convert the metadata request time into an int64
 	reqTimeUnixNanos, err := strconv.ParseInt(clientReqTime, 10, 64)
 	if err != nil {
@@ -202,21 +244,23 @@ func (si *serverInterceptor) observeLatency(clientReqTime string) error {
 	return nil
 }
 
-// clientInterceptor is a gRPC interceptor that adds Prometheus
+var _ serverInterceptor = (*serverMetadataInterceptor)(nil)
+
+// clientMetadataInterceptor is a gRPC interceptor that adds Prometheus
 // metrics to sent requests, and disables FailFast. We disable FailFast because
 // non-FailFast mode is most similar to the old AMQP RPC layer: If a client
 // makes a request while all backends are briefly down (e.g. for a restart), the
 // request doesn't necessarily fail. A backend can service the request if it
 // comes back up within the timeout. Under gRPC the same effect is achieved by
 // retries up to the Context deadline.
-type clientInterceptor struct {
+type clientMetadataInterceptor struct {
 	timeout time.Duration
 	metrics clientMetrics
 	clk     clock.Clock
 }
 
-// interceptUnary implements the grpc.UnaryClientInterceptor interface.
-func (ci *clientInterceptor) interceptUnary(
+// Unary implements the grpc.UnaryClientInterceptor interface.
+func (ci *clientMetadataInterceptor) Unary(
 	ctx context.Context,
 	fullMethod string,
 	req,
@@ -326,7 +370,7 @@ func (ics interceptedClientStream) CloseSend() error {
 }
 
 // interceptUnary implements the grpc.StreamClientInterceptor interface.
-func (ci *clientInterceptor) interceptStream(
+func (ci *clientMetadataInterceptor) Stream(
 	ctx context.Context,
 	desc *grpc.StreamDesc,
 	cc *grpc.ClientConn,
@@ -398,6 +442,8 @@ func (ci *clientInterceptor) interceptStream(
 	return ics, err
 }
 
+var _ clientInterceptor = (*clientMetadataInterceptor)(nil)
+
 // CancelTo408Interceptor calls the underlying invoker, checks to see if the
 // resulting error was a gRPC Canceled error (because this client cancelled
 // the request, likely because the ACME client itself canceled the HTTP
@@ -425,17 +471,17 @@ func (dd deadlineDetails) Error() string {
 		dd.service, dd.method, int64(dd.latency/time.Millisecond))
 }
 
-// serviceAuthChecker provides two server interceptors which can check that
+// authInterceptor provides two server interceptors which can check that
 // every request for a given gRPC service is being made over an mTLS connection
 // from a client which is allow-listed for that particular service.
-type serviceAuthChecker struct {
+type authInterceptor struct {
 	serviceClientNames map[string]map[string]struct{}
 }
 
 // newServiceAuthChecker takes a GRPCServerConfig and uses its Service stanzas
 // to construct a serviceAuthChecker which enforces the service/client mappings
 // contained in the config.
-func newServiceAuthChecker(c *cmd.GRPCServerConfig) *serviceAuthChecker {
+func newServiceAuthChecker(c *cmd.GRPCServerConfig) *authInterceptor {
 	names := make(map[string]map[string]struct{})
 	for serviceName, service := range c.Services {
 		names[serviceName] = make(map[string]struct{})
@@ -443,29 +489,25 @@ func newServiceAuthChecker(c *cmd.GRPCServerConfig) *serviceAuthChecker {
 			names[serviceName][clientName] = struct{}{}
 		}
 	}
-	return &serviceAuthChecker{names}
+	return &authInterceptor{names}
 }
 
-// UnaryInterceptor returns a gRPC unary interceptor.
-func (ac *serviceAuthChecker) UnaryInterceptor() func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		err := ac.checkContextAuth(ctx, info.FullMethod)
-		if err != nil {
-			return nil, err
-		}
-		return handler(ctx, req)
+// Unary is a gRPC unary interceptor.
+func (ac *authInterceptor) Unary(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	err := ac.checkContextAuth(ctx, info.FullMethod)
+	if err != nil {
+		return nil, err
 	}
+	return handler(ctx, req)
 }
 
-// StreamInterceptor returns a gRPC stream interceptor.
-func (ac *serviceAuthChecker) StreamInterceptor() func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		err := ac.checkContextAuth(ss.Context(), info.FullMethod)
-		if err != nil {
-			return err
-		}
-		return handler(srv, ss)
+// Stream is a gRPC stream interceptor.
+func (ac *authInterceptor) Stream(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	err := ac.checkContextAuth(ss.Context(), info.FullMethod)
+	if err != nil {
+		return err
 	}
+	return handler(srv, ss)
 }
 
 // checkContextAuth does most of the heavy lifting. It extracts TLS information
@@ -473,13 +515,12 @@ func (ac *serviceAuthChecker) StreamInterceptor() func(srv interface{}, ss grpc.
 // mTLS cert, and returns nil if at least one of those names appears in the set
 // of allowed client names for given service (or if the set of allowed client
 // names is empty).
-func (ac *serviceAuthChecker) checkContextAuth(ctx context.Context, fullMethod string) error {
+func (ac *authInterceptor) checkContextAuth(ctx context.Context, fullMethod string) error {
 	serviceName, _ := splitMethodName(fullMethod)
 
 	allowedClientNames, ok := ac.serviceClientNames[serviceName]
 	if !ok || len(allowedClientNames) == 0 {
-		// Don't restrict clients if no allowlist has been configured.
-		return nil
+		return fmt.Errorf("service %q has no allowed client names", serviceName)
 	}
 
 	p, ok := peer.FromContext(ctx)
@@ -509,5 +550,9 @@ func (ac *serviceAuthChecker) checkContextAuth(ctx context.Context, fullMethod s
 		}
 	}
 
-	return fmt.Errorf("client is not authorized for service %q", serviceName)
+	return fmt.Errorf(
+		"client names %v are not authorized for service %q (%v)",
+		cert.DNSNames, serviceName, allowedClientNames)
 }
+
+var _ serverInterceptor = (*authInterceptor)(nil)
