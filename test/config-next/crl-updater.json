@@ -16,7 +16,7 @@
     },
     "crlGeneratorService": {
       "srvLookup": {
-        "service": "ca-crl",
+        "service": "ca",
         "domain": "service.consul"
       },
       "timeout": "15s",
