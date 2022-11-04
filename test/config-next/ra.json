@@ -75,13 +75,21 @@
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9094",
-      "clientNames": [
-        "admin-revoker.boulder",
-        "bad-key-revoker.boulder",
-        "health-checker.boulder",
-        "ocsp-responder.boulder",
-        "wfe.boulder"
-      ]
+      "services": {
+        "ra.RegistrationAuthority": {
+          "clientNames": [
+            "admin-revoker.boulder",
+            "bad-key-revoker.boulder",
+            "ocsp-responder.boulder",
+            "wfe.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "features": {
       "StoreRevokerInfo": true,

@@ -5,9 +5,6 @@ import (
 	"os"
 	"time"
 
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
@@ -183,23 +180,17 @@ func main() {
 		c.VA.AccountURIPrefixes)
 	cmd.FailOnError(err, "Unable to create VA server")
 
-	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, scope, clk)
+	start, stop, err := bgrpc.NewServer(c.VA.GRPC).Add(
+		&vapb.VA_ServiceDesc, vai).Add(
+		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
-	vapb.RegisterVAServer(grpcSrv, vai)
-	cmd.FailOnError(err, "Unable to register VA gRPC server")
-	vapb.RegisterCAAServer(grpcSrv, vai)
-	cmd.FailOnError(err, "Unable to register CAA gRPC server")
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
 	go cmd.CatchSignals(logger, func() {
 		servers.Stop()
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
+		stop()
 	})
 
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-	cmd.FailOnError(err, "VA gRPC service failed")
+	cmd.FailOnError(start(), "VA gRPC service failed")
 }
 
 func init() {
