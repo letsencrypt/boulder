@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -16,6 +15,7 @@ import (
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/connectivity"
@@ -90,10 +90,7 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	if err == nil {
 		t.Error("expected error shutting down akamai-purger that could not reach backend")
 	}
-	expectedOutput := "failed to purge OCSP responses for 1 certificates before exit: all attempts to submit purge request failed"
-	if !strings.Contains(outputBuffer.String(), expectedOutput) {
-		t.Errorf("akamai-purger stdout did not contain expected %q. Output was:\n%s", expectedOutput, outputBuffer.String())
-	}
+	test.AssertContains(t, outputBuffer.String(), "failed to purge OCSP responses for 1 certificates before exit: all attempts to submit purge request failed")
 }
 
 func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
@@ -122,10 +119,7 @@ func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
 	if err != nil {
 		t.Errorf("unexpected error shutting down akamai-purger: %s. Output was:\n%s", err, outputBuffer.String())
 	}
-	expectedOutput := "Shutting down; finished purging OCSP responses for 10 certificates."
-	if !strings.Contains(outputBuffer.String(), expectedOutput) {
-		t.Errorf("akamai-purger stdout did not contain expected %q. Output was:\n%s", expectedOutput, outputBuffer.String())
-	}
+	test.AssertContains(t, outputBuffer.String(), "Shutting down; finished purging OCSP responses")
 	akamaiTestSrvCmd.Process.Signal(syscall.SIGTERM)
 	_ = akamaiTestSrvCmd.Wait()
 }
