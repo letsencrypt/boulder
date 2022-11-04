@@ -46,6 +46,7 @@ func (n *noopServerInterceptor) Stream(srv interface{}, ss grpc.ServerStream, in
 	return handler(srv, ss)
 }
 
+// Ensure noopServerInterceptor matches the serverInterceptor interface.
 var _ serverInterceptor = &noopServerInterceptor{}
 
 type clientInterceptor interface {
@@ -87,7 +88,7 @@ func newServerMetadataInterceptor(metrics serverMetrics, clk clock.Clock) server
 }
 
 // Unary implements the grpc.UnaryServerInterceptor interface.
-func (si *serverMetadataInterceptor) Unary(
+func (smi *serverMetadataInterceptor) Unary(
 	ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
@@ -100,7 +101,7 @@ func (si *serverMetadataInterceptor) Unary(
 	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
 	// latency with Prometheus.
 	if md, ok := metadata.FromIncomingContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
-		err := si.observeLatency(md[clientRequestTimeKey][0])
+		err := smi.observeLatency(md[clientRequestTimeKey][0])
 		if err != nil {
 			return nil, err
 		}
@@ -148,7 +149,7 @@ func (iss interceptedServerStream) Context() context.Context {
 }
 
 // Stream implements the grpc.StreamServerInterceptor interface.
-func (si *serverMetadataInterceptor) Stream(
+func (smi *serverMetadataInterceptor) Stream(
 	srv interface{},
 	ss grpc.ServerStream,
 	info *grpc.StreamServerInfo,
@@ -159,7 +160,7 @@ func (si *serverMetadataInterceptor) Stream(
 	// a `clientRequestTimeKey` field, and it has a value, then observe the RPC
 	// latency with Prometheus.
 	if md, ok := metadata.FromIncomingContext(ctx); ok && len(md[clientRequestTimeKey]) > 0 {
-		err := si.observeLatency(md[clientRequestTimeKey][0])
+		err := smi.observeLatency(md[clientRequestTimeKey][0])
 		if err != nil {
 			return err
 		}
@@ -213,7 +214,7 @@ func splitMethodName(fullMethodName string) (string, string) {
 // used to calculate the latency between send and receive time. The latency is
 // published to the server interceptor's rpcLag prometheus histogram. An error
 // is returned if the `clientReqTime` string is not a valid timestamp.
-func (si *serverMetadataInterceptor) observeLatency(clientReqTime string) error {
+func (smi *serverMetadataInterceptor) observeLatency(clientReqTime string) error {
 	// Convert the metadata request time into an int64
 	reqTimeUnixNanos, err := strconv.ParseInt(clientReqTime, 10, 64)
 	if err != nil {
@@ -222,12 +223,13 @@ func (si *serverMetadataInterceptor) observeLatency(clientReqTime string) error 
 	}
 	// Calculate the elapsed time since the client sent the RPC
 	reqTime := time.Unix(0, reqTimeUnixNanos)
-	elapsed := si.clk.Since(reqTime)
+	elapsed := smi.clk.Since(reqTime)
 	// Publish an RPC latency observation to the histogram
-	si.metrics.rpcLag.Observe(elapsed.Seconds())
+	smi.metrics.rpcLag.Observe(elapsed.Seconds())
 	return nil
 }
 
+// Ensure serverMetadataInterceptor matches the serverInterceptor interface.
 var _ serverInterceptor = (*serverMetadataInterceptor)(nil)
 
 // clientMetadataInterceptor is a gRPC interceptor that adds Prometheus
@@ -244,7 +246,7 @@ type clientMetadataInterceptor struct {
 }
 
 // Unary implements the grpc.UnaryClientInterceptor interface.
-func (ci *clientMetadataInterceptor) Unary(
+func (cmi *clientMetadataInterceptor) Unary(
 	ctx context.Context,
 	fullMethod string,
 	req,
@@ -254,16 +256,16 @@ func (ci *clientMetadataInterceptor) Unary(
 	opts ...grpc.CallOption) error {
 	// This should not occur but fail fast with a clear error if it does (e.g.
 	// because of buggy unit test code) instead of a generic nil panic later!
-	if ci.metrics.inFlightRPCs == nil {
+	if cmi.metrics.inFlightRPCs == nil {
 		return berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
 	// Ensure that the context has a deadline set.
-	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
+	localCtx, cancel := context.WithTimeout(ctx, cmi.timeout)
 	defer cancel()
 
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
-	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
+	nowTS := strconv.FormatInt(cmi.clk.Now().UnixNano(), 10)
 	// Create a grpc/metadata.Metadata instance for the request metadata.
 	// Initialize it with the request time.
 	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
@@ -290,12 +292,12 @@ func (ci *clientMetadataInterceptor) Unary(
 		"service": service,
 	}
 	// Increment the inFlightRPCs gauge for this method/service
-	ci.metrics.inFlightRPCs.With(labels).Inc()
+	cmi.metrics.inFlightRPCs.With(labels).Inc()
 	// And defer decrementing it when we're done
-	defer ci.metrics.inFlightRPCs.With(labels).Dec()
+	defer cmi.metrics.inFlightRPCs.With(labels).Dec()
 
 	// Handle the RPC
-	begin := ci.clk.Now()
+	begin := cmi.clk.Now()
 	err := invoker(localCtx, fullMethod, req, reply, cc, opts...)
 	if err != nil {
 		err = unwrapError(err, respMD)
@@ -303,7 +305,7 @@ func (ci *clientMetadataInterceptor) Unary(
 			return deadlineDetails{
 				service: service,
 				method:  method,
-				latency: ci.clk.Since(begin),
+				latency: cmi.clk.Since(begin),
 			}
 		}
 	}
@@ -354,7 +356,7 @@ func (ics interceptedClientStream) CloseSend() error {
 }
 
 // Stream implements the grpc.StreamClientInterceptor interface.
-func (ci *clientMetadataInterceptor) Stream(
+func (cmi *clientMetadataInterceptor) Stream(
 	ctx context.Context,
 	desc *grpc.StreamDesc,
 	cc *grpc.ClientConn,
@@ -363,16 +365,16 @@ func (ci *clientMetadataInterceptor) Stream(
 	opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	// This should not occur but fail fast with a clear error if it does (e.g.
 	// because of buggy unit test code) instead of a generic nil panic later!
-	if ci.metrics.inFlightRPCs == nil {
+	if cmi.metrics.inFlightRPCs == nil {
 		return nil, berrors.InternalServerError("clientInterceptor has nil inFlightRPCs gauge")
 	}
 
 	// We don't defer cancel() here, because this function is going to return
 	// immediately. Instead we store it in the interceptedClientStream.
-	localCtx, cancel := context.WithTimeout(ctx, ci.timeout)
+	localCtx, cancel := context.WithTimeout(ctx, cmi.timeout)
 
 	// Convert the current unix nano timestamp to a string for embedding in the grpc metadata
-	nowTS := strconv.FormatInt(ci.clk.Now().UnixNano(), 10)
+	nowTS := strconv.FormatInt(cmi.clk.Now().UnixNano(), 10)
 	// Create a grpc/metadata.Metadata instance for the request metadata.
 	// Initialize it with the request time.
 	reqMD := metadata.New(map[string]string{clientRequestTimeKey: nowTS})
@@ -399,21 +401,21 @@ func (ci *clientMetadataInterceptor) Stream(
 		"service": service,
 	}
 	// Increment the inFlightRPCs gauge for this method/service
-	ci.metrics.inFlightRPCs.With(labels).Inc()
-	begin := ci.clk.Now()
+	cmi.metrics.inFlightRPCs.With(labels).Inc()
+	begin := cmi.clk.Now()
 
 	// Cancel the local context and decrement the metric when we're done. Also
 	// transform the error into a more usable form, if necessary.
 	finish := func(err error) error {
 		cancel()
-		ci.metrics.inFlightRPCs.With(labels).Dec()
+		cmi.metrics.inFlightRPCs.With(labels).Dec()
 		if err != nil {
 			err = unwrapError(err, respMD)
 			if status.Code(err) == codes.DeadlineExceeded {
 				return deadlineDetails{
 					service: service,
 					method:  method,
-					latency: ci.clk.Since(begin),
+					latency: cmi.clk.Since(begin),
 				}
 			}
 		}
@@ -543,4 +545,5 @@ func (ac *authInterceptor) checkContextAuth(ctx context.Context, fullMethod stri
 		cert.DNSNames, serviceName, allowedClientNames)
 }
 
+// Ensure authInterceptor matches the serverInterceptor interface.
 var _ serverInterceptor = (*authInterceptor)(nil)
