@@ -106,10 +106,11 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 	if err != nil {
 		if errors.Is(err, rocsp.ErrRedisNotFound) {
 			src.counter.WithLabelValues("not_found").Inc()
-			return src.signAndSave(ctx, req, causeNotFound)
+		} else {
+			src.counter.WithLabelValues("lookup_error").Inc()
+			responder.SampledError(src.log, 1000, "looking for cached response: %s", err)
 		}
-		src.counter.WithLabelValues("lookup_error").Inc()
-		return nil, err
+		return src.signAndSave(ctx, req, causeNotFound)
 	}
 
 	resp, err := ocsp.ParseResponse(respBytes, nil)

@@ -30,6 +30,7 @@ linters-settings:
           - (github.com/letsencrypt/boulder/log.Logger).Debugf
           - (github.com/letsencrypt/boulder/log.Logger).AuditInfof
           - (github.com/letsencrypt/boulder/log.Logger).AuditErrf
+          - (github.com/letsencrypt/boulder/ocsp/responder).SampledError
   staticcheck:
     # SA1019: Using a deprecated function, variable, constant or field
     # SA6003: Converting a string to a slice of runes before ranging over it
