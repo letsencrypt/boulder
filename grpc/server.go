@@ -26,13 +26,16 @@ var CodedError = status.Errorf
 
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
+// service represents a single gRPC service that can be registered with a gRPC
+// server.
 type service struct {
 	cfg  cmd.GRPCServiceConfig
 	desc *grpc.ServiceDesc
 	impl any
 }
 
-// serverBuilder
+// serverBuilder implements a builder pattern for constructing new gRPC servers
+// and registering gRPC services on those servers.
 type serverBuilder struct {
 	cfg      *cmd.GRPCServerConfig
 	services map[string]service
@@ -90,9 +93,6 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return nil, nil, sb.err
 	}
 
-	// TODO: Remove this check once all Boulder components have their services
-	// properly configured. In theory we'd like to keep this, but we can't do both
-	// this and the desired check in .Add() for deployability reasons.
 	for serviceName := range sb.cfg.Services {
 		_, ok := sb.services[serviceName]
 		if !ok {
