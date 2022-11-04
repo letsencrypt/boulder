@@ -56,9 +56,13 @@ func TestGetSCTs(t *testing.T) {
 			groups: loglist.List{
 				"OperA": {
 					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
 				},
 				"OperB": {
 					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+				},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
 				},
 			},
 			ctx:    context.Background(),
@@ -70,10 +74,17 @@ func TestGetSCTs(t *testing.T) {
 			groups: loglist.List{
 				"OperA": {
 					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
+				},
+				"OperB": {
+					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+				},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
 				},
 			},
 			ctx:        context.Background(),
-			expectErr:  "failed to get 2 SCTs, got 1 error(s): ct submission to \"OperA\" (\"UrlA1\") failed: BAD",
+			expectErr:  "failed to get 2 SCTs, got 3 error(s)",
 			berrorType: &missingSCTErr,
 		},
 		{
@@ -82,9 +93,13 @@ func TestGetSCTs(t *testing.T) {
 			groups: loglist.List{
 				"OperA": {
 					"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+					"LogA2": {Url: "UrlA2", Key: "KeyA2"},
 				},
 				"OperB": {
 					"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+				},
+				"OperC": {
+					"LogC1": {Url: "UrlC1", Key: "KeyC1"},
 				},
 			},
 			ctx:        expired,
