@@ -53,22 +53,6 @@ type clientInterceptor interface {
 	Stream(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error)
 }
 
-// noopClientInterceptor provides no-op interceptors. It can be substituted for
-// an interceptor that has been disabled.
-type noopClientInterceptor struct{}
-
-// Unary is a gRPC unary interceptor.
-func (n *noopClientInterceptor) Unary(ctx context.Context, method string, req interface{}, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	return invoker(ctx, method, req, reply, cc, opts...)
-}
-
-// Stream is a gRPC stream interceptor.
-func (n *noopClientInterceptor) Stream(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	return streamer(ctx, desc, cc, method, opts...)
-}
-
-var _ clientInterceptor = &noopClientInterceptor{}
-
 // NoCancelInterceptor is a gRPC interceptor that creates a new context,
 // separate from the original context, that has the same deadline but does
 // not propagate cancellation. This is used by SA.
@@ -369,7 +353,7 @@ func (ics interceptedClientStream) CloseSend() error {
 	return err
 }
 
-// interceptUnary implements the grpc.StreamClientInterceptor interface.
+// Stream implements the grpc.StreamClientInterceptor interface.
 func (ci *clientMetadataInterceptor) Stream(
 	ctx context.Context,
 	desc *grpc.StreamDesc,
@@ -471,10 +455,14 @@ func (dd deadlineDetails) Error() string {
 		dd.service, dd.method, int64(dd.latency/time.Millisecond))
 }
 
-// authInterceptor provides two server interceptors which can check that
-// every request for a given gRPC service is being made over an mTLS connection
-// from a client which is allow-listed for that particular service.
+// authInterceptor provides two server interceptors (Unary and Stream) which can
+// check that every request for a given gRPC service is being made over an mTLS
+// connection from a client which is allow-listed for that particular service.
 type authInterceptor struct {
+	// serviceClientNames is a map of gRPC service names (e.g. "ca.CertificateAuthority")
+	// to allowed client certificate SANs (e.g. "ra.boulder") which are allowed to
+	// make RPCs to that service. The set of client names is implemented as a map
+	// of names to empty structs for easy lookup.
 	serviceClientNames map[string]map[string]struct{}
 }
 
