@@ -22,7 +22,7 @@
       "keyFile": "test/grpc-creds/ocsp-updater.boulder/key.pem"
     },
     "ocspGeneratorService": {
-      "serverAddress": "ca.service.consul:9096",
+      "serverAddress": "ca.service.consul:9093",
       "timeout": "15s",
       "hostOverride": "ca.boulder"
     },

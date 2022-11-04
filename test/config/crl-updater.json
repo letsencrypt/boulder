@@ -12,7 +12,7 @@
       "hostOverride": "sa.boulder"
     },
     "crlGeneratorService": {
-      "serverAddress": "ca.service.consul:9106",
+      "serverAddress": "ca.service.consul:9093",
       "timeout": "15s",
       "hostOverride": "ca.boulder"
     },
