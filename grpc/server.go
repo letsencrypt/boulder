@@ -29,7 +29,6 @@ var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 // service represents a single gRPC service that can be registered with a gRPC
 // server.
 type service struct {
-	cfg  cmd.GRPCServiceConfig
 	desc *grpc.ServiceDesc
 	impl any
 }
@@ -43,19 +42,9 @@ type serverBuilder struct {
 }
 
 // NewServer returns an object which can be used to build gRPC servers. It
-// takes the server's configuration to perform initialization, and automatically
-// adds the first service, the default gRPC health service.
+// takes the server's configuration to perform initialization.
 func NewServer(c *cmd.GRPCServerConfig) *serverBuilder {
-	s := make(map[string]service)
-	if len(c.Services) > 0 {
-		for serviceName, serviceCfg := range c.Services {
-			s[serviceName] = service{cfg: serviceCfg}
-		}
-	}
-
-	ret := &serverBuilder{cfg: c, services: s}
-	ret = ret.Add(&healthpb.Health_ServiceDesc, health.NewServer())
-	return ret
+	return &serverBuilder{cfg: c, services: make(map[string]service)}
 }
 
 // Add registers a new service (consisting of its description and its
@@ -64,23 +53,13 @@ func NewServer(c *cmd.GRPCServerConfig) *serverBuilder {
 // If there is an error adding this service, it will be exposed when .Build() is
 // called.
 func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
-	s, ok := sb.services[desc.ServiceName]
-	if !ok {
-		// If this service doesn't have its own config stanza, instead initialize it
-		// with pieces from the server-level config.
-		s = service{cfg: cmd.GRPCServiceConfig{ClientNames: sb.cfg.ClientNames}}
-	}
-
-	if s.desc != nil || s.impl != nil {
+	if _, found := sb.services[desc.ServiceName]; found {
 		// We've already registered a service with this same name, error out.
 		sb.err = fmt.Errorf("attempted double-registration of gRPC service %q", desc.ServiceName)
 		return sb
 	}
 
-	s.desc = desc
-	s.impl = impl
-	sb.services[desc.ServiceName] = s
-
+	sb.services[desc.ServiceName] = service{desc, impl}
 	return sb
 }
 
@@ -89,14 +68,24 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 // service. It returns two functions, start() and stop(), which should be used
 // to start and gracefully stop the server.
 func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (func() error, func(), error) {
+	// Add the health service to all servers.
+	healthSrv := health.NewServer()
+	sb = sb.Add(&healthpb.Health_ServiceDesc, healthSrv)
+
+	// Check to see if any of the calls to .Add() resulted in an error.
 	if sb.err != nil {
 		return nil, nil, sb.err
 	}
 
+	// Ensure that every configured service also got added.
+	var registeredServices []string
+	for r := range sb.services {
+		registeredServices = append(registeredServices, r)
+	}
 	for serviceName := range sb.cfg.Services {
 		_, ok := sb.services[serviceName]
 		if !ok {
-			return nil, nil, fmt.Errorf("gRPC service %q configured but not registered", serviceName)
+			return nil, nil, fmt.Errorf("gRPC service %q in config does not match any service: %s", serviceName, strings.Join(registeredServices, ", "))
 		}
 	}
 
@@ -104,19 +93,17 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return nil, nil, errNilTLS
 	}
 
+	// Collect all names which should be allowed to connect to the server at all.
+	// This is the names which are allowlisted at the server level, plus the union
+	// of all names which are allowlisted for any individual service.
 	acceptedSANs := make(map[string]struct{})
 	for _, name := range sb.cfg.ClientNames {
 		acceptedSANs[name] = struct{}{}
 	}
-	for _, service := range sb.services {
-		for _, name := range service.cfg.ClientNames {
+	for _, service := range sb.cfg.Services {
+		for _, name := range service.ClientNames {
 			acceptedSANs[name] = struct{}{}
 		}
-	}
-
-	metrics, err := newServerMetrics(statsRegistry)
-	if err != nil {
-		return nil, nil, err
 	}
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
@@ -124,7 +111,9 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return nil, nil, err
 	}
 
-	listener, err := net.Listen("tcp", sb.cfg.Address)
+	// Set up all of our interceptors which handle metrics, traces, error
+	// propagation, and more.
+	metrics, err := newServerMetrics(statsRegistry)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -155,16 +144,23 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 			}))
 	}
 
+	// Create the server itself and register all of our services on it.
 	server := grpc.NewServer(options...)
-
 	for _, service := range sb.services {
 		server.RegisterService(service.desc, service.impl)
+	}
+
+	// Finally return the functions which will start and stop the server.
+	listener, err := net.Listen("tcp", sb.cfg.Address)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	start := func() error {
 		return filterShutdownErrors(server.Serve(listener))
 	}
 	stop := func() {
+		healthSrv.Shutdown()
 		server.GracefulStop()
 	}
 

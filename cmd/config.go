@@ -399,7 +399,8 @@ type GRPCServerConfig struct {
 	ClientNames []string `json:"clientNames"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
-	// which are identical to the names set in our gRPC .proto files.
+	// which are identical to the names set in our gRPC .proto files prefixed by
+	// the package names set in those files (e.g. "ca.CertificateAuthority").
 	Services map[string]GRPCServiceConfig `json:"services"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
