@@ -37,7 +37,7 @@ func (mp *mockSlowPub) SubmitToSingleCTWithResult(ctx context.Context, _ *pubpb.
 	return nil, errors.New("timed out")
 }
 
-func TestGetOperatorSCTs(t *testing.T) {
+func TestGetSCTs(t *testing.T) {
 	expired, cancel := context.WithDeadline(context.Background(), time.Now())
 	defer cancel()
 	missingSCTErr := berrors.MissingSCTs
@@ -136,8 +136,8 @@ func TestGetSCTsMetrics(t *testing.T) {
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertNotError(t, err, "GetSCTs failed")
-	test.AssertMetricWithLabelsEquals(t, ctp.submissionCounter, prometheus.Labels{"url": "UrlB1", "type": "precert", "kind": "sct", "result": succeeded}, 1)
-	test.AssertMetricWithLabelsEquals(t, ctp.submissionCounter, prometheus.Labels{"url": "UrlC1", "type": "precert", "kind": "sct", "result": succeeded}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"url": "UrlB1", "result": succeeded}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"url": "UrlC1", "result": succeeded}, 1)
 }
 
 func TestGetSCTsFailMetrics(t *testing.T) {
@@ -150,7 +150,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertError(t, err, "GetSCTs should have failed")
 	test.AssertErrorIs(t, err, berrors.MissingSCTs)
-	test.AssertMetricWithLabelsEquals(t, ctp.submissionCounter, prometheus.Labels{"url": "UrlA1", "result": failed}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"url": "UrlA1", "result": failed}, 1)
 
 	// Ensure the proper metrics are incremented when GetSCTs times out.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -165,5 +165,5 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	test.AssertError(t, err, "GetSCTs should have timed out")
 	test.AssertErrorIs(t, err, berrors.MissingSCTs)
 	test.AssertContains(t, err.Error(), context.DeadlineExceeded.Error())
-	test.AssertMetricWithLabelsEquals(t, ctp.submissionCounter, prometheus.Labels{"url": "UrlA1", "result": failed}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"url": "UrlA1", "result": failed}, 1)
 }

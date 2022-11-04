@@ -276,9 +276,6 @@ func (ll List) OperatorForLogID(logID string) (string, error) {
 
 // Permute returns the list of operator group names in a randomized order.
 func (ll List) Permute() []string {
-	// Seed the RNG.
-	rand.Seed(time.Now().UnixNano())
-
 	keys := make([]string, 0, len(ll))
 	for k := range ll {
 		keys = append(keys, k)
@@ -317,10 +314,10 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 		return "", "", fmt.Errorf("no log found for group %q and expiry %s", operator, expiry)
 	}
 
-	// Seed the RNG.
-	rand.Seed(time.Now().UnixNano())
-
-	// Pick a random log from the list of candidates.
 	log := candidates[rand.Intn(len(candidates))]
 	return log.Url, log.Key, nil
+}
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
 }

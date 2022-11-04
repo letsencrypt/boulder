@@ -1299,7 +1299,7 @@ def test_ocsp():
     # checking OCSP until we either see a good response or we timeout (5s).
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
-def test_ct_submission_operator():
+def test_ct_submission():
     hostname = random_domain()
 
     chisel2.auth_and_issue([hostname])

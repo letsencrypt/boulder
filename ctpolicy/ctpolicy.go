@@ -15,10 +15,6 @@ import (
 )
 
 const (
-	cert      = "cert"
-	precert   = "precert"
-	sct       = "sct"
-	inform    = "inform"
 	succeeded = "succeeded"
 	failed    = "failed"
 )
@@ -26,34 +22,34 @@ const (
 // CTPolicy is used to hold information about SCTs required from various
 // groupings
 type CTPolicy struct {
-	pub               pubpb.PublisherClient
-	sctLogs           loglist.List
-	infoLogs          loglist.List
-	finalLogs         loglist.List
-	stagger           time.Duration
-	log               blog.Logger
-	submissionCounter *prometheus.CounterVec
+	pub           pubpb.PublisherClient
+	sctLogs       loglist.List
+	infoLogs      loglist.List
+	finalLogs     loglist.List
+	stagger       time.Duration
+	log           blog.Logger
+	winnerCounter *prometheus.CounterVec
 }
 
 // New creates a new CTPolicy struct
 func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List, finalLogs loglist.List, stagger time.Duration, log blog.Logger, stats prometheus.Registerer) *CTPolicy {
-	submissionCounter := prometheus.NewCounterVec(
+	winnerCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "ct_submissions",
-			Help: "Counter of CT logs that are selected for submission by url, type (cert or precert), kind (sct or inform), and result (succeeded or failed).",
+			Name: "sct_winner",
+			Help: "Counter of logs which are selected for sct submission, by log URL and result (succeeded or failed).",
 		},
-		[]string{"url", "type", "kind", "result"},
+		[]string{"url", "result"},
 	)
-	stats.MustRegister(submissionCounter)
+	stats.MustRegister(winnerCounter)
 
 	return &CTPolicy{
-		pub:               pub,
-		sctLogs:           sctLogs,
-		infoLogs:          infoLogs,
-		finalLogs:         finalLogs,
-		stagger:           stagger,
-		log:               log,
-		submissionCounter: submissionCounter,
+		pub:           pub,
+		sctLogs:       sctLogs,
+		infoLogs:      infoLogs,
+		finalLogs:     finalLogs,
+		stagger:       stagger,
+		log:           log,
+		winnerCounter: winnerCounter,
 	}
 }
 
@@ -135,12 +131,12 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 		if res.err != nil {
 			errs = append(errs, res.err.Error())
 			if res.url != "" {
-				ctp.submissionCounter.WithLabelValues(res.url, precert, sct, failed).Inc()
+				ctp.winnerCounter.WithLabelValues(res.url, failed).Inc()
 			}
 			continue
 		}
 		scts = append(scts, res.sct)
-		ctp.submissionCounter.WithLabelValues(res.url, precert, sct, succeeded).Inc()
+		ctp.winnerCounter.WithLabelValues(res.url, succeeded).Inc()
 		if len(scts) >= 2 {
 			return scts, nil
 		}
@@ -161,13 +157,8 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 // It neither waits for these submission to complete, nor tracks their success.
 func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expiry time.Time) {
 	logs := ctp.finalLogs
-	result := succeeded
-	logType := cert
-	logKind := sct
 	if isPrecert {
 		logs = ctp.infoLogs
-		logType = precert
-		logKind = inform
 	}
 
 	for _, group := range logs {
@@ -187,10 +178,8 @@ func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expi
 					},
 				)
 				if err != nil {
-					result = failed
 					ctp.log.Warningf("ct submission of cert to log %q failed: %s", log.Url, err)
 				}
-				ctp.submissionCounter.WithLabelValues(log.Url, logType, logKind, result).Inc()
 			}(log)
 		}
 	}
