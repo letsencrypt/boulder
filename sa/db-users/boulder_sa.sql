@@ -32,7 +32,6 @@ GRANT SELECT,INSERT ON precertificates TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON keyHashToSerial TO 'sa'@'localhost';
 GRANT SELECT,INSERT ON blockedKeys TO 'sa'@'localhost';
 GRANT SELECT,INSERT,UPDATE ON newOrdersRL TO 'sa'@'localhost';
-GRANT SELECT ON incidents TO 'sa'@'localhost';
 
 GRANT SELECT ON certificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON certificateStatus TO 'sa_ro'@'localhost';
@@ -50,6 +49,7 @@ GRANT SELECT ON precertificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'sa_ro'@'localhost';
 GRANT SELECT ON blockedKeys TO 'sa_ro'@'localhost';
 GRANT SELECT ON newOrdersRL TO 'sa_ro'@'localhost';
+GRANT SELECT ON incidents TO 'sa_ro'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
