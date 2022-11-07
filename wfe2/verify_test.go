@@ -1416,7 +1416,7 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 }
 
 type mockSADifferentStoredKey struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 // mockSADifferentStoredKey has a GetRegistration that will always return an
