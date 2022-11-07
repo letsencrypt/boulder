@@ -30,6 +30,7 @@ func (p TLSProbe) Kind() string {
 // Return true if both root AND response are the expected values, otherewise false
 // Export time to cert expiry as Prometheus metric
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
+	expected_root := false
 	conf := &tls.Config{
 		InsecureSkipVerify: true,
 	}
@@ -39,12 +40,19 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 		return false, time.Since(start)
 	}
 	defer conn.Close()
-	chain := conn.ConnectionState().VerifiedChains[0]
-	end_cert, root_cert := chain[0], chain[len(chain)-1]
+	chains := conn.ConnectionState().VerifiedChains
+	for _, chain := range chains {
+		root_cert := chain[len(chain)-1]
+		if root_cert.Issuer.CommonName==p.root {
+			expected_root = true
+			break
+		}
+	}
+	end_cert := chains[0][0]
 	time_to_expiry := time.Until(end_cert.NotAfter)
 
 	//Report time to expiration (in seconds) for this site
 	p.certExpiry.WithLabelValues(p.url).Set(float64(time_to_expiry.Seconds()))
 
-	return root_cert.Issuer.CommonName==p.root, time.Since(start)
+	return expected_root, time.Since(start)
 }

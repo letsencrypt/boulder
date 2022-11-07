@@ -9,6 +9,7 @@ import (
 )
 
 func TestTLSConf_MakeProber(t *testing.T) {
+	goodURL, goodRoot := "http://example.com", "/O=Internet Security Research Group/CN=ISRG Root X1"
 	type fields struct {
 		URL		string
 		Root	string
@@ -19,17 +20,22 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		wantErr bool
 	}{
 		// valid
-		{"valid fqdn", fields{"http://example.com", "ISRG Root X1"}, false},
-		{"valid fqdn with path", fields{"http://example.com/foo/bar", "ISRG Root X1"}, false},
-		{"valid hostname", fields{"http://example", "ISRG Root X1"}, false},
+		{"valid fqdn", fields{"http://example.com", goodRoot}, false},
+		{"valid fqdn with path", fields{"http://example.com/foo/bar", goodRoot}, false},
+		{"valid hostname", fields{"http://example", goodRoot}, false},
 		// invalid
-		{"bad fqdn", fields{":::::", "ISRG Root X1"}, true},
-		{"missing scheme", fields{"example.com", "ISRG Root X1"}, true},
+		{"bad fqdn", fields{":::::", goodRoot}, true},
+		{"missing scheme", fields{"example.com", goodRoot}, true},
+		{"empty root", fields{goodURL, ""}, true},
+		{"missing root org", fields{goodURL, "/CN=ISRG Root X1"}, true},
+		{"wrong root format", fields{goodURL, "Internet Security Research Group, ISRG Root X1"}, true},
+		{"country in root", fields{goodURL, "/C:US/O=Internet Security Research Group/CN=ISRG Root X1"}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := TLSConf{
 				URL:    tt.fields.URL,
+				Root:	tt.fields.Root,
 			}
 			if _, err := c.MakeProber(nil); (err != nil) != tt.wantErr {
 				t.Errorf("TLSConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -40,7 +46,8 @@ func TestTLSConf_MakeProber(t *testing.T) {
 
 func TestTLSConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		url       interface{}
+		url		interface{}
+		root	interface{}
 	}
 	tests := []struct {
 		name    string
@@ -48,14 +55,14 @@ func TestTLSConf_UnmarshalSettings(t *testing.T) {
 		want    probers.Configurer
 		wantErr bool
 	}{
-		{"valid", fields{"google.com"}, TLSConf{"google.com", "ISRG Root X1"}, false},
-		{"invalid (map)", fields{make(map[string]interface{})}, nil, true},
-		{"invalid (list)", fields{make([]string, 0)}, nil, true},
+		{"valid", fields{"google.com", "/O=Internet Security Research Group/CN=ISRG Root X1"}, TLSConf{"google.com", "/O=Internet Security Research Group/CN=ISRG Root X1", "valid"}, false},
+		{"invalid", fields{42, 42}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := probers.Settings{
-				"url":       tt.fields.url,
+				"url":		tt.fields.url,
+				"root":		tt.fields.root,
 			}
 			settingsBytes, _ := yaml.Marshal(settings)
 			c := TLSConf{}

@@ -3,6 +3,8 @@ package probers
 import (
 	"fmt"
 	"net/url"
+	"regexp"
+	"errors"
 
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
@@ -49,12 +51,32 @@ func (c TLSConf) validateURL() error {
 	return nil
 }
 
+func (c TLSConf) validateRoot() error {
+	// expected example: /O=Internet Security Research Group/CN=ISRG Root X1
+	regex, err := regexp.Compile("^/O=[0-9a-zA-Z ]*/CN=[0-9a-zA-Z ]*$")
+	if err != nil {
+		return err
+	}
+	matched := regex.MatchString(c.Root)
+	if matched {
+		return nil
+	} else {
+		return errors.New("Root did not match expected format. Must be of the form '/CN: /O:`")
+	}
+}
+
 // MakeProber constructs a `TLSProbe` object from the contents of the
 // bound `TLSConf` object. If the `TLSConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
 func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
+	if err != nil {
+		return nil, err
+	}
+
+	// validate `root`
+	err = c.validateRoot()
 	if err != nil {
 		return nil, err
 	}
