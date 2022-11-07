@@ -248,12 +248,12 @@ func (sa *StorageAuthority) GetRevocationStatus(_ context.Context, req *sapb.Ser
 }
 
 // SerialsForIncident is a mock
-func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_SerialsForIncidentClient, error) {
+func (sa *StorageAuthority) SerialsForIncident(ctx context.Context, _ *sapb.SerialsForIncidentRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_SerialsForIncidentClient, error) {
 	return nil, nil
 }
 
 // GetRevokedCerts is a mock
-func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
+func (sa *StorageAuthority) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
 	return nil, nil
 }
 
