@@ -53,7 +53,7 @@ func (c TLSConf) validateURL() error {
 
 func (c TLSConf) validateRoot() error {
 	// expected example: /O=Internet Security Research Group/CN=ISRG Root X1
-	regex, err := regexp.Compile("^/O=[0-9a-zA-Z ]*/CN=[0-9a-zA-Z ]*$")
+	regex, err := regexp.Compile("^/O=[^ ][0-9a-zA-Z ]*[^ ]/CN=[^ ][0-9a-zA-Z ]*[^ ]$")
 	if err != nil {
 		return err
 	}

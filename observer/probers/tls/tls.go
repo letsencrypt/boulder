@@ -43,8 +43,8 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	chains := conn.ConnectionState().VerifiedChains
 	for _, chain := range chains {
 		root_cert := chain[len(chain)-1]
-		if root_cert.Issuer.CommonName==p.root {
-			expected_root = true
+		if p.root == fmt.Sprintf("/O=%s/CN=%s", root_cert.Issuer.Organization, root_cert.Issuer.CommonName) {
+ 			expected_root = true
 			break
 		}
 	}
