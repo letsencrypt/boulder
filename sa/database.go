@@ -262,10 +262,11 @@ func adjustMySQLConfig(conf *mysql.Config) {
 		// Note: in MySQL (which we don't use), max_statement_time is millis.
 		readTimeout := conf.ReadTimeout.Seconds()
 		setDefault("max_statement_time", fmt.Sprintf("%g", readTimeout*0.95))
-		omitZero("max_statement_time")
 		setDefault("long_query_time", fmt.Sprintf("%g", readTimeout*0.80))
-		omitZero("max_statement_time")
 	}
+
+	omitZero("max_statement_time")
+	omitZero("max_statement_time")
 }
 
 // SetSQLDebug enables GORP SQL-level Debugging

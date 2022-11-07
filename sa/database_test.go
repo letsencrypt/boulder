@@ -182,4 +182,14 @@ func TestAdjustMySQLConfig(t *testing.T) {
 		"sql_mode":        "STRICT_ALL_TABLES",
 		"long_query_time": "80",
 	})
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"max_statement_time": "0",
+		},
+	}
+	adjustMySQLConfig(conf)
+	test.AssertDeepEquals(t, conf.Params, map[string]string{
+		"sql_mode": "STRICT_ALL_TABLES",
+	})
 }
