@@ -31,11 +31,11 @@ func (s *errorServer) Chill(_ context.Context, _ *test_proto.Time) (*test_proto.
 func TestErrorWrapping(t *testing.T) {
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerInterceptor(serverMetrics, clock.NewFake())
+	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	ci := clientInterceptor{time.Second, clientMetrics, clock.NewFake()}
-	srv := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
+	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
 	lis, err := net.Listen("tcp", "127.0.0.1:")
@@ -46,7 +46,7 @@ func TestErrorWrapping(t *testing.T) {
 	conn, err := grpc.Dial(
 		lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.interceptUnary),
+		grpc.WithUnaryInterceptor(cmi.Unary),
 	)
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := test_proto.NewChillerClient(conn)
@@ -74,11 +74,11 @@ func TestErrorWrapping(t *testing.T) {
 func TestSubErrorWrapping(t *testing.T) {
 	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating server metrics")
-	si := newServerInterceptor(serverMetrics, clock.NewFake())
+	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	ci := clientInterceptor{time.Second, clientMetrics, clock.NewFake()}
-	srv := grpc.NewServer(grpc.UnaryInterceptor(si.interceptUnary))
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
+	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
 	lis, err := net.Listen("tcp", "127.0.0.1:")
@@ -89,7 +89,7 @@ func TestSubErrorWrapping(t *testing.T) {
 	conn, err := grpc.Dial(
 		lis.Addr().String(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(ci.interceptUnary),
+		grpc.WithUnaryInterceptor(cmi.Unary),
 	)
 	test.AssertNotError(t, err, "Failed to dial grpc test server")
 	client := test_proto.NewChillerClient(conn)
