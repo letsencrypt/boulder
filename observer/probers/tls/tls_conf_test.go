@@ -33,7 +33,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		// valid
 		{"valid fqdn", fields{"http://example.com", "/O=/CN=", "valid"}, colls, false},
 		{"valid fqdn with path", fields{"http://example.com/foo/bar", "/O=ISRG/CN=Root X3", "Revoked"}, colls, false},
-		{"valid hostname", fields{"http://example", "/O=IdenTrust/C=Root E1", "EXPIRED"}, colls, false},
+		{"valid hostname", fields{"http://example", "/O=IdenTrust/CN=Root E1", "EXPIRED"}, colls, false},
 		
 		// invalid url
 		{"bad fqdn", fields{":::::", goodRoot, goodResponse}, colls, true},
