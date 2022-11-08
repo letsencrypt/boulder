@@ -77,7 +77,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
 
-	sa, err := NewSQLStorageAuthorityWrapping(saro, saro.dbReadOnlyMap, metrics.NoopRegisterer)
+	sa, err := NewSQLStorageAuthorityWrapping(saro, dbMap, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -2643,7 +2643,7 @@ func TestIncidentsForSerial(t *testing.T) {
 
 	// No incidents are enabled, so this should return in error.
 	result, err := sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
-	test.AssertNil(t, err, "expected nil err")
+	test.AssertNotError(t, err, "fetching from no incidents")
 	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add an enabled incident.
@@ -2675,7 +2675,7 @@ func TestIncidentsForSerial(t *testing.T) {
 
 	// The incident table should not contain a row with serial '1337'.
 	result, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
-	test.AssertNil(t, err, "expected nil err")
+	test.AssertNotError(t, err, "fetching from one incident")
 	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add a row to the incident table with serial '1337'.
