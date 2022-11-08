@@ -70,7 +70,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 				Root:   tt.fields.Root,
 				Response: tt.fields.Response,
 			}
-			if _, err := c.MakeProber(nil); (err != nil) != tt.wantErr {
+			if _, err := c.MakeProber(tt.colls); (err != nil) != tt.wantErr {
 				t.Errorf("TLSConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
