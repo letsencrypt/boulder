@@ -68,6 +68,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 			c := TLSConf{
 				URL:    tt.fields.URL,
 				Root:   tt.fields.Root,
+				Response: tt.fields.Response,
 			}
 			if _, err := c.MakeProber(nil); (err != nil) != tt.wantErr {
 				t.Errorf("TLSConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
