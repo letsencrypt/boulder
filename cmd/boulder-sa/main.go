@@ -21,7 +21,8 @@ type Config struct {
 		ReadOnlyDB  cmd.DBConfig
 		IncidentsDB cmd.DBConfig
 		Redis       *rocsp_config.RedisConfig
-		Issuers     map[string]int
+		// TODO(#6285): Remove this field, as it is no longer used.
+		Issuers map[string]int
 
 		Features map[string]bool
 
