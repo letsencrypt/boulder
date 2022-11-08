@@ -1299,11 +1299,7 @@ def test_ocsp():
     # checking OCSP until we either see a good response or we timeout (5s).
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
-# TODO(#5938): Remove _operator suffix from this test and remove CONFIG_NEXT check.
-def test_ct_submission_operator():
-    if not CONFIG_NEXT:
-        return
-
+def test_ct_submission():
     hostname = random_domain()
 
     chisel2.auth_and_issue([hostname])
@@ -1348,34 +1344,6 @@ def test_ct_submission_operator():
         total_count += group_count
     if total_count < 2:
         raise(Exception("Got %d total submissions, expected at least 2" % total_count))
-
-# TODO(#5938): Remove this test.
-def test_ct_submission_google():
-    if CONFIG_NEXT:
-        return
-
-    hostname = random_domain()
-
-    # These should correspond to the configured logs in ra.json.
-    log_groups = [
-        ["http://boulder.service.consul:4500/submissions", "http://boulder.service.consul:4501/submissions"],
-        ["http://boulder.service.consul:4510/submissions", "http://boulder.service.consul:4511/submissions"],
-    ]
-    def submissions(group):
-        count = 0
-        for log in group:
-            count += int(requests.get(log + "?hostnames=%s" % hostname).text)
-        return count
-
-    chisel2.auth_and_issue([hostname])
-
-    got = [ submissions(log_groups[0]), submissions(log_groups[1]) ]
-    expected = [ 1, 2 ]
-
-    for i in range(len(log_groups)):
-        if got[i] < expected[i]:
-            raise(Exception("For log group %d, got %d submissions, expected %d." %
-                (i, got[i], expected[i])))
 
 def check_ocsp_basic_oid(cert_file, issuer_file, url):
     """

@@ -583,7 +583,7 @@ type PublisherClient struct {
 
 // SubmitToSingleCTWithResult is a mock
 func (*PublisherClient) SubmitToSingleCTWithResult(_ context.Context, _ *pubpb.Request, _ ...grpc.CallOption) (*pubpb.Result, error) {
-	return nil, nil
+	return &pubpb.Result{}, nil
 }
 
 // Mailer is a mock
