@@ -354,8 +354,20 @@ func main() {
 			go cai.OrphanIntegrationLoop()
 		}
 
-		caStart, caStop, err := bgrpc.NewServer(c.CA.GRPCCA).Add(
-			&capb.CertificateAuthority_ServiceDesc, cai).Build(tlsConfig, scope, clk)
+		srv := bgrpc.NewServer(c.CA.GRPCCA)
+
+		// TODO(#6448): Move all of the impl construction inside these conditionals
+		// as well, once the separate CRL and OCSP servers above have been removed.
+		if !c.CA.DisableCertService {
+			srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
+		}
+		if !c.CA.DisableOCSPService {
+			srv = srv.Add(&capb.OCSPGenerator_ServiceDesc, ocspi)
+		}
+		if !c.CA.DisableCRLService {
+			srv = srv.Add(&capb.CRLGenerator_ServiceDesc, crli)
+		}
+		caStart, caStop, err := srv.Build(tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
 		wg.Add(1)

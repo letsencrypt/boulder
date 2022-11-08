@@ -42,7 +42,7 @@
     },
     "ocspService": {
       "srvLookup": {
-        "service": "ca-ocsp",
+        "service": "ca",
         "domain": "service.consul"
       },
       "timeout": "15s",

@@ -10,27 +10,52 @@
     "grpcCA": {
       "maxConnectionAge": "30s",
       "address": ":9093",
-      "clientNames": [
-        "health-checker.boulder",
-        "ra.boulder"
-      ]
+      "services": {
+        "ca.CertificateAuthority": {
+          "clientNames": [
+            "ra.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "grpcOCSPGenerator": {
       "maxConnectionAge": "30s",
       "address": ":9096",
-      "clientNames": [
-        "health-checker.boulder",
-        "ocsp-updater.boulder",
-        "orphan-finder.boulder"
-      ]
+      "services": {
+        "ca.OCSPGenerator": {
+          "clientNames": [
+            "ocsp-updater.boulder",
+            "orphan-finder.boulder",
+            "ra.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "grpcCRLGenerator": {
       "maxConnectionAge": "30s",
       "address": ":9106",
-      "clientNames": [
-        "health-checker.boulder",
-        "crl-updater.boulder"
-      ]
+      "services": {
+        "ca.CRLGenerator": {
+          "clientNames": [
+            "crl-updater.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "saService": {
       "serverAddress": "sa.service.consul:9095",
