@@ -53,10 +53,10 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 
 	if time_to_expiry < 0 {
 		expected_response = (p.response == "expired")
-	}
+	} //TODO: add cases here to check if valid or revoked
 
 	//Report time to expiration (in seconds) for this site
-	p.certExpiry.WithLabelValues(p.url).Set(float64(time_to_expiry.Seconds()))
+	p.certExpiry.WithLabelValues(p.url).Set(time_to_expiry.Seconds())
 
 	return expected_root && expected_response, time.Since(start)
 }
