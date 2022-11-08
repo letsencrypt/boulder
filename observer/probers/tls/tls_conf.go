@@ -17,9 +17,9 @@ const (
 
 // TLSConf is exported to receive YAML configuration.
 type TLSConf struct {
-	URL			string `yaml:"url"`
-	Root		string `yaml:"root"`
-	Response	string `yaml:"response"`
+	URL        string `yaml:"url"`
+	Root       string `yaml:"root"`
+	Response   string `yaml:"response"`
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
@@ -53,7 +53,7 @@ func (c TLSConf) validateURL() error {
 
 func (c TLSConf) validateRoot() error {
 	// expected example: /O=Internet Security Research Group/CN=ISRG Root X1
-	regex, err := regexp.Compile("^/O=[^ ][0-9a-zA-Z ]*[^ ]/CN=[^ ][0-9a-zA-Z ]*[^ ]$")
+	regex, err := regexp.Compile("^/O=[^/]*/CN=[^/]*$")
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,7 @@ func (c TLSConf) validateRoot() error {
 		return nil
 	} else {
 		return fmt.Errorf(
-			"invalid 'root`, got: %s\nDid not match expected format: '/CN: /O:`", c.Root)
+			"invalid 'root`, got: %s\nDid not match expected format: '/CN:*/O:*`", c.Root)
 	}
 }
 
@@ -74,7 +74,7 @@ func (c TLSConf) validateResponse() error {
 		}
 	}
 	return fmt.Errorf(
-		"invalid `reseponse`, got: %s\nMust be one of 'valid', 'expired' or 'revoked'.", c.Response)
+		"invalid `response`, got: %s\nMust be one of 'valid', 'expired' or 'revoked'.", c.Response)
 
 }
 
@@ -98,7 +98,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	if err != nil {
 		return nil, err
 	}
-	
+
 	coll, ok := collectors[certExpiryName]
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", certExpiryName)

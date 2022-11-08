@@ -20,14 +20,14 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		[]string{},
 	))
 	type fields struct {
-		URL			string
-		Root		string
-		Response	string
+		URL      string
+		Root     string
+		Response string
 	}
 	tests := []struct {
 		name    string
 		fields  fields
-		colls	map[string]prometheus.Collector
+		colls   map[string]prometheus.Collector
 		wantErr bool
 	}{
 		// valid
@@ -43,8 +43,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		{"empty root", fields{goodURL, "", goodResponse}, colls, true},
 		{"missing root org", fields{goodURL, "/CN=ISRG Root X1", goodResponse}, colls, true},
 		{"wrong root format", fields{goodURL, "Internet Security Research Group, ISRG Root X1", goodResponse}, colls, true},
-		{"country in root", fields{goodURL, "/C:US/O=Internet Security Research Group/CN=ISRG Root X1", goodResponse}, colls,  true},
-		{"extra spaces in root", fields{goodURL, "O=Internet Security Research Group /CN=ISRG Root X1", goodResponse}, colls, true},
+		{"country in root", fields{goodURL, "/C=US/O=Internet Security Research Group/CN=ISRG Root X1", goodResponse}, colls,  true},
 		
 		// invalid response
 		{"empty response", fields{goodURL, goodRoot, ""}, colls, true},
@@ -68,7 +67,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := TLSConf{
 				URL:    tt.fields.URL,
-				Root:	tt.fields.Root,
+				Root:   tt.fields.Root,
 			}
 			if _, err := c.MakeProber(nil); (err != nil) != tt.wantErr {
 				t.Errorf("TLSConf.Validate() error = %v, wantErr %v", err, tt.wantErr)
@@ -79,9 +78,9 @@ func TestTLSConf_MakeProber(t *testing.T) {
 
 func TestTLSConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		url			interface{}
-		root		interface{}
-		response	interface{}
+		url	        interface{}
+		root        interface{}
+		response    interface{}
 	}
 	tests := []struct {
 		name    string
@@ -95,9 +94,9 @@ func TestTLSConf_UnmarshalSettings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := probers.Settings{
-				"url":		tt.fields.url,
-				"root":		tt.fields.root,
-				"response":	tt.fields.response,
+				"url":      tt.fields.url,
+				"root":	    tt.fields.root,
+				"response": tt.fields.response,
 			}
 			settingsBytes, _ := yaml.Marshal(settings)
 			c := TLSConf{}
