@@ -30,7 +30,7 @@ func (p TLSProbe) Kind() string {
 // Return true if both root AND response are the expected values, otherewise false
 // Export time to cert expiry as Prometheus metric
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	expected_root := false
+	expected_root, expected_response := false, false
 	conf := &tls.Config{
 		InsecureSkipVerify: true,
 	}
@@ -51,8 +51,12 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	end_cert := chains[0][0]
 	time_to_expiry := time.Until(end_cert.NotAfter)
 
+	if time_to_expiry < 0 {
+		expected_response = (p.response == "expired")
+	}
+
 	//Report time to expiration (in seconds) for this site
 	p.certExpiry.WithLabelValues(p.url).Set(float64(time_to_expiry.Seconds()))
 
-	return expected_root, time.Since(start)
+	return expected_root && expected_response, time.Since(start)
 }

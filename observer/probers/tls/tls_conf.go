@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
-	"errors"
+	"strings"
 
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,8 +61,21 @@ func (c TLSConf) validateRoot() error {
 	if matched {
 		return nil
 	} else {
-		return errors.New("Root did not match expected format. Must be of the form '/CN: /O:`")
+		return fmt.Errorf(
+			"invalid 'root`, got: %s\nDid not match expected format: '/CN: /O:`", c.Root)
 	}
+}
+
+func (c TLSConf) validateResponse() error {
+	acceptable := []string{"valid", "expired", "revoked"}
+	for _, a := range acceptable {
+		if strings.ToLower(c.Response) == a {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"invalid `reseponse`, got: %s\nMust be one of 'valid', 'expired' or 'revoked'.", c.Response)
+
 }
 
 // MakeProber constructs a `TLSProbe` object from the contents of the
@@ -90,7 +103,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", certExpiryName, coll)
 	}
 
-	return TLSProbe{c.URL, c.Root, c.Response, certExpiryColl}, nil
+	return TLSProbe{c.URL, c.Root, strings.ToLower(c.Response), certExpiryColl}, nil
 }
 
 // Instrument is a no-op to implement the `Configurer` interface.
