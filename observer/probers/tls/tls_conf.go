@@ -94,6 +94,11 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, err
 	}
 
+	err = c.validateResponse()
+	if err != nil {
+		return nil, err
+	}
+	
 	coll, ok := collectors[certExpiryName]
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", certExpiryName)

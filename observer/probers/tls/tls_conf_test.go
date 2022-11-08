@@ -44,7 +44,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		{"missing root org", fields{goodURL, "/CN=ISRG Root X1", goodResponse}, colls, true},
 		{"wrong root format", fields{goodURL, "Internet Security Research Group, ISRG Root X1", goodResponse}, colls, true},
 		{"country in root", fields{goodURL, "/C:US/O=Internet Security Research Group/CN=ISRG Root X1", goodResponse}, colls,  true},
-		{"no extra spaces in root", fields{goodURL, "O=Internet Security Research Group /CN=ISRG Root X1", goodResponse}, colls, true},
+		{"extra spaces in root", fields{goodURL, "O=Internet Security Research Group /CN=ISRG Root X1", goodResponse}, colls, true},
 		
 		// invalid response
 		{"empty response", fields{goodURL, goodRoot, ""}, colls, true},
