@@ -214,7 +214,7 @@ func NewDbMapFromConfig(config *mysql.Config, settings DbSettings) (*boulderDB.W
 }
 
 // adjustMySQLConfig sets certain flags that we want on every connection.
-func adjustMySQLConfig(conf *mysql.Config) *mysql.Config {
+func adjustMySQLConfig(conf *mysql.Config) {
 	// Required to turn DATETIME fields into time.Time
 	conf.ParseTime = true
 
@@ -228,23 +228,45 @@ func adjustMySQLConfig(conf *mysql.Config) *mysql.Config {
 	// had a different type than what is in the schema, strings being
 	// truncated, writing null to a NOT NULL column, and so on. See
 	// <https://dev.mysql.com/doc/refman/5.0/en/sql-mode.html#sql-mode-strict>.
-	conf.Params = make(map[string]string)
-	conf.Params["sql_mode"] = "STRICT_ALL_TABLES"
+	if conf.Params == nil {
+		conf.Params = make(map[string]string)
+	}
+
+	// If a given parameter is not already set in conf.Params, set it.
+	setDefault := func(name, value string) {
+		_, ok := conf.Params[name]
+		if !ok {
+			conf.Params[name] = value
+		}
+	}
+
+	// If a given parameter has the value "0", delete it from conf.Params.
+	omitZero := func(name string) {
+		if conf.Params[name] == "0" {
+			delete(conf.Params, name)
+		}
+	}
+
+	setDefault("sql_mode", "STRICT_ALL_TABLES")
 
 	// If a read timeout is set, we set max_statement_time to 95% of that, and
 	// long_query_time to 80% of that. That way we get logs of queries that are
 	// close to timing out but not yet doing so, and our queries get stopped by
 	// max_statement_time before timing out the read. This generates clearer
 	// errors, and avoids unnecessary reconnects.
+	// To override these values, set them in the DSN, e.g.
+	// `?max_statement_time=2`. A zero value in the DSN means these won't be
+	// sent on new connections.
 	if conf.ReadTimeout != 0 {
 		// In MariaDB, max_statement_time and long_query_time are both seconds.
 		// Note: in MySQL (which we don't use), max_statement_time is millis.
 		readTimeout := conf.ReadTimeout.Seconds()
-		conf.Params["max_statement_time"] = fmt.Sprintf("%g", readTimeout*0.95)
-		conf.Params["long_query_time"] = fmt.Sprintf("%g", readTimeout*0.80)
+		setDefault("max_statement_time", fmt.Sprintf("%g", readTimeout*0.95))
+		setDefault("long_query_time", fmt.Sprintf("%g", readTimeout*0.80))
 	}
 
-	return conf
+	omitZero("max_statement_time")
+	omitZero("max_statement_time")
 }
 
 // SetSQLDebug enables GORP SQL-level Debugging
