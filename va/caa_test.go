@@ -395,7 +395,7 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	accountURIID := int64(123)
-	method := "http-01"
+	method := core.ChallengeTypeHTTP01
 	params := &caaParams{accountURIID: accountURIID, validationMethod: method}
 
 	va, _ := setup(nil, 0, "", nil)
@@ -479,10 +479,6 @@ func TestCAALogging(t *testing.T) {
 	}{
 		{
 			Domain:          "reserved.com",
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Response=\"foo\"",
-		},
-		{
-			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
@@ -538,7 +534,7 @@ func TestCAALogging(t *testing.T) {
 
 			params := &caaParams{
 				accountURIID:     tc.AccountURIID,
-				validationMethod: string(tc.ChallengeType),
+				validationMethod: tc.ChallengeType,
 			}
 			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: tc.Domain}, params)
 
@@ -563,7 +559,9 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	// caaMockDNS.
 	domain := "caa-timeout.com"
 	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain: domain,
+		Domain:           domain,
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     12345,
 	})
 
 	// The lookup itself should not return an error
@@ -574,6 +572,36 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	test.AssertNotNil(t, resp.Problem, "Response Problem was nil")
 	// The result's Problem should be an error message that includes the domain.
 	test.AssertEquals(t, resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s: error", domain))
+}
+
+// TestIsCAAValidParams tests that the IsCAAValid method rejects any requests
+// which do not have the necessary parameters to do CAA Account and Method
+// Binding checks.
+func TestIsCAAValidParams(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil)
+	va.dnsClient = caaMockDNS{}
+
+	// Calling IsCAAValid without a ValidationMethod should fail.
+	_, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+		Domain:       "present.com",
+		AccountURIID: 12345,
+	})
+	test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
+
+	// Calling IsCAAValid with an invalid ValidationMethod should fail.
+	_, err = va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+		Domain:           "present.com",
+		ValidationMethod: "tls-sni-01",
+		AccountURIID:     12345,
+	})
+	test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
+
+	// Calling IsCAAValid without an AccountURIID should fail.
+	_, err = va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+		Domain:           "present.com",
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+	})
+	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
 }
 
 func TestCAAFailure(t *testing.T) {

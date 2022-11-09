@@ -6,7 +6,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -16,17 +18,26 @@ import (
 
 type caaParams struct {
 	accountURIID     int64
-	validationMethod string
+	validationMethod core.AcmeChallenge
 }
 
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
+	if req.Domain == "" || req.ValidationMethod == "" || req.AccountURIID == 0 {
+		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
+	}
+
+	validationMethod := core.AcmeChallenge(req.ValidationMethod)
+	if !validationMethod.IsValid() {
+		return nil, berrors.InternalServerError("unrecognized validation method %q", req.ValidationMethod)
+	}
+
 	acmeID := identifier.ACMEIdentifier{
 		Type:  identifier.DNS,
 		Value: req.Domain,
 	}
 	params := &caaParams{
 		accountURIID:     req.AccountURIID,
-		validationMethod: req.ValidationMethod,
+		validationMethod: validationMethod,
 	}
 	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
 		return &vapb.IsCAAValidResponse{
@@ -50,16 +61,8 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.DNS(err.Error())
 	}
 
-	accountID, validationMethod := "unknown", "unknown"
-	if params.accountURIID != 0 {
-		accountID = fmt.Sprintf("%d", params.accountURIID)
-	}
-	if params.validationMethod != "" {
-		validationMethod = params.validationMethod
-	}
-
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %s, Challenge: %s, Valid for issuance: %t] Response=%q",
-		identifier.Value, present, accountID, validationMethod, valid, response)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t] Response=%q",
+		identifier.Value, present, params.accountURIID, params.validationMethod, valid, response)
 	if !valid {
 		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
 	}
@@ -195,9 +198,12 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	return present, valid, response, nil
 }
 
-func containsMethod(commaSeparatedMethods, method string) bool {
+// containsMethod parses a comma-separated list of allowed validation methods
+// (as specified in RFC 8657 Section 4) and returns true if any of them match
+// the ACME validation method used to validate control.
+func containsMethod(commaSeparatedMethods string, method core.AcmeChallenge) bool {
 	for _, m := range strings.Split(commaSeparatedMethods, ",") {
-		if method == m {
+		if method == core.AcmeChallenge(m) {
 			return true
 		}
 	}
@@ -231,11 +237,15 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 		return true, true
 	}
 
-	// Per RFC 6844 Section 5.3 "issueWild properties MUST be ignored when
-	// processing a request for a domain that is not a wildcard domain" so we
-	// default to checking the `caaSet.Issue` records and only check
-	// `caaSet.Issuewild` when `wildcard` is true and there is >0 `Issuewild`
-	// records.
+	// Per RFC 8659 Section 5.3:
+	//   - "Each issuewild Property MUST be ignored when processing a request for
+	//     an FQDN that is not a Wildcard Domain Name."; and
+	//   - "If at least one issuewild Property is specified in the Relevant RRset
+	//     for a Wildcard Domain Name, each issue Property MUST be ignored when
+	//     processing a request for that Wildcard Domain Name."
+	// So we default to checking the `caaSet.Issue` records and only check
+	// `caaSet.Issuewild` when `wildcard` is true and there are 1 or more
+	// `Issuewild` records.
 	records := caaSet.Issue
 	if wildcard && len(caaSet.Issuewild) > 0 {
 		records = caaSet.Issuewild
@@ -253,28 +263,20 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 		}
 
 		if features.Enabled(features.CAAAccountURI) {
-			// Check the accounturi CAA parameter as defined
-			// in section 3 of the draft CAA ACME RFC:
-			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
+			// Check the accounturi CAA parameter as defined in RFC 8657, Section 3:
+			// https://www.rfc-editor.org/rfc/rfc8657.html#name-extensions-to-the-caa-recor
 			caaAccountURI, ok := caaParameters["accounturi"]
 			if ok {
-				if params.accountURIID == 0 {
-					continue
-				}
 				if !checkAccountURI(caaAccountURI, va.accountURIPrefixes, params.accountURIID) {
 					continue
 				}
 			}
 		}
 		if features.Enabled(features.CAAValidationMethods) {
-			// Check the validationmethods CAA parameter as defined
-			// in section 4 of the draft CAA ACME RFC:
-			// https://tools.ietf.org/html/draft-ietf-acme-caa-04
+			// Check the validationmethods CAA parameter as defined in RFC 8657, Section 4:
+			// https://www.rfc-editor.org/rfc/rfc8657.html#name-extensions-to-the-caa-record
 			caaMethods, ok := caaParameters["validationmethods"]
 			if ok {
-				if params.validationMethod == "" {
-					continue
-				}
 				if !containsMethod(caaMethods, params.validationMethod) {
 					continue
 				}
@@ -302,11 +304,11 @@ func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID i
 }
 
 // extractIssuerDomainAndParameters extracts the domain and parameters (if any)
-// from a issue/issuewild CAA record. This follows sections 5.2 and 5.3 of the
-// RFC 6844bis draft (https://tools.ietf.org/html/draft-ietf-lamps-rfc6844bis-00),
-// where all components are semi-colon separated. The domain name (which may be
-// an empty string in the unsatisfiable case) and a tag-value map of parameters
-// are returned, along with a bool indicating if the CAA record is valid.
+// from a issue/issuewild CAA record. This follows RFC 8659 Section 4.2 and
+// Section 4.3 (https://www.rfc-editor.org/rfc/rfc8659.html#name-mechanism).
+// The domain name (which may be an empty string in the unsatisfiable case) and
+// a tag-value map of parameters are returned, along with a bool indicating if
+// the CAA record is valid.
 func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string, valid bool) {
 	isIssueSpace := func(r rune) bool {
 		return r == '\t' || r == ' '
