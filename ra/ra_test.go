@@ -308,7 +308,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -2165,6 +2165,18 @@ type mockSAUnsafeAuthzReuse struct {
 	mocks.StorageAuthority
 }
 
+func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
+	resp := &sapb.Authorizations{}
+	for k, v := range m {
+		authzPB, err := bgrpc.AuthzToPB(*v)
+		if err != nil {
+			return nil, err
+		}
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: k, Authz: authzPB})
+	}
+	return resp, nil
+}
+
 // GetAuthorizations2 returns a _bizarre_ authorization for "*.zombo.com" that
 // was validated by HTTP-01. This should never happen in real life since the
 // name is a wildcard. We use this mock to test that we reject this bizarre
@@ -2215,7 +2227,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(ctx context.Context, req *
 			},
 		},
 	}
-	return sa.AuthzMapToPB(authzs)
+	return authzMapToPB(authzs)
 
 }
 
@@ -2485,7 +2497,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(ctx context.Context, req *
 			},
 		},
 	}
-	return sa.AuthzMapToPB(authzs)
+	return authzMapToPB(authzs)
 }
 
 func (msa *mockSANearExpiredAuthz) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
