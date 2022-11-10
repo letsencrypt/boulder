@@ -198,18 +198,6 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	return present, valid, response, nil
 }
 
-// containsMethod parses a comma-separated list of allowed validation methods
-// (as specified in RFC 8657 Section 4) and returns true if any of them match
-// the ACME validation method used to validate control.
-func containsMethod(commaSeparatedMethods string, method core.AcmeChallenge) bool {
-	for _, m := range strings.Split(commaSeparatedMethods, ",") {
-		if method == core.AcmeChallenge(m) {
-			return true
-		}
-	}
-	return false
-}
-
 // validateCAASet checks a provided *CAASet. When the wildcard argument is true
 // this means the CAASet's issueWild records must be validated as well. This
 // function returns two booleans: the first indicates whether the CAASet was
@@ -257,29 +245,23 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	//
 	// Our CAA identity must be found in the chosen checkSet.
 	for _, caa := range records {
-		caaIssuerDomain, caaParameters, caaValid := extractIssuerDomainAndParameters(caa)
-		if !caaValid || caaIssuerDomain != va.issuerDomain {
+		parsedDomain, parsedParams, err := parseCAARecord(caa)
+		if err != nil {
+			continue
+		}
+
+		if !caaDomainMatches(parsedDomain, va.issuerDomain) {
 			continue
 		}
 
 		if features.Enabled(features.CAAAccountURI) {
-			// Check the accounturi CAA parameter as defined in RFC 8657, Section 3:
-			// https://www.rfc-editor.org/rfc/rfc8657.html#name-extensions-to-the-caa-recor
-			caaAccountURI, ok := caaParameters["accounturi"]
-			if ok {
-				if !checkAccountURI(caaAccountURI, va.accountURIPrefixes, params.accountURIID) {
-					continue
-				}
+			if !caaAccountURIMatches(parsedParams, va.accountURIPrefixes, params.accountURIID) {
+				continue
 			}
 		}
 		if features.Enabled(features.CAAValidationMethods) {
-			// Check the validationmethods CAA parameter as defined in RFC 8657, Section 4:
-			// https://www.rfc-editor.org/rfc/rfc8657.html#name-extensions-to-the-caa-record
-			caaMethods, ok := caaParameters["validationmethods"]
-			if ok {
-				if !containsMethod(caaMethods, params.validationMethod) {
-					continue
-				}
+			if !caaValidationMethodMatches(parsedParams, params.validationMethod) {
+				continue
 			}
 		}
 
@@ -292,9 +274,80 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	return true, false
 }
 
-// checkAccountURI checks the specified full account URI against the
-// given accountID and a list of valid prefixes.
-func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID int64) bool {
+// parseCAARecord extracts the domain and parameters (if any) from a
+// issue/issuewild CAA record. This follows RFC 8659 Section 4.2 and Section 4.3
+// (https://www.rfc-editor.org/rfc/rfc8659.html#section-4). It returns the
+// domain name (which may be the empty string if the record forbids issuance)
+// and a tag-value map of CAA parameter, or a descriptive error if the record is
+// malformed.
+func parseCAARecord(caa *dns.CAA) (string, map[string]string, error) {
+	isWSP := func(r rune) bool {
+		return r == '\t' || r == ' '
+	}
+
+	// Semi-colons (ASCII 0x3B) are prohibited from being specified in the
+	// parameter tag or value, hence we can simply split on semi-colons.
+	parts := strings.Split(caa.Value, ";")
+	domain := strings.TrimFunc(parts[0], isWSP)
+	paramList := parts[1:]
+	parameters := make(map[string]string)
+
+	// Handle the case where a semi-colon is specified following the domain
+	// but no parameters are given.
+	if len(paramList) == 1 && strings.TrimFunc(paramList[0], isWSP) == "" {
+		return domain, parameters, nil
+	}
+
+	for _, parameter := range paramList {
+		// A parameter tag cannot include equal signs (ASCII 0x3D),
+		// however they are permitted in the value itself.
+		tv := strings.SplitN(parameter, "=", 2)
+		if len(tv) != 2 {
+			return "", nil, fmt.Errorf("parameter not formatted as tag=value: %q", parameter)
+		}
+
+		tag := strings.TrimFunc(tv[0], isWSP)
+		//lint:ignore S1029,SA6003 we iterate over runes because the RFC specifies ascii codepoints.
+		for _, r := range []rune(tag) {
+			// ASCII alpha/digits.
+			// tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
+			if r < 0x30 || (r > 0x39 && r < 0x41) || (r > 0x5a && r < 0x61) || r > 0x7a {
+				return "", nil, fmt.Errorf("tag contains disallowed character: %q", tag)
+			}
+		}
+
+		value := strings.TrimFunc(tv[1], isWSP)
+		//lint:ignore S1029,SA6003 we iterate over runes because the RFC specifies ascii codepoints.
+		for _, r := range []rune(value) {
+			// ASCII without whitespace/semi-colons.
+			// value = *(%x21-3A / %x3C-7E)
+			if r < 0x21 || (r > 0x3a && r < 0x3c) || r > 0x7e {
+				return "", nil, fmt.Errorf("value contains disallowed character: %q", value)
+			}
+		}
+
+		parameters[tag] = value
+	}
+
+	return domain, parameters, nil
+}
+
+// caaDomainMatches checks that the issuer domain name listed in the parsed
+// CAA record matches the domain name we expect.
+func caaDomainMatches(caaDomain string, issuerDomain string) bool {
+	return caaDomain == issuerDomain
+}
+
+// caaAccountURIMatches checks that the accounturi CAA parameter, if present,
+// matches the unique account URI we expect. We support multiple possible
+// account URI prefixes to handle accounts which were registered under ACMEv1.
+// See RFC 8657 Section 3: https://www.rfc-editor.org/rfc/rfc8657.html#section-3
+func caaAccountURIMatches(caaParams map[string]string, accountURIPrefixes []string, accountID int64) bool {
+	accountURI, ok := caaParams["accounturi"]
+	if !ok {
+		return true
+	}
+
 	for _, prefix := range accountURIPrefixes {
 		if accountURI == fmt.Sprintf("%s%d", prefix, accountID) {
 			return true
@@ -303,57 +356,25 @@ func checkAccountURI(accountURI string, accountURIPrefixes []string, accountID i
 	return false
 }
 
-// extractIssuerDomainAndParameters extracts the domain and parameters (if any)
-// from a issue/issuewild CAA record. This follows RFC 8659 Section 4.2 and
-// Section 4.3 (https://www.rfc-editor.org/rfc/rfc8659.html#name-mechanism).
-// The domain name (which may be an empty string in the unsatisfiable case) and
-// a tag-value map of parameters are returned, along with a bool indicating if
-// the CAA record is valid.
-func extractIssuerDomainAndParameters(caa *dns.CAA) (domain string, parameters map[string]string, valid bool) {
-	isIssueSpace := func(r rune) bool {
-		return r == '\t' || r == ' '
+// caaValidationMethodMatches checks that the validationmethods CAA parameter,
+// if present, contains the exact name of the ACME validation method used to
+// validate this domain.
+// See RFC 8657 Section 4: https://www.rfc-editor.org/rfc/rfc8657.html#section-4
+func caaValidationMethodMatches(caaParams map[string]string, method core.AcmeChallenge) bool {
+	commaSeparatedMethods, ok := caaParams["validationmethods"]
+	if !ok {
+		return true
 	}
 
-	// Semi-colons (ASCII 0x3B) are prohibited from being specified in the
-	// parameter tag or value, hence we can simply split on semi-colons.
-	parts := strings.Split(caa.Value, ";")
-	domain = strings.TrimFunc(parts[0], isIssueSpace)
-	parameters = make(map[string]string)
+	for _, m := range strings.Split(commaSeparatedMethods, ",") {
+		caaMethod := core.AcmeChallenge(m)
+		if !caaMethod.IsValid() {
+			continue
+		}
 
-	// Handle the case where a semi-colon is specified following the domain
-	// but no parameters are given.
-	if len(parts[1:]) == 1 && strings.TrimFunc(parts[1], isIssueSpace) == "" {
-		return domain, parameters, true
+		if caaMethod == method {
+			return true
+		}
 	}
-
-	for _, parameter := range parts[1:] {
-		// A parameter tag cannot include equal signs (ASCII 0x3D),
-		// however they are permitted in the value itself.
-		tv := strings.SplitN(parameter, "=", 2)
-		if len(tv) != 2 {
-			return domain, nil, false
-		}
-
-		tag := strings.TrimFunc(tv[0], isIssueSpace)
-		for _, r := range []rune(tag) {
-			// ASCII alpha/digits.
-			// tag = (ALPHA / DIGIT) *( *("-") (ALPHA / DIGIT))
-			if r < 0x30 || r > 0x39 && r < 0x41 || r > 0x5a && r < 0x61 || r > 0x7a {
-				return domain, nil, false
-			}
-		}
-
-		value := strings.TrimFunc(tv[1], isIssueSpace)
-		for _, r := range []rune(value) {
-			// ASCII without whitespace/semi-colons.
-			// value = *(%x21-3A / %x3C-7E)
-			if r < 0x21 || r > 0x3a && r < 0x3c || r > 0x7e {
-				return domain, nil, false
-			}
-		}
-
-		parameters[tag] = value
-	}
-
-	return domain, parameters, true
+	return false
 }
