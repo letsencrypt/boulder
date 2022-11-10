@@ -61,8 +61,8 @@ type mailer struct {
 }
 
 type certDERWithRegID struct {
-	der   core.CertDER
-	regID int64
+	DER   core.CertDER
+	RegID int64
 }
 
 type mailerStats struct {
@@ -258,9 +258,9 @@ func (m *mailer) processCerts(
 	regIDToCertDERs := make(map[int64][]core.CertDER)
 
 	for _, cert := range allCerts {
-		cs := regIDToCertDERs[cert.regID]
-		cs = append(cs, cert.der)
-		regIDToCertDERs[cert.regID] = cs
+		cs := regIDToCertDERs[cert.RegID]
+		cs = append(cs, cert.DER)
+		regIDToCertDERs[cert.RegID] = cs
 	}
 
 	parallelSends := m.parallelSends
@@ -407,7 +407,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 
 		var certs []certDERWithRegID
 		var err error
-		if features.Enabled(features.ExpirationMailerUsesJoin) {
+		if !features.Enabled(features.ExpirationMailerUsesJoin) {
 			certs, err = m.getCerts(ctx, left, right, expiresIn)
 		} else {
 			certs, err = m.getCerts2(ctx, left, right, expiresIn)
@@ -462,7 +462,7 @@ func (m *mailer) getCerts2(ctx context.Context, left, right time.Time, expiresIn
 	_, err := m.dbMap.WithContext(ctx).Select(
 		&certs,
 		`SELECT
-				cert.der, cert.registrationID
+				cert.der as der, cert.registrationID as regID
 				FROM certificateStatus AS cs
 				JOIN certificates as cert
 				ON cs.serial = cert.serial
@@ -539,8 +539,8 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 			continue
 		}
 		certs = append(certs, certDERWithRegID{
-			der:   cert.DER,
-			regID: cert.RegistrationID,
+			DER:   cert.DER,
+			RegID: cert.RegistrationID,
 		})
 		if i == 0 {
 			// Report the send delay metric. Note: this is the worst-case send delay

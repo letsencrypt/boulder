@@ -449,13 +449,13 @@ func makeCertificate(regID int64, serial *big.Int, dnsNames []string, expires ti
 		return certDERWithRegID{}, err
 	}
 	return certDERWithRegID{
-		regID: regID,
-		der:   certDer,
+		RegID: regID,
+		DER:   certDer,
 	}, nil
 }
 
 func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
-	parsedCert, err := x509.ParseCertificate(cert.der)
+	parsedCert, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
 		return err
 	}
@@ -465,11 +465,11 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 		return err
 	}
 	err = setupDBMap.Insert(&core.Certificate{
-		RegistrationID: cert.regID,
+		RegistrationID: cert.RegID,
 		Serial:         core.SerialToString(parsedCert.SerialNumber),
 		Issued:         parsedCert.NotBefore,
 		Expires:        parsedCert.NotAfter,
-		DER:            cert.der,
+		DER:            cert.DER,
 	})
 	if err != nil {
 		return fmt.Errorf("inserting certificate: %w", err)
@@ -706,7 +706,7 @@ func TestCertIsRenewed(t *testing.T) {
 			Expires: testData.NotAfter,
 		}
 
-		err = insertCertificate(certDERWithRegID{der: certDer, regID: reg.Id}, time.Time{})
+		err = insertCertificate(certDERWithRegID{DER: certDer, RegID: reg.Id}, time.Time{})
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
 
 		err = setupDBMap.Insert(fqdnStatus)
