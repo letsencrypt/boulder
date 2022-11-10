@@ -31,6 +31,7 @@ const (
 	FasterNewOrdersRateLimit
 	AllowV1Registration
 	RestrictRSAKeySizes
+	AllowReRevocation
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -55,11 +56,6 @@ const (
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo
-	// AllowReRevocation causes the RA to allow the revocation reason of an
-	// already-revoked certificate to be updated to `keyCompromise` from any
-	// other reason if that compromise is demonstrated by making the second
-	// revocation request signed by the certificate keypair.
-	AllowReRevocation
 	// MozRevocationReasons causes the RA to enforce the following upcoming
 	// Mozilla policies regarding revocation:
 	// - A subscriber can request that their certificate be revoked with reason

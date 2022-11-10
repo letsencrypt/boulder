@@ -2039,17 +2039,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// to the blocked keys list is a worse failure than failing to revoke in the
 	// first place, because it means that bad-key-revoker won't revoke the cert
 	// anyway.
-	var shouldBlock bool
-	if features.Enabled(features.AllowReRevocation) {
-		// If we're allowing re-revocation, then block the key for all keyCompromise
-		// requests, no matter whether the revocation itself succeeded or failed.
-		shouldBlock = reason == ocsp.KeyCompromise
-	} else {
-		// Otherwise, only block the key if the revocation above succeeded, or
-		// failed for a reason other than "already revoked".
-		shouldBlock = (reason == ocsp.KeyCompromise && !errors.Is(revokeErr, berrors.AlreadyRevoked))
-	}
-	if shouldBlock {
+	if reason == ocsp.KeyCompromise {
 		var digest core.Sha256Digest
 		digest, err = core.KeyDigest(cert.PublicKey)
 		if err != nil {
@@ -2071,11 +2061,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	err = revokeErr
 	if err != nil {
 		// Immediately error out, rather than trying re-revocation, if the error was
-		// anything other than AlreadyRevoked, if the requested reason is anything
-		// other than keyCompromise, or if we're not yet using the new logic.
+		// anything other than AlreadyRevoked, or if the requested reason is
+		// anything other than keyCompromise.
 		if !errors.Is(err, berrors.AlreadyRevoked) ||
-			reason != ocsp.KeyCompromise ||
-			!features.Enabled(features.AllowReRevocation) {
+			reason != ocsp.KeyCompromise {
 			return nil, err
 		}
 		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
@@ -2333,7 +2322,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil {
 		return nil, err
 	}
-	err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, newOrder.Names)
+	err = ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, newOrder.Names)
 	if err != nil {
 		return nil, err
 	}
