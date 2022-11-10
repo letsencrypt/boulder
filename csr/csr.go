@@ -20,9 +20,6 @@ const maxCNLength = 64
 // strong enough to use. Significantly the missing algorithms are:
 // * No algorithms using MD2, MD5, or SHA-1
 // * No DSA algorithms
-//
-// SHA1WithRSA is allowed because there's still a fair bit of it
-// out there, but we should try to remove it soon.
 var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
 	x509.SHA256WithRSA:   true,
 	x509.SHA384WithRSA:   true,

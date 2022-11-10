@@ -141,6 +141,7 @@
     "ocspLogPeriod": "500ms",
     "ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",
     "features": {
+      "RejectDuplicateCSRExtensions": true
     }
   },
 
