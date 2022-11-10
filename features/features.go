@@ -30,6 +30,7 @@ const (
 	CheckFailedAuthorizationsFirst
 	FasterNewOrdersRateLimit
 	AllowV1Registration
+	RestrictRSAKeySizes
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -48,9 +49,6 @@ const (
 	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
 	// was checked for extant unrevoked certificates in the blockedKeys table.
 	StoreRevokerInfo
-	// RestrictRSAKeySizes enables restriction of acceptable RSA public key moduli to
-	// the common sizes (2048, 3072, and 4096 bits).
-	RestrictRSAKeySizes
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
