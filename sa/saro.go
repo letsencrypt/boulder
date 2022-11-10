@@ -19,7 +19,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -414,28 +413,7 @@ func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.Cou
 		return nil, errIncompleteRequest
 	}
 
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ssa.dbReadOnlyMap.WithContext(ctx), req)
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
-		&count,
-		`SELECT count(1) FROM orders
-		WHERE registrationID = :acctID AND
-		created >= :earliest AND
-		created < :latest`,
-		map[string]interface{}{
-			"acctID":   req.AccountID,
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: count}, nil
+	return countNewOrders(ssa.dbReadOnlyMap.WithContext(ctx), req)
 }
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {

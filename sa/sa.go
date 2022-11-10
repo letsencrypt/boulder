@@ -363,12 +363,10 @@ func (ssa *SQLStorageAuthority) NewOrder(ctx context.Context, req *sapb.NewOrder
 		return nil, fmt.Errorf("shouldn't happen: casting error in NewOrder")
 	}
 
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		// Increment the order creation count
-		err := addNewOrdersRateLimit(ssa.dbMap.WithContext(ctx), req.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
-		if err != nil {
-			return nil, err
-		}
+	// Increment the order creation count
+	err = addNewOrdersRateLimit(ssa.dbMap.WithContext(ctx), req.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+	if err != nil {
+		return nil, err
 	}
 
 	res := &corepb.Order{
@@ -519,12 +517,10 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, fmt.Errorf("casting error in NewOrderAndAuthzs")
 	}
 
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		// Increment the order creation count
-		err := addNewOrdersRateLimit(ssa.dbMap.WithContext(ctx), req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
-		if err != nil {
-			return nil, err
-		}
+	// Increment the order creation count
+	err = addNewOrdersRateLimit(ssa.dbMap.WithContext(ctx), req.NewOrder.RegistrationID, ssa.clk.Now().Truncate(time.Minute))
+	if err != nil {
+		return nil, err
 	}
 
 	// Calculate the order status before returning it. Since it may have reused all

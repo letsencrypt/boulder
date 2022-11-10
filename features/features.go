@@ -28,6 +28,7 @@ const (
 	GetAuthzReadOnly
 	GetAuthzUseIndex
 	CheckFailedAuthorizationsFirst
+	FasterNewOrdersRateLimit
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -51,9 +52,6 @@ const (
 	// RestrictRSAKeySizes enables restriction of acceptable RSA public key moduli to
 	// the common sizes (2048, 3072, and 4096 bits).
 	RestrictRSAKeySizes
-	// FasterNewOrdersRateLimit enables use of a separate table for counting the
-	// new orders rate limit.
-	FasterNewOrdersRateLimit
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
