@@ -29,6 +29,7 @@ const (
 	GetAuthzUseIndex
 	CheckFailedAuthorizationsFirst
 	FasterNewOrdersRateLimit
+	AllowV1Registration
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -44,8 +45,6 @@ const (
 	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
 	// resources.
 	MandatoryPOSTAsGET
-	// Allow creation of new registrations in ACMEv1.
-	AllowV1Registration
 	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
 	// was checked for extant unrevoked certificates in the blockedKeys table.
 	StoreRevokerInfo
