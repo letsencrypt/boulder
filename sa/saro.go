@@ -52,7 +52,7 @@ type SQLStorageAuthorityRO struct {
 	log blog.Logger
 }
 
-// NewSQLStorageAuthorities provides persistence using a SQL backend for
+// NewSQLStorageAuthorityRO provides persistence using a SQL backend for
 // Boulder. It will modify the given gorp.DbMap by adding relevant tables.
 func NewSQLStorageAuthorityRO(
 	dbReadOnlyMap *db.WrappedMap,

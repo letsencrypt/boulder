@@ -13,8 +13,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 )
 
-// TODO(#5938): Remove 45XX ports.
-var ctSrvPorts = []int{4500, 4501, 4510, 4511, 4600, 4601, 4602, 4603, 4604, 4605, 4606, 4607, 4608, 4609}
+var ctSrvPorts = []int{4600, 4601, 4602, 4603, 4604, 4605, 4606, 4607, 4608, 4609}
 
 // ctAddRejectHost adds a domain to all of the CT test server's reject-host
 // lists. If this fails the test is aborted with a fatal error.

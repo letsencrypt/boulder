@@ -29,7 +29,11 @@ var (
 	errIncompleteRequest = errors.New("incomplete gRPC request message")
 )
 
-// SQLStorageAuthority defines a Storage Authority
+// SQLStorageAuthority defines a Storage Authority.
+//
+// Note that although SQLStorageAuthority does have methods wrapping all of the
+// read-only methods provided by the SQLStorageAuthorityRO, those wrapper
+// implementations are in saro.go, next to the real implementations.
 type SQLStorageAuthority struct {
 	sapb.UnimplementedStorageAuthorityServer
 	*SQLStorageAuthorityRO
@@ -45,7 +49,9 @@ type SQLStorageAuthority struct {
 }
 
 // NewSQLStorageAuthorityWrapping provides persistence using a SQL backend for
-// Boulder. It takes a read-only storage authority to wrap.
+// Boulder. It takes a read-only storage authority to wrap, which is useful if
+// you are constructing both types of implementations and want to share
+// read-only database connections between them.
 func NewSQLStorageAuthorityWrapping(
 	ssaro *SQLStorageAuthorityRO,
 	dbMap *db.WrappedMap,
@@ -926,7 +932,3 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	}
 	return &emptypb.Empty{}, nil
 }
-
-// Note that the SQLStorageAuthority does have methods wrapping all of the
-// read-only methods provided by the SQLStorageAuthorityRO. These wrapper
-// implementations are in //sa/saro.go, next to the real implementations.
