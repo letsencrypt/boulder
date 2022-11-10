@@ -33,6 +33,7 @@ const (
 	RestrictRSAKeySizes
 	AllowReRevocation
 	MozRevocationReasons
+	SHA1CSRs
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -57,9 +58,6 @@ const (
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo
-	// SHA1CSRs controls whether the /acme/finalize endpoint rejects CSRs that
-	// are self-signed using SHA1.
-	SHA1CSRs
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures

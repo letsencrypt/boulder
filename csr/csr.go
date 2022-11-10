@@ -25,7 +25,6 @@ const maxCNLength = 64
 // SHA1WithRSA is allowed because there's still a fair bit of it
 // out there, but we should try to remove it soon.
 var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
-	x509.SHA1WithRSA:     true, // TODO(#2988): Remove support
 	x509.SHA256WithRSA:   true,
 	x509.SHA384WithRSA:   true,
 	x509.SHA512WithRSA:   true,
@@ -61,9 +60,6 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 		return berrors.InternalServerError("error checking key validity: %s", err)
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
-		return unsupportedSigAlg
-	}
-	if !features.Enabled(features.SHA1CSRs) && csr.SignatureAlgorithm == x509.SHA1WithRSA {
 		return unsupportedSigAlg
 	}
 
