@@ -35,7 +35,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
-	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
+	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -308,7 +308,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -346,7 +346,14 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		Status:    string(core.StatusValid),
 	})
 
-	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, nil, nil, nil, nil, 0, log, metrics.NoopRegisterer)
+	ctp := ctpolicy.New(&mocks.PublisherClient{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
+	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	ra := NewRegistrationAuthorityImpl(fc,
 		log,
@@ -2158,6 +2165,18 @@ type mockSAUnsafeAuthzReuse struct {
 	mocks.StorageAuthority
 }
 
+func authzMapToPB(m map[string]*core.Authorization) (*sapb.Authorizations, error) {
+	resp := &sapb.Authorizations{}
+	for k, v := range m {
+		authzPB, err := bgrpc.AuthzToPB(*v)
+		if err != nil {
+			return nil, err
+		}
+		resp.Authz = append(resp.Authz, &sapb.Authorizations_MapElement{Domain: k, Authz: authzPB})
+	}
+	return resp, nil
+}
+
 // GetAuthorizations2 returns a _bizarre_ authorization for "*.zombo.com" that
 // was validated by HTTP-01. This should never happen in real life since the
 // name is a wildcard. We use this mock to test that we reject this bizarre
@@ -2208,7 +2227,7 @@ func (msa *mockSAUnsafeAuthzReuse) GetAuthorizations2(ctx context.Context, req *
 			},
 		},
 	}
-	return sa.AuthzMapToPB(authzs)
+	return authzMapToPB(authzs)
 
 }
 
@@ -2478,7 +2497,7 @@ func (msa *mockSANearExpiredAuthz) GetAuthorizations2(ctx context.Context, req *
 			},
 		},
 	}
-	return sa.AuthzMapToPB(authzs)
+	return authzMapToPB(authzs)
 }
 
 func (msa *mockSANearExpiredAuthz) NewAuthorizations2(_ context.Context, _ *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
@@ -3193,7 +3212,14 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	_, ssa, ra, _, cleanup := initAuthorities(t)
 	defer cleanup()
 
-	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, []ctconfig.CTGroup{{}}, nil, nil, nil, nil, 0, log, metrics.NoopRegisterer)
+	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
+	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	// Create valid authorizations for not-example.com and www.not-example.com
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)

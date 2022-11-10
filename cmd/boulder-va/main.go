@@ -35,10 +35,8 @@ type Config struct {
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
-		DNSTries    int
-		DNSResolver string
-		// Deprecated, replaced by singular DNSResolver above.
-		DNSResolvers              []string
+		DNSTries                  int
+		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
@@ -121,13 +119,11 @@ func main() {
 	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
-	if c.VA.DNSResolver != "" {
-		servers, err = bdns.StartDynamicProvider(c.VA.DNSResolver, 60*time.Second)
-		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
-	} else {
-		servers, err = bdns.NewStaticProvider(c.VA.DNSResolvers)
-		cmd.FailOnError(err, "Couldn't parse static DNS server(s)")
+	if c.VA.DNSResolver == "" {
+		cmd.Fail("Config key 'dnsresolver' is required")
 	}
+	servers, err = bdns.StartDynamicProvider(c.VA.DNSResolver, 60*time.Second)
+	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 
 	var resolver bdns.Client
 	if !(c.VA.DNSAllowLoopbackAddresses || c.Common.DNSAllowLoopbackAddresses) {

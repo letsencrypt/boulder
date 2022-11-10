@@ -285,7 +285,6 @@ func (ll List) Permute() []string {
 	for i, j := range rand.Perm(len(ll)) {
 		result[i] = keys[j]
 	}
-
 	return result
 }
 
@@ -317,4 +316,8 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 
 	log := candidates[rand.Intn(len(candidates))]
 	return log.Url, log.Key, nil
+}
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
 }
