@@ -9,7 +9,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 )
@@ -61,16 +60,6 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg
-	}
-
-	if features.Enabled(features.RejectDuplicateCSRExtensions) {
-		oidSeen := make(map[string]bool)
-		for _, ext := range csr.Extensions {
-			if oidSeen[ext.Id.String()] {
-				return berrors.MalformedError("extension OID %q appears twice in your CSR. File an issue with the maintainer of your ACME client.", ext.Id)
-			}
-			oidSeen[ext.Id.String()] = true
-		}
 	}
 
 	err = csr.CheckSignature()

@@ -34,6 +34,7 @@ const (
 	AllowReRevocation
 	MozRevocationReasons
 	SHA1CSRs
+	RejectDuplicateCSRExtensions
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -61,10 +62,6 @@ const (
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
-	// RejectDuplicateCSRExtensions enables verification that submitted CSRs do
-	// not contain duplicate extensions. This behavior will be on by default in
-	// go1.19.
-	RejectDuplicateCSRExtensions
 
 	// ROCSPStage6 disables writing full OCSP Responses to MariaDB during
 	// (pre)certificate issuance and during revocation. Because Stage 4 involved
