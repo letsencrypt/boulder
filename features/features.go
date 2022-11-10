@@ -32,6 +32,7 @@ const (
 	AllowV1Registration
 	RestrictRSAKeySizes
 	AllowReRevocation
+	MozRevocationReasons
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -56,19 +57,6 @@ const (
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo
-	// MozRevocationReasons causes the RA to enforce the following upcoming
-	// Mozilla policies regarding revocation:
-	// - A subscriber can request that their certificate be revoked with reason
-	//   keyCompromise, even without demonstrating that compromise at the time.
-	//   However, the cert's pubkey will not be added to the blocked keys list.
-	// - When an applicant other than the original subscriber requests that a
-	//   certificate be revoked (by demonstrating control over all names in it),
-	//   the cert will be revoked with reason cessationOfOperation, regardless of
-	//   what revocation reason they request.
-	// - When anyone requests that a certificate be revoked by signing the request
-	//   with the certificate's keypair, the cert will be revoked with reason
-	//   keyCompromise, regardless of what revocation reason they request.
-	MozRevocationReasons
 	// SHA1CSRs controls whether the /acme/finalize endpoint rejects CSRs that
 	// are self-signed using SHA1.
 	SHA1CSRs
