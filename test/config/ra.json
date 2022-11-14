@@ -63,7 +63,11 @@
     "features": {
       "StoreRevokerInfo": true,
       "RestrictRSAKeySizes": true,
-      "StreamlineOrderAndAuthzs": true
+      "StreamlineOrderAndAuthzs": true,
+      "AllowReRevocation": true,
+      "MozRevocationReasons": true,
+      "SHA1CSRs": false,
+      "RejectDuplicateCSRExtensions": true
     },
     "ctLogs": {
       "stagger": "500ms",

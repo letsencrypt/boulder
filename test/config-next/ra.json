@@ -93,12 +93,7 @@
     },
     "features": {
       "StoreRevokerInfo": true,
-      "RestrictRSAKeySizes": true,
       "StreamlineOrderAndAuthzs": true,
-      "AllowReRevocation": true,
-      "MozRevocationReasons": true,
-      "SHA1CSRs": false,
-      "RejectDuplicateCSRExtensions": true,
       "ROCSPStage7": true
     },
     "ctLogs": {
