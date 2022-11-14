@@ -197,11 +197,6 @@ func (ra *MockRegistrationAuthority) PerformValidation(context.Context, *rapb.Pe
 	return &corepb.Authorization{}, nil
 }
 
-func (ra *MockRegistrationAuthority) RevokeCertificateWithReg(ctx context.Context, in *rapb.RevokeCertificateWithRegRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	ra.lastRevocationReason = revocation.Reason(in.Code)
-	return &emptypb.Empty{}, nil
-}
-
 func (ra *MockRegistrationAuthority) RevokeCertByApplicant(ctx context.Context, in *rapb.RevokeCertByApplicantRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	ra.lastRevocationReason = revocation.Reason(in.Code)
 	return &emptypb.Empty{}, nil
@@ -3228,7 +3223,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type: "dns",
+				Type:                     "dns",
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
@@ -3676,10 +3671,7 @@ func TestIncidentARI(t *testing.T) {
 	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
 }
 
-// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 func TestOldTLSInbound(t *testing.T) {
-	features.Reset()
-
 	wfe, _ := setupWFE(t)
 	req := &http.Request{
 		URL:    &url.URL{Path: "/directory"},
@@ -3688,16 +3680,39 @@ func TestOldTLSInbound(t *testing.T) {
 			http.CanonicalHeaderKey("TLS-Version"): {"TLSv1"},
 		}),
 	}
+
 	responseWriter := httptest.NewRecorder()
 	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
-
-	err := features.Set(map[string]bool{"OldTLSInbound": false})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	responseWriter = httptest.NewRecorder()
-	wfe.Handler(metrics.NoopRegisterer).ServeHTTP(responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+}
+
+func Test_sendError(t *testing.T) {
+	features.Reset()
+	wfe, _ := setupWFE(t)
+	testResponse := httptest.NewRecorder()
+
+	testErr := berrors.RateLimitError(0, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 0 value RetryAfter results in no Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "")
+	// Ensure the Link header isn't populatsed.
+	test.AssertEquals(t, testResponse.Header().Get("Link"), "")
+
+	testErr = berrors.RateLimitError(time.Millisecond*500, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 500ms RetryAfter is rounded up to a 1s Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "1")
+	// Ensure the Link header is populated.
+	test.AssertEquals(t, testResponse.Header().Get("Link"), "<https://letsencrypt.org/docs/rate-limits>;rel=\"help\"")
+
+	// Clear headers for the next test.
+	testResponse.Header().Del("Retry-After")
+	testResponse.Header().Del("Link")
+
+	testErr = berrors.RateLimitError(time.Millisecond*499, "test")
+	wfe.sendError(testResponse, &web.RequestEvent{Endpoint: "test"}, probs.RateLimited("test"), testErr)
+	// Ensure a 499ms RetryAfter results in no Retry-After header.
+	test.AssertEquals(t, testResponse.Header().Get("Retry-After"), "")
+	// Ensure the Link header isn't populatsed.
+	test.AssertEquals(t, testResponse.Header().Get("Link"), "")
 }

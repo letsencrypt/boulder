@@ -12,15 +12,15 @@
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/va.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/va.service.consul/key.pem"
+      "certFile": "test/grpc-creds/va.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/va.boulder/key.pem"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9092",
       "clientNames": [
-        "health-checker.service.consul",
-        "ra.service.consul"
+        "health-checker.boulder",
+        "ra.boulder"
       ]
     },
     "features": {
@@ -30,11 +30,13 @@
     "remoteVAs": [
       {
         "serverAddress": "rva1.service.consul:9097",
-        "timeout": "15s"
+        "timeout": "15s",
+        "hostOverride": "rva1.boulder"
       },
       {
         "serverAddress": "rva1.service.consul:9098",
-        "timeout": "15s"
+        "timeout": "15s",
+        "hostOverride": "rva1.boulder"
       }
     ],
     "maxRemoteValidationFailures": 1,

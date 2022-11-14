@@ -57,7 +57,7 @@ func TestSerialUtils(t *testing.T) {
 }
 
 func TestBuildID(t *testing.T) {
-	test.AssertEquals(t, "Unspecified", GetBuildID())
+	test.AssertEquals(t, Unspecified, GetBuildID())
 }
 
 const JWK1JSON = `{

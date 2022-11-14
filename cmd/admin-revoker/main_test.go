@@ -28,7 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -39,11 +38,11 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type mockCA struct {
+type mockOCSPA struct {
 	mocks.MockCA
 }
 
-func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
+func (ca *mockOCSPA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{Response: []byte("fakeocspbytes")}, nil
 }
 
@@ -447,11 +446,8 @@ func setup(t *testing.T) testCtx {
 	}
 	incidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidents, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
-		"../../test/hierarchy/int-r3.cert.pem": 102,
-	})
-	test.AssertNotError(t, err, "error loading issuers")
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, 1, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -484,7 +480,7 @@ func setup(t *testing.T) testCtx {
 		[]*issuance.Certificate{issuer},
 	)
 	ra.SA = isa.SA{Impl: ssa}
-	ra.CA = &mockCA{}
+	ra.OCSP = &mockOCSPA{}
 	rac := ira.RA{Impl: ra}
 
 	return testCtx{

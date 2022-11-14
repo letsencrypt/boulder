@@ -17,10 +17,10 @@ LOGFILE=/tmp/boulder.log
 docker logs boulder_tests > ${LOGFILE}
 
 # Expect success
-./bin/caa-log-checker -ra-log ${LOGFILE} -va-logs ${LOGFILE}
+./bin/boulder caa-log-checker -ra-log ${LOGFILE} -va-logs ${LOGFILE}
 
 # Expect error
-./bin/caa-log-checker -ra-log ${LOGFILE} -va-logs /dev/null >/tmp/output 2>&1 &&
+./bin/boulder caa-log-checker -ra-log ${LOGFILE} -va-logs /dev/null >/tmp/output 2>&1 &&
   (echo "caa-log-checker succeeded when it should have failed. Output:";
    cat /tmp/output;
    exit 9)

@@ -33,12 +33,12 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -51,16 +51,12 @@ var (
     "n": "n4EPtAOCc9AlkeQHPzHStgAbgs7bTZLwUBZdR8_KuKPEHLd4rHVTeT-O-XV2jRojdNhxJWTDvNd7nqQ0VEiZQHz_AJmSCpMaJMRBSFKrKb2wqVwGU_NsYOYL-QtiWN2lbzcEe6XC0dApr5ydQLrHqkHHig3RBordaZ6Aj-oBHqFEHYpPe7Tpe-OfVfHd1E6cS6M1FZcD1NNLYD5lFHpPI9bTwJlsde3uhGqC0ZCuEHg8lhzwOHrtIQbS0FVbb9k3-tVTU4fg_3L_vniUFAKwuCLqKnS2BYwdq_mzSnbLY7h_qixoR7jig3__kRhuaxwUkRz5iaiQkqgc5gHdrNP5zw",
     "e": "AQAB"
 }`
-	anotherKey = `{
-	"kty":"RSA",
-	"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
-	"e":"AQAB"
-}`
 )
 
 // initSA constructs a SQLStorageAuthority and a clean up function
 // that should be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
+	t.Helper()
 	features.Reset()
 
 	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{})
@@ -76,22 +72,17 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	// Load the standard list of signing certificates from the hierarchy.
-	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
-		"../test/hierarchy/int-e1.cert.pem": 100,
-		"../test/hierarchy/int-e2.cert.pem": 101,
-		"../test/hierarchy/int-r3.cert.pem": 102,
-		"../test/hierarchy/int-r4.cert.pem": 103,
-	})
-	if err != nil {
-		t.Fatalf("failed to load issuers: %s", err)
-	}
-	sa, err := NewSQLStorageAuthority(dbMap, dbMap, dbIncidentsMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
-	cleanUp := test.ResetBoulderTestDatabase(t)
-	return sa, fc, cleanUp
+
+	sa, err := NewSQLStorageAuthorityWrapping(saro, dbMap, metrics.NoopRegisterer)
+	if err != nil {
+		t.Fatalf("Failed to create SA: %s", err)
+	}
+
+	return sa, fc, test.ResetBoulderTestDatabase(t)
 }
 
 // CreateWorkingTestRegistration inserts a new, correct Registration into the
@@ -209,6 +200,12 @@ func TestAddRegistration(t *testing.T) {
 
 	test.AssertEquals(t, dbReg.Id, newReg.Id)
 	test.AssertEquals(t, dbReg.Agreement, newReg.Agreement)
+
+	anotherKey := `{
+		"kty":"RSA",
+		"n": "vd7rZIoTLEe-z1_8G1FcXSw9CQFEJgV4g9V277sER7yx5Qjz_Pkf2YVth6wwwFJEmzc0hoKY-MMYFNwBE4hQHw",
+		"e":"AQAB"
+	}`
 
 	_, err = sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: []byte(anotherKey)})
 	test.AssertError(t, err, "Registration object for invalid key was returned")
@@ -394,7 +391,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 	interlocker.Add(len(names))
 	sa.parallelismPerRPC = len(names)
 	oldCertCountFunc := sa.countCertificatesByName
-	sa.countCertificatesByName = func(sel db.Selector, domain string, timeRange *sapb.Range) (int64, error) {
+	sa.countCertificatesByName = func(sel db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
 		interlocker.Done()
 		interlocker.Wait()
 		return oldCertCountFunc(sel, domain, timeRange)
@@ -1768,7 +1765,7 @@ func TestRevokeCertificateNoResponse(t *testing.T) {
 		Date:   now.UnixNano(),
 		Reason: reason,
 	})
-	test.AssertNotError(t, err, "RevokeCertificate should succeed with no response when ROCSPStage3 is enabled")
+	test.AssertNotError(t, err, "RevokeCertificate should succeed with no response when ROCSPStage6 is enabled")
 }
 
 func TestUpdateRevokedCertificate(t *testing.T) {
@@ -2646,7 +2643,7 @@ func TestIncidentsForSerial(t *testing.T) {
 
 	// No incidents are enabled, so this should return in error.
 	result, err := sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
-	test.AssertNil(t, err, "expected nil err")
+	test.AssertNotError(t, err, "fetching from no incidents")
 	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add an enabled incident.
@@ -2678,7 +2675,7 @@ func TestIncidentsForSerial(t *testing.T) {
 
 	// The incident table should not contain a row with serial '1337'.
 	result, err = sa.IncidentsForSerial(context.Background(), &sapb.Serial{Serial: "1337"})
-	test.AssertNil(t, err, "expected nil err")
+	test.AssertNotError(t, err, "fetching from one incident")
 	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add a row to the incident table with serial '1337'.
@@ -2940,4 +2937,28 @@ func TestGetRevokedCerts(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
+}
+
+func TestGetMaxExpiration(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
+	// up the certificateStatus row we need. This particular cert has a notAfter
+	// date of Mar 6 2023, and we lie about its IssuerNameID to make things easy.
+	reg := createWorkingRegistration(t, sa)
+	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
+	test.AssertNotError(t, err, "failed to load test cert")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:      eeCert.Raw,
+		RegID:    reg.Id,
+		Ocsp:     nil,
+		Issued:   eeCert.NotBefore.UnixNano(),
+		IssuerID: 1,
+	})
+	test.AssertNotError(t, err, "failed to add test cert")
+
+	lastExpiry, err := sa.GetMaxExpiration(context.Background(), &emptypb.Empty{})
+	test.AssertNotError(t, err, "getting last expriy should succeed")
+	test.Assert(t, lastExpiry.AsTime().Equal(eeCert.NotAfter), "times should be equal")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"time"
 
 	"github.com/honeycombio/beeline-go"
 
@@ -36,6 +37,22 @@ type Config struct {
 		// in CCADB MUST be updated.
 		NumShards int
 
+		// ShardWidth is the amount of time (width on a timeline) that a single
+		// shard should cover. Ideally, NumShards*ShardWidth should be an amount of
+		// time noticeably larger than the current longest certificate lifetime,
+		// but the updater will continue to work if this is not the case (albeit
+		// with more confusing mappings of serials to shards).
+		// WARNING: When this number is changed, revocation entries will move
+		// between shards.
+		ShardWidth cmd.ConfigDuration
+
+		// LookbackPeriod is how far back the updater should look for revoked expired
+		// certificates. We are required to include every revoked cert in at least
+		// one CRL, even if it is revoked seconds before it expires, so this must
+		// always be greater than the UpdatePeriod, and should be increased when
+		// recovering from an outage to ensure continuity of coverage.
+		LookbackPeriod cmd.ConfigDuration
+
 		// CertificateLifetime is the validity period (usually expressed in hours,
 		// like "2160h") of the longest-lived currently-unexpired certificate. For
 		// Let's Encrypt, this is usually ninety days. If the validity period of
@@ -43,6 +60,8 @@ type Config struct {
 		// immediately; if the validity period of the issued certificates ever
 		// changes downwards, the value must not change until after all certificates with
 		// the old validity period have expired.
+		// DEPRECATED: This config value is no longer used.
+		// TODO(#6438): Remove this value.
 		CertificateLifetime cmd.ConfigDuration
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
@@ -113,24 +132,30 @@ func main() {
 		issuers = append(issuers, cert)
 	}
 
-	clientMetrics := bgrpc.NewClientMetrics(scope)
+	if c.CRLUpdater.ShardWidth.Duration == 0 {
+		c.CRLUpdater.ShardWidth.Duration = 16 * time.Hour
+	}
+	if c.CRLUpdater.LookbackPeriod.Duration == 0 {
+		c.CRLUpdater.LookbackPeriod.Duration = 24 * time.Hour
+	}
 
-	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, clientMetrics, clk)
+	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	caConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLGeneratorService, tlsConfig, clientMetrics, clk)
+	caConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLGeneratorService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLGenerator")
 	cac := capb.NewCRLGeneratorClient(caConn)
 
-	csConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLStorerService, tlsConfig, clientMetrics, clk)
+	csConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLStorerService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLStorer")
 	csc := cspb.NewCRLStorerClient(csConn)
 
 	u, err := updater.NewUpdater(
 		issuers,
 		c.CRLUpdater.NumShards,
-		c.CRLUpdater.CertificateLifetime.Duration,
+		c.CRLUpdater.ShardWidth.Duration,
+		c.CRLUpdater.LookbackPeriod.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
 		c.CRLUpdater.UpdateOffset.Duration,
 		c.CRLUpdater.MaxParallelism,

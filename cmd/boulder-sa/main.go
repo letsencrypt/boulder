@@ -4,9 +4,6 @@ import (
 	"flag"
 	"os"
 
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -24,7 +21,8 @@ type Config struct {
 		ReadOnlyDB  cmd.DBConfig
 		IncidentsDB cmd.DBConfig
 		Redis       *rocsp_config.RedisConfig
-		Issuers     map[string]int
+		// TODO(#6285): Remove this field, as it is no longer used.
+		Issuers map[string]int
 
 		Features map[string]bool
 
@@ -96,32 +94,28 @@ func main() {
 
 	clk := cmd.Clock()
 
-	shortIssuers, err := rocsp_config.LoadIssuers(c.SA.Issuers)
-	cmd.FailOnError(err, "loading issuers")
-
 	parallel := c.SA.ParallelismPerRPC
 	if parallel < 1 {
 		parallel = 1
 	}
-	sai, err := sa.NewSQLStorageAuthority(dbMap, dbReadOnlyMap, dbIncidentsMap, shortIssuers, clk, logger, scope, parallel)
-	cmd.FailOnError(err, "Failed to create SA impl")
 
 	tls, err := c.SA.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, listener, err := bgrpc.NewServer(c.SA.GRPC, tls, serverMetrics, clk, bgrpc.NoCancelInterceptor)
+
+	saroi, err := sa.NewSQLStorageAuthorityRO(dbReadOnlyMap, dbIncidentsMap, parallel, clk, logger)
+	cmd.FailOnError(err, "Failed to create read-only SA impl")
+
+	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
+	cmd.FailOnError(err, "Failed to create SA impl")
+
+	start, stop, err := bgrpc.NewServer(c.SA.GRPC).Add(
+		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
+		&sapb.StorageAuthority_ServiceDesc, sai).Build(
+		tls, scope, clk, bgrpc.NoCancelInterceptor)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
-	sapb.RegisterStorageAuthorityServer(grpcSrv, sai)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
-	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-	cmd.FailOnError(err, "SA gRPC service failed")
+	go cmd.CatchSignals(logger, stop)
+	cmd.FailOnError(start(), "SA gRPC service failed")
 }
 
 func init() {

@@ -53,6 +53,7 @@ func (l *nameConstMin) CheckApplies(c *x509.Certificate) bool {
 }
 
 //nolint:gocyclo
+//nolint:cyclop
 func (l *nameConstMin) Execute(c *x509.Certificate) *lint.LintResult {
 	for _, i := range c.PermittedDNSNames {
 		if i.Min != 0 {

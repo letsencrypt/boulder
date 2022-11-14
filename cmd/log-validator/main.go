@@ -182,7 +182,7 @@ func main() {
 		go func() {
 			for line := range t.Lines {
 				if line.Err != nil {
-					logger.Errf("error while tailing %s: %s", t.Filename, err)
+					logger.Errf("error while tailing %s: %s", t.Filename, line.Err)
 					continue
 				}
 				err := lineValid(line.Text)

@@ -181,62 +181,6 @@
       ]
     },
     {
-      "name": "Fake Google TODO(#5938): Remove this group",
-      "email": ["fake@example.org"],
-      "logs": [
-        {
-          "description": "G4500",
-          "log_id": "KHYaGJAn++880NYaAY12sFBXKcenQRvMvfYE9F1CYVM=",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYggOxPnPkzKBIhTacSYoIfnSL2jPugcbUKx83vFMvk5gKAz/AGe87w20riuPwEGn229hKVbEKHFB61NIqNHC3Q==",
-          "url": "http://boulder.service.consul:4500",
-          "state": {
-            "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
-            }
-          }
-        },
-        {
-          "description": "G4501",
-          "log_id": "3Zk0/KXnJIDJVmh9gTSZCEmySfe1adjHvKs/XMHzbmQ=",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKtnFevaXV/kB8dmhCNZHmxKVLcHX1plaAsY9LrKilhYxdmQZiu36LvAvosTsqMVqRK9a96nC8VaxAdaHUbM8EA==",
-          "url": "http://boulder.service.consul:4501",
-          "state": {
-            "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Fake Everyone Else TODO(#5938): Remove this group",
-      "email": ["fake@example.org"],
-      "logs": [
-        {
-          "description": "O4510",
-          "log_id": "FuhpwdGV6tfD+Jca4/B2AfeM4badMahSGLaDfzGoFQg=",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEyw1HymhJkuxSIgt3gqW3sVXqMqB3EFsXcMfPFo0vYwjNiRmCJDXKsR0Flp7MAK+wc3X/7Hpc8liUbMhPet7tEA==",
-          "url": "http://boulder.service.consul:4510",
-          "state": {
-            "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
-            }
-          }
-        },
-        {
-          "description": "O4511",
-          "log_id": "NvR3OcSRDDWwwb0Hg+t9aKCpL3+tDuk99WrHkTwabYo=",
-          "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFRu37ZRLg8lT4rVQwMwh4oAOpXb4Sx+9hgQ+JFCjmAv3oDV+sDOMsC7hULkGTn+LB5L1SRo/XIY4Kw5V+nFXgg==",
-          "url": "http://boulder.service.consul:4511",
-          "state": {
-            "usable": {
-              "timestamp": "2000-00-00T00:00:00Z"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "Unused",
       "email": ["fake@example.org"],
       "logs": [

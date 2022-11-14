@@ -43,7 +43,7 @@ func TestOrphanFinder(t *testing.T) {
 	io.WriteString(f, fmt.Sprintf(template, precert.SerialNumber.Bytes(),
 		precert.Raw, cert.SerialNumber.Bytes(), cert.Raw))
 	f.Close()
-	cmd := exec.Command("./bin/orphan-finder", "parse-ca-log",
+	cmd := exec.Command("./bin/boulder", "orphan-finder", "parse-ca-log",
 		"--config", "./"+os.Getenv("BOULDER_CONFIG_DIR")+"/orphan-finder.json",
 		"--log-file", f.Name())
 	out, err := cmd.Output()

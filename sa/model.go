@@ -1,6 +1,8 @@
 package sa
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -8,6 +10,7 @@ import (
 	"math"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -16,6 +19,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
@@ -685,3 +689,112 @@ type crlEntryModel struct {
 	RevokedReason revocation.Reason `db:"revokedReason"`
 	RevokedDate   time.Time         `db:"revokedDate"`
 }
+
+// HashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table.
+func HashNames(names []string) []byte {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hash[:]
+}
+
+// orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
+// from a new-order request, along with the corresponding orderID, the
+// registration ID, and the order expiry. This is used to find
+// existing orders for reuse.
+type orderFQDNSet struct {
+	ID             int64
+	SetHash        []byte
+	OrderID        int64
+	RegistrationID int64
+	Expires        time.Time
+}
+
+func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
+	return db.Insert(&core.FQDNSet{
+		SetHash: HashNames(names),
+		Serial:  serial,
+		Issued:  issued,
+		Expires: expires,
+	})
+}
+
+// addOrderFQDNSet creates a new OrderFQDNSet row using the provided
+// information. This function accepts a transaction so that the orderFqdnSet
+// addition can take place within the order addition transaction. The caller is
+// required to rollback the transaction if an error is returned.
+func addOrderFQDNSet(
+	db db.Inserter,
+	names []string,
+	orderID int64,
+	regID int64,
+	expires time.Time) error {
+	return db.Insert(&orderFQDNSet{
+		SetHash:        HashNames(names),
+		OrderID:        orderID,
+		RegistrationID: regID,
+		Expires:        expires,
+	})
+}
+
+// deleteOrderFQDNSet deletes a OrderFQDNSet row that matches the provided
+// orderID. This function accepts a transaction so that the deletion can
+// take place within the finalization transaction. The caller is required to
+// rollback the transaction if an error is returned.
+func deleteOrderFQDNSet(
+	db db.Execer,
+	orderID int64) error {
+
+	result, err := db.Exec(`
+	  DELETE FROM orderFqdnSets
+		WHERE orderID = ?`,
+		orderID)
+	if err != nil {
+		return err
+	}
+	rowsDeleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// We always expect there to be an order FQDN set row for each
+	// pending/processing order that is being finalized. If there isn't one then
+	// something is amiss and should be raised as an internal server error
+	if rowsDeleted == 0 {
+		return berrors.InternalServerError("No orderFQDNSet exists to delete")
+	}
+	return nil
+}
+
+func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error {
+	if len(cert.DNSNames) == 0 {
+		return berrors.InternalServerError("certificate has no DNSNames")
+	}
+	var qmarks []string
+	var values []interface{}
+	for _, name := range cert.DNSNames {
+		values = append(values,
+			ReverseName(name),
+			core.SerialToString(cert.SerialNumber),
+			cert.NotBefore,
+			isRenewal)
+		qmarks = append(qmarks, "(?, ?, ?, ?)")
+	}
+	query := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
+	_, err := db.Exec(query, values...)
+	return err
+}
+
+func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
+	if cert.RawSubjectPublicKeyInfo == nil {
+		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
+	}
+	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	khm := &keyHashModel{
+		KeyHash:      h[:],
+		CertNotAfter: cert.NotAfter,
+		CertSerial:   core.SerialToString(cert.SerialNumber),
+	}
+	return db.Insert(khm)
+}
+
+var blockedKeysColumns = "keyHash, added, source, comment"

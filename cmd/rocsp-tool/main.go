@@ -242,13 +242,13 @@ func helpExit() {
 	os.Exit(1)
 }
 
-func configureOCSPGenerator(tlsConf cmd.TLSConfig, grpcConf cmd.GRPCClientConfig, clk clock.Clock, stats prometheus.Registerer) (capb.OCSPGeneratorClient, error) {
+func configureOCSPGenerator(tlsConf cmd.TLSConfig, grpcConf cmd.GRPCClientConfig, clk clock.Clock, scope prometheus.Registerer) (capb.OCSPGeneratorClient, error) {
 	tlsConfig, err := tlsConf.Load()
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
-	clientMetrics := bgrpc.NewClientMetrics(stats)
-	caConn, err := bgrpc.ClientSetup(&grpcConf, tlsConfig, clientMetrics, clk)
+
+	caConn, err := bgrpc.ClientSetup(&grpcConf, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	return capb.NewOCSPGeneratorClient(caConn), nil
 }

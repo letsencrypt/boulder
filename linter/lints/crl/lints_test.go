@@ -107,15 +107,35 @@ func TestIsNotDelta(t *testing.T) {
 	test.AssertContains(t, res.Details, "Delta")
 }
 
-func TestHasNoIDP(t *testing.T) {
+func TestCheckIDP(t *testing.T) {
 	crl := loadPEMCRL(t, "testdata/good.pem")
-	res := hasNoIDP(crl)
+	res := checkIDP(crl)
 	test.AssertEquals(t, res.Status, lint.Pass)
 
-	crl = loadPEMCRL(t, "testdata/idp.pem")
-	res = hasNoIDP(crl)
-	test.AssertEquals(t, res.Status, lint.Notice)
-	test.AssertContains(t, res.Details, "Issuing Distribution Point")
+	crl = loadPEMCRL(t, "testdata/no_idp.pem")
+	res = checkIDP(crl)
+	test.AssertEquals(t, res.Status, lint.Warn)
+	test.AssertContains(t, res.Details, "missing IDP")
+
+	crl = loadPEMCRL(t, "testdata/idp_no_uri.pem")
+	res = checkIDP(crl)
+	test.AssertEquals(t, res.Status, lint.Warn)
+	test.AssertContains(t, res.Details, "should contain distributionPoint")
+
+	crl = loadPEMCRL(t, "testdata/idp_two_uris.pem")
+	res = checkIDP(crl)
+	test.AssertEquals(t, res.Status, lint.Warn)
+	test.AssertContains(t, res.Details, "only one distributionPoint")
+
+	crl = loadPEMCRL(t, "testdata/idp_no_usercerts.pem")
+	res = checkIDP(crl)
+	test.AssertEquals(t, res.Status, lint.Warn)
+	test.AssertContains(t, res.Details, "should contain onlyContainsUserCerts")
+
+	crl = loadPEMCRL(t, "testdata/idp_some_reasons.pem")
+	res = checkIDP(crl)
+	test.AssertEquals(t, res.Status, lint.Warn)
+	test.AssertContains(t, res.Details, "should not contain fields other than")
 }
 
 func TestHasNoFreshest(t *testing.T) {

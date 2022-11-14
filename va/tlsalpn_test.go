@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -769,14 +768,9 @@ func TestTLSALPN01ExtraSANs(t *testing.T) {
 
 	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
-	if strings.Contains(runtime.Version(), "go1.19") {
-		// In go >= 1.19, the TLS client library detects that the certificate has
-		// a duplicate extension and terminates the connection itself.
-		// TODO: Make this assertion unconditional and remove the else clause.
-		test.AssertContains(t, prob.Error(), "Error getting validation data")
-	} else {
-		test.AssertContains(t, prob.Error(), "Extension OID 2.5.29.17 seen twice")
-	}
+	// In go >= 1.19, the TLS client library detects that the certificate has
+	// a duplicate extension and terminates the connection itself.
+	test.AssertContains(t, prob.Error(), "Error getting validation data")
 }
 
 func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
@@ -829,14 +823,9 @@ func TestTLSALPN01ExtraAcmeExtensions(t *testing.T) {
 
 	_, prob := va.validateChallenge(ctx, dnsi("expected"), chall)
 	test.AssertError(t, prob, "validation should have failed")
-	if strings.Contains(runtime.Version(), "go1.19") {
-		// In go >= 1.19, the TLS client library detects that the certificate has
-		// a duplicate extension and terminates the connection itself.
-		// TODO: Make this assertion unconditional and remove the else clause.
-		test.AssertContains(t, prob.Error(), "Error getting validation data")
-	} else {
-		test.AssertContains(t, prob.Error(), "Extension OID 1.3.6.1.5.5.7.1.31 seen twice")
-	}
+	// In go >= 1.19, the TLS client library detects that the certificate has
+	// a duplicate extension and terminates the connection itself.
+	test.AssertContains(t, prob.Error(), "Error getting validation data")
 }
 
 func TestAcceptableExtensions(t *testing.T) {

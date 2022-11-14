@@ -3,41 +3,79 @@
     "debugAddr": ":8001",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ca.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/ca.service.consul/key.pem"
+      "certFile": "test/grpc-creds/ca.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ca.boulder/key.pem"
     },
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "grpcCA": {
       "maxConnectionAge": "30s",
       "address": ":9093",
-      "clientNames": [
-        "health-checker.service.consul",
-        "ra.service.consul"
-      ]
+      "services": {
+        "ca.CertificateAuthority": {
+          "clientNames": [
+            "ra.boulder"
+          ]
+        },
+        "ca.OCSPGenerator": {
+          "clientNames": [
+            "ocsp-updater.boulder",
+            "orphan-finder.boulder",
+            "ra.boulder"
+          ]
+        },
+        "ca.CRLGenerator": {
+          "clientNames": [
+            "crl-updater.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "grpcOCSPGenerator": {
       "maxConnectionAge": "30s",
       "address": ":9096",
-      "clientNames": [
-        "health-checker.service.consul",
-        "ocsp-updater.service.consul",
-        "orphan-finder.service.consul"
-      ]
+      "services": {
+        "ca.OCSPGenerator": {
+          "clientNames": [
+            "ocsp-updater.boulder",
+            "orphan-finder.boulder",
+            "ra.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "grpcCRLGenerator": {
       "maxConnectionAge": "30s",
       "address": ":9106",
-      "clientNames": [
-        "health-checker.service.consul",
-        "crl-updater.service.consul"
-      ]
+      "services": {
+        "ca.CRLGenerator": {
+          "clientNames": [
+            "crl-updater.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "saService": {
-      "serverIPAddresses": [
-        "10.77.77.77:9095",
-        "10.88.88.88:9095"
-      ],
-      "timeout": "15s"
+      "srvLookup": {
+        "service": "sa",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "sa.boulder"
     },
     "issuance": {
       "profile": {
@@ -107,6 +145,7 @@
     "maxNames": 100,
     "lifespanOCSP": "96h",
     "lifespanCRL": "216h",
+    "crldpBase": "http://c.boulder.test",
     "goodkey": {
       "weakKeyFile": "test/example-weak-keys.json",
       "blockedKeyFile": "test/example-blocked-keys.yaml",
@@ -118,7 +157,7 @@
     "ecdsaAllowListFilename": "test/config-next/ecdsaAllowList.yml",
     "ctLogListFile": "test/ct-test-srv/log_list.json",
     "features": {
-      "RejectDuplicateCSRExtensions": true
+      "ROCSPStage7": true
     }
   },
 
