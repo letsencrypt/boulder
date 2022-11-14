@@ -44,7 +44,7 @@ stale.
 		if *serials {
 			bytes, err = hex.DecodeString(strings.Replace(a, ":", "", -1))
 			if err != nil {
-				log.Printf("error for %s (line %d): %s\n", a, err)
+				log.Printf("error for %s: %s\n", a, err)
 			}
 			serialNumber := big.NewInt(0).SetBytes(bytes)
 			_, err = helper.ReqSerial(serialNumber, config)
