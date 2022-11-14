@@ -407,10 +407,10 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 
 		var certs []certDERWithRegID
 		var err error
-		if !features.Enabled(features.ExpirationMailerUsesJoin) {
-			certs, err = m.getCerts(ctx, left, right, expiresIn)
+		if features.Enabled(features.ExpirationMailerUsesJoin) {
+			certs, err = m.getCertsWithJoin(ctx, left, right, expiresIn)
 		} else {
-			certs, err = m.getCerts2(ctx, left, right, expiresIn)
+			certs, err = m.getCerts(ctx, left, right, expiresIn)
 		}
 		if err != nil {
 			return err
@@ -453,7 +453,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 	return nil
 }
 
-func (m *mailer) getCerts2(ctx context.Context, left, right time.Time, expiresIn time.Duration) ([]certDERWithRegID, error) {
+func (m *mailer) getCertsWithJoin(ctx context.Context, left, right time.Time, expiresIn time.Duration) ([]certDERWithRegID, error) {
 	// First we do a query on the certificateStatus table to find certificates
 	// nearing expiry meeting our criteria for email notification. We later
 	// sequentially fetch the certificate details. This avoids an expensive
