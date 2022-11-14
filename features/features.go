@@ -114,11 +114,8 @@ var features = map[FeatureFlag]bool{
 	ROCSPStage2:                    false,
 	ROCSPStage3:                    false,
 	ROCSPStage6:                    false,
-<<<<<<< HEAD
-	ExpirationMailerUsesJoin:       false,
-=======
 	ROCSPStage7:                    false,
->>>>>>> main
+	ExpirationMailerUsesJoin:       false,
 }
 
 var fMu = new(sync.RWMutex)
