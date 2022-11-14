@@ -418,11 +418,7 @@ def test_http_challenge_https_redirect():
     for r in redirectedRequests:
       if r['HTTPS'] is False:
         raise(Exception("Expected all redirected requests to be HTTPS"))
-      # TODO(@cpu): The following ServerName test will fail with config-next
-      # until https://github.com/letsencrypt/boulder/issues/3969 is fixed.
-      if CONFIG_NEXT:
-        return
-      elif r['ServerName'] != d:
+      if r['ServerName'] != d:
         raise(Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName'])))
 
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -694,24 +690,10 @@ def test_revoke_by_account_with_reason():
 
     reset_akamai_purges()
 
-    if CONFIG_NEXT:
-        # Requesting revocation for keyCompromise should work, but not block the
-        # key.
-        client.revoke(josepy.ComparableX509(cert), 1)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
-
-    else:
-        # Revoking for reason keyCompromise should fail because this method doesn't
-        # demonstrate compromise, but revocation for another reason should work.
-        try:
-            client.revoke(josepy.ComparableX509(cert), 1)
-        except messages.Error:
-            pass
-        else:
-            raise(Exception("Revoked by applicant with reason keyCompromise"))
-
-        client.revoke(josepy.ComparableX509(cert), 4)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "superseded")
+    # Requesting revocation for keyCompromise should work, but not block the
+    # key.
+    client.revoke(josepy.ComparableX509(cert), 1)
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
 
     verify_akamai_purge()
 
@@ -727,24 +709,10 @@ def test_revoke_by_authz():
 
     reset_akamai_purges()
 
-    if CONFIG_NEXT:
-        # Even though we requested reason 1 ("keyCompromise"), the result should be
-        # 5 ("cessationOfOperation") due to the authorization method.
-        client.revoke(josepy.ComparableX509(cert), 1)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
-
-    else:
-        # Revoking for reason keyCompromise should fail because this method doesn't
-        # demonstrate compromise, but revocation for another reason should work.
-        try:
-            client.revoke(josepy.ComparableX509(cert), 1)
-        except messages.Error:
-            pass
-        else:
-            raise(Exception("Revoked by applicant with reason keyCompromise"))
-
-        client.revoke(josepy.ComparableX509(cert), 4)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "superseded")
+    # Even though we requested reason 1 ("keyCompromise"), the result should be
+    # 5 ("cessationOfOperation") due to the authorization method.
+    client.revoke(josepy.ComparableX509(cert), 1)
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
 
     verify_akamai_purge()
 
@@ -784,16 +752,10 @@ def test_revoke_by_privkey():
 
     reset_akamai_purges()
     
-    if CONFIG_NEXT:
-        # Even though we requested reason 0 ("unspecified"), the result should be
-        # 1 ("keyCompromise") due to the authorization method.
-        revoke_client.revoke(josepy.ComparableX509(cert), 0)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
-
-    else:
-        # Revocation should work for any reason.
-        revoke_client.revoke(josepy.ComparableX509(cert), 4)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "superseded")
+    # Even though we requested reason 0 ("unspecified"), the result should be
+    # 1 ("keyCompromise") due to the authorization method.
+    revoke_client.revoke(josepy.ComparableX509(cert), 0)
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
 
     verify_akamai_purge()
 
@@ -833,58 +795,42 @@ def test_double_revocation():
 
     reset_akamai_purges()
 
-    if CONFIG_NEXT:
-        # First revoke for any reason.
-        sub_client.revoke(josepy.ComparableX509(cert), 0)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
-        verify_akamai_purge()
+    # First revoke for any reason.
+    sub_client.revoke(josepy.ComparableX509(cert), 0)
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_akamai_purge()
 
-        # Re-revocation for anything other than keyCompromise should fail.
-        try:
-            sub_client.revoke(josepy.ComparableX509(cert), 3)
-        except messages.Error:
-            pass
-        else:
-            raise(Exception("Re-revoked for a bad reason"))
-
-        # Re-revocation for keyCompromise should work, as long as it is done
-        # via the cert key to demonstrate said compromise.
-        reset_akamai_purges()
-        cert_client.revoke(josepy.ComparableX509(cert), 1)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
-        verify_akamai_purge()
-
-        # A subsequent attempt should fail, because the cert is already revoked
-        # for keyCompromise.
-        try:
-            cert_client.revoke(josepy.ComparableX509(cert), 1)
-        except messages.Error:
-            pass
-        else:
-            raise(Exception("Re-revoked already keyCompromise'd cert"))
-
-        # The same is true even when using the cert key.
-        try:
-            cert_client.revoke(josepy.ComparableX509(cert), 1)
-        except messages.Error:
-            pass
-        else:
-            raise(Exception("Re-revoked already keyCompromise'd cert"))
-
+    # Re-revocation for anything other than keyCompromise should fail.
+    try:
+        sub_client.revoke(josepy.ComparableX509(cert), 3)
+    except messages.Error:
+        pass
     else:
-        # Revocation should work. Re-revocation, even with the cert key, should
-        # fail because we simply don't support updating revocation info.
-        sub_client.revoke(josepy.ComparableX509(cert), 0)
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
-        verify_akamai_purge()
+        raise(Exception("Re-revoked for a bad reason"))
 
-        try:
-            cert_client.revoke(josepy.ComparableX509(cert), 1)
-        except messages.Error:
-            pass
-        else:
-            raise(Exception("Re-revoked already revoked cert"))
+    # Re-revocation for keyCompromise should work, as long as it is done
+    # via the cert key to demonstrate said compromise.
+    reset_akamai_purges()
+    cert_client.revoke(josepy.ComparableX509(cert), 1)
+    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_akamai_purge()
 
+    # A subsequent attempt should fail, because the cert is already revoked
+    # for keyCompromise.
+    try:
+        cert_client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass
+    else:
+        raise(Exception("Re-revoked already keyCompromise'd cert"))
+
+    # The same is true even when using the cert key.
+    try:
+        cert_client.revoke(josepy.ComparableX509(cert), 1)
+    except messages.Error:
+        pass
+    else:
+        raise(Exception("Re-revoked already keyCompromise'd cert"))
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
