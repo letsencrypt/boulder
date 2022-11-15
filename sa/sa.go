@@ -183,7 +183,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		var row struct {
 			Count int64
 		}
-		err := txWithCtx.SelectOne(&row, "SELECT count(1) as count FROM certificates WHERE serial=?", serial)
+		err := txWithCtx.SelectOne(&row, "SELECT COUNT(*) as count FROM certificates WHERE serial=?", serial)
 		if err != nil {
 			return nil, err
 		}

@@ -183,7 +183,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM registrations
+		`SELECT COUNT(*) FROM registrations
 		 WHERE
 		 initialIP = :ip AND
 		 :earliest < createdAt AND
@@ -194,7 +194,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 			"latest":   time.Unix(0, req.Range.Latest),
 		})
 	if err != nil {
-		return &sapb.Count{Count: -1}, err
+		return nil, err
 	}
 	return &sapb.Count{Count: count}, nil
 }
@@ -216,7 +216,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 	beginIP, endIP := ipRange(req.Ip)
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM registrations
+		`SELECT COUNT(*) FROM registrations
 		 WHERE
 		 :beginIP <= initialIP AND
 		 initialIP < :endIP AND
@@ -229,7 +229,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 			"endIP":    endIP,
 		})
 	if err != nil {
-		return &sapb.Count{Count: -1}, err
+		return nil, err
 	}
 	return &sapb.Count{Count: count}, nil
 }
@@ -430,7 +430,7 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM fqdnSets
+		`SELECT COUNT(*) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
 		HashNames(req.Domains),
@@ -548,7 +548,7 @@ func (ssa *SQLStorageAuthorityRO) PreviousCertificateExists(ctx context.Context,
 	var count int
 	err = ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM certificates
+		`SELECT COUNT(*) FROM certificates
 		WHERE serial = ?
 		AND registrationID = ?`,
 		serial,
@@ -1025,7 +1025,7 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
-		`SELECT COUNT(1) FROM authz2 WHERE
+		`SELECT COUNT(*) FROM authz2 WHERE
 		registrationID = :regID AND
 		expires > :expires AND
 		status = :status`,
@@ -1102,7 +1102,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM authz2 WHERE
+		`SELECT COUNT(*) FROM authz2 WHERE
 		registrationID = :regID AND
 		status = :status AND
 		expires > :expiresEarliest AND

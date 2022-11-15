@@ -1914,7 +1914,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 		var count int
 		err := sa.dbMap.SelectOne(
 			&count,
-			`SELECT COUNT(1) FROM issuedNames
+			`SELECT COUNT(*) FROM issuedNames
 		WHERE reversedName = ?
 		AND renewal = ?`,
 			ReverseName(name),
