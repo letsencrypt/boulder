@@ -194,7 +194,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 			"latest":   time.Unix(0, req.Range.Latest),
 		})
 	if err != nil {
-		return &sapb.Count{Count: 0}, err
+		return nil, err
 	}
 	return &sapb.Count{Count: count}, nil
 }
@@ -229,7 +229,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 			"endIP":    endIP,
 		})
 	if err != nil {
-		return &sapb.Count{Count: 0}, err
+		return nil, err
 	}
 	return &sapb.Count{Count: count}, nil
 }
