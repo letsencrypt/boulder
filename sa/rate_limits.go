@@ -58,7 +58,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(db db.SelectExecer, names
 // countCertificates returns the count of certificates issued for a domain's
 // eTLD+1 (aka base domain), during a given time range. It assumes that the
 // given db already has a context associated with it.
-func (ssa *SQLStorageAuthority) countCertificates(dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
+func (ssa *SQLStorageAuthorityRO) countCertificates(dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
 	latest := time.Unix(0, timeRange.Latest)
 	var results []struct {
 		Count int64

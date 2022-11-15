@@ -36,6 +36,14 @@
             "wfe.boulder"
           ]
         },
+        "sa.StorageAuthorityReadOnly": {
+          "clientNames": [
+            "crl-updater.boulder",
+            "health-checker.boulder",
+            "ocsp-responder.boulder",
+            "wfe.boulder"
+          ]
+        },
         "grpc.health.v1.Health": {
           "clientNames": [
             "health-checker.boulder"
@@ -63,10 +71,7 @@
       ".hierarchy/intermediate-cert-rsa-b.pem": 4
     },
     "features": {
-      "FasterNewOrdersRateLimit": true,
       "StoreRevokerInfo": true,
-      "GetAuthzReadOnly": true,
-      "GetAuthzUseIndex": true,
       "ROCSPStage6": true
     }
   },

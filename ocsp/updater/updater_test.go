@@ -55,7 +55,7 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	sa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, fc, log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, fc, log, metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Failed to create SA")
 
 	updater, err := New(
@@ -75,7 +75,7 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 	)
 	test.AssertNotError(t, err, "Failed to create newUpdater")
 
-	return updater, isa.SA{Impl: sa}, dbMap, fc, cleanUp
+	return updater, isa.SA{Impl: ssa}, dbMap, fc, cleanUp
 }
 
 func nowNano(fc clock.Clock) int64 {

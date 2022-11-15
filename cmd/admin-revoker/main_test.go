@@ -28,7 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -447,11 +446,8 @@ func setup(t *testing.T) testCtx {
 	}
 	incidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidents, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
-		"../../test/hierarchy/int-r3.cert.pem": 102,
-	})
-	test.AssertNotError(t, err, "error loading issuers")
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, 1, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
