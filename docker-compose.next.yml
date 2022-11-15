@@ -3,5 +3,27 @@ services:
   boulder:
     environment:
       FAKE_DNS: 10.77.77.77
-      BOULDER_CONFIG_DIR: test/config-next
+      BOULDER_CONFIG_DIR: &boulder_config_dir test/config-next
       GOFLAGS: -mod=vendor
+  # TODO(#6517): remove bredis_clusterer and both nodes.
+  bredis_clusterer:
+    environment:
+      BOULDER_CONFIG_DIR: *boulder_config_dir
+
+  bredis_1:
+    image: redis:6.2.7
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+        ipv4_address: 10.33.33.2
+
+  bredis_2:
+    image: redis:6.2.7
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis.config
+    networks:
+      redisnet:
+        ipv4_address: 10.33.33.3

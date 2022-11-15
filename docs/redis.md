@@ -1,5 +1,7 @@
 # Redis
 
+TODO(#6517): Update this to reflect the use of Redis Ring.
+
 We use Redis Cluster for OCSP. The Boulder dev environment stands up a cluster
 of 6 nodes, with 3 primaries and 3 replicas. Check docker-compose.yml for
 details of those.
