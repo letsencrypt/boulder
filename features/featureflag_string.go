@@ -42,11 +42,12 @@ func _() {
 	_ = x[AllowUnrecognizedFeatures-31]
 	_ = x[ROCSPStage6-32]
 	_ = x[ROCSPStage7-33]
+	_ = x[ExpirationMailerUsesJoin-34]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsExpirationMailerDontLookTwiceOldTLSInboundOldTLSOutboundROCSPStage1ROCSPStage2ROCSPStage3GetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstFasterNewOrdersRateLimitAllowV1RegistrationRestrictRSAKeySizesAllowReRevocationMozRevocationReasonsSHA1CSRsRejectDuplicateCSRExtensionsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETStoreRevokerInfoECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7"
+const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsExpirationMailerDontLookTwiceOldTLSInboundOldTLSOutboundROCSPStage1ROCSPStage2ROCSPStage3GetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstFasterNewOrdersRateLimitAllowV1RegistrationRestrictRSAKeySizesAllowReRevocationMozRevocationReasonsSHA1CSRsRejectDuplicateCSRExtensionsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETStoreRevokerInfoECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoin"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 157, 170, 184, 195, 206, 217, 233, 249, 279, 303, 322, 341, 358, 378, 386, 414, 434, 447, 461, 479, 497, 513, 524, 540, 565, 576, 587}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 157, 170, 184, 195, 206, 217, 233, 249, 279, 303, 322, 341, 358, 378, 386, 414, 434, 447, 461, 479, 497, 513, 524, 540, 565, 576, 587, 611}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

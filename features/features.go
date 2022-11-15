@@ -72,6 +72,11 @@ const (
 	// revocation. This affects codepaths in both the RA (revocation) and the CA
 	// (precert "birth certificates").
 	ROCSPStage7
+
+	// ExpirationMailerUsesJoin enables using a JOIN query in expiration-mailer
+	// rather than a SELECT from certificateStatus followed by thousands of
+	// one-row SELECTs from certificates.
+	ExpirationMailerUsesJoin
 )
 
 // List of features and their default value, protected by fMu
@@ -110,6 +115,7 @@ var features = map[FeatureFlag]bool{
 	ROCSPStage3:                    false,
 	ROCSPStage6:                    false,
 	ROCSPStage7:                    false,
+	ExpirationMailerUsesJoin:       false,
 }
 
 var fMu = new(sync.RWMutex)

@@ -230,10 +230,11 @@ func init() {
 }
 
 func TestProcessCerts(t *testing.T) {
-	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+	expiresIn := time.Hour * 24 * 7
+	testCtx := setup(t, []time.Duration{expiresIn})
 
 	certs := addExpiringCerts(t, testCtx)
-	testCtx.m.processCerts(context.Background(), certs)
+	testCtx.m.processCerts(context.Background(), certs, expiresIn)
 	// Test that the lastExpirationNagSent was updated for the certificate
 	// corresponding to serial4, which is set up as "already renewed" by
 	// addExpiringCerts.
@@ -246,7 +247,8 @@ func TestProcessCerts(t *testing.T) {
 // There's an account with an expiring certificate but no email address. We shouldn't examine
 // that certificate repeatedly; we should mark it as if it had an email sent already.
 func TestNoContactCertIsNotRenewed(t *testing.T) {
-	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+	expiresIn := time.Hour * 24 * 7
+	testCtx := setup(t, []time.Duration{expiresIn})
 
 	reg, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, nil)
 	test.AssertNotError(t, err, "Couldn't store regA")
@@ -300,6 +302,8 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "creating cert A")
 
+	expires := testCtx.fc.Now().Add(23 * time.Hour)
+
 	err = insertCertificate(cert, time.Time{})
 	test.AssertNotError(t, err, "inserting certificate")
 
@@ -308,8 +312,8 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	err = setupDBMap.Insert(&core.FQDNSet{
 		SetHash: sa.HashNames(names),
 		Serial:  core.SerialToString(serial2),
-		Issued:  cert.Issued.Add(time.Hour),
-		Expires: cert.Expires.Add(time.Hour),
+		Issued:  testCtx.fc.Now().Add(time.Hour),
+		Expires: expires.Add(time.Hour),
 	})
 	test.AssertNotError(t, err, "inserting FQDNSet for renewal")
 
@@ -332,11 +336,12 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 }
 
 func TestProcessCertsParallel(t *testing.T) {
-	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+	expiresIn := time.Hour * 24 * 7
+	testCtx := setup(t, []time.Duration{expiresIn})
 
 	testCtx.m.parallelSends = 2
 	certs := addExpiringCerts(t, testCtx)
-	testCtx.m.processCerts(context.Background(), certs)
+	testCtx.m.processCerts(context.Background(), certs, expiresIn)
 	// Test that the lastExpirationNagSent was updated for the certificate
 	// corresponding to serial4, which is set up as "already renewed" by
 	// addExpiringCerts.
@@ -353,12 +358,13 @@ func (e erroringMailClient) Connect() (bmail.Conn, error) {
 }
 
 func TestProcessCertsConnectError(t *testing.T) {
-	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
+	expiresIn := time.Hour * 24 * 7
+	testCtx := setup(t, []time.Duration{expiresIn})
 
 	testCtx.m.mailer = erroringMailClient{}
 	certs := addExpiringCerts(t, testCtx)
 	// Checking that this terminates rather than deadlocks
-	testCtx.m.processCerts(context.Background(), certs)
+	testCtx.m.processCerts(context.Background(), certs, expiresIn)
 }
 
 func TestFindExpiringCertificates(t *testing.T) {
@@ -431,7 +437,7 @@ func makeRegistration(sac sapb.StorageAuthorityClient, id int64, jsonKey []byte,
 	return reg, nil
 }
 
-func makeCertificate(regID int64, serial *big.Int, dnsNames []string, expires time.Duration, fc clock.FakeClock) (*core.Certificate, error) {
+func makeCertificate(regID int64, serial *big.Int, dnsNames []string, expires time.Duration, fc clock.FakeClock) (certDERWithRegID, error) {
 	// Expires in <1d, last nag was the 4d nag
 	template := &x509.Certificate{
 		NotAfter:     fc.Now().Add(expires),
@@ -440,37 +446,47 @@ func makeCertificate(regID int64, serial *big.Int, dnsNames []string, expires ti
 	}
 	certDer, err := x509.CreateCertificate(rand.Reader, template, template, &testKey.PublicKey, testKey)
 	if err != nil {
-		return nil, err
+		return certDERWithRegID{}, err
 	}
-	return &core.Certificate{
-		RegistrationID: regID,
-		Serial:         core.SerialToString(template.SerialNumber),
-		Expires:        template.NotAfter,
-		DER:            certDer,
+	return certDERWithRegID{
+		RegID: regID,
+		DER:   certDer,
 	}, nil
 }
 
-func insertCertificate(cert *core.Certificate, lastNagSent time.Time) error {
+func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
+	parsedCert, err := x509.ParseCertificate(cert.DER)
+	if err != nil {
+		return err
+	}
+
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	if err != nil {
 		return err
 	}
-	err = setupDBMap.Insert(cert)
+	err = setupDBMap.Insert(&core.Certificate{
+		RegistrationID: cert.RegID,
+		Serial:         core.SerialToString(parsedCert.SerialNumber),
+		Issued:         parsedCert.NotBefore,
+		Expires:        parsedCert.NotAfter,
+		DER:            cert.DER,
+	})
 	if err != nil {
 		return fmt.Errorf("inserting certificate: %w", err)
 	}
+
 	return setupDBMap.Insert(&core.CertificateStatus{
-		Serial:                cert.Serial,
+		Serial:                core.SerialToString(parsedCert.SerialNumber),
 		LastExpirationNagSent: lastNagSent,
 		Status:                core.OCSPStatusGood,
-		NotAfter:              cert.Expires,
+		NotAfter:              parsedCert.NotAfter,
 		OCSPLastUpdated:       time.Time{},
 		RevokedDate:           time.Time{},
 		RevokedReason:         0,
 	})
 }
 
-func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
+func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 	// Add some expiring certificates and registrations
 	regA, err := makeRegistration(ctx.ssa, 1, jsonKeyA, []string{emailA})
 	test.AssertNotError(t, err, "Couldn't store regA")
@@ -544,7 +560,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []core.Certificate {
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
 	err = setupDBMap.Insert(fqdnStatusDRenewed)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusDRenewed")
-	return []core.Certificate{*certA, *certB, *certC, *certD}
+	return []certDERWithRegID{certA, certB, certC, certD}
 }
 
 func countGroupsAtCapacity(group string, counter *prometheus.GaugeVec) int {
@@ -683,13 +699,6 @@ func TestCertIsRenewed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cert := &core.Certificate{
-			RegistrationID: reg.Id,
-			Serial:         testData.stringSerial,
-			Issued:         testData.NotBefore,
-			Expires:        testData.NotAfter,
-			DER:            certDer,
-		}
 		fqdnStatus := &core.FQDNSet{
 			SetHash: sa.HashNames(testData.DNS),
 			Serial:  testData.stringSerial,
@@ -697,7 +706,7 @@ func TestCertIsRenewed(t *testing.T) {
 			Expires: testData.NotAfter,
 		}
 
-		err = insertCertificate(cert, time.Time{})
+		err = insertCertificate(certDERWithRegID{DER: certDer, RegID: reg.Id}, time.Time{})
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
 
 		err = setupDBMap.Insert(fqdnStatus)
@@ -842,6 +851,8 @@ func TestDedupOnRegistration(t *testing.T) {
 		testCtx.fc)
 	test.AssertNotError(t, err, "making certificate")
 
+	expires := testCtx.fc.Now().Add(48 * time.Hour)
+
 	err = insertCertificate(certA, time.Unix(0, 0))
 	test.AssertNotError(t, err, "inserting certificate")
 	err = insertCertificate(certB, time.Unix(0, 0))
@@ -863,7 +874,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
 			domains,
-			certB.Expires.Format(time.RFC822Z)),
+			expires.Format(time.RFC822Z)),
 	}
 	test.AssertEquals(t, expected, testCtx.mc.Messages[0])
 }
