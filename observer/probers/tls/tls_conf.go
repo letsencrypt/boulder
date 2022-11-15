@@ -17,9 +17,9 @@ const (
 
 // TLSConf is exported to receive YAML configuration.
 type TLSConf struct {
-	URL        string `yaml:"url"`
-	Root       string `yaml:"root"`
-	Response   string `yaml:"response"`
+	URL      string `yaml:"url"`
+	Root     string `yaml:"root"`
+	Response string `yaml:"response"`
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.

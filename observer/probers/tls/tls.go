@@ -1,19 +1,19 @@
 package probers
 
 import (
-	"fmt"
-	"time"
 	"crypto/tls"
+	"fmt"
 	"github.com/prometheus/client_golang/prometheus"
+	"time"
 )
 
 // TLSProbe is the exported 'Prober' object for monitors configured to
 // perform TLS protocols.
 type TLSProbe struct {
-	url			string
-	root		string
-	response	string
-	certExpiry	*prometheus.GaugeVec
+	url        string
+	root       string
+	response   string
+	certExpiry *prometheus.GaugeVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
@@ -44,7 +44,7 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	for _, chain := range chains {
 		root_cert := chain[len(chain)-1]
 		if p.root == fmt.Sprintf("/O=%s/CN=%s", root_cert.Issuer.Organization, root_cert.Issuer.CommonName) {
- 			expected_root = true
+			expected_root = true
 			break
 		}
 	}
