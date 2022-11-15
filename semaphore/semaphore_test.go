@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/semaphore"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/sync/semaphore"
 )
 
 const maxSleep = 1 * time.Millisecond
@@ -31,7 +31,7 @@ func TestWeighted(t *testing.T) {
 
 	n := runtime.GOMAXPROCS(0)
 	loops := 10000 / n
-	sem := semaphore.NewWeighted(int64(n))
+	sem := semaphore.NewWeighted(int64(n), 0)
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 0; i < n; i++ {
@@ -52,7 +52,7 @@ func TestWeightedPanic(t *testing.T) {
 			t.Fatal("release of an unacquired weighted semaphore did not panic")
 		}
 	}()
-	w := semaphore.NewWeighted(1)
+	w := semaphore.NewWeighted(1, 0)
 	w.Release(1)
 }
 
@@ -60,7 +60,7 @@ func TestWeightedTryAcquire(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	sem := semaphore.NewWeighted(2)
+	sem := semaphore.NewWeighted(2, 0)
 	tries := []bool{}
 	sem.Acquire(ctx, 1)
 	tries = append(tries, sem.TryAcquire(1))
@@ -84,7 +84,7 @@ func TestWeightedAcquire(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	sem := semaphore.NewWeighted(2)
+	sem := semaphore.NewWeighted(2, 0)
 	tryAcquire := func(n int64) bool {
 		ctx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 		defer cancel()
@@ -114,7 +114,7 @@ func TestWeightedDoesntBlockIfTooBig(t *testing.T) {
 	t.Parallel()
 
 	const n = 2
-	sem := semaphore.NewWeighted(n)
+	sem := semaphore.NewWeighted(n, 0)
 	{
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -133,7 +133,7 @@ func TestWeightedDoesntBlockIfTooBig(t *testing.T) {
 		})
 	}
 	if err := g.Wait(); err != nil {
-		t.Errorf("semaphore.NewWeighted(%v) failed to AcquireCtx(_, 1) with AcquireCtx(_, %v) pending", n, n+1)
+		t.Errorf("semaphore.NewWeighted(%v, 0) failed to AcquireCtx(_, 1) with AcquireCtx(_, %v) pending", n, n+1)
 	}
 }
 
@@ -144,7 +144,7 @@ func TestLargeAcquireDoesntStarve(t *testing.T) {
 
 	ctx := context.Background()
 	n := int64(runtime.GOMAXPROCS(0))
-	sem := semaphore.NewWeighted(n)
+	sem := semaphore.NewWeighted(n, 0)
 	running := true
 
 	var wg sync.WaitGroup
@@ -172,7 +172,7 @@ func TestLargeAcquireDoesntStarve(t *testing.T) {
 
 // translated from https://github.com/zhiqiangxu/util/blob/master/mutex/crwmutex_test.go#L43
 func TestAllocCancelDoesntStarve(t *testing.T) {
-	sem := semaphore.NewWeighted(10)
+	sem := semaphore.NewWeighted(10, 0)
 
 	// Block off a portion of the semaphore so that Acquire(_, 10) can eventually succeed.
 	sem.Acquire(context.Background(), 1)
@@ -199,4 +199,24 @@ func TestAllocCancelDoesntStarve(t *testing.T) {
 		t.Fatalf("Acquire(_, 1) failed unexpectedly: %v", err)
 	}
 	sem.Release(1)
+}
+
+func TestMaxWaiters(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sem := semaphore.NewWeighted(1, 10)
+	sem.Acquire(ctx, 1)
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			sem.Acquire(ctx, 1)
+			<-ctx.Done()
+		}()
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	err := sem.Acquire(ctx, 1)
+	if err != semaphore.ErrMaxWaiters {
+		t.Errorf("expected error when maxWaiters was reached, but got %#v", err)
+	}
 }

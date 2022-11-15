@@ -45,7 +45,7 @@ func TestLiveResponse(t *testing.T) {
 	fakeResp, _, _ := ocsp_test.FakeResponse(ocsp.Response{
 		SerialNumber: eeSerial,
 	})
-	source := New(mockOCSPGenerator{fakeResp.Raw}, 1)
+	source := New(mockOCSPGenerator{fakeResp.Raw}, 1, 0)
 	resp, err := source.Response(context.Background(), &ocsp.Request{
 		SerialNumber: eeSerial,
 	})
@@ -59,7 +59,7 @@ func TestLiveResponse(t *testing.T) {
 
 func TestNotFound(t *testing.T) {
 	eeSerial := big.NewInt(1)
-	source := New(notFoundOCSPGenerator{}, 1)
+	source := New(notFoundOCSPGenerator{}, 1, 0)
 	_, err := source.Response(context.Background(), &ocsp.Request{
 		SerialNumber: eeSerial,
 	})

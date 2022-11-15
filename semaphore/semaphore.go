@@ -1,6 +1,7 @@
 // Copyright 2017 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
+// Modified by Boulder to provide a load-shedding mechanism.
 
 // Package semaphore provides a weighted semaphore implementation.
 package semaphore // import "golang.org/x/sync/semaphore"
@@ -8,6 +9,7 @@ package semaphore // import "golang.org/x/sync/semaphore"
 import (
 	"container/list"
 	"context"
+	"errors"
 	"sync"
 )
 
@@ -16,20 +18,28 @@ type waiter struct {
 	ready chan<- struct{} // Closed when semaphore acquired.
 }
 
+// ErrMaxWaiters is returned when Acquire is called, but there are more than
+// maxWaiters waiters.
+var ErrMaxWaiters = errors.New("too many waiters")
+
 // NewWeighted creates a new weighted semaphore with the given
 // maximum combined weight for concurrent access.
-func NewWeighted(n int64) *Weighted {
-	w := &Weighted{size: n}
+// maxWaiters provides a limit such that calls to Acquire
+// will immediately error if the number of waiters is that high.
+// A maxWaiters of zero means no limit.
+func NewWeighted(n int64, maxWaiters int) *Weighted {
+	w := &Weighted{size: n, maxWaiters: maxWaiters}
 	return w
 }
 
 // Weighted provides a way to bound concurrent access to a resource.
 // The callers can request access with a given weight.
 type Weighted struct {
-	size    int64
-	cur     int64
-	mu      sync.Mutex
-	waiters list.List
+	size       int64
+	cur        int64
+	mu         sync.Mutex
+	waiters    list.List
+	maxWaiters int
 }
 
 // Acquire acquires the semaphore with a weight of n, blocking until resources
@@ -37,6 +47,8 @@ type Weighted struct {
 // ctx.Err() and leaves the semaphore unchanged.
 //
 // If ctx is already done, Acquire may still succeed without blocking.
+//
+// If there are maxWaiters waiters, Acquire will return an error immediately.
 func (s *Weighted) Acquire(ctx context.Context, n int64) error {
 	s.mu.Lock()
 	if s.size-s.cur >= n && s.waiters.Len() == 0 {
@@ -52,6 +64,10 @@ func (s *Weighted) Acquire(ctx context.Context, n int64) error {
 		return ctx.Err()
 	}
 
+	if s.maxWaiters > 0 && s.waiters.Len() >= s.maxWaiters {
+		return ErrMaxWaiters
+	}
+
 	ready := make(chan struct{})
 	w := waiter{n: n, ready: ready}
 	elem := s.waiters.PushBack(w)
@@ -64,7 +80,7 @@ func (s *Weighted) Acquire(ctx context.Context, n int64) error {
 		select {
 		case <-ready:
 			// Acquired the semaphore after we were canceled.  Rather than trying to
-			// fix up the queue, just pretend we didn't notice the cancelation.
+			// fix up the queue, just pretend we didn't notice the cancellation.
 			err = nil
 		default:
 			isFront := s.waiters.Front() == elem
