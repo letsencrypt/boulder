@@ -661,6 +661,11 @@ func (va *ValidationAuthorityImpl) PerformValidation(ctx context.Context, req *v
 		prob = probs.ServerInternal("Records for validation failed sanity check")
 	}
 
+	// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
+	// It will also later be serialized in JSON, which defaults to UTF-8. Make
+	// sure it is UTF-8 clean now.
+	prob = filterProblemDetails(prob)
+
 	var problemType string
 	if prob != nil {
 		problemType = string(prob.Type)
