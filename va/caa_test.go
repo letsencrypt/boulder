@@ -188,10 +188,17 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, identifier.DNSIdentifier("caa-timeout.com"), nil)
+
+	params := &caaParams{
+		accountURIID:     12345,
+		validationMethod: core.ChallengeTypeHTTP01,
+	}
+
+	err := va.checkCAA(ctx, identifier.DNSIdentifier("caa-timeout.com"), params)
 	if err.Type != probs.DNSProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
+
 	expected := "error"
 	if err.Detail != expected {
 		t.Errorf("checkCAA: got %#v, expected %#v", err.Detail, expected)
@@ -611,7 +618,7 @@ func TestCAAFailure(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
-	_, prob := va.validate(ctx, dnsi("reserved.com"), 0, chall)
+	_, prob := va.validate(ctx, dnsi("reserved.com"), 1, chall)
 	if prob == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
@@ -687,6 +694,17 @@ func TestAccountURIMatches(t *testing.T) {
 			},
 			id:   123456,
 			want: true,
+		},
+		{
+			name: "non-uri accounturi",
+			params: map[string]string{
+				"accounturi": "\\invalid 😎/123456",
+			},
+			prefixes: []string{
+				"\\invalid 😎",
+			},
+			id:   123456,
+			want: false,
 		},
 		{
 			name: "simple match",
@@ -798,6 +816,14 @@ func TestValidationMethodMatches(t *testing.T) {
 			name: "only comma",
 			params: map[string]string{
 				"validationmethods": ",",
+			},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name: "malformed method",
+			params: map[string]string{
+				"validationmethods": "howdy !",
 			},
 			method: core.ChallengeTypeHTTP01,
 			want:   false,

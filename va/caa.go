@@ -3,6 +3,8 @@ package va
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -56,6 +58,10 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
 	params *caaParams) *probs.ProblemDetails {
+	if params == nil || params.validationMethod == "" || params.accountURIID == 0 {
+		return probs.ServerInternal("expected validationMethod or accountURIID not provided to checkCAA")
+	}
+
 	present, valid, response, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
 		return probs.DNS(err.Error())
@@ -278,8 +284,8 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 // issue/issuewild CAA record. This follows RFC 8659 Section 4.2 and Section 4.3
 // (https://www.rfc-editor.org/rfc/rfc8659.html#section-4). It returns the
 // domain name (which may be the empty string if the record forbids issuance)
-// and a tag-value map of CAA parameter, or a descriptive error if the record is
-// malformed.
+// and a tag-value map of CAA parameters, or a descriptive error if the record
+// is malformed.
 func parseCAARecord(caa *dns.CAA) (string, map[string]string, error) {
 	isWSP := func(r rune) bool {
 		return r == '\t' || r == ' '
@@ -339,13 +345,19 @@ func caaDomainMatches(caaDomain string, issuerDomain string) bool {
 }
 
 // caaAccountURIMatches checks that the accounturi CAA parameter, if present,
-// matches the unique account URI we expect. We support multiple possible
+// matches one of the specific account URIs we expect. We support multiple
 // account URI prefixes to handle accounts which were registered under ACMEv1.
 // See RFC 8657 Section 3: https://www.rfc-editor.org/rfc/rfc8657.html#section-3
 func caaAccountURIMatches(caaParams map[string]string, accountURIPrefixes []string, accountID int64) bool {
 	accountURI, ok := caaParams["accounturi"]
 	if !ok {
 		return true
+	}
+
+	// If the accounturi is not formatted according to RFC 3986, reject it.
+	_, err := url.Parse(accountURI)
+	if err != nil {
+		return false
 	}
 
 	for _, prefix := range accountURIPrefixes {
@@ -355,6 +367,8 @@ func caaAccountURIMatches(caaParams map[string]string, accountURIPrefixes []stri
 	}
 	return false
 }
+
+var validationMethodRegexp = regexp.MustCompile(`^[[:alnum:]-]+$`)
 
 // caaValidationMethodMatches checks that the validationmethods CAA parameter,
 // if present, contains the exact name of the ACME validation method used to
@@ -367,6 +381,12 @@ func caaValidationMethodMatches(caaParams map[string]string, method core.AcmeCha
 	}
 
 	for _, m := range strings.Split(commaSeparatedMethods, ",") {
+		// If any listed method does not match the ABNF 1*(ALPHA / DIGIT / "-""),
+		// immediately reject the whole record.
+		if !validationMethodRegexp.MatchString(m) {
+			return false
+		}
+
 		caaMethod := core.AcmeChallenge(m)
 		if !caaMethod.IsValid() {
 			continue
