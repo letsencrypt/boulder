@@ -47,6 +47,7 @@ func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 		url       interface{}
 		rcodes    interface{}
 		useragent interface{}
+		insecure  interface{}
 	}
 	tests := []struct {
 		name    string
@@ -54,8 +55,8 @@ func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 		want    probers.Configurer
 		wantErr bool
 	}{
-		{"valid", fields{"google.com", []int{200}, "boulder_observer"}, HTTPConf{"google.com", []int{200}, "boulder_observer"}, false},
-		{"invalid", fields{42, 42, 42}, nil, true},
+		{"valid", fields{"google.com", []int{200}, "boulder_observer", false}, HTTPConf{"google.com", []int{200}, "boulder_observer", false}, false},
+		{"invalid", fields{42, 42, 42, 42}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,6 +64,7 @@ func TestHTTPConf_UnmarshalSettings(t *testing.T) {
 				"url":       tt.fields.url,
 				"rcodes":    tt.fields.rcodes,
 				"useragent": tt.fields.useragent,
+				"insecure":  tt.fields.insecure,
 			}
 			settingsBytes, _ := yaml.Marshal(settings)
 			c := HTTPConf{}
