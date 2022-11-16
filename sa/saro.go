@@ -645,7 +645,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 	order.Names = reversedNames
 
 	// Calculate the status for the order
-	status, err := ssa.statusForOrder(ctx, order)
+	status, err := statusForOrder(ssa.dbReadOnlyMap.WithContext(ctx), order, ssa.clk.Now())
 	if err != nil {
 		return nil, err
 	}

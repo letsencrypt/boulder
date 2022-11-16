@@ -1,7 +1,6 @@
 package sa
 
 import (
-	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -813,8 +812,9 @@ var blockedKeysColumns = "keyHash, added, source, comment"
 //   - If all of the order's authorizations are valid, and we haven't begun
 //     processing, then the order is status ready.
 //
-// An error is returned for any other case.
-func (ssa *SQLStorageAuthorityRO) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
+// An error is returned for any other case. It assumes that the provided
+// database selector already has a context associated with it.
+func statusForOrder(s db.Selector, order *corepb.Order, now time.Time) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
 		return string(core.StatusInvalid), nil
@@ -828,12 +828,12 @@ func (ssa *SQLStorageAuthorityRO) statusForOrder(ctx context.Context, order *cor
 	// Because of this purging fetching the authz's for an expired order may
 	// return fewer authz objects than expected, triggering a 500 error response.
 	orderExpiry := time.Unix(0, order.Expires)
-	if orderExpiry.Before(ssa.clk.Now()) {
+	if orderExpiry.Before(now) {
 		return string(core.StatusInvalid), nil
 	}
 
 	// Get the full Authorization objects for the order
-	authzValidityInfo, err := ssa.getAuthorizationStatuses(ctx, order.V2Authorizations)
+	authzValidityInfo, err := getAuthorizationStatuses(s, order.V2Authorizations)
 	// If there was an error getting the authorizations, return it immediately
 	if err != nil {
 		return "", err
@@ -873,7 +873,7 @@ func (ssa *SQLStorageAuthorityRO) statusForOrder(ctx context.Context, order *cor
 				"Order is in an invalid state. Authz has invalid status %s",
 				info.Status)
 		}
-		if info.Expires.Before(ssa.clk.Now()) {
+		if info.Expires.Before(now) {
 			expiredAuthzs++
 		}
 	}
@@ -928,7 +928,10 @@ type authzValidity struct {
 	Expires time.Time
 }
 
-func (ssa *SQLStorageAuthorityRO) getAuthorizationStatuses(ctx context.Context, ids []int64) ([]authzValidity, error) {
+// getAuthorizationStatuses takes a sequence of authz IDs, and returns the
+// status and expiration date of each of them. It assumes that the provided
+// database selector already has a context associated with it.
+func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, error) {
 	var qmarks []string
 	var params []interface{}
 	for _, id := range ids {
@@ -939,7 +942,7 @@ func (ssa *SQLStorageAuthorityRO) getAuthorizationStatuses(ctx context.Context, 
 		Status  uint8
 		Expires time.Time
 	}
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
+	_, err := s.Select(
 		&validityInfo,
 		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)", strings.Join(qmarks, ",")),
 		params...,
