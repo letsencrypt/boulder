@@ -75,7 +75,7 @@ func (c TLSConf) validateResponse() error {
 		}
 	}
 	return fmt.Errorf(
-		"invalid `response`, got: %s\nMust be one of 'valid', 'expired' or 'revoked'.", c.Response)
+		"invalid response, got %q . Must be one of %s", c.Response, acceptable)
 
 }
 
