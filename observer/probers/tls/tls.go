@@ -13,8 +13,6 @@ import (
 	"time"
 )
 
-var StatusCode int
-
 const (
 	Success = iota
 	UnexpectedRoot
@@ -23,7 +21,7 @@ const (
 	UnknownOCSPCheck
 	FailedOCSPCheck
 	FailedTLSConnection
-	Unknown
+	UnknownFailure
 )
 
 // TLSProbe is the exported `Prober` object for monitors configured to
@@ -33,7 +31,7 @@ type TLSProbe struct {
 	root       string
 	response   string
 	certExpiry *prometheus.GaugeVec
-	StatusCode *prometheus.GaugeVec
+	outcome    *prometheus.GaugeVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
@@ -46,63 +44,64 @@ func (p TLSProbe) Kind() string {
 	return "TLS"
 }
 
-func isOCSPRevoked(cert, issuer *x509.Certificate) bool {
+func isOCSPRevoked(outcome int, cert, issuer *x509.Certificate) (int, bool) {
 	req, err := ocsp.CreateRequest(cert, issuer, nil)
 	if err != nil {
-		StatusCode = FailedOCSPCheck
-		return false
+		outcome = FailedOCSPCheck
+		return outcome, false
 	}
 
 	url := fmt.Sprintf("%s/%s", cert.OCSPServer[0], base64.StdEncoding.EncodeToString(req))
 	res, err := http.Get(url)
 	if err != nil {
-		StatusCode = FailedOCSPCheck
-		return false
+		outcome = FailedOCSPCheck
+		return outcome, false
 	}
 
 	output, err := io.ReadAll(res.Body)
 	if err != nil {
-		StatusCode = FailedOCSPCheck
-		return false
+		outcome = FailedOCSPCheck
+		return outcome, false
 	}
 
 	ocspRes, err := ocsp.ParseResponseForCert(output, cert, issuer)
 	if err != nil {
-		StatusCode = FailedOCSPCheck
-		return false
+		outcome = FailedOCSPCheck
+		return outcome, false
 	}
 
 	if ocspRes.Status == ocsp.Revoked {
-		return true
+		return outcome, true
 	} else {
 		if ocspRes.Status == ocsp.Unknown {
-			StatusCode = UnknownOCSPCheck
+			outcome = UnknownOCSPCheck
 		}
-		return false
+		return outcome, false
 	}
 }
 
-func (p TLSProbe) getExpiredCertInfo() (string, string, time.Duration) {
+func (p TLSProbe) getExpiredCertInfo(outcome int) (int, string, string, time.Duration) {
 	conf := &tls.Config{InsecureSkipVerify: true}
 	conn, err := tls.Dial("tcp", p.url+":443", conf)
 	if err != nil {
-		StatusCode = FailedTLSConnection
-		return "", "", 0
+		outcome = FailedTLSConnection
+		return outcome, "", "", 0
 	}
 	peers := conn.ConnectionState().PeerCertificates
 	expiry_date := peers[0].NotAfter
 	root := peers[len(peers)-1].Issuer
-	return root.CommonName, root.Organization[0], time.Since(expiry_date)
+	return outcome, root.CommonName, root.Organization[0], time.Since(expiry_date)
 }
 
-func updateStatusCode(is_expected_root, is_expected_response bool) {
+func updateOutcome(outcome int, is_expected_root, is_expected_response bool) int {
 	if !is_expected_root && !is_expected_response {
-		StatusCode = UnexpectedRootAndResponse
+		outcome = UnexpectedRootAndResponse
 	} else if !is_expected_root {
-		StatusCode = UnexpectedRoot
+		outcome = UnexpectedRoot
 	} else if !is_expected_response {
-		StatusCode = UnexpectedResponse
+		outcome = UnexpectedResponse
 	}
+	return outcome
 }
 
 // Probe performs the configured TLS protocol.
@@ -113,7 +112,7 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	root_cn, root_o := "", ""
 	var time_to_expiry time.Duration
 	var time_since_expiry time.Duration
-	StatusCode = Success
+	outcome := Success
 
 	start := time.Now()
 	conn, err := tls.Dial("tcp", p.url+":443", &tls.Config{})
@@ -125,9 +124,9 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 				is_expected_response = true
 			}
 			// incorrect response, but check the rest anyways
-			root_cn, root_o, time_since_expiry = p.getExpiredCertInfo()
+			outcome, root_cn, root_o, time_since_expiry = p.getExpiredCertInfo(outcome)
 		} else {
-			StatusCode = FailedTLSConnection
+			outcome = FailedTLSConnection
 		}
 	} else {
 		// check valid, revoked, or unknown
@@ -137,7 +136,8 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 		time_to_expiry = time.Until(end_cert.NotAfter)
 		root_cn, root_o = root_cert.CommonName, root_cert.Organization[0]
 
-		is_revoked := isOCSPRevoked(end_cert, issuer)
+		var is_revoked bool
+		outcome, is_revoked = isOCSPRevoked(outcome, end_cert, issuer)
 		if (p.response == "revoked" && is_revoked) || (p.response == "valid" && !is_revoked) {
 			is_expected_response = true
 		}
@@ -154,11 +154,11 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 		p.certExpiry.WithLabelValues(p.url).Set(time_to_expiry.Seconds())
 	}
 
-	// export status code
-	if StatusCode == Success {
-		updateStatusCode(is_expected_root, is_expected_response)
+	// export outcome
+	if outcome == Success {
+		outcome = updateOutcome(outcome, is_expected_root, is_expected_response)
 	}
-	p.certExpiry.WithLabelValues(p.url).Set(float64(StatusCode))
+	p.certExpiry.WithLabelValues(p.url).Set(float64(outcome))
 
 	return is_expected_root && is_expected_response, time.Since(start)
 }
