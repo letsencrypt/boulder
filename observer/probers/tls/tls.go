@@ -26,7 +26,7 @@ const (
 	Unknown
 )
 
-// TLSProbe is the exported 'Prober' object for monitors configured to
+// TLSProbe is the exported `Prober` object for monitors configured to
 // perform TLS protocols.
 type TLSProbe struct {
 	url        string
