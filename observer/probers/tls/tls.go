@@ -115,9 +115,8 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	var time_since_expiry time.Duration
 	StatusCode = Success
 
-	conf := &tls.Config{}
 	start := time.Now()
-	conn, err := tls.Dial("tcp", p.url+":443", conf)
+	conn, err := tls.Dial("tcp", p.url+":443", &tls.Config{})
 	if err != nil {
 		// check expired or return unknown
 		certInvalidErr := x509.CertificateInvalidError{}
