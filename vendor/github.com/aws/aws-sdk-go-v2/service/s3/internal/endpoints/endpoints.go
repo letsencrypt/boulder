@@ -270,6 +270,15 @@ var defaultPartitions = endpoints.Partitions{
 				Hostname: "s3.dualstack.eu-central-1.amazonaws.com",
 			},
 			endpoints.EndpointKey{
+				Region: "eu-central-2",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "eu-central-2",
+				Variant: endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3.dualstack.eu-central-2.amazonaws.com",
+			},
+			endpoints.EndpointKey{
 				Region: "eu-north-1",
 			}: endpoints.Endpoint{},
 			endpoints.EndpointKey{
@@ -362,6 +371,15 @@ var defaultPartitions = endpoints.Partitions{
 					Region: "us-west-2",
 				},
 				Deprecated: aws.TrueTernary,
+			},
+			endpoints.EndpointKey{
+				Region: "me-central-1",
+			}: endpoints.Endpoint{},
+			endpoints.EndpointKey{
+				Region:  "me-central-1",
+				Variant: endpoints.DualStackVariant,
+			}: {
+				Hostname: "s3.dualstack.me-central-1.amazonaws.com",
 			},
 			endpoints.EndpointKey{
 				Region: "me-south-1",
