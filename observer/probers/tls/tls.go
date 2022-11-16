@@ -38,7 +38,7 @@ type TLSProbe struct {
 
 // Name returns a string that uniquely identifies the monitor.
 func (p TLSProbe) Name() string {
-	return fmt.Sprintf("%s--expecting-%s-%s", p.url, p.response, p.root)
+	return fmt.Sprintf("%s-expecting-%s-%s", p.url, p.response, p.root)
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
