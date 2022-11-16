@@ -9,9 +9,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"io"
-	"log"
 	"net/http"
 	"time"
+)
+
+var StatusCode int
+
+const (
+	Success = iota
+	UnexpectedRoot
+	UnexpectedResponse
+	UnexpectedRootAndResponse
+	UnknownOCSPCheck
+	FailedOCSPCheck
+	FailedTLSConnection
+	Unknown
 )
 
 // TLSProbe is the exported 'Prober' object for monitors configured to
@@ -21,11 +33,12 @@ type TLSProbe struct {
 	root       string
 	response   string
 	certExpiry *prometheus.GaugeVec
+	StatusCode *prometheus.GaugeVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
 func (p TLSProbe) Name() string {
-	return fmt.Sprintf("%s-%s", p.url, p.root)
+	return fmt.Sprintf("%s--expecting-%s-%s", p.url, p.response, p.root)
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
@@ -36,40 +49,60 @@ func (p TLSProbe) Kind() string {
 func isOCSPRevoked(cert, issuer *x509.Certificate) bool {
 	req, err := ocsp.CreateRequest(cert, issuer, nil)
 	if err != nil {
-		log.Fatalf("%s", err)
+		StatusCode = FailedOCSPCheck
+		return false
 	}
 
 	url := fmt.Sprintf("%s/%s", cert.OCSPServer[0], base64.StdEncoding.EncodeToString(req))
 	res, err := http.Get(url)
 	if err != nil {
-		log.Fatalf("%s", err)
+		StatusCode = FailedOCSPCheck
+		return false
 	}
 
 	output, err := io.ReadAll(res.Body)
 	if err != nil {
-		log.Fatalf("%s", err)
+		StatusCode = FailedOCSPCheck
+		return false
 	}
 
 	ocspRes, err := ocsp.ParseResponseForCert(output, cert, issuer)
 	if err != nil {
-		panic(err)
-	}
-	if ocspRes.Status != ocsp.Revoked {
+		StatusCode = FailedOCSPCheck
 		return false
 	}
-	return true
+
+	if ocspRes.Status == ocsp.Revoked {
+		return true
+	} else {
+		if ocspRes.Status == ocsp.Unknown {
+			StatusCode = UnknownOCSPCheck
+		}
+		return false
+	}
 }
 
 func (p TLSProbe) getExpiredCertInfo() (string, string, time.Duration) {
 	conf := &tls.Config{InsecureSkipVerify: true}
 	conn, err := tls.Dial("tcp", p.url+":443", conf)
 	if err != nil {
+		StatusCode = FailedTLSConnection
 		return "", "", 0
 	}
 	peers := conn.ConnectionState().PeerCertificates
 	expiry_date := peers[0].NotAfter
 	root := peers[len(peers)-1].Issuer
 	return root.CommonName, root.Organization[0], time.Since(expiry_date)
+}
+
+func updateStatusCode(is_expected_root, is_expected_response bool) {
+	if !is_expected_root && !is_expected_response {
+		StatusCode = UnexpectedRootAndResponse
+	} else if !is_expected_root {
+		StatusCode = UnexpectedRoot
+	} else if !is_expected_response {
+		StatusCode = UnexpectedResponse
+	}
 }
 
 // Probe performs the configured TLS protocol.
@@ -80,6 +113,7 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	root_cn, root_o := "", ""
 	var time_to_expiry time.Duration
 	var time_since_expiry time.Duration
+	StatusCode = Success
 
 	conf := &tls.Config{}
 	start := time.Now()
@@ -93,8 +127,9 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 			}
 			// incorrect response, but check the rest anyways
 			root_cn, root_o, time_since_expiry = p.getExpiredCertInfo()
+		} else {
+			StatusCode = FailedTLSConnection
 		}
-		// return unknown
 	} else {
 		// check valid, revoked, or unknown
 		defer conn.Close()
@@ -119,6 +154,12 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	} else {
 		p.certExpiry.WithLabelValues(p.url).Set(time_to_expiry.Seconds())
 	}
+
+	// export status code
+	if StatusCode == Success {
+		updateStatusCode(is_expected_root, is_expected_response)
+	}
+	p.certExpiry.WithLabelValues(p.url).Set(float64(StatusCode))
 
 	return is_expected_root && is_expected_response, time.Since(start)
 }

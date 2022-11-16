@@ -13,6 +13,7 @@ import (
 
 const (
 	certExpiryName = "obs_cert_expiry"
+	statusCodeName = "tls_prober_status_code"
 )
 
 // TLSConf is exported to receive YAML configuration.
@@ -99,6 +100,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, err
 	}
 
+	// validate the prometheus collectors that were passed in
 	coll, ok := collectors[certExpiryName]
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", certExpiryName)
@@ -108,7 +110,16 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", certExpiryName, coll)
 	}
 
-	return TLSProbe{c.URL, c.Root, strings.ToLower(c.Response), certExpiryColl}, nil
+	coll, ok = collectors[statusCodeName]
+	if !ok {
+		return nil, fmt.Errorf("tls prober did not receive collector %q", statusCodeName)
+	}
+	statusCodeColl, ok := coll.(*prometheus.GaugeVec)
+	if !ok {
+		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", statusCodeName, coll)
+	}
+
+	return TLSProbe{c.URL, c.Root, strings.ToLower(c.Response), certExpiryColl, statusCodeColl}, nil
 }
 
 // Instrument is a no-op to implement the `Configurer` interface.
@@ -119,8 +130,15 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 			Help: "Time to cert expiry in seconds",
 		}, []string{"url"},
 	))
+	statusCode := prometheus.Collector(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: statusCodeName,
+			Help: "Status Code for TLS Prober",
+		}, []string{"url"},
+	))
 	return map[string]prometheus.Collector{
 		certExpiryName: certExpiry,
+		statusCodeName: statusCode,
 	}
 }
 
