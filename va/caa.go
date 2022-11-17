@@ -381,7 +381,7 @@ func caaValidationMethodMatches(caaParams map[string]string, method core.AcmeCha
 	}
 
 	for _, m := range strings.Split(commaSeparatedMethods, ",") {
-		// If any listed method does not match the ABNF 1*(ALPHA / DIGIT / "-""),
+		// If any listed method does not match the ABNF 1*(ALPHA / DIGIT / "-"),
 		// immediately reject the whole record.
 		if !validationMethodRegexp.MatchString(m) {
 			return false
