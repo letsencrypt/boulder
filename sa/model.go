@@ -798,3 +798,165 @@ func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
 }
 
 var blockedKeysColumns = "keyHash, added, source, comment"
+
+// statusForOrder examines the status of a provided order's authorizations to
+// determine what the overall status of the order should be. In summary:
+//   - If the order has an error, the order is invalid
+//   - If any of the order's authorizations are in any state other than
+//     valid or pending, the order is invalid.
+//   - If any of the order's authorizations are pending, the order is pending.
+//   - If all of the order's authorizations are valid, and there is
+//     a certificate serial, the order is valid.
+//   - If all of the order's authorizations are valid, and we have began
+//     processing, but there is no certificate serial, the order is processing.
+//   - If all of the order's authorizations are valid, and we haven't begun
+//     processing, then the order is status ready.
+//
+// An error is returned for any other case. It assumes that the provided
+// database selector already has a context associated with it.
+func statusForOrder(s db.Selector, order *corepb.Order, now time.Time) (string, error) {
+	// Without any further work we know an order with an error is invalid
+	if order.Error != nil {
+		return string(core.StatusInvalid), nil
+	}
+
+	// If the order is expired the status is invalid and we don't need to get
+	// order authorizations. Its important to exit early in this case because an
+	// order that references an expired authorization will be itself have been
+	// expired (because we match the order expiry to the associated authz expiries
+	// in ra.NewOrder), and expired authorizations may be purged from the DB.
+	// Because of this purging fetching the authz's for an expired order may
+	// return fewer authz objects than expected, triggering a 500 error response.
+	orderExpiry := time.Unix(0, order.Expires)
+	if orderExpiry.Before(now) {
+		return string(core.StatusInvalid), nil
+	}
+
+	// Get the full Authorization objects for the order
+	authzValidityInfo, err := getAuthorizationStatuses(s, order.V2Authorizations)
+	// If there was an error getting the authorizations, return it immediately
+	if err != nil {
+		return "", err
+	}
+
+	// If getAuthorizationStatuses returned a different number of authorization
+	// objects than the order's slice of authorization IDs something has gone
+	// wrong worth raising an internal error about.
+	if len(authzValidityInfo) != len(order.V2Authorizations) {
+		return "", berrors.InternalServerError(
+			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
+				"(%d vs expected %d) for order %d",
+			len(authzValidityInfo), len(order.V2Authorizations), order.Id)
+	}
+
+	// Keep a count of the authorizations seen
+	pendingAuthzs := 0
+	validAuthzs := 0
+	otherAuthzs := 0
+	expiredAuthzs := 0
+
+	// Loop over each of the order's authorization objects to examine the authz status
+	for _, info := range authzValidityInfo {
+		switch core.AcmeStatus(info.Status) {
+		case core.StatusPending:
+			pendingAuthzs++
+		case core.StatusValid:
+			validAuthzs++
+		case core.StatusInvalid:
+			otherAuthzs++
+		case core.StatusDeactivated:
+			otherAuthzs++
+		case core.StatusRevoked:
+			otherAuthzs++
+		default:
+			return "", berrors.InternalServerError(
+				"Order is in an invalid state. Authz has invalid status %s",
+				info.Status)
+		}
+		if info.Expires.Before(now) {
+			expiredAuthzs++
+		}
+	}
+
+	// An order is invalid if **any** of its authzs are invalid, deactivated,
+	// revoked, or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
+	if otherAuthzs > 0 || expiredAuthzs > 0 {
+		return string(core.StatusInvalid), nil
+	}
+	// An order is pending if **any** of its authzs are pending
+	if pendingAuthzs > 0 {
+		return string(core.StatusPending), nil
+	}
+
+	// An order is fully authorized if it has valid authzs for each of the order
+	// names
+	fullyAuthorized := len(order.Names) == validAuthzs
+
+	// If the order isn't fully authorized we've encountered an internal error:
+	// Above we checked for any invalid or pending authzs and should have returned
+	// early. Somehow we made it this far but also don't have the correct number
+	// of valid authzs.
+	if !fullyAuthorized {
+		return "", berrors.InternalServerError(
+			"Order has the incorrect number of valid authorizations & no pending, " +
+				"deactivated or invalid authorizations")
+	}
+
+	// If the order is fully authorized and the certificate serial is set then the
+	// order is valid
+	if fullyAuthorized && order.CertificateSerial != "" {
+		return string(core.StatusValid), nil
+	}
+
+	// If the order is fully authorized, and we have began processing it, then the
+	// order is processing.
+	if fullyAuthorized && order.BeganProcessing {
+		return string(core.StatusProcessing), nil
+	}
+
+	if fullyAuthorized && !order.BeganProcessing {
+		return string(core.StatusReady), nil
+	}
+
+	return "", berrors.InternalServerError(
+		"Order %d is in an invalid state. No state known for this order's "+
+			"authorizations", order.Id)
+}
+
+type authzValidity struct {
+	Status  string
+	Expires time.Time
+}
+
+// getAuthorizationStatuses takes a sequence of authz IDs, and returns the
+// status and expiration date of each of them. It assumes that the provided
+// database selector already has a context associated with it.
+func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, error) {
+	var qmarks []string
+	var params []interface{}
+	for _, id := range ids {
+		qmarks = append(qmarks, "?")
+		params = append(params, id)
+	}
+	var validityInfo []struct {
+		Status  uint8
+		Expires time.Time
+	}
+	_, err := s.Select(
+		&validityInfo,
+		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)", strings.Join(qmarks, ",")),
+		params...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	allAuthzValidity := make([]authzValidity, len(validityInfo))
+	for i, info := range validityInfo {
+		allAuthzValidity[i] = authzValidity{
+			Status:  string(uintToStatus[info.Status]),
+			Expires: info.Expires,
+		}
+	}
+	return allAuthzValidity, nil
+}
