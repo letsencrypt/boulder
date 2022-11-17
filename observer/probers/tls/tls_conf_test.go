@@ -49,7 +49,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		{"empty response", fields{goodURL, goodRoot, ""}, colls, true},
 		{"unaccepted response", fields{goodURL, goodRoot, "invalid"}, colls, true},
 
-		//invalid collector
+		// invalid collector
 		{
 			"unexpected collector",
 			fields{"http://example.com", goodRoot, goodResponse},

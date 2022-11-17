@@ -28,8 +28,8 @@ func (c TLSConf) Kind() string {
 	return "TLS"
 }
 
-// UnmarshalSettings takes YAML as bytes and unmarshals it to the to an
-// TLSConf object.
+// UnmarshalSettings takes YAML as bytes and unmarshals it to the to an TLSConf
+// object.
 func (c TLSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf TLSConf
 	err := yaml.Unmarshal(settings, &conf)
@@ -53,7 +53,8 @@ func (c TLSConf) validateURL() error {
 }
 
 func (c TLSConf) validateRoot() error {
-	// expected example: /O=Internet Security Research Group/CN=ISRG Root X1
+	// This is an example of a valid root: "/O=Internet Security Research
+	// Group/CN=ISRG Root X1"
 	regex, err := regexp.Compile("^/O=[^/]*/CN=[^/]*$")
 	if err != nil {
 		return err
@@ -79,28 +80,29 @@ func (c TLSConf) validateResponse() error {
 
 }
 
-// MakeProber constructs a `TLSProbe` object from the contents of the
-// bound `TLSConf` object. If the `TLSConf` cannot be validated, an
-// error appropriate for end-user consumption is returned instead.
+// MakeProber constructs a `TLSProbe` object from the contents of the bound
+// `TLSConf` object. If the `TLSConf` cannot be validated, an error appropriate
+// for end-user consumption is returned instead.
 func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers.Prober, error) {
-	// validate `url`
+	// Validate `url`
 	err := c.validateURL()
 	if err != nil {
 		return nil, err
 	}
 
-	// validate `root`
+	// Validate `root`
 	err = c.validateRoot()
 	if err != nil {
 		return nil, err
 	}
 
+	// Valid `response`
 	err = c.validateResponse()
 	if err != nil {
 		return nil, err
 	}
 
-	// validate the prometheus collectors that were passed in
+	// Validate the Prometheus collectors that were passed in
 	coll, ok := collectors[certExpiryName]
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", certExpiryName)
@@ -122,7 +124,10 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	return TLSProbe{c.URL, c.Root, strings.ToLower(c.Response), certExpiryColl, outcomeColl}, nil
 }
 
-// Instrument is a no-op to implement the `Configurer` interface.
+// Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
+// need to report its own metrics. A map is returned containing the constructed
+// objects, indexed by the name of the Promtheus metric.  If no objects were
+// constructed, nil is returned.
 func (c TLSConf) Instrument() map[string]prometheus.Collector {
 	certExpiry := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -142,8 +147,8 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 	}
 }
 
-// init is called at runtime and registers `HTTPConf`, a `Prober`
-// `Configurer` type, as "HTTP".
+// init is called at runtime and registers `TLSConf`, a `Prober` `Configurer`
+// type, as "TLS".
 func init() {
 	probers.Register(TLSConf{})
 }
