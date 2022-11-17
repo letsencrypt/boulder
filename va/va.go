@@ -368,7 +368,7 @@ func (va *ValidationAuthorityImpl) validate(
 	go func() {
 		params := &caaParams{
 			accountURIID:     regid,
-			validationMethod: string(challenge.Type),
+			validationMethod: challenge.Type,
 		}
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()

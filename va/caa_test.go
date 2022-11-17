@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -189,10 +188,17 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 func TestCAATimeout(t *testing.T) {
 	va, _ := setup(nil, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
-	err := va.checkCAA(ctx, identifier.DNSIdentifier("caa-timeout.com"), nil)
+
+	params := &caaParams{
+		accountURIID:     12345,
+		validationMethod: core.ChallengeTypeHTTP01,
+	}
+
+	err := va.checkCAA(ctx, identifier.DNSIdentifier("caa-timeout.com"), params)
 	if err.Type != probs.DNSProblem {
 		t.Errorf("Expected timeout error type %s, got %s", probs.DNSProblem, err.Type)
 	}
+
 	expected := "error"
 	if err.Detail != expected {
 		t.Errorf("checkCAA: got %#v, expected %#v", err.Detail, expected)
@@ -395,7 +401,7 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	accountURIID := int64(123)
-	method := "http-01"
+	method := core.ChallengeTypeHTTP01
 	params := &caaParams{accountURIID: accountURIID, validationMethod: method}
 
 	va, _ := setup(nil, 0, "", nil)
@@ -479,10 +485,6 @@ func TestCAALogging(t *testing.T) {
 	}{
 		{
 			Domain:          "reserved.com",
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: unknown, Challenge: unknown, Valid for issuance: false] Response=\"foo\"",
-		},
-		{
-			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
 			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
@@ -538,7 +540,7 @@ func TestCAALogging(t *testing.T) {
 
 			params := &caaParams{
 				accountURIID:     tc.AccountURIID,
-				validationMethod: string(tc.ChallengeType),
+				validationMethod: tc.ChallengeType,
 			}
 			_ = va.checkCAA(ctx, identifier.ACMEIdentifier{Type: identifier.DNS, Value: tc.Domain}, params)
 
@@ -563,7 +565,9 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	// caaMockDNS.
 	domain := "caa-timeout.com"
 	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain: domain,
+		Domain:           domain,
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+		AccountURIID:     12345,
 	})
 
 	// The lookup itself should not return an error
@@ -576,6 +580,36 @@ func TestIsCAAValidErrMessage(t *testing.T) {
 	test.AssertEquals(t, resp.Problem.Detail, fmt.Sprintf("While processing CAA for %s: error", domain))
 }
 
+// TestIsCAAValidParams tests that the IsCAAValid method rejects any requests
+// which do not have the necessary parameters to do CAA Account and Method
+// Binding checks.
+func TestIsCAAValidParams(t *testing.T) {
+	va, _ := setup(nil, 0, "", nil)
+	va.dnsClient = caaMockDNS{}
+
+	// Calling IsCAAValid without a ValidationMethod should fail.
+	_, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+		Domain:       "present.com",
+		AccountURIID: 12345,
+	})
+	test.AssertError(t, err, "calling IsCAAValid without a ValidationMethod")
+
+	// Calling IsCAAValid with an invalid ValidationMethod should fail.
+	_, err = va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+		Domain:           "present.com",
+		ValidationMethod: "tls-sni-01",
+		AccountURIID:     12345,
+	})
+	test.AssertError(t, err, "calling IsCAAValid with a bad ValidationMethod")
+
+	// Calling IsCAAValid without an AccountURIID should fail.
+	_, err = va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
+		Domain:           "present.com",
+		ValidationMethod: string(core.ChallengeTypeHTTP01),
+	})
+	test.AssertError(t, err, "calling IsCAAValid without an AccountURIID")
+}
+
 func TestCAAFailure(t *testing.T) {
 	chall := createChallenge(core.ChallengeTypeHTTP01)
 	hs := httpSrv(t, chall.Token)
@@ -584,7 +618,7 @@ func TestCAAFailure(t *testing.T) {
 	va, _ := setup(hs, 0, "", nil)
 	va.dnsClient = caaMockDNS{}
 
-	_, prob := va.validate(ctx, dnsi("reserved.com"), 0, chall)
+	_, prob := va.validate(ctx, dnsi("reserved.com"), 1, chall)
 	if prob == nil {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
@@ -644,15 +678,17 @@ func TestParseResults(t *testing.T) {
 	test.AssertNotError(t, err, "no error should be returned")
 }
 
-func TestCheckAccountURI(t *testing.T) {
+func TestAccountURIMatches(t *testing.T) {
 	tests := []struct {
-		uri      string
+		name     string
+		params   map[string]string
 		prefixes []string
 		id       int64
 		want     bool
 	}{
 		{
-			uri: "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			name:   "empty accounturi",
+			params: map[string]string{},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 			},
@@ -660,7 +696,32 @@ func TestCheckAccountURI(t *testing.T) {
 			want: true,
 		},
 		{
-			uri: "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			name: "non-uri accounturi",
+			params: map[string]string{
+				"accounturi": "\\invalid 😎/123456",
+			},
+			prefixes: []string{
+				"\\invalid 😎",
+			},
+			id:   123456,
+			want: false,
+		},
+		{
+			name: "simple match",
+			params: map[string]string{
+				"accounturi": "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			},
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/reg/",
+			},
+			id:   123456,
+			want: true,
+		},
+		{
+			name: "accountid mismatch",
+			params: map[string]string{
+				"accounturi": "https://acme-v01.api.letsencrypt.org/acme/reg/123456",
+			},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 			},
@@ -668,7 +729,10 @@ func TestCheckAccountURI(t *testing.T) {
 			want: false,
 		},
 		{
-			uri: "https://acme-staging.api.letsencrypt.org/acme/reg/123456",
+			name: "multiple prefixes, match first",
+			params: map[string]string{
+				"accounturi": "https://acme-staging.api.letsencrypt.org/acme/reg/123456",
+			},
 			prefixes: []string{
 				"https://acme-staging.api.letsencrypt.org/acme/reg/",
 				"https://acme-staging-v02.api.letsencrypt.org/acme/acct/",
@@ -677,7 +741,10 @@ func TestCheckAccountURI(t *testing.T) {
 			want: true,
 		},
 		{
-			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			name: "multiple prefixes, match second",
+			params: map[string]string{
+				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 				"https://acme-v02.api.letsencrypt.org/acme/acct/",
@@ -686,7 +753,22 @@ func TestCheckAccountURI(t *testing.T) {
 			want: true,
 		},
 		{
-			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			name: "multiple prefixes, match none",
+			params: map[string]string{
+				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			},
+			prefixes: []string{
+				"https://acme-v01.api.letsencrypt.org/acme/acct/",
+				"https://acme-v03.api.letsencrypt.org/acme/acct/",
+			},
+			id:   123456,
+			want: false,
+		},
+		{
+			name: "three prefixes",
+			params: map[string]string{
+				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 				"https://acme-v02.api.letsencrypt.org/acme/acct/",
@@ -696,7 +778,10 @@ func TestCheckAccountURI(t *testing.T) {
 			want: true,
 		},
 		{
-			uri: "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			name: "multiple prefixes, wrong accountid",
+			params: map[string]string{
+				"accounturi": "https://acme-v02.api.letsencrypt.org/acme/acct/123456",
+			},
 			prefixes: []string{
 				"https://acme-v01.api.letsencrypt.org/acme/reg/",
 				"https://acme-v02.api.letsencrypt.org/acme/acct/",
@@ -705,149 +790,245 @@ func TestCheckAccountURI(t *testing.T) {
 			want: false,
 		},
 	}
-	for _, test := range tests {
-		if got, want := checkAccountURI(test.uri, test.prefixes, test.id), test.want; got != want {
-			t.Errorf("checkAccountURI(%q, %v, %d) = %v, want %v", test.uri, test.prefixes, test.id, got, want)
-		}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := caaAccountURIMatches(tc.params, tc.prefixes, tc.id)
+			test.AssertEquals(t, got, tc.want)
+		})
 	}
 }
 
-func TestContainsMethod(t *testing.T) {
-	test.AssertEquals(t, containsMethod("abc,123,xyz", "123"), true)
-	test.AssertEquals(t, containsMethod("abc,xyz", "abc"), true)
-	test.AssertEquals(t, containsMethod("abc,xyz", "xyz"), true)
-	test.AssertEquals(t, containsMethod("abc", "abc"), true)
+func TestValidationMethodMatches(t *testing.T) {
+	tests := []struct {
+		name   string
+		params map[string]string
+		method core.AcmeChallenge
+		want   bool
+	}{
+		{
+			name:   "empty validationmethods",
+			params: map[string]string{},
+			method: core.ChallengeTypeHTTP01,
+			want:   true,
+		},
+		{
+			name: "only comma",
+			params: map[string]string{
+				"validationmethods": ",",
+			},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name: "malformed method",
+			params: map[string]string{
+				"validationmethods": "howdy !",
+			},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name: "invalid method",
+			params: map[string]string{
+				"validationmethods": "tls-sni-01",
+			},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name: "simple match",
+			params: map[string]string{
+				"validationmethods": "http-01",
+			},
+			method: core.ChallengeTypeHTTP01,
+			want:   true,
+		},
+		{
+			name: "simple mismatch",
+			params: map[string]string{
+				"validationmethods": "dns-01",
+			},
+			method: core.ChallengeTypeHTTP01,
+			want:   false,
+		},
+		{
+			name: "multiple choices, match first",
+			params: map[string]string{
+				"validationmethods": "http-01,dns-01",
+			},
+			method: core.ChallengeTypeHTTP01,
+			want:   true,
+		},
+		{
+			name: "multiple choices, match second",
+			params: map[string]string{
+				"validationmethods": "http-01,dns-01",
+			},
+			method: core.ChallengeTypeDNS01,
+			want:   true,
+		},
+		{
+			name: "multiple choices, match none",
+			params: map[string]string{
+				"validationmethods": "http-01,dns-01",
+			},
+			method: core.ChallengeTypeTLSALPN01,
+			want:   false,
+		},
+	}
 
-	test.AssertEquals(t, containsMethod("abc,xyz,123", "456"), false)
-	test.AssertEquals(t, containsMethod("abc", "123"), false)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := caaValidationMethodMatches(tc.params, tc.method)
+			test.AssertEquals(t, got, tc.want)
+		})
+	}
 }
 
 func TestExtractIssuerDomainAndParameters(t *testing.T) {
 	tests := []struct {
-		value          string
-		wantDomain     string
-		wantParameters map[string]string
-		wantValid      bool
+		name            string
+		value           string
+		wantDomain      string
+		wantParameters  map[string]string
+		expectErrSubstr string
 	}{
 		{
-			value:          "",
-			wantDomain:     "",
-			wantParameters: map[string]string{},
-			wantValid:      true,
+			name:            "empty record is valid",
+			value:           "",
+			wantDomain:      "",
+			wantParameters:  map[string]string{},
+			expectErrSubstr: "",
 		},
 		{
-			value:          ";",
-			wantDomain:     "",
-			wantParameters: map[string]string{},
-			wantValid:      true,
+			name:            "only semicolon is valid",
+			value:           ";",
+			wantDomain:      "",
+			wantParameters:  map[string]string{},
+			expectErrSubstr: "",
 		},
 		{
-			value:          " ; ",
-			wantDomain:     "",
-			wantParameters: map[string]string{},
-			wantValid:      true,
+			name:            "only semicolon and whitespace is valid",
+			value:           " ; ",
+			wantDomain:      "",
+			wantParameters:  map[string]string{},
+			expectErrSubstr: "",
 		},
 		{
-			value:          "letsencrypt.org",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{},
-			wantValid:      true,
+			name:            "only domain is valid",
+			value:           "letsencrypt.org",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{},
+			expectErrSubstr: "",
 		},
 		{
-			value:          "letsencrypt.org;",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{},
-			wantValid:      true,
+			name:            "only domain with trailing semicolon is valid",
+			value:           "letsencrypt.org;",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{},
+			expectErrSubstr: "",
 		},
 		{
-			value:          "  letsencrypt.org	;foo=bar;baz=bar",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "bar", "baz": "bar"},
-			wantValid:      true,
+			name:            "domain with params and whitespace is valid",
+			value:           "  letsencrypt.org	;foo=bar;baz=bar",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{"foo": "bar", "baz": "bar"},
+			expectErrSubstr: "",
 		},
 		{
-			value:          "	letsencrypt.org ;foo=bar;baz=bar",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "bar", "baz": "bar"},
-			wantValid:      true,
+			name:            "domain with params and different whitespace is valid",
+			value:           "	letsencrypt.org ;foo=bar;baz=bar",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{"foo": "bar", "baz": "bar"},
+			expectErrSubstr: "",
 		},
 		{
-			value:          "letsencrypt.org; foo=; baz =	bar",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "", "baz": "bar"},
-			wantValid:      true,
+			name:            "empty params are valid",
+			value:           "letsencrypt.org; foo=; baz =	bar",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{"foo": "", "baz": "bar"},
+			expectErrSubstr: "",
 		},
 		{
-			value:          "letsencrypt.org; foo=	; baz =	bar",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "", "baz": "bar"},
-			wantValid:      true,
+			name:            "whitespace around params is valid",
+			value:           "letsencrypt.org; foo=	; baz =	bar",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{"foo": "", "baz": "bar"},
+			expectErrSubstr: "",
 		},
 		{
-			value:          "letsencrypt.org; foo=b1,b2,b3	; baz =		a=b	",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"foo": "b1,b2,b3", "baz": "a=b"},
-			wantValid:      true,
+			name:            "comma-separated param values are valid",
+			value:           "letsencrypt.org; foo=b1,b2,b3	; baz =		a=b	",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{"foo": "b1,b2,b3", "baz": "a=b"},
+			expectErrSubstr: "",
 		},
 		{
-			value:      "letsencrypt.org; foo=b1,b2,b3	; baz =		a = b	",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "spaces in param values are invalid",
+			value:           "letsencrypt.org; foo=b1,b2,b3	; baz =		a = b	",
+			expectErrSubstr: "value contains disallowed character",
 		},
 		{
-			value:      "letsencrypt.org; foo=b1,b2,b3	; baz=a=	b",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "spaces in param values are still invalid",
+			value:           "letsencrypt.org; foo=b1,b2,b3	; baz=a=	b",
+			expectErrSubstr: "value contains disallowed character",
 		},
 		{
-			value:      "letsencrypt.org; foo=b1,b2,b3	; baz =		a;b	",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "param without equals sign is invalid",
+			value:           "letsencrypt.org; foo=b1,b2,b3	; baz =		a;b	",
+			expectErrSubstr: "parameter not formatted as tag=value",
 		},
 		{
-			value:          "letsencrypt.org; 1=2; baz=a-b",
-			wantDomain:     "letsencrypt.org",
-			wantParameters: map[string]string{"1": "2", "baz": "a-b"},
-			wantValid:      true,
+			name:            "hyphens in param values are valid",
+			value:           "letsencrypt.org; 1=2; baz=a-b",
+			wantDomain:      "letsencrypt.org",
+			wantParameters:  map[string]string{"1": "2", "baz": "a-b"},
+			expectErrSubstr: "",
 		},
 		{
-			value:      "letsencrypt.org; a_b=123",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "underscores in param tags are invalid",
+			value:           "letsencrypt.org; a_b=123",
+			expectErrSubstr: "tag contains disallowed character",
 		},
 		{
-			value:      "letsencrypt.org; ab=1 2 3",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "multiple spaces in param values are extra invalid",
+			value:           "letsencrypt.org; ab=1 2 3",
+			expectErrSubstr: "value contains disallowed character",
 		},
 		{
-			value:      "letsencrypt.org; 1=2; a-b=c",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "hyphens in param tags are invalid",
+			value:           "letsencrypt.org; 1=2; a-b=c",
+			expectErrSubstr: "tag contains disallowed character",
 		},
 		{
-			value:      "letsencrypt.org; foo=a\u2615b",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "high codepoints in params are invalid",
+			value:           "letsencrypt.org; foo=a\u2615b",
+			expectErrSubstr: "value contains disallowed character",
 		},
 		{
-			value:      "letsencrypt.org; foo=b1,b2,b3 baz=a",
-			wantDomain: "letsencrypt.org",
-			wantValid:  false,
+			name:            "missing semicolons between params are invalid",
+			value:           "letsencrypt.org; foo=b1,b2,b3 baz=a",
+			expectErrSubstr: "value contains disallowed character",
 		},
 	}
-	for _, test := range tests {
-		t.Run("", func(t *testing.T) {
-			caa := &dns.CAA{Value: test.value}
-			gotDomain, gotParameters, gotValid := extractIssuerDomainAndParameters(caa)
-			if got, want := gotValid, test.wantValid; got != want {
-				t.Errorf("CAA value %q - got valid %v, want %v", test.value, got, want)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotDomain, gotParameters, gotErr := parseCAARecord(&dns.CAA{Value: tc.value})
+
+			if tc.expectErrSubstr == "" {
+				test.AssertNotError(t, gotErr, "")
+			} else {
+				test.AssertError(t, gotErr, "")
+				test.AssertContains(t, gotErr.Error(), tc.expectErrSubstr)
 			}
-			if got, want := gotDomain, test.wantDomain; got != want {
-				t.Errorf("CAA value %q - got domain %q, want %q", test.value, got, want)
+
+			if tc.wantDomain != "" {
+				test.AssertEquals(t, gotDomain, tc.wantDomain)
 			}
-			if got, want := gotParameters, test.wantParameters; !reflect.DeepEqual(got, want) {
-				t.Errorf("CAA value %q - got parameters %v, want %v", test.value, got, want)
+
+			if tc.wantParameters != nil {
+				test.AssertDeepEquals(t, gotParameters, tc.wantParameters)
 			}
 		})
 	}
