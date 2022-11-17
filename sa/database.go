@@ -266,7 +266,7 @@ func adjustMySQLConfig(conf *mysql.Config) {
 	}
 
 	omitZero("max_statement_time")
-	omitZero("max_statement_time")
+	omitZero("long_query_time")
 }
 
 // SetSQLDebug enables GORP SQL-level Debugging
