@@ -2,13 +2,13 @@ package checker
 
 import (
 	"bytes"
+	"crypto/x509"
 	"fmt"
 	"math/big"
 	"sort"
 	"time"
 
 	"github.com/letsencrypt/boulder/crl/crl_x509"
-	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
 	crlint "github.com/letsencrypt/boulder/linter/lints/crl"
 )
@@ -17,14 +17,14 @@ import (
 // validates (if supplied with a non-nil issuer), and checks that the CRL is
 // less than ageLimit old. It returns an error if any of these conditions are
 // not met.
-func Validate(crl *crl_x509.RevocationList, issuer *issuance.Certificate, ageLimit time.Duration) error {
+func Validate(crl *crl_x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration) error {
 	err := linter.ProcessResultSet(crlint.LintCRL(crl))
 	if err != nil {
 		return fmt.Errorf("linting CRL: %w", err)
 	}
 
 	if issuer != nil {
-		err = crl.CheckSignatureFrom(issuer.Certificate)
+		err = crl.CheckSignatureFrom(issuer)
 		if err != nil {
 			return fmt.Errorf("checking CRL signature: %w", err)
 		}
