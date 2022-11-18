@@ -55,16 +55,13 @@ func (c TLSConf) validateURL() error {
 func (c TLSConf) validateRoot() error {
 	// This is an example of a valid root: "/O=Internet Security Research
 	// Group/CN=ISRG Root X1"
-	regex, err := regexp.Compile("^/O=[^/]*/CN=[^/]*$")
-	if err != nil {
-		return err
-	}
+	var regex = regexp.MustCompile("^/O=[^/]*/CN=[^/]*$")
 	matched := regex.MatchString(c.Root)
 	if matched {
 		return nil
 	} else {
 		return fmt.Errorf(
-			"invalid 'root`, got: %s\nDid not match expected format: '/CN:*/O:*`", c.Root)
+			"invalid `root`, got %s. Did not match expected format: '/CN:*/O:*`", c.Root)
 	}
 }
 
@@ -76,7 +73,7 @@ func (c TLSConf) validateResponse() error {
 		}
 	}
 	return fmt.Errorf(
-		"invalid response, got %q . Must be one of %s", c.Response, acceptable)
+		"invalid `response`, got %q. Must be one of %s", c.Response, acceptable)
 
 }
 
@@ -138,8 +135,8 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 	outcome := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: outcomeName,
-			Help: "Outcome for TLS Prober.",
-		}, []string{"url"},
+			Help: fmt.Sprintf("Outcome for TLS Prober. Can be one of %s", getListOutcomes()),
+		}, []string{"url", "outcome_label"},
 	))
 	return map[string]prometheus.Collector{
 		certExpiryName: certExpiry,
