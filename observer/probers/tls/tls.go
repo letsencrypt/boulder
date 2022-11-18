@@ -67,7 +67,8 @@ var (
 // TLS protocols.
 type TLSProbe struct {
 	url        string
-	root       string
+	rootOrg    string
+	rootCN     string
 	response   string
 	certExpiry *prometheus.GaugeVec
 	outcome    *prometheus.GaugeVec
@@ -75,7 +76,8 @@ type TLSProbe struct {
 
 // Name returns a string that uniquely identifies the monitor.
 func (p TLSProbe) Name() string {
-	return fmt.Sprintf("%s-expecting-%s-%s", p.url, p.response, p.root)
+	return fmt.Sprintf("%s-expecting-%s-%s-%s", p.url, p.response, p.rootOrg, p.rootCN)
+	//"valid-isrgrootx1.letsencrypt.org-expecting-valid-Internet Security Research Group-ISRG Root X1"
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
@@ -199,7 +201,7 @@ func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	}
 
 	// Check if the root is the one we expect.
-	if p.root == fmt.Sprintf("/O=%s/CN=%s", root_o, root_cn) {
+	if p.rootOrg == root_o && p.rootCN == root_cn {
 		is_expected_root = true
 	}
 

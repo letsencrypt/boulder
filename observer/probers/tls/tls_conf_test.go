@@ -10,7 +10,7 @@ import (
 )
 
 func TestTLSConf_MakeProber(t *testing.T) {
-	goodURL, goodRoot, goodResponse := "http://example.com", "/O=Internet Security Research Group/CN=ISRG Root X1", "valid"
+	goodURL, goodRootCN, goodResponse := "http://example.com", "ISRG Root X1", "valid"
 	colls := TLSConf{}.Instrument()
 	badColl := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -21,7 +21,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 	))
 	type fields struct {
 		URL      string
-		Root     string
+		RootCN   string
 		Response string
 	}
 	tests := []struct {
@@ -31,34 +31,28 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		wantErr bool
 	}{
 		// valid
-		{"valid fqdn", fields{"http://example.com", "/O=/CN=", "valid"}, colls, false},
-		{"valid fqdn with path", fields{"http://example.com/foo/bar", "/O=ISRG/CN=Root X3", "Revoked"}, colls, false},
-		{"valid hostname", fields{"http://example", "/O=IdenTrust/CN=Root E1", "EXPIRED"}, colls, false},
+		{"valid fqdn", fields{"http://example.com", goodRootCN, "valid"}, colls, false},
+		{"valid fqdn with path", fields{"http://example.com/foo/bar", "ISRG Root X2", "Revoked"}, colls, false},
+		{"valid hostname", fields{"http://example", "DST Root CA X3", "EXPIRED"}, colls, false},
 
 		// invalid url
-		{"bad fqdn", fields{":::::", goodRoot, goodResponse}, colls, true},
-		{"missing scheme", fields{"example.com", goodRoot, goodResponse}, colls, true},
-
-		// invalid root
-		{"empty root", fields{goodURL, "", goodResponse}, colls, true},
-		{"missing root org", fields{goodURL, "/CN=ISRG Root X1", goodResponse}, colls, true},
-		{"wrong root format", fields{goodURL, "Internet Security Research Group, ISRG Root X1", goodResponse}, colls, true},
-		{"country in root", fields{goodURL, "/C=US/O=Internet Security Research Group/CN=ISRG Root X1", goodResponse}, colls, true},
+		{"bad fqdn", fields{":::::", goodRootCN, goodResponse}, colls, true},
+		{"missing scheme", fields{"example.com", goodRootCN, goodResponse}, colls, true},
 
 		// invalid response
-		{"empty response", fields{goodURL, goodRoot, ""}, colls, true},
-		{"unaccepted response", fields{goodURL, goodRoot, "invalid"}, colls, true},
+		{"empty response", fields{goodURL, goodRootCN, ""}, colls, true},
+		{"unaccepted response", fields{goodURL, goodRootCN, "invalid"}, colls, true},
 
 		// invalid collector
 		{
 			"unexpected collector",
-			fields{"http://example.com", goodRoot, goodResponse},
+			fields{"http://example.com", goodRootCN, goodResponse},
 			map[string]prometheus.Collector{"obs_crl_foo": badColl},
 			true,
 		},
 		{
 			"missing collectors",
-			fields{"http://example.com", goodRoot, goodResponse},
+			fields{"http://example.com", goodRootCN, goodResponse},
 			map[string]prometheus.Collector{},
 			true,
 		},
@@ -67,7 +61,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := TLSConf{
 				URL:      tt.fields.URL,
-				Root:     tt.fields.Root,
+				RootCN:   tt.fields.RootCN,
 				Response: tt.fields.Response,
 			}
 			if _, err := c.MakeProber(tt.colls); (err != nil) != tt.wantErr {
@@ -80,7 +74,8 @@ func TestTLSConf_MakeProber(t *testing.T) {
 func TestTLSConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
 		url      interface{}
-		root     interface{}
+		rootOrg  interface{}
+		rootCN   interface{}
 		response interface{}
 	}
 	tests := []struct {
@@ -89,16 +84,17 @@ func TestTLSConf_UnmarshalSettings(t *testing.T) {
 		want    probers.Configurer
 		wantErr bool
 	}{
-		{"valid", fields{"google.com", "/O=Internet Security Research Group/CN=ISRG Root X1", "valid"}, TLSConf{"google.com", "/O=Internet Security Research Group/CN=ISRG Root X1", "valid"}, false},
-		{"invalid url (map)", fields{make(map[string]interface{}), 42, 42}, nil, true},
-		{"invalid root (list)", fields{42, make([]string, 0), 42}, nil, true},
-		{"invalid response (list)", fields{42, 42, make([]string, 0)}, nil, true},
+		{"valid", fields{"google.com", "", "ISRG Root X1", "valid"}, TLSConf{"google.com", "", "ISRG Root X1", "valid"}, false},
+		{"invalid url (map)", fields{make(map[string]interface{}), 42, 42, 42}, nil, true},
+		{"invalid rootOrg (list)", fields{42, make([]string, 0), 42, 42}, nil, true},
+		{"invalid response (list)", fields{42, 42, 42, make([]string, 0)}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := probers.Settings{
 				"url":      tt.fields.url,
-				"root":     tt.fields.root,
+				"rootOrg":  tt.fields.rootOrg,
+				"rootCN":   tt.fields.rootCN,
 				"response": tt.fields.response,
 			}
 			settingsBytes, _ := yaml.Marshal(settings)

@@ -3,7 +3,6 @@ package probers
 import (
 	"fmt"
 	"net/url"
-	"regexp"
 	"strings"
 
 	"github.com/letsencrypt/boulder/observer/probers"
@@ -19,7 +18,8 @@ const (
 // TLSConf is exported to receive YAML configuration.
 type TLSConf struct {
 	URL      string `yaml:"url"`
-	Root     string `yaml:"root"`
+	RootOrg  string `yaml:"rootOrg"`
+	RootCN   string `yaml:"rootCN"`
 	Response string `yaml:"response"`
 }
 
@@ -52,19 +52,6 @@ func (c TLSConf) validateURL() error {
 	return nil
 }
 
-func (c TLSConf) validateRoot() error {
-	// This is an example of a valid root: "/O=Internet Security Research
-	// Group/CN=ISRG Root X1"
-	var regex = regexp.MustCompile("^/O=[^/]*/CN=[^/]*$")
-	matched := regex.MatchString(c.Root)
-	if matched {
-		return nil
-	} else {
-		return fmt.Errorf(
-			"invalid `root`, got %s. Did not match expected format: '/CN:*/O:*`", c.Root)
-	}
-}
-
 func (c TLSConf) validateResponse() error {
 	acceptable := []string{"valid", "expired", "revoked"}
 	for _, a := range acceptable {
@@ -87,16 +74,15 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, err
 	}
 
-	// Validate `root`
-	err = c.validateRoot()
-	if err != nil {
-		return nil, err
-	}
-
 	// Valid `response`
 	err = c.validateResponse()
 	if err != nil {
 		return nil, err
+	}
+
+	// Set default Root Organization if none set.
+	if c.RootOrg == "" {
+		c.RootOrg = "Internet Security Research Group"
 	}
 
 	// Validate the Prometheus collectors that were passed in
@@ -118,7 +104,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", outcomeName, coll)
 	}
 
-	return TLSProbe{c.URL, c.Root, strings.ToLower(c.Response), certExpiryColl, outcomeColl}, nil
+	return TLSProbe{c.URL, c.RootOrg, c.RootCN, strings.ToLower(c.Response), certExpiryColl, outcomeColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
