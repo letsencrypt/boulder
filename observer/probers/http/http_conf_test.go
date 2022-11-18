@@ -93,7 +93,7 @@ insecure: true
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	prober, err := configurer.MakeProber(nil)
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-letsencrypt/boulder-observer-http-client-insecure:true")
+	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-letsencrypt/boulder-observer-http-client-insecure")
 
 	// Test with custom `useragent`
 	proberYAML = `
@@ -107,6 +107,6 @@ insucre: false
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	prober, err = configurer.MakeProber(nil)
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client-insecure:false")
+	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client-secure")
 
 }

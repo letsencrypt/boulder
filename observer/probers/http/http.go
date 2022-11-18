@@ -17,8 +17,14 @@ type HTTPProbe struct {
 }
 
 // Name returns a string that uniquely identifies the monitor.
+
 func (p HTTPProbe) Name() string {
-	return fmt.Sprintf("%s-%d-%s-insecure:%t", p.url, p.rcodes, p.useragent, p.insecure)
+	s := fmt.Sprintf("%s-%d-%s", p.url, p.rcodes, p.useragent)
+	if p.insecure {
+		return s + "-insecure"
+	} else {
+		return s + "-secure"
+	}
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
