@@ -1,6 +1,7 @@
 package probers
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
@@ -38,7 +39,11 @@ func (p HTTPProbe) isExpected(received int) bool {
 
 // Probe performs the configured HTTP request.
 func (p HTTPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	client := http.Client{Timeout: timeout}
+	client := http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
+		}}
 	req, err := http.NewRequest("GET", p.url, nil)
 	if err != nil {
 		return false, 0
