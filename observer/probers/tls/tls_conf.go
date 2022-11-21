@@ -121,8 +121,8 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 	outcome := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: outcomeName,
-			Help: fmt.Sprintf("Outcome for TLS Prober. Can be one of %s", getListOutcomes()),
-		}, []string{"url", "outcome_label"},
+			Help: fmt.Sprintf("Outcome for TLS Prober. Can be one of %s", getReasons()),
+		}, []string{"url", "badOutcomeError"},
 	))
 	return map[string]prometheus.Collector{
 		certExpiryName: certExpiry,
