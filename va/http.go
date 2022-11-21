@@ -643,7 +643,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
 		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
-			records[len(records)-1].URL, replaceInvalidUTF8(body)))
+			records[len(records)-1].URL, body))
 	}
 	return body, records, nil
 }
