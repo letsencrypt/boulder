@@ -10,7 +10,7 @@ import (
 )
 
 func TestTLSConf_MakeProber(t *testing.T) {
-	goodURL, goodRootCN, goodResponse := "http://example.com", "ISRG Root X1", "valid"
+	goodURL, goodRootCN, goodResponse := "example.com", "ISRG Root X1", "valid"
 	colls := TLSConf{}.Instrument()
 	badColl := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -31,13 +31,12 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		wantErr bool
 	}{
 		// valid
-		{"valid fqdn", fields{"http://example.com", goodRootCN, "valid"}, colls, false},
-		{"valid fqdn with path", fields{"http://example.com/foo/bar", "ISRG Root X2", "Revoked"}, colls, false},
-		{"valid hostname", fields{"http://example", "DST Root CA X3", "EXPIRED"}, colls, false},
+		{"valid url", fields{"example.com", goodRootCN, "valid"}, colls, false},
+		{"valid url with path", fields{"example.com/foo/bar", "ISRG Root X2", "Revoked"}, colls, false},
 
 		// invalid url
-		{"bad fqdn", fields{":::::", goodRootCN, goodResponse}, colls, true},
-		{"missing scheme", fields{"example.com", goodRootCN, goodResponse}, colls, true},
+		{"bad url", fields{":::::", goodRootCN, goodResponse}, colls, true},
+		{"included scheme", fields{"https://example.com", goodRootCN, goodResponse}, colls, true},
 
 		// invalid response
 		{"empty response", fields{goodURL, goodRootCN, ""}, colls, true},

@@ -45,9 +45,9 @@ func (c TLSConf) validateURL() error {
 		return fmt.Errorf(
 			"invalid 'url', got %q, expected a valid url: %s", c.URL, err)
 	}
-	if url.Scheme == "" {
+	if url.Scheme != "" {
 		return fmt.Errorf(
-			"invalid 'url', got: %q, missing scheme", c.URL)
+			"invalid 'url', got: %q, should not include scheme", c.URL)
 	}
 	return nil
 }
