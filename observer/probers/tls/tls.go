@@ -148,9 +148,8 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration, valid bool) (bool, time.
 		return !valid, time.Since(start)
 	default:
 		p.exportMetrics(peers[0].NotAfter, ocspUnknown)
+		return false, time.Since(start)
 	}
-
-	return false, time.Since(start)
 }
 
 // Probe performs the configured TLS protocol. Return true if both root AND
