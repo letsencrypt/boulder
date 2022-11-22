@@ -112,10 +112,10 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 // objects, indexed by the name of the Promtheus metric.  If no objects were
 // constructed, nil is returned.
 func (c TLSConf) Instrument() map[string]prometheus.Collector {
-	certExpiry := prometheus.Collector(prometheus.NewGaugeVec(
+	notAfter := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: certExpiryName,
-			Help: "Time to cert expiry in seconds",
+			Name: notAfter,
+			Help: "Certificate notAfter value as a Unix timestamp in seconds",
 		}, []string{"url"},
 	))
 	outcome := prometheus.Collector(prometheus.NewGaugeVec(
