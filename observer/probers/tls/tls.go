@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 
@@ -110,7 +111,7 @@ func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
 
 func (p TLSProbe) probeExpired(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
-	conn, err := tls.Dial("tcp", p.url+":443", &tls.Config{InsecureSkipVerify: true})
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.url+":443", &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
 		p.exportMetrics(time.Time{}, internalError)
 		return false, time.Since(start)
@@ -135,7 +136,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) (bool, time.Duration) {
 
 func (p TLSProbe) probeUnexpired(timeout time.Duration, valid bool) (bool, time.Duration) {
 	start := time.Now()
-	conn, err := tls.Dial("tcp", p.url+":443", &tls.Config{})
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.url+":443", &tls.Config{})
 	if err != nil {
 		p.exportMetrics(time.Time{}, internalError)
 		return false, time.Since(start)
