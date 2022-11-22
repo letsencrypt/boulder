@@ -100,13 +100,12 @@ insecure: true
 url: https://www.google.com
 rcodes: [ 200 ]
 useragent: fancy-custom-http-client
-insucre: false
 `
 	c = HTTPConf{}
 	configurer, err = c.UnmarshalSettings([]byte(proberYAML))
 	test.AssertNotError(t, err, "Got error for valid prober config")
 	prober, err = configurer.MakeProber(nil)
 	test.AssertNotError(t, err, "Got error for valid prober config")
-	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client-secure")
+	test.AssertEquals(t, prober.Name(), "https://www.google.com-[200]-fancy-custom-http-client")
 
 }
