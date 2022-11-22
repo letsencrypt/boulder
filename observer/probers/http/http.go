@@ -22,9 +22,8 @@ func (p HTTPProbe) Name() string {
 	s := fmt.Sprintf("%s-%d-%s", p.url, p.rcodes, p.useragent)
 	if p.insecure {
 		return s + "-insecure"
-	} else {
-		return s + "-secure"
 	}
+	return s
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
