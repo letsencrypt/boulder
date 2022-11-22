@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,10 +15,6 @@ import (
 )
 
 type reason int
-
-type badOutcomeError struct {
-	reason reason
-}
 
 const (
 	none reason = iota
@@ -35,10 +30,6 @@ var reasonToString = map[reason]string{
 	issuerVerifyFailed: "issuerVerifyFailed",
 	ocspUnknown:        "ocspUnknown",
 	ocspError:          "ocspError",
-}
-
-func (e badOutcomeError) Error() string {
-	return reasonToString[e.reason]
 }
 
 func getReasons() []string {
@@ -71,42 +62,36 @@ func (p TLSProbe) Kind() string {
 }
 
 // Get OCSP status (good, revoked or unknown) of certificate
-func checkOCSP(cert, issuer *x509.Certificate, valid bool) (bool, error) {
+func getOCSP(cert, issuer *x509.Certificate) (int, error) {
 	req, err := ocsp.CreateRequest(cert, issuer, nil)
 	if err != nil {
-		return false, err
+		return ocsp.Unknown, err
 	}
 
 	url := fmt.Sprintf("%s/%s", cert.OCSPServer[0], base64.StdEncoding.EncodeToString(req))
 	res, err := http.Get(url)
 	if err != nil {
-		return false, err
+		return ocsp.Unknown, err
 	}
 
 	output, err := io.ReadAll(res.Body)
 	if err != nil {
-		return false, err
+		return ocsp.Unknown, err
 	}
 
 	ocspRes, err := ocsp.ParseResponseForCert(output, cert, issuer)
 	if err != nil {
-		return false, err
+		return ocsp.Unknown, err
 	}
-	switch ocspRes.Status {
-	case ocsp.Good:
-		return valid, nil
-	case ocsp.Revoked:
-		return !valid, nil
-	default:
-		return false, badOutcomeError{ocspUnknown}
-	}
+
+	return ocspRes.Status, nil
 }
 
 // Export expiration timestamp and reason (with corresponding badOutcome label)
 // to Prometheus.
 func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
 	p.notAfter.WithLabelValues(p.url).Set(float64(notAfter.Unix()))
-	p.notAfter.WithLabelValues(p.url, badOutcomeError{reason}.Error()).Set(float64(reason))
+	p.notAfter.WithLabelValues(p.url, reasonToString[reason]).Set(float64(reason))
 }
 
 func (p TLSProbe) probeExpired(timeout time.Duration) (bool, time.Duration) {
@@ -148,17 +133,25 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration, valid bool) (bool, time.
 		p.exportMetrics(peers[0].NotAfter, none)
 		return false, time.Since(start)
 	}
-	is_expected_response, err := checkOCSP(peers[0], peers[1], valid)
+
+	ocspStatus, err := getOCSP(peers[0], peers[1])
 	if err != nil {
-		if errors.Is(err, badOutcomeError{ocspUnknown}) {
-			p.exportMetrics(peers[0].NotAfter, ocspUnknown)
-		} else {
-			p.exportMetrics(peers[0].NotAfter, ocspError)
-		}
+		p.exportMetrics(peers[0].NotAfter, ocspError)
 		return false, time.Since(start)
 	}
-	p.exportMetrics(peers[0].NotAfter, none)
-	return is_expected_response, time.Since(start)
+
+	switch ocspStatus {
+	case ocsp.Good:
+		p.exportMetrics(peers[0].NotAfter, none)
+		return valid, time.Since(start)
+	case ocsp.Revoked:
+		p.exportMetrics(peers[0].NotAfter, none)
+		return !valid, time.Since(start)
+	default:
+		p.exportMetrics(peers[0].NotAfter, ocspUnknown)
+	}
+
+	return false, time.Since(start)
 }
 
 // Probe performs the configured TLS protocol. Return true if both root AND
