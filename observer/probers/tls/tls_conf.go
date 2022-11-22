@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	certExpiryName = "obs_cert_expiry"
-	outcomeName    = "tls_prober_outcome"
+	notAfterName = "obs_not_after"
+	outcomeName  = "tls_prober_outcome"
 )
 
 // TLSConf is exported to receive YAML configuration.
@@ -61,7 +61,6 @@ func (c TLSConf) validateResponse() error {
 	}
 	return fmt.Errorf(
 		"invalid `response`, got %q. Must be one of %s", c.Response, acceptable)
-
 }
 
 // MakeProber constructs a `TLSProbe` object from the contents of the bound
@@ -86,13 +85,13 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	}
 
 	// Validate the Prometheus collectors that were passed in
-	coll, ok := collectors[certExpiryName]
+	coll, ok := collectors[notAfterName]
 	if !ok {
-		return nil, fmt.Errorf("tls prober did not receive collector %q", certExpiryName)
+		return nil, fmt.Errorf("tls prober did not receive collector %q", notAfterName)
 	}
-	certExpiryColl, ok := coll.(*prometheus.GaugeVec)
+	notAfterColl, ok := coll.(*prometheus.GaugeVec)
 	if !ok {
-		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", certExpiryName, coll)
+		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notAfterName, coll)
 	}
 
 	coll, ok = collectors[outcomeName]
@@ -104,7 +103,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", outcomeName, coll)
 	}
 
-	return TLSProbe{c.URL, c.RootOrg, c.RootCN, strings.ToLower(c.Response), certExpiryColl, outcomeColl}, nil
+	return TLSProbe{c.URL, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, outcomeColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
@@ -114,7 +113,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 func (c TLSConf) Instrument() map[string]prometheus.Collector {
 	notAfter := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: notAfter,
+			Name: notAfterName,
 			Help: "Certificate notAfter value as a Unix timestamp in seconds",
 		}, []string{"url"},
 	))
@@ -125,8 +124,8 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 		}, []string{"url", "badOutcomeError"},
 	))
 	return map[string]prometheus.Collector{
-		certExpiryName: certExpiry,
-		outcomeName:    outcome,
+		notAfterName: notAfter,
+		outcomeName:  outcome,
 	}
 }
 

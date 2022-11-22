@@ -51,12 +51,12 @@ func getReasons() []string {
 // TLSProbe is the exported `Prober` object for monitors configured to perform
 // TLS protocols.
 type TLSProbe struct {
-	url        string
-	rootOrg    string
-	rootCN     string
-	response   string
-	certExpiry *prometheus.GaugeVec
-	reason     *prometheus.GaugeVec
+	url      string
+	rootOrg  string
+	rootCN   string
+	response string
+	notAfter *prometheus.GaugeVec
+	reason   *prometheus.GaugeVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
@@ -104,14 +104,13 @@ func getOCSPStatus(cert, issuer *x509.Certificate) (int, error) {
 
 // Make a TLS connection with InsecureSkipVerify set to true to get the
 // expiration time and root information of insecure leaf certificates.
-func (p TLSProbe) getInsecureCertInfo() (string, string, time.Duration, error) {
+func (p TLSProbe) getInsecureCertInfo() (string, string, time.Time, error) {
 	conf := &tls.Config{InsecureSkipVerify: true}
 	conn, err := tls.Dial("tcp", p.url+":443", conf)
 	if err != nil {
-		return "", "", 0, err
+		return "", "", time.Time{}, err
 	}
 	peers := conn.ConnectionState().PeerCertificates
-	expiryDate := peers[0].NotAfter
 
 	for i := 0; i < len(peers)-1; i++ {
 		certIssuer, issuerSubject := peers[i].Issuer, peers[i+1].Subject
@@ -121,7 +120,7 @@ func (p TLSProbe) getInsecureCertInfo() (string, string, time.Duration, error) {
 	}
 
 	root := peers[len(peers)-1].Issuer
-	return root.Organization[0], root.CommonName, time.Until(expiryDate), err
+	return root.Organization[0], root.CommonName, peers[0].NotAfter, err
 }
 
 // Check if the root of the leaf's certificate is the one we expect.
@@ -132,62 +131,62 @@ func (p TLSProbe) isRootExpected(rootO, rootCN string) bool {
 	return false
 }
 
-// Export time to (or since) expiration (in seconds) and reason (with
-// corresponding badOutcome label) to Prometheus.
-func (p TLSProbe) exportMetrics(expiryTime time.Duration, reason reason) {
-	p.certExpiry.WithLabelValues(p.url).Set(expiryTime.Seconds())
-	p.certExpiry.WithLabelValues(p.url, badOutcomeError{reason}.Error()).Set(float64(reason))
+// Export expiration timestamp and reason (with corresponding badOutcome label)
+// to Prometheus.
+func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
+	p.notAfter.WithLabelValues(p.url).Set(float64(notAfter.Unix()))
+	p.notAfter.WithLabelValues(p.url, badOutcomeError{reason}.Error()).Set(float64(reason))
 }
 
 // Probe performs the configured TLS protocol. Return true if both root AND
-// response are the expected values, otherwise false. Export time to cert expiry
-// and reason as Prometheus metrics.
+// response are the expected values, otherwise false. Export expiration
+// timestamp and reason as Prometheus metrics.
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	conn, secure_err := tls.Dial("tcp", p.url+":443", &tls.Config{})
 	if secure_err != nil {
 		// TLS connection failed, so try insecure connection instead.
-		rootO, rootCN, timeUntilExpiry, err := p.getInsecureCertInfo()
+		rootO, rootCN, notAfter, err := p.getInsecureCertInfo()
 		// Insecure connection successful, but certificate chain is invalid.
 		if errors.Is(err, fmt.Errorf(reasonToString[issuerVerifyFailed])) {
-			p.exportMetrics(timeUntilExpiry, issuerVerifyFailed)
+			p.exportMetrics(notAfter, issuerVerifyFailed)
 			return false, time.Since(start)
 		}
 		// Insecure connection failed.
 		if err != nil {
-			p.exportMetrics(timeUntilExpiry, internalError)
+			p.exportMetrics(notAfter, internalError)
 			return false, time.Since(start)
 		}
 		// Insecure connection successful and chain is valid, so check if
 		// certificate is and should be expired.
 		if p.response == "expired" {
 			certInvalidErr := x509.CertificateInvalidError{}
-			p.exportMetrics(timeUntilExpiry, none)
+			p.exportMetrics(notAfter, none)
 			return (errors.As(secure_err, &certInvalidErr) && certInvalidErr.Reason == x509.Expired) && p.isRootExpected(rootO, rootCN), time.Since(start)
 		}
 		// None of the above cases. Secure TLS connection failed and certificate
 		// should not be expired, so return false.
-		p.exportMetrics(timeUntilExpiry, internalError)
+		p.exportMetrics(notAfter, internalError)
 		return false, time.Since(start)
 	}
 	// Certificate has been validated. Now check if it's revoked.
 	defer conn.Close()
 	chains := conn.ConnectionState().VerifiedChains
 	leaf, issuer, rootCert := chains[0][0], chains[0][1], chains[0][len(chains[0])-1].Issuer
-	timeUntilExpiry := time.Until(leaf.NotAfter)
+	notAfter := leaf.NotAfter
 	rootO, rootCN := rootCert.Organization[0], rootCert.CommonName
 
 	// Check OCSP to see if the certificate is valid, revoked or unknown.
 	ocspStatus, err := getOCSPStatus(leaf, issuer)
 	if err != nil {
-		p.exportMetrics(timeUntilExpiry, ocspError)
+		p.exportMetrics(notAfter, ocspError)
 		return false, time.Since(start)
 	}
 	if ocspStatus == ocsp.Unknown {
-		p.exportMetrics(timeUntilExpiry, ocspUnknown)
+		p.exportMetrics(notAfter, ocspUnknown)
 		return false, time.Since(start)
 	}
 
-	p.exportMetrics(timeUntilExpiry, none)
+	p.exportMetrics(notAfter, none)
 	return ((p.response == "revoked" && ocspStatus == ocsp.Revoked) || (p.response == "valid" && ocspStatus == ocsp.Good)) && (p.isRootExpected(rootO, rootCN)), time.Since(start)
 }
