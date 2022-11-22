@@ -48,7 +48,7 @@ type TLSProbe struct {
 	rootCN   string
 	response string
 	notAfter *prometheus.GaugeVec
-	reason   *prometheus.GaugeVec
+	reason   *prometheus.CounterVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
@@ -87,11 +87,10 @@ func getOCSP(cert, issuer *x509.Certificate) (int, error) {
 	return ocspRes.Status, nil
 }
 
-// Export expiration timestamp and reason (with corresponding badOutcome label)
-// to Prometheus.
+// Export expiration timestamp and reason to Prometheus.
 func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
 	p.notAfter.WithLabelValues(p.url).Set(float64(notAfter.Unix()))
-	p.notAfter.WithLabelValues(p.url, reasonToString[reason]).Set(float64(reason))
+	p.notAfter.WithLabelValues(p.url, reasonToString[reason]).Inc()
 }
 
 func (p TLSProbe) probeExpired(timeout time.Duration) (bool, time.Duration) {

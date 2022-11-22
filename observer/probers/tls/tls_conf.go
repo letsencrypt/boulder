@@ -12,7 +12,7 @@ import (
 
 const (
 	notAfterName = "obs_not_after"
-	outcomeName  = "tls_prober_outcome"
+	reasonName   = "tls_prober_failure_reason"
 )
 
 // TLSConf is exported to receive YAML configuration.
@@ -94,16 +94,16 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notAfterName, coll)
 	}
 
-	coll, ok = collectors[outcomeName]
+	coll, ok = collectors[reasonName]
 	if !ok {
-		return nil, fmt.Errorf("tls prober did not receive collector %q", outcomeName)
+		return nil, fmt.Errorf("tls prober did not receive collector %q", reasonName)
 	}
-	outcomeColl, ok := coll.(*prometheus.GaugeVec)
+	reasonColl, ok := coll.(*prometheus.CounterVec)
 	if !ok {
-		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", outcomeName, coll)
+		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.CounterVec", reasonName, coll)
 	}
 
-	return TLSProbe{c.URL, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, outcomeColl}, nil
+	return TLSProbe{c.URL, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, reasonColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
@@ -117,15 +117,15 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 			Help: "Certificate notAfter value as a Unix timestamp in seconds",
 		}, []string{"url"},
 	))
-	outcome := prometheus.Collector(prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: outcomeName,
-			Help: fmt.Sprintf("Outcome for TLS Prober. Can be one of %s", getReasons()),
-		}, []string{"url", "badOutcomeError"},
+	reason := prometheus.Collector(prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: reasonName,
+			Help: fmt.Sprintf("Reason for TLS Prober check failure. Can be one of %s", getReasons()),
+		}, []string{"url", "reason"},
 	))
 	return map[string]prometheus.Collector{
 		notAfterName: notAfter,
-		outcomeName:  outcome,
+		reasonName:   reason,
 	}
 }
 
