@@ -469,7 +469,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// a ServerInternal problem since this is unexpected.
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDLookupFailed"}).Inc()
 		// Add an error to the log event with the internal error message
-		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
+		logEvent.AddError("Error calling SA.GetRegistration: %s", err)
 		return nil, nil, probs.ServerInternal(fmt.Sprintf(
 			"Error retrieving account %q", accountURL))
 	}
