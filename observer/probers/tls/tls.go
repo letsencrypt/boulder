@@ -118,7 +118,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) (bool, time.Duration) {
 
 }
 
-func (p TLSProbe) probeUnexpired(timeout time.Duration, valid bool) (bool, time.Duration) {
+func (p TLSProbe) probeUnexpired(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.url+":443", &tls.Config{})
 	if err != nil {
@@ -142,10 +142,10 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration, valid bool) (bool, time.
 	switch ocspStatus {
 	case ocsp.Good:
 		p.exportMetrics(peers[0].NotAfter, none)
-		return valid, time.Since(start)
+		return p.response == "valid", time.Since(start)
 	case ocsp.Revoked:
 		p.exportMetrics(peers[0].NotAfter, none)
-		return !valid, time.Since(start)
+		return p.response == "revoked", time.Since(start)
 	default:
 		p.exportMetrics(peers[0].NotAfter, ocspUnknown)
 		return false, time.Since(start)
@@ -156,14 +156,8 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration, valid bool) (bool, time.
 // response are the expected values, otherwise false. Export expiration
 // timestamp and reason as Prometheus metrics.
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	switch p.response {
-	case "valid":
-		return p.probeUnexpired(timeout, true)
-	case "revoked":
-		return p.probeUnexpired(timeout, false)
-	case "expired":
+	if p.response == "expired" {
 		return p.probeExpired(timeout)
-	default:
-		return false, 0
 	}
+	return p.probeUnexpired(timeout)
 }
