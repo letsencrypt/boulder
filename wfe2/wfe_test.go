@@ -3190,6 +3190,29 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	}
 }
 
+type mockSAGetRegByKeyCanceled struct {
+	sapb.StorageAuthorityGetterClient
+}
+
+func (sa *mockSAGetRegByKeyCanceled) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+// When SA.GetRegistrationByKey is canceled (i.e. by the client), NewAccount should
+// return 408.
+func TestNewAccountWhenGetRegByKeyCanceled(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = &mockSAGetRegByKeyCanceled{wfe.sa}
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
+	_, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
+	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+}
+
 type mockSAGetRegByKeyNotFound struct {
 	sapb.StorageAuthorityGetterClient
 }
