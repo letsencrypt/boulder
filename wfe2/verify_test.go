@@ -16,6 +16,7 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/mocks"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -23,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/square/go-jose.v2"
 )
 
@@ -1596,4 +1598,41 @@ func TestMatchJWSURLs(t *testing.T) {
 			}
 		})
 	}
+}
+
+type alwaysCancelNonceService struct{}
+
+func (acns alwaysCancelNonceService) Redeem(ctx context.Context, msg *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return nil, probs.Canceled("user canceled request")
+}
+
+func (acns alwaysCancelNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
+	return nil, nil
+}
+
+// mockNonceSource implements jose.NonceSource
+type mockNonceSource struct{}
+
+func (mockNonceSource) Nonce() (string, error) {
+	return "mnssfakeNONCEfakeNONCE", nil
+}
+
+func (mockNonceSource) prefix() string {
+	return "mnss"
+}
+
+func TestNoncePassThroughProblem(t *testing.T) {
+	wfe, _ := setupWFE(t)
+
+	nonceServiceClient := alwaysCancelNonceService{}
+	noncePrefixMap := make(map[string]noncepb.NonceServiceClient)
+	noncePrefixMap[mockNonceSource{}.prefix()] = nonceServiceClient
+	wfe.noncePrefixMap = noncePrefixMap
+	wfe.remoteNonceService = nonceServiceClient
+
+	urlAJWS, _, _ := signRequestEmbed(t, nil, "example.com", "", mockNonceSource{})
+	wfe.remoteNonceService = alwaysCancelNonceService{}
+	prob := wfe.validNonce(context.Background(), urlAJWS)
+	test.AssertNotNil(t, prob, "expected failure")
+	test.AssertEquals(t, prob.HTTPStatus, http.StatusRequestTimeout)
 }
