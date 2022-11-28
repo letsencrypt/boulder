@@ -1182,6 +1182,26 @@ func TestChallenge(t *testing.T) {
 	}
 }
 
+type mockSAGetCertificateCanceled struct {
+	*mocks.StorageAuthority
+}
+
+func (mockSAGetCertificateCanceled) GetCertificate(context.Context, *sapb.Serial, ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+// When SA.GetCertificate is canceled, return 408.
+func TestGetCertificateCanceled(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = mockSAGetCertificateCanceled{}
+	responseWriter := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "333333333333333333333333333333333333", nil)
+	test.AssertNotError(t, err, "creating request")
+
+	wfe.Certificate(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+}
+
 type mockSAGetAuthorization2Canceled struct {
 	*mocks.StorageAuthority
 }
@@ -1190,8 +1210,8 @@ func (mockSAGetAuthorization2Canceled) GetAuthorization2(context.Context, *sapb.
 	return nil, probs.Canceled("canceled!")
 }
 
-// When SA.GetAuthorization2 is canceled, return 408.
-func TestChallengeGetAuthorization2Canceled408(t *testing.T) {
+// When SA.GetAuthorization2 is canceled during a Challenge POST or Authorization GET, return 408.
+func TestGetAuthorization2Canceled408(t *testing.T) {
 	wfe, _ := setupWFE(t)
 	wfe.sa = mockSAGetAuthorization2Canceled{}
 	post := func(path string) *http.Request {
@@ -1201,6 +1221,12 @@ func TestChallengeGetAuthorization2Canceled408(t *testing.T) {
 	}
 	responseWriter := httptest.NewRecorder()
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, post("1/-ZfxEw"))
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+
+	req, err := http.NewRequest("GET", "3", nil)
+	test.AssertNotError(t, err, "creating request")
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 }
 
