@@ -1621,18 +1621,57 @@ func (mockNonceSource) prefix() string {
 	return "mnss"
 }
 
-func TestNoncePassThroughProblem(t *testing.T) {
+// Test that cancellation of the nonce lookup will result in a 408, via the
+// CancelTo408Interceptor in grpc/interceptors.go.
+func TestNoncePassThrough408Problem(t *testing.T) {
 	wfe, _ := setupWFE(t)
+
+	jws, _, _ := signRequestKeyID(t, 1234, nil, "http://example.com/", "request-body", mockNonceSource{})
 
 	nonceServiceClient := alwaysCancelNonceService{}
 	noncePrefixMap := make(map[string]noncepb.NonceServiceClient)
 	noncePrefixMap[mockNonceSource{}.prefix()] = nonceServiceClient
 	wfe.noncePrefixMap = noncePrefixMap
-	wfe.remoteNonceService = nonceServiceClient
-
-	urlAJWS, _, _ := signRequestEmbed(t, nil, "example.com", "", mockNonceSource{})
 	wfe.remoteNonceService = alwaysCancelNonceService{}
-	prob := wfe.validNonce(context.Background(), urlAJWS)
+
+	prob := wfe.validNonce(context.Background(), jws)
+	test.AssertNotNil(t, prob, "expected failure")
+	test.AssertEquals(t, prob.HTTPStatus, http.StatusRequestTimeout)
+}
+
+type alwaysCancelAccountGetter struct{}
+
+// GetRegistration implements AccountGetter
+func (alwaysCancelAccountGetter) GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, probs.Canceled("user canceled request")
+}
+
+type successNonceService struct{}
+
+func (successNonceService) Redeem(ctx context.Context, msg *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return &noncepb.ValidMessage{Valid: true}, nil
+}
+
+func (successNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
+	return nil, nil
+}
+
+// Test that cancellation of the account lookup will result in a 408, via the
+// CancelTo408Interceptor in grpc/interceptors.go.
+func TestAccountLookupPassThrough408Problem(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.accountGetter = alwaysCancelAccountGetter{}
+
+	jws, _, jwsBody := signRequestKeyID(t, 1234, nil, "http://example.com/", "request-body", mockNonceSource{})
+	req := makePostRequestWithPath("test-path", jwsBody)
+
+	nonceServiceClient := successNonceService{}
+	noncePrefixMap := make(map[string]noncepb.NonceServiceClient)
+	noncePrefixMap[mockNonceSource{}.prefix()] = nonceServiceClient
+	wfe.noncePrefixMap = noncePrefixMap
+	wfe.remoteNonceService = successNonceService{}
+
+	_, _, prob := wfe.lookupJWK(jws, context.Background(), req, newRequestEvent())
 	test.AssertNotNil(t, prob, "expected failure")
 	test.AssertEquals(t, prob.HTTPStatus, http.StatusRequestTimeout)
 }
