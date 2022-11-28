@@ -1182,6 +1182,28 @@ func TestChallenge(t *testing.T) {
 	}
 }
 
+type mockSAGetAuthorization2Canceled struct {
+	*mocks.StorageAuthority
+}
+
+func (mockSAGetAuthorization2Canceled) GetAuthorization2(context.Context, *sapb.AuthorizationID2, ...grpc.CallOption) (*corepb.Authorization, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+// When SA.GetAuthorization2 is canceled, return 408.
+func TestChallengeGetAuthorization2Canceled408(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = mockSAGetAuthorization2Canceled{}
+	post := func(path string) *http.Request {
+		signedURL := fmt.Sprintf("http://localhost/%s", path)
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+	responseWriter := httptest.NewRecorder()
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter, post("1/-ZfxEw"))
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+}
+
 // MockRAPerformValidationError is a mock RA that just returns an error on
 // PerformValidation.
 type MockRAPerformValidationError struct {
