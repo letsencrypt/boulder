@@ -1607,7 +1607,7 @@ func (acns alwaysCancelNonceService) Redeem(ctx context.Context, msg *noncepb.No
 }
 
 func (acns alwaysCancelNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	return nil, nil
+	return nil, probs.Canceled("user canceled request")
 }
 
 // mockNonceSource implements jose.NonceSource

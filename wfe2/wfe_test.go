@@ -47,6 +47,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -408,6 +409,24 @@ func addHeadIfGet(s []string) []string {
 		}
 	}
 	return s
+}
+
+func TestGetNonceCancellationBecomes408(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux := http.NewServeMux()
+	rw := httptest.NewRecorder()
+
+	nonceServiceClient := alwaysCancelNonceService{}
+	noncePrefixMap := make(map[string]noncepb.NonceServiceClient)
+	noncePrefixMap[mockNonceSource{}.prefix()] = nonceServiceClient
+	wfe.noncePrefixMap = noncePrefixMap
+	wfe.remoteNonceService = alwaysCancelNonceService{}
+	wfe.HandleFunc(mux, "/foo", func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
+	}, "POST")
+	req, err := http.NewRequest("POST", "/foo", nil)
+	test.AssertNotError(t, err, "creating request")
+	mux.ServeHTTP(rw, req)
+	test.AssertEquals(t, rw.Code, 408)
 }
 
 func TestHandleFunc(t *testing.T) {
@@ -3223,7 +3242,7 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 		Identifier:     identifier.DNSIdentifier("*.example.com"),
 		Challenges: []core.Challenge{
 			{
-				Type:                     "dns",
+				Type: "dns",
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
