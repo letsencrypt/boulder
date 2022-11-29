@@ -47,6 +47,7 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -408,6 +409,24 @@ func addHeadIfGet(s []string) []string {
 		}
 	}
 	return s
+}
+
+func TestGetNonceCancellationBecomes408(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	mux := http.NewServeMux()
+	rw := httptest.NewRecorder()
+
+	nonceServiceClient := alwaysCancelNonceService{}
+	noncePrefixMap := make(map[string]noncepb.NonceServiceClient)
+	noncePrefixMap[mockNonceSource{}.prefix()] = nonceServiceClient
+	wfe.noncePrefixMap = noncePrefixMap
+	wfe.remoteNonceService = alwaysCancelNonceService{}
+	wfe.HandleFunc(mux, "/foo", func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
+	}, "POST")
+	req, err := http.NewRequest("POST", "/foo", nil)
+	test.AssertNotError(t, err, "creating request")
+	mux.ServeHTTP(rw, req)
+	test.AssertEquals(t, rw.Code, 408)
 }
 
 func TestHandleFunc(t *testing.T) {
@@ -1161,6 +1180,54 @@ func TestChallenge(t *testing.T) {
 			test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
 		})
 	}
+}
+
+type mockSAGetCertificateCanceled struct {
+	*mocks.StorageAuthority
+}
+
+func (mockSAGetCertificateCanceled) GetCertificate(context.Context, *sapb.Serial, ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+// When SA.GetCertificate is canceled, return 408.
+func TestGetCertificateCanceled(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = mockSAGetCertificateCanceled{}
+	responseWriter := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "333333333333333333333333333333333333", nil)
+	test.AssertNotError(t, err, "creating request")
+
+	wfe.Certificate(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+}
+
+type mockSAGetAuthorization2Canceled struct {
+	*mocks.StorageAuthority
+}
+
+func (mockSAGetAuthorization2Canceled) GetAuthorization2(context.Context, *sapb.AuthorizationID2, ...grpc.CallOption) (*corepb.Authorization, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+// When SA.GetAuthorization2 is canceled during a Challenge POST or Authorization GET, return 408.
+func TestGetAuthorization2Canceled408(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = mockSAGetAuthorization2Canceled{}
+	post := func(path string) *http.Request {
+		signedURL := fmt.Sprintf("http://localhost/%s", path)
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+		return makePostRequestWithPath(path, jwsBody)
+	}
+	responseWriter := httptest.NewRecorder()
+	wfe.Challenge(ctx, newRequestEvent(), responseWriter, post("1/-ZfxEw"))
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+
+	req, err := http.NewRequest("GET", "3", nil)
+	test.AssertNotError(t, err, "creating request")
+	responseWriter = httptest.NewRecorder()
+	wfe.Authorization(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 }
 
 // MockRAPerformValidationError is a mock RA that just returns an error on
@@ -2806,6 +2873,30 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 		}`)
 }
 
+type mockSAGetOrderCanceled struct {
+	sapb.StorageAuthorityGetterClient
+}
+
+func (sa mockSAGetOrderCanceled) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+func TestGetOrderCanceled408(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = mockSAGetOrderCanceled{}
+	responseWriter := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "123/456", nil)
+	test.AssertNotError(t, err, "creating request")
+	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/123/456", "{}", wfe.nonceService)
+	postReq := makePostRequestWithPath("123/456", jwsBody)
+	responseWriter = httptest.NewRecorder()
+	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, postReq)
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+}
+
 func TestGetOrder(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
@@ -3171,6 +3262,29 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	}
 }
 
+type mockSAGetRegByKeyCanceled struct {
+	sapb.StorageAuthorityGetterClient
+}
+
+func (sa *mockSAGetRegByKeyCanceled) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+// When SA.GetRegistrationByKey is canceled (i.e. by the client), NewAccount should
+// return 408.
+func TestNewAccountWhenGetRegByKeyCanceled(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = &mockSAGetRegByKeyCanceled{wfe.sa}
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
+	_, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
+	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
+	responseWriter := httptest.NewRecorder()
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+}
+
 type mockSAGetRegByKeyNotFound struct {
 	sapb.StorageAuthorityGetterClient
 }
@@ -3210,6 +3324,30 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 		"detail": "No account exists with the provided key",
 		"status": 400
 	}`)
+}
+
+// mockRANewRegCanceled is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`
+type mockRANewRegCanceled struct {
+	MockRegistrationAuthority
+}
+
+func (ra *mockRANewRegCanceled) NewRegistration(context.Context, *corepb.Registration, ...grpc.CallOption) (*corepb.Registration, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+// When RA.GetRegistrationByKey is canceled (i.e. by the client), NewAccount should
+// return 408.
+func TestNewAccountWhenRANewRegCanceled(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.ra = &mockRANewRegCanceled{}
+	key := loadKey(t, []byte(testE2KeyPrivatePEM))
+	_, ok := key.(*ecdsa.PrivateKey)
+	test.Assert(t, ok, "Couldn't load ECDSA key")
+	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
+	responseWriter := httptest.NewRecorder()
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 }
 
 func TestPrepAuthzForDisplay(t *testing.T) {
