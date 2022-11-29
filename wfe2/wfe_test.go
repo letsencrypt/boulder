@@ -2873,6 +2873,24 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 		}`)
 }
 
+type mockSAGetOrderCanceled struct {
+	sapb.StorageAuthorityGetterClient
+}
+
+func (sa mockSAGetOrderCanceled) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	return nil, probs.Canceled("canceled!")
+}
+
+func TestGetOrderCanceled408(t *testing.T) {
+	wfe, _ := setupWFE(t)
+	wfe.sa = mockSAGetOrderCanceled{}
+	responseWriter := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "123/456", nil)
+	test.AssertNotError(t, err, "creating request")
+	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+}
+
 func TestGetOrder(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
