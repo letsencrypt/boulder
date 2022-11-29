@@ -328,7 +328,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 		// Don't worry about returning this error because the caller will
 		// never handle it.
 		wfe.log.Warningf("Could not write response: %s", err)
-		logEvent.AddError(fmt.Sprintf("failed to write response: %s", err))
+		logEvent.AddError("failed to write response: %s", err)
 	}
 	return nil
 }
