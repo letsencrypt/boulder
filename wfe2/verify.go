@@ -199,7 +199,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	if wfe.remoteNonceService != nil {
 		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
 		if err != nil {
-			return probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
+			return web.ProblemDetailsForError(err, "failed to redeem nonce")
 		}
 		nonceValid = valid
 	} else {
@@ -469,9 +469,8 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// a ServerInternal problem since this is unexpected.
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDLookupFailed"}).Inc()
 		// Add an error to the log event with the internal error message
-		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
-		return nil, nil, probs.ServerInternal(fmt.Sprintf(
-			"Error retrieving account %q", accountURL))
+		logEvent.AddError("calling SA.GetRegistration: %s", err)
+		return nil, nil, web.ProblemDetailsForError(err, fmt.Sprintf("Error retrieving account %q", accountURL))
 	}
 
 	// Verify the account is not deactivated

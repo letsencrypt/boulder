@@ -254,7 +254,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				if wfe.remoteNonceService != nil {
 					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
 					if err != nil {
-						wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
+						wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to get nonce"), err)
 						return
 					}
 					response.Header().Set("Replay-Nonce", nonceMsg.Nonce)
@@ -673,7 +673,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		returnExistingAcct(existingAcct)
 		return
 	} else if !errors.Is(err, berrors.NotFound) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "failed check for existing account"), err)
 		return
 	}
 
@@ -736,7 +736,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			}
 			// return error even if berrors.NotFound, as the duplicate key error we got from
 			// ra.NewRegistration indicates it _does_ already exist.
-			wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "checking for existing account"), err)
 			return
 		}
 		wfe.sendError(response, logEvent,
@@ -1027,7 +1027,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		if errors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Problem getting authorization"), err)
 		}
 		return
 	}
@@ -1490,7 +1490,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), nil)
 		return
 	} else if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Problem getting authorization"), err)
 		return
 	}
 
@@ -1616,7 +1616,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		} else if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve certificate"), ierr)
 		}
 		return
 	}
@@ -1859,14 +1859,15 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
 	}
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes}); err == nil {
+	existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
+	if err == nil {
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.Id)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
 		return
 	} else if !errors.Is(err, berrors.NotFound) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to lookup existing keys"), err)
 		return
 	}
 	// Convert account to proto for grpc
@@ -1889,7 +1890,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 			// header
 			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
 			if err != nil {
-				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
+				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "looking up account by key"), err)
 				return
 			}
 			response.Header().Set("Location",
@@ -2101,7 +2102,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
 		return
 	}
 
@@ -2175,7 +2177,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
 		return
 	}
 
@@ -2320,7 +2323,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// Check if the serial is part of an ongoing incident.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to check if the serial is impacted by an incident"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			"checking if certificate is impacted by an incident"), err)
 		return
 	}
 
@@ -2345,7 +2349,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to get certificate"), err)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "getting certificate"), err)
 		}
 		return
 	}
