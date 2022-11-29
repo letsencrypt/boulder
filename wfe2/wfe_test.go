@@ -2889,6 +2889,12 @@ func TestGetOrderCanceled408(t *testing.T) {
 	test.AssertNotError(t, err, "creating request")
 	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
+
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/123/456", "{}", wfe.nonceService)
+	postReq := makePostRequestWithPath("123/456", jwsBody)
+	responseWriter = httptest.NewRecorder()
+	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, postReq)
+	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 }
 
 func TestGetOrder(t *testing.T) {
