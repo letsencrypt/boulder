@@ -30,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
-	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -121,7 +120,6 @@ type WebFrontEndImpl struct {
 	LegacyKeyIDPrefix string
 
 	// Register of anti-replay nonces
-	nonceService       *nonce.NonceService
 	remoteNonceService noncepb.NonceServiceClient
 	noncePrefixMap     map[string]noncepb.NonceServiceClient
 
@@ -173,6 +171,14 @@ func NewWebFrontEndImpl(
 		return WebFrontEndImpl{}, errors.New("must provide at least one certificate chain")
 	}
 
+	if remoteNonceService == nil {
+		return WebFrontEndImpl{}, errors.New("must provide a service for nonce issuance")
+	}
+
+	if noncePrefixMap == nil {
+		return WebFrontEndImpl{}, errors.New("must provide a set of services for nonce redemption")
+	}
+
 	wfe := WebFrontEndImpl{
 		log:                          logger,
 		clk:                          clk,
@@ -188,14 +194,6 @@ func NewWebFrontEndImpl(
 		ra:                           rac,
 		sa:                           sac,
 		accountGetter:                accountGetter,
-	}
-
-	if wfe.remoteNonceService == nil {
-		nonceService, err := nonce.NewNonceService(stats, 0, "")
-		if err != nil {
-			return WebFrontEndImpl{}, err
-		}
-		wfe.nonceService = nonceService
 	}
 
 	return wfe, nil
@@ -244,28 +242,12 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				return
 			}
 			if request.Method != "GET" || pattern == newNoncePath {
-				// Historically we did not return a error to the client
-				// if we failed to get a new nonce. We preserve that
-				// behavior if using the built in nonce service, but
-				// if we get a failure using the new remote nonce service
-				// we return an internal server error so that it is
-				// clearer both in our metrics and to the client that
-				// something is wrong.
-				if wfe.remoteNonceService != nil {
-					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
-					if err != nil {
-						wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to get nonce"), err)
-						return
-					}
-					response.Header().Set("Replay-Nonce", nonceMsg.Nonce)
-				} else {
-					nonce, err := wfe.nonceService.Nonce()
-					if err == nil {
-						response.Header().Set("Replay-Nonce", nonce)
-					} else {
-						logEvent.AddError("unable to make nonce: %s", err)
-					}
+				nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
+				if err != nil {
+					wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to get nonce"), err)
+					return
 				}
+				response.Header().Set("Replay-Nonce", nonceMsg.Nonce)
 			}
 			// Per section 7.1 "Resources":
 			//   The "index" link relation is present on all resources other than the
