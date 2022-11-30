@@ -293,6 +293,29 @@ var testKeyPolicy = goodkey.KeyPolicy{
 	AllowECDSANISTP384: true,
 }
 
+// inMemNonceService implements noncepb.NonceServiceClient for tests.
+type inMemNonceService struct {
+	*nonce.NonceService
+	nonces []string
+}
+
+// Nonce implements proto.NonceServiceClient
+func (imns *inMemNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
+	n, err := imns.NonceService.Nonce()
+	if err != nil {
+		return nil, err
+	}
+	return &noncepb.NonceMessage{Nonce: n}, nil
+}
+
+// Redeem implements proto.NonceServiceClient
+func (imns *inMemNonceService) Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	valid := imns.NonceService.Valid(in.Nonce)
+	return &noncepb.ValidMessage{Valid: valid}, nil
+}
+
+var _ noncepb.NonceServiceClient = &inMemNonceService{}
+
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
@@ -336,6 +359,12 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	}
 
 	mockSA := mocks.NewStorageAuthority(fc)
+	noncePrefix := "mlem"
+	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
+	test.AssertNotError(t, err, "making nonceService")
+	nonceGRPCService := &inMemNonceService{
+		NonceService: nonceService,
+	}
 
 	wfe, err := NewWebFrontEndImpl(
 		stats,
@@ -343,8 +372,10 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		testKeyPolicy,
 		certChains,
 		issuerCertificates,
-		nil,
-		nil,
+		nonceGRPCService,
+		map[string]noncepb.NonceServiceClient{
+			noncePrefix: nonceGRPCService,
+		},
 		blog.NewMock(),
 		10*time.Second,
 		30*24*time.Hour,
@@ -383,7 +414,7 @@ func makePostRequestWithPath(path string, body string) *http.Request {
 // payload, with the protected URL set to the provided signedURL. An HTTP
 // request constructed to the provided path with the encoded JWS body as the
 // POST body is returned.
-func signAndPost(t *testing.T, path, signedURL, payload string, ns *nonce.NonceService) *http.Request {
+func signAndPost(t *testing.T, path, signedURL, payload string, ns jose.NonceSource) *http.Request {
 	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, ns)
 	return makePostRequestWithPath(path, body)
 }
@@ -724,7 +755,7 @@ func TestDirectory(t *testing.T) {
 		Host:   "localhost:4300",
 	}
 
-	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/directory", "", wfe.nonceService)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/directory", "", nonceService(&wfe))
 	postAsGetReq := makePostRequestWithPath("/directory", jwsBody)
 
 	testCases := []struct {
@@ -889,7 +920,7 @@ func TestNonceEndpoint(t *testing.T) {
 		URL:    mustParseURL(newNoncePath),
 	}
 
-	_, _, jwsBody := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", wfe.nonceService)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, fmt.Sprintf("http://localhost%s", newNoncePath), "", nonceService(&wfe))
 	postAsGetReq := makePostRequestWithPath(newNoncePath, jwsBody)
 
 	testCases := []struct {
@@ -922,7 +953,9 @@ func TestNonceEndpoint(t *testing.T) {
 			test.AssertEquals(t, responseWriter.Code, tc.expectedStatus)
 			// And the response should contain a valid nonce in the Replay-Nonce header
 			nonce := responseWriter.Header().Get("Replay-Nonce")
-			test.AssertEquals(t, wfe.nonceService.Valid(nonce), true)
+			redeemResp, err := wfe.remoteNonceService.Redeem(context.Background(), &noncepb.NonceMessage{Nonce: nonce})
+			test.AssertNotError(t, err, "redeeming nonce")
+			test.AssertEquals(t, redeemResp.Valid, true)
 			// The server MUST include a Cache-Control header field with the "no-store"
 			// directive in responses for the newNonce resource, in order to prevent
 			// caching of this resource.
@@ -1109,11 +1142,11 @@ func TestChallenge(t *testing.T) {
 
 	post := func(path string) *http.Request {
 		signedURL := fmt.Sprintf("http://localhost/%s", path)
-		_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, nonceService(&wfe))
 		return makePostRequestWithPath(path, jwsBody)
 	}
 	postAsGet := func(keyID int64, path, body string) *http.Request {
-		_, _, jwsBody := signRequestKeyID(t, keyID, nil, fmt.Sprintf("http://localhost/%s", path), body, wfe.nonceService)
+		_, _, jwsBody := signRequestKeyID(t, keyID, nil, fmt.Sprintf("http://localhost/%s", path), body, nonceService(&wfe))
 		return makePostRequestWithPath(path, jwsBody)
 	}
 
@@ -1216,7 +1249,7 @@ func TestGetAuthorization2Canceled408(t *testing.T) {
 	wfe.sa = mockSAGetAuthorization2Canceled{}
 	post := func(path string) *http.Request {
 		signedURL := fmt.Sprintf("http://localhost/%s", path)
-		_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+		_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, nonceService(&wfe))
 		return makePostRequestWithPath(path, jwsBody)
 	}
 	responseWriter := httptest.NewRecorder()
@@ -1249,7 +1282,7 @@ func TestUpdateChallengeFinalizedAuthz(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	signedURL := "http://localhost/1/-ZfxEw"
-	_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, nonceService(&wfe))
 	request := makePostRequestWithPath("1/-ZfxEw", jwsBody)
 	wfe.Challenge(ctx, newRequestEvent(), responseWriter, request)
 
@@ -1272,7 +1305,7 @@ func TestUpdateChallengeRAError(t *testing.T) {
 
 	// Update a pending challenge
 	signedURL := "http://localhost/2/-ZfxEw"
-	_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, wfe.nonceService)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, signedURL, `{}`, nonceService(&wfe))
 	responseWriter := httptest.NewRecorder()
 	request := makePostRequestWithPath("2/-ZfxEw", jwsBody)
 
@@ -1322,7 +1355,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
 	path := newAcctPath
 	signedURL := fmt.Sprintf("http://localhost%s", path)
-	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(path, body)
 
 	responseWriter := httptest.NewRecorder()
@@ -1343,7 +1376,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	_, ok = key.(*ecdsa.PrivateKey)
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 
-	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 
 	// Reset the body and status code
@@ -1376,7 +1409,7 @@ func TestNewECDSAAccount(t *testing.T) {
 	payload = `{}`
 	path = "1"
 	signedURL = "http://localhost/1"
-	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
@@ -1400,7 +1433,7 @@ func TestEmptyAccount(t *testing.T) {
 	payload := `{}`
 	path := "1"
 	signedURL := "http://localhost/1"
-	_, _, body := signRequestKeyID(t, 1, key, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestKeyID(t, 1, key, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(path, body)
 
 	// Send an account update with the trivial body
@@ -1436,10 +1469,10 @@ func TestNewAccount(t *testing.T) {
 
 	wrongAgreementAcct := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":false}`
 	// An acct with the terms not agreed to
-	_, _, wrongAgreementBody := signRequestEmbed(t, key, signedURL, wrongAgreementAcct, wfe.nonceService)
+	_, _, wrongAgreementBody := signRequestEmbed(t, key, signedURL, wrongAgreementAcct, nonceService(&wfe))
 
 	// A non-JSON payload
-	_, _, fooBody := signRequestEmbed(t, key, signedURL, `foo`, wfe.nonceService)
+	_, _, fooBody := signRequestEmbed(t, key, signedURL, `foo`, nonceService(&wfe))
 
 	type newAcctErrorTest struct {
 		r        *http.Request
@@ -1493,7 +1526,7 @@ func TestNewAccount(t *testing.T) {
 	responseWriter := httptest.NewRecorder()
 
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
-	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(path, body)
 
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
@@ -1520,7 +1553,7 @@ func TestNewAccount(t *testing.T) {
 	// Reset the body and status code
 	responseWriter = httptest.NewRecorder()
 	// POST, Valid JSON, Key already in use
-	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 	// POST the NewAccount request
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, request)
@@ -1553,7 +1586,7 @@ func TestNewAccountWhenAccountHasBeenDeactivated(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load test3 key")
 
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
-	_, _, body := signRequestEmbed(t, k, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, k, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(newAcctPath, body)
 
 	responseWriter := httptest.NewRecorder()
@@ -1571,7 +1604,7 @@ func TestNewAccountNoID(t *testing.T) {
 	signedURL := fmt.Sprintf("http://localhost%s", path)
 
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
-	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(path, body)
 
 	responseWriter := httptest.NewRecorder()
@@ -1616,7 +1649,7 @@ func TestGetAuthorization(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
 		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Invalid authorization ID","status":400}`)
 
-	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/1", "", wfe.nonceService)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/1", "", nonceService(&wfe))
 	postAsGet := makePostRequestWithPath("1", jwsBody)
 
 	responseWriter = httptest.NewRecorder()
@@ -1739,7 +1772,7 @@ func TestAccount(t *testing.T) {
 	path := fmt.Sprintf("%s%d", acctPath, 102)
 	payload := `{}`
 	// ID 102 is used by the mock for missing acct
-	_, _, body := signRequestKeyID(t, 102, nil, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestKeyID(t, 102, nil, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(path, body)
 
 	// Test POST valid JSON but key is not registered
@@ -1757,7 +1790,7 @@ func TestAccount(t *testing.T) {
 	payload = `{}`
 	path = "1"
 	signedURL = "http://localhost/1"
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
@@ -1769,7 +1802,7 @@ func TestAccount(t *testing.T) {
 	// Test POST valid JSON with garbage in URL but valid account ID
 	payload = `{}`
 	signedURL = "http://localhost/a/bunch/of/garbage/1"
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath("/a/bunch/of/garbage/1", body)
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
@@ -1779,7 +1812,7 @@ func TestAccount(t *testing.T) {
 
 	// Test valid POST-as-GET request
 	responseWriter = httptest.NewRecorder()
-	_, _, body = signRequestKeyID(t, 1, nil, "http://localhost/1", "", wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 1, nil, "http://localhost/1", "", nonceService(&wfe))
 	request = makePostRequestWithPath("1", body)
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	// It should not error
@@ -1792,7 +1825,7 @@ func TestAccount(t *testing.T) {
 
 	// Test POST-as-GET request signed with wrong account key
 	responseWriter = httptest.NewRecorder()
-	_, _, body = signRequestKeyID(t, 2, altKey, "http://localhost/1", "", wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 2, altKey, "http://localhost/1", "", nonceService(&wfe))
 	request = makePostRequestWithPath("1", body)
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	// It should error
@@ -1893,7 +1926,7 @@ func TestGetCertificate(t *testing.T) {
 	}
 
 	makePost := func(keyID int64, key interface{}, path, body string) *http.Request {
-		_, _, jwsBody := signRequestKeyID(t, keyID, key, fmt.Sprintf("http://localhost%s", path), body, wfe.nonceService)
+		_, _, jwsBody := signRequestKeyID(t, keyID, key, fmt.Sprintf("http://localhost%s", path), body, nonceService(&wfe))
 		return makePostRequestWithPath(path, jwsBody)
 	}
 
@@ -2147,7 +2180,7 @@ func TestGetCertificateNew(t *testing.T) {
 	}
 
 	makePost := func(keyID int64, key interface{}, path, body string) *http.Request {
-		_, _, jwsBody := signRequestKeyID(t, keyID, key, fmt.Sprintf("http://localhost%s", path), body, wfe.nonceService)
+		_, _, jwsBody := signRequestKeyID(t, keyID, key, fmt.Sprintf("http://localhost%s", path), body, nonceService(&wfe))
 		return makePostRequestWithPath(path, jwsBody)
 	}
 
@@ -2324,7 +2357,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 	payload := `{}`
 	path := fmt.Sprintf("%s%d", acctPath, 1)
 	signedURL := fmt.Sprintf("http://localhost%s", path)
-	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(path, body)
 
 	mux.ServeHTTP(responseWriter, request)
@@ -2332,7 +2365,7 @@ func TestHeaderBoulderRequester(t *testing.T) {
 
 	// requests that do call sendError() also should have the requester header
 	payload = `{"agreement":"https://letsencrypt.org/im-bad"}`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 	mux.ServeHTTP(responseWriter, request)
 	test.AssertEquals(t, responseWriter.Header().Get("Boulder-Requester"), "1")
@@ -2345,7 +2378,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	responseWriter.Body.Reset()
 
 	payload := `{"status":""}`
-	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost/1", payload, wfe.nonceService)
+	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost/1", payload, nonceService(&wfe))
 	request := makePostRequestWithPath("1", body)
 
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
@@ -2355,7 +2388,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated"}`
-	_, _, body = signRequestKeyID(t, 1, nil, "http://localhost/1", payload, wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 1, nil, "http://localhost/1", payload, nonceService(&wfe))
 	request = makePostRequestWithPath("1", body)
 
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
@@ -2387,7 +2420,7 @@ func TestDeactivateAccount(t *testing.T) {
 	payload := `{"status":"asd"}`
 	signedURL := "http://localhost/1"
 	path := "1"
-	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestKeyID(t, 1, nil, signedURL, payload, nonceService(&wfe))
 	request := makePostRequestWithPath(path, body)
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
@@ -2397,7 +2430,7 @@ func TestDeactivateAccount(t *testing.T) {
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated"}`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
@@ -2418,7 +2451,7 @@ func TestDeactivateAccount(t *testing.T) {
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated", "contact":[]}`
-	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 1, nil, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
@@ -2444,7 +2477,7 @@ func TestDeactivateAccount(t *testing.T) {
 	payload = `{"status":"deactivated"}`
 	path = "3"
 	signedURL = "http://localhost/3"
-	_, _, body = signRequestKeyID(t, 3, key, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestKeyID(t, 3, key, signedURL, payload, nonceService(&wfe))
 	request = makePostRequestWithPath(path, body)
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
@@ -2533,37 +2566,37 @@ func TestNewOrder(t *testing.T) {
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
-			Request:      signAndPost(t, targetPath, signedURL, "foo", wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, "foo", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "POST, empty domain name identifier",
-			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`, nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
 		},
 		{
 			Name:         "POST, no identifiers in payload",
-			Request:      signAndPost(t, targetPath, signedURL, "{}", wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, "{}", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
 		},
 		{
 			Name:         "POST, invalid identifier in payload",
-			Request:      signAndPost(t, targetPath, signedURL, nonDNSIdentifierBody, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, nonDNSIdentifierBody, nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
 			Name:         "POST, notAfter and notBefore in payload",
-			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`, nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
 		},
 		{
 			Name:         "POST, no potential CNs 64 bytes or smaller",
-			Request:      signAndPost(t, targetPath, signedURL, tooLongCNBody, wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, tooLongCNBody, nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
 		},
 		{
 			Name:    "POST, good payload, one potential CNs less than 64 bytes and one longer",
-			Request: signAndPost(t, targetPath, signedURL, oneLongOneShortCNBody, wfe.nonceService),
+			Request: signAndPost(t, targetPath, signedURL, oneLongOneShortCNBody, nonceService(&wfe)),
 			ExpectedBody: `
 			{
 				"status": "pending",
@@ -2580,7 +2613,7 @@ func TestNewOrder(t *testing.T) {
 		},
 		{
 			Name:    "POST, good payload",
-			Request: signAndPost(t, targetPath, signedURL, validOrderBody, wfe.nonceService),
+			Request: signAndPost(t, targetPath, signedURL, validOrderBody, nonceService(&wfe)),
 			ExpectedBody: `
 					{
 						"status": "pending",
@@ -2613,7 +2646,7 @@ func TestNewOrder(t *testing.T) {
 
 	// Test that we log the "Created" field.
 	responseWriter.Body.Reset()
-	request := signAndPost(t, targetPath, signedURL, validOrderBody, wfe.nonceService)
+	request := signAndPost(t, targetPath, signedURL, validOrderBody, nonceService(&wfe))
 	requestEvent := newRequestEvent()
 	wfe.NewOrder(ctx, requestEvent, responseWriter, request)
 
@@ -2664,17 +2697,17 @@ func TestFinalizeOrder(t *testing.T) {
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
-			Request:      signAndPost(t, targetPath, signedURL, "foo", wfe.nonceService),
+			Request:      signAndPost(t, targetPath, signedURL, "foo", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "Invalid path",
-			Request:      signAndPost(t, "1", "http://localhost/1", "{}", wfe.nonceService),
+			Request:      signAndPost(t, "1", "http://localhost/1", "{}", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:         "Bad acct ID in path",
-			Request:      signAndPost(t, "a/1", "http://localhost/a/1", "{}", wfe.nonceService),
+			Request:      signAndPost(t, "a/1", "http://localhost/a/1", "{}", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
 		},
 		{
@@ -2684,40 +2717,40 @@ func TestFinalizeOrder(t *testing.T) {
 			// handler directly and it normally has the initial path component
 			// stripped by the global WFE2 handler. We need the JWS URL to match the request
 			// URL so we fudge both such that the finalize-order prefix has been removed.
-			Request:      signAndPost(t, "2/1", "http://localhost/2/1", "{}", wfe.nonceService),
+			Request:      signAndPost(t, "2/1", "http://localhost/2/1", "{}", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
 		},
 		{
 			Name:         "Order ID is invalid",
-			Request:      signAndPost(t, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}", wfe.nonceService),
+			Request:      signAndPost(t, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
 		},
 		{
 			Name: "Order doesn't exist",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 2 as missing
-			Request:      signAndPost(t, "1/2", "http://localhost/1/2", "{}", wfe.nonceService),
+			Request:      signAndPost(t, "1/2", "http://localhost/1/2", "{}", nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order for ID 2","status":404}`,
 		},
 		{
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
-			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, wfe.nonceService),
+			Request:      signAndPost(t, "1/1", "http://localhost/1/1", goodCertCSRPayload, nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"valid\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name: "Order is expired",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 7 as an Order that has already expired
-			Request:      signAndPost(t, "1/7", "http://localhost/1/7", goodCertCSRPayload, wfe.nonceService),
+			Request:      signAndPost(t, "1/7", "http://localhost/1/7", goodCertCSRPayload, nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
 		},
 		{
 			Name:         "Good CSR, Pending Order",
-			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, wfe.nonceService),
+			Request:      signAndPost(t, "1/4", "http://localhost/1/4", goodCertCSRPayload, nonceService(&wfe)),
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name:            "Good CSR, Ready Order",
-			Request:         signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, wfe.nonceService),
+			Request:         signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, nonceService(&wfe)),
 			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/8"},
 			ExpectedBody: `
 {
@@ -2753,7 +2786,7 @@ func TestFinalizeOrder(t *testing.T) {
 	// to match the whole response body because the "detail" of a bad CSR problem
 	// contains a verbose Go error message that can change between versions (e.g.
 	// Go 1.10.4 to 1.11 changed the expected format)
-	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, wfe.nonceService)
+	badCSRReq := signAndPost(t, "1/8", "http://localhost/1/8", `{"CSR": "ABCD"}`, nonceService(&wfe))
 	responseWriter.Body.Reset()
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, badCSRReq)
 	responseBody := responseWriter.Body.String()
@@ -2841,8 +2874,8 @@ func TestKeyRollover(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			responseWriter.Body.Reset()
-			_, _, inner := signRequestEmbed(t, tc.NewKey, "http://localhost/key-change", tc.Payload, wfe.nonceService)
-			_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, wfe.nonceService)
+			_, _, inner := signRequestEmbed(t, tc.NewKey, "http://localhost/key-change", tc.Payload, nonceService(&wfe))
+			_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, nonceService(&wfe))
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 			if tc.ErrorStatType != "" {
@@ -2862,8 +2895,8 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 	newKeyPriv, err := x509.ParsePKCS1PrivateKey(newKeyBytes)
 	test.AssertNotError(t, err, "Failed parsing private key")
 
-	_, _, inner := signRequestEmbed(t, newKeyPriv, "http://localhost/wrong-url", "{}", wfe.nonceService)
-	_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, wfe.nonceService)
+	_, _, inner := signRequestEmbed(t, newKeyPriv, "http://localhost/wrong-url", "{}", nonceService(&wfe))
+	_, _, outer := signRequestKeyID(t, 1, nil, "http://localhost/key-change", inner, nonceService(&wfe))
 	wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `
 		{
@@ -2890,7 +2923,7 @@ func TestGetOrderCanceled408(t *testing.T) {
 	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, req)
 	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 
-	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/123/456", "{}", wfe.nonceService)
+	_, _, jwsBody := signRequestKeyID(t, 1, nil, "http://localhost/123/456", "{}", nonceService(&wfe))
 	postReq := makePostRequestWithPath("123/456", jwsBody)
 	responseWriter = httptest.NewRecorder()
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, postReq)
@@ -2905,7 +2938,7 @@ func TestGetOrder(t *testing.T) {
 	}
 
 	makePost := func(keyID int64, path, body string) *http.Request {
-		_, _, jwsBody := signRequestKeyID(t, keyID, nil, fmt.Sprintf("http://localhost/%s", path), body, wfe.nonceService)
+		_, _, jwsBody := signRequestKeyID(t, keyID, nil, fmt.Sprintf("http://localhost/%s", path), body, nonceService(&wfe))
 		return makePostRequestWithPath(path, jwsBody)
 	}
 
@@ -3035,7 +3068,7 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON(nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 	_, _, jwsBody := signRequestKeyID(
-		t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+		t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), nonceService(&wfe))
 
 	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
@@ -3065,7 +3098,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 	_, _, jwsBody := signRequestEmbed(t,
-		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+		key, "http://localhost/revoke-cert", string(revokeRequestJSON), nonceService(&wfe))
 
 	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
@@ -3106,7 +3139,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSONForCert(certDER, nil)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON for certDER")
 	_, _, jwsBody := signRequestEmbed(t,
-		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+		key, "http://localhost/revoke-cert", string(revokeRequestJSON), nonceService(&wfe))
 
 	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
@@ -3128,7 +3161,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 
 	_, _, jwsBody := signRequestEmbed(
-		t, key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+		t, key, "http://localhost/revoke-cert", string(revokeRequestJSON), nonceService(&wfe))
 
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	test.AssertNotError(t, err, "Failed to load test certificate")
@@ -3189,7 +3222,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 			revokeRequestJSON, err := makeRevokeRequestJSON(tc.Reason)
 			test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 			_, _, jwsBody := signRequestKeyID(
-				t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+				t, 1, nil, "http://localhost/revoke-cert", string(revokeRequestJSON), nonceService(&wfe))
 
 			responseWriter := httptest.NewRecorder()
 			wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
@@ -3221,7 +3254,7 @@ func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 	revokeRequestJSON, err := makeRevokeRequestJSON(&revocationReason)
 	test.AssertNotError(t, err, "Failed to make revokeRequestJSON")
 	_, _, jwsBody := signRequestEmbed(t,
-		key, "http://localhost/revoke-cert", string(revokeRequestJSON), wfe.nonceService)
+		key, "http://localhost/revoke-cert", string(revokeRequestJSON), nonceService(&wfe))
 
 	responseWriter := httptest.NewRecorder()
 	wfe.RevokeCertificate(ctx, newRequestEvent(), responseWriter,
@@ -3249,7 +3282,7 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
 	responseWriter := httptest.NewRecorder()
-	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, nonceService(&wfe))
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	if responseWriter.Code != 500 {
 		t.Fatalf("Wrong response code %d for NewAccount with failing GetRegByKey (wanted 500)", responseWriter.Code)
@@ -3280,7 +3313,7 @@ func TestNewAccountWhenGetRegByKeyCanceled(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
 	responseWriter := httptest.NewRecorder()
-	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, nonceService(&wfe))
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 }
@@ -3304,7 +3337,7 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
 	signedURL := "http://localhost/new-account"
 	responseWriter := httptest.NewRecorder()
-	_, _, body := signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	if responseWriter.Code != http.StatusCreated {
 		t.Errorf("Bad response to NewRegistration: %d, %s", responseWriter.Code, responseWriter.Body)
@@ -3314,7 +3347,7 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	// field **is** sent, NewAccount should fail with the expected error.
 	payload = `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true,"onlyReturnExisting":true}`
 	responseWriter = httptest.NewRecorder()
-	_, _, body = signRequestEmbed(t, key, signedURL, payload, wfe.nonceService)
+	_, _, body = signRequestEmbed(t, key, signedURL, payload, nonceService(&wfe))
 	// Process the new account request
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
@@ -3345,7 +3378,7 @@ func TestNewAccountWhenRANewRegCanceled(t *testing.T) {
 	test.Assert(t, ok, "Couldn't load ECDSA key")
 	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
 	responseWriter := httptest.NewRecorder()
-	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, wfe.nonceService)
+	_, _, body := signRequestEmbed(t, key, "http://localhost/new-account", payload, nonceService(&wfe))
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
 	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 }
@@ -3418,7 +3451,7 @@ func TestFinalizeSCTError(t *testing.T) {
 	}`
 
 	// Create a finalization request with the above payload
-	request := signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, wfe.nonceService)
+	request := signAndPost(t, "1/8", "http://localhost/1/8", goodCertCSRPayload, nonceService(&wfe))
 
 	// POST the finalize order request.
 	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, request)

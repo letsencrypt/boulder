@@ -28,6 +28,24 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
+// nonceServiceAdapter changes the gRPC nonce service interface to the one
+// required by jose. Used only for tests.
+type nonceServiceAdapter struct {
+	noncepb.NonceServiceClient
+}
+
+func (nsa nonceServiceAdapter) Nonce() (string, error) {
+	resp, err := nsa.NonceServiceClient.Nonce(context.Background(), &emptypb.Empty{})
+	if err != nil {
+		return "", err
+	}
+	return resp.Nonce, nil
+}
+
+func nonceService(wfe *WebFrontEndImpl) jose.NonceSource {
+	return nonceServiceAdapter{wfe.remoteNonceService}
+}
+
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
 // testing object if the sig alg is unknown.
 func sigAlgForKey(t *testing.T, key interface{}) jose.SignatureAlgorithm {
@@ -466,8 +484,8 @@ func TestValidPOSTRequest(t *testing.T) {
 func TestEnforceJWSAuthType(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	testKeyIDJWS, _, _ := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
-	testEmbeddedJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	testKeyIDJWS, _, _ := signRequestKeyID(t, 1, nil, "", "", nonceService(&wfe))
+	testEmbeddedJWS, _, _ := signRequestEmbed(t, nil, "", "", nonceService(&wfe))
 
 	// A hand crafted JWS that has both a Key ID and an embedded JWK
 	conflictJWSBody := `
@@ -580,7 +598,7 @@ func TestValidNonce(t *testing.T) {
 	// having an invalid nonce
 	invalidNonceJWS, _, _ := signRequestEmbed(t, nil, "", "", badNonceProvider{})
 
-	goodJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	goodJWS, _, _ := signRequestEmbed(t, nil, "", "", nonceService(&wfe))
 
 	testCases := []struct {
 		Name           string
@@ -666,24 +684,24 @@ func TestValidPOSTURL(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
 	// A JWS and HTTP request with no extra headers
-	noHeadersJWS, noHeadersJWSBody := signExtraHeaders(t, nil, wfe.nonceService)
+	noHeadersJWS, noHeadersJWSBody := signExtraHeaders(t, nil, nonceService(&wfe))
 	noHeadersRequest := makePostRequestWithPath("test-path", noHeadersJWSBody)
 
 	// A JWS and HTTP request with extra headers, but no "url" extra header
 	noURLHeaders := map[jose.HeaderKey]interface{}{
 		"nifty": "swell",
 	}
-	noURLHeaderJWS, noURLHeaderJWSBody := signExtraHeaders(t, noURLHeaders, wfe.nonceService)
+	noURLHeaderJWS, noURLHeaderJWSBody := signExtraHeaders(t, noURLHeaders, nonceService(&wfe))
 	noURLHeaderRequest := makePostRequestWithPath("test-path", noURLHeaderJWSBody)
 
 	// A JWS and HTTP request with a mismatched HTTP URL to JWS "url" header
 	wrongURLHeaders := map[jose.HeaderKey]interface{}{
 		"url": "foobar",
 	}
-	wrongURLHeaderJWS, wrongURLHeaderJWSBody := signExtraHeaders(t, wrongURLHeaders, wfe.nonceService)
+	wrongURLHeaderJWS, wrongURLHeaderJWSBody := signExtraHeaders(t, wrongURLHeaders, nonceService(&wfe))
 	wrongURLHeaderRequest := makePostRequestWithPath("test-path", wrongURLHeaderJWSBody)
 
-	correctURLHeaderJWS, _, correctURLHeaderJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", wfe.nonceService)
+	correctURLHeaderJWS, _, correctURLHeaderJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", nonceService(&wfe))
 	correctURLHeaderRequest := makePostRequestWithPath("test-path", correctURLHeaderJWSBody)
 
 	testCases := []struct {
@@ -787,9 +805,9 @@ func multiSigJWS(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSign
 func TestParseJWSRequest(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	_, tooManySigsJWSBody := multiSigJWS(t, wfe.nonceService)
+	_, tooManySigsJWSBody := multiSigJWS(t, nonceService(&wfe))
 
-	_, _, validJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", wfe.nonceService)
+	_, _, validJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", nonceService(&wfe))
 	validJWSRequest := makePostRequestWithPath("test-path", validJWSBody)
 
 	missingSigsJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ"}`
@@ -921,8 +939,8 @@ func TestParseJWSRequest(t *testing.T) {
 func TestExtractJWK(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	keyIDJWS, _, _ := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
-	goodJWS, goodJWK, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	keyIDJWS, _, _ := signRequestKeyID(t, 1, nil, "", "", nonceService(&wfe))
+	goodJWS, goodJWK, _ := signRequestEmbed(t, nil, "", "", nonceService(&wfe))
 
 	testCases := []struct {
 		Name            string
@@ -1001,21 +1019,21 @@ func signRequestSpecifyKeyID(t *testing.T, keyID string, nonceService jose.Nonce
 func TestLookupJWK(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	embeddedJWS, _, embeddedJWSBody := signRequestEmbed(t, nil, "", "", wfe.nonceService)
-	invalidKeyIDJWS, invalidKeyIDJWSBody := signRequestSpecifyKeyID(t, "https://acme-99.lettuceencrypt.org/acme/reg/1", wfe.nonceService)
+	embeddedJWS, _, embeddedJWSBody := signRequestEmbed(t, nil, "", "", nonceService(&wfe))
+	invalidKeyIDJWS, invalidKeyIDJWSBody := signRequestSpecifyKeyID(t, "https://acme-99.lettuceencrypt.org/acme/reg/1", nonceService(&wfe))
 	// ID 100 is mocked to return a non-missing error from sa.GetRegistration
-	errorIDJWS, _, errorIDJWSBody := signRequestKeyID(t, 100, nil, "", "", wfe.nonceService)
+	errorIDJWS, _, errorIDJWSBody := signRequestKeyID(t, 100, nil, "", "", nonceService(&wfe))
 	// ID 102 is mocked to return an account does not exist error from sa.GetRegistration
-	missingIDJWS, _, missingIDJWSBody := signRequestKeyID(t, 102, nil, "", "", wfe.nonceService)
+	missingIDJWS, _, missingIDJWSBody := signRequestKeyID(t, 102, nil, "", "", nonceService(&wfe))
 	// ID 3 is mocked to return a deactivated account from sa.GetRegistration
-	deactivatedIDJWS, _, deactivatedIDJWSBody := signRequestKeyID(t, 3, nil, "", "", wfe.nonceService)
+	deactivatedIDJWS, _, deactivatedIDJWSBody := signRequestKeyID(t, 3, nil, "", "", nonceService(&wfe))
 
 	wfe.LegacyKeyIDPrefix = "https://acme-v00.lettuceencrypt.org/acme/reg/"
-	legacyKeyIDJWS, legacyKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"1", wfe.nonceService)
+	legacyKeyIDJWS, legacyKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"1", nonceService(&wfe))
 
-	nonNumericKeyIDJWS, nonNumericKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"abcd", wfe.nonceService)
+	nonNumericKeyIDJWS, nonNumericKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"abcd", nonceService(&wfe))
 
-	validJWS, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
+	validJWS, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "", "", nonceService(&wfe))
 	validAccountPB, _ := wfe.sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
@@ -1141,7 +1159,7 @@ func TestValidJWSForKey(t *testing.T) {
 
 	payload := `{ "test": "payload" }`
 	testURL := "http://localhost/test"
-	goodJWS, goodJWK, _ := signRequestEmbed(t, nil, testURL, payload, wfe.nonceService)
+	goodJWS, goodJWK, _ := signRequestEmbed(t, nil, testURL, payload, nonceService(&wfe))
 
 	// badSigJWSBody is a JWS that has had the payload changed by 1 byte to break the signature
 	badSigJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`
@@ -1169,10 +1187,10 @@ func TestValidJWSForKey(t *testing.T) {
 	wrongURLHeaders := map[jose.HeaderKey]interface{}{
 		"url": "foobar",
 	}
-	wrongURLHeaderJWS, _ := signExtraHeaders(t, wrongURLHeaders, wfe.nonceService)
+	wrongURLHeaderJWS, _ := signExtraHeaders(t, wrongURLHeaders, nonceService(&wfe))
 
 	// badJSONJWS has a valid signature over a body that is not valid JSON
-	badJSONJWS, _, _ := signRequestEmbed(t, nil, testURL, `{`, wfe.nonceService)
+	badJSONJWS, _, _ := signRequestEmbed(t, nil, testURL, `{`, nonceService(&wfe))
 
 	testCases := []struct {
 		Name            string
@@ -1270,18 +1288,18 @@ func TestValidJWSForKey(t *testing.T) {
 func TestValidPOSTForAccount(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	validJWS, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	validJWS, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, nonceService(&wfe))
 	validAccountPB, _ := wfe.sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
 	// ID 102 is mocked to return missing
-	_, _, missingJWSBody := signRequestKeyID(t, 102, nil, "http://localhost/test", "{}", wfe.nonceService)
+	_, _, missingJWSBody := signRequestKeyID(t, 102, nil, "http://localhost/test", "{}", nonceService(&wfe))
 
 	// ID 3 is mocked to return deactivated
 	key3 := loadKey(t, []byte(test3KeyPrivatePEM))
-	_, _, deactivatedJWSBody := signRequestKeyID(t, 3, key3, "http://localhost/test", "{}", wfe.nonceService)
+	_, _, deactivatedJWSBody := signRequestKeyID(t, 3, key3, "http://localhost/test", "{}", nonceService(&wfe))
 
-	_, _, embeddedJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	_, _, embeddedJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, nonceService(&wfe))
 
 	testCases := []struct {
 		Name            string
@@ -1373,9 +1391,9 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 
 	// an invalid POST-as-GET request contains a non-empty payload. In this case
 	// we test with the empty JSON payload ("{}")
-	_, _, invalidPayloadRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "{}", wfe.nonceService)
+	_, _, invalidPayloadRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "{}", nonceService(&wfe))
 	// a valid POST-as-GET request contains an empty payload.
-	_, _, validRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "", wfe.nonceService)
+	_, _, validRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "", nonceService(&wfe))
 
 	testCases := []struct {
 		Name             string
@@ -1438,7 +1456,7 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 
 	payload := `{"resource":"ima-payload"}`
 	// Sign a request using test1key
-	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost:4001/test", payload, wfe.nonceService)
+	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost:4001/test", payload, nonceService(&wfe))
 	request := makePostRequestWithPath("test", body)
 
 	// Ensure that ValidPOSTForAccount produces an error since the
@@ -1453,9 +1471,9 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 func TestValidSelfAuthenticatedPOST(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	_, validKey, validJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	_, validKey, validJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, nonceService(&wfe))
 
-	_, _, keyIDJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	_, _, keyIDJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, nonceService(&wfe))
 
 	testCases := []struct {
 		Name            string
@@ -1520,9 +1538,9 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 func TestMatchJWSURLs(t *testing.T) {
 	wfe, _ := setupWFE(t)
 
-	noURLJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
-	urlAJWS, _, _ := signRequestEmbed(t, nil, "example.com", "", wfe.nonceService)
-	urlBJWS, _, _ := signRequestEmbed(t, nil, "example.org", "", wfe.nonceService)
+	noURLJWS, _, _ := signRequestEmbed(t, nil, "", "", nonceService(&wfe))
+	urlAJWS, _, _ := signRequestEmbed(t, nil, "example.com", "", nonceService(&wfe))
+	urlBJWS, _, _ := signRequestEmbed(t, nil, "example.org", "", nonceService(&wfe))
 
 	testCases := []struct {
 		Name            string
