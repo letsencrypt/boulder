@@ -296,7 +296,6 @@ var testKeyPolicy = goodkey.KeyPolicy{
 // inMemNonceService implements noncepb.NonceServiceClient for tests.
 type inMemNonceService struct {
 	*nonce.NonceService
-	nonces []string
 }
 
 // Nonce implements proto.NonceServiceClient
