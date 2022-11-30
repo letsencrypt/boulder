@@ -129,7 +129,7 @@ type mockSA struct {
 	certificate core.Certificate
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	m.certificate.DER = req.Der
 	return nil, nil
 }
@@ -915,7 +915,7 @@ type queueSA struct {
 	issuedPrecert time.Time
 }
 
-func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
+func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	if qsa.fail {
 		return nil, errors.New("bad")
 	} else if qsa.duplicate {
