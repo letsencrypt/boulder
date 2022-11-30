@@ -1207,7 +1207,7 @@ type StorageAuthorityClient interface {
 	SerialsForIncident(ctx context.Context, in *SerialsForIncidentRequest, opts ...grpc.CallOption) (StorageAuthority_SerialsForIncidentClient, error)
 	// Adders
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*AddCertificateResponse, error)
+	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1549,8 +1549,8 @@ func (c *storageAuthorityClient) AddBlockedKey(ctx context.Context, in *AddBlock
 	return out, nil
 }
 
-func (c *storageAuthorityClient) AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*AddCertificateResponse, error) {
-	out := new(AddCertificateResponse)
+func (c *storageAuthorityClient) AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/AddCertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -1729,7 +1729,7 @@ type StorageAuthorityServer interface {
 	SerialsForIncident(*SerialsForIncidentRequest, StorageAuthority_SerialsForIncidentServer) error
 	// Adders
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
-	AddCertificate(context.Context, *AddCertificateRequest) (*AddCertificateResponse, error)
+	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
 	AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
 	AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error)
@@ -1842,7 +1842,7 @@ func (UnimplementedStorageAuthorityServer) SerialsForIncident(*SerialsForInciden
 func (UnimplementedStorageAuthorityServer) AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddBlockedKey not implemented")
 }
-func (UnimplementedStorageAuthorityServer) AddCertificate(context.Context, *AddCertificateRequest) (*AddCertificateResponse, error) {
+func (UnimplementedStorageAuthorityServer) AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddCertificate not implemented")
 }
 func (UnimplementedStorageAuthorityServer) AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error) {

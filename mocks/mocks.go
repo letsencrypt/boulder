@@ -263,17 +263,17 @@ func (sa *StorageAuthority) GetMaxExpiration(_ context.Context, req *emptypb.Emp
 }
 
 // AddPrecertificate is a mock
-func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (empty *emptypb.Empty, err error) {
-	return
+func (sa *StorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
 }
 
 // AddSerial is a mock
-func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (empty *emptypb.Empty, err error) {
-	return
+func (sa *StorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, nil
 }
 
 // AddCertificate is a mock
-func (sa *StorageAuthority) AddCertificate(_ context.Context, _ *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
+func (sa *StorageAuthority) AddCertificate(_ context.Context, _ *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil
 }
 

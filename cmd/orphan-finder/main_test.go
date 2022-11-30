@@ -33,7 +33,7 @@ type mockSA struct {
 	clk             clock.FakeClock
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	parsed, err := x509.ParseCertificate(req.Der)
 	if err != nil {
 		return nil, err

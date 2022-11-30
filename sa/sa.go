@@ -156,9 +156,9 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 	return &emptypb.Empty{}, nil
 }
 
-// AddCertificate stores an issued certificate and returns the digest as
-// a string, or an error if any occurred.
-func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*sapb.AddCertificateResponse, error) {
+// AddCertificate stores an issued certificate, returning an error if it is a
+// duplicate or if any other failure occurs.
+func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
 	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 {
 		return nil, errIncompleteRequest
 	}
@@ -264,7 +264,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		ssa.log.AuditErrf("failed AddCertificate ratelimit update transaction: %v", rlTransactionErr)
 	}
 
-	return &sapb.AddCertificateResponse{Digest: digest}, nil
+	return &emptypb.Empty{}, nil
 }
 
 // DeactivateRegistration deactivates a currently valid registration
