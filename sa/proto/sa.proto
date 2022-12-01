@@ -263,20 +263,12 @@ message Authorizations {
   repeated MapElement authz = 1;
 }
 
-message AddPendingAuthorizationsRequest {
-  repeated core.Authorization authz = 1;
-}
-
 message AuthorizationIDs {
   repeated string ids = 1;
 }
 
 message AuthorizationID2 {
   int64 id = 1;
-}
-
-message Authorization2IDs {
-  repeated int64 ids = 1;
 }
 
 message RevokeCertificateRequest {
