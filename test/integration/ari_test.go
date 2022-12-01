@@ -85,7 +85,7 @@ func TestARI(t *testing.T) {
 
 	// Revoke the cert, then request ARI again, and the window should now be in
 	// the past.
-	err = client.RevokeCertificate(client.Account, cert, key, 0)
+	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 0)
 	test.AssertNotError(t, err, "failed to revoke cert")
 	resp, err = http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
