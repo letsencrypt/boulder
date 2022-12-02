@@ -148,7 +148,7 @@ func TestAutoIncrementSchema(t *testing.T) {
 	var count int64
 	err = dbMap.SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM columns WHERE
+		`SELECT COUNT(*) FROM columns WHERE
 			table_schema LIKE 'boulder%' AND
 			extra LIKE '%auto_increment%' AND
 			data_type != "bigint"`)

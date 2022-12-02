@@ -9,7 +9,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
 )
@@ -21,11 +20,7 @@ const maxCNLength = 64
 // strong enough to use. Significantly the missing algorithms are:
 // * No algorithms using MD2, MD5, or SHA-1
 // * No DSA algorithms
-//
-// SHA1WithRSA is allowed because there's still a fair bit of it
-// out there, but we should try to remove it soon.
 var goodSignatureAlgorithms = map[x509.SignatureAlgorithm]bool{
-	x509.SHA1WithRSA:     true, // TODO(#2988): Remove support
 	x509.SHA256WithRSA:   true,
 	x509.SHA384WithRSA:   true,
 	x509.SHA512WithRSA:   true,
@@ -62,19 +57,6 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	}
 	if !goodSignatureAlgorithms[csr.SignatureAlgorithm] {
 		return unsupportedSigAlg
-	}
-	if !features.Enabled(features.SHA1CSRs) && csr.SignatureAlgorithm == x509.SHA1WithRSA {
-		return unsupportedSigAlg
-	}
-
-	if features.Enabled(features.RejectDuplicateCSRExtensions) {
-		oidSeen := make(map[string]bool)
-		for _, ext := range csr.Extensions {
-			if oidSeen[ext.Id.String()] {
-				return berrors.MalformedError("extension OID %q appears twice in your CSR. File an issue with the maintainer of your ACME client.", ext.Id)
-			}
-			oidSeen[ext.Id.String()] = true
-		}
 	}
 
 	err = csr.CheckSignature()

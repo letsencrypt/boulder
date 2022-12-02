@@ -368,15 +368,20 @@ func (va *ValidationAuthorityImpl) validate(
 	go func() {
 		params := &caaParams{
 			accountURIID:     regid,
-			validationMethod: string(challenge.Type),
+			validationMethod: challenge.Type,
 		}
 		ch <- va.checkCAA(ctx, identifier, params)
 	}()
 
 	// TODO(#1292): send into another goroutine
-	validationRecords, err := va.validateChallenge(ctx, baseIdentifier, challenge)
-	if err != nil {
-		return validationRecords, err
+	validationRecords, prob := va.validateChallenge(ctx, baseIdentifier, challenge)
+	if prob != nil {
+		// The ProblemDetails will be serialized through gRPC, which requires UTF-8.
+		// It will also later be serialized in JSON, which defaults to UTF-8. Make
+		// sure it is UTF-8 clean now.
+		prob = filterProblemDetails(prob)
+
+		return validationRecords, prob
 	}
 
 	for i := 0; i < cap(ch); i++ {

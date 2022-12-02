@@ -1083,23 +1083,6 @@ func TestFetchHTTP(t *testing.T) {
 	}
 }
 
-func TestFetchHTTPInvalidUTF8(t *testing.T) {
-	testSrv := httpTestSrv(t)
-	defer testSrv.Close()
-	va, _ := setup(testSrv, 0, "", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
-	defer cancel()
-	_, _, prob := va.fetchHTTP(ctx, "example.com", "/invalid-utf8-body")
-	expectedResult := "f\ufffdoo"
-	// If the body of the http response is larger than the maxResponseSize
-	// a truncated body is returned as part of the error detail. If the
-	// body contains invalid UTF-8 the invalid characters must be replaced
-	// before the error is marshalled for grpc. This tests that the
-	// invalid string "f\xffoo" is expected to be converted to
-	// "f\ufffdoo".
-	test.AssertContains(t, prob.Detail, expectedResult)
-}
-
 // All paths that get assigned to tokens MUST be valid tokens
 const pathWrongToken = "i6lNAC4lOOLYCl-A08VJt9z_tKYvVk63Dumo8icsBjQ"
 const path404 = "404"

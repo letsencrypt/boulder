@@ -142,11 +142,11 @@ func TestTableFromQuery(t *testing.T) {
 			expectedTable: "`registrations`",
 		},
 		{
-			query:         "SELECT COUNT(1) FROM registrations WHERE initialIP = ? AND ? < createdAt AND createdAt <= ?",
+			query:         "SELECT COUNT(*) FROM registrations WHERE initialIP = ? AND ? < createdAt AND createdAt <= ?",
 			expectedTable: "registrations",
 		},
 		{
-			query:         "SELECT count(1) FROM orders WHERE registrationID = ? AND created >= ? AND created < ?",
+			query:         "SELECT COUNT(*) FROM orders WHERE registrationID = ? AND created >= ? AND created < ?",
 			expectedTable: "orders",
 		},
 		{
