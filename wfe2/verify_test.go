@@ -28,20 +28,6 @@ import (
 	"gopkg.in/square/go-jose.v2"
 )
 
-// nonceServiceAdapter changes the gRPC nonce service interface to the one
-// required by jose. Used only for tests.
-type nonceServiceAdapter struct {
-	noncepb.NonceServiceClient
-}
-
-func (nsa nonceServiceAdapter) Nonce() (string, error) {
-	resp, err := nsa.NonceServiceClient.Nonce(context.Background(), &emptypb.Empty{})
-	if err != nil {
-		return "", err
-	}
-	return resp.Nonce, nil
-}
-
 func nonceService(wfe *WebFrontEndImpl) jose.NonceSource {
 	return nonceServiceAdapter{wfe.remoteNonceService}
 }

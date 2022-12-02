@@ -53,6 +53,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
+	inmemnonce "github.com/letsencrypt/boulder/test/inmem/nonce"
 	"github.com/letsencrypt/boulder/web"
 )
 
@@ -293,28 +294,6 @@ var testKeyPolicy = goodkey.KeyPolicy{
 	AllowECDSANISTP384: true,
 }
 
-// inMemNonceService implements noncepb.NonceServiceClient for tests.
-type inMemNonceService struct {
-	*nonce.NonceService
-}
-
-// Nonce implements proto.NonceServiceClient
-func (imns *inMemNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	n, err := imns.NonceService.Nonce()
-	if err != nil {
-		return nil, err
-	}
-	return &noncepb.NonceMessage{Nonce: n}, nil
-}
-
-// Redeem implements proto.NonceServiceClient
-func (imns *inMemNonceService) Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	valid := imns.NonceService.Valid(in.Nonce)
-	return &noncepb.ValidMessage{Valid: valid}, nil
-}
-
-var _ noncepb.NonceServiceClient = &inMemNonceService{}
-
 var ctx = context.Background()
 
 func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
@@ -361,7 +340,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 	noncePrefix := "mlem"
 	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
 	test.AssertNotError(t, err, "making nonceService")
-	nonceGRPCService := &inMemNonceService{
+	nonceGRPCService := &inmemnonce.Service{
 		NonceService: nonceService,
 	}
 
