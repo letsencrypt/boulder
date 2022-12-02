@@ -74,7 +74,8 @@ func NewSQLStorageAuthorityWrapping(
 	return ssa, nil
 }
 
-// NewSQLStorageAuthority provides persistence using a SQL backend for Boulder.
+// NewSQLStorageAuthority provides persistence using a SQL backend for
+// Boulder. It constructs its own read-only storage authority to wrap.
 func NewSQLStorageAuthority(
 	dbMap *db.WrappedMap,
 	dbReadOnlyMap *db.WrappedMap,

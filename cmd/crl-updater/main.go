@@ -141,7 +141,7 @@ func main() {
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := sapb.NewStorageAuthorityClient(saConn)
+	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	caConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLGeneratorService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLGenerator")

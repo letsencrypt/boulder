@@ -86,7 +86,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
 	ra            rapb.RegistrationAuthorityClient
-	sa            sapb.StorageAuthorityGetterClient
+	sa            sapb.StorageAuthorityReadOnlyClient
 	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
@@ -162,7 +162,7 @@ func NewWebFrontEndImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
-	sac sapb.StorageAuthorityClient,
+	sac sapb.StorageAuthorityReadOnlyClient,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {

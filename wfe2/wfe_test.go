@@ -335,7 +335,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		issuerCertificates[id] = certs[0]
 	}
 
-	mockSA := mocks.NewStorageAuthority(fc)
+	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
 	wfe, err := NewWebFrontEndImpl(
 		stats,
@@ -1183,7 +1183,7 @@ func TestChallenge(t *testing.T) {
 }
 
 type mockSAGetCertificateCanceled struct {
-	*mocks.StorageAuthority
+	*mocks.StorageAuthorityReadOnly
 }
 
 func (mockSAGetCertificateCanceled) GetCertificate(context.Context, *sapb.Serial, ...grpc.CallOption) (*corepb.Certificate, error) {
@@ -1203,7 +1203,7 @@ func TestGetCertificateCanceled(t *testing.T) {
 }
 
 type mockSAGetAuthorization2Canceled struct {
-	*mocks.StorageAuthority
+	*mocks.StorageAuthorityReadOnly
 }
 
 func (mockSAGetAuthorization2Canceled) GetAuthorization2(context.Context, *sapb.AuthorizationID2, ...grpc.CallOption) (*corepb.Authorization, error) {
@@ -1805,12 +1805,12 @@ func TestAccount(t *testing.T) {
 }
 
 type mockSAWithCert struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 	cert   *x509.Certificate
 	status core.OCSPStatus
 }
 
-func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityGetterClient, zeroNotBefore bool) *mockSAWithCert {
+func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityReadOnlyClient, zeroNotBefore bool) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
 	if zeroNotBefore {
 		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the
@@ -1851,13 +1851,13 @@ func (sa *mockSAWithCert) GetCertificateStatus(_ context.Context, req *sapb.Seri
 }
 
 type mockSAWithIncident struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 	incidents map[string]*sapb.Incidents
 }
 
 // newMockSAWithIncident returns a mock SA with an enabled (ongoing) incident
 // for each of the provided serials.
-func newMockSAWithIncident(sa sapb.StorageAuthorityGetterClient, serial []string) *mockSAWithIncident {
+func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []string) *mockSAWithIncident {
 	incidents := make(map[string]*sapb.Incidents)
 	for _, s := range serial {
 		incidents[s] = &sapb.Incidents{
@@ -2085,7 +2085,7 @@ func TestGetCertificate(t *testing.T) {
 }
 
 type mockSAWithNewCert struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 	clk clock.Clock
 }
 
@@ -2271,7 +2271,7 @@ func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 }
 
 type mockSAWithError struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (sa *mockSAWithError) GetCertificate(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
@@ -2874,7 +2874,7 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 }
 
 type mockSAGetOrderCanceled struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (sa mockSAGetOrderCanceled) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
@@ -3232,7 +3232,7 @@ func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 }
 
 type mockSAGetRegByKeyFails struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (sa *mockSAGetRegByKeyFails) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
@@ -3263,7 +3263,7 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 }
 
 type mockSAGetRegByKeyCanceled struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (sa *mockSAGetRegByKeyCanceled) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
@@ -3286,7 +3286,7 @@ func TestNewAccountWhenGetRegByKeyCanceled(t *testing.T) {
 }
 
 type mockSAGetRegByKeyNotFound struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (sa *mockSAGetRegByKeyNotFound) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
