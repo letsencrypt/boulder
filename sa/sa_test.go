@@ -239,13 +239,12 @@ func TestAddCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 
 	// Calling AddCertificate with a non-nil issued should succeed
-	digest, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER,
 		RegID:  reg.Id,
 		Issued: sa.clk.Now().UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-	test.AssertEquals(t, digest.Digest, "qWoItDZmR4P9eFbeYgXXP3SR4ApnkQj8x4LsB_ORKBo")
 
 	retrievedCert, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: "000000000000000000000000000000021bd4"})
 	test.AssertNotError(t, err, "Couldn't get www.eff.org.der by full serial")
@@ -262,13 +261,12 @@ func TestAddCertificate(t *testing.T) {
 
 	// Add the certificate with a specific issued time instead of nil
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
-	digest2, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER2,
 		RegID:  reg.Id,
 		Issued: issuedTime.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
-	test.AssertEquals(t, digest2.Digest, "vrlPN5wIPME1D2PPsCy-fGnTWh8dMyyYQcXPRkjHAQI")
 
 	retrievedCert2, err := sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "Couldn't get test-cert.der")

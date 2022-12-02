@@ -1422,7 +1422,7 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 }
 
 type mockSADifferentStoredKey struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 // mockSADifferentStoredKey has a GetRegistration that will always return an
@@ -1436,7 +1436,7 @@ func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.Re
 
 func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthority(fc)}
+	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthorityReadOnly(fc)}
 	wfe.accountGetter = wfe.sa
 	event := newRequestEvent()
 

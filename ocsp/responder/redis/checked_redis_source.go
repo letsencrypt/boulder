@@ -41,14 +41,14 @@ type rocspSourceInterface interface {
 type checkedRedisSource struct {
 	base    rocspSourceInterface
 	dbMap   dbSelector
-	sac     sapb.StorageAuthorityClient
+	sac     sapb.StorageAuthorityReadOnlyClient
 	counter *prometheus.CounterVec
 	log     blog.Logger
 }
 
 // NewCheckedRedisSource builds a source that queries both the DB and Redis, and confirms
 // the value in Redis matches the DB.
-func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.StorageAuthorityClient, stats prometheus.Registerer, log blog.Logger) (*checkedRedisSource, error) {
+func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) (*checkedRedisSource, error) {
 	if base == nil {
 		return nil, errors.New("base was nil")
 	}
@@ -58,7 +58,7 @@ func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.Storage
 
 // newCheckRedisSource is an internal-only constructor that takes a private interface as a parameter.
 // We call this from tests and from NewCheckedRedisSource.
-func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, sac sapb.StorageAuthorityClient, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
+func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "checked_rocsp_responses",
 		Help: "Count of OCSP requests/responses from checkedRedisSource, by result",

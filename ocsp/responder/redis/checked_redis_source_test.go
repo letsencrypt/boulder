@@ -95,7 +95,7 @@ func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
 }
 
 type echoSA struct {
-	mocks.StorageAuthority
+	mocks.StorageAuthorityReadOnly
 	status *sapb.RevocationStatus
 }
 
@@ -104,7 +104,7 @@ func (s *echoSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...g
 }
 
 type errorSA struct {
-	mocks.StorageAuthority
+	mocks.StorageAuthorityReadOnly
 }
 
 func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
