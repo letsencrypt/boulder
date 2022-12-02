@@ -3669,7 +3669,8 @@ func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
 // requests for certs that don't exist result in errors.
 func TestARI(t *testing.T) {
 	wfe, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	msa := newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = msa
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
@@ -3711,6 +3712,19 @@ func TestARI(t *testing.T) {
 	test.AssertNotError(t, err, "unmarshalling renewal info")
 	test.Assert(t, ri.SuggestedWindow.Start.After(cert.NotBefore), "suggested window begins before cert issuance")
 	test.Assert(t, ri.SuggestedWindow.End.Before(cert.NotAfter), "suggested window ends after cert expiry")
+
+	// Ensure that a correct query for a revoked cert results in a renewal window
+	// in the past.
+	msa.status = core.OCSPStatusRevoked
+	req, event = makeGet(base64.RawURLEncoding.EncodeToString(idBytes), renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusOK)
+	test.AssertEquals(t, resp.Header().Get("Retry-After"), "21600")
+	err = json.Unmarshal(resp.Body.Bytes(), &ri)
+	test.AssertNotError(t, err, "unmarshalling renewal info")
+	test.Assert(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), "suggested window should end in the past")
+	test.Assert(t, ri.SuggestedWindow.Start.Before(ri.SuggestedWindow.End), "suggested window should start before it ends")
 
 	// Ensure that a query for a non-existent serial results in a 404.
 	idBytes, err = asn1.Marshal(certID{

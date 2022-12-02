@@ -2320,7 +2320,17 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
 	}
 
-	// Check if the serial is part of an ongoing incident.
+	sendRI := func(ri core.RenewalInfo) {
+		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
+		if err != nil {
+			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
+			return
+		}
+		setDefaultRetryAfterHeader(response)
+	}
+
+	// Check if the serial is part of an ongoing/active incident, in which case
+	// the client should replace it now.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
@@ -2329,16 +2339,21 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	}
 
 	if len(result.Incidents) > 0 {
-		// Since IncidentsForSerial() only returns enabled incidents we can
-		// assume that this serial is impacted by an ongoing incident.
-		ri := core.RenewalInfoImmediate(wfe.clk.Now())
+		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
+		return
+	}
 
-		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
-		if err != nil {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
-			return
-		}
-		setDefaultRetryAfterHeader(response)
+	// Check if the serial is revoked, in which case the client should replace it
+	// now.
+	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			"checking if certificate has been revoked"), err)
+		return
+	}
+
+	if status.Status == string(core.OCSPStatusRevoked) {
+		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
 		return
 	}
 
@@ -2359,14 +2374,9 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// using that to compute the actual issuerNameHash and issuerKeyHash, and
 	// comparing those to the ones in the request.
 
-	ri := core.RenewalInfoSimple(time.Unix(0, cert.Issued).UTC(), time.Unix(0, cert.Expires).UTC())
-
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
-		return
-	}
-	setDefaultRetryAfterHeader(response)
+	sendRI(core.RenewalInfoSimple(
+		time.Unix(0, cert.Issued).UTC(),
+		time.Unix(0, cert.Expires).UTC()))
 }
 
 func extractRequesterIP(req *http.Request) (net.IP, error) {
