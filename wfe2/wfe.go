@@ -2329,8 +2329,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		setDefaultRetryAfterHeader(response)
 	}
 
-	// Check if the serial is part of an ongoing/active incident, in which case it
-	// should be replaced now.
+	// Check if the serial is part of an ongoing/active incident, in which case
+	// the client should replace it now.
 	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
@@ -2343,7 +2343,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// Check if the serial is revoked, in which case it should be replaced now.
+	// Check if the serial is revoked, in which case the client should replace it
+	// now.
 	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
