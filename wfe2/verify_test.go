@@ -1432,7 +1432,7 @@ func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.Re
 
 func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	wfe, fc := setupWFE(t)
-	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthority(fc)}
+	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthorityReadOnly(fc)}
 	wfe.accountGetter = wfe.sa
 	event := newRequestEvent()
 

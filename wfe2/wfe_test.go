@@ -335,7 +335,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock) {
 		issuerCertificates[id] = certs[0]
 	}
 
-	mockSA := mocks.NewStorageAuthority(fc)
+	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
 	wfe, err := NewWebFrontEndImpl(
 		stats,
@@ -1183,7 +1183,7 @@ func TestChallenge(t *testing.T) {
 }
 
 type mockSAGetCertificateCanceled struct {
-	*mocks.StorageAuthority
+	*mocks.StorageAuthorityReadOnly
 }
 
 func (mockSAGetCertificateCanceled) GetCertificate(context.Context, *sapb.Serial, ...grpc.CallOption) (*corepb.Certificate, error) {
@@ -1203,7 +1203,7 @@ func TestGetCertificateCanceled(t *testing.T) {
 }
 
 type mockSAGetAuthorization2Canceled struct {
-	*mocks.StorageAuthority
+	*mocks.StorageAuthorityReadOnly
 }
 
 func (mockSAGetAuthorization2Canceled) GetAuthorization2(context.Context, *sapb.AuthorizationID2, ...grpc.CallOption) (*corepb.Authorization, error) {
@@ -2874,7 +2874,7 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 }
 
 type mockSAGetOrderCanceled struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (sa mockSAGetOrderCanceled) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
@@ -3263,7 +3263,7 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 }
 
 type mockSAGetRegByKeyCanceled struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 func (sa *mockSAGetRegByKeyCanceled) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {

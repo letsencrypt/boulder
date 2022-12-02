@@ -29,21 +29,12 @@
             "ca.boulder",
             "expiration-mailer.boulder",
             "orphan-finder.boulder",
-            "ra.boulder",
-            "sa.boulder"
+            "ra.boulder"
           ]
         },
         "sa.StorageAuthorityReadOnly": {
           "clientNames": [
             "crl-updater.boulder",
-            "ocsp-responder.boulder",
-            "wfe.boulder"
-          ]
-        },
-        "sa.StorageAuthorityReadOnly": {
-          "clientNames": [
-            "crl-updater.boulder",
-            "health-checker.boulder",
             "ocsp-responder.boulder",
             "wfe.boulder"
           ]
