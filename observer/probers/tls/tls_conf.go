@@ -36,6 +36,7 @@ func (c TLSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) 
 	if err != nil {
 		return nil, err
 	}
+
 	return conf, nil
 }
 
@@ -45,10 +46,12 @@ func (c TLSConf) validateURL() error {
 		return fmt.Errorf(
 			"invalid 'url', got %q, expected a valid url: %s", c.URL, err)
 	}
+
 	if url.Scheme != "" {
 		return fmt.Errorf(
 			"invalid 'url', got: %q, should not include scheme", c.URL)
 	}
+
 	return nil
 }
 
@@ -59,6 +62,7 @@ func (c TLSConf) validateResponse() error {
 			return nil
 		}
 	}
+
 	return fmt.Errorf(
 		"invalid `response`, got %q. Must be one of %s", c.Response, acceptable)
 }
@@ -89,6 +93,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", notAfterName)
 	}
+
 	notAfterColl, ok := coll.(*prometheus.GaugeVec)
 	if !ok {
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notAfterName, coll)
@@ -98,6 +103,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", reasonName)
 	}
+
 	reasonColl, ok := coll.(*prometheus.CounterVec)
 	if !ok {
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.CounterVec", reasonName, coll)

@@ -90,65 +90,66 @@ func getOCSP(cert, issuer *x509.Certificate) (int, error) {
 // Export expiration timestamp and reason to Prometheus.
 func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
 	p.notAfter.WithLabelValues(p.url).Set(float64(notAfter.Unix()))
-	p.notAfter.WithLabelValues(p.url, reasonToString[reason]).Inc()
+	p.reason.WithLabelValues(p.url, reasonToString[reason]).Inc()
 }
 
-func (p TLSProbe) probeExpired(timeout time.Duration) (bool, time.Duration) {
-	start := time.Now()
+func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.url+":443", &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
 		p.exportMetrics(time.Time{}, internalError)
-		return false, time.Since(start)
+		return false
 	}
+
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	for i := 0; i < len(peers)-1; i++ {
 		certIssuer, issuerSubject := peers[i].Issuer, peers[i+1].Subject
 		if (certIssuer.CommonName != issuerSubject.CommonName) || (certIssuer.Organization[0] != issuerSubject.Organization[0]) {
 			p.exportMetrics(peers[0].NotAfter, issuerVerifyFailed)
-			return false, time.Since(start)
+			return false
 		}
 	}
+
 	p.exportMetrics(peers[0].NotAfter, none)
 	if time.Until(peers[0].NotAfter) > 0 {
-		return false, time.Since(start)
+		return false
 	}
-	root := peers[len(peers)-1].Issuer
-	return p.rootOrg == root.Organization[0] && p.rootCN == root.CommonName, time.Since(start)
 
+	root := peers[len(peers)-1].Issuer
+	return root.Organization[0] == p.rootOrg && root.CommonName == p.rootCN
 }
 
-func (p TLSProbe) probeUnexpired(timeout time.Duration) (bool, time.Duration) {
-	start := time.Now()
+func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.url+":443", &tls.Config{})
 	if err != nil {
 		p.exportMetrics(time.Time{}, internalError)
-		return false, time.Since(start)
+		return false
 	}
+
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
 	if root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN {
 		p.exportMetrics(peers[0].NotAfter, none)
-		return false, time.Since(start)
+		return false
 	}
 
 	ocspStatus, err := getOCSP(peers[0], peers[1])
 	if err != nil {
 		p.exportMetrics(peers[0].NotAfter, ocspError)
-		return false, time.Since(start)
+		return false
 	}
 
 	switch ocspStatus {
 	case ocsp.Good:
 		p.exportMetrics(peers[0].NotAfter, none)
-		return p.response == "valid", time.Since(start)
+		return p.response == "valid"
 	case ocsp.Revoked:
 		p.exportMetrics(peers[0].NotAfter, none)
-		return p.response == "revoked", time.Since(start)
+		return p.response == "revoked"
 	default:
 		p.exportMetrics(peers[0].NotAfter, ocspUnknown)
-		return false, time.Since(start)
+		return false
 	}
 }
 
@@ -156,8 +157,13 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) (bool, time.Duration) {
 // response are the expected values, otherwise false. Export expiration
 // timestamp and reason as Prometheus metrics.
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
+	start := time.Now()
+	var success bool
 	if p.response == "expired" {
-		return p.probeExpired(timeout)
+		success = p.probeExpired(timeout)
+	} else {
+		success = p.probeUnexpired(timeout)
 	}
-	return p.probeUnexpired(timeout)
+
+	return success, time.Since(start)
 }
