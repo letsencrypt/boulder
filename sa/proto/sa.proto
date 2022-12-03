@@ -81,8 +81,6 @@ service StorageAuthority {
   rpc DeactivateRegistration(RegistrationID) returns (google.protobuf.Empty) {}
   rpc FinalizeAuthorization2(FinalizeAuthorizationRequest) returns (google.protobuf.Empty) {}
   rpc FinalizeOrder(FinalizeOrderRequest) returns (google.protobuf.Empty) {}
-  rpc NewAuthorizations2(AddPendingAuthorizationsRequest) returns (Authorization2IDs) {}
-  rpc NewOrder(NewOrderRequest) returns (core.Order) {}
   rpc NewOrderAndAuthzs(NewOrderAndAuthzsRequest) returns (core.Order) {}
   rpc NewRegistration(core.Registration) returns (core.Registration) {}
   rpc RevokeCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
@@ -265,20 +263,12 @@ message Authorizations {
   repeated MapElement authz = 1;
 }
 
-message AddPendingAuthorizationsRequest {
-  repeated core.Authorization authz = 1;
-}
-
 message AuthorizationIDs {
   repeated string ids = 1;
 }
 
 message AuthorizationID2 {
   int64 id = 1;
-}
-
-message Authorization2IDs {
-  repeated int64 ids = 1;
 }
 
 message RevokeCertificateRequest {
