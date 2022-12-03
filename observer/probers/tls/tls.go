@@ -43,7 +43,7 @@ func getReasons() []string {
 // TLSProbe is the exported `Prober` object for monitors configured to perform
 // TLS protocols.
 type TLSProbe struct {
-	url      string
+	hostname string
 	rootOrg  string
 	rootCN   string
 	response string
@@ -53,7 +53,7 @@ type TLSProbe struct {
 
 // Name returns a string that uniquely identifies the monitor.
 func (p TLSProbe) Name() string {
-	return p.url
+	return p.hostname
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
@@ -62,39 +62,39 @@ func (p TLSProbe) Kind() string {
 }
 
 // Get OCSP status (good, revoked or unknown) of certificate
-func getOCSP(cert, issuer *x509.Certificate) (int, error) {
+func checkOCSP(cert, issuer *x509.Certificate, want int) (bool, error) {
 	req, err := ocsp.CreateRequest(cert, issuer, nil)
 	if err != nil {
-		return ocsp.Unknown, err
+		return false, err
 	}
 
 	url := fmt.Sprintf("%s/%s", cert.OCSPServer[0], base64.StdEncoding.EncodeToString(req))
 	res, err := http.Get(url)
 	if err != nil {
-		return ocsp.Unknown, err
+		return false, err
 	}
 
 	output, err := io.ReadAll(res.Body)
 	if err != nil {
-		return ocsp.Unknown, err
+		return false, err
 	}
 
 	ocspRes, err := ocsp.ParseResponseForCert(output, cert, issuer)
 	if err != nil {
-		return ocsp.Unknown, err
+		return false, err
 	}
 
-	return ocspRes.Status, nil
+	return ocspRes.Status == want, nil
 }
 
 // Export expiration timestamp and reason to Prometheus.
 func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
-	p.notAfter.WithLabelValues(p.url).Set(float64(notAfter.Unix()))
-	p.reason.WithLabelValues(p.url, reasonToString[reason]).Inc()
+	p.notAfter.WithLabelValues(p.hostname).Set(float64(notAfter.Unix()))
+	p.reason.WithLabelValues(p.hostname, reasonToString[reason]).Inc()
 }
 
 func (p TLSProbe) probeExpired(timeout time.Duration) bool {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.url+":443", &tls.Config{InsecureSkipVerify: true})
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
 		p.exportMetrics(time.Time{}, internalError)
 		return false
@@ -120,7 +120,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 }
 
 func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.url+":443", &tls.Config{})
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", &tls.Config{})
 	if err != nil {
 		p.exportMetrics(time.Time{}, internalError)
 		return false
@@ -134,23 +134,20 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		return false
 	}
 
-	ocspStatus, err := getOCSP(peers[0], peers[1])
+	var ocspStatus bool
+	switch p.response {
+	case "valid":
+		ocspStatus, err = checkOCSP(peers[0], peers[1], ocsp.Good)
+	case "revoked":
+		ocspStatus, err = checkOCSP(peers[0], peers[1], ocsp.Revoked)
+	}
 	if err != nil {
 		p.exportMetrics(peers[0].NotAfter, ocspError)
 		return false
 	}
 
-	switch ocspStatus {
-	case ocsp.Good:
-		p.exportMetrics(peers[0].NotAfter, none)
-		return p.response == "valid"
-	case ocsp.Revoked:
-		p.exportMetrics(peers[0].NotAfter, none)
-		return p.response == "revoked"
-	default:
-		p.exportMetrics(peers[0].NotAfter, ocspUnknown)
-		return false
-	}
+	p.exportMetrics(peers[0].NotAfter, none)
+	return ocspStatus
 }
 
 // Probe performs the configured TLS protocol. Return true if both root AND

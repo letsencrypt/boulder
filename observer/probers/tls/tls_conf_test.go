@@ -10,7 +10,7 @@ import (
 )
 
 func TestTLSConf_MakeProber(t *testing.T) {
-	goodURL, goodRootCN, goodResponse := "example.com", "ISRG Root X1", "valid"
+	goodHostname, goodRootCN, goodResponse := "example.com", "ISRG Root X1", "valid"
 	colls := TLSConf{}.Instrument()
 	badColl := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -20,7 +20,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		[]string{},
 	))
 	type fields struct {
-		URL      string
+		Hostname string
 		RootCN   string
 		Response string
 	}
@@ -31,16 +31,16 @@ func TestTLSConf_MakeProber(t *testing.T) {
 		wantErr bool
 	}{
 		// valid
-		{"valid url", fields{"example.com", goodRootCN, "valid"}, colls, false},
-		{"valid url with path", fields{"example.com/foo/bar", "ISRG Root X2", "Revoked"}, colls, false},
+		{"valid hostname", fields{"example.com", goodRootCN, "valid"}, colls, false},
+		{"valid hostname with path", fields{"example.com/foo/bar", "ISRG Root X2", "Revoked"}, colls, false},
 
-		// invalid url
-		{"bad url", fields{":::::", goodRootCN, goodResponse}, colls, true},
+		// invalid hostname
+		{"bad hostname", fields{":::::", goodRootCN, goodResponse}, colls, true},
 		{"included scheme", fields{"https://example.com", goodRootCN, goodResponse}, colls, true},
 
 		// invalid response
-		{"empty response", fields{goodURL, goodRootCN, ""}, colls, true},
-		{"unaccepted response", fields{goodURL, goodRootCN, "invalid"}, colls, true},
+		{"empty response", fields{goodHostname, goodRootCN, ""}, colls, true},
+		{"unaccepted response", fields{goodHostname, goodRootCN, "invalid"}, colls, true},
 
 		// invalid collector
 		{
@@ -59,7 +59,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := TLSConf{
-				URL:      tt.fields.URL,
+				Hostname: tt.fields.Hostname,
 				RootCN:   tt.fields.RootCN,
 				Response: tt.fields.Response,
 			}
@@ -72,7 +72,7 @@ func TestTLSConf_MakeProber(t *testing.T) {
 
 func TestTLSConf_UnmarshalSettings(t *testing.T) {
 	type fields struct {
-		url      interface{}
+		hostname interface{}
 		rootOrg  interface{}
 		rootCN   interface{}
 		response interface{}
@@ -84,14 +84,14 @@ func TestTLSConf_UnmarshalSettings(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid", fields{"google.com", "", "ISRG Root X1", "valid"}, TLSConf{"google.com", "", "ISRG Root X1", "valid"}, false},
-		{"invalid url (map)", fields{make(map[string]interface{}), 42, 42, 42}, nil, true},
+		{"invalid hostname (map)", fields{make(map[string]interface{}), 42, 42, 42}, nil, true},
 		{"invalid rootOrg (list)", fields{42, make([]string, 0), 42, 42}, nil, true},
 		{"invalid response (list)", fields{42, 42, 42, make([]string, 0)}, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := probers.Settings{
-				"url":      tt.fields.url,
+				"hostname": tt.fields.hostname,
 				"rootOrg":  tt.fields.rootOrg,
 				"rootCN":   tt.fields.rootCN,
 				"response": tt.fields.response,

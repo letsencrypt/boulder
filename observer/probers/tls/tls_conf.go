@@ -17,7 +17,7 @@ const (
 
 // TLSConf is exported to receive YAML configuration.
 type TLSConf struct {
-	URL      string `yaml:"url"`
+	Hostname string `yaml:"hostname"`
 	RootOrg  string `yaml:"rootOrg"`
 	RootCN   string `yaml:"rootCN"`
 	Response string `yaml:"response"`
@@ -40,16 +40,16 @@ func (c TLSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) 
 	return conf, nil
 }
 
-func (c TLSConf) validateURL() error {
-	url, err := url.Parse(c.URL)
+func (c TLSConf) validateHostname() error {
+	url, err := url.Parse(c.Hostname)
 	if err != nil {
 		return fmt.Errorf(
-			"invalid 'url', got %q, expected a valid url: %s", c.URL, err)
+			"invalid 'hostname', got %q, expected a valid hostname: %s", c.Hostname, err)
 	}
 
 	if url.Scheme != "" {
 		return fmt.Errorf(
-			"invalid 'url', got: %q, should not include scheme", c.URL)
+			"invalid 'hostname', got: %q, should not include scheme", c.Hostname)
 	}
 
 	return nil
@@ -71,8 +71,8 @@ func (c TLSConf) validateResponse() error {
 // `TLSConf` object. If the `TLSConf` cannot be validated, an error appropriate
 // for end-user consumption is returned instead.
 func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers.Prober, error) {
-	// Validate `url`
-	err := c.validateURL()
+	// Validate `hostname`
+	err := c.validateHostname()
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.CounterVec", reasonName, coll)
 	}
 
-	return TLSProbe{c.URL, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, reasonColl}, nil
+	return TLSProbe{c.Hostname, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, reasonColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
@@ -121,13 +121,13 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 		prometheus.GaugeOpts{
 			Name: notAfterName,
 			Help: "Certificate notAfter value as a Unix timestamp in seconds",
-		}, []string{"url"},
+		}, []string{"hostname"},
 	))
 	reason := prometheus.Collector(prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: reasonName,
 			Help: fmt.Sprintf("Reason for TLS Prober check failure. Can be one of %s", getReasons()),
-		}, []string{"url", "reason"},
+		}, []string{"hostname", "reason"},
 	))
 	return map[string]prometheus.Collector{
 		notAfterName: notAfter,
