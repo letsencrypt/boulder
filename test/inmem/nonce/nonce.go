@@ -45,7 +45,7 @@ type nonceServiceAdapter struct {
 	noncepb.NonceServiceClient
 }
 
-// Nonce returns a nonce.
+// Nonce returns a nonce, implementing the jose.NonceSource interface
 func (nsa nonceServiceAdapter) Nonce() (string, error) {
 	resp, err := nsa.NonceServiceClient.Nonce(context.Background(), &emptypb.Empty{})
 	if err != nil {
@@ -53,3 +53,5 @@ func (nsa nonceServiceAdapter) Nonce() (string, error) {
 	}
 	return resp.Nonce, nil
 }
+
+var _ jose.NonceSource = nonceServiceAdapter{}

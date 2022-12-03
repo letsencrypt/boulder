@@ -1,11 +1,9 @@
 package notmain
 
 import (
-	"context"
 	"flag"
 
 	"github.com/honeycombio/beeline-go"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -23,23 +21,6 @@ type Config struct {
 		Syslog  cmd.SyslogConfig
 		Beeline cmd.BeelineConfig
 	}
-}
-
-type nonceServer struct {
-	noncepb.UnimplementedNonceServiceServer
-	inner *nonce.NonceService
-}
-
-func (ns *nonceServer) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
-}
-
-func (ns *nonceServer) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
-	nonce, err := ns.inner.Nonce()
-	if err != nil {
-		return nil, err
-	}
-	return &noncepb.NonceMessage{Nonce: nonce}, nil
 }
 
 func main() {
@@ -78,7 +59,7 @@ func main() {
 	tlsConfig, err := c.NonceService.TLS.Load()
 	cmd.FailOnError(err, "tlsConfig config")
 
-	nonceServer := &nonceServer{inner: ns}
+	nonceServer := nonce.NewServer(ns)
 	start, stop, err := bgrpc.NewServer(c.NonceService.GRPC).Add(
 		&noncepb.NonceService_ServiceDesc, nonceServer).Build(tlsConfig, scope, cmd.Clock())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
