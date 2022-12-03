@@ -1667,7 +1667,7 @@ func TestNoncePassThrough408Problem(t *testing.T) {
 
 	jws, _, _ := signer.byKeyID(1234, nil, "http://example.com/", "request-body")
 
-	for k, _ := range wfe.noncePrefixMap {
+	for k := range wfe.noncePrefixMap {
 		wfe.noncePrefixMap[k] = alwaysCancelNonceService{}
 	}
 	wfe.remoteNonceService = alwaysCancelNonceService{}
@@ -1683,16 +1683,6 @@ type alwaysCancelAccountGetter struct{}
 // GetRegistration implements AccountGetter
 func (alwaysCancelAccountGetter) GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, probs.Canceled("user canceled request")
-}
-
-type successNonceService struct{}
-
-func (successNonceService) Redeem(ctx context.Context, msg *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return &noncepb.ValidMessage{Valid: true}, nil
-}
-
-func (successNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	return nil, nil
 }
 
 // Test that cancellation of the account lookup will result in a 408, via the

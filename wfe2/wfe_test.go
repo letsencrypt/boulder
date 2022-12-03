@@ -425,7 +425,7 @@ func TestGetNonceCancellationBecomes408(t *testing.T) {
 	mux := http.NewServeMux()
 	rw := httptest.NewRecorder()
 
-	for k, _ := range wfe.noncePrefixMap {
+	for k := range wfe.noncePrefixMap {
 		wfe.noncePrefixMap[k] = alwaysCancelNonceService{}
 	}
 	wfe.remoteNonceService = alwaysCancelNonceService{}
