@@ -262,6 +262,7 @@ func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceSe
 	}
 	nonceService, present := noncePrefixMap[prefix]
 	if !present {
+		fmt.Printf("sad %s\n", prefix)
 		return false, nil
 	}
 	resp, err := nonceService.Redeem(ctx, &noncepb.NonceMessage{Nonce: nonce})
