@@ -150,9 +150,11 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	return ocspStatus
 }
 
-// Probe performs the configured TLS protocol. Return true if both root AND
-// response are the expected values, otherwise false. Export expiration
-// timestamp and reason as Prometheus metrics.
+// Probe performs the configured TLS probe. Return true if the root has the
+// expected Subject, and the end entity certificate has the correct expiration status
+// (either expired or unexpired, depending on what is configured). Exports metrics
+// for the NotAfter timestamp of the end entity certificate and its revocation
+// reason (from OCSP).
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	var success bool
