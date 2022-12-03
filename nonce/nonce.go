@@ -273,8 +273,8 @@ func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceSe
 }
 
 // NewServer returns a new Server, wrapping a NonceService.
-func NewServer(inner *NonceService) Server {
-	return Server{inner: inner}
+func NewServer(inner *NonceService) *Server {
+	return &Server{inner: inner}
 }
 
 // Server implements the gRPC nonce service.
