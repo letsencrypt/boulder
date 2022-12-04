@@ -17,6 +17,13 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
+	grpc "google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -42,12 +49,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/crypto/ocsp"
-	grpc "google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/square/go-jose.v2"
 )
 
 var (
@@ -985,6 +986,29 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		}
 	}
 
+	if err := processOrder(ctx, ra, req, order, csrOb); err != nil {
+		return nil, err
+	}
+
+	// Note how many names were in this finalized certificate order.
+	ra.namesPerCert.With(
+		prometheus.Labels{"type": "issued"},
+	).Observe(float64(len(order.Names)))
+
+	// Update the order status locally since the SA doesn't return the updated
+	// order itself after setting the status
+	order.Status = string(core.StatusValid)
+	return order, nil
+}
+
+// Process the order through the StorageAuthority and issue a certificate.
+// If any error happens during the process, fail the order and return the error.
+func processOrder(
+	ctx context.Context,
+	ra *RegistrationAuthorityImpl,
+	req *rapb.FinalizeOrderRequest,
+	order *corepb.Order,
+	csrOb *x509.CertificateRequest) error {
 	// Update the order to be status processing - we issue synchronously at the
 	// present time so this is somewhat artificial/unnecessary but allows planning
 	// for the future.
@@ -994,12 +1018,12 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Otherwise the order will be "stuck" in processing state. It can not be
 	// finalized because it isn't pending, but we aren't going to process it
 	// further because we already did and encountered an error.
-	_, err = ra.SA.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
+	_, err := ra.SA.SetOrderProcessing(ctx, &sapb.OrderRequest{Id: order.Id})
 	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error setting order processing"))
-		return nil, err
+		return err
 	}
 
 	// Observe the age of this order, so we know how quickly most clients complete
@@ -1020,7 +1044,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// `urn:ietf:params:acme:error:unauthorized` problem while not letting
 		// anything like a server internal error through with sensitive info.
 		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
-		return nil, err
+		return err
 	}
 
 	// Parse the issued certificate to get the serial
@@ -1029,7 +1053,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// Fail the order with a server internal error. The certificate we failed
 		// to parse was from our own CA. Bad news!
 		ra.failOrder(ctx, order, probs.ServerInternal("Error parsing certificate DER"))
-		return nil, err
+		return err
 	}
 
 	// Finalize the order with its new CertificateSerial
@@ -1039,18 +1063,9 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
 		ra.failOrder(ctx, order, probs.ServerInternal("Error persisting finalized order"))
-		return nil, err
+		return err
 	}
-
-	// Note how many names were in this finalized certificate order.
-	ra.namesPerCert.With(
-		prometheus.Labels{"type": "issued"},
-	).Observe(float64(len(order.Names)))
-
-	// Update the order status locally since the SA doesn't return the updated
-	// order itself after setting the status
-	order.Status = string(core.StatusValid)
-	return order, nil
+	return nil
 }
 
 // To help minimize the chance that an accountID would be used as an order ID
