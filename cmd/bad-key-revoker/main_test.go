@@ -210,6 +210,8 @@ func TestFindUnrevoked(t *testing.T) {
 	hashA := randHash(t)
 	// insert valid, unexpired
 	insertCert(t, dbMap, fc, hashA, "ff", regID, Unexpired, Unrevoked)
+	// insert valid, unexpired, duplicate
+	insertCert(t, dbMap, fc, hashA, "ff", regID, Unexpired, Unrevoked)
 	// insert valid, expired
 	insertCert(t, dbMap, fc, hashA, "ee", regID, Expired, Unrevoked)
 	// insert revoked
