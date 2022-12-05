@@ -986,7 +986,7 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertEquals(t, len(authzIDs), 4)
 	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
 
-	names, err := sa.namesForOrder(context.Background(), order.Id)
+	names, err := namesForOrder(sa.dbReadOnlyMap, order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 4)
 	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
