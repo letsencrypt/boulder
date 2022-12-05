@@ -14,6 +14,7 @@ type HTTPConf struct {
 	URL       string `yaml:"url"`
 	RCodes    []int  `yaml:"rcodes"`
 	UserAgent string `yaml:"useragent"`
+	Insecure  bool   `yaml:"insecure"`
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
@@ -80,7 +81,7 @@ func (c HTTPConf) MakeProber(_ map[string]prometheus.Collector) (probers.Prober,
 	if c.UserAgent == "" {
 		c.UserAgent = "letsencrypt/boulder-observer-http-client"
 	}
-	return HTTPProbe{c.URL, c.RCodes, c.UserAgent}, nil
+	return HTTPProbe{c.URL, c.RCodes, c.UserAgent, c.Insecure}, nil
 }
 
 // Instrument is a no-op to implement the `Configurer` interface.
