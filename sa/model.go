@@ -960,3 +960,32 @@ func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, erro
 	}
 	return allAuthzValidity, nil
 }
+
+// authzForOrder retrieves the authorization IDs for an order. It assumes that
+// the provided database selector already has a context associated with it.
+func authzForOrder(s db.Selector, orderID int64) ([]int64, error) {
+	var v2IDs []int64
+	_, err := s.Select(
+		&v2IDs,
+		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
+		orderID,
+	)
+	return v2IDs, err
+}
+
+// namesForOrder finds all of the requested names associated with an order. The
+// names are returned in their reversed form (see `sa.ReverseName`). It assumes
+// that the provided database selector already has a context associated with it.
+func namesForOrder(s db.Selector, orderID int64) ([]string, error) {
+	var reversedNames []string
+	_, err := s.Select(
+		&reversedNames,
+		`SELECT reversedName
+	   FROM requestedNames
+	   WHERE orderID = ?`,
+		orderID)
+	if err != nil {
+		return nil, err
+	}
+	return reversedNames, nil
+}

@@ -573,83 +573,70 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(ctx context.Context, r
 	return ssa.SQLStorageAuthorityRO.PreviousCertificateExists(ctx, req)
 }
 
-// authzForOrder retrieves the authorization IDs for an order.
-func (ssa *SQLStorageAuthorityRO) authzForOrder(ctx context.Context, orderID int64) ([]int64, error) {
-	var v2IDs []int64
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
-		&v2IDs,
-		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
-		orderID,
-	)
-	return v2IDs, err
-}
-
-// namesForOrder finds all of the requested names associated with an order. The
-// names are returned in their reversed form (see `sa.ReverseName`).
-func (ssa *SQLStorageAuthorityRO) namesForOrder(ctx context.Context, orderID int64) ([]string, error) {
-	var reversedNames []string
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
-		&reversedNames,
-		`SELECT reversedName
-	   FROM requestedNames
-	   WHERE orderID = ?`,
-		orderID)
-	if err != nil {
-		return nil, err
-	}
-	return reversedNames, nil
-}
-
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if req == nil || req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
 
-	omObj, err := ssa.dbReadOnlyMap.WithContext(ctx).Get(orderModel{}, req.Id)
-	if err != nil {
-		if db.IsNoRows(err) {
+	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, func(txWithCtx db.Executor) (interface{}, error) {
+		omObj, err := txWithCtx.Get(orderModel{}, req.Id)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+			}
+			return nil, err
+		}
+		if omObj == nil {
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
-		return nil, err
-	}
-	if omObj == nil {
-		return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
-	}
-	order, err := modelToOrder(omObj.(*orderModel))
+
+		order, err := modelToOrder(omObj.(*orderModel))
+		if err != nil {
+			return nil, err
+		}
+
+		orderExp := time.Unix(0, order.Expires)
+		if orderExp.Before(ssa.clk.Now()) {
+			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		}
+
+		v2AuthzIDs, err := authzForOrder(txWithCtx, order.Id)
+		if err != nil {
+			return nil, err
+		}
+		order.V2Authorizations = v2AuthzIDs
+
+		names, err := namesForOrder(txWithCtx, order.Id)
+		if err != nil {
+			return nil, err
+		}
+		// The requested names are stored reversed to improve indexing performance. We
+		// need to reverse the reversed names here before giving them back to the
+		// caller.
+		reversedNames := make([]string, len(names))
+		for i, n := range names {
+			reversedNames[i] = ReverseName(n)
+		}
+		order.Names = reversedNames
+
+		// Calculate the status for the order
+		status, err := statusForOrder(txWithCtx, order, ssa.clk.Now())
+		if err != nil {
+			return nil, err
+		}
+		order.Status = status
+
+		return order, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	orderExp := time.Unix(0, order.Expires)
-	if orderExp.Before(ssa.clk.Now()) {
-		return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 	}
 
-	v2AuthzIDs, err := ssa.authzForOrder(ctx, order.Id)
-	if err != nil {
-		return nil, err
+	order, ok := output.(*corepb.Order)
+	if !ok {
+		return nil, fmt.Errorf("casting error in GetOrder")
 	}
-	order.V2Authorizations = v2AuthzIDs
-
-	names, err := ssa.namesForOrder(ctx, order.Id)
-	if err != nil {
-		return nil, err
-	}
-	// The requested names are stored reversed to improve indexing performance. We
-	// need to reverse the reversed names here before giving them back to the
-	// caller.
-	reversedNames := make([]string, len(names))
-	for i, n := range names {
-		reversedNames[i] = ReverseName(n)
-	}
-	order.Names = reversedNames
-
-	// Calculate the status for the order
-	status, err := statusForOrder(ssa.dbReadOnlyMap.WithContext(ctx), order, ssa.clk.Now())
-	if err != nil {
-		return nil, err
-	}
-	order.Status = status
 
 	return order, nil
 }
