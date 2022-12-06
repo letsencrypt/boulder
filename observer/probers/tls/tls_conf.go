@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	notAfterName = "obs_not_after"
-	reasonName   = "tls_prober_failure_reason"
+	notAfterName = "obs_tls_not_after"
+	reasonName   = "obs_tls_reason"
 )
 
 // TLSConf is exported to receive YAML configuration.
