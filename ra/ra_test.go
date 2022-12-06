@@ -29,6 +29,13 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+	jose "gopkg.in/square/go-jose.v2"
+
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -54,12 +61,6 @@ import (
 	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
@@ -2807,6 +2808,67 @@ func TestFinalizeOrder(t *testing.T) {
 			}
 		})
 	}
+}
+
+type stubSAFailOrderProcessing struct {
+	sapb.StorageAuthorityClient
+	t       *testing.T
+	orderID int64
+	err     <-chan error
+}
+
+func (s *stubSAFailOrderProcessing) SetOrderProcessing(
+	ctx context.Context, in *sapb.OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case err := <-s.err:
+		return nil, err
+	}
+
+}
+
+func (s *stubSAFailOrderProcessing) SetOrderError(
+	ctx context.Context, in *sapb.SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	test.AssertEquals(s.t, s.orderID, in.Id)
+	return nil, nil
+}
+
+func TestFinalizeOrderExpiredContextCallSetOrderError(t *testing.T) {
+	_, sauth, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	const (
+		orderID = 123456
+		errMsg  = "some error"
+	)
+	anOrder := &corepb.Order{Id: orderID}
+	anOrderRequest := &rapb.FinalizeOrderRequest{
+		Order: anOrder,
+		Csr:   []byte{},
+	}
+	errs := make(chan error, 1)
+	defer close(errs)
+
+	ra.SA = &stubSAFailOrderProcessing{
+		sauth,
+		t,
+		orderID,
+		errs,
+	}
+	errs <- fmt.Errorf(errMsg)
+
+	err := processOrder(context.Background(), ra, anOrderRequest, anOrder, nil)
+	test.AssertError(t, err, "error from processOrder should not be nil")
+	test.AssertEquals(t, err.Error(), errMsg)
+
+	// reset counter
+	// test context expiration still calls into SetOrderError
+	shortCtx, cancel := context.WithTimeout(context.Background(), 1*time.Microsecond)
+	defer cancel()
+	err = processOrder(shortCtx, ra, anOrderRequest, anOrder, nil)
+	test.AssertError(t, err, "error from processOrder should not be nil")
+	test.AssertDeepEquals(t, context.DeadlineExceeded, err)
 }
 
 func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {

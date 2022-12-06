@@ -906,27 +906,30 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 // log it and don't modify the input order. There aren't any alternatives if we
 // can't add the error to the order. This function MUST only be called when we
 // are already returning an error for another reason.
-func (ra *RegistrationAuthorityImpl) failOrder(
-	ctx context.Context,
-	order *corepb.Order,
-	prob *probs.ProblemDetails) {
+func (ra *RegistrationAuthorityImpl) failOrder(orderID int64, prob *probs.ProblemDetails) {
+	const maxSetOrderErrorExecTime = 1 * time.Second
+	// Create a goroutine to handle marking the order as failed, with a dedicated context.
+	// The context lifetime is dictated by the expectation that the operation is fast.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), maxSetOrderErrorExecTime)
+		defer cancel()
 
-	// Convert the problem to a protobuf problem for the *corepb.Order field
-	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
-	if err != nil {
-		ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
-		return
-	}
+		// Convert the problem to a protobuf problem for the *corepb.Order field
+		pbProb, err := bgrpc.ProblemDetailsToPB(prob)
+		if err != nil {
+			ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
+			return
+		}
 
-	// Assign the protobuf problem to the field and save it via the SA
-	order.Error = pbProb
-	_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
-		Id:    order.Id,
-		Error: order.Error,
-	})
-	if err != nil {
-		ra.log.AuditErrf("Could not persist order error: %q", err)
-	}
+		// Save the protobuf problem via the SA
+		_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
+			Id:    orderID,
+			Error: pbProb,
+		})
+		if err != nil {
+			ra.log.AuditErrf("Could not persist order error: %q", err)
+		}
+	}()
 }
 
 // FinalizeOrder accepts a request to finalize an order object and, if possible,
@@ -986,7 +989,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		}
 	}
 
-	if err := processOrder(ctx, ra, req, order, csrOb); err != nil {
+	err = processOrder(ctx, ra, req, order, csrOb)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1022,7 +1026,7 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
-		ra.failOrder(ctx, order, probs.ServerInternal("Error setting order processing"))
+		ra.failOrder(order.Id, probs.ServerInternal("Error setting order processing"))
 		return err
 	}
 
@@ -1043,7 +1047,7 @@ func processOrder(
 		// berrors.UnauthorizedError into the correct
 		// `urn:ietf:params:acme:error:unauthorized` problem while not letting
 		// anything like a server internal error through with sensitive info.
-		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
+		ra.failOrder(order.Id, web.ProblemDetailsForError(err, "Error finalizing order"))
 		return err
 	}
 
@@ -1052,7 +1056,7 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error. The certificate we failed
 		// to parse was from our own CA. Bad news!
-		ra.failOrder(ctx, order, probs.ServerInternal("Error parsing certificate DER"))
+		ra.failOrder(order.Id, probs.ServerInternal("Error parsing certificate DER"))
 		return err
 	}
 
@@ -1062,7 +1066,7 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
-		ra.failOrder(ctx, order, probs.ServerInternal("Error persisting finalized order"))
+		ra.failOrder(order.Id, probs.ServerInternal("Error persisting finalized order"))
 		return err
 	}
 	return nil
