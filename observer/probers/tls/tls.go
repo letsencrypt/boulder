@@ -19,17 +19,13 @@ type reason int
 const (
 	none reason = iota
 	internalError
-	issuerVerifyFailed
-	ocspUnknown
 	ocspError
 )
 
 var reasonToString = map[reason]string{
-	none:               "nil",
-	internalError:      "internalError",
-	issuerVerifyFailed: "issuerVerifyFailed",
-	ocspUnknown:        "ocspUnknown",
-	ocspError:          "ocspError",
+	none:          "nil",
+	internalError: "internalError",
+	ocspError:     "ocspError",
 }
 
 func getReasons() []string {
@@ -94,7 +90,22 @@ func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
 }
 
 func (p TLSProbe) probeExpired(timeout time.Duration) bool {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", &tls.Config{InsecureSkipVerify: true})
+	config := &tls.Config{
+		// Set InsecureSkipVerify to skip the default validation we are
+		// replacing. This will not disable VerifyConnection.
+		InsecureSkipVerify: true,
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			opts := x509.VerifyOptions{
+				CurrentTime: cs.PeerCertificates[0].NotAfter,
+			}
+			for _, cert := range cs.PeerCertificates[1:] {
+				opts.Intermediates.AddCert(cert)
+			}
+			_, err := cs.PeerCertificates[0].Verify(opts)
+			return err
+		},
+	}
+	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: timeout}, "tcp", p.hostname+":443", config)
 	if err != nil {
 		p.exportMetrics(time.Time{}, internalError)
 		return false
@@ -102,14 +113,6 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
-	for i := 0; i < len(peers)-1; i++ {
-		certIssuer, issuerSubject := peers[i].Issuer, peers[i+1].Subject
-		if (certIssuer.CommonName != issuerSubject.CommonName) || (certIssuer.Organization[0] != issuerSubject.Organization[0]) {
-			p.exportMetrics(peers[0].NotAfter, issuerVerifyFailed)
-			return false
-		}
-	}
-
 	p.exportMetrics(peers[0].NotAfter, none)
 	if time.Until(peers[0].NotAfter) > 0 {
 		return false
