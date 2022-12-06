@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -239,41 +238,4 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	test.AssertEquals(t, keyHashes[0].CertNotAfter, testCert.NotAfter)
 	spkiHash := sha256.Sum256(testCert.RawSubjectPublicKeyInfo)
 	test.Assert(t, bytes.Equal(keyHashes[0].KeyHash, spkiHash[:]), "spki hash mismatch")
-}
-
-func TestAddPrecertificateStatusFail(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := createWorkingRegistration(t, sa)
-
-	serial, testCert := test.ThrowAwayCert(t, 1)
-
-	// Insert an entry for the same serial, so that the normal insert as part of
-	// AddPrecertificate will fail due to the unique key constraint on serial.
-	err := sa.dbMap.Insert(
-		&core.CertificateStatus{
-			Serial:                serial,
-			Status:                core.OCSPStatusGood,
-			OCSPLastUpdated:       sa.clk.Now(),
-			RevokedDate:           time.Time{},
-			RevokedReason:         0,
-			LastExpirationNagSent: time.Time{},
-			OCSPResponse:          []byte{1, 2, 3},
-			NotAfter:              testCert.NotAfter,
-			IsExpired:             false,
-			IssuerID:              1,
-		},
-	)
-	test.AssertNotError(t, err, "failed to insert fake status row")
-
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     []byte{4, 5, 6},
-		Issued:   testCert.NotBefore.UnixNano(),
-		IssuerID: 1,
-	})
-	test.AssertError(t, err, "adding precert should fail when inserting ocsp fails")
-	test.AssertContains(t, err.Error(), "failed to insert *core.CertificateStatus")
 }
