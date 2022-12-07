@@ -20,12 +20,16 @@ const (
 	none reason = iota
 	internalError
 	ocspError
+	rootDidNotMatch
+	responseDidNotMatch
 )
 
 var reasonToString = map[reason]string{
-	none:          "nil",
-	internalError: "internalError",
-	ocspError:     "ocspError",
+	none:                "nil",
+	internalError:       "internalError",
+	ocspError:           "ocspError",
+	rootDidNotMatch:     "rootDidNotMatch",
+	responseDidNotMatch: "responseDidNotMatch",
 }
 
 func getReasons() []string {
@@ -113,13 +117,19 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
-	p.exportMetrics(peers[0].NotAfter, none)
 	if time.Until(peers[0].NotAfter) > 0 {
+		p.exportMetrics(peers[0].NotAfter, responseDidNotMatch)
 		return false
 	}
 
 	root := peers[len(peers)-1].Issuer
-	return root.Organization[0] == p.rootOrg && root.CommonName == p.rootCN
+	if root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN {
+		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
+		return false
+	}
+
+	p.exportMetrics(peers[0].NotAfter, none)
+	return true
 }
 
 func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
@@ -133,7 +143,7 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
 	if root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN {
-		p.exportMetrics(peers[0].NotAfter, none)
+		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
 
@@ -149,15 +159,20 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 		return false
 	}
 
+	if !ocspStatus {
+		p.exportMetrics(peers[0].NotAfter, responseDidNotMatch)
+		return false
+	}
+
 	p.exportMetrics(peers[0].NotAfter, none)
-	return ocspStatus
+	return true
 }
 
 // Probe performs the configured TLS probe. Return true if the root has the
-// expected Subject, and the end entity certificate has the correct expiration status
-// (either expired or unexpired, depending on what is configured). Exports metrics
-// for the NotAfter timestamp of the end entity certificate and its revocation
-// reason (from OCSP).
+// expected Subject, and the end entity certificate has the correct expiration
+// status (either expired or unexpired, depending on what is configured).
+// Exports metrics for the NotAfter timestamp of the end entity certificate and
+// the reason for the Probe returning false ("none" if returns true).
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	var success bool
