@@ -30,7 +30,7 @@ require (
 	github.com/zmap/zlint/v3 v3.4.0
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
 	golang.org/x/net v0.0.0-20220926192436-02166a98028e
-	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
+	golang.org/x/sync v0.1.0
 	golang.org/x/term v0.0.0-20220722155259-a9ba230a4035
 	golang.org/x/text v0.3.8
 	google.golang.org/grpc v1.49.0
