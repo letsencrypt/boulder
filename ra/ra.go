@@ -910,26 +910,24 @@ func (ra *RegistrationAuthorityImpl) failOrder(orderID int64, prob *probs.Proble
 	const maxSetOrderErrorExecTime = 1 * time.Second
 	// Create a goroutine to handle marking the order as failed, with a dedicated context.
 	// The context lifetime is dictated by the expectation that the operation is fast.
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), maxSetOrderErrorExecTime)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), maxSetOrderErrorExecTime)
+	defer cancel()
 
-		// Convert the problem to a protobuf problem for the *corepb.Order field
-		pbProb, err := bgrpc.ProblemDetailsToPB(prob)
-		if err != nil {
-			ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
-			return
-		}
+	// Convert the problem to a protobuf problem for the *corepb.Order field
+	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
+	if err != nil {
+		ra.log.AuditErrf("Could not convert order error problem to PB: %q", err)
+		return
+	}
 
-		// Save the protobuf problem via the SA
-		_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
-			Id:    orderID,
-			Error: pbProb,
-		})
-		if err != nil {
-			ra.log.AuditErrf("Could not persist order error: %q", err)
-		}
-	}()
+	// Save the protobuf problem via the SA
+	_, err = ra.SA.SetOrderError(ctx, &sapb.SetOrderErrorRequest{
+		Id:    orderID,
+		Error: pbProb,
+	})
+	if err != nil {
+		ra.log.AuditErrf("Could not persist order error: %q", err)
+	}
 }
 
 // FinalizeOrder accepts a request to finalize an order object and, if possible,
@@ -1013,12 +1011,33 @@ func processOrder(
 	req *rapb.FinalizeOrderRequest,
 	order *corepb.Order,
 	csrOb *x509.CertificateRequest) error {
+	// Create a channel to process problems with the order processing
+	// in the background.
+	failOrder := make(chan *probs.ProblemDetails, 1)
+	defer close(failOrder)
+	// Spawn a goroutine to handle the failure modes of processing the order:
+	// 1. the RPC context is expired
+	// 2. we receive a failure message from downstream RPCs
+	// If none of the above happens, the channel is closed and the goroutine exits
+	// without doing nothing.
+	go func() {
+		select {
+		case <-ctx.Done():
+			// NOTE(@inge4pres): add a metric here to signal that we are hitting
+			// a downstream service timeout?
+			ra.failOrder(order.Id, probs.ServerInternal("Downstream failure"))
+		case prob, ok := <-failOrder:
+			if ok {
+				ra.failOrder(order.Id, prob)
+			}
+		}
+	}()
 	// Update the order to be status processing - we issue synchronously at the
 	// present time so this is somewhat artificial/unnecessary but allows planning
 	// for the future.
 	//
-	// NOTE(@cpu): After this point any errors that are encountered must update
-	// the state of the order to invalid by setting the order's error field.
+	// NOTE(@cpu): After this point any errors that are encountered must
+	// mark the order as failed by sending a problem in the failure channel.
 	// Otherwise the order will be "stuck" in processing state. It can not be
 	// finalized because it isn't pending, but we aren't going to process it
 	// further because we already did and encountered an error.
@@ -1026,7 +1045,7 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
-		ra.failOrder(order.Id, probs.ServerInternal("Error setting order processing"))
+		failOrder <- probs.ServerInternal("Error setting order processing")
 		return err
 	}
 
@@ -1047,7 +1066,7 @@ func processOrder(
 		// berrors.UnauthorizedError into the correct
 		// `urn:ietf:params:acme:error:unauthorized` problem while not letting
 		// anything like a server internal error through with sensitive info.
-		ra.failOrder(order.Id, web.ProblemDetailsForError(err, "Error finalizing order"))
+		failOrder <- web.ProblemDetailsForError(err, "Error finalizing order")
 		return err
 	}
 
@@ -1056,7 +1075,7 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error. The certificate we failed
 		// to parse was from our own CA. Bad news!
-		ra.failOrder(order.Id, probs.ServerInternal("Error parsing certificate DER"))
+		failOrder <- probs.ServerInternal("Error parsing certificate DER")
 		return err
 	}
 
@@ -1066,7 +1085,7 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
-		ra.failOrder(order.Id, probs.ServerInternal("Error persisting finalized order"))
+		failOrder <- probs.ServerInternal("Error persisting finalized order")
 		return err
 	}
 	return nil

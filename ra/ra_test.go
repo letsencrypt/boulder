@@ -2812,9 +2812,10 @@ func TestFinalizeOrder(t *testing.T) {
 
 type stubSAFailOrderProcessing struct {
 	sapb.StorageAuthorityClient
-	t       *testing.T
-	orderID int64
-	err     <-chan error
+	t             *testing.T
+	orderID       int64
+	err           <-chan error
+	failExecCount chan struct{}
 }
 
 func (s *stubSAFailOrderProcessing) SetOrderProcessing(
@@ -2831,6 +2832,7 @@ func (s *stubSAFailOrderProcessing) SetOrderProcessing(
 func (s *stubSAFailOrderProcessing) SetOrderError(
 	ctx context.Context, in *sapb.SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	test.AssertEquals(s.t, s.orderID, in.Id)
+	s.failExecCount <- struct{}{}
 	return nil, nil
 }
 
@@ -2850,25 +2852,29 @@ func TestFinalizeOrderExpiredContextCallSetOrderError(t *testing.T) {
 	errs := make(chan error, 1)
 	defer close(errs)
 
-	ra.SA = &stubSAFailOrderProcessing{
+	stub := stubSAFailOrderProcessing{
 		sauth,
 		t,
 		orderID,
 		errs,
+		make(chan struct{}),
 	}
+	ra.SA = &stub
 	errs <- fmt.Errorf(errMsg)
 
 	err := processOrder(context.Background(), ra, anOrderRequest, anOrder, nil)
 	test.AssertError(t, err, "error from processOrder should not be nil")
 	test.AssertEquals(t, err.Error(), errMsg)
+	test.AssertEquals(t, struct{}{}, <-stub.failExecCount)
 
 	// reset counter
 	// test context expiration still calls into SetOrderError
-	shortCtx, cancel := context.WithTimeout(context.Background(), 1*time.Microsecond)
+	shortCtx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 	err = processOrder(shortCtx, ra, anOrderRequest, anOrder, nil)
 	test.AssertError(t, err, "error from processOrder should not be nil")
 	test.AssertDeepEquals(t, context.DeadlineExceeded, err)
+	test.AssertEquals(t, struct{}{}, <-stub.failExecCount)
 }
 
 func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
