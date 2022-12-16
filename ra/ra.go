@@ -105,6 +105,7 @@ type RegistrationAuthorityImpl struct {
 	newCertCounter              prometheus.Counter
 	recheckCAAUsedAuthzLifetime prometheus.Counter
 	authzAges                   prometheus.Histogram
+	orderAges                   prometheus.Histogram
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -191,17 +192,27 @@ func NewRegistrationAuthorityImpl(
 	stats.MustRegister(revocationReasonCounter)
 
 	authzAges := prometheus.NewHistogram(prometheus.HistogramOpts{
-		Name: "names_per_cert",
-		Help: "Histogram of the number of SANs in requested and issued certificates",
+		Name: "authz_ages",
+		Help: "Histogram of ages of Authorization objects when they're attached to a new Order",
 		// authzAges keeps track of how old, in seconds, authorizations were at
 		// the time that we attached them to an order. We give it a non-standard
 		// bucket distribution so that the leftmost (closest to zero) bucket can be
 		// used exclusively for brand-new (i.e. not reused) authzs. Our buckets are:
 		// one nanosecond, one second, one minute, one hour, 7 hours (our CAA reuse
-		// time), 1 day, 2 days, 7 days, 30 days, 90 days (should be empty), +inf.
+		// time), 1 day, 2 days, 7 days, 30 days, +inf (should be empty).
 		Buckets: []float64{0.000000001, 1, 60, 3600, 25200, 86400, 172800, 604800, 2592000, 7776000},
 	})
 	stats.MustRegister(authzAges)
+
+	orderAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "order_ages",
+		Help: "Histogram of ages of Order objects when they're Finalized",
+		// Orders currently have a max age of 7 days (168hrs), so our buckets are:
+		// 1 second, 10 seconds, 1 minute, 10 minutes, 1 hour, 10 hours, 1 day,
+		// 7 days, +inf.
+		Buckets: []float64{1, 10, 60, 600, 3600, 36000, 86400, 172800},
+	})
+	stats.MustRegister(orderAges)
 
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
@@ -237,6 +248,7 @@ func NewRegistrationAuthorityImpl(
 		revocationReasonCounter:      revocationReasonCounter,
 		recheckCAAUsedAuthzLifetime:  recheckCAAUsedAuthzLifetime,
 		authzAges:                    authzAges,
+		orderAges:                    orderAges,
 	}
 	return ra
 }
@@ -989,6 +1001,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		ra.failOrder(ctx, order, probs.ServerInternal("Error setting order processing"))
 		return nil, err
 	}
+
+	// Observe the age of this order, so we know how quickly most clients complete
+	// issuance flows.
+	ra.orderAges.Observe(ra.clk.Since(time.Unix(0, order.Created)).Seconds())
 
 	// Attempt issuance for the order. If the order isn't fully authorized this
 	// will return an error.
