@@ -104,6 +104,7 @@ type RegistrationAuthorityImpl struct {
 	recheckCAACounter           prometheus.Counter
 	newCertCounter              prometheus.Counter
 	recheckCAAUsedAuthzLifetime prometheus.Counter
+	authzAges                   prometheus.Histogram
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -188,6 +189,19 @@ func NewRegistrationAuthorityImpl(
 		Help: "A counter of certificate revocation reasons",
 	}, []string{"reason"})
 	stats.MustRegister(revocationReasonCounter)
+
+	authzAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "names_per_cert",
+		Help: "Histogram of the number of SANs in requested and issued certificates",
+		// authzAges keeps track of how old, in seconds, authorizations were at
+		// the time that we attached them to an order. We give it a non-standard
+		// bucket distribution so that the leftmost (closest to zero) bucket can be
+		// used exclusively for brand-new (i.e. not reused) authzs. Our buckets are:
+		// one nanosecond, one second, one minute, one hour, 7 hours (our CAA reuse
+		// time), 1 day, 2 days, 7 days, 30 days, 90 days (should be empty), +inf.
+		Buckets: []float64{0.000000001, 1, 60, 3600, 25200, 86400, 172800, 604800, 2592000, 7776000},
+	})
+	stats.MustRegister(authzAges)
 
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
@@ -2351,6 +2365,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
+			ra.authzAges.Observe((time.Unix(0, authz.Expires).Sub(ra.clk.Now()) - ra.authorizationLifetime).Seconds())
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
@@ -2359,6 +2374,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
+			ra.authzAges.Observe((time.Unix(0, authz.Expires).Sub(ra.clk.Now()) - ra.authorizationLifetime).Seconds())
 			continue
 		}
 
@@ -2368,6 +2384,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// reuse and we need to mark the name as requiring a new pending authz
 		missingAuthzNames = append(missingAuthzNames, name)
 	}
+	ra.reusedValidAuthzCounter.Add(float64(len(newOrder.V2Authorizations)))
 
 	// If the order isn't fully authorized we need to check that the client has
 	// rate limit room for more pending authorizations
@@ -2390,6 +2407,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			return nil, err
 		}
 		newAuthzs = append(newAuthzs, pb)
+		ra.authzAges.Observe(0)
 	}
 
 	// Start with the order's own expiry as the minExpiry. We only care
