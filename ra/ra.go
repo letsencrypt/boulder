@@ -236,6 +236,7 @@ func NewRegistrationAuthorityImpl(
 		newCertCounter:               newCertCounter,
 		revocationReasonCounter:      revocationReasonCounter,
 		recheckCAAUsedAuthzLifetime:  recheckCAAUsedAuthzLifetime,
+		authzAges:                    authzAges,
 	}
 	return ra
 }
