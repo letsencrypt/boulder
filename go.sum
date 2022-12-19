@@ -477,8 +477,8 @@ github.com/vmihailenco/tagparser/v2 v2.0.0 h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAh
 github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV6mEfg5OIWRZA9qds=
 github.com/weppos/publicsuffix-go v0.12.0/go.mod h1:z3LCPQ38eedDQSwmsSRW4Y7t2L8Ln16JPQ02lHAdn5k=
 github.com/weppos/publicsuffix-go v0.15.1-0.20220329081811-9a40b608a236/go.mod h1:HYux0V0Zi04bHNwOHy4cXJVz/TQjYonnF6aoYhj+3QE=
-github.com/weppos/publicsuffix-go v0.20.1-0.20221031080346-e4081aa8a6de h1:eR9jm8DVMdrDUuVji4eOxPK4r/dANDlDBdISSUUV96s=
-github.com/weppos/publicsuffix-go v0.20.1-0.20221031080346-e4081aa8a6de/go.mod h1:g9GsAxnaxsUuTLZcQdYbi43vT2k9ubZGHsdCy819VLk=
+github.com/weppos/publicsuffix-go v0.20.1-0.20221209102050-40d9c30084b3 h1:ypyhoprZWFzU0ydOBv3I5SS7/jLFJ+ujPAU+BD/EVFM=
+github.com/weppos/publicsuffix-go v0.20.1-0.20221209102050-40d9c30084b3/go.mod h1:g9GsAxnaxsUuTLZcQdYbi43vT2k9ubZGHsdCy819VLk=
 github.com/weppos/publicsuffix-go/publicsuffix/generator v0.0.0-20220927085643-dc0d00c92642/go.mod h1:GHfoeIdZLdZmLjMlzBftbTDntahTttUMWjxZwQJhULE=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
@@ -622,8 +622,6 @@ golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208/go.mod h1:RxMgew5VJxzue5/jJ
 golang.org/x/sync v0.0.0-20201207232520-09787c993a3a/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20210220032951-036812b2e83c/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
-golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 h1:uVc8UZUe6tr40fFVnUP5Oj+veunVezqYl9z7DYw9xzw=
-golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sync v0.1.0 h1:wsuoTGHzEhffawBOhz5CYhcrV4IdKZbEyZjBMuTp12o=
 golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
 golang.org/x/sys v0.0.0-20180830151530-49385e6e1522/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
