@@ -9,6 +9,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	notAfterName = "obs_http_not_after"
+)
+
 // HTTPConf is exported to receive YAML configuration.
 type HTTPConf struct {
 	URL       string `yaml:"url"`
@@ -64,7 +68,7 @@ func (c HTTPConf) validateRCodes() error {
 // MakeProber constructs a `HTTPProbe` object from the contents of the
 // bound `HTTPConf` object. If the `HTTPConf` cannot be validated, an
 // error appropriate for end-user consumption is returned instead.
-func (c HTTPConf) MakeProber(_ map[string]prometheus.Collector) (probers.Prober, error) {
+func (c HTTPConf) MakeProber(collectors map[string]prometheus.Collector) (probers.Prober, error) {
 	// validate `url`
 	err := c.validateURL()
 	if err != nil {
@@ -81,12 +85,34 @@ func (c HTTPConf) MakeProber(_ map[string]prometheus.Collector) (probers.Prober,
 	if c.UserAgent == "" {
 		c.UserAgent = "letsencrypt/boulder-observer-http-client"
 	}
-	return HTTPProbe{c.URL, c.RCodes, c.UserAgent, c.Insecure}, nil
+
+	coll, ok := collectors[notAfterName]
+	if !ok {
+		return nil, fmt.Errorf("http prober did not receive collector %q", notAfterName)
+	}
+
+	notAfterColl, ok := coll.(*prometheus.GaugeVec)
+	if !ok {
+		return nil, fmt.Errorf("http prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notAfterName, coll)
+	}
+
+	return HTTPProbe{c.URL, c.RCodes, c.UserAgent, c.Insecure, notAfterColl}, nil
 }
 
-// Instrument is a no-op to implement the `Configurer` interface.
+// Instrument constructs any `prometheus.Collector` objects the `HTTPProbe` will
+// need to report its own metrics. A map is returned containing the constructed
+// objects, indexed by the name of the Promtheus metric.  If no objects were
+// constructed, nil is returned.
 func (c HTTPConf) Instrument() map[string]prometheus.Collector {
-	return nil
+	notAfter := prometheus.Collector(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: notAfterName,
+			Help: "Certificate notAfter value as a Unix timestamp in seconds",
+		}, []string{"url"},
+	))
+	return map[string]prometheus.Collector{
+		notAfterName: notAfter,
+	}
 }
 
 // init is called at runtime and registers `HTTPConf`, a `Prober`

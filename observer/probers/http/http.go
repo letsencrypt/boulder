@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // HTTPProbe is the exported 'Prober' object for monitors configured to
@@ -14,6 +16,7 @@ type HTTPProbe struct {
 	rcodes    []int
 	useragent string
 	insecure  bool
+	notAfter  *prometheus.GaugeVec
 }
 
 // Name returns a string that uniquely identifies the monitor.
@@ -60,5 +63,6 @@ func (p HTTPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, time.Since(start)
 	}
+	p.notAfter.WithLabelValues(p.url).Set(float64(resp.TLS.PeerCertificates[0].NotAfter.Unix()))
 	return p.isExpected(resp.StatusCode), time.Since(start)
 }

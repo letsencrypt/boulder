@@ -6,10 +6,19 @@ import (
 
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
 )
 
 func TestHTTPConf_MakeProber(t *testing.T) {
+	colls := HTTPConf{}.Instrument()
+	badColl := prometheus.Collector(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "obs_crl_foo",
+			Help: "Hmmm, this shouldn't be here...",
+		},
+		[]string{},
+	))
 	type fields struct {
 		URL    string
 		RCodes []int
@@ -17,17 +26,35 @@ func TestHTTPConf_MakeProber(t *testing.T) {
 	tests := []struct {
 		name    string
 		fields  fields
+		colls   map[string]prometheus.Collector
 		wantErr bool
 	}{
 		// valid
-		{"valid fqdn valid rcode", fields{"http://example.com", []int{200}}, false},
-		{"valid hostname valid rcode", fields{"example", []int{200}}, true},
-		// invalid
-		{"valid fqdn no rcode", fields{"http://example.com", nil}, true},
-		{"valid fqdn invalid rcode", fields{"http://example.com", []int{1000}}, true},
-		{"valid fqdn 1 invalid rcode", fields{"http://example.com", []int{200, 1000}}, true},
-		{"bad fqdn good rcode", fields{":::::", []int{200}}, true},
-		{"missing scheme", fields{"example.com", []int{200}}, true},
+		{"valid fqdn valid rcode", fields{"http://example.com", []int{200}}, colls, false},
+		{"valid hostname valid rcode", fields{"example", []int{200}}, colls, true},
+
+		// invalid rcode
+		{"valid fqdn no rcode", fields{"http://example.com", nil}, colls, true},
+		{"valid fqdn invalid rcode", fields{"http://example.com", []int{1000}}, colls, true},
+		{"valid fqdn 1 invalid rcode", fields{"http://example.com", []int{200, 1000}}, colls, true},
+
+		// invalid url
+		{"bad fqdn good rcode", fields{":::::", []int{200}}, colls, true},
+		{"missing scheme", fields{"example.com", []int{200}}, colls, true},
+
+		// invalid collector
+		{
+			"unexpected collector",
+			fields{"http://example.com", []int{200}},
+			map[string]prometheus.Collector{"obs_crl_foo": badColl},
+			true,
+		},
+		{
+			"missing collectors",
+			fields{"http://example.com", []int{200}},
+			map[string]prometheus.Collector{},
+			true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
