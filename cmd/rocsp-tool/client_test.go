@@ -50,7 +50,7 @@ func makeClient() (*rocsp.RWClient, clock.Clock) {
 	return rocsp.NewWritingClient(rdb, 500*time.Millisecond, clk, metrics.NoopRegisterer), clk
 }
 
-// TODO(#6517) remove this test.
+// TODO(#6517) remove this helper.
 func makeClusterClient() (*rocsp.CRWClient, clock.Clock) {
 	CACertFile := "../../test/redis-tls/minica.pem"
 	CertFile := "../../test/redis-tls/boulder/cert.pem"
