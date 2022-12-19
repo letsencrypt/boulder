@@ -7,9 +7,10 @@
     "redis": {
       "username": "ocsp-responder",
       "passwordFile": "test/secrets/ocsp_responder_redis_password",
-      "addrs": [
-        "10.33.33.7:4218"
-      ],
+      "shardAddrs": {
+        "shard1": "10.33.33.8:4218",
+        "shard2": "10.33.33.9:4218"
+      },
       "timeout": "5s",
       "poolSize": 100,
       "routeRandomly": true,

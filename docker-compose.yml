@@ -8,7 +8,7 @@ services:
     image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.19.2_2022-10-05}
     environment:
       FAKE_DNS: 10.77.77.77
-      BOULDER_CONFIG_DIR: test/config
+      BOULDER_CONFIG_DIR: &boulder_config_dir test/config
       GOFLAGS: -mod=vendor
       # Go 1.18 turned off SHA-1 validation on CSRs (and certs, but that doesn't
       # affect us) by default, but it can be turned back on with the x509sha1
@@ -63,64 +63,67 @@ services:
     # small.
     command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
     logging:
-        driver: none
-
+      driver: none
+  # TODO(#6517): replace all bredis_ services with those from
+  # docker-compose.next.yml.
   bredis_1:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-cluster.config
     networks:
       redisnet:
-          ipv4_address: 10.33.33.2
+        ipv4_address: 10.33.33.2
 
   bredis_2:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-cluster.config
     networks:
       redisnet:
-          ipv4_address: 10.33.33.3
+        ipv4_address: 10.33.33.3
 
   bredis_3:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-cluster.config
     networks:
       redisnet:
-          ipv4_address: 10.33.33.4
+        ipv4_address: 10.33.33.4
 
   bredis_4:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-cluster.config
     networks:
       redisnet:
-          ipv4_address: 10.33.33.5
+        ipv4_address: 10.33.33.5
 
   bredis_5:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-cluster.config
     networks:
       redisnet:
-          ipv4_address: 10.33.33.6
+        ipv4_address: 10.33.33.6
 
   bredis_6:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-cluster.config
     networks:
       redisnet:
-          ipv4_address: 10.33.33.7
-
+        ipv4_address: 10.33.33.7
+  # TODO(#6517): remove bredis_clusterer.
   bredis_clusterer:
     image: redis:6.2.7
+    environment:
+      BOULDER_CONFIG_DIR: *boulder_config_dir
     volumes:
       - ./test/:/test/:cached
       - ./cluster/:/cluster/:cached
@@ -134,9 +137,9 @@ services:
       - bredis_6
     networks:
       redisnet:
-          ipv4_address: 10.33.33.10
-          aliases:
-            - boulder-redis-clusterer
+        ipv4_address: 10.33.33.10
+        aliases:
+          - boulder-redis-clusterer
 
   bconsul:
     image: hashicorp/consul:1.13.1
@@ -152,7 +155,7 @@ services:
     environment:
       GO111MODULE: "on"
       GOFLAGS: -mod=vendor
-      BOULDER_CONFIG_DIR: test/config
+      BOULDER_CONFIG_DIR: *boulder_config_dir
     networks:
       - bluenet
     volumes:
