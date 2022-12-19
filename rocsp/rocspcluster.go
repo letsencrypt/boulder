@@ -17,9 +17,9 @@ import (
 // TODO(#6517) remove this file and replace the Reader and Writer interfaces
 // with the structs in rocsp.go.
 
-// ReaderClient is an interface for read-only Redis clients. It's implemented by
+// Reader is an interface for read-only Redis clients. It's implemented by
 // CROClient and ROClient.
-type ReaderClient interface {
+type Reader interface {
 	GetResponse(context.Context, string) ([]byte, error)
 	Ping(context.Context) error
 	ScanResponses(context.Context, string) <-chan ScanResponsesResult
@@ -71,9 +71,9 @@ func (c *CROClient) Ping(ctx context.Context) error {
 	return c.rdb.Ping(ctx).Err()
 }
 
-// ReaderClient is an interface for read-only Redis clients. It's implemented by
+// Writer is an interface for read-only Redis clients. It's implemented by
 // CRWClient and RWClient.
-type WriterClient interface {
+type Writer interface {
 	StoreResponse(context.Context, *ocsp.Response) error
 	GetResponse(context.Context, string) ([]byte, error)
 	Ping(context.Context) error

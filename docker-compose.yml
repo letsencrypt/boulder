@@ -64,8 +64,8 @@ services:
     command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
     logging:
       driver: none
-  # TODO(#6517): replace /test/redis-cluster.config with /test/redis.config on
-  # nodes 1-2.
+  # TODO(#6517): replace all bredis_ services with those from
+  # docker-compose.next.yml.
   bredis_1:
     image: redis:6.2.7
     volumes:
@@ -84,7 +84,6 @@ services:
       redisnet:
         ipv4_address: 10.33.33.3
 
-  # TODO(#6517): remove nodes 3-6.
   bredis_3:
     image: redis:6.2.7
     volumes:

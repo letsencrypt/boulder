@@ -27,8 +27,9 @@ type RedisConfig struct {
 	Username string
 	// Addrs is a list of IP address:port pairs. The go-redis `ClusterClient`
 	// will use this list to discover a cluster of Redis servers configured in
-	// Cluster mode. DEPRECATED: Use `ShardAddrs` instead.
-	// TODO(#6517) remove `Addrs`.
+	// Cluster mode.
+	//
+	// DEPRECATED: Use `ShardAddrs` instead. TODO(#6517) remove `Addrs`.
 	Addrs []string
 	// ShardAddrs is a map of shard names to IP address:port pairs. The go-redis
 	// `Ring` client will shard reads and writes across the provided Redis
@@ -99,7 +100,7 @@ type RedisConfig struct {
 }
 
 // MakeClient produces a read-write ROCSP client from a config.
-func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (rocsp.WriterClient, error) {
+func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (rocsp.Writer, error) {
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)
@@ -166,7 +167,7 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (r
 }
 
 // MakeReadClient produces a read-only ROCSP client from a config.
-func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (rocsp.ReaderClient, error) {
+func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (rocsp.Reader, error) {
 	if len(c.Addrs) == 0 {
 		return nil, errors.New("redis config's 'addrs' field was empty")
 	}

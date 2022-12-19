@@ -50,6 +50,32 @@ func makeClient() (*rocsp.RWClient, clock.Clock) {
 	return rocsp.NewWritingClient(rdb, 500*time.Millisecond, clk, metrics.NoopRegisterer), clk
 }
 
+// TODO(#6517) remove this test.
+func makeClusterClient() (*rocsp.CRWClient, clock.Clock) {
+	CACertFile := "../../test/redis-tls/minica.pem"
+	CertFile := "../../test/redis-tls/boulder/cert.pem"
+	KeyFile := "../../test/redis-tls/boulder/key.pem"
+	tlsConfig := cmd.TLSConfig{
+		CACertFile: &CACertFile,
+		CertFile:   &CertFile,
+		KeyFile:    &KeyFile,
+	}
+	tlsConfig2, err := tlsConfig.Load()
+	if err != nil {
+		panic(err)
+	}
+
+	rdb := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:     []string{"10.33.33.2:4218"},
+		Username:  "unittest-rw",
+		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
+		TLSConfig: tlsConfig2,
+	})
+	clk := clock.NewFake()
+
+	return rocsp.NewClusterWritingClient(rdb, 5*time.Second, clk, metrics.NoopRegisterer), clk
+}
+
 func TestGetStartingID(t *testing.T) {
 	clk := clock.NewFake()
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
@@ -84,10 +110,13 @@ func TestGetStartingID(t *testing.T) {
 
 func TestStoreResponse(t *testing.T) {
 	// TODO(#6517) remove this block.
+	var redisClient rocsp.Writer
+	var clk clock.Clock
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
-		t.Skip("Skipping test in config mode")
+		redisClient, clk = makeClusterClient()
+	} else {
+		redisClient, clk = makeClient()
 	}
-	redisClient, clk := makeClient()
 
 	issuer, err := core.LoadCert("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading int-e1")
@@ -125,114 +154,13 @@ func (mog mockOCSPGenerator) GenerateOCSP(ctx context.Context, in *capb.Generate
 
 func TestLoadFromDB(t *testing.T) {
 	// TODO(#6517) remove this block.
+	var redisClient rocsp.Writer
+	var clk clock.Clock
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
-		t.Skip("Skipping test in config mode")
+		redisClient, clk = makeClusterClient()
+	} else {
+		redisClient, clk = makeClient()
 	}
-	redisClient, clk := makeClient()
-
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
-	if err != nil {
-		t.Fatalf("Failed to create dbMap: %s", err)
-	}
-
-	defer test.ResetBoulderTestDatabase(t)
-
-	for i := 0; i < 100; i++ {
-		err = dbMap.Insert(&core.CertificateStatus{
-			Serial:          fmt.Sprintf("%036x", i),
-			OCSPResponse:    []byte("phthpbt"),
-			NotAfter:        clk.Now().Add(200 * time.Hour),
-			OCSPLastUpdated: clk.Now(),
-		})
-		if err != nil {
-			t.Fatalf("Failed to insert certificateStatus: %s", err)
-		}
-	}
-
-	rocspToolClient := client{
-		redis:         redisClient,
-		db:            dbMap,
-		ocspGenerator: mockOCSPGenerator{},
-		clk:           clk,
-		scanBatchSize: 10,
-		logger:        blog.NewMock(),
-	}
-
-	speed := ProcessingSpeed{
-		RowsPerSecond: 10000,
-		ParallelSigns: 100,
-	}
-
-	err = rocspToolClient.loadFromDB(context.Background(), speed, 0)
-	if err != nil {
-		t.Fatalf("loading from DB: %s", err)
-	}
-}
-
-// TODO(#6517) remove this test.
-func makeClusterClient() (*rocsp.CRWClient, clock.Clock) {
-	CACertFile := "../../test/redis-tls/minica.pem"
-	CertFile := "../../test/redis-tls/boulder/cert.pem"
-	KeyFile := "../../test/redis-tls/boulder/key.pem"
-	tlsConfig := cmd.TLSConfig{
-		CACertFile: &CACertFile,
-		CertFile:   &CertFile,
-		KeyFile:    &KeyFile,
-	}
-	tlsConfig2, err := tlsConfig.Load()
-	if err != nil {
-		panic(err)
-	}
-
-	rdb := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs:     []string{"10.33.33.2:4218"},
-		Username:  "unittest-rw",
-		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
-		TLSConfig: tlsConfig2,
-	})
-	clk := clock.NewFake()
-
-	return rocsp.NewClusterWritingClient(rdb, 5*time.Second, clk, metrics.NoopRegisterer), clk
-}
-
-// TODO(#6517) remove this test.
-func TestClusterStoreResponse(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		t.Skip("Skipping test in config-next mode")
-	}
-	redisClient, clk := makeClusterClient()
-
-	issuer, err := core.LoadCert("../../test/hierarchy/int-e1.cert.pem")
-	test.AssertNotError(t, err, "loading int-e1")
-
-	issuerKey, err := test.LoadSigner("../../test/hierarchy/int-e1.key.pem")
-	test.AssertNotError(t, err, "loading int-e1 key ")
-	response, err := ocsp.CreateResponse(issuer, issuer, ocsp.Response{
-		SerialNumber: big.NewInt(1337),
-		Status:       0,
-		ThisUpdate:   clk.Now(),
-		NextUpdate:   clk.Now().Add(time.Hour),
-	}, issuerKey)
-	test.AssertNotError(t, err, "creating OCSP response")
-
-	cl := client{
-		redis:         redisClient,
-		db:            nil,
-		ocspGenerator: nil,
-		clk:           clk,
-		logger:        blog.NewMock(),
-	}
-
-	err = cl.storeResponse(context.Background(), response)
-	test.AssertNotError(t, err, "storing response")
-}
-
-// TODO(#6517) remove this block.
-func TestClusterLoadFromDB(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		t.Skip("Skipping test in config-next mode")
-	}
-	redisClient, clk := makeClusterClient()
 
 	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
 	if err != nil {

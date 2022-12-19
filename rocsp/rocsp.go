@@ -24,9 +24,10 @@ type ROClient struct {
 	getLatency *prometheus.HistogramVec
 }
 
-// NewReadingClient creates a read-only client. The timeout applies to all requests,
-// though a shorter timeout can be applied on a per-request basis using
-// context.Context. rdb.Options().Addrs must have at least one entry.
+// NewReadingClient creates a read-only client. The timeout applies to all
+// requests, though a shorter timeout can be applied on a per-request basis
+// using context.Context. rdb must be non-nil and calls to rdb.Options().Addrs
+// must return at least one entry.
 func NewReadingClient(rdb *redis.Ring, timeout time.Duration, clk clock.Clock, stats prometheus.Registerer) *ROClient {
 	if len(rdb.Options().Addrs) == 0 {
 		return nil
