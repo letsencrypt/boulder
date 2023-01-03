@@ -136,7 +136,7 @@ separate deploy-triggered problems from config-triggered problems.
 ## Flag-gating features
 
 When adding significant new features or replacing existing RPCs the
-`boulder/features` package should be used to gate its usage. To add a flag a
+`boulder/features` package should be used to gate its usage. To add a flag, a
 new `const FeatureFlag` should be added and its default value specified in
 `features.features` in `features/features.go`. In order to test if the flag
 is enabled elsewhere in the codebase you can use
@@ -157,6 +157,9 @@ immediately after parsing the configuration. For example to enable
     }
 }
 ```
+
+Avoid negative flag names such as `"DontCancelRequest": false` because such
+names are difficult to reason about.
 
 Feature flags are meant to be used temporarily and should not be used for
 permanent boolean configuration options. Once a feature has been enabled in
