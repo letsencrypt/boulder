@@ -958,9 +958,8 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 }
 
 // GetValidAuthorizations2 returns the latest authorization for all
-// domain names that the account has authorizations for. This method is
-// intended to deprecate GetValidAuthorizations. This method only supports
-// DNS identifier types.
+// domain names that the account has authorizations for. This method
+// only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
 		return nil, errIncompleteRequest
