@@ -63,6 +63,11 @@ func (p HTTPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	if err != nil {
 		return false, time.Since(start)
 	}
-	p.notAfter.WithLabelValues(p.url).Set(float64(resp.TLS.PeerCertificates[0].NotAfter.Unix()))
+
+	if len(resp.TLS.PeerCertificates) > 0 {
+		p.notAfter.WithLabelValues(p.url).Set(float64(resp.TLS.PeerCertificates[0].NotAfter.Unix()))
+	} else {
+		p.notAfter.WithLabelValues(p.url).Set(0)
+	}
 	return p.isExpected(resp.StatusCode), time.Since(start)
 }
