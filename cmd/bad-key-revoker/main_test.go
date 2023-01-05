@@ -131,7 +131,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	}
 
 	_, err := dbMap.Exec(
-		`INSERT INTO keyHashToSerial
+		`INSERT IGNORE INTO keyHashToSerial
 	     (keyHash, certNotAfter, certSerial) VALUES
 		 (?, ?, ?)`,
 		keyHash,
