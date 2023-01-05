@@ -760,10 +760,8 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
-	qmarks := make([]string, len(req.Domains))
-	for i, n := range req.Domains {
-		qmarks[i] = "?"
-		params = append(params, n)
+	for _, name := range req.Domains {
+		params = append(params, name)
 	}
 
 	query := fmt.Sprintf(
@@ -775,7 +773,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		strings.Join(qmarks, ","),
+		db.QuestionMarks(len(params)),
 	)
 
 	_, err := ssa.dbReadOnlyMap.Select(
@@ -973,11 +971,6 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		time.Unix(0, req.Now),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
-	qmarks := make([]string, len(req.Domains))
-	for i, n := range req.Domains {
-		qmarks[i] = "?"
-		params = append(params, n)
-	}
 	_, err := ssa.dbReadOnlyMap.Select(
 		&authzModels,
 		fmt.Sprintf(
@@ -988,7 +981,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 			authzFields,
-			strings.Join(qmarks, ","),
+			db.QuestionMarks(len(params)),
 		),
 		params...,
 	)

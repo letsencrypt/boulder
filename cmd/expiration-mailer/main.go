@@ -212,20 +212,20 @@ func (m *mailer) updateLastNagTimestamps(ctx context.Context, certs []*x509.Cert
 
 // updateLastNagTimestampsChunk processes a single chunk (up to 65k) of certificates.
 func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509.Certificate) {
-	qmarks := make([]string, len(certs))
-	params := make([]interface{}, len(certs)+1)
-	for i, cert := range certs {
-		qmarks[i] = "?"
-		params[i+1] = core.SerialToString(cert.SerialNumber)
+	serials := make([]interface{}, len(certs))
+	for _, cert := range certs {
+		serials = append(serials, core.SerialToString(cert.SerialNumber))
 	}
 
 	query := fmt.Sprintf(
 		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial IN (%s)",
-		strings.Join(qmarks, ","),
+		db.QuestionMarks(len(serials)),
 	)
-	params[0] = m.clk.Now()
 
-	_, err := m.dbMap.WithContext(ctx).Exec(query, params...)
+	var params []interface{}
+	params = append(params, m.clk.Now())
+	params = append(params, serials...)
+	_, err := m.dbMap.WithContext(ctx).Exec(query, params)
 	if err != nil {
 		m.log.AuditErrf("Error updating certificate status for %d certs: %s", len(certs), err)
 		m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
