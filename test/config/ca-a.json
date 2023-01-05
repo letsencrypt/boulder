@@ -140,9 +140,7 @@
     "ocspLogMaxLength": 4000,
     "ocspLogPeriod": "500ms",
     "ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",
-    "features": {
-      "RejectDuplicateCSRExtensions": true
-    }
+    "features": {}
   },
 
   "pa": {
