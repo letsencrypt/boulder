@@ -90,7 +90,7 @@ var features = map[FeatureFlag]bool{
 	PrecertificateRevocation:       false,
 	StripDefaultSchemePort:         false,
 	StoreIssuerInfo:                false,
-	StoreRevokerInfo:               true,
+	StoreRevokerInfo:               false,
 	RestrictRSAKeySizes:            false,
 	FasterNewOrdersRateLimit:       false,
 	NonCFSSLSigner:                 false,
