@@ -754,7 +754,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 		sourceInt,
 		req.Comment,
 	}
-	if features.Enabled(features.StoreRevokerInfo) && req.RevokedBy != 0 {
+	if req.RevokedBy != 0 {
 		cols += ", revokedBy"
 		qs += ", ?"
 		vals = append(vals, req.RevokedBy)

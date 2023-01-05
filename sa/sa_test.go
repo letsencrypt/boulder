@@ -2432,11 +2432,7 @@ func TestBlockedKeyRevokedBy(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	err := features.Set(map[string]bool{"StoreRevokerInfo": true})
-	test.AssertNotError(t, err, "failed to set features")
-	defer features.Reset()
-
-	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
+	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: []byte{1},
 		Added:   1,
 		Source:  "API",
