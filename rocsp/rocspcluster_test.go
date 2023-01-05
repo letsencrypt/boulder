@@ -3,7 +3,6 @@ package rocsp
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-func makeClient() (*RWClient, clock.Clock) {
+func makeClusterClient() (*CRWClient, clock.Clock) {
 	CACertFile := "../test/redis-tls/minica.pem"
 	CertFile := "../test/redis-tls/boulder/cert.pem"
 	KeyFile := "../test/redis-tls/boulder/key.pem"
@@ -29,26 +28,23 @@ func makeClient() (*RWClient, clock.Clock) {
 		panic(err)
 	}
 
-	rdb := redis.NewRing(&redis.RingOptions{
-		Addrs: map[string]string{
-			"shard1": "10.33.33.8:4218",
-			"shard2": "10.33.33.9:4218",
-		},
+	rdb := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:     []string{"10.33.33.2:4218"},
 		Username:  "unittest-rw",
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
 		TLSConfig: tlsConfig2,
 	})
 	clk := clock.NewFake()
-	return NewWritingClient(rdb, 5*time.Second, clk, metrics.NoopRegisterer), clk
+
+	return NewClusterWritingClient(rdb, 5*time.Second, clk, metrics.NoopRegisterer), clk
 }
 
-func TestSetAndGet(t *testing.T) {
+func TestClusterSetAndGet(t *testing.T) {
 	// TODO(#6517) remove this block.
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
-		t.Skip("Skipping test in config mode")
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		t.Skip("Skipping test in config-next mode")
 	}
-	client, _ := makeClient()
-	fmt.Println(client.Ping(context.Background()))
+	client, _ := makeClusterClient()
 
 	respBytes, err := os.ReadFile("testdata/ocsp.response")
 	if err != nil {
