@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
+	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
@@ -238,10 +239,49 @@ var expectedExtensionContent = map[string][]byte{
 	"1.3.6.1.5.5.7.1.24": {0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
 }
 
+func eraseSliceType(input []string) []any {
+	var output []any
+	for _, in := range input {
+		output = append(output, in)
+	}
+	return output
+}
+
+// checkValidations checks the database for matching authorizations that were
+// likely valid at the time the certificate was issued. Authorizations with
+// status = "deactivated" are counted for this, so long
+func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
+	type authzModel struct { /* todo */
+	}
+
+	var params []any
+	params = append(params, []any{
+		cert.RegistrationID,
+		core.StatusDeactivated,
+		core.StatusValid,
+		cert.Issued, // TODO: adjust for backdating?
+		identifier.DNS,
+	})
+	params = append(params, eraseSliceType(dnsNames)...)
+	var authzModels []authzModel
+	_, err := c.dbMap.Select(&authzModels,
+		fmt.Sprintf(`SELECT * FROM authz2 WHERE
+			registrationID = ? AND
+			status IN (:deactivated, :valid) AND
+			expires >= ? AND
+			identifierType = ? AND
+			identifierValue IN (%s)`,
+			db.QuestionMarks(len(dnsNames))),
+		params...,
+	)
+	return err
+}
+
 // checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
 func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) ([]string, []string) {
 	var dnsNames []string
 	var problems []string
+
 	// Check that the digests match.
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
@@ -350,6 +390,11 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		err = c.kp.GoodKey(context.Background(), p.PublicKey)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
+		}
+
+		err = c.checkValidations(cert, parsedCert.DNSNames)
+		if err != nil {
+			problems = append(problems, err.Error())
 		}
 	}
 	return dnsNames, problems
