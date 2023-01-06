@@ -75,9 +75,9 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 // which is assumed to already have a context attached. If a non-empty
 // returningColumn was provided, then it returns the list of values from that
 // column returned by the query.
-func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
+func (mi *MultiInserter) Insert(queryer Queryer) ([]int64, error) {
 	query, queryArgs := mi.query()
-	rows, err := exec.Query(query, queryArgs...)
+	rows, err := queryer.Query(query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -95,9 +95,15 @@ func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
 		}
 	}
 
-	err = rows.Close()
-	if err != nil {
-		return nil, err
+	// Hack: sometimes in unittests we make a mock Queryer that returns a nil
+	// `*sql.Rows`. A nil `*sql.Rows` is not actually valid— calling `Close()`
+	// on it will panic— but here we choose to treat it like an empty list,
+	// and skip calling `Close()` to avoid the panic.
+	if rows != nil {
+		err = rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return ids, nil

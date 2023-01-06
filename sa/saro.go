@@ -773,7 +773,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		db.QuestionMarks(len(params)),
+		db.QuestionMarks(len(req.Domains)),
 	)
 
 	_, err := ssa.dbReadOnlyMap.Select(
@@ -964,25 +964,31 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 		return nil, errIncompleteRequest
 	}
 
-	var authzModels []authzModel
+	query := fmt.Sprintf(
+		`SELECT %s FROM authz2 WHERE
+			registrationID = ? AND
+			status = ? AND
+			expires > ? AND
+			identifierType = ? AND
+			identifierValue IN (%s)`,
+		authzFields,
+		db.QuestionMarks(len(req.Domains)),
+	)
+
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		time.Unix(0, req.Now),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
+	for _, domain := range req.Domains {
+		params = append(params, domain)
+	}
+
+	var authzModels []authzModel
 	_, err := ssa.dbReadOnlyMap.Select(
 		&authzModels,
-		fmt.Sprintf(
-			`SELECT %s FROM authz2 WHERE
-			registrationID = ? AND
-			status = ? AND
-			expires > ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
-			authzFields,
-			db.QuestionMarks(len(params)),
-		),
+		query,
 		params...,
 	)
 	if err != nil {

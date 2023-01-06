@@ -42,8 +42,11 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(execer db.SelectExecer, n
 		}
 	}
 
-	_, err := execer.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count) VALUES `+
-		db.QuestionMarks(len(values))+` ON DUPLICATE KEY UPDATE count=count+1;`,
+	_, err := execer.Exec(`
+		INSERT INTO certificatesPerName
+		(eTLDPlusOne, time, count) VALUES (`+
+		db.QuestionMarks(len(values))+
+		`) ON DUPLICATE KEY UPDATE count=count+1;`,
 		values...)
 	if err != nil {
 		return err
