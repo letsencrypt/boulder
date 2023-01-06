@@ -948,7 +948,7 @@ func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, erro
 	_, err := s.Select(
 		&validityInfo,
 		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)",
-			db.QuestionMarks(len(params))),
+			db.QuestionMarks(len(ids))),
 		params...,
 	)
 	if err != nil {
