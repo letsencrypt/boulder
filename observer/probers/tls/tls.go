@@ -123,7 +123,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	}
 
 	root := peers[len(peers)-1].Issuer
-	if root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN {
+	if p.rootCN != "" && (root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN) {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
@@ -142,7 +142,7 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
-	if root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN {
+	if p.rootCN != "" && (root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN) {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
