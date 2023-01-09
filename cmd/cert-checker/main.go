@@ -251,8 +251,7 @@ func eraseSliceType(input []string) []any {
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long
 func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
-	type authzModel struct { /* todo */
-	}
+	type authzModel sa.AuthzModel
 
 	var params []any
 	params = append(params, []any{
@@ -265,12 +264,13 @@ func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string)
 	params = append(params, eraseSliceType(dnsNames)...)
 	var authzModels []authzModel
 	_, err := c.dbMap.Select(&authzModels,
-		fmt.Sprintf(`SELECT * FROM authz2 WHERE
+		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
 			status IN (:deactivated, :valid) AND
 			expires >= ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
+			sa.AuthzFields,
 			db.QuestionMarks(len(dnsNames))),
 		params...,
 	)
