@@ -9,12 +9,12 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[unused-0]
-	_ = x[CAAValidationMethods-1]
-	_ = x[CAAAccountURI-2]
-	_ = x[EnforceMultiVA-3]
-	_ = x[MultiVAFullResults-4]
-	_ = x[MandatoryPOSTAsGET-5]
-	_ = x[StoreRevokerInfo-6]
+	_ = x[StoreRevokerInfo-1]
+	_ = x[CAAValidationMethods-2]
+	_ = x[CAAAccountURI-3]
+	_ = x[EnforceMultiVA-4]
+	_ = x[MultiVAFullResults-5]
+	_ = x[MandatoryPOSTAsGET-6]
 	_ = x[ECDSAForAll-7]
 	_ = x[ServeRenewalInfo-8]
 	_ = x[AllowUnrecognizedFeatures-9]
@@ -23,9 +23,9 @@ func _() {
 	_ = x[ExpirationMailerUsesJoin-12]
 }
 
-const _FeatureFlag_name = "unusedCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETStoreRevokerInfoECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoin"
+const _FeatureFlag_name = "unusedStoreRevokerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoin"
 
-var _FeatureFlag_index = [...]uint8{0, 6, 26, 39, 53, 71, 89, 105, 116, 132, 157, 168, 179, 203}
+var _FeatureFlag_index = [...]uint8{0, 6, 22, 42, 55, 69, 87, 105, 116, 132, 157, 168, 179, 203}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

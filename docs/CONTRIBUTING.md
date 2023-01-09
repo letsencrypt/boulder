@@ -93,12 +93,12 @@ turning a BoulderError into a specific type of ProblemDetail.
 
 The other special type of error is `ProblemDetails`. We try to treat these as a
 presentation-layer detail, and use them only in parts of the system that are
-responsible for rendering errors to end-users, i.e. wfe and wfe2. Note
+responsible for rendering errors to end-users, i.e. WFE2. Note
 one exception: The VA RPC layer defines its own `ProblemDetails` type, which is
 returned to the RA and stored as part of a challenge (to eventually be rendered
 to the user).
 
-Within WFE and WFE2, ProblemDetails are sent to the client by calling
+Within WFE2, ProblemDetails are sent to the client by calling
 `sendError()`, which also logs the error. For internal errors like timeout,
 or any error type that we haven't specifically turned into a ProblemDetail, we
 return a ServerInternal error. This avoids unnecessarily exposing internals.
@@ -136,7 +136,7 @@ separate deploy-triggered problems from config-triggered problems.
 ## Flag-gating features
 
 When adding significant new features or replacing existing RPCs the
-`boulder/features` package should be used to gate its usage. To add a flag a
+`boulder/features` package should be used to gate its usage. To add a flag, a
 new `const FeatureFlag` should be added and its default value specified in
 `features.features` in `features/features.go`. In order to test if the flag
 is enabled elsewhere in the codebase you can use
@@ -157,6 +157,9 @@ immediately after parsing the configuration. For example to enable
     }
 }
 ```
+
+Avoid negative flag names such as `"DontCancelRequest": false` because such
+names are difficult to reason about.
 
 Feature flags are meant to be used temporarily and should not be used for
 permanent boolean configuration options. Once a feature has been enabled in
@@ -318,8 +321,8 @@ release by GitHub Actions.
 # Dependencies
 
 We use [go modules](https://github.com/golang/go/wiki/Modules) and vendor our
-dependencies. As of Go 1.12, this may require setting the GO111MODULE=on and
-GOFLAGS=-mod=vendor environment variables. Inside the Docker containers for
+dependencies. As of Go 1.12, this may require setting the `GO111MODULE=on` and
+`GOFLAGS=-mod=vendor` environment variables. Inside the Docker containers for
 Boulder tests, these variables are set for you, but if you ever work outside
 those containers you will want to set them yourself.
 
