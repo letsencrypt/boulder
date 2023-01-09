@@ -35,6 +35,7 @@ const (
 	MozRevocationReasons
 	SHA1CSRs
 	RejectDuplicateCSRExtensions
+	StoreRevokerInfo
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -50,9 +51,6 @@ const (
 	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
 	// resources.
 	MandatoryPOSTAsGET
-	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
-	// was checked for extant unrevoked certificates in the blockedKeys table.
-	StoreRevokerInfo
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
