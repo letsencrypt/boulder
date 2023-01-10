@@ -386,7 +386,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert all of the requestedNames.
-		inserter, err = db.NewMultiInserter("requestedNames", []string{"orderID, reversedName"}, "")
+		inserter, err = db.NewMultiInserter("requestedNames", []string{"orderID", "reversedName"}, "")
 		if err != nil {
 			return nil, err
 		}
