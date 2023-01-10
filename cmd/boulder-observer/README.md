@@ -211,7 +211,7 @@ monitors:
 
 `rootOrg`: Organization to check against the root certificate Organization (e.g. `Internet Security Research Group`).
 
-`rootCN` : Name to check against the root certificate Common Name (e.g. `ISRG Root X1`). If not provided, root comparison will be skipped.
+`rootCN`: Name to check against the root certificate Common Name (e.g. `ISRG Root X1`). If not provided, root comparison will be skipped.
 
 `response` : Expected site response; must be one of: `valid`, `revoked` or `expired`.
 
