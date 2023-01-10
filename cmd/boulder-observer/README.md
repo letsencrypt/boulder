@@ -213,7 +213,7 @@ monitors:
 
 `rootCN`: Name to check against the root certificate Common Name (e.g. `ISRG Root X1`). If not provided, root comparison will be skipped.
 
-`response` : Expected site response; must be one of: `valid`, `revoked` or `expired`.
+`response`: Expected site response; must be one of: `valid`, `revoked` or `expired`.
 
 ##### Example
 
