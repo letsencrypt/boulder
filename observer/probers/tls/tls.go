@@ -87,6 +87,10 @@ func checkOCSP(cert, issuer *x509.Certificate, want int) (bool, error) {
 	return ocspRes.Status == want, nil
 }
 
+func (p TLSProbe) checkRoot(rootOrg, rootCN string) bool {
+	return p.rootCN != "" && p.rootOrg != "" && (rootOrg != p.rootOrg || rootCN != p.rootCN)
+}
+
 // Export expiration timestamp and reason to Prometheus.
 func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
 	p.notAfter.WithLabelValues(p.hostname).Set(float64(notAfter.Unix()))
@@ -123,7 +127,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	}
 
 	root := peers[len(peers)-1].Issuer
-	if p.rootCN != "" && (root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN) {
+	if !p.checkRoot(root.Organization[0], root.CommonName) {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
@@ -142,7 +146,7 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
-	if p.rootCN != "" && (root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN) {
+	if !p.checkRoot(root.Organization[0], root.CommonName) {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
