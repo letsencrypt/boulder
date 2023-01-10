@@ -765,22 +765,27 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-func addIssuedNames(db db.Execer, cert *x509.Certificate, isRenewal bool) error {
+func addIssuedNames(queryer db.Queryer, cert *x509.Certificate, isRenewal bool) error {
 	if len(cert.DNSNames) == 0 {
 		return berrors.InternalServerError("certificate has no DNSNames")
 	}
-	var qmarks []string
-	var values []interface{}
+
+	multiInserter, err := db.NewMultiInserter("issuedNames", "reversedName, serial, notBefore, renewal", "")
+	if err != nil {
+		return err
+	}
 	for _, name := range cert.DNSNames {
-		values = append(values,
+		err = multiInserter.Add([]interface{}{
 			ReverseName(name),
 			core.SerialToString(cert.SerialNumber),
 			cert.NotBefore,
-			isRenewal)
-		qmarks = append(qmarks, "(?, ?, ?, ?)")
+			isRenewal,
+		})
+		if err != nil {
+			return err
+		}
 	}
-	query := `INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES ` + strings.Join(qmarks, ", ") + `;`
-	_, err := db.Exec(query, values...)
+	_, err = multiInserter.Insert(queryer)
 	return err
 }
 
@@ -932,10 +937,8 @@ type authzValidity struct {
 // status and expiration date of each of them. It assumes that the provided
 // database selector already has a context associated with it.
 func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, error) {
-	var qmarks []string
 	var params []interface{}
 	for _, id := range ids {
-		qmarks = append(qmarks, "?")
 		params = append(params, id)
 	}
 	var validityInfo []struct {
@@ -944,7 +947,8 @@ func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, erro
 	}
 	_, err := s.Select(
 		&validityInfo,
-		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)", strings.Join(qmarks, ",")),
+		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)",
+			db.QuestionMarks(len(ids))),
 		params...,
 	)
 	if err != nil {

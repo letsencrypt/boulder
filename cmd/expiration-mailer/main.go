@@ -212,16 +212,14 @@ func (m *mailer) updateLastNagTimestamps(ctx context.Context, certs []*x509.Cert
 
 // updateLastNagTimestampsChunk processes a single chunk (up to 65k) of certificates.
 func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509.Certificate) {
-	qmarks := make([]string, len(certs))
 	params := make([]interface{}, len(certs)+1)
 	for i, cert := range certs {
-		qmarks[i] = "?"
 		params[i+1] = core.SerialToString(cert.SerialNumber)
 	}
 
 	query := fmt.Sprintf(
 		"UPDATE certificateStatus SET lastExpirationNagSent = ? WHERE serial IN (%s)",
-		strings.Join(qmarks, ","),
+		db.QuestionMarks(len(certs)),
 	)
 	params[0] = m.clk.Now()
 
