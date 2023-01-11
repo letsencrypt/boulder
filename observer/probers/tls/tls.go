@@ -127,7 +127,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	}
 
 	root := peers[len(peers)-1].Issuer
-	if !p.checkRoot(root.Organization[0], root.CommonName) {
+	if p.checkRoot(root.Organization[0], root.CommonName) {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
