@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -86,42 +85,8 @@ var OCSPStatusToInt = map[OCSPStatus]int{
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
 
-// CertificateRequest is just a CSR
-//
-// This data is unmarshalled from JSON by way of RawCertificateRequest, which
-// represents the actual structure received from the client.
-type CertificateRequest struct {
-	CSR   *x509.CertificateRequest // The CSR
-	Bytes []byte                   // The original bytes of the CSR, for logging.
-}
-
 type RawCertificateRequest struct {
 	CSR JSONBuffer `json:"csr"` // The encoded CSR
-}
-
-// UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
-func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
-	var raw RawCertificateRequest
-	err := json.Unmarshal(data, &raw)
-	if err != nil {
-		return err
-	}
-
-	csr, err := x509.ParseCertificateRequest(raw.CSR)
-	if err != nil {
-		return err
-	}
-
-	cr.CSR = csr
-	cr.Bytes = raw.CSR
-	return nil
-}
-
-// MarshalJSON provides an implementation for encoding CertificateRequest objects.
-func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(RawCertificateRequest{
-		CSR: cr.CSR.Raw,
-	})
 }
 
 // Registration objects represent non-public metadata attached
