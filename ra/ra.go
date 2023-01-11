@@ -1008,14 +1008,10 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Attempt issuance for the order. If the order isn't fully authorized this
 	// will return an error.
-	issueReq := core.CertificateRequest{
-		Bytes: req.Csr,
-		CSR:   csrOb,
-	}
 	// We use IssuerNameID 0 here because (as of now) only the v1 flow sets this
 	// field. This v2 flow allows the CA to select the issuer based on the CSR's
 	// PublicKeyAlgorithm.
-	cert, err := ra.issueCertificate(ctx, issueReq, accountID(order.RegistrationID), orderID(order.Id), issuance.IssuerNameID(0))
+	cert, err := ra.issueCertificate(ctx, csrOb, accountID(order.RegistrationID), orderID(order.Id), issuance.IssuerNameID(0))
 	if err != nil {
 		// Fail the order. The problem is computed using
 		// `web.ProblemDetailsForError`, the same function the WFE uses to convert
@@ -1070,7 +1066,7 @@ type orderID int64
 // allows the CA to pick the issuer based on the CSR's PublicKeyAlgorithm.
 func (ra *RegistrationAuthorityImpl) issueCertificate(
 	ctx context.Context,
-	req core.CertificateRequest,
+	csr *x509.CertificateRequest,
 	acctID accountID,
 	oID orderID,
 	issuerNameID issuance.IssuerNameID) (core.Certificate, error) {
@@ -1085,7 +1081,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	beeline.AddFieldToTrace(ctx, "order.id", oID)
 	beeline.AddFieldToTrace(ctx, "acct.id", acctID)
 	var result string
-	cert, err := ra.issueCertificateInner(ctx, req, acctID, oID, issuerNameID, &logEvent)
+	cert, err := ra.issueCertificateInner(ctx, csr, acctID, oID, issuerNameID, &logEvent)
 	if err != nil {
 		logEvent.Error = err.Error()
 		beeline.AddFieldToTrace(ctx, "issuance.error", err)
@@ -1113,7 +1109,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 // it).
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
-	req core.CertificateRequest,
+	csr *x509.CertificateRequest,
 	acctID accountID,
 	oID orderID,
 	issuerNameID issuance.IssuerNameID,
@@ -1136,7 +1132,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, err
 	}
 
-	csr := req.CSR
 	beeline.AddFieldToTrace(ctx, "csr.cn", csr.Subject.CommonName)
 	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
 
