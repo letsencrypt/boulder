@@ -146,7 +146,7 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
-	if !p.checkRoot(root.Organization[0], root.CommonName) {
+	if p.checkRoot(root.Organization[0], root.CommonName) {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
