@@ -9,8 +9,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/go-jose/go-jose/v3"
 	"google.golang.org/grpc/codes"
-	"gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	jose "gopkg.in/square/go-jose.v2"
+	jose "github.com/go-jose/go-jose/v3"
 )
 
 // LoadJWK loads a JSON encoded JWK specified by filename or returns an error
