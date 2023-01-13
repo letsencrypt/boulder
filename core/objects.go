@@ -379,22 +379,9 @@ func (authz *Authorization) SolvedBy() (*AcmeChallenge, error) {
 // with stripped padding.
 type JSONBuffer []byte
 
-// URL-safe base64 encode that strips padding
-func base64URLEncode(data []byte) string {
-	var result = base64.URLEncoding.EncodeToString(data)
-	return strings.TrimRight(result, "=")
-}
-
-// URL-safe base64 decoder that adds padding
-func base64URLDecode(data string) ([]byte, error) {
-	var missing = (4 - len(data)%4) % 4
-	data += strings.Repeat("=", missing)
-	return base64.URLEncoding.DecodeString(data)
-}
-
 // MarshalJSON encodes a JSONBuffer for transmission.
 func (jb JSONBuffer) MarshalJSON() (result []byte, err error) {
-	return json.Marshal(base64URLEncode(jb))
+	return json.Marshal(base64.RawURLEncoding.EncodeToString(jb))
 }
 
 // UnmarshalJSON decodes a JSONBuffer to an object.
@@ -404,7 +391,7 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	*jb, err = base64URLDecode(str)
+	*jb, err = base64.RawURLEncoding.DecodeString(strings.TrimRight(str, "="))
 	return
 }
 
