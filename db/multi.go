@@ -32,9 +32,6 @@ func NewMultiInserter(table string, fields []string, returningColumn string) (*M
 	if len(table) == 0 || len(fields) == 0 {
 		return nil, fmt.Errorf("empty table name or fields list")
 	}
-	if strings.Contains(returningColumn, ",") {
-		return nil, fmt.Errorf("return column must be singular, but got %q", returningColumn)
-	}
 
 	if !mariaDBUnquotedIdentifierRE.MatchString(table) {
 		return nil, fmt.Errorf("unsafe db table name %q", table)
@@ -104,8 +101,6 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 // `queryer`. `queryer` is assumed to already have a context attached. If a
 // non-empty returningColumn was provided, then it returns the list of values
 // from that column returned by the query.
-//
-// Safety:
 func (mi *MultiInserter) Insert(queryer Queryer) ([]int64, error) {
 	query, queryArgs := mi.query()
 	rows, err := queryer.Query(query, queryArgs...)
