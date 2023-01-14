@@ -75,6 +75,12 @@ const (
 	// rather than a SELECT from certificateStatus followed by thousands of
 	// one-row SELECTs from certificates.
 	ExpirationMailerUsesJoin
+	// AsyncFinalize enables the RA to return approximately immediately from
+	// requests to finalize orders. This allows us to take longer getting SCTs,
+	// issuing certs, and updating the database; it indirectly reduces the number
+	// of "orphaned" certs we have. However, it also requires clients to properly
+	// implement polling the Order object to wait for the cert URL to appear.
+	AsyncFinalize
 )
 
 // List of features and their default value, protected by fMu
@@ -114,6 +120,7 @@ var features = map[FeatureFlag]bool{
 	ROCSPStage6:                    false,
 	ROCSPStage7:                    false,
 	ExpirationMailerUsesJoin:       false,
+	AsyncFinalize:                  false,
 }
 
 var fMu = new(sync.RWMutex)

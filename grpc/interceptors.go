@@ -61,6 +61,8 @@ type clientInterceptor interface {
 // Because this interceptor throws away annotations on the context, it
 // breaks tracing for events that get the modified context. To minimize that
 // impact, this interceptor should always be last.
+//
+// TODO(go1.22?): Use `context.Detach` to remove the above restriction.
 func NoCancelInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 	cancel := func() {}
 	if deadline, ok := ctx.Deadline(); ok {
