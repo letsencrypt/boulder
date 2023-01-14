@@ -1010,6 +1010,14 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	wg.Add(1)
 	go func() {
 		// Step 3: Issue the Certificate
+		if features.Enabled(features.AsyncFinalize) {
+			// If we're in async mode, use a context with a much longer timeout.
+			// TODO(go1.22?): use context.Detach to preserve tracing metadata.
+			var cancel func()
+			ctx, cancel = context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+		}
+
 		var cert *x509.Certificate
 		cert, err = ra.issueCertificateInner(
 			ctx, csr, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
