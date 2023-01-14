@@ -959,8 +959,8 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	logEvent := certificateRequestEvent{
 		ID:          core.NewToken(),
-		OrderID:     int64(req.Order.Id),
-		Requester:   int64(req.Order.RegistrationID),
+		OrderID:     req.Order.Id,
+		Requester:   req.Order.RegistrationID,
 		RequestTime: ra.clk.Now(),
 	}
 	beeline.AddFieldToTrace(ctx, "issuance.id", logEvent.ID)
@@ -997,7 +997,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Step 3: Issue the Certificate
 	cert, err := ra.issueCertificateInner(
-		ctx, csr, accountID(req.Order.RegistrationID), orderID(req.Order.Id), &logEvent)
+		ctx, csr, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
 
 	// Step 4: Fail the order if necessary, and update metrics and log fields
 	var result string
@@ -1113,7 +1113,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	}
 
 	// Get the originating account for use in the next checks.
-	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: int64(req.Order.RegistrationID)})
+	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: req.Order.RegistrationID})
 	if err != nil {
 		return nil, err
 	}
@@ -1177,8 +1177,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
 	csr *x509.CertificateRequest,
 	acctID accountID,
-	oID orderID,
-	logEvent *certificateRequestEvent) (*x509.Certificate, error) {
+	oID orderID) (*x509.Certificate, error) {
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`

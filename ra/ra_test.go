@@ -3356,8 +3356,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	csrOb, err := x509.ParseCertificateRequest(csr)
 	test.AssertNotError(t, err, "Error pasring generated CSR")
 
-	logEvent := &certificateRequestEvent{}
-
 	testCases := []struct {
 		Name         string
 		Mock         capb.CertificateAuthorityClient
@@ -3405,7 +3403,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, csrOb, accountID(Registration.Id), orderID(order.Id), logEvent)
+			_, err = ra.issueCertificateInner(ctx, csrOb, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
