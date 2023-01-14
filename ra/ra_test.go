@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/probs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
@@ -2815,11 +2817,12 @@ type stubSAFailOrderProcessing struct {
 	t             *testing.T
 	orderID       int64
 	err           <-chan error
-	failExecCount chan struct{}
+	failExecCount *int64
 }
 
 func (s *stubSAFailOrderProcessing) SetOrderProcessing(
 	ctx context.Context, in *sapb.OrderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	atomic.AddInt64(s.failExecCount, 1)
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -2832,7 +2835,6 @@ func (s *stubSAFailOrderProcessing) SetOrderProcessing(
 func (s *stubSAFailOrderProcessing) SetOrderError(
 	ctx context.Context, in *sapb.SetOrderErrorRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	test.AssertEquals(s.t, s.orderID, in.Id)
-	s.failExecCount <- struct{}{}
 	return nil, nil
 }
 
@@ -2857,24 +2859,27 @@ func TestFinalizeOrderExpiredContextCallSetOrderError(t *testing.T) {
 		t,
 		orderID,
 		errs,
-		make(chan struct{}),
+		new(int64),
 	}
 	ra.SA = &stub
 	errs <- fmt.Errorf(errMsg)
 
-	err := processOrder(context.Background(), ra, anOrderRequest, anOrder, nil)
-	test.AssertError(t, err, "error from processOrder should not be nil")
-	test.AssertEquals(t, err.Error(), errMsg)
-	test.AssertEquals(t, struct{}{}, <-stub.failExecCount)
+	problem, err := finalizeOrderInner(context.Background(), ra, anOrderRequest, anOrder, nil)
 
-	// reset counter
-	// test context expiration still calls into SetOrderError
+	test.AssertDeepEquals(t, problem, probs.ServerInternal("setting order processing"))
+	test.AssertError(t, err, "error from finalizeOrderInner should not be nil")
+	test.AssertEquals(t, err.Error(), errMsg)
+	test.AssertEquals(t, int64(1), atomic.LoadInt64(stub.failExecCount))
+
+	// test context expiration still calls into failOrder
 	shortCtx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
-	err = processOrder(shortCtx, ra, anOrderRequest, anOrder, nil)
-	test.AssertError(t, err, "error from processOrder should not be nil")
+	problem, err = finalizeOrderInner(shortCtx, ra, anOrderRequest, anOrder, nil)
+
+	test.AssertDeepEquals(t, problem, probs.ServerInternal("setting order processing"))
+	test.AssertError(t, err, "error from finalizeOrderInner should not be nil")
 	test.AssertDeepEquals(t, context.DeadlineExceeded, err)
-	test.AssertEquals(t, struct{}{}, <-stub.failExecCount)
+	test.AssertEquals(t, int64(2), atomic.LoadInt64(stub.failExecCount))
 }
 
 func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {

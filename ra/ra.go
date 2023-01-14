@@ -17,6 +17,7 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
@@ -48,7 +49,6 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/letsencrypt/boulder/web"
 )
 
 var (
@@ -987,8 +987,9 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		}
 	}
 
-	err = processOrder(ctx, ra, req, order, csrOb)
+	problem, err := finalizeOrderInner(ctx, ra, req, order, csrOb)
 	if err != nil {
+		go ra.failOrder(order.Id, problem)
 		return nil, err
 	}
 
@@ -1003,41 +1004,21 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	return order, nil
 }
 
-// Process the order through the StorageAuthority and issue a certificate.
-// If any error happens during the process, fail the order and return the error.
-func processOrder(
+// finalizeOrderInner handles all the gRPC calls which result in issuing
+// the certificate and updating the database accordingly. It is only called by
+// FinalizeOrder, and is broken out for testing and error-handling reasons.
+func finalizeOrderInner(
 	ctx context.Context,
 	ra *RegistrationAuthorityImpl,
 	req *rapb.FinalizeOrderRequest,
 	order *corepb.Order,
-	csrOb *x509.CertificateRequest) error {
-	// Create a channel to process problems with the order processing
-	// in the background.
-	failOrder := make(chan *probs.ProblemDetails, 1)
-	defer close(failOrder)
-	// Spawn a goroutine to handle the failure modes of processing the order:
-	// 1. the RPC context is expired
-	// 2. we receive a failure message from downstream RPCs
-	// If none of the above happens, the channel is closed and the goroutine exits
-	// without doing nothing.
-	go func() {
-		select {
-		case <-ctx.Done():
-			// NOTE(@inge4pres): add a metric here to signal that we are hitting
-			// a downstream service timeout?
-			ra.failOrder(order.Id, probs.ServerInternal("Downstream failure"))
-		case prob, ok := <-failOrder:
-			if ok {
-				ra.failOrder(order.Id, prob)
-			}
-		}
-	}()
+	csrOb *x509.CertificateRequest) (*probs.ProblemDetails, error) {
 	// Update the order to be status processing - we issue synchronously at the
 	// present time so this is somewhat artificial/unnecessary but allows planning
 	// for the future.
 	//
 	// NOTE(@cpu): After this point any errors that are encountered must
-	// mark the order as failed by sending a problem in the failure channel.
+	// mark the order as failed by returning an error and the corresponding problem.
 	// Otherwise the order will be "stuck" in processing state. It can not be
 	// finalized because it isn't pending, but we aren't going to process it
 	// further because we already did and encountered an error.
@@ -1045,8 +1026,7 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
-		failOrder <- probs.ServerInternal("Error setting order processing")
-		return err
+		return probs.ServerInternal("setting order processing"), err
 	}
 
 	// Observe the age of this order, so we know how quickly most clients complete
@@ -1066,8 +1046,7 @@ func processOrder(
 		// berrors.UnauthorizedError into the correct
 		// `urn:ietf:params:acme:error:unauthorized` problem while not letting
 		// anything like a server internal error through with sensitive info.
-		failOrder <- web.ProblemDetailsForError(err, "Error finalizing order")
-		return err
+		return web.ProblemDetailsForError(err, "Error finalizing order"), err
 	}
 
 	// Parse the issued certificate to get the serial
@@ -1075,8 +1054,8 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error. The certificate we failed
 		// to parse was from our own CA. Bad news!
-		failOrder <- probs.ServerInternal("Error parsing certificate DER")
-		return err
+		return probs.ServerInternal("Error parsing certificate DER"), err
+
 	}
 
 	// Finalize the order with its new CertificateSerial
@@ -1085,10 +1064,9 @@ func processOrder(
 	if err != nil {
 		// Fail the order with a server internal error. We weren't able to persist
 		// the certificate serial and that's unexpected & weird.
-		failOrder <- probs.ServerInternal("Error persisting finalized order")
-		return err
+		return probs.ServerInternal("Error persisting finalized order"), err
 	}
-	return nil
+	return nil, nil
 }
 
 // To help minimize the chance that an accountID would be used as an order ID
