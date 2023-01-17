@@ -1,6 +1,7 @@
 # Build the Boulder Debian package on every PR, push to main, and tag push. On
 # tag pushes, additionally create a GitHub release and with the resulting Debian
 # package.
+# Keep in sync with try-release.yml
 name: Build release
 on:
   push:
@@ -17,8 +18,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # This step will create an output called `filename` which contains the
-      # path of the produced .deb file.
       - name: Build .deb
         id: build
         env:

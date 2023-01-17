@@ -1,24 +1,22 @@
-# Build the Boulder Debian package on every PR, push to main, and tag push. On
-# tag pushes, additionally create a GitHub release and with the resulting Debian
-# package.
-name: Build release
+# Try building the Boulder Debian package on every PR and push to main.
+# This is to make sure the actual release job will succeed when we tag a
+# release.
+# Keep in sync with release.yml
+name: Try release
 on:
   push:
-    tags:
-      - release-*
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  push-release:
+  try-release:
     runs-on: ubuntu-20.04
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v3
         with:
           persist-credentials: false
 
-      # This step will create an output called `filename` which contains the
-      # path of the produced .deb file.
       - name: Build .deb
         id: build
         env:
