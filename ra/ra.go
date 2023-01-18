@@ -1010,14 +1010,6 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	wg.Add(1)
 	go func() {
 		// Step 3: Issue the Certificate
-		if features.Enabled(features.AsyncFinalize) {
-			// If we're in async mode, use a context with a much longer timeout.
-			// TODO(go1.22?): use context.Detach to preserve tracing metadata.
-			var cancel func()
-			ctx, cancel = context.WithTimeout(context.Background(), 5*time.Minute)
-			defer cancel()
-		}
-
 		var cert *x509.Certificate
 		cert, err = ra.issueCertificateInner(
 			ctx, csr, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
@@ -1205,6 +1197,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	csr *x509.CertificateRequest,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, error) {
+	if features.Enabled(features.AsyncFinalize) {
+		// If we're in async mode, use a context with a much longer timeout.
+		// TODO(go1.22?): use context.Detach to preserve tracing metadata.
+		var cancel func()
+		ctx, cancel = context.WithTimeout(context.Background(), ra.finalizeTimeout)
+		defer cancel()
+	}
+
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
