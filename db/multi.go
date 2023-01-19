@@ -42,7 +42,7 @@ func NewMultiInserter(table string, fields []string, returningColumn string) (*M
 		}
 	}
 	if returningColumn != "" && !mariaDBUnquotedIdentifierRE.MatchString(returningColumn) {
-		return nil, fmt.Errorf("unsafe db column name %q", returningColumn)
+		return nil, fmt.Errorf("unsafe db column name in RETURNING clause %q", returningColumn)
 	}
 
 	return &MultiInserter{
