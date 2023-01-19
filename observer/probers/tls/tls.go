@@ -100,7 +100,8 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 		InsecureSkipVerify: true,
 		VerifyConnection: func(cs tls.ConnectionState) error {
 			opts := x509.VerifyOptions{
-				CurrentTime: cs.PeerCertificates[0].NotAfter,
+				CurrentTime:   cs.PeerCertificates[0].NotAfter,
+				Intermediates: x509.NewCertPool(),
 			}
 			_, err := cs.PeerCertificates[0].Verify(opts)
 			return err
