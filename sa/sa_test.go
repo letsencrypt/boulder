@@ -122,7 +122,6 @@ func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, domain st
 	err = sa.dbMap.Insert(&am)
 	test.AssertNotError(t, err, "creating test authorization")
 
-	t.Log(am.ID)
 	return am.ID
 }
 
@@ -717,12 +716,12 @@ func TestFQDNSetsExists(t *testing.T) {
 	test.Assert(t, exists.Exists, "FQDN set does exist")
 }
 
-type execRecorder struct {
+type queryRecorder struct {
 	query string
 	args  []interface{}
 }
 
-func (e *execRecorder) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (e *queryRecorder) Query(query string, args ...interface{}) (*sql.Rows, error) {
 	e.query = query
 	e.args = args
 	return nil, nil
@@ -732,7 +731,7 @@ func TestAddIssuedNames(t *testing.T) {
 	serial := big.NewInt(1)
 	expectedSerial := "000000000000000000000000000000000001"
 	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
-	placeholdersPerName := "(?, ?, ?, ?)"
+	placeholdersPerName := "(?,?,?,?)"
 	baseQuery := "INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES"
 
 	testCases := []struct {
@@ -807,7 +806,7 @@ func TestAddIssuedNames(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			var e execRecorder
+			var e queryRecorder
 			err := addIssuedNames(
 				&e,
 				&x509.Certificate{
@@ -819,7 +818,7 @@ func TestAddIssuedNames(t *testing.T) {
 			test.AssertNotError(t, err, "addIssuedNames failed")
 			expectedPlaceholders := placeholdersPerName
 			for i := 0; i < len(tc.IssuedNames)-1; i++ {
-				expectedPlaceholders = fmt.Sprintf("%s, %s", expectedPlaceholders, placeholdersPerName)
+				expectedPlaceholders = fmt.Sprintf("%s,%s", expectedPlaceholders, placeholdersPerName)
 			}
 			expectedQuery := fmt.Sprintf("%s %s;", baseQuery, expectedPlaceholders)
 			test.AssertEquals(t, e.query, expectedQuery)

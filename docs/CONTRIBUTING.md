@@ -20,10 +20,6 @@ guidelines for Boulder contributions.
 * You cannot review your own code.
 * If a branch contains commits from multiple authors, it needs a reviewer who
   is not an author of commits on that branch.
-* If a branch contains updates to files in the vendor/ directory, the author is
-  responsible for running tests in all updated dependencies, and commenting in
-  the review thread that they have done so. Reviewers must not approve reviews
-  that have changes in vendor/ but lack a comment about tests.
 * Review changes to or addition of tests just as rigorously as you review code
   changes. Consider: Do tests actually test what they mean to test? Is this the
   best way to test the functionality in question? Do the tests cover all the

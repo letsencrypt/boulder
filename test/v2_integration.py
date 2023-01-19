@@ -873,7 +873,7 @@ def test_only_return_existing_reg():
         "contact": [email],
         "onlyReturnExisting": True
     })
-    resp = client.net.post(client.directory['newAccount'], acct, acme_version=2)
+    resp = client.net.post(client.directory['newAccount'], acct)
     if resp.status_code != 200:
         raise(Exception("incorrect response returned for onlyReturnExisting"))
 
@@ -884,7 +884,7 @@ def test_only_return_existing_reg():
         "onlyReturnExisting": True
     })
     chisel2.expect_problem("urn:ietf:params:acme:error:accountDoesNotExist",
-        lambda: other_client.net.post(other_client.directory['newAccount'], newAcct, acme_version=2))
+        lambda: other_client.net.post(other_client.directory['newAccount'], newAcct))
 
 def BouncerHTTPRequestHandler(redirect, guestlist):
     """
