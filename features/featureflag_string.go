@@ -31,12 +31,12 @@ func _() {
 	_ = x[MozRevocationReasons-20]
 	_ = x[SHA1CSRs-21]
 	_ = x[RejectDuplicateCSRExtensions-22]
-	_ = x[CAAValidationMethods-23]
-	_ = x[CAAAccountURI-24]
-	_ = x[EnforceMultiVA-25]
-	_ = x[MultiVAFullResults-26]
-	_ = x[MandatoryPOSTAsGET-27]
-	_ = x[StoreRevokerInfo-28]
+	_ = x[StoreRevokerInfo-23]
+	_ = x[CAAValidationMethods-24]
+	_ = x[CAAAccountURI-25]
+	_ = x[EnforceMultiVA-26]
+	_ = x[MultiVAFullResults-27]
+	_ = x[MandatoryPOSTAsGET-28]
 	_ = x[ECDSAForAll-29]
 	_ = x[ServeRenewalInfo-30]
 	_ = x[AllowUnrecognizedFeatures-31]
@@ -45,9 +45,9 @@ func _() {
 	_ = x[ExpirationMailerUsesJoin-34]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsExpirationMailerDontLookTwiceOldTLSInboundOldTLSOutboundROCSPStage1ROCSPStage2ROCSPStage3GetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstFasterNewOrdersRateLimitAllowV1RegistrationRestrictRSAKeySizesAllowReRevocationMozRevocationReasonsSHA1CSRsRejectDuplicateCSRExtensionsCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETStoreRevokerInfoECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoin"
+const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsExpirationMailerDontLookTwiceOldTLSInboundOldTLSOutboundROCSPStage1ROCSPStage2ROCSPStage3GetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstFasterNewOrdersRateLimitAllowV1RegistrationRestrictRSAKeySizesAllowReRevocationMozRevocationReasonsSHA1CSRsRejectDuplicateCSRExtensionsStoreRevokerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoin"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 157, 170, 184, 195, 206, 217, 233, 249, 279, 303, 322, 341, 358, 378, 386, 414, 434, 447, 461, 479, 497, 513, 524, 540, 565, 576, 587, 611}
+var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 157, 170, 184, 195, 206, 217, 233, 249, 279, 303, 322, 341, 358, 378, 386, 414, 430, 450, 463, 477, 495, 513, 524, 540, 565, 576, 587, 611}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

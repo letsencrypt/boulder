@@ -66,15 +66,13 @@ func (mi *MultiInserter) Add(row []interface{}) error {
 // for gorp to use in place of the query's question marks. Currently only
 // used by .Insert(), below.
 func (mi *MultiInserter) query() (string, []interface{}) {
-	questionsRow := strings.TrimRight(strings.Repeat("?,", len(mi.fields)), ",")
-
 	var questionsBuf strings.Builder
 	var queryArgs []interface{}
 	for _, row := range mi.values {
 		// Safety: We are interpolating a string that will be used in a SQL
 		// query, but we constructed that string in this function and know it
 		// consists only of question marks joined with commas.
-		fmt.Fprintf(&questionsBuf, "(%s),", questionsRow)
+		fmt.Fprintf(&questionsBuf, "(%s),", QuestionMarks(len(mi.fields)))
 		queryArgs = append(queryArgs, row...)
 	}
 
@@ -121,9 +119,15 @@ func (mi *MultiInserter) Insert(queryer Queryer) ([]int64, error) {
 		}
 	}
 
-	err = rows.Close()
-	if err != nil {
-		return nil, err
+	// Hack: sometimes in unittests we make a mock Queryer that returns a nil
+	// `*sql.Rows`. A nil `*sql.Rows` is not actually valid— calling `Close()`
+	// on it will panic— but here we choose to treat it like an empty list,
+	// and skip calling `Close()` to avoid the panic.
+	if rows != nil {
+		err = rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return ids, nil
