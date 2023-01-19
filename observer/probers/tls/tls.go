@@ -103,6 +103,9 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 				CurrentTime:   cs.PeerCertificates[0].NotAfter,
 				Intermediates: x509.NewCertPool(),
 			}
+			for _, cert := range cs.PeerCertificates[1:] {
+				opts.Intermediates.AddCert(cert)
+			}
 			_, err := cs.PeerCertificates[0].Verify(opts)
 			return err
 		},
