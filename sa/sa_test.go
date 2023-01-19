@@ -732,7 +732,7 @@ func TestAddIssuedNames(t *testing.T) {
 	expectedSerial := "000000000000000000000000000000000001"
 	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
 	placeholdersPerName := "(?,?,?,?)"
-	baseQuery := "INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES"
+	baseQuery := "INSERT INTO issuedNames (reversedName,serial,notBefore,renewal) VALUES"
 
 	testCases := []struct {
 		Name         string
@@ -820,7 +820,7 @@ func TestAddIssuedNames(t *testing.T) {
 			for i := 0; i < len(tc.IssuedNames)-1; i++ {
 				expectedPlaceholders = fmt.Sprintf("%s,%s", expectedPlaceholders, placeholdersPerName)
 			}
-			expectedQuery := fmt.Sprintf("%s %s;", baseQuery, expectedPlaceholders)
+			expectedQuery := fmt.Sprintf("%s %s", baseQuery, expectedPlaceholders)
 			test.AssertEquals(t, e.query, expectedQuery)
 			if !reflect.DeepEqual(e.args, tc.ExpectedArgs) {
 				t.Errorf("Wrong args: got\n%#v, expected\n%#v", e.args, tc.ExpectedArgs)
