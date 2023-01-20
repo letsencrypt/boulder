@@ -87,7 +87,7 @@ func checkOCSP(cert, issuer *x509.Certificate, want int) (bool, error) {
 	return ocspRes.Status == want, nil
 }
 
-// Return true if root settings are either or match the certificate root.
+// Return true if root settings are empty or match the certificate root.
 func (p TLSProbe) checkRoot(rootOrg, rootCN string) bool {
 	return (p.rootCN == "" && p.rootOrg == "") || (rootOrg == p.rootOrg && rootCN == p.rootCN)
 }
