@@ -17,6 +17,14 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
+	"golang.org/x/exp/slices"
+	grpc "google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"gopkg.in/square/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -42,12 +50,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/crypto/ocsp"
-	grpc "google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/square/go-jose.v2"
 )
 
 var (
@@ -724,7 +726,21 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	// Check the challenges themselves too.
 	for _, authz := range authzs {
 		chall, err := authz.SolvedBy()
-		if err != nil || chall == "" || (authz.Wildcard && chall != core.ChallengeTypeDNS01) {
+		if err != nil {
+			return nil, err
+		}
+
+		challs, err := ra.PA.ChallengesFor(authz.Identifier)
+		if err != nil {
+			return nil, err
+		}
+
+		challTypes := make([]core.AcmeChallenge, len(challs))
+		for i, c := range challs {
+			challTypes[i] = c.Type
+		}
+
+		if !slices.Contains(challTypes, chall) {
 			return nil, errors.New("authorization fulfilled by invalid challenge")
 		}
 	}
@@ -1082,7 +1098,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Parse the CSR from the request
 	csr, err := x509.ParseCertificateRequest(req.Csr)
 	if err != nil {
-		return nil, err
+		return nil, berrors.BadCSRError("unable to parse CSR: %s", err.Error())
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, ra.maxNames, &ra.keyPolicy, ra.PA)
@@ -1112,7 +1128,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		}
 	}
 
-	// Get the originating account for use in the next checks.
+	// Get the originating account for use in the next check.
 	regPB, err := ra.SA.GetRegistration(ctx, &sapb.RegistrationID{Id: req.Order.RegistrationID})
 	if err != nil {
 		return nil, err
@@ -1130,10 +1146,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Double-check that all authorizations on this order are also associated with
 	// the same account as the order itself.
-	names := make([]string, len(csr.DNSNames))
-	copy(names, csr.DNSNames)
-
-	authzs, err := ra.checkOrderAuthorizations(ctx, names, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
+	authzs, err := ra.checkOrderAuthorizations(ctx, csrNames, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
 	if err != nil {
 		// Pass through the error without wrapping it because the called functions
 		// return BoulderError and we don't want to lose the type.
@@ -1142,7 +1155,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Collect up a certificateRequestAuthz that stores the ID and challenge type
 	// of each of the valid authorizations we used for this issuance.
-	logEventAuthzs := make(map[string]certificateRequestAuthz, len(names))
+	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrNames))
 	for name, authz := range authzs {
 		// No need to check for error here because we know this same call just
 		// succeeded inside ra.checkOrderAuthorizations

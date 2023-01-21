@@ -2708,7 +2708,7 @@ func TestFinalizeOrder(t *testing.T) {
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
 			},
-			ExpectedErrMsg: "asn1: syntax error: truncated tag or length",
+			ExpectedErrMsg: "unable to parse CSR: asn1: syntax error: truncated tag or length",
 		},
 		{
 			Name: "CSR and Order with diff number of names",
