@@ -283,11 +283,8 @@ func main() {
 		srv = srv.Add(&capb.OCSPGenerator_ServiceDesc, ocspi)
 	}
 
-	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
-	// no longer needs crli as an argument.
-	var crli capb.CRLGeneratorServer
 	if !c.CA.DisableCRLService {
-		crli, err = ca.NewCRLImpl(
+		crli, err := ca.NewCRLImpl(
 			boulderIssuers,
 			c.CA.LifespanCRL.Duration,
 			c.CA.CRLDPBase,
@@ -304,7 +301,6 @@ func main() {
 			sa,
 			pa,
 			ocspi,
-			crli,
 			boulderIssuers,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
