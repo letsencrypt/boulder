@@ -153,10 +153,14 @@ var hashToString = map[crypto.Hash]string{
 	crypto.SHA512: "SHA512",
 }
 
-func (rs Responder) sampledError(format string, a ...interface{}) {
-	if rs.sampleRate > 0 && rand.Intn(rs.sampleRate) == 0 {
-		rs.log.Errf(format, a...)
+func SampledError(log blog.Logger, sampleRate int, format string, a ...interface{}) {
+	if sampleRate > 0 && rand.Intn(sampleRate) == 0 {
+		log.Errf(format, a...)
 	}
+}
+
+func (rs Responder) sampledError(format string, a ...interface{}) {
+	SampledError(rs.log, rs.sampleRate, format, a...)
 }
 
 // A Responder can process both GET and POST requests. The mapping from an OCSP

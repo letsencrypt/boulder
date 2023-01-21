@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
@@ -147,10 +148,48 @@ func TestAutoIncrementSchema(t *testing.T) {
 	var count int64
 	err = dbMap.SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM columns WHERE
+		`SELECT COUNT(*) FROM columns WHERE
 			table_schema LIKE 'boulder%' AND
 			extra LIKE '%auto_increment%' AND
 			data_type != "bigint"`)
 	test.AssertNotError(t, err, "unexpected err querying columns")
 	test.AssertEquals(t, count, int64(0))
+}
+
+func TestAdjustMySQLConfig(t *testing.T) {
+	conf := &mysql.Config{}
+	adjustMySQLConfig(conf)
+	test.AssertDeepEquals(t, conf.Params, map[string]string{
+		"sql_mode": "STRICT_ALL_TABLES",
+	})
+
+	conf = &mysql.Config{ReadTimeout: 100 * time.Second}
+	adjustMySQLConfig(conf)
+	test.AssertDeepEquals(t, conf.Params, map[string]string{
+		"sql_mode":           "STRICT_ALL_TABLES",
+		"max_statement_time": "95",
+		"long_query_time":    "80",
+	})
+
+	conf = &mysql.Config{
+		ReadTimeout: 100 * time.Second,
+		Params: map[string]string{
+			"max_statement_time": "0",
+		},
+	}
+	adjustMySQLConfig(conf)
+	test.AssertDeepEquals(t, conf.Params, map[string]string{
+		"sql_mode":        "STRICT_ALL_TABLES",
+		"long_query_time": "80",
+	})
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"max_statement_time": "0",
+		},
+	}
+	adjustMySQLConfig(conf)
+	test.AssertDeepEquals(t, conf.Params, map[string]string{
+		"sql_mode": "STRICT_ALL_TABLES",
+	})
 }

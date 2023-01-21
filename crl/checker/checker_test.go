@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/test"
@@ -22,7 +23,7 @@ func TestValidate(t *testing.T) {
 	crlDER, _ := pem.Decode(crlPEM)
 	crl, err := crl_x509.ParseRevocationList(crlDER.Bytes)
 	test.AssertNotError(t, err, "parsing test crl")
-	issuer, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
+	issuer, err := core.LoadCert("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 
 	err = Validate(crl, issuer, 100*365*24*time.Hour)
@@ -32,7 +33,7 @@ func TestValidate(t *testing.T) {
 	test.AssertError(t, err, "validating too-old crl")
 	test.AssertContains(t, err.Error(), "in the past")
 
-	issuer2, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
+	issuer2, err := core.LoadCert("../../test/hierarchy/int-r3.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 	err = Validate(crl, issuer2, 100*365*24*time.Hour)
 	test.AssertError(t, err, "validating crl from wrong issuer")

@@ -28,7 +28,7 @@ import (
 // It dials the remote service and returns a grpc.ClientConn if successful.
 func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryClientInterceptor) (*grpc.ClientConn, error) {
 	if c == nil {
-		return nil, errors.New("nil gRPC client config provided. JSON config is probably missing a fooService section.")
+		return nil, errors.New("nil gRPC client config provided: JSON config is probably missing a fooService section")
 	}
 	if tlsConfig == nil {
 		return nil, errNilTLS
@@ -39,17 +39,17 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 		return nil, err
 	}
 
-	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
+	cmi := clientMetadataInterceptor{c.Timeout.Duration, metrics, clk}
 
 	unaryInterceptors := append(interceptors, []grpc.UnaryClientInterceptor{
-		ci.interceptUnary,
-		ci.metrics.grpcMetrics.UnaryClientInterceptor(),
+		cmi.Unary,
+		cmi.metrics.grpcMetrics.UnaryClientInterceptor(),
 		hnygrpc.UnaryClientInterceptor(),
 	}...)
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
-		ci.interceptStream,
-		ci.metrics.grpcMetrics.StreamClientInterceptor(),
+		cmi.Stream,
+		cmi.metrics.grpcMetrics.StreamClientInterceptor(),
 		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
 

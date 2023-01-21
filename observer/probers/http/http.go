@@ -1,6 +1,7 @@
 package probers
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
@@ -12,11 +13,17 @@ type HTTPProbe struct {
 	url       string
 	rcodes    []int
 	useragent string
+	insecure  bool
 }
 
 // Name returns a string that uniquely identifies the monitor.
+
 func (p HTTPProbe) Name() string {
-	return fmt.Sprintf("%s-%d-%s", p.url, p.rcodes, p.useragent)
+	insecure := ""
+	if p.insecure {
+		insecure = "-insecure"
+	}
+	return fmt.Sprintf("%s-%d-%s%s", p.url, p.rcodes, p.useragent, insecure)
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Prober`.
@@ -37,7 +44,11 @@ func (p HTTPProbe) isExpected(received int) bool {
 
 // Probe performs the configured HTTP request.
 func (p HTTPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
-	client := http.Client{Timeout: timeout}
+	client := http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: p.insecure},
+		}}
 	req, err := http.NewRequest("GET", p.url, nil)
 	if err != nil {
 		return false, 0

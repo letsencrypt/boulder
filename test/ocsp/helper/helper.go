@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -233,6 +234,15 @@ func ReqDER(der []byte, config Config) (*ocsp.Response, error) {
 	return Req(cert, config)
 }
 
+// ReqSerial makes an OCSP request using the given config for a certificate only identified by
+// serial number. It requires that the Config have issuerFile set.
+func ReqSerial(serialNumber *big.Int, config Config) (*ocsp.Response, error) {
+	if config.issuerFile == "" {
+		return nil, errors.New("checking OCSP by serial number requires --issuer-file")
+	}
+	return Req(&x509.Certificate{SerialNumber: serialNumber}, config)
+}
+
 // Req makes an OCSP request using the given config for the given in-memory
 // certificate, and returns the response.
 func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
@@ -240,6 +250,9 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 	var err error
 	if config.issuerFile == "" {
 		issuer, err = GetIssuer(cert)
+		if err != nil {
+			return nil, fmt.Errorf("problem getting issuer (try --issuer-file flag instead): ")
+		}
 	} else {
 		issuer, err = GetIssuerFile(config.issuerFile)
 	}

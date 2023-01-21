@@ -34,7 +34,7 @@ type crlUpdater struct {
 	updateOffset   time.Duration
 	maxParallelism int
 
-	sa sapb.StorageAuthorityClient
+	sa sapb.StorageAuthorityReadOnlyClient
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
 
@@ -53,7 +53,7 @@ func NewUpdater(
 	updatePeriod time.Duration,
 	updateOffset time.Duration,
 	maxParallelism int,
-	sa sapb.StorageAuthorityClient,
+	sa sapb.StorageAuthorityReadOnlyClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
 	stats prometheus.Registerer,

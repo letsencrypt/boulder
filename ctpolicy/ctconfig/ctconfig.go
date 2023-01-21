@@ -86,10 +86,6 @@ func (ld LogDescription) Info(exp time.Time) (string, string, error) {
 type CTGroup struct {
 	Name string
 	Logs []LogDescription
-	// How long to wait for one log to accept a certificate before moving on to
-	// the next.
-	// TODO(#5938): Remove this when CTLogGroups2 is removed from the RA.
-	Stagger cmd.ConfigDuration
 }
 
 // CTConfig is the top-level config object expected to be embedded in an

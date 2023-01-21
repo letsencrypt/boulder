@@ -389,19 +389,34 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 	}
 }
 
-// GRPCServerConfig contains the information needed to run a gRPC service
+// GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
 	Address string `json:"address"`
 	// ClientNames is a list of allowed client certificate subject alternate names
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
+	// DEPRECATED: Use the ClientNames field within each Service instead.
 	ClientNames []string `json:"clientNames"`
+	// Services is a map of service names to configuration specific to that service.
+	// These service names must match the service names advertised by gRPC itself,
+	// which are identical to the names set in our gRPC .proto files prefixed by
+	// the package names set in those files (e.g. "ca.CertificateAuthority").
+	Services map[string]GRPCServiceConfig `json:"services"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
 	// backends.
 	// https://pkg.go.dev/google.golang.org/grpc/keepalive#ServerParameters
 	MaxConnectionAge ConfigDuration
+}
+
+// GRPCServiceConfig contains the information needed to configure a gRPC service.
+type GRPCServiceConfig struct {
+	// PerServiceClientNames is a map of gRPC service names to client certificate
+	// SANs. The upstream listening server will reject connections from clients
+	// which do not appear in this list, and the server interceptor will reject
+	// RPC calls for this service from clients which are not listed here.
+	ClientNames []string `json:"clientNames"`
 }
 
 // PortConfig specifies what ports the VA should call to on the remote

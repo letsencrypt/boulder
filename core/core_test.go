@@ -40,43 +40,6 @@ func TestChallenges(t *testing.T) {
 	test.Assert(t, !AcmeChallenge("nonsense-71").IsValid(), "Accepted invalid challenge")
 }
 
-// objects.go
-
-var testCertificateRequestBadCSR = []byte(`{"csr":"AAAA"}`)
-var testCertificateRequestGood = []byte(`{
-  "csr": "MIHRMHgCAQAwFjEUMBIGA1UEAxMLZXhhbXBsZS5jb20wWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQWUlnRrm5ErSVkTzBTk3isg1hNydfyY4NM1P_N1S-ZeD39HMrYJsQkUh2tKvy3ztfmEqWpekvO4WRktSa000BPoAAwCgYIKoZIzj0EAwMDSQAwRgIhAIZIBwu4xOUD_4dJuGgceSKaoXTFBQKA3BFBNVJvbpdsAiEAlfq3Dq_8dnYbtmyDdXgopeKkSV5_76VSpcog-wkwEwo"
-}`)
-
-func TestCertificateRequest(t *testing.T) {
-
-	// Good
-	var goodCR CertificateRequest
-	err := json.Unmarshal(testCertificateRequestGood, &goodCR)
-	if err != nil {
-		t.Errorf("Error unmarshaling good certificate request: %v", err)
-	}
-	if err = goodCR.CSR.CheckSignature(); err != nil {
-		t.Errorf("Valid CSR in CertificateRequest failed to verify: %v", err)
-	}
-
-	// Bad CSR
-	var badCR CertificateRequest
-	err = json.Unmarshal(testCertificateRequestBadCSR, &badCR)
-	if err == nil {
-		t.Errorf("Unexpectedly accepted certificate request with bad CSR")
-	}
-
-	// Marshal
-	jsonCR, err := json.Marshal(goodCR)
-	if err != nil {
-		t.Errorf("Failed to marshal good certificate request: %v", err)
-	}
-	err = json.Unmarshal(jsonCR, &goodCR)
-	if err != nil {
-		t.Errorf("Marshalled certificate request failed to unmarshal: %v", err)
-	}
-}
-
 // util.go
 
 func TestRandomString(t *testing.T) {

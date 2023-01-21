@@ -10,13 +10,17 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 	"golang.org/x/crypto/ocsp"
@@ -78,6 +82,22 @@ func TestARI(t *testing.T) {
 	resp, err := http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+
+	// Revoke the cert, then request ARI again, and the window should now be in
+	// the past.
+	err = client.RevokeCertificate(client.Account, cert, client.PrivateKey, 0)
+	test.AssertNotError(t, err, "failed to revoke cert")
+	resp, err = http.Get(url)
+	test.AssertNotError(t, err, "ARI request should have succeeded")
+	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+
+	riBytes, err := io.ReadAll(resp.Body)
+	test.AssertNotError(t, err, "failed to read ARI response")
+	var ri core.RenewalInfo
+	err = json.Unmarshal(riBytes, &ri)
+	test.AssertNotError(t, err, "failed to parse ARI response")
+	test.Assert(t, ri.SuggestedWindow.End.Before(time.Now()), "suggested window should end in the past")
+	test.Assert(t, ri.SuggestedWindow.Start.Before(ri.SuggestedWindow.End), "suggested window should start before it ends")
 
 	// Try to make a new cert for a new domain, but have it fail so only
 	// a precert gets created.

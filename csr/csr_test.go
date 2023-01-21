@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"errors"
 	"net"
 	"strings"
@@ -226,32 +227,37 @@ func TestSHA1Deprecation(t *testing.T) {
 				SignatureAlgorithm: alg,
 				PublicKey:          &private.PublicKey,
 			}, private)
-		if err != nil {
-			t.Fatal(err)
-		}
+		test.AssertNotError(t, err, "creating test CSR")
+
 		csr, err := x509.ParseCertificateRequest(csrBytes)
-		if err != nil {
-			t.Fatal(err)
-		}
+		test.AssertNotError(t, err, "parsing test CSR")
+
 		return VerifyCSR(context.Background(), csr, 100, testingPolicy, &mockPA{})
 	}
 
 	err = makeAndVerifyCsr(x509.SHA256WithRSA)
-	if err != nil {
-		t.Fatalf("expected no error from VerifyCSR on a CSR signed with SHA256, got %s", err)
-	}
-	err = features.Set(map[string]bool{"SHA1CSRs": true})
-	test.AssertNotError(t, err, "setting feature")
-	err = makeAndVerifyCsr(x509.SHA1WithRSA)
-	if err != nil {
-		t.Fatalf("(SHA1CSR == true) expected no error from VerifyCSR on a CSR signed with SHA1, got %s (maybe set GODEBUG=x509sha1=1)", err)
-	}
+	test.AssertNotError(t, err, "SHA256 CSR should verify")
 
-	err = features.Set(map[string]bool{"SHA1CSRs": false})
-	test.AssertNotError(t, err, "setting feature")
-	t.Logf("enabled %t\n", features.Enabled(features.SHA1CSRs))
 	err = makeAndVerifyCsr(x509.SHA1WithRSA)
-	if err == nil {
-		t.Fatalf("(SHA1CSR == false) expected error from VerifyCSR on a CSR signed with SHA1, got none")
-	}
+	test.AssertError(t, err, "SHA1 CSR should not verify")
+}
+
+func TestDuplicateExtensionRejection(t *testing.T) {
+	private, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader,
+		&x509.CertificateRequest{
+			DNSNames:           []string{"example.com"},
+			SignatureAlgorithm: x509.SHA256WithRSA,
+			PublicKey:          &private.PublicKey,
+			ExtraExtensions: []pkix.Extension{
+				{Id: asn1.ObjectIdentifier{2, 5, 29, 1}, Value: []byte("hello")},
+				{Id: asn1.ObjectIdentifier{2, 5, 29, 1}, Value: []byte("world")},
+			},
+		}, private)
+	test.AssertNotError(t, err, "creating test CSR")
+
+	_, err = x509.ParseCertificateRequest(csrBytes)
+	test.AssertError(t, err, "CSR with duplicate extension OID should fail to parse")
 }

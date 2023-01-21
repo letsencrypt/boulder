@@ -2,7 +2,6 @@ package notmain
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"sync"
 
@@ -215,7 +214,7 @@ func main() {
 	cmd.FailOnError(err, "Couldn't create PA")
 
 	if c.CA.HostnamePolicyFile == "" {
-		cmd.FailOnError(fmt.Errorf("HostnamePolicyFile was empty."), "")
+		cmd.Fail("HostnamePolicyFile was empty")
 	}
 	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
@@ -288,10 +287,10 @@ func main() {
 		cmd.FailOnError(err, "Failed to create OCSP impl")
 		go ocspiReal.LogOCSPLoop()
 
-		ocspStart, ocspStop, err := bgrpc.Server[capb.OCSPGeneratorServer]{}.Setup(
-			c.CA.GRPCOCSPGenerator, ocspiReal, capb.RegisterOCSPGeneratorServer, tlsConfig, scope, clk,
-		)
+		ocspStart, ocspStop, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator).Add(
+			&capb.OCSPGenerator_ServiceDesc, ocspiReal).Build(tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
+
 		wg.Add(1)
 		go func() {
 			cmd.FailOnError(ocspStart(), "OCSPGenerator gRPC service failed")
@@ -313,10 +312,10 @@ func main() {
 		)
 		cmd.FailOnError(err, "Failed to create CRL impl")
 
-		crlStart, crlStop, err := bgrpc.Server[capb.CRLGeneratorServer]{}.Setup(
-			c.CA.GRPCCRLGenerator, crli, capb.RegisterCRLGeneratorServer, tlsConfig, scope, clk,
-		)
+		crlStart, crlStop, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator).Add(
+			&capb.CRLGenerator_ServiceDesc, crli).Build(tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
+
 		wg.Add(1)
 		go func() {
 			cmd.FailOnError(crlStart(), "CRLGenerator gRPC service failed")
@@ -349,10 +348,22 @@ func main() {
 			go cai.OrphanIntegrationLoop()
 		}
 
-		caStart, caStop, err := bgrpc.Server[capb.CertificateAuthorityServer]{}.Setup(
-			c.CA.GRPCCA, cai, capb.RegisterCertificateAuthorityServer, tlsConfig, scope, clk,
-		)
+		srv := bgrpc.NewServer(c.CA.GRPCCA)
+
+		// TODO(#6448): Move all of the impl construction inside these conditionals
+		// as well, once the separate CRL and OCSP servers above have been removed.
+		if !c.CA.DisableCertService {
+			srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
+		}
+		if !c.CA.DisableOCSPService {
+			srv = srv.Add(&capb.OCSPGenerator_ServiceDesc, ocspi)
+		}
+		if !c.CA.DisableCRLService {
+			srv = srv.Add(&capb.CRLGenerator_ServiceDesc, crli)
+		}
+		caStart, caStop, err := srv.Build(tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Unable to setup CA gRPC server")
+
 		wg.Add(1)
 		go func() {
 			cmd.FailOnError(caStart(), "CA gRPC service failed")

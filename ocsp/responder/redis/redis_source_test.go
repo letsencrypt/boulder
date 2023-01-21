@@ -15,6 +15,7 @@ import (
 	ocsp_test "github.com/letsencrypt/boulder/ocsp/test"
 	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -91,18 +92,32 @@ func (er errorRedis) GetResponse(ctx context.Context, serial string) ([]byte, er
 }
 
 func (er errorRedis) StoreResponse(ctx context.Context, resp *ocsp.Response) error {
-	panic("shouldn't happen")
+	return nil
 }
 
+// When the initial Redis lookup returns an error, we should
+// proceed with live signing.
 func TestQueryError(t *testing.T) {
-	src, err := NewRedisSource(nil, panicSource{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
+	serial := big.NewInt(314159)
+	thisUpdate := time.Now().Truncate(time.Second).UTC()
+	resp, _, err := ocsp_test.FakeResponse(ocsp.Response{
+		SerialNumber: serial,
+		Status:       ocsp.Good,
+		ThisUpdate:   thisUpdate,
+	})
+	test.AssertNotError(t, err, "making fake response")
+	source := echoSource{resp: resp}
+
+	src, err := NewRedisSource(nil, source, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
 	test.AssertNotError(t, err, "making source")
 	src.client = errorRedis{}
 
-	_, err = src.Response(context.Background(), &ocsp.Request{
-		SerialNumber: big.NewInt(314159),
+	receivedResp, err := src.Response(context.Background(), &ocsp.Request{
+		SerialNumber: serial,
 	})
-	test.AssertError(t, err, "expected error when Redis errored")
+	test.AssertNotError(t, err, "expected no error when Redis errored")
+	test.AssertDeepEquals(t, resp.Raw, receivedResp.Raw)
+	test.AssertMetricWithLabelsEquals(t, src.counter, prometheus.Labels{"result": "lookup_error"}, 1)
 }
 
 type garbleRedis struct{}
@@ -129,14 +144,8 @@ func TestParseError(t *testing.T) {
 	}
 }
 
-type errorSigner struct{}
-
-func (es errorSigner) Response(ctx context.Context, req *ocsp.Request) (*responder.Response, error) {
-	return nil, errors.New("cannot sign; lost my pen")
-}
-
 func TestSignError(t *testing.T) {
-	src, err := NewRedisSource(nil, errorSigner{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, errorSource{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
 	test.AssertNotError(t, err, "making source")
 	src.client = &notFoundRedis{nil}
 
@@ -230,7 +239,7 @@ func TestCertificateNotFound(t *testing.T) {
 
 func TestNoServeStale(t *testing.T) {
 	clk := clock.NewFake()
-	src, err := NewRedisSource(nil, errorSigner{}, time.Second, clk, metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, errorSource{}, time.Second, clk, metrics.NoopRegisterer, log.NewMock())
 	test.AssertNotError(t, err, "making source")
 	staleRedis := &staleRedis{
 		serialStored: nil,

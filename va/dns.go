@@ -89,5 +89,5 @@ func (va *ValidationAuthorityImpl) validateDNS01(ctx context.Context, ident iden
 		andMore = fmt.Sprintf(" (and %d more)", len(txts)-1)
 	}
 	return nil, probs.Unauthorized(fmt.Sprintf("Incorrect TXT record %q%s found at %s",
-		replaceInvalidUTF8([]byte(invalidRecord)), andMore, challengeSubdomain))
+		invalidRecord, andMore, challengeSubdomain))
 }

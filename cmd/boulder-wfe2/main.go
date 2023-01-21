@@ -276,7 +276,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -286,7 +286,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 
 	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := sapb.NewStorageAuthorityClient(saConn)
+	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	var rns noncepb.NonceServiceClient
 	npm := map[string]noncepb.NonceServiceClient{}

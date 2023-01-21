@@ -104,6 +104,8 @@ type RegistrationAuthorityImpl struct {
 	recheckCAACounter           prometheus.Counter
 	newCertCounter              prometheus.Counter
 	recheckCAAUsedAuthzLifetime prometheus.Counter
+	authzAges                   prometheus.Histogram
+	orderAges                   prometheus.Histogram
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -189,6 +191,29 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"reason"})
 	stats.MustRegister(revocationReasonCounter)
 
+	authzAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "authz_ages",
+		Help: "Histogram of ages of Authorization objects when they're attached to a new Order",
+		// authzAges keeps track of how old, in seconds, authorizations were at
+		// the time that we attached them to an order. We give it a non-standard
+		// bucket distribution so that the leftmost (closest to zero) bucket can be
+		// used exclusively for brand-new (i.e. not reused) authzs. Our buckets are:
+		// one nanosecond, one second, one minute, one hour, 7 hours (our CAA reuse
+		// time), 1 day, 2 days, 7 days, 30 days, +inf (should be empty).
+		Buckets: []float64{0.000000001, 1, 60, 3600, 25200, 86400, 172800, 604800, 2592000, 7776000},
+	})
+	stats.MustRegister(authzAges)
+
+	orderAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name: "order_ages",
+		Help: "Histogram of ages of Order objects when they're Finalized",
+		// Orders currently have a max age of 7 days (168hrs), so our buckets are:
+		// 1 second, 10 seconds, 1 minute, 10 minutes, 1 hour, 10 hours, 1 day,
+		// 7 days, +inf.
+		Buckets: []float64{1, 10, 60, 600, 3600, 36000, 86400, 172800},
+	})
+	stats.MustRegister(orderAges)
+
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
 	for _, issuer := range issuers {
@@ -222,6 +247,8 @@ func NewRegistrationAuthorityImpl(
 		newCertCounter:               newCertCounter,
 		revocationReasonCounter:      revocationReasonCounter,
 		recheckCAAUsedAuthzLifetime:  recheckCAAUsedAuthzLifetime,
+		authzAges:                    authzAges,
+		orderAges:                    orderAges,
 	}
 	return ra
 }
@@ -975,16 +1002,16 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		return nil, err
 	}
 
+	// Observe the age of this order, so we know how quickly most clients complete
+	// issuance flows.
+	ra.orderAges.Observe(ra.clk.Since(time.Unix(0, order.Created)).Seconds())
+
 	// Attempt issuance for the order. If the order isn't fully authorized this
 	// will return an error.
-	issueReq := core.CertificateRequest{
-		Bytes: req.Csr,
-		CSR:   csrOb,
-	}
 	// We use IssuerNameID 0 here because (as of now) only the v1 flow sets this
 	// field. This v2 flow allows the CA to select the issuer based on the CSR's
 	// PublicKeyAlgorithm.
-	cert, err := ra.issueCertificate(ctx, issueReq, accountID(order.RegistrationID), orderID(order.Id), issuance.IssuerNameID(0))
+	cert, err := ra.issueCertificate(ctx, csrOb, accountID(order.RegistrationID), orderID(order.Id), issuance.IssuerNameID(0))
 	if err != nil {
 		// Fail the order. The problem is computed using
 		// `web.ProblemDetailsForError`, the same function the WFE uses to convert
@@ -1039,7 +1066,7 @@ type orderID int64
 // allows the CA to pick the issuer based on the CSR's PublicKeyAlgorithm.
 func (ra *RegistrationAuthorityImpl) issueCertificate(
 	ctx context.Context,
-	req core.CertificateRequest,
+	csr *x509.CertificateRequest,
 	acctID accountID,
 	oID orderID,
 	issuerNameID issuance.IssuerNameID) (core.Certificate, error) {
@@ -1054,7 +1081,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 	beeline.AddFieldToTrace(ctx, "order.id", oID)
 	beeline.AddFieldToTrace(ctx, "acct.id", acctID)
 	var result string
-	cert, err := ra.issueCertificateInner(ctx, req, acctID, oID, issuerNameID, &logEvent)
+	cert, err := ra.issueCertificateInner(ctx, csr, acctID, oID, issuerNameID, &logEvent)
 	if err != nil {
 		logEvent.Error = err.Error()
 		beeline.AddFieldToTrace(ctx, "issuance.error", err)
@@ -1082,7 +1109,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificate(
 // it).
 func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	ctx context.Context,
-	req core.CertificateRequest,
+	csr *x509.CertificateRequest,
 	acctID accountID,
 	oID orderID,
 	issuerNameID issuance.IssuerNameID,
@@ -1105,7 +1132,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 		return emptyCert, err
 	}
 
-	csr := req.CSR
 	beeline.AddFieldToTrace(ctx, "csr.cn", csr.Subject.CommonName)
 	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
 
@@ -1877,15 +1903,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
 		return nil, berrors.BadRevocationReasonError(req.Code)
 	}
-	if !features.Enabled(features.MozRevocationReasons) {
-		// By our current policy, demonstrating key compromise is the only way to
-		// get a certificate revoked with reason key compromise. Upcoming Mozilla
-		// policy may require us to allow the original Subscriber to assert the
-		// keyCompromise revocation reason, even without demonstrating such.
-		if req.Code == ocsp.KeyCompromise {
-			return nil, berrors.BadRevocationReasonError(req.Code)
-		}
-	}
 
 	cert, err := x509.ParseCertificate(req.Cert)
 	if err != nil {
@@ -1945,14 +1962,12 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 			}
 		}
 
-		if features.Enabled(features.MozRevocationReasons) {
-			// Applicants who are not the original Subscriber are not allowed to
-			// revoke for any reason other than cessationOfOperation, which covers
-			// circumstances where "the certificate subscriber no longer owns the
-			// domain names in the certificate". Override the reason code to match.
-			req.Code = ocsp.CessationOfOperation
-			logEvent.Reason = req.Code
-		}
+		// Applicants who are not the original Subscriber are not allowed to
+		// revoke for any reason other than cessationOfOperation, which covers
+		// circumstances where "the certificate subscriber no longer owns the
+		// domain names in the certificate". Override the reason code to match.
+		req.Code = ocsp.CessationOfOperation
+		logEvent.Reason = req.Code
 	}
 
 	issuerID := issuance.GetIssuerNameID(cert)
@@ -1983,21 +1998,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, errIncompleteGRPCRequest
 	}
 
-	var reason int64
-	if features.Enabled(features.MozRevocationReasons) {
-		// Upcoming Mozilla policy may require that a certificate be revoked with
-		// reason keyCompromise if "the CA obtains verifiable evidence that the
-		// certificate subscriber’s private key corresponding to the public key in
-		// the certificate suffered a key compromise". Signing a JWS to an ACME
-		// server's revocation endpoint certainly counts, so override the reason.
-		reason = ocsp.KeyCompromise
-	} else {
-		if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
-			return nil, berrors.BadRevocationReasonError(req.Code)
-		}
-		reason = req.Code
-	}
-
 	cert, err := x509.ParseCertificate(req.Cert)
 	if err != nil {
 		return nil, err
@@ -2008,7 +2008,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
 		SerialNumber: core.SerialToString(cert.SerialNumber),
-		Reason:       reason,
+		Reason:       ocsp.KeyCompromise,
 		Method:       "key",
 		RequesterID:  0,
 	}
@@ -2031,7 +2031,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		ctx,
 		cert.SerialNumber,
 		int64(issuerID),
-		revocation.Reason(reason),
+		revocation.Reason(ocsp.KeyCompromise),
 	)
 
 	// Now add the public key to the blocked keys list, and report the error if
@@ -2039,30 +2039,18 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// to the blocked keys list is a worse failure than failing to revoke in the
 	// first place, because it means that bad-key-revoker won't revoke the cert
 	// anyway.
-	var shouldBlock bool
-	if features.Enabled(features.AllowReRevocation) {
-		// If we're allowing re-revocation, then block the key for all keyCompromise
-		// requests, no matter whether the revocation itself succeeded or failed.
-		shouldBlock = reason == ocsp.KeyCompromise
-	} else {
-		// Otherwise, only block the key if the revocation above succeeded, or
-		// failed for a reason other than "already revoked".
-		shouldBlock = (reason == ocsp.KeyCompromise && !errors.Is(revokeErr, berrors.AlreadyRevoked))
+	var digest core.Sha256Digest
+	digest, err = core.KeyDigest(cert.PublicKey)
+	if err != nil {
+		return nil, err
 	}
-	if shouldBlock {
-		var digest core.Sha256Digest
-		digest, err = core.KeyDigest(cert.PublicKey)
-		if err != nil {
-			return nil, err
-		}
-		_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
-			KeyHash: digest[:],
-			Added:   ra.clk.Now().UnixNano(),
-			Source:  "API",
-		})
-		if err != nil {
-			return nil, err
-		}
+	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
+		KeyHash: digest[:],
+		Added:   ra.clk.Now().UnixNano(),
+		Source:  "API",
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Finally check the error from revocation itself. If it was an AlreadyRevoked
@@ -2070,12 +2058,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// than keyCompromise.
 	err = revokeErr
 	if err != nil {
-		// Immediately error out, rather than trying re-revocation, if the error was
-		// anything other than AlreadyRevoked, if the requested reason is anything
-		// other than keyCompromise, or if we're not yet using the new logic.
-		if !errors.Is(err, berrors.AlreadyRevoked) ||
-			reason != ocsp.KeyCompromise ||
-			!features.Enabled(features.AllowReRevocation) {
+		// Error out if the error was anything other than AlreadyRevoked. Otherwise
+		// try re-revocation.
+		if !errors.Is(err, berrors.AlreadyRevoked) {
 			return nil, err
 		}
 		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
@@ -2333,11 +2318,9 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil {
 		return nil, err
 	}
-	if features.Enabled(features.CheckFailedAuthorizationsFirst) {
-		err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, newOrder.Names)
-		if err != nil {
-			return nil, err
-		}
+	err = ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, newOrder.Names)
+	if err != nil {
+		return nil, err
 	}
 
 	// An order's lifetime is effectively bound by the shortest remaining lifetime
@@ -2394,6 +2377,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
+			ra.authzAges.Observe((time.Unix(0, authz.Expires).Sub(ra.clk.Now()) - ra.authorizationLifetime).Seconds())
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
@@ -2402,6 +2386,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
+			ra.authzAges.Observe((time.Unix(0, authz.Expires).Sub(ra.clk.Now()) - ra.authorizationLifetime).Seconds())
 			continue
 		}
 
@@ -2411,6 +2396,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// reuse and we need to mark the name as requiring a new pending authz
 		missingAuthzNames = append(missingAuthzNames, name)
 	}
+	ra.reusedValidAuthzCounter.Add(float64(len(newOrder.V2Authorizations)))
 
 	// If the order isn't fully authorized we need to check that the client has
 	// rate limit room for more pending authorizations
@@ -2418,12 +2404,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		err := ra.checkPendingAuthorizationLimit(ctx, newOrder.RegistrationID)
 		if err != nil {
 			return nil, err
-		}
-		if !features.Enabled(features.CheckFailedAuthorizationsFirst) {
-			err := ra.checkInvalidAuthorizationLimits(ctx, newOrder.RegistrationID, missingAuthzNames)
-			if err != nil {
-				return nil, err
-			}
 		}
 	}
 
@@ -2439,6 +2419,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			return nil, err
 		}
 		newAuthzs = append(newAuthzs, pb)
+		ra.authzAges.Observe(0)
 	}
 
 	// Start with the order's own expiry as the minExpiry. We only care

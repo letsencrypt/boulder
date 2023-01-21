@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -53,7 +52,6 @@ const (
 type AcmeChallenge string
 
 // These types are the available challenges
-// TODO(#5009): Make this a custom type as well.
 const (
 	ChallengeTypeHTTP01    = AcmeChallenge("http-01")
 	ChallengeTypeDNS01     = AcmeChallenge("dns-01")
@@ -87,42 +85,8 @@ var OCSPStatusToInt = map[OCSPStatus]int{
 // DNSPrefix is attached to DNS names in DNS challenges
 const DNSPrefix = "_acme-challenge"
 
-// CertificateRequest is just a CSR
-//
-// This data is unmarshalled from JSON by way of RawCertificateRequest, which
-// represents the actual structure received from the client.
-type CertificateRequest struct {
-	CSR   *x509.CertificateRequest // The CSR
-	Bytes []byte                   // The original bytes of the CSR, for logging.
-}
-
 type RawCertificateRequest struct {
 	CSR JSONBuffer `json:"csr"` // The encoded CSR
-}
-
-// UnmarshalJSON provides an implementation for decoding CertificateRequest objects.
-func (cr *CertificateRequest) UnmarshalJSON(data []byte) error {
-	var raw RawCertificateRequest
-	err := json.Unmarshal(data, &raw)
-	if err != nil {
-		return err
-	}
-
-	csr, err := x509.ParseCertificateRequest(raw.CSR)
-	if err != nil {
-		return err
-	}
-
-	cr.CSR = csr
-	cr.Bytes = raw.CSR
-	return nil
-}
-
-// MarshalJSON provides an implementation for encoding CertificateRequest objects.
-func (cr CertificateRequest) MarshalJSON() ([]byte, error) {
-	return json.Marshal(RawCertificateRequest{
-		CSR: cr.CSR.Raw,
-	})
 }
 
 // Registration objects represent non-public metadata attached
@@ -415,22 +379,9 @@ func (authz *Authorization) SolvedBy() (*AcmeChallenge, error) {
 // with stripped padding.
 type JSONBuffer []byte
 
-// URL-safe base64 encode that strips padding
-func base64URLEncode(data []byte) string {
-	var result = base64.URLEncoding.EncodeToString(data)
-	return strings.TrimRight(result, "=")
-}
-
-// URL-safe base64 decoder that adds padding
-func base64URLDecode(data string) ([]byte, error) {
-	var missing = (4 - len(data)%4) % 4
-	data += strings.Repeat("=", missing)
-	return base64.URLEncoding.DecodeString(data)
-}
-
 // MarshalJSON encodes a JSONBuffer for transmission.
 func (jb JSONBuffer) MarshalJSON() (result []byte, err error) {
-	return json.Marshal(base64URLEncode(jb))
+	return json.Marshal(base64.RawURLEncoding.EncodeToString(jb))
 }
 
 // UnmarshalJSON decodes a JSONBuffer to an object.
@@ -440,7 +391,7 @@ func (jb *JSONBuffer) UnmarshalJSON(data []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	*jb, err = base64URLDecode(str)
+	*jb, err = base64.RawURLEncoding.DecodeString(strings.TrimRight(str, "="))
 	return
 }
 

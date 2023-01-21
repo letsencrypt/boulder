@@ -20,7 +20,7 @@ import (
 )
 
 type client struct {
-	redis         *rocsp.WritingClient
+	redis         rocsp.Writer
 	db            *db.WrappedMap // optional
 	ocspGenerator capb.OCSPGeneratorClient
 	clk           clock.Clock

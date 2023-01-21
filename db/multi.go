@@ -18,20 +18,23 @@ type MultiInserter struct {
 }
 
 // NewMultiInserter creates a new MultiInserter, checking for reasonable table
-// name and list of fields.
-func NewMultiInserter(table string, fields string, retCol string) (*MultiInserter, error) {
+// name and list of fields. returningColumn is the name of a column to be used
+// in a `RETURNING xyz` clause at the end. If it is empty, no `RETURNING xyz`
+// clause is used. If returningColumn is present, it must refer to a column
+// that can be parsed into an int64.
+func NewMultiInserter(table string, fields string, returningColumn string) (*MultiInserter, error) {
 	numFields := len(strings.Split(fields, ","))
 	if len(table) == 0 || len(fields) == 0 || numFields == 0 {
 		return nil, fmt.Errorf("empty table name or fields list")
 	}
-	if strings.Contains(retCol, ",") {
-		return nil, fmt.Errorf("return column must be singular, but got %q", retCol)
+	if strings.Contains(returningColumn, ",") {
+		return nil, fmt.Errorf("return column must be singular, but got %q", returningColumn)
 	}
 
 	return &MultiInserter{
 		table:     table,
 		fields:    fields,
-		retCol:    retCol,
+		retCol:    returningColumn,
 		numFields: numFields,
 		values:    make([][]interface{}, 0),
 	}, nil
@@ -50,12 +53,10 @@ func (mi *MultiInserter) Add(row []interface{}) error {
 // for gorp to use in place of the query's question marks. Currently only
 // used by .Insert(), below.
 func (mi *MultiInserter) query() (string, []interface{}) {
-	questionsRow := strings.TrimRight(strings.Repeat("?,", mi.numFields), ",")
-
 	var questionsBuf strings.Builder
 	var queryArgs []interface{}
 	for _, row := range mi.values {
-		fmt.Fprintf(&questionsBuf, "(%s),", questionsRow)
+		fmt.Fprintf(&questionsBuf, "(%s),", QuestionMarks(mi.numFields))
 		queryArgs = append(queryArgs, row...)
 	}
 
@@ -71,12 +72,12 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 }
 
 // Insert performs the action represented by .query() on the provided database,
-// which is assumed to already have a context attached. If a non-empty retCol
-// was provided, then it returns the list of values from that column returned
-// by the query.
-func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
+// which is assumed to already have a context attached. If a non-empty
+// returningColumn was provided, then it returns the list of values from that
+// column returned by the query.
+func (mi *MultiInserter) Insert(queryer Queryer) ([]int64, error) {
 	query, queryArgs := mi.query()
-	rows, err := exec.Query(query, queryArgs...)
+	rows, err := queryer.Query(query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -94,9 +95,15 @@ func (mi *MultiInserter) Insert(exec Executor) ([]int64, error) {
 		}
 	}
 
-	err = rows.Close()
-	if err != nil {
-		return nil, err
+	// Hack: sometimes in unittests we make a mock Queryer that returns a nil
+	// `*sql.Rows`. A nil `*sql.Rows` is not actually valid— calling `Close()`
+	// on it will panic— but here we choose to treat it like an empty list,
+	// and skip calling `Close()` to avoid the panic.
+	if rows != nil {
+		err = rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return ids, nil

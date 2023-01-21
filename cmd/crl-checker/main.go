@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -15,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/checker"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
-	"github.com/letsencrypt/boulder/issuance"
 )
 
 func downloadShard(url string) (*crl_x509.RevocationList, error) {
@@ -61,9 +61,9 @@ func main() {
 		cmd.Fail("-issuer is required, but may be '-' to disable validation")
 	}
 
-	var issuer *issuance.Certificate
+	var issuer *x509.Certificate
 	if *issuerFile != "-" {
-		issuer, err = issuance.LoadCertificate(*issuerFile)
+		issuer, err = core.LoadCert(*issuerFile)
 		cmd.FailOnError(err, "Loading issuer certificate")
 	} else {
 		logger.Warning("CRL signature validation disabled")

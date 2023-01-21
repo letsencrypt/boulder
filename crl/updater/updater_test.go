@@ -50,12 +50,12 @@ func (f *fakeGRCC) Recv() (*corepb.CRLEntry, error) {
 // fakeGRCC to be used as the return value for calls to GetRevokedCerts, and a
 // fake timestamp to serve as the database's maximum notAfter value.
 type fakeSAC struct {
-	mocks.StorageAuthority
+	mocks.StorageAuthorityReadOnly
 	grcc        fakeGRCC
 	maxNotAfter time.Time
 }
 
-func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
+func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
 	return &f.grcc, nil
 }
 
