@@ -27,7 +27,7 @@ jobs:
   #  tags and 5 tests there would be 10 jobs run.
   b:
     # The type of runner that the job will run on
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
 
     strategy:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
