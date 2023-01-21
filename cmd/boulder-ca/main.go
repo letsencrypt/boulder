@@ -302,8 +302,11 @@ func main() {
 		ocspi = ca.NewDisabledOCSPImpl()
 	}
 
+	// TODO(#6448): Remove this predeclaration when the separate CRL and OCSP
+	// servers listening on separate ports have been remove.
+	var crli capb.CRLGeneratorServer
 	if !c.CA.DisableCRLService {
-		crli, err := ca.NewCRLImpl(
+		crli, err = ca.NewCRLImpl(
 			boulderIssuers,
 			c.CA.LifespanCRL.Duration,
 			c.CA.CRLDPBase,
