@@ -28,6 +28,7 @@ import (
 
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 const (
@@ -269,4 +270,29 @@ func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceSe
 		return false, err
 	}
 	return resp.Valid, nil
+}
+
+// NewServer returns a new Server, wrapping a NonceService.
+func NewServer(inner *NonceService) *Server {
+	return &Server{inner: inner}
+}
+
+// Server implements the gRPC nonce service.
+type Server struct {
+	noncepb.UnimplementedNonceServiceServer
+	inner *NonceService
+}
+
+// Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
+func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
+	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
+}
+
+// Nonce generates a nonce and sends it to a gRPC client.
+func (ns *Server) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
+	nonce, err := ns.inner.Nonce()
+	if err != nil {
+		return nil, err
+	}
+	return &noncepb.NonceMessage{Nonce: nonce}, nil
 }

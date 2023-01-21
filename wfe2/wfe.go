@@ -30,7 +30,6 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
-	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
@@ -86,7 +85,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
 	ra            rapb.RegistrationAuthorityClient
-	sa            sapb.StorageAuthorityGetterClient
+	sa            sapb.StorageAuthorityReadOnlyClient
 	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
@@ -121,7 +120,6 @@ type WebFrontEndImpl struct {
 	LegacyKeyIDPrefix string
 
 	// Register of anti-replay nonces
-	nonceService       *nonce.NonceService
 	remoteNonceService noncepb.NonceServiceClient
 	noncePrefixMap     map[string]noncepb.NonceServiceClient
 
@@ -162,7 +160,7 @@ func NewWebFrontEndImpl(
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
-	sac sapb.StorageAuthorityClient,
+	sac sapb.StorageAuthorityReadOnlyClient,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -171,6 +169,14 @@ func NewWebFrontEndImpl(
 
 	if len(certificateChains) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one certificate chain")
+	}
+
+	if remoteNonceService == nil {
+		return WebFrontEndImpl{}, errors.New("must provide a service for nonce issuance")
+	}
+
+	if noncePrefixMap == nil {
+		return WebFrontEndImpl{}, errors.New("must provide a set of services for nonce redemption")
 	}
 
 	wfe := WebFrontEndImpl{
@@ -188,14 +194,6 @@ func NewWebFrontEndImpl(
 		ra:                           rac,
 		sa:                           sac,
 		accountGetter:                accountGetter,
-	}
-
-	if wfe.remoteNonceService == nil {
-		nonceService, err := nonce.NewNonceService(stats, 0, "")
-		if err != nil {
-			return WebFrontEndImpl{}, err
-		}
-		wfe.nonceService = nonceService
 	}
 
 	return wfe, nil
@@ -244,28 +242,12 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				return
 			}
 			if request.Method != "GET" || pattern == newNoncePath {
-				// Historically we did not return a error to the client
-				// if we failed to get a new nonce. We preserve that
-				// behavior if using the built in nonce service, but
-				// if we get a failure using the new remote nonce service
-				// we return an internal server error so that it is
-				// clearer both in our metrics and to the client that
-				// something is wrong.
-				if wfe.remoteNonceService != nil {
-					nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
-					if err != nil {
-						wfe.sendError(response, logEvent, probs.ServerInternal("unable to get nonce"), err)
-						return
-					}
-					response.Header().Set("Replay-Nonce", nonceMsg.Nonce)
-				} else {
-					nonce, err := wfe.nonceService.Nonce()
-					if err == nil {
-						response.Header().Set("Replay-Nonce", nonce)
-					} else {
-						logEvent.AddError("unable to make nonce: %s", err)
-					}
+				nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
+				if err != nil {
+					wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to get nonce"), err)
+					return
 				}
+				response.Header().Set("Replay-Nonce", nonceMsg.Nonce)
 			}
 			// Per section 7.1 "Resources":
 			//   The "index" link relation is present on all resources other than the
@@ -328,7 +310,7 @@ func (wfe *WebFrontEndImpl) writeJsonResponse(response http.ResponseWriter, logE
 		// Don't worry about returning this error because the caller will
 		// never handle it.
 		wfe.log.Warningf("Could not write response: %s", err)
-		logEvent.AddError(fmt.Sprintf("failed to write response: %s", err))
+		logEvent.AddError("failed to write response: %s", err)
 	}
 	return nil
 }
@@ -673,7 +655,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		returnExistingAcct(existingAcct)
 		return
 	} else if !errors.Is(err, berrors.NotFound) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "failed check for existing account"), err)
 		return
 	}
 
@@ -736,7 +718,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			}
 			// return error even if berrors.NotFound, as the duplicate key error we got from
 			// ra.NewRegistration indicates it _does_ already exist.
-			wfe.sendError(response, logEvent, probs.ServerInternal("failed check for existing account"), err)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "checking for existing account"), err)
 			return
 		}
 		wfe.sendError(response, logEvent,
@@ -1027,7 +1009,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 		if errors.Is(err, berrors.NotFound) {
 			notFound()
 		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Problem getting authorization"), err)
 		}
 		return
 	}
@@ -1490,7 +1472,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 		wfe.sendError(response, logEvent, probs.Malformed(err.Error()), nil)
 		return
 	} else if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Problem getting authorization"), err)
 		return
 	}
 
@@ -1616,7 +1598,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		} else if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), ierr)
 		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Failed to retrieve certificate"), ierr)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve certificate"), ierr)
 		}
 		return
 	}
@@ -1859,14 +1841,15 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling new key"), err)
 	}
 	// Check that the new key isn't already being used for an existing account
-	if existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes}); err == nil {
+	existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
+	if err == nil {
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, existingAcct.Id)))
 		wfe.sendError(response, logEvent,
 			probs.Conflict("New key is already in use for a different account"), err)
 		return
 	} else if !errors.Is(err, berrors.NotFound) {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to lookup existing keys"), err)
 		return
 	}
 	// Convert account to proto for grpc
@@ -1889,7 +1872,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 			// header
 			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: newKeyBytes})
 			if err != nil {
-				wfe.sendError(response, logEvent, probs.ServerInternal("Failed to lookup existing keys"), err)
+				wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "looking up account by key"), err)
 				return
 			}
 			response.Header().Set("Location",
@@ -2101,7 +2084,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
 		return
 	}
 
@@ -2175,7 +2159,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
 			return
 		}
-		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), err)
 		return
 	}
 
@@ -2317,24 +2302,40 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
 	}
 
-	// Check if the serial is part of an ongoing incident.
-	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to check if the serial is impacted by an incident"), err)
-		return
-	}
-
-	if len(result.Incidents) > 0 {
-		// Since IncidentsForSerial() only returns enabled incidents we can
-		// assume that this serial is impacted by an ongoing incident.
-		ri := core.RenewalInfoImmediate(wfe.clk.Now())
-
+	sendRI := func(ri core.RenewalInfo) {
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 			return
 		}
 		setDefaultRetryAfterHeader(response)
+	}
+
+	// Check if the serial is part of an ongoing/active incident, in which case
+	// the client should replace it now.
+	result, err := wfe.sa.IncidentsForSerial(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			"checking if certificate is impacted by an incident"), err)
+		return
+	}
+
+	if len(result.Incidents) > 0 {
+		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
+		return
+	}
+
+	// Check if the serial is revoked, in which case the client should replace it
+	// now.
+	status, err := wfe.sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
+			"checking if certificate has been revoked"), err)
+		return
+	}
+
+	if status.Status == string(core.OCSPStatusRevoked) {
+		sendRI(core.RenewalInfoImmediate(wfe.clk.Now()))
 		return
 	}
 
@@ -2345,7 +2346,7 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		} else {
-			wfe.sendError(response, logEvent, probs.ServerInternal("Unable to get certificate"), err)
+			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "getting certificate"), err)
 		}
 		return
 	}
@@ -2355,14 +2356,9 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// using that to compute the actual issuerNameHash and issuerKeyHash, and
 	// comparing those to the ones in the request.
 
-	ri := core.RenewalInfoSimple(time.Unix(0, cert.Issued).UTC(), time.Unix(0, cert.Expires).UTC())
-
-	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
-	if err != nil {
-		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
-		return
-	}
-	setDefaultRetryAfterHeader(response)
+	sendRI(core.RenewalInfoSimple(
+		time.Unix(0, cert.Issued).UTC(),
+		time.Unix(0, cert.Expires).UTC()))
 }
 
 func extractRequesterIP(req *http.Request) (net.IP, error) {

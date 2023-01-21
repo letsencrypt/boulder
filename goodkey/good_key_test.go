@@ -54,7 +54,7 @@ func TestSmallModulus(t *testing.T) {
 	}
 	err := testingPolicy.GoodKey(context.Background(), &pubKey)
 	test.AssertError(t, err, "Should have rejected too-short key")
-	test.AssertEquals(t, err.Error(), "key too small: 2040")
+	test.AssertEquals(t, err.Error(), "key size not supported: 2040")
 }
 
 func TestLargeModulus(t *testing.T) {
@@ -69,7 +69,7 @@ func TestLargeModulus(t *testing.T) {
 	}
 	err := testingPolicy.GoodKey(context.Background(), &pubKey)
 	test.AssertError(t, err, "Should have rejected too-long key")
-	test.AssertEquals(t, err.Error(), "key too large: 4097 > 4096")
+	test.AssertEquals(t, err.Error(), "key size not supported: 4097")
 }
 
 func TestModulusModulo8(t *testing.T) {
@@ -80,7 +80,7 @@ func TestModulusModulo8(t *testing.T) {
 	}
 	err := testingPolicy.GoodKey(context.Background(), &key)
 	test.AssertError(t, err, "Should have rejected modulus with length not divisible by 8")
-	test.AssertEquals(t, err.Error(), "key length wasn't a multiple of 8: 2049")
+	test.AssertEquals(t, err.Error(), "key size not supported: 2049")
 }
 
 var mod2048 = big.NewInt(0).Sub(big.NewInt(0).Lsh(big.NewInt(1), 2048), big.NewInt(1))

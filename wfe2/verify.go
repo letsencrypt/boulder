@@ -195,17 +195,11 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	}
-	var nonceValid bool
-	if wfe.remoteNonceService != nil {
-		valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
-		if err != nil {
-			return probs.ServerInternal(fmt.Sprintf("failed to verify nonce validity: %s", err))
-		}
-		nonceValid = valid
-	} else {
-		nonceValid = wfe.nonceService.Valid(header.Nonce)
+	valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
+	if err != nil {
+		return web.ProblemDetailsForError(err, "failed to redeem nonce")
 	}
-	if !nonceValid {
+	if !valid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
 		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", header.Nonce))
 	}
@@ -469,9 +463,8 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 		// a ServerInternal problem since this is unexpected.
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSKeyIDLookupFailed"}).Inc()
 		// Add an error to the log event with the internal error message
-		logEvent.AddError(fmt.Sprintf("Error calling SA.GetRegistration: %s", err.Error()))
-		return nil, nil, probs.ServerInternal(fmt.Sprintf(
-			"Error retrieving account %q", accountURL))
+		logEvent.AddError("calling SA.GetRegistration: %s", err)
+		return nil, nil, web.ProblemDetailsForError(err, fmt.Sprintf("Error retrieving account %q", accountURL))
 	}
 
 	// Verify the account is not deactivated

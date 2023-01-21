@@ -91,7 +91,7 @@ func createValidationRequest(domain string, challengeType core.AcmeChallenge) *v
 		},
 		Authz: &vapb.AuthzMeta{
 			Id:    "",
-			RegID: 0,
+			RegID: 1,
 		},
 	}
 }

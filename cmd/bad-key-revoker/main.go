@@ -149,13 +149,18 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 		initialID = batch[len(batch)-1].ID
 		for _, serial := range batch {
 			var unrevokedCert unrevokedCertificate
+			// NOTE: This has a `LIMIT 1` because the certificateStatus and precertificates
+			// tables do not have a UNIQUE KEY on serial (for partitioning reasons). So it's
+			// possible we could get multiple results for a single serial number, but they
+			// would be duplicates.
 			err = bkr.dbMap.SelectOne(
 				&unrevokedCert,
 				`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
 				FROM certificateStatus AS cs
 				JOIN precertificates AS c
 				ON cs.serial = c.serial
-				WHERE cs.serial = ?`,
+				WHERE cs.serial = ?
+				LIMIT 1`,
 				serial.CertSerial,
 			)
 			if err != nil {

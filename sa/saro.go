@@ -19,7 +19,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
@@ -184,7 +183,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM registrations
+		`SELECT COUNT(*) FROM registrations
 		 WHERE
 		 initialIP = :ip AND
 		 :earliest < createdAt AND
@@ -195,7 +194,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 			"latest":   time.Unix(0, req.Range.Latest),
 		})
 	if err != nil {
-		return &sapb.Count{Count: -1}, err
+		return nil, err
 	}
 	return &sapb.Count{Count: count}, nil
 }
@@ -217,7 +216,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 	beginIP, endIP := ipRange(req.Ip)
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM registrations
+		`SELECT COUNT(*) FROM registrations
 		 WHERE
 		 :beginIP <= initialIP AND
 		 initialIP < :endIP AND
@@ -230,7 +229,7 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 			"endIP":    endIP,
 		})
 	if err != nil {
-		return &sapb.Count{Count: -1}, err
+		return nil, err
 	}
 	return &sapb.Count{Count: count}, nil
 }
@@ -414,28 +413,7 @@ func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.Cou
 		return nil, errIncompleteRequest
 	}
 
-	if features.Enabled(features.FasterNewOrdersRateLimit) {
-		return countNewOrders(ssa.dbReadOnlyMap.WithContext(ctx), req)
-	}
-
-	var count int64
-	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
-		&count,
-		`SELECT count(1) FROM orders
-		WHERE registrationID = :acctID AND
-		created >= :earliest AND
-		created < :latest`,
-		map[string]interface{}{
-			"acctID":   req.AccountID,
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sapb.Count{Count: count}, nil
+	return countNewOrders(ssa.dbReadOnlyMap.WithContext(ctx), req)
 }
 
 func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
@@ -452,7 +430,7 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM fqdnSets
+		`SELECT COUNT(*) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
 		HashNames(req.Domains),
@@ -570,7 +548,7 @@ func (ssa *SQLStorageAuthorityRO) PreviousCertificateExists(ctx context.Context,
 	var count int
 	err = ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM certificates
+		`SELECT COUNT(*) FROM certificates
 		WHERE serial = ?
 		AND registrationID = ?`,
 		serial,
@@ -595,247 +573,76 @@ func (ssa *SQLStorageAuthority) PreviousCertificateExists(ctx context.Context, r
 	return ssa.SQLStorageAuthorityRO.PreviousCertificateExists(ctx, req)
 }
 
-// authzForOrder retrieves the authorization IDs for an order.
-func (ssa *SQLStorageAuthorityRO) authzForOrder(ctx context.Context, orderID int64) ([]int64, error) {
-	var v2IDs []int64
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
-		&v2IDs,
-		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
-		orderID,
-	)
-	return v2IDs, err
-}
-
-// namesForOrder finds all of the requested names associated with an order. The
-// names are returned in their reversed form (see `sa.ReverseName`).
-func (ssa *SQLStorageAuthorityRO) namesForOrder(ctx context.Context, orderID int64) ([]string, error) {
-	var reversedNames []string
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
-		&reversedNames,
-		`SELECT reversedName
-	   FROM requestedNames
-	   WHERE orderID = ?`,
-		orderID)
-	if err != nil {
-		return nil, err
-	}
-	return reversedNames, nil
-}
-
 // GetOrder is used to retrieve an already existing order object
 func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	if req == nil || req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
 
-	omObj, err := ssa.dbReadOnlyMap.WithContext(ctx).Get(orderModel{}, req.Id)
-	if err != nil {
-		if db.IsNoRows(err) {
+	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, func(txWithCtx db.Executor) (interface{}, error) {
+		omObj, err := txWithCtx.Get(orderModel{}, req.Id)
+		if err != nil {
+			if db.IsNoRows(err) {
+				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+			}
+			return nil, err
+		}
+		if omObj == nil {
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
-		return nil, err
-	}
-	if omObj == nil {
-		return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
-	}
-	order, err := modelToOrder(omObj.(*orderModel))
+
+		order, err := modelToOrder(omObj.(*orderModel))
+		if err != nil {
+			return nil, err
+		}
+
+		orderExp := time.Unix(0, order.Expires)
+		if orderExp.Before(ssa.clk.Now()) {
+			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
+		}
+
+		v2AuthzIDs, err := authzForOrder(txWithCtx, order.Id)
+		if err != nil {
+			return nil, err
+		}
+		order.V2Authorizations = v2AuthzIDs
+
+		names, err := namesForOrder(txWithCtx, order.Id)
+		if err != nil {
+			return nil, err
+		}
+		// The requested names are stored reversed to improve indexing performance. We
+		// need to reverse the reversed names here before giving them back to the
+		// caller.
+		reversedNames := make([]string, len(names))
+		for i, n := range names {
+			reversedNames[i] = ReverseName(n)
+		}
+		order.Names = reversedNames
+
+		// Calculate the status for the order
+		status, err := statusForOrder(txWithCtx, order, ssa.clk.Now())
+		if err != nil {
+			return nil, err
+		}
+		order.Status = status
+
+		return order, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	orderExp := time.Unix(0, order.Expires)
-	if orderExp.Before(ssa.clk.Now()) {
-		return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 	}
 
-	v2AuthzIDs, err := ssa.authzForOrder(ctx, order.Id)
-	if err != nil {
-		return nil, err
+	order, ok := output.(*corepb.Order)
+	if !ok {
+		return nil, fmt.Errorf("casting error in GetOrder")
 	}
-	order.V2Authorizations = v2AuthzIDs
-
-	names, err := ssa.namesForOrder(ctx, order.Id)
-	if err != nil {
-		return nil, err
-	}
-	// The requested names are stored reversed to improve indexing performance. We
-	// need to reverse the reversed names here before giving them back to the
-	// caller.
-	reversedNames := make([]string, len(names))
-	for i, n := range names {
-		reversedNames[i] = ReverseName(n)
-	}
-	order.Names = reversedNames
-
-	// Calculate the status for the order
-	status, err := ssa.statusForOrder(ctx, order)
-	if err != nil {
-		return nil, err
-	}
-	order.Status = status
 
 	return order, nil
 }
 
 func (ssa *SQLStorageAuthority) GetOrder(ctx context.Context, req *sapb.OrderRequest) (*corepb.Order, error) {
 	return ssa.SQLStorageAuthorityRO.GetOrder(ctx, req)
-}
-
-// statusForOrder examines the status of a provided order's authorizations to
-// determine what the overall status of the order should be. In summary:
-//   - If the order has an error, the order is invalid
-//   - If any of the order's authorizations are in any state other than
-//     valid or pending, the order is invalid.
-//   - If any of the order's authorizations are pending, the order is pending.
-//   - If all of the order's authorizations are valid, and there is
-//     a certificate serial, the order is valid.
-//   - If all of the order's authorizations are valid, and we have began
-//     processing, but there is no certificate serial, the order is processing.
-//   - If all of the order's authorizations are valid, and we haven't begun
-//     processing, then the order is status ready.
-//
-// An error is returned for any other case.
-func (ssa *SQLStorageAuthorityRO) statusForOrder(ctx context.Context, order *corepb.Order) (string, error) {
-	// Without any further work we know an order with an error is invalid
-	if order.Error != nil {
-		return string(core.StatusInvalid), nil
-	}
-
-	// If the order is expired the status is invalid and we don't need to get
-	// order authorizations. Its important to exit early in this case because an
-	// order that references an expired authorization will be itself have been
-	// expired (because we match the order expiry to the associated authz expiries
-	// in ra.NewOrder), and expired authorizations may be purged from the DB.
-	// Because of this purging fetching the authz's for an expired order may
-	// return fewer authz objects than expected, triggering a 500 error response.
-	orderExpiry := time.Unix(0, order.Expires)
-	if orderExpiry.Before(ssa.clk.Now()) {
-		return string(core.StatusInvalid), nil
-	}
-
-	// Get the full Authorization objects for the order
-	authzValidityInfo, err := ssa.getAuthorizationStatuses(ctx, order.V2Authorizations)
-	// If there was an error getting the authorizations, return it immediately
-	if err != nil {
-		return "", err
-	}
-
-	// If getAuthorizationStatuses returned a different number of authorization
-	// objects than the order's slice of authorization IDs something has gone
-	// wrong worth raising an internal error about.
-	if len(authzValidityInfo) != len(order.V2Authorizations) {
-		return "", berrors.InternalServerError(
-			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
-				"(%d vs expected %d) for order %d",
-			len(authzValidityInfo), len(order.V2Authorizations), order.Id)
-	}
-
-	// Keep a count of the authorizations seen
-	pendingAuthzs := 0
-	validAuthzs := 0
-	otherAuthzs := 0
-	expiredAuthzs := 0
-
-	// Loop over each of the order's authorization objects to examine the authz status
-	for _, info := range authzValidityInfo {
-		switch core.AcmeStatus(info.Status) {
-		case core.StatusPending:
-			pendingAuthzs++
-		case core.StatusValid:
-			validAuthzs++
-		case core.StatusInvalid:
-			otherAuthzs++
-		case core.StatusDeactivated:
-			otherAuthzs++
-		case core.StatusRevoked:
-			otherAuthzs++
-		default:
-			return "", berrors.InternalServerError(
-				"Order is in an invalid state. Authz has invalid status %s",
-				info.Status)
-		}
-		if info.Expires.Before(ssa.clk.Now()) {
-			expiredAuthzs++
-		}
-	}
-
-	// An order is invalid if **any** of its authzs are invalid, deactivated,
-	// revoked, or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
-	if otherAuthzs > 0 || expiredAuthzs > 0 {
-		return string(core.StatusInvalid), nil
-	}
-	// An order is pending if **any** of its authzs are pending
-	if pendingAuthzs > 0 {
-		return string(core.StatusPending), nil
-	}
-
-	// An order is fully authorized if it has valid authzs for each of the order
-	// names
-	fullyAuthorized := len(order.Names) == validAuthzs
-
-	// If the order isn't fully authorized we've encountered an internal error:
-	// Above we checked for any invalid or pending authzs and should have returned
-	// early. Somehow we made it this far but also don't have the correct number
-	// of valid authzs.
-	if !fullyAuthorized {
-		return "", berrors.InternalServerError(
-			"Order has the incorrect number of valid authorizations & no pending, " +
-				"deactivated or invalid authorizations")
-	}
-
-	// If the order is fully authorized and the certificate serial is set then the
-	// order is valid
-	if fullyAuthorized && order.CertificateSerial != "" {
-		return string(core.StatusValid), nil
-	}
-
-	// If the order is fully authorized, and we have began processing it, then the
-	// order is processing.
-	if fullyAuthorized && order.BeganProcessing {
-		return string(core.StatusProcessing), nil
-	}
-
-	if fullyAuthorized && !order.BeganProcessing {
-		return string(core.StatusReady), nil
-	}
-
-	return "", berrors.InternalServerError(
-		"Order %d is in an invalid state. No state known for this order's "+
-			"authorizations", order.Id)
-}
-
-type authzValidity struct {
-	Status  string
-	Expires time.Time
-}
-
-func (ssa *SQLStorageAuthorityRO) getAuthorizationStatuses(ctx context.Context, ids []int64) ([]authzValidity, error) {
-	var qmarks []string
-	var params []interface{}
-	for _, id := range ids {
-		qmarks = append(qmarks, "?")
-		params = append(params, id)
-	}
-	var validityInfo []struct {
-		Status  uint8
-		Expires time.Time
-	}
-	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
-		&validityInfo,
-		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)", strings.Join(qmarks, ",")),
-		params...,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	allAuthzValidity := make([]authzValidity, len(validityInfo))
-	for i, info := range validityInfo {
-		allAuthzValidity[i] = authzValidity{
-			Status:  string(uintToStatus[info.Status]),
-			Expires: info.Expires,
-		}
-	}
-	return allAuthzValidity, nil
 }
 
 // GetOrderForNames tries to find a **pending** or **ready** order with the
@@ -953,35 +760,23 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
-	useIndex := ""
-	if features.Enabled(features.GetAuthzUseIndex) {
-		useIndex = "USE INDEX (regID_identifier_status_expires_idx)"
-	}
-
-	qmarks := make([]string, len(req.Domains))
-	for i, n := range req.Domains {
-		qmarks[i] = "?"
-		params = append(params, n)
+	for _, name := range req.Domains {
+		params = append(params, name)
 	}
 
 	query := fmt.Sprintf(
 		`SELECT %s FROM authz2
-			%s
+			USE INDEX (regID_identifier_status_expires_idx)
 			WHERE registrationID = ? AND
 			status IN (?,?) AND
 			expires > ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 		authzFields,
-		useIndex,
-		strings.Join(qmarks, ","),
+		db.QuestionMarks(len(req.Domains)),
 	)
 
-	dbMap := ssa.dbReadOnlyMap
-	if features.Enabled(features.GetAuthzReadOnly) {
-		dbMap = ssa.dbReadOnlyMap
-	}
-	_, err := dbMap.Select(
+	_, err := ssa.dbReadOnlyMap.Select(
 		&authzModels,
 		query,
 		params...,
@@ -1057,7 +852,7 @@ func (ssa *SQLStorageAuthorityRO) CountPendingAuthorizations2(ctx context.Contex
 
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(&count,
-		`SELECT COUNT(1) FROM authz2 WHERE
+		`SELECT COUNT(*) FROM authz2 WHERE
 		registrationID = :regID AND
 		expires > :expires AND
 		status = :status`,
@@ -1134,7 +929,7 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 	var count int64
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(
 		&count,
-		`SELECT COUNT(1) FROM authz2 WHERE
+		`SELECT COUNT(*) FROM authz2 WHERE
 		registrationID = :regID AND
 		status = :status AND
 		expires > :expiresEarliest AND
@@ -1161,38 +956,38 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 }
 
 // GetValidAuthorizations2 returns the latest authorization for all
-// domain names that the account has authorizations for. This method is
-// intended to deprecate GetValidAuthorizations. This method only supports
-// DNS identifier types.
+// domain names that the account has authorizations for. This method
+// only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
 	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
 		return nil, errIncompleteRequest
 	}
 
-	var authzModels []authzModel
+	query := fmt.Sprintf(
+		`SELECT %s FROM authz2 WHERE
+			registrationID = ? AND
+			status = ? AND
+			expires > ? AND
+			identifierType = ? AND
+			identifierValue IN (%s)`,
+		authzFields,
+		db.QuestionMarks(len(req.Domains)),
+	)
+
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		time.Unix(0, req.Now),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
-	qmarks := make([]string, len(req.Domains))
-	for i, n := range req.Domains {
-		qmarks[i] = "?"
-		params = append(params, n)
+	for _, domain := range req.Domains {
+		params = append(params, domain)
 	}
+
+	var authzModels []authzModel
 	_, err := ssa.dbReadOnlyMap.Select(
 		&authzModels,
-		fmt.Sprintf(
-			`SELECT %s FROM authz2 WHERE
-			registrationID = ? AND
-			status = ? AND
-			expires > ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
-			authzFields,
-			strings.Join(qmarks, ","),
-		),
+		query,
 		params...,
 	)
 	if err != nil {
