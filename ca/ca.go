@@ -55,7 +55,7 @@ type certificateAuthorityImpl struct {
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
-	// TODO(#6448): Remove this.
+	// TODO(#6285): Remove this.
 	ocsp capb.OCSPGeneratorServer
 
 	// This is temporary, and will be used for testing and slow roll-out

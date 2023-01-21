@@ -29,9 +29,6 @@ type Config struct {
 		cmd.HostnamePolicyConfig
 
 		GRPCCA *cmd.GRPCServerConfig
-		// TODO(#6448): Remove these deprecated server configs.
-		GRPCOCSPGenerator *cmd.GRPCServerConfig
-		GRPCCRLGenerator  *cmd.GRPCServerConfig
 
 		SAService *cmd.GRPCClientConfig
 
@@ -150,9 +147,6 @@ func main() {
 	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	// TODO(#6448): Remove these deprecated ocsp and crl addr flags.
-	_ = flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
-	_ = flag.String("crl-addr", "", "CRL gRPC listen address override")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -262,11 +256,9 @@ func main() {
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA)
 
-	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
-	// no longer needs ocspi as an argument.
 	var ocspi ca.OCSPGenerator
 	if !c.CA.DisableOCSPService {
-		ocspi, err = ca.NewOCSPImpl(
+		ocspi, err := ca.NewOCSPImpl(
 			boulderIssuers,
 			c.CA.LifespanOCSP.Duration,
 			c.CA.OCSPLogMaxLength,
