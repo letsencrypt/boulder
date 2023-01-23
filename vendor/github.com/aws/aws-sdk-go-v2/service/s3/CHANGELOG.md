@@ -1,3 +1,81 @@
+# v1.30.0 (2023-01-05)
+
+* **Feature**: Add `ErrorCodeOverride` field to all error structs (aws/smithy-go#401).
+
+# v1.29.6 (2022-12-15)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.5 (2022-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.4 (2022-11-22)
+
+* No change notes available for this release.
+
+# v1.29.3 (2022-11-16)
+
+* No change notes available for this release.
+
+# v1.29.2 (2022-11-10)
+
+* No change notes available for this release.
+
+# v1.29.1 (2022-10-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.0 (2022-10-21)
+
+* **Feature**: S3 on Outposts launches support for automatic bucket-style alias. You can use the automatic access point alias instead of an access point ARN for any object-level operation in an Outposts bucket.
+* **Bug Fix**: The SDK client has been updated to utilize the `aws.IsCredentialsProvider` function for determining if `aws.AnonymousCredentials` has been configured for the `CredentialProvider`.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.0 (2022-10-19)
+
+* **Feature**: Updates internal logic for constructing API endpoints. We have added rule-based endpoints and internal model parameters.
+
+# v1.27.11 (2022-09-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.10 (2022-09-14)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.9 (2022-09-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.8 (2022-08-31)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.7 (2022-08-30)
+
+* No change notes available for this release.
+
+# v1.27.6 (2022-08-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.5 (2022-08-11)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.4 (2022-08-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.3 (2022-08-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.2 (2022-08-01)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.27.1 (2022-07-05)
 
 * **Dependency Update**: Updated to the latest SDK module versions
