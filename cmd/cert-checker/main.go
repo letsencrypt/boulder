@@ -273,8 +273,8 @@ func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string)
 			db.QuestionMarks(len(dnsNames))),
 		append(append([]any(nil),
 			cert.RegistrationID,
-			core.StatusDeactivated,
-			core.StatusValid,
+			1,           // "valid" - see sa/model.go
+			3,           // "deactivated"
 			cert.Issued, // TODO: adjust for backdating?
 			cert.Issued, // TODO: adjust for backdating?
 			identifier.DNS,
