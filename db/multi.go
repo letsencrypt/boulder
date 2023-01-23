@@ -33,16 +33,21 @@ func NewMultiInserter(table string, fields []string, returningColumn string) (*M
 		return nil, fmt.Errorf("empty table name or fields list")
 	}
 
-	if !mariaDBUnquotedIdentifierRE.MatchString(table) {
-		return nil, fmt.Errorf("unsafe db table name %q", table)
+	err := validMariaDBUnquotedIdentifier(table)
+	if err != nil {
+		return nil, err
 	}
 	for _, field := range fields {
-		if !mariaDBUnquotedIdentifierRE.MatchString(field) {
-			return nil, fmt.Errorf("unsafe db column name %q", field)
+		err := validMariaDBUnquotedIdentifier(field)
+		if err != nil {
+			return nil, err
 		}
 	}
-	if returningColumn != "" && !mariaDBUnquotedIdentifierRE.MatchString(returningColumn) {
-		return nil, fmt.Errorf("unsafe db column name in RETURNING clause %q", returningColumn)
+	if returningColumn != "" {
+		err := validMariaDBUnquotedIdentifier(returningColumn)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &MultiInserter{
