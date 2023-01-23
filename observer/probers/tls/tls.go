@@ -132,7 +132,7 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	}
 
 	root := peers[len(peers)-1].Issuer
-	err = p.checkRoot(root.Organization[0], root.CommonName) 
+	err = p.checkRoot(root.Organization[0], root.CommonName)
 	if err != nil {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
@@ -152,7 +152,8 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
-	if err = p.checkRoot(root.Organization[0], root.CommonName); err != nil {
+	err = p.checkRoot(root.Organization[0], root.CommonName)
+	if err != nil {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
