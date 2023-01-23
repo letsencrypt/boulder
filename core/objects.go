@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ocsp"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
