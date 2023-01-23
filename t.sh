@@ -3,11 +3,11 @@
 # Outer wrapper for invoking test.sh inside docker-compose.
 #
 
-source ./t-helper.sh
-
 if type realpath >/dev/null 2>&1 ; then
   cd "$(realpath -- $(dirname -- "$0"))"
 fi
+
+source ./tools/t-helper.sh
 
 # Use a predictable name for the container so we can grab the logs later
 # for use when testing logs analysis tools.
