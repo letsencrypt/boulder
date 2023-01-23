@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v3"
 	ctasn1 "github.com/google/certificate-transparency-go/asn1"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
@@ -59,7 +60,6 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {

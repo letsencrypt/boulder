@@ -28,12 +28,12 @@ import (
 	"testing"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v3"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"

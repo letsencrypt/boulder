@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v3"
 	"github.com/honeycombio/beeline-go"
 	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/jmhodges/clock"
@@ -38,7 +39,6 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.

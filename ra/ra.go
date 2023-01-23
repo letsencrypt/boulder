@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-jose/go-jose/v3"
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/akamai"
@@ -47,7 +48,6 @@ import (
 	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/square/go-jose.v2"
 )
 
 var (

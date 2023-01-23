@@ -23,9 +23,9 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/go-jose/go-jose/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/square/go-jose.v2"
 )
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the

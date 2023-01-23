@@ -134,6 +134,11 @@ github.com/felixge/httpsnoop
 # github.com/go-gorp/gorp/v3 v3.0.2
 ## explicit; go 1.13
 github.com/go-gorp/gorp/v3
+# github.com/go-jose/go-jose/v3 v3.0.0
+## explicit; go 1.12
+github.com/go-jose/go-jose/v3
+github.com/go-jose/go-jose/v3/cipher
+github.com/go-jose/go-jose/v3/json
 # github.com/go-redis/redis/v8 v8.11.5
 ## explicit; go 1.17
 github.com/go-redis/redis/v8
@@ -455,11 +460,6 @@ gopkg.in/alexcesaro/statsd.v2
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit
 gopkg.in/fsnotify.v1
-# gopkg.in/square/go-jose.v2 v2.6.0
-## explicit
-gopkg.in/square/go-jose.v2
-gopkg.in/square/go-jose.v2/cipher
-gopkg.in/square/go-jose.v2/json
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 ## explicit
 gopkg.in/tomb.v1

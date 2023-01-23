@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
+	jose "github.com/go-jose/go-jose/v3"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	jose "gopkg.in/square/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
