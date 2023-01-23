@@ -1,10 +1,8 @@
 version: '3'
 services:
   boulder:
-    # CAUTION: Changing the Go version in this tag changes the version of Go
-    # used for release builds. make-deb.sh relies on being able to parse the
-    # numeric version between 'go' and the underscore-prefixed date. If you make
-    # changes to these tokens, please update this parsing logic.
+    # When updating the Go version here, please also update
+    # .github/workflows/release.yml and .github/workflows/try-release.yml
     image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.19.5_2023-01-10}
     environment:
       FAKE_DNS: 10.77.77.77
