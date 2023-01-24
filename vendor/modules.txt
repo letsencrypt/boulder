@@ -455,9 +455,11 @@ gopkg.in/alexcesaro/statsd.v2
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit
 gopkg.in/fsnotify.v1
+# gopkg.in/go-jose/go-jose.v2 v2.6.0
+## explicit
+gopkg.in/go-jose/go-jose.v2
 # gopkg.in/square/go-jose.v2 v2.6.0
 ## explicit
-gopkg.in/square/go-jose.v2
 gopkg.in/square/go-jose.v2/cipher
 gopkg.in/square/go-jose.v2/json
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
