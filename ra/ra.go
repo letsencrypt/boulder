@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
-	"golang.org/x/exp/slices"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/square/go-jose.v2"
@@ -725,18 +724,9 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 
 	// Check the challenges themselves too.
 	for _, authz := range authzs {
-		chall, err := authz.SolvedBy()
+		err = ra.PA.CheckAuthz(authz)
 		if err != nil {
 			return nil, err
-		}
-
-		challTypes, err := ra.PA.ChallengeTypesFor(authz.Identifier)
-		if err != nil {
-			return nil, err
-		}
-
-		if !slices.Contains(challTypes, chall) {
-			return nil, errors.New("authorization fulfilled by invalid challenge")
 		}
 	}
 

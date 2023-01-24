@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/exp/slices"
 	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 
@@ -537,9 +538,9 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 	return nil
 }
 
-// ChallengesTypesFor determines which challenge types are acceptable for the
+// challengesTypesFor determines which challenge types are acceptable for the
 // given identifier.
-func (pa *AuthorityImpl) ChallengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
+func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	var challenges []core.AcmeChallenge
 
 	// If the identifier is for a DNS wildcard name we only
@@ -577,7 +578,7 @@ func (pa *AuthorityImpl) ChallengeTypesFor(identifier identifier.ACMEIdentifier)
 // The resulting challenge objects all share a single challenge token and are
 // returned in a random order.
 func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
-	challTypes, err := pa.ChallengeTypesFor(identifier)
+	challTypes, err := pa.challengeTypesFor(identifier)
 	if err != nil {
 		return nil, err
 	}
@@ -613,4 +614,24 @@ func (pa *AuthorityImpl) ChallengeTypeEnabled(t core.AcmeChallenge) bool {
 	pa.blocklistMu.RLock()
 	defer pa.blocklistMu.RUnlock()
 	return pa.enabledChallenges[t]
+}
+
+// CheckAuthz determines that an authorization was fulfilled by a challenge
+// that was appropriate for the kind of identifier in the authorization.
+func (pa *AuthorityImpl) CheckAuthz(authz *core.Authorization) error {
+	chall, err := authz.SolvedBy()
+	if err != nil {
+		return err
+	}
+
+	challTypes, err := pa.challengeTypesFor(authz.Identifier)
+	if err != nil {
+		return err
+	}
+
+	if !slices.Contains(challTypes, chall) {
+		return errors.New("authorization fulfilled by invalid challenge")
+	}
+
+	return nil
 }
