@@ -2,6 +2,7 @@ package rocsp_config
 
 import (
 	"bytes"
+	"crypto/tls"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
@@ -110,6 +111,9 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (r
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
+	// Set TLS config to TLSv1.3 exclusively.
+	tlsConfig.MinVersion = tls.VersionTLS13
+	tlsConfig.MaxVersion = tls.VersionTLS13
 
 	timeout := c.Timeout.Duration
 
