@@ -537,12 +537,10 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 	return nil
 }
 
-// ChallengesFor makes a decision of what challenges are acceptable for
-// the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
-	challenges := []core.Challenge{}
-
-	token := core.NewToken()
+// ChallengesTypesFor determines which challenge types are acceptable for the
+// given identifier.
+func (pa *AuthorityImpl) ChallengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
+	var challenges []core.AcmeChallenge
 
 	// If the identifier is for a DNS wildcard name we only
 	// provide a DNS-01 challenge as a matter of CA policy.
@@ -555,20 +553,46 @@ func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]
 					"challenge type is not enabled")
 		}
 		// Only provide a DNS-01-Wildcard challenge
-		challenges = []core.Challenge{core.DNSChallenge01(token)}
+		challenges = []core.AcmeChallenge{core.ChallengeTypeDNS01}
 	} else {
 		// Otherwise we collect up challenges based on what is enabled.
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeHTTP01) {
-			challenges = append(challenges, core.HTTPChallenge01(token))
+			challenges = append(challenges, core.ChallengeTypeHTTP01)
 		}
 
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeTLSALPN01) {
-			challenges = append(challenges, core.TLSALPNChallenge01(token))
+			challenges = append(challenges, core.ChallengeTypeTLSALPN01)
 		}
 
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {
-			challenges = append(challenges, core.DNSChallenge01(token))
+			challenges = append(challenges, core.ChallengeTypeDNS01)
 		}
+	}
+
+	return challenges, nil
+}
+
+// ChallengesFor determines which challenge types are acceptable for the given
+// identifier, and constructs new challenge objects for those challenge types.
+// The resulting challenge objects all share a single challenge token and are
+// returned in a random order.
+func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
+	challTypes, err := pa.ChallengeTypesFor(identifier)
+	if err != nil {
+		return nil, err
+	}
+
+	challenges := make([]core.Challenge, len(challTypes))
+
+	token := core.NewToken()
+
+	for i, t := range challTypes {
+		c, err := core.NewChallenge(t, token)
+		if err != nil {
+			return nil, err
+		}
+
+		challenges[i] = c
 	}
 
 	// We shuffle the challenges to prevent ACME clients from relying on the

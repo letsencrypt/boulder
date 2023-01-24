@@ -730,14 +730,9 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 			return nil, err
 		}
 
-		challs, err := ra.PA.ChallengesFor(authz.Identifier)
+		challTypes, err := ra.PA.ChallengeTypesFor(authz.Identifier)
 		if err != nil {
 			return nil, err
-		}
-
-		challTypes := make([]core.AcmeChallenge, len(challs))
-		for i, c := range challs {
-			challTypes[i] = c.Type
 		}
 
 		if !slices.Contains(challTypes, chall) {

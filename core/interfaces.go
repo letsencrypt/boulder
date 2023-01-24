@@ -8,6 +8,7 @@ import (
 // TODO(#5891): Move this interface to a more appropriate location.
 type PolicyAuthority interface {
 	WillingToIssueWildcards(identifiers []identifier.ACMEIdentifier) error
+	ChallengeTypesFor(domain identifier.ACMEIdentifier) ([]AcmeChallenge, error)
 	ChallengesFor(domain identifier.ACMEIdentifier) ([]Challenge, error)
 	ChallengeTypeEnabled(t AcmeChallenge) bool
 }
