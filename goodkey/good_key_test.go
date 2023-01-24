@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
@@ -290,12 +289,8 @@ func TestDBBlocklistReject(t *testing.T) {
 }
 
 func TestRSAStrangeSize(t *testing.T) {
-	err := features.Set(map[string]bool{"RestrictRSAKeySizes": true})
-	test.AssertNotError(t, err, "failed to set features")
-	defer features.Reset()
-
 	k := &rsa.PublicKey{N: big.NewInt(10)}
-	err = testingPolicy.GoodKey(context.Background(), k)
+	err := testingPolicy.GoodKey(context.Background(), k)
 	test.AssertError(t, err, "expected GoodKey to fail")
 	test.AssertEquals(t, err.Error(), "key size not supported: 4")
 }

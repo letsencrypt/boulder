@@ -71,10 +71,7 @@
     "staleTimeout": "5m",
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
-    "features": {
-      "PrecertificateRevocation": true,
-      "StripDefaultSchemePort": true
-    }
+    "features": {}
   },
 
   "syslog": {

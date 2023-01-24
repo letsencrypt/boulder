@@ -3,10 +3,10 @@ module github.com/letsencrypt/boulder
 go 1.18
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.16.11
+	github.com/aws/aws-sdk-go-v2 v1.17.3
 	github.com/aws/aws-sdk-go-v2/config v1.17.1
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.27.1
-	github.com/aws/smithy-go v1.13.1
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.30.0
+	github.com/aws/smithy-go v1.13.5
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
 	github.com/eggsampler/acme/v3 v3.3.0
 	github.com/go-gorp/gorp/v3 v3.0.2
@@ -36,22 +36,22 @@ require (
 	golang.org/x/text v0.4.0
 	google.golang.org/grpc v1.49.0
 	google.golang.org/protobuf v1.28.1
-	gopkg.in/square/go-jose.v2 v2.6.0
+	gopkg.in/go-jose/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.3 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.10 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.12.14 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.12 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.18 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.12 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.27 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.19 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.0.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.1.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.12 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.13.8 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.0.18 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.11 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.1.22 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.21 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.13.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.11.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.13 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -78,6 +78,7 @@ require (
 	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
 	gopkg.in/alexcesaro/statsd.v2 v2.0.0 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
+	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
 

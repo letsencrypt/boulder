@@ -87,6 +87,15 @@ func checkOCSP(cert, issuer *x509.Certificate, want int) (bool, error) {
 	return ocspRes.Status == want, nil
 }
 
+// Return an error if the root settings are nonempty and do not match the
+// expected root.
+func (p TLSProbe) checkRoot(rootOrg, rootCN string) error {
+	if (p.rootCN == "" && p.rootOrg == "") || (rootOrg == p.rootOrg && rootCN == p.rootCN) {
+		return nil
+	}
+	return fmt.Errorf("Expected root does not match.")
+}
+
 // Export expiration timestamp and reason to Prometheus.
 func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
 	p.notAfter.WithLabelValues(p.hostname).Set(float64(notAfter.Unix()))
@@ -124,7 +133,8 @@ func (p TLSProbe) probeExpired(timeout time.Duration) bool {
 	}
 
 	root := peers[len(peers)-1].Issuer
-	if root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN {
+	err = p.checkRoot(root.Organization[0], root.CommonName)
+	if err != nil {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
@@ -143,7 +153,8 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 	defer conn.Close()
 	peers := conn.ConnectionState().PeerCertificates
 	root := peers[len(peers)-1].Issuer
-	if root.Organization[0] != p.rootOrg || root.CommonName != p.rootCN {
+	err = p.checkRoot(root.Organization[0], root.CommonName)
+	if err != nil {
 		p.exportMetrics(peers[0].NotAfter, rootDidNotMatch)
 		return false
 	}
@@ -170,10 +181,11 @@ func (p TLSProbe) probeUnexpired(timeout time.Duration) bool {
 }
 
 // Probe performs the configured TLS probe. Return true if the root has the
-// expected Subject, and the end entity certificate has the correct expiration
-// status (either expired or unexpired, depending on what is configured).
-// Exports metrics for the NotAfter timestamp of the end entity certificate and
-// the reason for the Probe returning false ("none" if returns true).
+// expected Subject (or if no root is provided for comparison in settings), and
+// the end entity certificate has the correct expiration status (either expired
+// or unexpired, depending on what is configured). Exports metrics for the
+// NotAfter timestamp of the end entity certificate and the reason for the Probe
+// returning false ("none" if returns true).
 func (p TLSProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	start := time.Now()
 	var success bool

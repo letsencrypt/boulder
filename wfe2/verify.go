@@ -15,7 +15,7 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
