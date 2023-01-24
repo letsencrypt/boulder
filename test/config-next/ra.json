@@ -93,7 +93,6 @@
     },
     "features": {
       "StoreRevokerInfo": true,
-      "StreamlineOrderAndAuthzs": true,
       "ROCSPStage7": true
     },
     "ctLogs": {
