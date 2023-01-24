@@ -97,24 +97,28 @@ type dnsBuilder struct{}
 
 // Build creates and starts a DNS resolver that watches the name resolution of the target.
 func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
-	service, domain, err := parseServiceDomain(target.Endpoint)
-	if err != nil {
-		return nil, err
+	var names []name
+	for _, i := range strings.Split(target.Endpoint, ",") {
+		service, domain, err := parseServiceDomain(i)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, name{service: service, domain: domain})
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &dnsResolver{
-		service: service,
-		domain:  domain,
-		ctx:     ctx,
-		cancel:  cancel,
-		cc:      cc,
-		rn:      make(chan struct{}, 1),
+		names:  names,
+		ctx:    ctx,
+		cancel: cancel,
+		cc:     cc,
+		rn:     make(chan struct{}, 1),
 	}
 
 	if target.Authority == "" {
 		d.resolver = defaultResolver
 	} else {
+		var err error
 		d.resolver, err = customAuthorityResolver(target.Authority)
 		if err != nil {
 			return nil, err
@@ -136,10 +140,14 @@ type netResolver interface {
 	LookupSRV(ctx context.Context, service, proto, name string) (cname string, addrs []*net.SRV, err error)
 }
 
+type name struct {
+	service string
+	domain  string
+}
+
 // dnsResolver watches for the name resolution update for a non-IP target.
 type dnsResolver struct {
-	service  string
-	domain   string
+	names    []name
 	resolver netResolver
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -209,29 +217,31 @@ func (d *dnsResolver) watcher() {
 
 func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
 	var newAddrs []resolver.Address
-	_, srvs, err := d.resolver.LookupSRV(d.ctx, d.service, "tcp", d.domain)
-	if err != nil {
-		err = handleDNSError(err, "SRV") // may become nil
-		return nil, err
-	}
-	for _, s := range srvs {
-		backendAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
+	for _, n := range d.names {
+		_, srvs, err := d.resolver.LookupSRV(d.ctx, n.service, "tcp", n.domain)
 		if err != nil {
-			err = handleDNSError(err, "A") // may become nil
-			if err == nil {
-				// If there are other SRV records, look them up and ignore this
-				// one that does not exist.
-				continue
-			}
+			err = handleDNSError(err, "SRV") // may become nil
 			return nil, err
 		}
-		for _, a := range backendAddrs {
-			ip, ok := formatIP(a)
-			if !ok {
-				return nil, fmt.Errorf("srv: error parsing A record IP address %v", a)
+		for _, s := range srvs {
+			backendAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
+			if err != nil {
+				err = handleDNSError(err, "A") // may become nil
+				if err == nil {
+					// If there are other SRV records, look them up and ignore this
+					// one that does not exist.
+					continue
+				}
+				return nil, err
 			}
-			addr := ip + ":" + strconv.Itoa(int(s.Port))
-			newAddrs = append(newAddrs, resolver.Address{Addr: addr, ServerName: s.Target})
+			for _, a := range backendAddrs {
+				ip, ok := formatIP(a)
+				if !ok {
+					return nil, fmt.Errorf("srv: error parsing A record IP address %v", a)
+				}
+				addr := ip + ":" + strconv.Itoa(int(s.Port))
+				newAddrs = append(newAddrs, resolver.Address{Addr: addr, ServerName: s.Target})
+			}
 		}
 	}
 	return newAddrs, nil
