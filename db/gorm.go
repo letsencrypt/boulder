@@ -15,7 +15,7 @@ var mariaDBUnquotedIdentifierRE = regexp.MustCompile("^[0-9a-zA-Z$_]+$")
 
 func validMariaDBUnquotedIdentifier(s string) error {
 	if !mariaDBUnquotedIdentifierRE.MatchString(s) {
-		return fmt.Errorf("invalid database column or table name %q", s)
+		return fmt.Errorf("invalid MariaDB identifier %q", s)
 	}
 
 	allNumeric := true
@@ -23,7 +23,7 @@ func validMariaDBUnquotedIdentifier(s string) error {
 	for i, c := range []byte(s) {
 		if c < '0' || c > '9' {
 			if startsNumeric && len(s) > i && s[i] == 'e' {
-				return fmt.Errorf("database column or table name looks like floating point notation: %q", s)
+				return fmt.Errorf("MariaDB identifier looks like floating point: %q", s)
 			}
 			allNumeric = false
 			break
@@ -31,7 +31,7 @@ func validMariaDBUnquotedIdentifier(s string) error {
 		startsNumeric = true
 	}
 	if allNumeric {
-		return fmt.Errorf("database column or table name contained only numerals: %q", s)
+		return fmt.Errorf("MariaDB identifier contains only numerals: %q", s)
 	}
 	return nil
 }
