@@ -37,7 +37,7 @@ logger.setLevel(int(os.getenv('LOGLEVEL', 20)))
 
 DIRECTORY_V2 = os.getenv('DIRECTORY_V2', 'http://boulder.service.consul:4001/directory')
 ACCEPTABLE_TOS = os.getenv('ACCEPTABLE_TOS',"https://boulder.service.consul:4431/terms/v7")
-PORT = os.getenv('PORT', '5002')
+PORT = os.getenv('PORT', '80')
 
 os.environ.setdefault('REQUESTS_CA_BUNDLE', 'test/wfe-tls/minica.pem')
 

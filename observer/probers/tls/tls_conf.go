@@ -83,11 +83,6 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, err
 	}
 
-	// Set default Root Organization if none set.
-	if c.RootOrg == "" {
-		c.RootOrg = "Internet Security Research Group"
-	}
-
 	// Validate the Prometheus collectors that were passed in
 	coll, ok := collectors[notAfterName]
 	if !ok {

@@ -59,7 +59,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
@@ -3699,7 +3699,6 @@ func TestRevokeCertByKey(t *testing.T) {
 	// Revoking should work, but override the requested reason and block the key.
 	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
-		Code: ocsp.Unspecified,
 	})
 	test.AssertNotError(t, err, "should have succeeded")
 	test.AssertEquals(t, len(mockSA.blocked), 1)
