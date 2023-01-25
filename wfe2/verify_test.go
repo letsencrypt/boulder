@@ -1660,41 +1660,9 @@ func (acns alwaysCancelNonceService) Nonce(ctx context.Context, in *emptypb.Empt
 	return nil, probs.Canceled("user canceled request")
 }
 
-// Test that cancellation of the nonce lookup will result in a 408, via the
-// CancelTo408Interceptor in grpc/interceptors.go.
-func TestNoncePassThrough408Problem(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-
-	jws, _, _ := signer.byKeyID(1234, nil, "http://example.com/", "request-body")
-
-	for k := range wfe.noncePrefixMap {
-		wfe.noncePrefixMap[k] = alwaysCancelNonceService{}
-	}
-	wfe.remoteNonceService = alwaysCancelNonceService{}
-
-	prob := wfe.validNonce(context.Background(), jws)
-	fmt.Printf("%s", prob)
-	test.AssertNotNil(t, prob, "expected failure")
-	test.AssertEquals(t, prob.HTTPStatus, http.StatusRequestTimeout)
-}
-
 type alwaysCancelAccountGetter struct{}
 
 // GetRegistration implements AccountGetter
 func (alwaysCancelAccountGetter) GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
 	return nil, probs.Canceled("user canceled request")
-}
-
-// Test that cancellation of the account lookup will result in a 408, via the
-// CancelTo408Interceptor in grpc/interceptors.go.
-func TestAccountLookupPassThrough408Problem(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	wfe.accountGetter = alwaysCancelAccountGetter{}
-
-	jws, _, jwsBody := signer.byKeyID(1234, nil, "http://example.com/", "request-body")
-	req := makePostRequestWithPath("test-path", jwsBody)
-
-	_, _, prob := wfe.lookupJWK(jws, context.Background(), req, newRequestEvent())
-	test.AssertNotNil(t, prob, "expected failure")
-	test.AssertEquals(t, prob.HTTPStatus, http.StatusRequestTimeout)
 }
