@@ -1175,22 +1175,6 @@ func TestChallenge(t *testing.T) {
 	}
 }
 
-type mockSAGetCertificateCanceled struct {
-	*mocks.StorageAuthorityReadOnly
-}
-
-func (mockSAGetCertificateCanceled) GetCertificate(context.Context, *sapb.Serial, ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
-type mockSAGetAuthorization2Canceled struct {
-	*mocks.StorageAuthorityReadOnly
-}
-
-func (mockSAGetAuthorization2Canceled) GetAuthorization2(context.Context, *sapb.AuthorizationID2, ...grpc.CallOption) (*corepb.Authorization, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
 // MockRAPerformValidationError is a mock RA that just returns an error on
 // PerformValidation.
 type MockRAPerformValidationError struct {
@@ -2834,14 +2818,6 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 		}`)
 }
 
-type mockSAGetOrderCanceled struct {
-	sapb.StorageAuthorityReadOnlyClient
-}
-
-func (sa mockSAGetOrderCanceled) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
 func TestGetOrder(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
@@ -3201,14 +3177,6 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	}
 }
 
-type mockSAGetRegByKeyCanceled struct {
-	sapb.StorageAuthorityReadOnlyClient
-}
-
-func (sa *mockSAGetRegByKeyCanceled) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
 type mockSAGetRegByKeyNotFound struct {
 	sapb.StorageAuthorityReadOnlyClient
 }
@@ -3248,15 +3216,6 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 		"detail": "No account exists with the provided key",
 		"status": 400
 	}`)
-}
-
-// mockRANewRegCanceled is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`
-type mockRANewRegCanceled struct {
-	MockRegistrationAuthority
-}
-
-func (ra *mockRANewRegCanceled) NewRegistration(context.Context, *corepb.Registration, ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, probs.Canceled("canceled!")
 }
 
 func TestPrepAuthzForDisplay(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
@@ -26,7 +25,7 @@ import (
 // a client certificate and validates the the server certificate based
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
-func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryClientInterceptor) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (*grpc.ClientConn, error) {
 	if c == nil {
 		return nil, errors.New("nil gRPC client config provided: JSON config is probably missing a fooService section")
 	}
@@ -40,12 +39,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 	}
 
 	cmi := clientMetadataInterceptor{c.Timeout.Duration, metrics, clk}
-
-	unaryInterceptors := append(interceptors, []grpc.UnaryClientInterceptor{
-		cmi.Unary,
-		cmi.metrics.grpcMetrics.UnaryClientInterceptor(),
-		hnygrpc.UnaryClientInterceptor(),
-	}...)
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
 		cmi.Stream,
@@ -63,7 +56,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 		target,
 		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
 		grpc.WithTransportCredentials(creds),
-		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	)
 }

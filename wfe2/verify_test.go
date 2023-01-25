@@ -16,7 +16,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/mocks"
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -24,7 +23,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/go-jose/go-jose.v2"
 )
 
@@ -1648,21 +1646,4 @@ func TestMatchJWSURLs(t *testing.T) {
 			}
 		})
 	}
-}
-
-type alwaysCancelNonceService struct{}
-
-func (acns alwaysCancelNonceService) Redeem(ctx context.Context, msg *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return nil, probs.Canceled("user canceled request")
-}
-
-func (acns alwaysCancelNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	return nil, probs.Canceled("user canceled request")
-}
-
-type alwaysCancelAccountGetter struct{}
-
-// GetRegistration implements AccountGetter
-func (alwaysCancelAccountGetter) GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, probs.Canceled("user canceled request")
 }
