@@ -252,39 +252,53 @@ func eraseSliceType(input []string) []any {
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
 func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
-	var authzModels []sa.AuthzModel
-	fmt.Printf("nnnn: %#v\n", append(append([]any(nil),
-		cert.RegistrationID,
-		core.StatusDeactivated,
-		core.StatusValid,
-		cert.Issued, // TODO: adjust for backdating?
-		cert.Issued, // TODO: adjust for backdating?
-		identifier.DNS,
-	), eraseSliceType(dnsNames)...))
+	var authzModels []*sa.AuthzModel
 	_, err := c.dbMap.Select(&authzModels,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
 			status IN (?, ?) AND
 			expires >= ? AND
-			attemptedAt < ? AND
+			attemptedAt <= ? AND
 			identifierType = ? AND
 			identifierValue IN (%s)`,
 			sa.AuthzFields,
 			db.QuestionMarks(len(dnsNames))),
 		append(append([]any(nil),
 			cert.RegistrationID,
-			1,           // "valid" - see sa/model.go
-			3,           // "deactivated"
-			cert.Issued, // TODO: adjust for backdating?
-			cert.Issued, // TODO: adjust for backdating?
-			identifier.DNS,
+			1, // "valid" - see sa/model.go
+			3, // "deactivated"
+			cert.Issued,
+			cert.Issued,
+			0, // "dns" - see sa/model.go
 		), eraseSliceType(dnsNames)...)...,
 	)
-	fmt.Printf("validations: \n")
-	for _, v := range authzModels {
-		fmt.Printf("  %#v\n", v)
+
+	if err != nil {
+		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}
-	return err
+
+	if len(authzModels) == 0 {
+		return fmt.Errorf("no relevant authzs found valid at %s",
+			cert.Issued)
+	}
+
+	nameToAuthz := make(map[string]*sa.AuthzModel)
+	for _, m := range authzModels {
+		nameToAuthz[m.IdentifierValue] = m
+	}
+
+	var errors []error
+	for _, name := range dnsNames {
+		_, ok := nameToAuthz[name]
+		if !ok {
+			errors = append(errors, fmt.Errorf("missing authz for %q", name))
+			continue
+		}
+	}
+	if len(errors) > 0 {
+		return fmt.Errorf("%s", errors)
+	}
+	return nil
 }
 
 // checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
@@ -402,9 +416,11 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
 
-		err = c.checkValidations(cert, parsedCert.DNSNames)
-		if err != nil {
-			problems = append(problems, err.Error())
+		if features.Enabled(features.CertCheckerChecksValidations) {
+			err = c.checkValidations(cert, parsedCert.DNSNames)
+			if err != nil {
+				problems = append(problems, err.Error())
+			}
 		}
 	}
 	return dnsNames, problems

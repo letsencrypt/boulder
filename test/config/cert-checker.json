@@ -15,7 +15,10 @@
     "acceptableValidityDurations": ["7776000s"],
     "ignoredLints": [
       "n_subject_common_name_included"
-    ]
+    ],
+    "features": {
+      "CertCheckerChecksValidations": true
+    }
   },
 
   "pa": {
@@ -27,7 +30,7 @@
   },
 
   "syslog": {
-    "stdoutlevel": 6,
-    "sysloglevel": 6
+    "stdoutlevel": 7,
+    "sysloglevel": 7
   }
 }
