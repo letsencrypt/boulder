@@ -1,3 +1,86 @@
+# v1.18.9 (2023-01-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.8 (2023-01-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.7 (2022-12-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.6 (2022-12-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.5 (2022-12-15)
+
+* **Bug Fix**: Unify logic between shared config and in finding home directory
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.4 (2022-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.3 (2022-11-22)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.2 (2022-11-17)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.1 (2022-11-16)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.18.0 (2022-11-11)
+
+* **Announcement**: When using the SSOTokenProvider, a previous implementation incorrectly compensated for invalid SSOTokenProvider configurations in the shared profile. This has been fixed via PR #1903 and tracked in issue #1846
+* **Feature**: Adds token refresh support (via SSOTokenProvider) when using the SSOCredentialProvider
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.11 (2022-11-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.10 (2022-10-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.9 (2022-10-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.8 (2022-09-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.7 (2022-09-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.6 (2022-09-14)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.5 (2022-09-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.4 (2022-08-31)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.3 (2022-08-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.17.2 (2022-08-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.17.1 (2022-08-15)
 
 * **Dependency Update**: Updated to the latest SDK module versions
