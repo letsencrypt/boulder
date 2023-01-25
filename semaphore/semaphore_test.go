@@ -207,21 +207,19 @@ func TestMaxWaiters(t *testing.T) {
 	sem := semaphore.NewWeighted(1, 10)
 	sem.Acquire(ctx, 1)
 
-	ch := make(chan struct{})
 	for i := 0; i < 10; i++ {
 		go func() {
-			ch <- struct{}{}
 			sem.Acquire(ctx, 1)
 			<-ctx.Done()
 		}()
-		// We want to wait until the goroutine is actually blocked in `sem.Acquire`
-		// but we have no way of doing that. Instead, wait for the goroutine to
-		// have written to ch. This is a race condition! But it seems to work out.
-		// If the race condition works out badly, we'll hang below on line 224
-		// when trying to acquire the semaphore (instead of erroring out early).
-		<-ch
 	}
 
+	// Since the goroutines that act as waiters are intended to block in
+	// sem.Acquire, there's no principled wait to trigger here once they're
+	// blocked. Instead, loop until we reach the expected number of waiters.
+	for sem.NumWaiters() < 10 {
+		time.Sleep(10 * time.Millisecond)
+	}
 	err := sem.Acquire(ctx, 1)
 	if err != semaphore.ErrMaxWaiters {
 		t.Errorf("expected error when maxWaiters was reached, but got %#v", err)
