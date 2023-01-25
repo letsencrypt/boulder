@@ -419,7 +419,11 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		if features.Enabled(features.CertCheckerChecksValidations) {
 			err = c.checkValidations(cert, parsedCert.DNSNames)
 			if err != nil {
-				problems = append(problems, err.Error())
+				if features.Enabled(features.CertCheckerRequiresValidations) {
+					problems = append(problems, err.Error())
+				} else {
+					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)
+				}
 			}
 		}
 	}

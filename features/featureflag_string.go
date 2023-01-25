@@ -22,11 +22,12 @@ func _() {
 	_ = x[ROCSPStage7-11]
 	_ = x[ExpirationMailerUsesJoin-12]
 	_ = x[CertCheckerChecksValidations-13]
+	_ = x[CertCheckerRequiresValidations-14]
 }
 
-const _FeatureFlag_name = "unusedStoreRevokerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidations"
+const _FeatureFlag_name = "unusedStoreRevokerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidations"
 
-var _FeatureFlag_index = [...]uint8{0, 6, 22, 42, 55, 69, 87, 105, 116, 132, 157, 168, 179, 203, 231}
+var _FeatureFlag_index = [...]uint16{0, 6, 22, 42, 55, 69, 87, 105, 116, 132, 157, 168, 179, 203, 231, 261}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
