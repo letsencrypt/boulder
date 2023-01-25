@@ -12,7 +12,7 @@
     },
     "apiBase": "http://localhost:4001",
     "domainBase": "com",
-    "httpOneAddr": "localhost:5002",
+    "httpOneAddr": "localhost:80",
     "regKeySize": 2048,
     "regEmail": "loadtesting@letsencrypt.org",
     "maxRegs": 20,
