@@ -63,7 +63,14 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
+		// OrderLifetime is how far in the future an Order's expiration date should
+		// be set when it is first created.
 		OrderLifetime cmd.ConfigDuration
+
+		// FinalizeTimeout is how long the RA is willing to wait for the Order
+		// finalization process to take. This config parameter only has an effect
+		// if the AsyncFinalization feature flag is enabled.
+		FinalizeTimeout cmd.ConfigDuration
 
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we
@@ -228,6 +235,10 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
+	if c.RA.FinalizeTimeout.Duration == 0 {
+		c.RA.FinalizeTimeout.Duration = 5 * time.Minute
+	}
+
 	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
@@ -248,6 +259,7 @@ func main() {
 		pubc,
 		caaClient,
 		c.RA.OrderLifetime.Duration,
+		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		apc,
 		issuerCerts,

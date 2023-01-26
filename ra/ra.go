@@ -89,6 +89,7 @@ type RegistrationAuthorityImpl struct {
 	maxNames                     int
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
+	finalizeTimeout              time.Duration
 
 	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
 	issuersByID     map[issuance.IssuerID]*issuance.Certificate
@@ -123,6 +124,7 @@ func NewRegistrationAuthorityImpl(
 	pubc pubpb.PublisherClient,
 	caaClient caaChecker,
 	orderLifetime time.Duration,
+	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
 	purger akamaipb.AkamaiPurgerClient,
 	issuers []*issuance.Certificate,
@@ -235,6 +237,7 @@ func NewRegistrationAuthorityImpl(
 		publisher:                    pubc,
 		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
+		finalizeTimeout:              finalizeTimeout,
 		ctpolicy:                     ctp,
 		ctpolicyResults:              ctpolicyResults,
 		purger:                       purger,
