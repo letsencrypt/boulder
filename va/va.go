@@ -20,7 +20,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -193,7 +192,6 @@ type ValidationAuthorityImpl struct {
 
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(
-	pc *cmd.PortConfig,
 	resolver bdns.Client,
 	remoteVAs []RemoteVA,
 	maxRemoteFailures int,
@@ -204,15 +202,6 @@ func NewValidationAuthorityImpl(
 	logger blog.Logger,
 	accountURIPrefixes []string,
 ) (*ValidationAuthorityImpl, error) {
-	if pc.HTTPPort == 0 {
-		pc.HTTPPort = 80
-	}
-	if pc.HTTPSPort == 0 {
-		pc.HTTPSPort = 443
-	}
-	if pc.TLSPort == 0 {
-		pc.TLSPort = 443
-	}
 
 	if features.Enabled(features.CAAAccountURI) && len(accountURIPrefixes) == 0 {
 		return nil, errors.New("no account URI prefixes configured")
@@ -222,9 +211,9 @@ func NewValidationAuthorityImpl(
 		log:                logger,
 		dnsClient:          resolver,
 		issuerDomain:       issuerDomain,
-		httpPort:           pc.HTTPPort,
-		httpsPort:          pc.HTTPSPort,
-		tlsPort:            pc.TLSPort,
+		httpPort:           80,
+		httpsPort:          443,
+		tlsPort:            443,
 		userAgent:          userAgent,
 		clk:                clk,
 		metrics:            initMetrics(stats),

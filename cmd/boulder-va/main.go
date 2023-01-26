@@ -22,8 +22,6 @@ type Config struct {
 
 		IssuerDomain string
 
-		PortConfig cmd.PortConfig
-
 		// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
 		// needed to resolve CAA addresses over multiple paths
 		CAADistributedResolver struct {
@@ -90,21 +88,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	pc := &cmd.PortConfig{
-		HTTPPort:  80,
-		HTTPSPort: 443,
-		TLSPort:   443,
-	}
-	if c.VA.PortConfig.HTTPPort != 0 {
-		pc.HTTPPort = c.VA.PortConfig.HTTPPort
-	}
-	if c.VA.PortConfig.HTTPSPort != 0 {
-		pc.HTTPSPort = c.VA.PortConfig.HTTPSPort
-	}
-	if c.VA.PortConfig.TLSPort != 0 {
-		pc.TLSPort = c.VA.PortConfig.TLSPort
-	}
-
 	var dnsTimeout time.Duration
 	if c.VA.DNSTimeout != "" {
 		dnsTimeout, err = time.ParseDuration(c.VA.DNSTimeout)
@@ -164,7 +147,6 @@ func main() {
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(
-		pc,
 		resolver,
 		remotes,
 		c.VA.MaxRemoteValidationFailures,
