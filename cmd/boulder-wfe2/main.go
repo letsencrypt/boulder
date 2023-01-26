@@ -57,6 +57,11 @@ type Config struct {
 		// this should contain both local and remote nonce-service instances.
 		RedeemNonceService *cmd.GRPCClientConfig
 
+		// RedeemNonceSalt is a salt value used to derive a nonce prefix for
+		// necessary for redeeming nonces. This value should be the same across
+		// all nonce-service and WFE instances in a multi-DC deployment.
+		RedeemNonceSalt cmd.PasswordConfig
+
 		// RedeemNonceServices contains a map of nonce-service prefixes to
 		// gRPC configs we want to use to redeem nonces. In a multi-DC deployment
 		// this should contain all nonce-services from all DCs as we want to be
@@ -299,37 +304,41 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	// TODO(#6610) Remove this check.
+	// TODO(#6610) Refactor these checks.
 	if c.WFE.RedeemNonceService != nil && c.WFE.RedeemNonceServices != nil {
-		cmd.Fail("Only one of 'RedeemNonceService' and 'RedeemNonceServices' should be configured.")
+		cmd.Fail("Only one of 'redeemNonceService' and 'redeemNonceServices' should be configured.")
+	}
+	if c.WFE.RedeemNonceService == nil && c.WFE.RedeemNonceServices == nil {
+		cmd.Fail("One of 'redeemNonceService' and 'redeemNonceServices' must be configured.")
+	}
+	if c.WFE.RedeemNonceService != nil && c.WFE.RedeemNonceSalt.PasswordFile == "" {
+		cmd.Fail("'redeemNonceSalt' must be configured if 'redeemNonceService' is configured.")
+	}
+	if c.WFE.GetNonceService == nil {
+		cmd.Fail("'getNonceService' must be configured")
 	}
 
-	// TODO(#6610) Remove this conditional and `npm`.
-	var npm map[string]noncepb.NonceServiceClient
-	var gnc noncepb.NonceServiceClient
+	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
+	gnc := noncepb.NewNonceServiceClient(getNonceConn)
+
 	var rnc noncepb.NonceServiceClient
+	var npm map[string]noncepb.NonceServiceClient
 	if c.WFE.RedeemNonceService != nil {
-		// Use the new RedeemNonceService to dynamically select nonce-service backend.
-		getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
-		gnc = noncepb.NewNonceServiceClient(getNonceConn)
+		// Dispatch nonce redemption RPCs dynamically.
 		redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 		rnc = noncepb.NewNonceServiceClient(redeemNonceConn)
-
 	} else {
-		// Fall back to the RedeemNonceServices nonce-service to prefix mapping.
+		// Dispatch nonce redpemption RPCs using a static mapping.
+		//
+		// TODO(#6610) Remove code below and the `npm` mapping.
 		npm = make(map[string]noncepb.NonceServiceClient)
-		if c.WFE.GetNonceService != nil {
-			getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
-			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
-			gnc = noncepb.NewNonceServiceClient(getNonceConn)
-			for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
-				serviceConfig := serviceConfig
-				conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
-				cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
-				npm[prefix] = noncepb.NewNonceServiceClient(conn)
-			}
+		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
+			serviceConfig := serviceConfig
+			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
+			npm[prefix] = noncepb.NewNonceServiceClient(conn)
 		}
 	}
 
