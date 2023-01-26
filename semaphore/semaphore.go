@@ -122,6 +122,12 @@ func (s *Weighted) Release(n int64) {
 	s.mu.Unlock()
 }
 
+func (s *Weighted) NumWaiters() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.waiters.Len()
+}
+
 func (s *Weighted) notifyWaiters() {
 	for {
 		next := s.waiters.Front()
