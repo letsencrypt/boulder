@@ -32,11 +32,23 @@ import (
 )
 
 const (
-	defaultMaxUsed = 65536
-	nonceLen       = 32
+	// PrefixLen is the character length of a nonce prefix.
+	//
+	// TODO(#6610): Remove once we've moved to PrefixLen.
+	PrefixLen = 6
+	// PrefixLenDepracated is the character length of a nonce prefix.
+	//
+	// DEPRECATED: Use PrefixLen instead.
+	// TODO(#6610): Remove once we've moved to PrefixLen.
+	PrefixLenDepracated = 4
+	defaultMaxUsed      = 65536
+	nonceLen            = 32
 )
 
 var errInvalidNonceLength = errors.New("invalid nonce length")
+
+// PrefixKey is exported for use as a key in a context.Context.
+type PrefixKey struct{}
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
@@ -80,7 +92,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	// the prefix to be three bytes (four characters) so that the
 	// bytes preceding the prefix wouldn't impact the encoding.
 	if prefix != "" {
-		if len(prefix) != 4 {
+		if len(prefix) != PrefixLenDepracated {
 			return nil, errors.New("nonce prefix must be 4 characters")
 		}
 		if _, err := base64.RawURLEncoding.DecodeString(prefix); err != nil {
@@ -247,6 +259,7 @@ func (ns *NonceService) Valid(nonce string) bool {
 	return true
 }
 
+// splitNonce splits a nonce into a prefix and a body.
 func splitNonce(nonce string) (string, string, error) {
 	if len(nonce) < 4 {
 		return "", "", errInvalidNonceLength

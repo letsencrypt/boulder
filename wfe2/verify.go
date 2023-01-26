@@ -195,9 +195,16 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	}
-	valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
-	if err != nil {
-		return web.ProblemDetailsForError(err, "failed to redeem nonce")
+	var valid bool
+	var err error
+	if wfe.noncePrefixMap == nil {
+		ctx = context.WithValue(ctx, nonce.PrefixKey{}, header.Nonce[:nonce.PrefixLen])
+		valid, err = nonce.RemoteRedeem(ctx, nil, header.Nonce)
+	} else {
+		valid, err = nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
+		if err != nil {
+			return web.ProblemDetailsForError(err, "failed to redeem nonce")
+		}
 	}
 	if !valid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
