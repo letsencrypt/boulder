@@ -20,7 +20,6 @@ import (
 func TestFermat(t *testing.T) {
 	t.Parallel()
 
-	// Create a base account to use for revocation tests.
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type testCase struct {
@@ -45,7 +44,6 @@ func TestFermat(t *testing.T) {
 		// factored is surprisingly tricky.
 	}
 
-	// Try to issue a certificate with
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
