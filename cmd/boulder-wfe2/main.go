@@ -461,7 +461,6 @@ func main() {
 		kp,
 		allCertChains,
 		issuerCerts,
-		gnc,
 		npm,
 		logger,
 		c.WFE.StaleTimeout.Duration,
@@ -470,6 +469,7 @@ func main() {
 		rac,
 		sac,
 		rnc,
+		gnc,
 		accountGetter,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")

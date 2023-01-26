@@ -350,7 +350,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		testKeyPolicy,
 		certChains,
 		issuerCertificates,
-		nonceGRPCService,
 		map[string]noncepb.NonceServiceClient{
 			noncePrefix: nonceGRPCService,
 		},
@@ -360,6 +359,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		7*24*time.Hour,
 		&MockRegistrationAuthority{},
 		mockSA,
+		nonceGRPCService,
+		nonceGRPCService,
 		mockSA)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
@@ -930,7 +931,7 @@ func TestNonceEndpoint(t *testing.T) {
 			test.AssertEquals(t, responseWriter.Code, tc.expectedStatus)
 			// And the response should contain a valid nonce in the Replay-Nonce header
 			nonce := responseWriter.Header().Get("Replay-Nonce")
-			redeemResp, err := wfe.gnc.Redeem(context.Background(), &noncepb.NonceMessage{Nonce: nonce})
+			redeemResp, err := wfe.rnc.Redeem(context.Background(), &noncepb.NonceMessage{Nonce: nonce})
 			test.AssertNotError(t, err, "redeeming nonce")
 			test.AssertEquals(t, redeemResp.Valid, true)
 			// The server MUST include a Cache-Control header field with the "no-store"

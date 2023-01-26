@@ -164,7 +164,6 @@ func NewWebFrontEndImpl(
 	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[issuance.IssuerNameID][][]byte,
 	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate,
-	gnc noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
 	staleTimeout time.Duration,
@@ -173,6 +172,7 @@ func NewWebFrontEndImpl(
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
 	rnc noncepb.NonceServiceClient,
+	gnc noncepb.NonceServiceClient,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
