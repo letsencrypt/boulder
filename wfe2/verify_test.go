@@ -25,7 +25,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 )
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the

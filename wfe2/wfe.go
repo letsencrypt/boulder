@@ -38,7 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -922,10 +922,8 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	// The RA will confirm that the authenticated account either originally
 	// issued the certificate, or has demonstrated control over all identifiers
 	// in the certificate.
-	// TODO(#5997): Remove `Code` from this request.
 	_, err := wfe.ra.RevokeCertByKey(ctx, &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
-		Code: int64(reason),
 	})
 	if err != nil {
 		return err
