@@ -84,9 +84,18 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 // plus a few other data items used in ACME.  Its methods are primarily handlers
 // for HTTPS requests for the various ACME functions.
 type WebFrontEndImpl struct {
-	ra            rapb.RegistrationAuthorityClient
-	sa            sapb.StorageAuthorityReadOnlyClient
-	nonce         noncepb.NonceServiceClient
+	ra rapb.RegistrationAuthorityClient
+	sa sapb.StorageAuthorityReadOnlyClient
+	// rnc is a nonce-service client used exclusively for the redemption of
+	// nonces. It uses an RPC load balancer which is configured to route
+	// requests to backends based on the prefix of the nonce being redeemed.
+	// When sending an RPC using this client ensure that you pass both the
+	// 'salt' and 'prefix' as metadata in the context of each RPC request.
+	rnc noncepb.NonceServiceClient
+	// gnc is a nonce-service client used exclusively for the issuance of
+	// nonces. It is configured to route requests to backends colocated with the
+	// WFE.
+	gnc           noncepb.NonceServiceClient
 	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
@@ -122,9 +131,8 @@ type WebFrontEndImpl struct {
 
 	// Register of anti-replay nonces
 	//
-	// Deprecated: See `nonce`, above.
-	remoteNonceService noncepb.NonceServiceClient
-	noncePrefixMap     map[string]noncepb.NonceServiceClient
+	// Deprecated: See `rnc`, above.
+	noncePrefixMap map[string]noncepb.NonceServiceClient
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -156,7 +164,7 @@ func NewWebFrontEndImpl(
 	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[issuance.IssuerNameID][][]byte,
 	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate,
-	remoteNonceService noncepb.NonceServiceClient,
+	gnc noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
 	staleTimeout time.Duration,
@@ -164,7 +172,7 @@ func NewWebFrontEndImpl(
 	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	noncec noncepb.NonceServiceClient,
+	rnc noncepb.NonceServiceClient,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -175,12 +183,13 @@ func NewWebFrontEndImpl(
 		return WebFrontEndImpl{}, errors.New("must provide at least one certificate chain")
 	}
 
-	if remoteNonceService == nil {
+	if gnc == nil {
 		return WebFrontEndImpl{}, errors.New("must provide a service for nonce issuance")
 	}
 
-	if noncePrefixMap == nil {
-		return WebFrontEndImpl{}, errors.New("must provide a set of services for nonce redemption")
+	// TODO(#6610): Remove the check for the map.
+	if noncePrefixMap == nil && rnc == nil {
+		return WebFrontEndImpl{}, errors.New("must provide a service for nonce redemption")
 	}
 
 	wfe := WebFrontEndImpl{
@@ -190,14 +199,14 @@ func NewWebFrontEndImpl(
 		certificateChains:            certificateChains,
 		issuerCertificates:           issuerCertificates,
 		stats:                        initStats(stats),
-		remoteNonceService:           remoteNonceService,
 		noncePrefixMap:               noncePrefixMap,
 		staleTimeout:                 staleTimeout,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		ra:                           rac,
 		sa:                           sac,
-		nonce:                        noncec,
+		rnc:                          rnc,
+		gnc:                          gnc,
 		accountGetter:                accountGetter,
 	}
 
@@ -247,7 +256,7 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 				return
 			}
 			if request.Method != "GET" || pattern == newNoncePath {
-				nonceMsg, err := wfe.remoteNonceService.Nonce(ctx, &emptypb.Empty{})
+				nonceMsg, err := wfe.gnc.Nonce(ctx, &emptypb.Empty{})
 				if err != nil {
 					wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "unable to get nonce"), err)
 					return

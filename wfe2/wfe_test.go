@@ -428,7 +428,7 @@ func TestGetNonceCancellationBecomes408(t *testing.T) {
 	for k := range wfe.noncePrefixMap {
 		wfe.noncePrefixMap[k] = alwaysCancelNonceService{}
 	}
-	wfe.remoteNonceService = alwaysCancelNonceService{}
+	wfe.gnc = alwaysCancelNonceService{}
 	wfe.HandleFunc(mux, "/foo", func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
 	}, "POST")
 	req, err := http.NewRequest("POST", "/foo", nil)
@@ -930,7 +930,7 @@ func TestNonceEndpoint(t *testing.T) {
 			test.AssertEquals(t, responseWriter.Code, tc.expectedStatus)
 			// And the response should contain a valid nonce in the Replay-Nonce header
 			nonce := responseWriter.Header().Get("Replay-Nonce")
-			redeemResp, err := wfe.remoteNonceService.Redeem(context.Background(), &noncepb.NonceMessage{Nonce: nonce})
+			redeemResp, err := wfe.gnc.Redeem(context.Background(), &noncepb.NonceMessage{Nonce: nonce})
 			test.AssertNotError(t, err, "redeeming nonce")
 			test.AssertEquals(t, redeemResp.Valid, true)
 			// The server MUST include a Cache-Control header field with the "no-store"

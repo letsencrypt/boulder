@@ -1670,7 +1670,7 @@ func TestNoncePassThrough408Problem(t *testing.T) {
 	for k := range wfe.noncePrefixMap {
 		wfe.noncePrefixMap[k] = alwaysCancelNonceService{}
 	}
-	wfe.remoteNonceService = alwaysCancelNonceService{}
+	wfe.gnc = alwaysCancelNonceService{}
 
 	prob := wfe.validNonce(context.Background(), jws)
 	fmt.Printf("%s", prob)
