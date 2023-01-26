@@ -19,6 +19,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -49,6 +50,14 @@ var errInvalidNonceLength = errors.New("invalid nonce length")
 
 // PrefixKey is exported for use as a key in a context.Context.
 type PrefixKey struct{}
+
+// DerivePrefix derives a nonce prefix from the first 24 bits of a SHA256 hash
+// of the gRPC server listening address + port and a salt value.
+func DerivePrefix(listeningAddr, salt string) string {
+	h := sha256.New()
+	h.Write([]byte(listeningAddr + salt))
+	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))[:PrefixLen]
+}
 
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {

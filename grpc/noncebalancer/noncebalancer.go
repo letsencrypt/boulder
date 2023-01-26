@@ -1,10 +1,10 @@
 package noncebalancer
 
 import (
-	"crypto/sha256"
 	"errors"
 	"sync"
 
+	"github.com/letsencrypt/boulder/nonce"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 )
@@ -22,15 +22,6 @@ var _ base.PickerBuilder = (*Picker)(nil)
 type Picker struct {
 	sync.RWMutex
 	backends map[balancer.SubConn]base.SubConnInfo
-}
-
-// derivePrefix derives the prefix for a given backend taking the first 24 bytes
-// of the SHA256 hash of the backend address (<IP>:<port>) and the provided
-// salt.
-func derivePrefix(addr, salt string) string {
-	h := sha256.New()
-	h.Write([]byte(addr + salt))
-	return string(h.Sum(nil)[:24])
 }
 
 // Build implements the base.PickerBuilder interface. It is called by the gRPC
@@ -77,7 +68,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// Iterate over the backends and return the first one that matches the
 	// destination prefix from the RPC context.
 	for sc, scInfo := range p.backends {
-		scPrefix := derivePrefix(scInfo.Address.Addr, salt)
+		scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, salt)
 		if scPrefix == destPrefix {
 			result.SubConn = sc
 			return result, nil

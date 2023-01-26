@@ -210,3 +210,8 @@ func TestNoncePrefixValidation(t *testing.T) {
 	_, err = NewNonceService(metrics.NoopRegisterer, 0, "heyy")
 	test.AssertNotError(t, err, "NewNonceService failed with valid nonce prefix")
 }
+
+func TestDerivePrefix(t *testing.T) {
+	prefix := DerivePrefix("192.168.1.1:8080", "Fleur de sel")
+	test.AssertEquals(t, prefix, "ELWOvT")
+}
