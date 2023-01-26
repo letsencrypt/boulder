@@ -21,6 +21,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
@@ -199,7 +200,12 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	var err error
 	if wfe.noncePrefixMap == nil {
 		ctx = context.WithValue(ctx, nonce.PrefixKey{}, header.Nonce[:nonce.PrefixLen])
-		valid, err = nonce.RemoteRedeem(ctx, nil, header.Nonce)
+		ctx = context.WithValue(ctx, nonce.SaltKey{}, "Fluer de Sel")
+		resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
+		if err != nil {
+			return web.ProblemDetailsForError(err, "failed to redeem nonce")
+		}
+		valid = resp.Valid
 	} else {
 		valid, err = nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
 		if err != nil {

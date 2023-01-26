@@ -35,12 +35,12 @@ import (
 const (
 	// PrefixLen is the character length of a nonce prefix.
 	//
-	// TODO(#6610): Remove once we've moved to PrefixLen.
+	// TODO(#6610): Remove once we've moved derivable prefixes by default.
 	PrefixLen = 6
 	// PrefixLenDepracated is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead.
-	// TODO(#6610): Remove once we've moved to PrefixLen.
+	// TODO(#6610): Remove once we've moved derivable prefixes by default.
 	PrefixLenDepracated = 4
 	defaultMaxUsed      = 65536
 	nonceLen            = 32
@@ -50,6 +50,9 @@ var errInvalidNonceLength = errors.New("invalid nonce length")
 
 // PrefixKey is exported for use as a key in a context.Context.
 type PrefixKey struct{}
+
+// SaltKey is exported for use as a key in a context.Context.
+type SaltKey struct{}
 
 // DerivePrefix derives a nonce prefix from the first 24 bits of a SHA256 hash
 // of the gRPC server listening address + port and a salt value.
@@ -72,6 +75,8 @@ type NonceService struct {
 	nonceCreates     prometheus.Counter
 	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
+	// TODO(#6610): Remove this field once we've moved derivable prefixes by default.
+	prefixLen int
 }
 
 type int64Heap []int64
@@ -144,16 +149,19 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	stats.MustRegister(nonceHeapLatency)
 
 	return &NonceService{
-		earliest:         0,
-		latest:           0,
-		used:             make(map[int64]bool, maxUsed),
-		usedHeap:         &int64Heap{},
-		gcm:              gcm,
-		maxUsed:          maxUsed,
-		prefix:           prefix,
+		earliest: 0,
+		latest:   0,
+		used:     make(map[int64]bool, maxUsed),
+		usedHeap: &int64Heap{},
+		gcm:      gcm,
+		maxUsed:  maxUsed,
+		prefix:   prefix,
+
 		nonceCreates:     nonceCreates,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
+		// TODO(#6610): Remove this field once we've moved derivable prefixes by default.
+		prefixLen: len(prefix),
 	}, nil
 }
 
@@ -163,7 +171,8 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 	for i := 0; i < 4; i++ {
 		nonce[i] = 0
 	}
-	if _, err := rand.Read(nonce[4:]); err != nil {
+	_, err := rand.Read(nonce[4:])
+	if err != nil {
 		return "", err
 	}
 
@@ -187,7 +196,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	if ns.prefix != "" {
 		var prefix string
 		var err error
-		prefix, body, err = splitNonce(nonce)
+		prefix, body, err = ns.splitNonce(nonce)
 		if err != nil {
 			return 0, err
 		}
@@ -269,11 +278,22 @@ func (ns *NonceService) Valid(nonce string) bool {
 }
 
 // splitNonce splits a nonce into a prefix and a body.
+//
+// Deprecated: Use NonceService.splitNonce instead.
+// TODO(#6610): Remove this function once we've moved derivable prefixes by default.
 func splitNonce(nonce string) (string, string, error) {
-	if len(nonce) < 4 {
+	if len(nonce) < PrefixLenDepracated {
 		return "", "", errInvalidNonceLength
 	}
-	return nonce[:4], nonce[4:], nil
+	return nonce[:PrefixLenDepracated], nonce[PrefixLenDepracated:], nil
+}
+
+// splitNonce splits a nonce into a prefix and a body.
+func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
+	if len(nonce) < ns.prefixLen {
+		return "", "", errInvalidNonceLength
+	}
+	return nonce[:ns.prefixLen], nonce[ns.prefixLen:], nil
 }
 
 // RemoteRedeem checks the nonce prefix and routes the Redeem RPC
