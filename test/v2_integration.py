@@ -446,11 +446,11 @@ def test_http_challenge_timeout():
     test_http_challenge_timeout tests that the VA times out challenge requests
     to a slow HTTP server appropriately.
     """
-    # Start a simple python HTTP server on port 5002 in its own thread.
-    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
+    # Start a simple python HTTP server on port 80 in its own thread.
+    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
-    httpd = SlowHTTPServer(("10.88.88.88", 5002), SlowHTTPRequestHandler)
+    httpd = SlowHTTPServer(("10.88.88.88", 80), SlowHTTPRequestHandler)
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
@@ -751,7 +751,7 @@ def test_revoke_by_privkey():
     revoke_client = chisel2.uninitialized_client(key=josepy.JWKRSA(key=key))
 
     reset_akamai_purges()
-    
+
     # Even though we requested reason 0 ("unspecified"), the result should be
     # 1 ("keyCompromise") due to the authorization method.
     revoke_client.revoke(josepy.ComparableX509(cert), 0)
@@ -977,13 +977,13 @@ def multiva_setup(client, guestlist):
     redirHostname = "pebble-challtestsrv.example.com"
     challSrv.add_a_record(redirHostname, ["10.77.77.77"])
 
-    # Start a simple python HTTP server on port 5002 in its own thread.
-    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:5002 for HTTP-01
+    # Start a simple python HTTP server on port 80 in its own thread.
+    # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
             redirHostname, token)
-    httpd = HTTPServer(("10.88.88.88", 5002), BouncerHTTPRequestHandler(redirect, guestlist))
+    httpd = HTTPServer(("10.88.88.88", 80), BouncerHTTPRequestHandler(redirect, guestlist))
     thread = threading.Thread(target = httpd.serve_forever)
     thread.daemon = False
     thread.start()
@@ -1134,11 +1134,11 @@ def test_http2_http01_challenge():
     # the problem.
     socketserver.TCPServer.allow_reuse_address = True
     # Create, start, and wait for a fake HTTP/2 server.
-    server = socketserver.TCPServer(("10.88.88.88", 5002), FakeH2ServerHandler)
+    server = socketserver.TCPServer(("10.88.88.88", 80), FakeH2ServerHandler)
     thread = threading.Thread(target = server.serve_forever)
     thread.daemon = False
     thread.start()
-    wait_for_tcp_server("10.88.88.88", 5002)
+    wait_for_tcp_server("10.88.88.88", 80)
 
     # Issuing an HTTP-01 challenge for this hostname should produce a connection
     # problem with an error specific to the HTTP/2 misconfiguration.
@@ -1436,7 +1436,7 @@ def caa_recheck_setup():
     base_domain = random_domain()
     domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
     order = chisel2.auth_and_issue(domains, client=client)
-    
+
     global caa_recheck_setup_data
     caa_recheck_setup_data = {
         'client': client,

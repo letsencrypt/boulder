@@ -26,7 +26,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gopkg.in/square/go-jose.v2/json"
+	"gopkg.in/go-jose/go-jose.v2/json"
 )
 
 // Helper function to serialize known-good objects.
@@ -41,7 +41,7 @@ func mustSerializeJSON(value interface{}) []byte {
 	// MarshalJSON will happily serialize it as the top-level value "null". If
 	// that value is then embedded in another operation, for instance by being
 	// base64-encoded and fed as input to a signing algorithm
-	// (https://github.com/square/go-jose/issues/22), the result will be
+	// (https://github.com/go-jose/go-jose/issues/22), the result will be
 	// incorrect. Because this method is intended for known-good objects, and a nil
 	// pointer is not a known-good object, we are free to panic in this case.
 	// Note: It's not possible to directly check whether the data pointed at by an
@@ -127,7 +127,7 @@ func newBuffer(data []byte) *byteBuffer {
 
 func newFixedSizeBuffer(data []byte, length int) *byteBuffer {
 	if len(data) > length {
-		panic("square/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
+		panic("go-jose/go-jose: invalid call to newFixedSizeBuffer (len(data) > length)")
 	}
 	pad := make([]byte, length-len(data))
 	return newBuffer(append(pad, data...))
