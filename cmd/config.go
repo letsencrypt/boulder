@@ -382,7 +382,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 				"both 'SRVLookup' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
 			)
 		}
-		// Lookup backends using DNS SRV records.
+		// Lookup backends using a DNS SRV record.
 		targetHost := c.SRVLookup.Service + "." + c.SRVLookup.Domain
 
 		hostOverride = targetHost
@@ -391,10 +391,26 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		}
 		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), hostOverride, nil
 
+	} else if c.SRVLookups != nil {
+		if c.ServerIPAddresses != nil {
+			return "", "", errors.New(
+				"both 'SRVLookups' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
+			)
+		}
+		// Lookup backends using multiple DNS SRV records.
+		var targetHosts []string
+		for _, s := range c.SRVLookups {
+			targetHosts = append(targetHosts, s.Service+"."+s.Domain)
+		}
+		if c.HostOverride != "" {
+			hostOverride = c.HostOverride
+		}
+		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, strings.Join(targetHosts, ",")), hostOverride, nil
+
 	} else {
 		if c.ServerIPAddresses == nil {
 			return "", "", errors.New(
-				"neither 'serverAddress', 'SRVLookup' nor 'serverIPAddresses' in gRPC client config. One should be provided",
+				"neither 'serverAddress', 'SRVLookup', 'SRVLookups' nor 'serverIPAddresses' in gRPC client config. One should be provided",
 			)
 		}
 		// Specify backends as a list of IP addresses.

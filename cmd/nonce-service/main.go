@@ -28,12 +28,12 @@ type Config struct {
 		// TODO(#6610): Remove once we've moved to derivable prefixes by
 		// default.
 		UseDerivablePrefix bool
-		// Salt is the path to a file containing the salt used to derive a nonce
+		// PrefixSalt is the path to a file containing the salt used to derive a nonce
 		// prefix. This is only used if UseDerivablePrefix is true.
 		//
 		// TODO(#6610): Edit this comment once we've moved to derivable prefixes
 		// by default.
-		Salt cmd.PasswordConfig
+		PrefixSalt cmd.PasswordConfig
 
 		Syslog  cmd.SyslogConfig
 		Beeline cmd.BeelineConfig
@@ -51,11 +51,13 @@ func derivePrefix(salt string, grpcAddr string) (string, error) {
 		return "", fmt.Errorf("parsing listen address: %w", err)
 	}
 
-	// If the configuration specifies a host and port, we should use it to
-	// derive the nonce prefix.
+	// If the configuration specifies an IPv4 address and port, we should use it
+	// to derive the nonce prefix.
 	if host != "" && port != "" {
-		localAddr := host + ":" + port
-		return nonce.DerivePrefix(localAddr, salt), nil
+		hostIP := net.ParseIP(host)
+		if hostIP != nil && hostIP.To4() != nil {
+			return nonce.DerivePrefix(grpcAddr, salt), nil
+		}
 	}
 
 	// Otherwise, we should use the only non-loopback IPv4 address we find on
@@ -89,25 +91,26 @@ func main() {
 	flag.Parse()
 
 	var c Config
-	conf := c.NonceService
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	conf := c.NonceService
 	if *grpcAddr != "" {
 		conf.GRPC.Address = *grpcAddr
 	}
 	if *debugAddr != "" {
 		conf.DebugAddr = *debugAddr
 	}
-	if *prefixOverride != "" {
+	if *prefixOverride != "" && !conf.UseDerivablePrefix {
 		conf.NoncePrefix = *prefixOverride
 	}
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	if conf.NoncePrefix != "" && conf.UseDerivablePrefix {
 		cmd.Fail("Cannot set both 'noncePrefix' and 'useDerivablePrefix'")
 	}
+
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	if len(conf.NoncePrefix) != nonce.PrefixLenDepracated {
+	if !conf.UseDerivablePrefix && len(conf.NoncePrefix) != nonce.PrefixLenDepracated {
 		cmd.Fail(
 			fmt.Sprintf("'noncePrefix' must be %d characters, %q has a length of %d",
 				nonce.PrefixLenDepracated,
@@ -117,13 +120,14 @@ func main() {
 		)
 	}
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	if conf.UseDerivablePrefix && conf.Salt.PasswordFile == "" {
-		cmd.Fail("Cannot set 'salt' without 'useDerivablePrefix'")
+	if conf.UseDerivablePrefix && conf.PrefixSalt.PasswordFile == "" {
+		cmd.Fail("Cannot set 'prefixSalt' without 'useDerivablePrefix'")
 	}
 
-	if conf.UseDerivablePrefix && conf.Salt.PasswordFile != "" {
-		salt, err := conf.Salt.Pass()
-		cmd.FailOnError(err, "Failed to load 'salt' file.")
+	if conf.UseDerivablePrefix && conf.PrefixSalt.PasswordFile != "" {
+		fmt.Println("Using derivable nonce prefix")
+		salt, err := conf.PrefixSalt.Pass()
+		cmd.FailOnError(err, "Failed to load 'prefixSalt' file.")
 		conf.NoncePrefix, err = derivePrefix(salt, conf.GRPC.Address)
 		cmd.FailOnError(err, "Failed to derive nonce prefix")
 	}

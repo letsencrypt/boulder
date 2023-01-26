@@ -58,11 +58,9 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 		return nil, err
 	}
 
-	var balancerName string
+	var balancerName = roundrobin.Name
 	if c.LoadBalancerOverride != "" {
 		balancerName = c.LoadBalancerOverride
-	} else {
-		balancerName = roundrobin.Name
 	}
 
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)

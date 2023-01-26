@@ -52,14 +52,14 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	}
 
 	// Get the destination prefix from the RPC context.
-	destPrefix := info.Ctx.Value("prefix").(string)
+	destPrefix := info.Ctx.Value(nonce.PrefixKey{}).(string)
 	if destPrefix == "" {
 		// This should never happen.
 		return result, errors.New("'prefix' value required in RPC context")
 	}
 
 	// Get the salt from the RPC context.
-	salt := info.Ctx.Value("salt").(string)
+	salt := info.Ctx.Value(nonce.PrefixSaltKey{}).(string)
 	if salt == "" {
 		// This should never happen.
 		return result, errors.New("'salt' value required in RPC context")

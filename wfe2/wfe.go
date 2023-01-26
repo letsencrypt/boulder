@@ -26,6 +26,9 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+
+	// 'grpc/noncebalancer' is imported for its init function.
+	_ "github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -212,6 +215,7 @@ func NewWebFrontEndImpl(
 		sa:                           sac,
 		rnc:                          rnc,
 		gnc:                          gnc,
+		rncSalt:                      rncSalt,
 		accountGetter:                accountGetter,
 	}
 

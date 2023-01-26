@@ -59,8 +59,10 @@
         }
       ],
       "timeout": "15s",
-      "hostOverride": "nonce.boulder"
+      "hostOverride": "nonce.boulder",
+      "loadBalancerOverride": "nonce"
     },
+    "redeemNonceSalt": {"passwordFile": "test/secrets/nonce_salt"},
     "chains": [
       [
         "/hierarchy/intermediate-cert-rsa-a.pem",

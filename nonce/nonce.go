@@ -36,7 +36,7 @@ const (
 	// PrefixLen is the character length of a nonce prefix.
 	//
 	// TODO(#6610): Remove once we've moved derivable prefixes by default.
-	PrefixLen = 6
+	PrefixLen = 4
 	// PrefixLenDepracated is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead.
@@ -51,8 +51,8 @@ var errInvalidNonceLength = errors.New("invalid nonce length")
 // PrefixKey is exported for use as a key in a context.Context.
 type PrefixKey struct{}
 
-// SaltKey is exported for use as a key in a context.Context.
-type SaltKey struct{}
+// PrefixSaltKey is exported for use as a key in a context.Context.
+type PrefixSaltKey struct{}
 
 // DerivePrefix derives a nonce prefix from the first 24 bits of a SHA256 hash
 // of the gRPC server listening address + port and a salt value.
@@ -106,13 +106,15 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	// the prefix to be three bytes (four characters) so that the
 	// bytes preceding the prefix wouldn't impact the encoding.
 	if prefix != "" {
-		if len(prefix) != PrefixLenDepracated {
+		if len(prefix) != PrefixLen && len(prefix) != PrefixLenDepracated {
 			return nil, errors.New("nonce prefix must be 4 characters")
 		}
 		if _, err := base64.RawURLEncoding.DecodeString(prefix); err != nil {
 			return nil, errors.New("nonce prefix must be valid base64url")
 		}
 	}
+
+	fmt.Println("CONFIGURED NONCE PREFIX: ", prefix)
 
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
