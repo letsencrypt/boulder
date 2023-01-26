@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -429,9 +430,6 @@ func statusUint(status core.AcmeStatus) uint8 {
 // authzFields is used in a variety of places in sa.go, and modifications to
 // it must be carried through to every use in sa.go
 const authzFields = "id, identifierType, identifierValue, registrationID, status, expires, challenges, attempted, attemptedAt, token, validationError, validationRecord"
-const AuthzFields = authzFields
-
-type AuthzModel = authzModel
 
 type authzModel struct {
 	ID               int64      `db:"id"`
@@ -446,6 +444,66 @@ type authzModel struct {
 	Token            []byte     `db:"token"`
 	ValidationError  []byte     `db:"validationError"`
 	ValidationRecord []byte     `db:"validationRecord"`
+}
+
+func eraseSliceType(input []string) []any {
+	var output []any
+	for _, in := range input {
+		output = append(output, in)
+	}
+	return output
+}
+
+// SelectAuthzsMatchingIssuance looks for a set of authzs that would have
+// authorized a given issuance that is known to have occurred. The returned
+// authzs will all belong to the given regID, will have potentially been valid
+// at the time of issuance, and will have the appropriate identifier type and
+// value. This may return multiple authzs for the same identifier type and value.
+//
+// This returns "potentially" valid authzs because a client may have set an
+// authzs status to deactivated after issuance, so we return both valid and
+// deactivated authzs.
+//
+// This function doesn't do anything special for authzs with an expiration in
+// the past. If the stored authz has a valid status, it is returned with a
+// valid status regardless of whether it is also expired.
+func SelectAuthzsMatchingIssuance(
+	s db.Selector,
+	regID int64,
+	issued time.Time,
+	dnsNames []string,
+) ([]*corepb.Authorization, error) {
+	var authzModels []authzModel
+	_, err := s.Select(&authzModels,
+		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
+			registrationID = ? AND
+			status IN (?, ?) AND
+			expires >= ? AND
+			attemptedAt <= ? AND
+			identifierType = ? AND
+			identifierValue IN (%s)`,
+			authzFields,
+			db.QuestionMarks(len(dnsNames))),
+		append(append([]any(nil),
+			regID,
+			statusToUint[core.StatusValid],
+			statusToUint[core.StatusDeactivated],
+			issued,
+			issued,
+			identifierTypeToUint[string(identifier.DNS)],
+		), eraseSliceType(dnsNames)...)...,
+	)
+
+	var authzs []*corepb.Authorization
+	for _, model := range authzModels {
+		authz, err := modelToAuthzPB(model)
+		if err != nil {
+			return nil, err
+		}
+		authzs = append(authzs, authz)
+
+	}
+	return authzs, err
 }
 
 // hasMultipleNonPendingChallenges checks if a slice of challenges contains

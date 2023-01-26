@@ -25,8 +25,8 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
-	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/identifier"
@@ -239,52 +239,24 @@ var expectedExtensionContent = map[string][]byte{
 	"1.3.6.1.5.5.7.1.24": {0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
 }
 
-func eraseSliceType(input []string) []any {
-	var output []any
-	for _, in := range input {
-		output = append(output, in)
-	}
-	return output
-}
-
 // checkValidations checks the database for matching authorizations that were
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
 func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
-	var authzModels []*sa.AuthzModel
-	_, err := c.dbMap.Select(&authzModels,
-		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
-			registrationID = ? AND
-			status IN (?, ?) AND
-			expires >= ? AND
-			attemptedAt <= ? AND
-			identifierType = ? AND
-			identifierValue IN (%s)`,
-			sa.AuthzFields,
-			db.QuestionMarks(len(dnsNames))),
-		append(append([]any(nil),
-			cert.RegistrationID,
-			1, // "valid" - see sa/model.go
-			3, // "deactivated"
-			cert.Issued,
-			cert.Issued,
-			0, // "dns" - see sa/model.go
-		), eraseSliceType(dnsNames)...)...,
-	)
-
+	authzs, err := sa.SelectAuthzsMatchingIssuance(c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}
 
-	if len(authzModels) == 0 {
+	if len(authzs) == 0 {
 		return fmt.Errorf("no relevant authzs found valid at %s",
 			cert.Issued)
 	}
 
-	nameToAuthz := make(map[string]*sa.AuthzModel)
-	for _, m := range authzModels {
-		nameToAuthz[m.IdentifierValue] = m
+	nameToAuthz := make(map[string]*corepb.Authorization)
+	for _, m := range authzs {
+		nameToAuthz[m.Identifier] = m
 	}
 
 	var errors []error
