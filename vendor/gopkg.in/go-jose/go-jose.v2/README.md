@@ -1,10 +1,10 @@
 # Go JOSE 
 
-[![godoc](http://img.shields.io/badge/godoc-version_1-blue.svg?style=flat)](https://godoc.org/gopkg.in/square/go-jose.v1)
-[![godoc](http://img.shields.io/badge/godoc-version_2-blue.svg?style=flat)](https://godoc.org/gopkg.in/square/go-jose.v2)
-[![license](http://img.shields.io/badge/license-apache_2.0-blue.svg?style=flat)](https://raw.githubusercontent.com/square/go-jose/master/LICENSE)
-[![build](https://travis-ci.org/square/go-jose.svg?branch=v2)](https://travis-ci.org/square/go-jose)
-[![coverage](https://coveralls.io/repos/github/square/go-jose/badge.svg?branch=v2)](https://coveralls.io/r/square/go-jose)
+[![godoc](http://img.shields.io/badge/godoc-version_1-blue.svg?style=flat)](https://godoc.org/gopkg.in/go-jose/go-jose.v1)
+[![godoc](http://img.shields.io/badge/godoc-version_2-blue.svg?style=flat)](https://godoc.org/gopkg.in/go-jose/go-jose.v2)
+[![license](http://img.shields.io/badge/license-apache_2.0-blue.svg?style=flat)](https://raw.githubusercontent.com/go-jose/go-jose/master/LICENSE)
+[![build](https://travis-ci.org/go-jose/go-jose.svg?branch=v2)](https://travis-ci.org/go-jose/go-jose)
+[![coverage](https://coveralls.io/repos/github/go-jose/go-jose/badge.svg?branch=v2)](https://coveralls.io/r/go-jose/go-jose)
 
 Package jose aims to provide an implementation of the Javascript Object Signing
 and Encryption set of standards. This includes support for JSON Web Encryption,
@@ -27,7 +27,7 @@ The implementation follows the
 Tables of supported algorithms are shown below. The library supports both
 the compact and full serialization formats, and has optional support for
 multiple recipients. It also comes with a small command-line utility
-([`jose-util`](https://github.com/square/go-jose/tree/v2/jose-util))
+([`jose-util`](https://github.com/go-jose/go-jose/tree/v2/jose-util))
 for dealing with JOSE messages in a shell.
 
 **Note**: We use a forked version of the `encoding/json` package from the Go
@@ -40,17 +40,17 @@ libraries in other languages.
 
 We use [gopkg.in](https://gopkg.in) for versioning.
 
-[Version 2](https://gopkg.in/square/go-jose.v2)
-([branch](https://github.com/square/go-jose/tree/v2),
-[doc](https://godoc.org/gopkg.in/square/go-jose.v2)) is the current version:
+[Version 2](https://gopkg.in/go-jose/go-jose.v2)
+([branch](https://github.com/go-jose/go-jose/tree/v2),
+[doc](https://godoc.org/gopkg.in/go-jose/go-jose.v2)) is the current version:
 
-    import "gopkg.in/square/go-jose.v2"
+    import "gopkg.in/go-jose/go-jose.v2"
 
-The old `v1` branch ([go-jose.v1](https://gopkg.in/square/go-jose.v1)) will
+The old `v1` branch ([go-jose.v1](https://gopkg.in/go-jose/go-jose.v1)) will
 still receive backported bug fixes and security fixes, but otherwise
 development is frozen. All new feature development takes place on the `v2`
 branch. Version 2 also contains additional sub-packages such as the
-[jwt](https://godoc.org/gopkg.in/square/go-jose.v2/jwt) implementation
+[jwt](https://godoc.org/gopkg.in/go-jose/go-jose.v2/jwt) implementation
 contributed by [@shaxbee](https://github.com/shaxbee).
 
 ### Supported algorithms
@@ -108,11 +108,11 @@ allows attaching a key id.
 
 ## Examples
 
-[![godoc](http://img.shields.io/badge/godoc-version_1-blue.svg?style=flat)](https://godoc.org/gopkg.in/square/go-jose.v1)
-[![godoc](http://img.shields.io/badge/godoc-version_2-blue.svg?style=flat)](https://godoc.org/gopkg.in/square/go-jose.v2)
+[![godoc](http://img.shields.io/badge/godoc-version_1-blue.svg?style=flat)](https://godoc.org/gopkg.in/go-jose/go-jose.v1)
+[![godoc](http://img.shields.io/badge/godoc-version_2-blue.svg?style=flat)](https://godoc.org/gopkg.in/go-jose/go-jose.v2)
 
 Examples can be found in the Godoc
 reference for this package. The
-[`jose-util`](https://github.com/square/go-jose/tree/v2/jose-util)
+[`jose-util`](https://github.com/go-jose/go-jose/tree/v2/jose-util)
 subdirectory also contains a small command-line utility which might be useful
 as an example.
