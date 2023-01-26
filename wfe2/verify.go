@@ -199,14 +199,18 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	var valid bool
 	var err error
 	if wfe.noncePrefixMap == nil {
+		// Dispatch nonce redemption RPCs dynamically.
 		ctx = context.WithValue(ctx, nonce.PrefixKey{}, header.Nonce[:nonce.PrefixLen])
-		ctx = context.WithValue(ctx, nonce.SaltKey{}, "Fluer de Sel")
+		ctx = context.WithValue(ctx, nonce.SaltKey{}, wfe.rncSalt)
 		resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
 		if err != nil {
 			return web.ProblemDetailsForError(err, "failed to redeem nonce")
 		}
 		valid = resp.Valid
 	} else {
+		// Dispatch nonce redpemption RPCs using a static mapping.
+		//
+		// TODO(#6610) Remove code below and the `npm` mapping.
 		valid, err = nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
 		if err != nil {
 			return web.ProblemDetailsForError(err, "failed to redeem nonce")

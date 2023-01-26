@@ -93,9 +93,13 @@ type WebFrontEndImpl struct {
 	// 'salt' and 'prefix' as metadata in the context of each RPC request.
 	rnc noncepb.NonceServiceClient
 	// gnc is a nonce-service client used exclusively for the issuance of
-	// nonces. It is configured to route requests to backends colocated with the
+	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
-	gnc           noncepb.NonceServiceClient
+	gnc noncepb.NonceServiceClient
+	// rncSalt is the salt used to derive the prefix of nonce backends used for
+	// nonce redemption. In multi-DC deployments this value should be the same
+	// across all WFEs and nonce-service instances.
+	rncSalt       string
 	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
@@ -171,8 +175,9 @@ func NewWebFrontEndImpl(
 	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	rnc noncepb.NonceServiceClient,
+	rnc,
 	gnc noncepb.NonceServiceClient,
+	rncSalt string,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {

@@ -58,8 +58,8 @@ type Config struct {
 		RedeemNonceService *cmd.GRPCClientConfig
 
 		// RedeemNonceSalt is a salt value used to derive a nonce prefix for
-		// necessary for redeeming nonces. This value should be the same across
-		// all nonce-service and WFE instances in a multi-DC deployment.
+		// necessary for redeeming nonces. In a multi-DC deployment this value
+		// should be the same across all WFE and nonce-service instances.
 		RedeemNonceSalt cmd.PasswordConfig
 
 		// RedeemNonceServices contains a map of nonce-service prefixes to
@@ -292,7 +292,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient, noncepb.NonceServiceClient) {
+func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient, noncepb.NonceServiceClient, string) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -316,6 +316,12 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	}
 	if c.WFE.GetNonceService == nil {
 		cmd.Fail("'getNonceService' must be configured")
+	}
+
+	var rncSalt string
+	if c.WFE.RedeemNonceSalt.PasswordFile != "" {
+		rncSalt, err = c.WFE.RedeemNonceSalt.Pass()
+		cmd.FailOnError(err, "Failed to load redeemNonceSalt")
 	}
 
 	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
@@ -342,7 +348,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 		}
 	}
 
-	return rac, sac, gnc, npm, rnc
+	return rac, sac, gnc, npm, rnc, rncSalt
 }
 
 type errorWriter struct {
@@ -427,7 +433,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, gnc, npm, rnc := setupWFE(c, stats, clk)
+	rac, sac, gnc, npm, rnc, rncSalt := setupWFE(c, stats, clk)
 
 	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -479,6 +485,7 @@ func main() {
 		sac,
 		rnc,
 		gnc,
+		rncSalt,
 		accountGetter,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")

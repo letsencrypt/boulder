@@ -361,6 +361,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		mockSA,
 		nonceGRPCService,
 		nonceGRPCService,
+		"",
 		mockSA)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
