@@ -86,6 +86,7 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 type WebFrontEndImpl struct {
 	ra            rapb.RegistrationAuthorityClient
 	sa            sapb.StorageAuthorityReadOnlyClient
+	nonce         noncepb.NonceServiceClient
 	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
@@ -120,6 +121,8 @@ type WebFrontEndImpl struct {
 	LegacyKeyIDPrefix string
 
 	// Register of anti-replay nonces
+	//
+	// Deprecated: See `nonce`, above.
 	remoteNonceService noncepb.NonceServiceClient
 	noncePrefixMap     map[string]noncepb.NonceServiceClient
 
@@ -161,6 +164,7 @@ func NewWebFrontEndImpl(
 	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
+	noncec noncepb.NonceServiceClient,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -193,6 +197,7 @@ func NewWebFrontEndImpl(
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
 		ra:                           rac,
 		sa:                           sac,
+		nonce:                        noncec,
 		accountGetter:                accountGetter,
 	}
 

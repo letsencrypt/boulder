@@ -250,6 +250,13 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
+// ServiceDomain contains the service and domain name the gRPC client will use
+// to construct a SRV DNS query to lookup backends.
+type ServiceDomain struct {
+	Service string
+	Domain  string
+}
+
 // GRPCClientConfig contains the information necessary to setup a gRPC client
 // connection. The following field combinations are allowed:
 //
@@ -295,10 +302,12 @@ type GRPCClientConfig struct {
 	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
 	// 1 1 8080 0a585858.addr.dc1.consul.
 	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
-	SRVLookup *struct {
-		Service string
-		Domain  string
-	}
+	SRVLookup *ServiceDomain
+
+	// SRVLookups allows you to pass multiple SRV records to the gRPC client.
+	// The gRPC client will resolves each SRV record and use the results to
+	// construct a list of backends to connect to.
+	SRVLookups []*ServiceDomain
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
@@ -336,7 +345,11 @@ type GRPCClientConfig struct {
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
 	HostOverride string
-	Timeout      ConfigDuration
+
+	// LoadBalancerOverride is an optional override for the load balancer
+	// implementation. The default is 'round_robin'.
+	LoadBalancerOverride string
+	Timeout              ConfigDuration
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will

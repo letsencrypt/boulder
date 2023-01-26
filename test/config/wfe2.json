@@ -42,12 +42,12 @@
       "taro": {
         "serverAddress": "nonce1.service.consul:9101",
         "timeout": "15s",
-        "hostOverride": "nonce1.boulder"
+        "hostOverride": "nonce.boulder"
       },
       "zinc": {
         "serverAddress": "nonce2.service.consul:9101",
         "timeout": "15s",
-        "hostOverride": "nonce2.boulder"
+        "hostOverride": "nonce.boulder"
       }
     },
     "chains": [

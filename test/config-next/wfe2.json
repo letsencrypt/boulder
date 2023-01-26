@@ -47,23 +47,19 @@
       "timeout": "15s",
       "hostOverride": "nonce.boulder"
     },
-    "redeemNonceServices": {
-      "taro": {
-        "srvLookup": {
+    "redeemNonceService": {
+      "srvLookups": [
+        {
           "service": "nonce1",
           "domain": "service.consul"
         },
-        "timeout": "15s",
-        "hostOverride": "nonce1.boulder"
-      },
-      "zinc": {
-        "srvLookup": {
+        {
           "service": "nonce2",
           "domain": "service.consul"
-        },
-        "timeout": "15s",
-        "hostOverride": "nonce2.boulder"
-      }
+        }
+      ],
+      "timeout": "15s",
+      "hostOverride": "nonce.boulder"
     },
     "chains": [
       [

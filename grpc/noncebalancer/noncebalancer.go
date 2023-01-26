@@ -13,9 +13,6 @@ import (
 // interface.
 var _ base.PickerBuilder = (*Picker)(nil)
 
-// Compile-time assertion that *Picker implements the balancer.Picker interface.
-var _ balancer.Picker = (*Picker)(nil)
-
 // Picker is a base.Balancer used to construct a balancer.Picker capable of
 // picking a backend (SubConn) based on the context of each RPC message. It
 // implements the base.PickerBuilder and balancer.Picker interfaces but should
@@ -28,7 +25,7 @@ type Picker struct {
 }
 
 // derivePrefix derives the prefix for a given backend taking the first 24 bytes
-// of the SHA256 hash of the backend address (<IP>:<PORT>) and the provided
+// of the SHA256 hash of the backend address (<IP>:<port>) and the provided
 // salt.
 func derivePrefix(addr, salt string) string {
 	h := sha256.New()
@@ -46,6 +43,9 @@ func (p *Picker) Build(buildInfo base.PickerBuildInfo) balancer.Picker {
 	p.backends = buildInfo.ReadySCs
 	return p
 }
+
+// Compile-time assertion that *Picker implements the balancer.Picker interface.
+var _ balancer.Picker = (*Picker)(nil)
 
 // Pick implements the balancer.Picker interface. It is called by the gRPC
 // runtime for each RPC message. It is responsible for picking a backend
