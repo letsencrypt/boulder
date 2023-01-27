@@ -38,11 +38,11 @@ const (
 	//
 	// TODO(#6610): Remove once we've moved derivable prefixes by default.
 	PrefixLen = 8
-	// DepracatedPrefixLen is the character length of a nonce prefix.
+	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead.
 	// TODO(#6610): Remove once we've moved derivable prefixes by default.
-	DepracatedPrefixLen = 4
+	DeprecatedPrefixLen = 4
 	defaultMaxUsed      = 65536
 	nonceLen            = 32
 )
@@ -112,11 +112,11 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	if prefix != "" {
 		// TODO(#6610): Refactor once we've moved to derivable prefixes by
 		// default.
-		if len(prefix) != PrefixLen && len(prefix) != DepracatedPrefixLen {
+		if len(prefix) != PrefixLen && len(prefix) != DeprecatedPrefixLen {
 			return nil, fmt.Errorf(
 				"'noncePrefix' must be %d or %d characters, not %d",
 				PrefixLen,
-				DepracatedPrefixLen,
+				DeprecatedPrefixLen,
 				len(prefix),
 			)
 		}
@@ -294,10 +294,10 @@ func (ns *NonceService) Valid(nonce string) bool {
 // TODO(#6610): Remove this function once we've moved derivable prefixes by
 // default.
 func splitDeprecatedNonce(nonce string) (string, string, error) {
-	if len(nonce) < DepracatedPrefixLen {
+	if len(nonce) < DeprecatedPrefixLen {
 		return "", "", errInvalidNonceLength
 	}
-	return nonce[:DepracatedPrefixLen], nonce[DepracatedPrefixLen:], nil
+	return nonce[:DeprecatedPrefixLen], nonce[DeprecatedPrefixLen:], nil
 }
 
 // splitNonce splits a nonce into a prefix and a body.
