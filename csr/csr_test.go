@@ -45,6 +45,10 @@ func (pa *mockPA) ChallengeTypeEnabled(t core.AcmeChallenge) bool {
 	return true
 }
 
+func (pa *mockPA) CheckAuthz(a *core.Authorization) error {
+	return nil
+}
+
 func TestVerifyCSR(t *testing.T) {
 	private, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "error generating test key")
