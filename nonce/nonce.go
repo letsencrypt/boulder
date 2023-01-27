@@ -1,15 +1,15 @@
-// Package nonce implements a service for generating and redeeming nonces.
-// To generate a nonce, it encrypts a monotonically increasing counter (latest)
+// Package nonce implements a service for generating and redeeming nonces. To
+// generate a nonce, it encrypts a monotonically increasing counter (latest)
 // using an authenticated cipher. To redeem a nonce, it checks that the nonce
 // decrypts to a valid integer between the earliest and latest counter values,
-// and that it's not on the cross-off list. To avoid a constantly growing cross-off
-// list, the nonce service periodically retires the oldest counter values by
-// finding the lowest counter value in the cross-off list, deleting it, and setting
-// "earliest" to its value. To make this efficient, the cross-off list is represented
-// two ways: Once as a map, for quick lookup of a given value, and once as a heap,
-// to quickly find the lowest value.
-// The MaxUsed value determines how long a generated nonce can be used before it
-// is forgotten. To calculate that period, divide the MaxUsed value by average
+// and that it's not on the cross-off list. To avoid a constantly growing
+// cross-off list, the nonce service periodically retires the oldest counter
+// values by finding the lowest counter value in the cross-off list, deleting
+// it, and setting "earliest" to its value. To make this efficient, the
+// cross-off list is represented two ways: Once as a map, for quick lookup of a
+// given value, and once as a heap, to quickly find the lowest value. The
+// MaxUsed value determines how long a generated nonce can be used before it is
+// forgotten. To calculate that period, divide the MaxUsed value by average
 // redemption rate (valid POSTs per second).
 package nonce
 
@@ -40,8 +40,8 @@ const (
 	PrefixLen = 8
 	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
-	// DEPRECATED: Use PrefixLen instead.
-	// TODO(#6610): Remove once we've moved derivable prefixes by default.
+	// DEPRECATED: Use PrefixLen instead. TODO(#6610): Remove once we've moved
+	// derivable prefixes by default.
 	DeprecatedPrefixLen = 4
 	defaultMaxUsed      = 65536
 	nonceLen            = 32
@@ -55,8 +55,8 @@ type PrefixKey struct{}
 // PrefixSaltKey is exported for use as a key in a context.Context.
 type PrefixSaltKey struct{}
 
-// DerivePrefix derives a nonce prefix from the first 24 bits of a SHA256 hash
-// of the gRPC server listening IPv4 address + port and a salt value.
+// DerivePrefix derives a nonce prefix from the first eight characters of the
+// SHA256 hash of the gRPC server's listening address + port and a salt value.
 func DerivePrefix(listeningAddr, salt string) string {
 	h := sha256.New()
 	h.Write([]byte(listeningAddr + salt))
@@ -101,13 +101,14 @@ func (h *int64Heap) Pop() interface{} {
 
 // NewNonceService constructs a NonceService with defaults
 func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*NonceService, error) {
-	// If a prefix is provided it must be four characters and valid
-	// base64. The prefix is required to be base64url as RFC8555
-	// section 6.5.1 requires that nonces use that encoding.
-	// As base64 operates on three byte binary segments we require the
-	// prefix to be three or six bytes (four or eight characters) so
-	// that the bytes preceding the prefix wouldn't impact the encoding.
-	// TODO(#6610): Update this comments once we've moved 8 character
+	// If a prefix is provided it must be four characters and valid base64. The
+	// prefix is required to be base64url as RFC8555 section 6.5.1 requires that
+	// nonces use that encoding. As base64 operates on three byte binary
+	// segments we require the prefix to be three or six bytes (four or eight
+	// characters) so that the bytes preceding the prefix wouldn't impact the
+	// encoding.
+	//
+	// TODO(#6610): Update this comment once we've moved eight character
 	// prefixes by default.
 	if prefix != "" {
 		// TODO(#6610): Refactor once we've moved to derivable prefixes by
@@ -249,8 +250,8 @@ func (ns *NonceService) Nonce() (string, error) {
 	return ns.encrypt(latest)
 }
 
-// Valid determines whether the provided Nonce string is valid, returning
-// true if so.
+// Valid determines whether the provided Nonce string is valid, returning true
+// if so.
 func (ns *NonceService) Valid(nonce string) bool {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
@@ -290,9 +291,8 @@ func (ns *NonceService) Valid(nonce string) bool {
 
 // splitDeprecatedNonce splits a nonce into a prefix and a body.
 //
-// Deprecated: Use NonceService.splitDeprecatedNonce instead.
-// TODO(#6610): Remove this function once we've moved derivable prefixes by
-// default.
+// Deprecated: Use NonceService.splitDeprecatedNonce instead. TODO(#6610):
+// Remove this function once we've moved derivable prefixes by default.
 func splitDeprecatedNonce(nonce string) (string, string, error) {
 	if len(nonce) < DeprecatedPrefixLen {
 		return "", "", errInvalidNonceLength
@@ -308,8 +308,8 @@ func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
 	return nonce[:ns.prefixLen], nonce[ns.prefixLen:], nil
 }
 
-// RemoteRedeem checks the nonce prefix and routes the Redeem RPC
-// to the associated remote nonce service
+// RemoteRedeem checks the nonce prefix and routes the Redeem RPC to the
+// associated remote nonce service
 func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]Redeemer, nonce string) (bool, error) {
 	prefix, _, err := splitDeprecatedNonce(nonce)
 	if err != nil {
@@ -337,7 +337,8 @@ type Server struct {
 	inner *NonceService
 }
 
-// Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
+// Redeem accepts a nonce from a gRPC client and redeems it using the inner
+// nonce service.
 func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
 	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
 }

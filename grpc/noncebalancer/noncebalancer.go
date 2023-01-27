@@ -79,8 +79,8 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	}
 
 	if p.prefixToBackend == nil {
-		// Iterate over the backends and return the first one that matches the
-		// destination prefix from the RPC context.
+		// Iterate over the backends and build a map of the derived prefix for
+		// each backend SubConn.
 		p.prefixToBackend = make(map[string]balancer.SubConn)
 		for sc, scInfo := range p.backends {
 			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, prefixSalt)
@@ -90,6 +90,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 
 	sc, ok := p.prefixToBackend[destPrefix]
 	if !ok {
+		// No backend SubConn was found for the destination prefix.
 		return result, balancer.ErrNoSubConnAvailable
 	}
 	result.SubConn = sc
