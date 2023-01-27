@@ -26,6 +26,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/nonce"
 
 	// 'grpc/noncebalancer' is imported for its init function.
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer"
@@ -33,7 +34,6 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
@@ -94,11 +94,11 @@ type WebFrontEndImpl struct {
 	// requests to backends based on the prefix of the nonce being redeemed.
 	// When sending an RPC using this client ensure that you pass both the
 	// 'salt' and 'prefix' as metadata in the context of each RPC request.
-	rnc noncepb.NonceServiceClient
+	rnc nonce.Redeemer
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
-	gnc noncepb.NonceServiceClient
+	gnc nonce.Getter
 	// rncSalt is the salt used to derive the prefix of nonce backends used for
 	// nonce redemption. In multi-DC deployments this value should be the same
 	// across all WFEs and nonce-service instances.
@@ -139,7 +139,7 @@ type WebFrontEndImpl struct {
 	// Register of anti-replay nonces
 	//
 	// Deprecated: See `rnc`, above.
-	noncePrefixMap map[string]noncepb.NonceServiceClient
+	noncePrefixMap map[string]nonce.Redeemer
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
@@ -171,15 +171,15 @@ func NewWebFrontEndImpl(
 	keyPolicy goodkey.KeyPolicy,
 	certificateChains map[issuance.IssuerNameID][][]byte,
 	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate,
-	noncePrefixMap map[string]noncepb.NonceServiceClient,
+	noncePrefixMap map[string]nonce.Redeemer,
 	logger blog.Logger,
 	staleTimeout time.Duration,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	rac rapb.RegistrationAuthorityClient,
 	sac sapb.StorageAuthorityReadOnlyClient,
-	rnc,
-	gnc noncepb.NonceServiceClient,
+	rnc nonce.Redeemer,
+	gnc nonce.Getter,
 	rncSalt string,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {

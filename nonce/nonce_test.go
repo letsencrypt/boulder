@@ -162,7 +162,7 @@ func TestRemoteRedeem(t *testing.T) {
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, !valid, "RemoteRedeem accepted an empty nonce")
 
-	prefixMap := map[string]noncepb.NonceServiceClient{
+	prefixMap := map[string]Redeemer{
 		"abcd": &malleableNonceClient{
 			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
 				return nil, errors.New("wrong one!")

@@ -29,6 +29,7 @@ import (
 
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -75,7 +76,8 @@ type NonceService struct {
 	nonceCreates     prometheus.Counter
 	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
-	// TODO(#6610): Remove this field once we've moved derivable prefixes by default.
+	// TODO(#6610): Remove this field once we've moved derivable prefixes by
+	// default.
 	prefixLen int
 }
 
@@ -102,11 +104,14 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	// If a prefix is provided it must be four characters and valid
 	// base64. The prefix is required to be base64url as RFC8555
 	// section 6.5.1 requires that nonces use that encoding.
-	// As base64 operates on three byte binary segments we require
-	// the prefix to be three bytes (four characters) so that the
-	// bytes preceding the prefix wouldn't impact the encoding.
+	// As base64 operates on three byte binary segments we require the
+	// prefix to be three or six bytes (four or eight characters) so
+	// that the bytes preceding the prefix wouldn't impact the encoding.
+	// TODO(#6610): Update this comments once we've moved 8 character
+	// prefixes by default.
 	if prefix != "" {
-		// TODO(#6610): Refacor once we've moved to derivable prefixes by default.
+		// TODO(#6610): Refactor once we've moved to derivable prefixes by
+		// default.
 		if len(prefix) != PrefixLen && len(prefix) != DepracatedPrefixLen {
 			return nil, fmt.Errorf(
 				"'noncePrefix' must be %d or %d characters, not %d",
@@ -165,7 +170,8 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		nonceCreates:     nonceCreates,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
-		// TODO(#6610): Remove this field once we've moved derivable prefixes by default.
+		// TODO(#6610): Remove this field once we've moved derivable prefixes by
+		// default.
 		prefixLen: len(prefix),
 	}, nil
 }
@@ -285,7 +291,8 @@ func (ns *NonceService) Valid(nonce string) bool {
 // splitDeprecatedNonce splits a nonce into a prefix and a body.
 //
 // Deprecated: Use NonceService.splitDeprecatedNonce instead.
-// TODO(#6610): Remove this function once we've moved derivable prefixes by default.
+// TODO(#6610): Remove this function once we've moved derivable prefixes by
+// default.
 func splitDeprecatedNonce(nonce string) (string, string, error) {
 	if len(nonce) < DepracatedPrefixLen {
 		return "", "", errInvalidNonceLength
@@ -303,7 +310,7 @@ func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
 
 // RemoteRedeem checks the nonce prefix and routes the Redeem RPC
 // to the associated remote nonce service
-func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceServiceClient, nonce string) (bool, error) {
+func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]Redeemer, nonce string) (bool, error) {
 	prefix, _, err := splitDeprecatedNonce(nonce)
 	if err != nil {
 		return false, nil
@@ -342,4 +349,26 @@ func (ns *Server) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMess
 		return nil, err
 	}
 	return &noncepb.NonceMessage{Nonce: nonce}, nil
+}
+
+// Getter is an interface for an RPC client that can get a nonce.
+type Getter interface {
+	Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error)
+}
+
+// Getter is an interface for an RPC client that can redeem a nonce.
+type Redeemer interface {
+	Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error)
+}
+
+// NewGetter returns a new noncepb.NonceServiceClient which can only be used to
+// get nonces.
+func NewGetter(cc grpc.ClientConnInterface) Getter {
+	return noncepb.NewNonceServiceClient(cc)
+}
+
+// NewRedeemer returns a new noncepb.NonceServiceClient which can only be used
+// to redeem nonces.
+func NewRedeemer(cc grpc.ClientConnInterface) Redeemer {
+	return noncepb.NewNonceServiceClient(cc)
 }
