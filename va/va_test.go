@@ -123,17 +123,15 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		userAgent = "user agent 1.0"
 	}
 
-	var portConfig cmd.PortConfig
+	portConfig := cmd.NewDefaultPortConfig()
 	if srv != nil {
 		port := getPort(srv)
-		portConfig = cmd.PortConfig{
-			HTTPPort: port,
-			TLSPort:  port,
-		}
+		portConfig.HTTPPort = port
+		portConfig.TLSPort = port
 	}
 	va, err := NewValidationAuthorityImpl(
 		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
-		&portConfig,
+		portConfig,
 		&bdns.MockClient{Log: logger},
 		nil,
 		maxRemoteFailures,
