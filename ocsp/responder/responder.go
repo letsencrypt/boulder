@@ -182,7 +182,11 @@ func (rs Responder) sampledError(format string, a ...interface{}) {
 // strings of repeated '/' into a single '/', which will break the base64
 // encoding.
 func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	ctx := request.Context()
+	// We specifically ignore request.Context() because we would prefer for clients
+	// to not be able to cancel our operations in arbitrary places. Instead we
+	// start a new context, and apply timeouts in our various RPCs.
+	// TODO(go1.22?): Use context.Detach()
+	ctx := context.Background()
 
 	if rs.timeout != 0 {
 		var cancel func()

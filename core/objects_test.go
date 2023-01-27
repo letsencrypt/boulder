@@ -146,7 +146,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 				test.AssertEquals(t, err.Error(), tc.ExpectedError)
 			}
 			if tc.ExpectedResult != "" {
-				test.AssertEquals(t, *result, tc.ExpectedResult)
+				test.AssertEquals(t, result, tc.ExpectedResult)
 			}
 		})
 	}

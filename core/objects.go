@@ -363,16 +363,16 @@ func (authz *Authorization) FindChallengeByStringID(id string) int {
 // SolvedBy will look through the Authorizations challenges, returning the type
 // of the *first* challenge it finds with Status: valid, or an error if no
 // challenge is valid.
-func (authz *Authorization) SolvedBy() (*AcmeChallenge, error) {
+func (authz *Authorization) SolvedBy() (AcmeChallenge, error) {
 	if len(authz.Challenges) == 0 {
-		return nil, fmt.Errorf("Authorization has no challenges")
+		return "", fmt.Errorf("Authorization has no challenges")
 	}
 	for _, chal := range authz.Challenges {
 		if chal.Status == StatusValid {
-			return &chal.Type, nil
+			return chal.Type, nil
 		}
 	}
-	return nil, fmt.Errorf("Authorization not solved by any challenge")
+	return "", fmt.Errorf("Authorization not solved by any challenge")
 }
 
 // JSONBuffer fields get encoded and decoded JOSE-style, in base64url encoding

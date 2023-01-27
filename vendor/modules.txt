@@ -306,7 +306,11 @@ golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
-# golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
+# golang.org/x/exp v0.0.0-20230118134722-a68e582fa157
+## explicit; go 1.18
+golang.org/x/exp/constraints
+golang.org/x/exp/slices
+# golang.org/x/mod v0.6.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
 # golang.org/x/net v0.1.0
@@ -338,13 +342,13 @@ golang.org/x/sys/windows
 # golang.org/x/term v0.1.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.4.0
+# golang.org/x/text v0.6.0
 ## explicit; go 1.17
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/tools v0.1.12
+# golang.org/x/tools v0.2.0
 ## explicit; go 1.18
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/gcimporter
@@ -455,13 +459,11 @@ gopkg.in/alexcesaro/statsd.v2
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit
 gopkg.in/fsnotify.v1
-# gopkg.in/go-jose/go-jose.v2 v2.6.0
+# gopkg.in/go-jose/go-jose.v2 v2.6.1
 ## explicit
 gopkg.in/go-jose/go-jose.v2
-# gopkg.in/square/go-jose.v2 v2.6.0
-## explicit
-gopkg.in/square/go-jose.v2/cipher
-gopkg.in/square/go-jose.v2/json
+gopkg.in/go-jose/go-jose.v2/cipher
+gopkg.in/go-jose/go-jose.v2/json
 # gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7
 ## explicit
 gopkg.in/tomb.v1
