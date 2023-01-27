@@ -13,6 +13,11 @@ import (
 // interface.
 var _ base.PickerBuilder = (*Picker)(nil)
 
+var errNoPrefix = errors.New("'prefix' value required in RPC context")
+var errNoPrefixSalt = errors.New("'salt' value required in RPC context")
+var errPrefixType = errors.New("'prefix' value in RPC context must be a string")
+var errPrefixSaltType = errors.New("'salt' value in RPC context must be a string")
+
 // Picker is a base.Balancer used to construct a balancer.Picker capable of
 // picking a backend (SubConn) based on the context of each RPC message. It
 // implements the base.PickerBuilder and balancer.Picker interfaces but should
@@ -52,23 +57,33 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	}
 
 	// Get the destination prefix from the RPC context.
-	destPrefix := info.Ctx.Value(nonce.PrefixKey{}).(string)
-	if destPrefix == "" {
+	prefixVal := info.Ctx.Value(nonce.PrefixKey{})
+	if prefixVal == nil {
 		// This should never happen.
-		return result, errors.New("'prefix' value required in RPC context")
+		return result, errNoPrefix
+	}
+	destPrefix, ok := prefixVal.(string)
+	if !ok {
+		// This should never happen.
+		return result, errPrefixType
 	}
 
 	// Get the salt from the RPC context.
-	salt := info.Ctx.Value(nonce.PrefixSaltKey{}).(string)
-	if salt == "" {
+	prefixSaltVal := info.Ctx.Value(nonce.PrefixSaltKey{})
+	if prefixSaltVal == nil {
 		// This should never happen.
-		return result, errors.New("'salt' value required in RPC context")
+		return result, errNoPrefixSalt
+	}
+	prefixSalt, ok := prefixSaltVal.(string)
+	if !ok {
+		// This should never happen.
+		return result, errPrefixSaltType
 	}
 
 	// Iterate over the backends and return the first one that matches the
 	// destination prefix from the RPC context.
 	for sc, scInfo := range p.backends {
-		scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, salt)
+		scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, prefixSalt)
 		if scPrefix == destPrefix {
 			result.SubConn = sc
 			return result, nil
