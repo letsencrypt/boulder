@@ -1011,7 +1011,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// Update the order status locally since the SA doesn't return the updated
 	// order itself after setting the status
 	order := req.Order
-	order.Status = string(core.StatusInvalid)
+	order.Status = string(core.StatusProcessing)
 
 	// We do steps 3 and 4 in a goroutine so that we can better handle latency
 	// from getting SCTs and writing the (pre)certificate to the database. This
