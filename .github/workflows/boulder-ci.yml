@@ -2,11 +2,11 @@
 
 name: Boulder CI
 
-# Controls when the action will run. 
+# Controls when the action will run.
 on:
   # Triggers the workflow on push or pull request events but only for the main branch
   push:
-    branches: 
+    branches:
       - main
       - release-branch-*
   pull_request:
@@ -38,7 +38,7 @@ jobs:
         BOULDER_TOOLS_TAG:
           - go1.19.2_2023-01-10
           - go1.19.5_2023-01-10
-        # Tests command definitions. Use the entire docker-compose command you want to run.
+        # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
           - "./t.sh --lints --generate --make-artifacts"
@@ -48,8 +48,8 @@ jobs:
           # production can be made in `test/config-next/<component>.json`.
           #
           # Testing DB Schema Changes:
-          # Database migrations in `sa/_db-next/migrations` are only performed 
-          # when `docker-compose` is called using `-f docker-compose.yml -f 
+          # Database migrations in `sa/_db-next/migrations` are only performed
+          # when `docker compose` is called using `-f docker-compose.yml -f
           # docker-compose.next.yml`.
           - "./tn.sh --integration"
           - "./t.sh --unit --enable-race-detection"
@@ -59,7 +59,7 @@ jobs:
           # because it needs to fetch packages from GitHub et. al., which
           # is incompatible with the DNS server override in the boulder
           # container (used for service discovery).
-          - "docker-compose run --use-aliases netaccess ./test.sh --gomod-vendor"
+          - "docker compose run --use-aliases netaccess ./test.sh --gomod-vendor"
 
     # This sets the docker image tag for the boulder-tools repository to
     # use in tests. It will be set appropriately for each tag in the list
@@ -93,9 +93,9 @@ jobs:
         run: echo "Using BOULDER_TOOLS_TAG ${BOULDER_TOOLS_TAG}"
 
       # Pre-pull the docker containers before running the tests.
-      - name: docker-compose pull
-        run: docker-compose pull
-      
+      - name: docker compose pull
+        run: docker compose pull
+
       # Run the test matrix. This will run
       - name: "Run Test: ${{ matrix.tests }}"
         run: ${{ matrix.tests }}
