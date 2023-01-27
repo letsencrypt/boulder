@@ -114,8 +114,6 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		}
 	}
 
-	fmt.Println("CONFIGURED NONCE PREFIX: ", prefix)
-
 	key := make([]byte, 16)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
@@ -151,14 +149,13 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	stats.MustRegister(nonceHeapLatency)
 
 	return &NonceService{
-		earliest: 0,
-		latest:   0,
-		used:     make(map[int64]bool, maxUsed),
-		usedHeap: &int64Heap{},
-		gcm:      gcm,
-		maxUsed:  maxUsed,
-		prefix:   prefix,
-
+		earliest:         0,
+		latest:           0,
+		used:             make(map[int64]bool, maxUsed),
+		usedHeap:         &int64Heap{},
+		gcm:              gcm,
+		maxUsed:          maxUsed,
+		prefix:           prefix,
 		nonceCreates:     nonceCreates,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,

@@ -382,7 +382,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 				"both 'SRVLookup' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
 			)
 		}
-		// Lookup backends using a DNS SRV record.
+		// Lookup backends using DNS SRV records.
 		targetHost := c.SRVLookup.Service + "." + c.SRVLookup.Domain
 
 		hostOverride = targetHost
