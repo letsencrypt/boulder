@@ -37,11 +37,11 @@ const (
 	//
 	// TODO(#6610): Remove once we've moved derivable prefixes by default.
 	PrefixLen = 4
-	// PrefixLenDepracated is the character length of a nonce prefix.
+	// DepracatedPrefixLen is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead.
 	// TODO(#6610): Remove once we've moved derivable prefixes by default.
-	PrefixLenDepracated = 4
+	DepracatedPrefixLen = 4
 	defaultMaxUsed      = 65536
 	nonceLen            = 32
 )
@@ -106,8 +106,14 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	// the prefix to be three bytes (four characters) so that the
 	// bytes preceding the prefix wouldn't impact the encoding.
 	if prefix != "" {
-		if len(prefix) != PrefixLen && len(prefix) != PrefixLenDepracated {
-			return nil, errors.New("nonce prefix must be 4 characters")
+		// TODO(#6610): Refacor once we've moved to derivable prefixes by default.
+		if len(prefix) != PrefixLen && len(prefix) != DepracatedPrefixLen {
+			return nil, fmt.Errorf(
+				"'noncePrefix' must be %d or %d characters, not %d",
+				PrefixLen,
+				DepracatedPrefixLen,
+				len(prefix),
+			)
 		}
 		if _, err := base64.RawURLEncoding.DecodeString(prefix); err != nil {
 			return nil, errors.New("nonce prefix must be valid base64url")
@@ -276,15 +282,15 @@ func (ns *NonceService) Valid(nonce string) bool {
 	return true
 }
 
-// splitNonce splits a nonce into a prefix and a body.
+// splitDeprecatedNonce splits a nonce into a prefix and a body.
 //
-// Deprecated: Use NonceService.splitNonce instead.
+// Deprecated: Use NonceService.splitDeprecatedNonce instead.
 // TODO(#6610): Remove this function once we've moved derivable prefixes by default.
-func splitNonce(nonce string) (string, string, error) {
-	if len(nonce) < PrefixLenDepracated {
+func splitDeprecatedNonce(nonce string) (string, string, error) {
+	if len(nonce) < DepracatedPrefixLen {
 		return "", "", errInvalidNonceLength
 	}
-	return nonce[:PrefixLenDepracated], nonce[PrefixLenDepracated:], nil
+	return nonce[:DepracatedPrefixLen], nonce[DepracatedPrefixLen:], nil
 }
 
 // splitNonce splits a nonce into a prefix and a body.
@@ -298,7 +304,7 @@ func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
 // RemoteRedeem checks the nonce prefix and routes the Redeem RPC
 // to the associated remote nonce service
 func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]noncepb.NonceServiceClient, nonce string) (bool, error) {
-	prefix, _, err := splitNonce(nonce)
+	prefix, _, err := splitDeprecatedNonce(nonce)
 	if err != nil {
 		return false, nil
 	}

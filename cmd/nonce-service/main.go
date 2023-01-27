@@ -109,16 +109,6 @@ func main() {
 	}
 
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	if !c.NonceService.UseDerivablePrefix && len(c.NonceService.NoncePrefix) != nonce.PrefixLenDepracated {
-		cmd.Fail(
-			fmt.Sprintf("'noncePrefix' must be %d characters, %q has a length of %d",
-				nonce.PrefixLenDepracated,
-				c.NonceService.NoncePrefix,
-				len(c.NonceService.NoncePrefix),
-			),
-		)
-	}
-	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	if c.NonceService.UseDerivablePrefix && c.NonceService.PrefixSalt.PasswordFile == "" {
 		cmd.Fail("Cannot set 'prefixSalt' without 'useDerivablePrefix'")
 	}
