@@ -45,11 +45,10 @@ type ServiceConfig struct {
 	TLS       TLSConfig
 }
 
-// DBConfig defines how to connect to a database. The connect string may be
+// DBConfig defines how to connect to a database. The connect string is
 // stored in a file separate from the config, because it can contain a password,
 // which we want to keep out of configs.
 type DBConfig struct {
-	DBConnect string
 	// A file containing a connect URL for the DB.
 	DBConnectFile string
 
@@ -78,15 +77,11 @@ type DBConfig struct {
 	ConnMaxIdleTime ConfigDuration
 }
 
-// URL returns the DBConnect URL represented by this DBConfig object, either
-// loading it from disk or returning a default value. Leading and trailing
-// whitespace is stripped.
+// URL returns the DBConnect URL represented by this DBConfig object, loading it
+// from the file on disk. Leading and trailing whitespace is stripped.
 func (d *DBConfig) URL() (string, error) {
-	if d.DBConnectFile != "" {
-		url, err := os.ReadFile(d.DBConnectFile)
-		return strings.TrimSpace(string(url)), err
-	}
-	return d.DBConnect, nil
+	url, err := os.ReadFile(d.DBConnectFile)
+	return strings.TrimSpace(string(url)), err
 }
 
 // DSNAddressAndUser returns the Address and User of the DBConnect DSN from

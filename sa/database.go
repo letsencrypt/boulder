@@ -85,59 +85,6 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	return dbMap, nil
 }
 
-// InitSqlDb constructs a *sql.DB object using the provided settings and enables
-// 'interpolateParams' and 'parseTime'. If scope is non-Nil database metrics
-// will also be initialized. The only required parameter is config.
-func InitSqlDb(config cmd.DBConfig, scope prometheus.Registerer) (*sql.DB, error) {
-	url, err := config.URL()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load DBConnect URL: %s", err)
-	}
-
-	conf, err := mysql.ParseDSN(url)
-	if err != nil {
-		return nil, fmt.Errorf("while parsing DSN from 'DBConnectFile': %s", err)
-	}
-
-	if len(conf.Params) == 0 {
-		conf.Params = map[string]string{
-			"interpolateParams": "true",
-			"parseTime":         "true",
-		}
-	} else {
-		conf.Params["interpolateParams"] = "true"
-		conf.Params["parseTime"] = "true"
-	}
-
-	db, err := sql.Open("mysql", conf.FormatDSN())
-	if err != nil {
-		return nil, fmt.Errorf("couldn't setup database client: %s", err)
-	}
-	db.SetMaxOpenConns(config.MaxOpenConns)
-	db.SetMaxIdleConns(config.MaxIdleConns)
-	db.SetConnMaxLifetime(config.ConnMaxLifetime.Duration)
-	db.SetConnMaxIdleTime(config.ConnMaxIdleTime.Duration)
-
-	addr, user, err := config.DSNAddressAndUser()
-	if err != nil {
-		return nil, fmt.Errorf("while parsing DSN: %w", err)
-	}
-
-	if scope != nil {
-		settings := DbSettings{
-			MaxOpenConns:    config.MaxOpenConns,
-			MaxIdleConns:    config.MaxIdleConns,
-			ConnMaxLifetime: config.ConnMaxLifetime.Duration,
-			ConnMaxIdleTime: config.ConnMaxIdleTime.Duration,
-		}
-		err = InitDBMetrics(db, scope, settings, addr, user)
-		if err != nil {
-			return nil, fmt.Errorf("while initializing metrics: %w", err)
-		}
-	}
-	return db, nil
-}
-
 // NewDbMap creates a wrapped root gorp mapping object. Create one of these for
 // each database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
