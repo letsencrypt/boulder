@@ -475,6 +475,7 @@ func setup(t *testing.T) testCtx {
 		nil,
 		nil,
 		0,
+		0,
 		nil,
 		&mockPurger{},
 		[]*issuance.Certificate{issuer},
