@@ -446,14 +446,6 @@ type authzModel struct {
 	ValidationRecord []byte     `db:"validationRecord"`
 }
 
-func eraseSliceType(input []string) []any {
-	var output []any
-	for _, in := range input {
-		output = append(output, in)
-	}
-	return output
-}
-
 // SelectAuthzsMatchingIssuance looks for a set of authzs that would have
 // authorized a given issuance that is known to have occurred. The returned
 // authzs will all belong to the given regID, will have potentially been valid
@@ -493,7 +485,9 @@ func SelectAuthzsMatchingIssuance(
 		issued.Add(1*time.Second),  // leeway for clock skew
 		identifierTypeToUint[string(identifier.DNS)],
 	)
-	args = append(args, eraseSliceType(dnsNames)...)
+	for _, name := range dnsNames {
+		args = append(args, name)
+	}
 
 	_, err := s.Select(&authzModels, query, args...)
 	if err != nil {

@@ -250,10 +250,11 @@ func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string)
 	}
 
 	if len(authzs) == 0 {
-		return fmt.Errorf("no relevant authzs found valid at %s",
-			cert.Issued)
+		return fmt.Errorf("no relevant authzs found valid at %s", cert.Issued)
 	}
 
+	// We may get multiple authorizations for the same name, but that's okay.
+	// Any authorization for a given name is sufficient.
 	nameToAuthz := make(map[string]*corepb.Authorization)
 	for _, m := range authzs {
 		nameToAuthz[m.Identifier] = m

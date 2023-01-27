@@ -59,7 +59,9 @@ const (
 	// expensive, we get it behind a feature flag.
 	CertCheckerChecksValidations
 
-	// CertCheckerChecksValidations ...
+	// CertCheckerRequiresValidations causes cert-checker to fail if the
+	// query enabled by CertCheckerChecksValidations didn't find corresponding
+	// authorizations.
 	CertCheckerRequiresValidations
 )
 
