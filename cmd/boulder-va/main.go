@@ -88,6 +88,8 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	pc := cmd.NewDefaultPortConfig()
+
 	var dnsTimeout time.Duration
 	if c.VA.DNSTimeout != "" {
 		dnsTimeout, err = time.ParseDuration(c.VA.DNSTimeout)
@@ -147,6 +149,7 @@ func main() {
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(
+		pc,
 		resolver,
 		remotes,
 		c.VA.MaxRemoteValidationFailures,
