@@ -36,7 +36,7 @@ const (
 	// PrefixLen is the character length of a nonce prefix.
 	//
 	// TODO(#6610): Remove once we've moved derivable prefixes by default.
-	PrefixLen = 4
+	PrefixLen = 8
 	// DepracatedPrefixLen is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead.

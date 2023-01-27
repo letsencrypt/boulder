@@ -213,6 +213,6 @@ func TestNoncePrefixValidation(t *testing.T) {
 
 func TestDerivePrefix(t *testing.T) {
 	prefix := DerivePrefix("192.168.1.1:8080", "Fleur de sel")
-	test.AssertEquals(t, prefix, "ELWO")
-	// test.AssertEquals(t, prefix, "ELWOvT")
+	// test.AssertEquals(t, prefix, "ELWO")
+	test.AssertEquals(t, prefix, "ELWOvT")
 }

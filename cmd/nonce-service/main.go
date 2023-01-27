@@ -28,8 +28,8 @@ type Config struct {
 		// TODO(#6610): Remove once we've moved to derivable prefixes by
 		// default.
 		UseDerivablePrefix bool
-		// PrefixSalt is the path to a file containing the salt used to derive a nonce
-		// prefix. This is only used if UseDerivablePrefix is true.
+		// PrefixSalt is the path to a file containing the salt used to derive
+		// the nonce prefix. This is only used if UseDerivablePrefix is true.
 		//
 		// TODO(#6610): Edit this comment once we've moved to derivable prefixes
 		// by default.
