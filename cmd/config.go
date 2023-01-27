@@ -427,6 +427,16 @@ type PortConfig struct {
 	TLSPort   int
 }
 
+// NewDefaultPortConfig is a constructor which returns a PortConfig with default
+// settings.
+func NewDefaultPortConfig() *PortConfig {
+	return &PortConfig{
+		HTTPPort:  80,
+		HTTPSPort: 443,
+		TLSPort:   443,
+	}
+}
+
 // BeelineConfig provides config options for the Honeycomb beeline-go library,
 // which are passed to its beeline.Init() method.
 type BeelineConfig struct {
