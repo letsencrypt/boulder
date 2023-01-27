@@ -55,7 +55,7 @@ type PrefixKey struct{}
 type PrefixSaltKey struct{}
 
 // DerivePrefix derives a nonce prefix from the first 24 bits of a SHA256 hash
-// of the gRPC server listening address + port and a salt value.
+// of the gRPC server listening IPv4 address + port and a salt value.
 func DerivePrefix(listeningAddr, salt string) string {
 	h := sha256.New()
 	h.Write([]byte(listeningAddr + salt))

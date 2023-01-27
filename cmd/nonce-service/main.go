@@ -46,13 +46,12 @@ func derivePrefix(salt string, grpcAddr string) (string, error) {
 		return "", err
 	}
 
-	host, port, err := net.SplitHostPort(grpcAddr)
-	if err != nil {
-		return "", fmt.Errorf("parsing listen address: %w", err)
-	}
-
 	// If the configuration specifies an IPv4 address and port, we should use it
 	// to derive the nonce prefix.
+	host, port, err := net.SplitHostPort(grpcAddr)
+	if err != nil {
+		return "", fmt.Errorf("parsing gRPC listen address: %w", err)
+	}
 	if host != "" && port != "" {
 		hostIP := net.ParseIP(host)
 		if hostIP != nil && hostIP.To4() != nil {
@@ -60,8 +59,9 @@ func derivePrefix(salt string, grpcAddr string) (string, error) {
 		}
 	}
 
-	// Otherwise, we should use the only non-loopback IPv4 address we find on
-	// the system.
+	// Otherwise, we should use the only non-loopback interface with an IPv4
+	// address we find on the system and the port passed in the gRPC
+	// configuration.
 	var interfaces []string
 	for _, a := range addrs {
 		ipnet, ok := a.(*net.IPNet)
@@ -73,11 +73,12 @@ func derivePrefix(salt string, grpcAddr string) (string, error) {
 	}
 	if len(interfaces) == 0 {
 		// This should never happen.
-		return "", fmt.Errorf("checking for interface: no interfaces found")
+		return "", fmt.Errorf("found 0 non-loopback interfaces")
 	}
 	if len(interfaces) > 1 {
-		// This should (ideally) never happen.
-		return "", fmt.Errorf("checking for interface: multiple interfaces found")
+		// This should (ideally) never happen. If it does, advise the operator to
+		// specify the IPv4 address in the address field of the gRPC configuration.
+		return "", fmt.Errorf("found more than one non-loopback interface, specify IPv4 address in gRPC configuration instead")
 	}
 	localAddr := interfaces[0] + ":" + port
 	return nonce.DerivePrefix(localAddr, salt), nil
