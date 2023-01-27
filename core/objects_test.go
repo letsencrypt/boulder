@@ -7,7 +7,7 @@ import (
 	"net"
 	"testing"
 
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test"
 )
@@ -146,7 +146,7 @@ func TestAuthorizationSolvedBy(t *testing.T) {
 				test.AssertEquals(t, err.Error(), tc.ExpectedError)
 			}
 			if tc.ExpectedResult != "" {
-				test.AssertEquals(t, *result, tc.ExpectedResult)
+				test.AssertEquals(t, result, tc.ExpectedResult)
 			}
 		})
 	}

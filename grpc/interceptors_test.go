@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +27,6 @@ import (
 
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -88,19 +86,6 @@ func TestClientInterceptor(t *testing.T) {
 
 	err = ci.Unary(context.Background(), "-service-brokeTest", nil, nil, nil, testInvoker)
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
-}
-
-func TestCancelTo408Interceptor(t *testing.T) {
-	err := CancelTo408Interceptor(context.Background(), "-service-test", nil, nil, nil, testInvoker)
-	test.AssertNotError(t, err, "CancelTo408Interceptor returned an error when it shouldn't")
-
-	err = CancelTo408Interceptor(context.Background(), "-service-requesterCanceledTest", nil, nil, nil, testInvoker)
-	test.AssertError(t, err, "CancelTo408Interceptor didn't return an error when it should")
-
-	var probDetails *probs.ProblemDetails
-	test.AssertErrorWraps(t, err, &probDetails)
-	test.AssertEquals(t, probDetails.Type, probs.MalformedProblem)
-	test.AssertEquals(t, probDetails.HTTPStatus, http.StatusRequestTimeout)
 }
 
 // TestFailFastFalse sends a gRPC request to a backend that is
@@ -376,28 +361,6 @@ func TestInFlightRPCStat(t *testing.T) {
 
 	// Check the gauge value again
 	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, 0)
-}
-
-func TestNoCancelInterceptor(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	ctx, cancel2 := context.WithDeadline(ctx, time.Now().Add(time.Second))
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		select {
-		case <-ctx.Done():
-			return nil, errors.New("oh no canceled")
-		case <-time.After(50 * time.Millisecond):
-		}
-		return nil, nil
-	}
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		cancel()
-		cancel2()
-	}()
-	_, err := NoCancelInterceptor(ctx, nil, nil, handler)
-	if err != nil {
-		t.Error(err)
-	}
 }
 
 func TestServiceAuthChecker(t *testing.T) {

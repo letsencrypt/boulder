@@ -18,7 +18,6 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/probs"
 )
 
 const (
@@ -52,24 +51,6 @@ var _ serverInterceptor = &noopServerInterceptor{}
 type clientInterceptor interface {
 	Unary(ctx context.Context, method string, req interface{}, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error
 	Stream(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error)
-}
-
-// NoCancelInterceptor is a gRPC interceptor that creates a new context,
-// separate from the original context, that has the same deadline but does
-// not propagate cancellation. This is used by SA.
-//
-// Because this interceptor throws away annotations on the context, it
-// breaks tracing for events that get the modified context. To minimize that
-// impact, this interceptor should always be last.
-func NoCancelInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-	cancel := func() {}
-	if deadline, ok := ctx.Deadline(); ok {
-		ctx, cancel = context.WithDeadline(context.Background(), deadline)
-	} else {
-		ctx = context.Background()
-	}
-	defer cancel()
-	return handler(ctx, req)
 }
 
 // serverMetadataInterceptor is a gRPC interceptor that adds Prometheus
@@ -429,20 +410,6 @@ func (cmi *clientMetadataInterceptor) Stream(
 }
 
 var _ clientInterceptor = (*clientMetadataInterceptor)(nil)
-
-// CancelTo408Interceptor calls the underlying invoker, checks to see if the
-// resulting error was a gRPC Canceled error (because this client cancelled
-// the request, likely because the ACME client itself canceled the HTTP
-// request), and converts that into a Problem which can be "returned" to the
-// (now missing) client, and into our logs. This should be the outermost client
-// interceptor, and should only be enabled in the WFEs.
-func CancelTo408Interceptor(ctx context.Context, fullMethod string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	err := invoker(ctx, fullMethod, req, reply, cc, opts...)
-	if err != nil && status.Code(err) == codes.Canceled {
-		return probs.Canceled(err.Error())
-	}
-	return err
-}
 
 // deadlineDetails is an error type that we use in place of gRPC's
 // DeadlineExceeded errors in order to add more detail for debugging.

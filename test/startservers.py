@@ -244,8 +244,8 @@ def startChallSrv():
         raise(Exception("startChallSrv called more than once"))
 
     # NOTE(@cpu): We specify explicit bind addresses for -https01 and
-    # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 5001 for on interface
-    # and TLS-ALPN-01 responses on 5001 for another interface. The choice of
+    # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 443 for on interface
+    # and TLS-ALPN-01 responses on 443 for another interface. The choice of
     # which is used is controlled by mock DNS data added by the relevant
     # integration tests.
     challSrvProcess = run([
@@ -254,9 +254,9 @@ def startChallSrv():
         '-defaultIPv6', '',
         '--dns01', ':8053,:8054',
         '--management', ':8055',
-        '--http01', '10.77.77.77:5002',
-        '-https01', '10.77.77.77:5001',
-        '--tlsalpn01', '10.88.88.88:5001'],
+        '--http01', '10.77.77.77:80',
+        '-https01', '10.77.77.77:443',
+        '--tlsalpn01', '10.88.88.88:443'],
         None)
     # Wait for the pebble-challtestsrv management port.
     if not waitport(8055, ' '.join(challSrvProcess.args)):

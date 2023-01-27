@@ -85,7 +85,7 @@
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "features": {
-      "PrecertificateRevocation": true,
+      "MandatoryPOSTAsGET": true,
       "ServeRenewalInfo": true
     }
   },

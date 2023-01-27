@@ -111,7 +111,7 @@ func main() {
 	start, stop, err := bgrpc.NewServer(c.SA.GRPC).Add(
 		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
 		&sapb.StorageAuthority_ServiceDesc, sai).Build(
-		tls, scope, clk, bgrpc.NoCancelInterceptor)
+		tls, scope, clk)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 
 	go cmd.CatchSignals(logger, stop)

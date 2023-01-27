@@ -296,11 +296,11 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(raConn)
 
-	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
@@ -324,7 +324,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 		cmd.FailOnError(err, "Failed to load redeemNonceSalt")
 	}
 
-	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 	gnc := nonce.NewGetter(getNonceConn)
 
@@ -332,7 +332,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	var npm map[string]nonce.Redeemer
 	if c.WFE.RedeemNonceService != nil {
 		// Dispatch nonce redemption RPCs dynamically.
-		redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+		redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 		rnc = nonce.NewRedeemer(redeemNonceConn)
 	} else {
@@ -342,7 +342,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 		npm = make(map[string]nonce.Redeemer)
 		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
 			serviceConfig := serviceConfig
-			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 			npm[prefix] = nonce.NewRedeemer(conn)
 		}
