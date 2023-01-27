@@ -350,7 +350,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		testKeyPolicy,
 		certChains,
 		issuerCertificates,
-		map[string]noncepb.NonceServiceClient{
+		map[string]nonce.Redeemer{
 			noncePrefix: nonceGRPCService,
 		},
 		blog.NewMock(),
