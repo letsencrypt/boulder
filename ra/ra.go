@@ -922,9 +922,16 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 // can't add the error to the order. This function MUST only be called when we
 // are already returning an error for another reason.
 func (ra *RegistrationAuthorityImpl) failOrder(
-	ctx context.Context,
+	_ context.Context,
 	order *corepb.Order,
 	prob *probs.ProblemDetails) {
+	// Use a separate context with its own timeout, since the error we encountered
+	// may have been a context cancellation or timeout, and these operations still
+	// need to succeed.
+	// TODO(go1.22?): use context.Detach to preserve tracing metadata.
+	var cancel func()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 
 	// Convert the problem to a protobuf problem for the *corepb.Order field
 	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
