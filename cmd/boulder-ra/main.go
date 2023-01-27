@@ -69,7 +69,10 @@ type Config struct {
 
 		// FinalizeTimeout is how long the RA is willing to wait for the Order
 		// finalization process to take. This config parameter only has an effect
-		// if the AsyncFinalization feature flag is enabled.
+		// if the AsyncFinalization feature flag is enabled. Any systems which
+		// manage the shutdown of an RA must be willing to wait at least this long
+		// after sending the shutdown signal, to allow background goroutines to
+		// complete.
 		FinalizeTimeout cmd.ConfigDuration
 
 		// CTLogs contains groupings of CT logs organized by what organization
@@ -278,7 +281,10 @@ func main() {
 		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
+	go cmd.CatchSignals(logger, func() {
+		stop()
+		rai.DrainFinalize()
+	})
 	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 

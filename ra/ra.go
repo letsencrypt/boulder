@@ -90,6 +90,7 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 	finalizeTimeout              time.Duration
+	finalizeCounter              sync.WaitGroup
 
 	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
 	issuersByID     map[issuance.IssuerID]*issuance.Certificate
@@ -238,6 +239,7 @@ func NewRegistrationAuthorityImpl(
 		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
 		finalizeTimeout:              finalizeTimeout,
+		finalizeCounter:              sync.WaitGroup{},
 		ctpolicy:                     ctp,
 		ctpolicyResults:              ctpolicyResults,
 		purger:                       purger,
@@ -1009,6 +1011,12 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// lets us return the order in the Processing state to the client immediately,
 	// prompting them to poll the Order object and wait for it to be put into its
 	// final state.
+	//
+	// We track this goroutine's lifetime in two separate waitgroups: one on the
+	// RA itself, so that it can wait for all goroutines to drain during shutdown,
+	// and one local to this request, so that this function can wait on the
+	// goroutine if the AsyncFinalize flag isn't enabled.
+	ra.finalizeCounter.Add(1)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -1059,6 +1067,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 		logEvent.ResponseTime = ra.clk.Now()
 		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
+		ra.finalizeCounter.Done()
 		wg.Done()
 	}()
 
@@ -2560,4 +2569,8 @@ func validateContactsPresent(contacts []string, contactsPresent bool) error {
 		return berrors.InternalServerError("account contacts present but contactsPresent false")
 	}
 	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) DrainFinalize() {
+	ra.finalizeCounter.Wait()
 }
