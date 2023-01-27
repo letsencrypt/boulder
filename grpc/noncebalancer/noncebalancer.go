@@ -12,10 +12,10 @@ import (
 // interface.
 var _ base.PickerBuilder = (*Balancer)(nil)
 
-var errNoPrefix = errors.New("'prefix' value required in RPC context")
-var errNoPrefixSalt = errors.New("'salt' value required in RPC context")
-var errPrefixType = errors.New("'prefix' value in RPC context must be a string")
-var errPrefixSaltType = errors.New("'salt' value in RPC context must be a string")
+var errNoPrefix = errors.New("nonce.PrefixKey value required in RPC context")
+var errNoPrefixSalt = errors.New("nonce.PrefixSaltKey value required in RPC context")
+var errPrefixType = errors.New("nonce.PrefixKey value in RPC context must be a string")
+var errPrefixSaltType = errors.New("nonce.PrefixSaltKey value in RPC context must be a string")
 
 // Balancer is a base.Balancer used to construct a new Picker. It implements the
 // base.PickerBuilder interface but should only be used as a base.Balancer for
