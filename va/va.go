@@ -20,6 +20,7 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -192,6 +193,7 @@ type ValidationAuthorityImpl struct {
 
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(
+	pc *cmd.PortConfig,
 	resolver bdns.Client,
 	remoteVAs []RemoteVA,
 	maxRemoteFailures int,
@@ -211,9 +213,9 @@ func NewValidationAuthorityImpl(
 		log:                logger,
 		dnsClient:          resolver,
 		issuerDomain:       issuerDomain,
-		httpPort:           80,
-		httpsPort:          443,
-		tlsPort:            443,
+		httpPort:           pc.HTTPPort,
+		httpsPort:          pc.HTTPSPort,
+		tlsPort:            pc.TLSPort,
 		userAgent:          userAgent,
 		clk:                clk,
 		metrics:            initMetrics(stats),
