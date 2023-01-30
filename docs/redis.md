@@ -22,7 +22,7 @@ script that handles all that for you: `test/redis-cli.sh`. First, make sure your
 redis cluster is running:
 
 ```
-docker-compose up bredis_clusterer
+docker compose up bredis_clusterer
 ```
 
 Then, in a different window, run:

@@ -10,4 +10,4 @@ ARGS="--tls \
     --user replication-user \
     --pass 435e9c4225f08813ef3af7c725f0d30d263b9cd3"
 
-exec docker-compose exec bredis_clusterer redis-cli "${ARGS}" "${@}"
+exec docker compose exec bredis_clusterer redis-cli "${ARGS}" "${@}"
