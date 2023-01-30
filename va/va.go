@@ -178,7 +178,7 @@ type portConfig struct {
 	TLSPort   int
 }
 
-// NewDefaultPortConfig is a constructor which returns a PortConfig with default
+// newDefaultPortConfig is a constructor which returns a portConfig with default
 // settings.
 //
 // CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
@@ -189,8 +189,8 @@ type portConfig struct {
 //
 // RFC 8737 section 3: The ACME server initiates a TLS connection to the chosen
 // IP address. This connection MUST use TCP port 443.
-func newDefaultPortConfig() *PortConfig {
-	return &PortConfig{
+func newDefaultPortConfig() *portConfig {
+	return &portConfig{
 		HTTPPort:  80,
 		HTTPSPort: 443,
 		TLSPort:   443,
@@ -234,7 +234,7 @@ func NewValidationAuthorityImpl(
 		return nil, errors.New("no account URI prefixes configured")
 	}
 
-	pc := NewDefaultPortConfig()
+	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
 		log:                logger,
