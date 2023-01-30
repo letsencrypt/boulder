@@ -184,6 +184,9 @@ type PortConfig struct {
 // CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
 // (http), 443 (https), 25 (smtp), 22 (ssh).
 //
+// RFC 8555 section 8.3: Dereference the URL using an HTTP GET request. This
+// request MUST be sent to TCP port 80 on the HTTP server.
+//
 // RFC 8737 section 3: The ACME server initiates a TLS connection to the chosen
 // IP address. This connection MUST use TCP port 443.
 func NewDefaultPortConfig() *PortConfig {
