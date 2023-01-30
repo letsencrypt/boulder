@@ -9,4 +9,4 @@ fi
 
 source ./tools/t-helper.sh
 
-exec ${_compose} -f docker-compose.yml -f docker-compose.next.yml --name boulder_tests run boulder ./test.sh "$@"
+exec ${_compose} -f docker-compose.yml -f docker-compose.next.yml run boulder ./test.sh "$@"
