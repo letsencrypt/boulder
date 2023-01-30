@@ -33,8 +33,8 @@ type Config struct {
 		ListenAddress    string
 		TLSListenAddress string
 
-		// When to timeout a request. This should be slightly lower than the
-		// upstream's timeout when making request to the WFE.
+		// Timeout is the per-request overall timeout. This should be slightly
+		// lower than the upstream's timeout when making request to the WFE.
 		Timeout cmd.ConfigDuration
 
 		ServerCertificatePath string

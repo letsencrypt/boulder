@@ -129,7 +129,7 @@ type WebFrontEndImpl struct {
 	// CORS settings
 	AllowOrigins []string
 
-	// Maximum duration of a request
+	// requestTimeout is the per-request overall timeout.
 	requestTimeout time.Duration
 
 	// StaleTimeout determines the required staleness for resources allowed to be
