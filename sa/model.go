@@ -770,7 +770,7 @@ func addIssuedNames(queryer db.Queryer, cert *x509.Certificate, isRenewal bool) 
 		return berrors.InternalServerError("certificate has no DNSNames")
 	}
 
-	multiInserter, err := db.NewMultiInserter("issuedNames", "reversedName, serial, notBefore, renewal", "")
+	multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"}, "")
 	if err != nil {
 		return err
 	}

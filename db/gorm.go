@@ -9,7 +9,32 @@ import (
 	"strings"
 )
 
-var safeNameRE = regexp.MustCompile("^[a-zA-Z0-9_]+$")
+// Characters allowed in an unquoted identifier by MariaDB.
+// https://mariadb.com/kb/en/identifier-names/#unquoted
+var mariaDBUnquotedIdentifierRE = regexp.MustCompile("^[0-9a-zA-Z$_]+$")
+
+func validMariaDBUnquotedIdentifier(s string) error {
+	if !mariaDBUnquotedIdentifierRE.MatchString(s) {
+		return fmt.Errorf("invalid MariaDB identifier %q", s)
+	}
+
+	allNumeric := true
+	startsNumeric := false
+	for i, c := range []byte(s) {
+		if c < '0' || c > '9' {
+			if startsNumeric && len(s) > i && s[i] == 'e' {
+				return fmt.Errorf("MariaDB identifier looks like floating point: %q", s)
+			}
+			allNumeric = false
+			break
+		}
+		startsNumeric = true
+	}
+	if allNumeric {
+		return fmt.Errorf("MariaDB identifier contains only numerals: %q", s)
+	}
+	return nil
+}
 
 // NewMappedSelector returns an object which can be used to automagically query
 // the provided type-mapped database for rows of the parameterized type.
@@ -36,7 +61,8 @@ func NewMappedSelector[T any](executor MappedExecutor) (MappedSelector[T], error
 			return nil, fmt.Errorf("struct contains anonymous embedded struct %q", field.Name)
 		}
 		column := strings.ToLower(t.Field(i).Name)
-		if !safeNameRE.MatchString(column) {
+		err := validMariaDBUnquotedIdentifier(column)
+		if err != nil {
 			return nil, fmt.Errorf("struct field maps to unsafe db column name %q", column)
 		}
 		if _, found := seen[column]; found {
@@ -87,8 +113,9 @@ func (ts mappedSelector[T]) Query(ctx context.Context, clauses string, args ...i
 // the query. The caller is also responsible for ensuring that the clauses
 // argument does not contain any user-influenced input.
 func (ts mappedSelector[T]) QueryFrom(ctx context.Context, tablename string, clauses string, args ...interface{}) (Rows[T], error) {
-	if !safeNameRE.MatchString(tablename) {
-		return nil, fmt.Errorf("unsafe db table name %q", tablename)
+	err := validMariaDBUnquotedIdentifier(tablename)
+	if err != nil {
+		return nil, err
 	}
 
 	// Construct the query from the column names, table name, and given clauses.
