@@ -8,7 +8,7 @@ Set up a SoftHSM instance running pkcs11-daemon on some remote host with more
 CPUs than your local machine. Easiest way to do this is to clone the Boulder
 repo, and on the remote machine run:
 
-    remote-machine$ docker-compose run -p 5657:5657 bhsm
+    remote-machine$ docker compose run -p 5657:5657 bhsm
 
 Check that the port is open:
 
@@ -22,12 +22,12 @@ Edit docker-compose.yml to change these in the "boulder" section's "env":
 
 Run the pkcs11key benchmark to check raw signing speed at various settings for SESSIONS:
 
-    local-machine$ docker-compose run -e SESSIONS=4 -e MODULE=/usr/local/lib/softhsm/libsofthsm2.so --entrypoint /go/src/github.com/letsencrypt/pkcs11key/test.sh boulder
+    local-machine$ docker compose run -e SESSIONS=4 -e MODULE=/usr/local/lib/softhsm/libsofthsm2.so --entrypoint /go/src/github.com/letsencrypt/pkcs11key/test.sh boulder
 
 Initialize the tokens for use by Boulder:
 
-    local-machine$ docker-compose run --entrypoint "softhsm --module /usr/local/lib/softhsm/libsofthsm2.so --init-token --pin 5678 --so-pin 1234 --slot 0 --label intermediate" boulder
-    local-machine$ docker-compose run --entrypoint "softhsm --module /usr/local/lib/softhsm/libsofthsm2.so --init-token --pin 5678 --so-pin 1234 --slot 1 --label root" boulder
+    local-machine$ docker compose run --entrypoint "softhsm --module /usr/local/lib/softhsm/libsofthsm2.so --init-token --pin 5678 --so-pin 1234 --slot 0 --label intermediate" boulder
+    local-machine$ docker compose run --entrypoint "softhsm --module /usr/local/lib/softhsm/libsofthsm2.so --init-token --pin 5678 --so-pin 1234 --slot 1 --label root" boulder
 
 Configure Boulder to always consider all OCSP responses instantly stale, so it
 will sign new ones as fast as it can. Edit "ocspMinTimeToExpiry" in
@@ -37,7 +37,7 @@ test/config/ocsp-updater.json (or test/config-next/ocsp-updater.json):
 
 Run a local Boulder instance:
 
-    local-machine$ docker-compose up
+    local-machine$ docker compose up
 
 Issue a bunch of certificates with chisel.py, ideally a few thousand
 (corresponding to the default batch size of 5000 in ocsp-updater.json, to make
