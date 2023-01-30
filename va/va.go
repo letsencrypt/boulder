@@ -172,7 +172,7 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 
 // PortConfig specifies what ports the VA should call to on the remote
 // host when performing its checks.
-type PortConfig struct {
+type portConfig struct {
 	HTTPPort  int
 	HTTPSPort int
 	TLSPort   int
