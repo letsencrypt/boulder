@@ -189,7 +189,7 @@ type portConfig struct {
 //
 // RFC 8737 section 3: The ACME server initiates a TLS connection to the chosen
 // IP address. This connection MUST use TCP port 443.
-func NewDefaultPortConfig() *PortConfig {
+func newDefaultPortConfig() *PortConfig {
 	return &PortConfig{
 		HTTPPort:  80,
 		HTTPSPort: 443,
