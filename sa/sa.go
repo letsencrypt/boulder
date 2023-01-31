@@ -332,14 +332,14 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					am.IdentifierType,
 					am.IdentifierValue,
 					am.RegistrationID,
-					am.Status,
+					statusToUint[core.StatusPending],
 					am.Expires,
 					am.Challenges,
-					//am.Attempted,
-					//am.AttemptedAt,
+					nil,
+					nil,
 					am.Token,
-					am.ValidationError,
-					am.ValidationRecord,
+					nil,
+					nil,
 				})
 				if err != nil {
 					return nil, err
