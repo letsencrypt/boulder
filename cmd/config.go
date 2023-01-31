@@ -414,14 +414,6 @@ type GRPCServiceConfig struct {
 	ClientNames []string `json:"clientNames"`
 }
 
-// PortConfig specifies what ports the VA should call to on the remote
-// host when performing its checks.
-type PortConfig struct {
-	HTTPPort  int
-	HTTPSPort int
-	TLSPort   int
-}
-
 // BeelineConfig provides config options for the Honeycomb beeline-go library,
 // which are passed to its beeline.Init() method.
 type BeelineConfig struct {
