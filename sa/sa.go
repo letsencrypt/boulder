@@ -351,6 +351,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			}
 		}
 
+		// Prevent a panic if the inner NewOrder object doesn't exist
+		if req.NewOrder == nil {
+			return nil, errIncompleteRequest
+		}
+
 		// Second, insert the new order.
 		order := &orderModel{
 			RegistrationID: req.NewOrder.RegistrationID,
