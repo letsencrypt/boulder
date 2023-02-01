@@ -263,6 +263,7 @@ type ServiceDomain struct {
 // ServerIPAddresses, [Timeout]
 // ServerAddress, [Timeout], [DNSAuthority], [HostOverride]
 // SRVLookup, [Timeout], [DNSAuthority], [HostOverride]
+// SRVLookups, [Timeout], [DNSAuthority], [HostOverride]
 type GRPCClientConfig struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
 	// to be used for resolution of gRPC backends. If the address contains a
@@ -349,10 +350,10 @@ type GRPCClientConfig struct {
 	// verify in the certificate presented by the server.
 	HostOverride string
 
-	// LoadBalancerOverride is an optional override for the load balancer
+	// LoadBalancing is an optional override for the load balancer
 	// implementation. The default is 'round_robin'.
-	LoadBalancerOverride string
-	Timeout              ConfigDuration
+	LoadBalancing string
+	Timeout       ConfigDuration
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will

@@ -60,7 +60,7 @@
       ],
       "timeout": "15s",
       "hostOverride": "nonce.boulder",
-      "loadBalancerOverride": "nonce"
+      "loadBalancing": "nonce"
     },
     "redeemNonceSalt": {"passwordFile": "test/secrets/nonce_salt"},
     "chains": [

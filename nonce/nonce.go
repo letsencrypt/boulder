@@ -41,7 +41,7 @@ const (
 	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead. TODO(#6610): Remove once we've moved
-	// derivable prefixes by default.
+	// to derivable prefixes by default.
 	DeprecatedPrefixLen = 4
 	defaultMaxUsed      = 65536
 	nonceLen            = 32
@@ -108,7 +108,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	// characters) so that the bytes preceding the prefix wouldn't impact the
 	// encoding.
 	//
-	// TODO(#6610): Update this comment once we've moved eight character
+	// TODO(#6610): Update this comment once we've moved to eight character
 	// prefixes by default.
 	if prefix != "" {
 		// TODO(#6610): Refactor once we've moved to derivable prefixes by

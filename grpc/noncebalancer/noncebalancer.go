@@ -34,8 +34,8 @@ func (b *Balancer) Build(buildInfo base.PickerBuildInfo) balancer.Picker {
 	}
 }
 
-// Picker balancer.Picker capable of picking a backend (SubConn) based on the
-// context of each RPC message. It implements balancer.Picker interface.
+// Picker implements the balancer.Picker interface. It picks a backend (SubConn)
+// based on the nonce prefix contained in each request's Context.
 type Picker struct {
 	backends        map[balancer.SubConn]base.SubConnInfo
 	prefixToBackend map[string]balancer.SubConn

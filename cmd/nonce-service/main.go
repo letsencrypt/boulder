@@ -89,7 +89,6 @@ func derivePrefix(salt string, grpcAddr string) (string, error) {
 func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
-	prefixOverride := flag.String("prefix", "", "Override the configured nonce prefix")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
@@ -103,9 +102,7 @@ func main() {
 	if *debugAddr != "" {
 		c.NonceService.DebugAddr = *debugAddr
 	}
-	if *prefixOverride != "" && !c.NonceService.UseDerivablePrefix {
-		c.NonceService.NoncePrefix = *prefixOverride
-	}
+
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	if c.NonceService.NoncePrefix != "" && c.NonceService.UseDerivablePrefix {
 		cmd.Fail("Cannot set both 'noncePrefix' and 'useDerivablePrefix'")
@@ -117,7 +114,6 @@ func main() {
 	}
 
 	if c.NonceService.UseDerivablePrefix && c.NonceService.PrefixSalt.PasswordFile != "" {
-		fmt.Println("Using derivable nonce prefix")
 		salt, err := c.NonceService.PrefixSalt.Pass()
 		cmd.FailOnError(err, "Failed to load 'prefixSalt' file.")
 		c.NonceService.NoncePrefix, err = derivePrefix(salt, c.NonceService.GRPC.Address)
