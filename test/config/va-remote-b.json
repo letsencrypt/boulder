@@ -2,11 +2,6 @@
   "va": {
     "userAgent": "boulder-remote-b",
     "debugAddr": ":8012",
-    "portConfig": {
-      "httpPort": 5002,
-      "httpsPort": 5001,
-      "tlsPort": 5001
-    },
     "dnsTries": 3,
     "dnsResolver": "service.consul",
     "issuerDomain": "happy-hacker-ca.invalid",

@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 
 	"github.com/go-gorp/gorp/v3"
@@ -51,6 +52,16 @@ type checkedRedisSource struct {
 func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) (*checkedRedisSource, error) {
 	if base == nil {
 		return nil, errors.New("base was nil")
+	}
+
+	// We have to use reflect here because these arguments are interfaces, and
+	// thus checking for nil the normal way doesn't work reliably, because they
+	// may be non-nil interfaces whose inner value is still nil, i.e. "boxed nil".
+	// But using reflect here is okay, because we only expect this constructor to
+	// be called once per process.
+	if (reflect.TypeOf(sac) == nil || reflect.ValueOf(sac).IsNil()) &&
+		(reflect.TypeOf(dbMap) == nil || reflect.ValueOf(dbMap).IsNil()) {
+		return nil, errors.New("either SA gRPC or direct DB connection must be provided")
 	}
 
 	return newCheckedRedisSource(base, dbMap, sac, stats, log), nil

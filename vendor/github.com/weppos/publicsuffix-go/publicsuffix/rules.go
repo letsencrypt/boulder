@@ -3,13 +3,13 @@
 
 package publicsuffix
 
-const defaultListVersion = "PSL version ef8ba6 (Sun Oct 30 18:35:07 2022)"
+const defaultListVersion = "PSL version 4aec13 (Thu Dec  8 19:42:12 2022)"
 
-func DefaultRules() [9464]Rule {
+func DefaultRules() [9466]Rule {
 	return r
 }
 
-var r = [9464]Rule{
+var r = [9466]Rule{
 	{1, "ac", 1, false},
 	{1, "com.ac", 2, false},
 	{1, "edu.ac", 2, false},
@@ -6240,7 +6240,6 @@ var r = [9464]Rule{
 	{1, "accountants", 1, false},
 	{1, "aco", 1, false},
 	{1, "actor", 1, false},
-	{1, "adac", 1, false},
 	{1, "ads", 1, false},
 	{1, "adult", 1, false},
 	{1, "aeg", 1, false},
@@ -7321,7 +7320,6 @@ var r = [9464]Rule{
 	{1, "xn--io0a7i", 1, false},
 	{1, "xn--j1aef", 1, false},
 	{1, "xn--jlq480n2rg", 1, false},
-	{1, "xn--jlq61u9w7b", 1, false},
 	{1, "xn--jvr189m", 1, false},
 	{1, "xn--kcrx77d1x4a", 1, false},
 	{1, "xn--kput3i", 1, false},
@@ -7384,6 +7382,7 @@ var r = [9464]Rule{
 	{1, "graphox.us", 2, true},
 	{2, "devcdnaccesso.com", 3, true},
 	{2, "on-acorn.io", 3, true},
+	{1, "activetrail.biz", 2, true},
 	{1, "adobeaemcloud.com", 2, true},
 	{2, "dev.adobeaemcloud.com", 4, true},
 	{1, "hlx.live", 2, true},
@@ -7401,6 +7400,7 @@ var r = [9464]Rule{
 	{1, "kasserver.com", 2, true},
 	{1, "altervista.org", 2, true},
 	{1, "alwaysdata.net", 2, true},
+	{1, "myamaze.net", 2, true},
 	{1, "cloudfront.net", 2, true},
 	{2, "compute.amazonaws.com", 4, true},
 	{2, "compute-1.amazonaws.com", 4, true},
@@ -7657,8 +7657,11 @@ var r = [9464]Rule{
 	{1, "cloudcontrolled.com", 2, true},
 	{1, "cloudcontrolapp.com", 2, true},
 	{2, "cloudera.site", 3, true},
-	{1, "pages.dev", 2, true},
+	{1, "cf-ipfs.com", 2, true},
+	{1, "cloudflare-ipfs.com", 2, true},
 	{1, "trycloudflare.com", 2, true},
+	{1, "pages.dev", 2, true},
+	{1, "r2.dev", 2, true},
 	{1, "workers.dev", 2, true},
 	{1, "wnext.app", 2, true},
 	{1, "co.ca", 2, true},
@@ -8554,7 +8557,6 @@ var r = [9464]Rule{
 	{1, "herokuapp.com", 2, true},
 	{1, "herokussl.com", 2, true},
 	{1, "ravendb.cloud", 2, true},
-	{1, "myravendb.com", 2, true},
 	{1, "ravendb.community", 2, true},
 	{1, "ravendb.me", 2, true},
 	{1, "development.run", 2, true},
@@ -9277,6 +9279,8 @@ var r = [9464]Rule{
 	{1, "vpnplus.to", 2, true},
 	{1, "direct.quickconnect.to", 3, true},
 	{1, "tabitorder.co.il", 3, true},
+	{1, "mytabit.co.il", 3, true},
+	{1, "mytabit.com", 2, true},
 	{1, "taifun-dns.de", 2, true},
 	{1, "beta.tailscale.net", 3, true},
 	{1, "ts.net", 2, true},
@@ -9291,7 +9295,6 @@ var r = [9464]Rule{
 	{1, "telebit.app", 2, true},
 	{1, "telebit.io", 2, true},
 	{2, "telebit.xyz", 3, true},
-	{1, "gwiddle.co.uk", 3, true},
 	{2, "firenet.ch", 3, true},
 	{2, "svc.firenet.ch", 4, true},
 	{1, "reservd.com", 2, true},
@@ -9311,7 +9314,6 @@ var r = [9464]Rule{
 	{1, "pages.torproject.net", 3, true},
 	{1, "bloxcms.com", 2, true},
 	{1, "townnews-staging.com", 2, true},
-	{1, "tbits.me", 2, true},
 	{1, "12hp.at", 2, true},
 	{1, "2ix.at", 2, true},
 	{1, "4lima.at", 2, true},

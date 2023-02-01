@@ -45,11 +45,10 @@ type ServiceConfig struct {
 	TLS       TLSConfig
 }
 
-// DBConfig defines how to connect to a database. The connect string may be
+// DBConfig defines how to connect to a database. The connect string is
 // stored in a file separate from the config, because it can contain a password,
 // which we want to keep out of configs.
 type DBConfig struct {
-	DBConnect string
 	// A file containing a connect URL for the DB.
 	DBConnectFile string
 
@@ -78,15 +77,11 @@ type DBConfig struct {
 	ConnMaxIdleTime ConfigDuration
 }
 
-// URL returns the DBConnect URL represented by this DBConfig object, either
-// loading it from disk or returning a default value. Leading and trailing
-// whitespace is stripped.
+// URL returns the DBConnect URL represented by this DBConfig object, loading it
+// from the file on disk. Leading and trailing whitespace is stripped.
 func (d *DBConfig) URL() (string, error) {
-	if d.DBConnectFile != "" {
-		url, err := os.ReadFile(d.DBConnectFile)
-		return strings.TrimSpace(string(url)), err
-	}
-	return d.DBConnect, nil
+	url, err := os.ReadFile(d.DBConnectFile)
+	return strings.TrimSpace(string(url)), err
 }
 
 // DSNAddressAndUser returns the Address and User of the DBConnect DSN from
@@ -178,10 +173,10 @@ func (t *TLSConfig) Load() (*tls.Config, error) {
 		ClientCAs:    rootCAs,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		Certificates: []tls.Certificate{cert},
-		// Set the only acceptable TLS version to 1.2 and the only acceptable cipher suite
-		// to ECDHE-RSA-CHACHA20-POLY1305.
-		MinVersion:   tls.VersionTLS12,
-		MaxVersion:   tls.VersionTLS12,
+		// Set the only acceptable TLS to v1.2 and v1.3.
+		MinVersion: tls.VersionTLS12,
+		MaxVersion: tls.VersionTLS13,
+		// CipherSuites will be ignored for TLS v1.3.
 		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305},
 	}, nil
 }
@@ -417,14 +412,6 @@ type GRPCServiceConfig struct {
 	// which do not appear in this list, and the server interceptor will reject
 	// RPC calls for this service from clients which are not listed here.
 	ClientNames []string `json:"clientNames"`
-}
-
-// PortConfig specifies what ports the VA should call to on the remote
-// host when performing its checks.
-type PortConfig struct {
-	HTTPPort  int
-	HTTPSPort int
-	TLSPort   int
 }
 
 // BeelineConfig provides config options for the Honeycomb beeline-go library,

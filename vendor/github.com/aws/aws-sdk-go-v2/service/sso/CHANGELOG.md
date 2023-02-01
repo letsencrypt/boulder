@@ -1,3 +1,51 @@
+# v1.12.0 (2023-01-05)
+
+* **Feature**: Add `ErrorCodeOverride` field to all error structs (aws/smithy-go#401).
+
+# v1.11.28 (2022-12-20)
+
+* No change notes available for this release.
+
+# v1.11.27 (2022-12-15)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.26 (2022-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.25 (2022-10-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.24 (2022-10-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.23 (2022-09-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.22 (2022-09-14)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.21 (2022-09-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.20 (2022-08-31)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.11.19 (2022-08-30)
+
+* **Documentation**: Documentation updates for the AWS IAM Identity Center Portal CLI Reference.
+
+# v1.11.18 (2022-08-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.11.17 (2022-08-15)
 
 * **Documentation**: Documentation updates to reflect service rename - AWS IAM Identity Center (successor to AWS Single Sign-On)

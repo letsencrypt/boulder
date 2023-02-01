@@ -38,7 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -129,8 +129,8 @@ type WebFrontEndImpl struct {
 	// CORS settings
 	AllowOrigins []string
 
-	// Maximum duration of a request
-	RequestTimeout time.Duration
+	// requestTimeout is the per-request overall timeout.
+	requestTimeout time.Duration
 
 	// StaleTimeout determines the required staleness for resources allowed to be
 	// accessed via Boulder-specific GET-able APIs. Resources newer than
@@ -156,6 +156,7 @@ func NewWebFrontEndImpl(
 	remoteNonceService noncepb.NonceServiceClient,
 	noncePrefixMap map[string]noncepb.NonceServiceClient,
 	logger blog.Logger,
+	requestTimeout time.Duration,
 	staleTimeout time.Duration,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
@@ -188,6 +189,7 @@ func NewWebFrontEndImpl(
 		stats:                        initStats(stats),
 		remoteNonceService:           remoteNonceService,
 		noncePrefixMap:               noncePrefixMap,
+		requestTimeout:               requestTimeout,
 		staleTimeout:                 staleTimeout,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
@@ -278,12 +280,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 
 			wfe.setCORSHeaders(response, request, "")
 
-			timeout := wfe.RequestTimeout
+			timeout := wfe.requestTimeout
 			if timeout == 0 {
 				timeout = 5 * time.Minute
 			}
 			ctx, cancel := context.WithTimeout(ctx, timeout)
-			// TODO(riking): add request context using WithValue
 
 			// Call the wrapped handler.
 			h(ctx, logEvent, response, request)
@@ -922,10 +923,8 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	// The RA will confirm that the authenticated account either originally
 	// issued the certificate, or has demonstrated control over all identifiers
 	// in the certificate.
-	// TODO(#5997): Remove `Code` from this request.
 	_, err := wfe.ra.RevokeCertByKey(ctx, &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
-		Code: int64(reason),
 	})
 	if err != nil {
 		return err

@@ -33,6 +33,10 @@ type Config struct {
 		ListenAddress    string
 		TLSListenAddress string
 
+		// Timeout is the per-request overall timeout. This should be slightly
+		// lower than the upstream's timeout when making request to the WFE.
+		Timeout cmd.ConfigDuration
+
 		ServerCertificatePath string
 		ServerKeyPath         string
 
@@ -280,23 +284,23 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(raConn)
 
-	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+	saConn, err := bgrpc.ClientSetup(c.WFE.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
 	var rns noncepb.NonceServiceClient
 	npm := map[string]noncepb.NonceServiceClient{}
 	if c.WFE.GetNonceService != nil {
-		rnsConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+		rnsConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
 		rns = noncepb.NewNonceServiceClient(rnsConn)
 		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
 			serviceConfig := serviceConfig
-			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, scope, clk, bgrpc.CancelTo408Interceptor)
+			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 			npm[prefix] = noncepb.NewNonceServiceClient(conn)
 		}
@@ -433,6 +437,7 @@ func main() {
 		rns,
 		npm,
 		logger,
+		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
@@ -197,7 +196,7 @@ func setup(t *testing.T) testCtx {
 		os.Remove(file.Name())
 	}
 
-	db, err := sa.InitSqlDb(cmd.DBConfig{DBConnect: vars.DBConnSAMailer}, nil)
+	db, err := sa.NewDbMap(vars.DBConnSAMailer, sa.DbSettings{})
 	if err != nil {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}

@@ -9,8 +9,8 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/semaphore"
 	"golang.org/x/crypto/ocsp"
-	"golang.org/x/sync/semaphore"
 	"google.golang.org/grpc"
 )
 
@@ -23,10 +23,10 @@ type Source struct {
 	sem *semaphore.Weighted
 }
 
-func New(ra ocspGenerator, maxInflight int64) *Source {
+func New(ra ocspGenerator, maxInflight int64, maxWaiters int) *Source {
 	return &Source{
 		ra:  ra,
-		sem: semaphore.NewWeighted(maxInflight),
+		sem: semaphore.NewWeighted(maxInflight, maxWaiters),
 	}
 }
 

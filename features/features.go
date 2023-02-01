@@ -13,28 +13,7 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
-	PrecertificateRevocation
-	StripDefaultSchemePort
-	NonCFSSLSigner
-	StoreIssuerInfo
-	StreamlineOrderAndAuthzs
-	V1DisableNewValidations
-	ExpirationMailerDontLookTwice
-	OldTLSInbound
-	OldTLSOutbound
-	ROCSPStage1
-	ROCSPStage2
-	ROCSPStage3
-	GetAuthzReadOnly
-	GetAuthzUseIndex
-	CheckFailedAuthorizationsFirst
-	FasterNewOrdersRateLimit
-	AllowV1Registration
-	RestrictRSAKeySizes
-	AllowReRevocation
-	MozRevocationReasons
-	SHA1CSRs
-	RejectDuplicateCSRExtensions
+	StoreRevokerInfo
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -50,9 +29,6 @@ const (
 	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
 	// resources.
 	MandatoryPOSTAsGET
-	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
-	// was checked for extant unrevoked certificates in the blockedKeys table.
-	StoreRevokerInfo
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
@@ -81,41 +57,19 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                         false,
-	CAAValidationMethods:           false,
-	CAAAccountURI:                  false,
-	EnforceMultiVA:                 false,
-	MultiVAFullResults:             false,
-	MandatoryPOSTAsGET:             false,
-	AllowV1Registration:            true,
-	V1DisableNewValidations:        false,
-	PrecertificateRevocation:       false,
-	StripDefaultSchemePort:         false,
-	StoreIssuerInfo:                false,
-	StoreRevokerInfo:               false,
-	RestrictRSAKeySizes:            false,
-	FasterNewOrdersRateLimit:       false,
-	NonCFSSLSigner:                 false,
-	ECDSAForAll:                    false,
-	StreamlineOrderAndAuthzs:       false,
-	ServeRenewalInfo:               false,
-	GetAuthzReadOnly:               false,
-	GetAuthzUseIndex:               false,
-	CheckFailedAuthorizationsFirst: false,
-	AllowReRevocation:              false,
-	MozRevocationReasons:           false,
-	OldTLSOutbound:                 true,
-	OldTLSInbound:                  true,
-	SHA1CSRs:                       true,
-	AllowUnrecognizedFeatures:      false,
-	ExpirationMailerDontLookTwice:  false,
-	RejectDuplicateCSRExtensions:   false,
-	ROCSPStage1:                    false,
-	ROCSPStage2:                    false,
-	ROCSPStage3:                    false,
-	ROCSPStage6:                    false,
-	ROCSPStage7:                    false,
-	ExpirationMailerUsesJoin:       false,
+	unused:                    false,
+	CAAValidationMethods:      false,
+	CAAAccountURI:             false,
+	EnforceMultiVA:            false,
+	MultiVAFullResults:        false,
+	MandatoryPOSTAsGET:        false,
+	StoreRevokerInfo:          false,
+	ECDSAForAll:               false,
+	ServeRenewalInfo:          false,
+	AllowUnrecognizedFeatures: false,
+	ROCSPStage6:               false,
+	ROCSPStage7:               false,
+	ExpirationMailerUsesJoin:  false,
 }
 
 var fMu = new(sync.RWMutex)

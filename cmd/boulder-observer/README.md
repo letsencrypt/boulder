@@ -25,6 +25,9 @@ Prometheus.
       * [CRL](#crl)
         * [Schema](#schema-4)
         * [Example](#example-4)
+      * [TLS](#tls)
+        * [Schema](#schema-5)
+        * [Example](#example-5)
   * [Metrics](#metrics)
     * [Global Metrics](#global-metrics)
       * [obs_monitors](#obs_monitors)
@@ -33,6 +36,9 @@ Prometheus.
       * [obs_crl_this_update](#obs_crl_this_update)
       * [obs_crl_next_update](#obs_crl_next_update)
       * [obs_crl_revoked_cert_count](#obs_crl_revoked_cert_count)
+    * [TLS Metrics](#tls-metrics)
+      * [obs_crl_this_update](#obs_tls_not_after)
+      * [obs_crl_next_update](#obs_tls_reason)
   * [Development](#development)
     * [Starting Prometheus locally](#starting-prometheus-locally)
     * [Viewing metrics locally](#viewing-metrics-locally)
@@ -197,6 +203,32 @@ monitors:
       url: http://x1.c.lencr.org/
 ```
 
+#### TLS
+
+##### Schema
+
+`hostname`: Hostname to run TLS check on (e.g. `valid-isrgrootx1.letsencrypt.org`).
+
+`rootOrg`: Organization to check against the root certificate Organization (e.g. `Internet Security Research Group`).
+
+`rootCN`: Name to check against the root certificate Common Name (e.g. `ISRG Root X1`). If not provided, root comparison will be skipped.
+
+`response`: Expected site response; must be one of: `valid`, `revoked` or `expired`.
+
+##### Example
+
+```yaml
+monitors:
+  - 
+    period: 1h
+    kind: TLS
+    settings:
+      hostname: valid-isrgrootx1.letsencrypt.org
+      rootOrg: "Internet Security Research Group"
+      rootCN: "ISRG Root X1"
+      response: valid
+```
+
 ## Metrics
 
 Observer provides the following metrics.
@@ -288,6 +320,55 @@ Count of revoked certificates in a CRL.
 **Labels:**
 
 `url`: Url of the CRL
+
+### TLS Metrics
+
+These metrics will be available whenever a valid TLS prober is configured.
+
+#### obs_tls_not_after
+
+Unix timestamp value (in seconds) of the notAfter field for a subscriber certificate.
+
+**Labels:**
+
+`hostname`: Hostname of the site of the subscriber certificate
+
+**Example Usage:**
+
+This is a sample rule that alerts when a site has a notAfter timestamp indicating that the certificate will expire within the next 20 days:
+
+```yaml
+  - alert: CertExpiresSoonWarning
+    annotations:
+      description: "The certificate at {{ $labels.hostname }} expires within 20 days, on: {{ $value | humanizeTimestamp }}"
+    expr: (obs_tls_not_after{hostname=~"^[^e][a-zA-Z]*-isrgrootx[12][.]letsencrypt[.]org"}) <= time() + 1728000
+    for: 60m
+    labels:
+      severity: warning
+```
+
+#### obs_tls_reason
+
+This is a count that increments by one for each resulting reason of a TSL check. The reason is `nil` if the TLS Prober returns `true` and one of the following otherwise: `internalError`, `ocspError`, `rootDidNotMatch`, `responseDidNotMatch`.
+
+**Labels:**
+
+`hostname`: Hostname of the site of the subscriber certificate
+`reason`: The reason for TLS Probe returning false, and `nil` if it returns true
+
+**Example Usage:**
+
+This is a sample rule that alerts when TLS Prober returns false, providing insight on the reason for failure.
+
+```yaml
+  - alert: TLSCertCheckFailed
+    annotations:
+      description: "The TLS probe for {{ $labels.hostname }} failed for reason: {{ $labels.reason }}. This potentially violents CP 2.2."
+    expr: (rate(obs_observations_count{success="false",name=~"[a-zA-Z]*-isrgrootx[12][.]letsencrypt[.]org"}[5m])) > 0
+    for: 5m
+    labels:
+      severity: critical
+```
 
 ## Development
 

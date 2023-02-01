@@ -58,7 +58,7 @@ apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf auto
 apt-get clean -y
 
 # Tell git to trust the directory where the boulder repo volume is mounted
-# by docker-compose.
+# by `docker compose`.
 git config --global --add safe.directory /boulder
 
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*

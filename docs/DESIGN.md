@@ -17,7 +17,7 @@ A couple of notes:
 * For simplicity, we do not show interactions with the Storage Authority.
   The SA simply acts as a common data store for the various components.  It
   is written to by the RA (registrations and authorizations) and the CA
-  (certificates), and read by WFE, RA, and CA.
+  (certificates), and read by WFEv2, RA, and CA.
 
 * The interactions shown in the diagrams are the calls that go between
   components.  These calls are done via [gRPC](https://grpc.io/).
@@ -39,15 +39,6 @@ A couple of notes:
 
 ## New Account/Registration
 
-ACME v1:
-
-```
-1: Client ---new-reg--> WFE
-2:                      WFE ---NewRegistration--> RA
-3:                      WFE <-------return------- RA
-4: Client <------------ WFE
-```
-
 ACME v2:
 
 ```
@@ -59,7 +50,7 @@ ACME v2:
 
 Notes:
 
-* 1-2: WFE/WFEv2 do the following:
+* 1-2: WFEv2 does the following:
   * Verify that the request is a POST
   * Verify the JWS signature on the POST body
   * Parse the registration/account object
@@ -73,20 +64,11 @@ Notes:
   * Store the registration/account (which gives it an ID)
   * Return the registration/account as stored
 
-* 3-4: WFE/WFEv2 do the following:
+* 3-4: WFEv2 does the following:
   * Return the registration/account, with a unique URL
 
 
 ## Updated Registration
-
-ACME v1:
-
-```
-1: Client ---reg--> WFE
-2:                  WFE ---UpdateRegistration--> RA
-3:                  WFE <--------return--------- RA
-4: Client <-------- WFE
-```
 
 ACME v2:
 
@@ -97,7 +79,7 @@ ACME v2:
 4: Client <--------- WFEv2
 ```
 
-* 1-2: WFE/WFEv2 do the following:
+* 1-2: WFEv2 does the following:
   * Verify that the request is a POST
   * Verify the JWS signature on the POST body
   * Verify that the JWS signature is by a registered key
@@ -111,25 +93,16 @@ ACME v2:
   * Store the updated registration/account
   * Return the updated registration/account
 
-* 3-4: WFE/WFEv2 do the following:
+* 3-4: WFEv2 does the following:
   * Return the updated registration/account
 
 ## New Authorization (ACME v1 Only)
-
-ACME v1:
-
-```
-1: Client ---new-authz--> WFE
-2:                        WFE ---NewAuthorization--> RA
-3:                        WFE <-------return-------- RA
-4: Client <-------------- WFE
-```
 
 ACME v2:
 We do not implement "pre-authorization" and the newAuthz endpoint for ACME v2.
 Clients are expected to get authorizations by way of creating orders.
 
-* 1-2: WFE does the following:
+* 1-2: WFEv2 does the following:
   * Verify that the request is a POST
   * Verify the JWS signature on the POST body
   * Verify that the JWS signature is by a registered key
@@ -143,14 +116,10 @@ Clients are expected to get authorizations by way of creating orders.
   * Construct URIs for the challenges
   * Store the authorization
 
-* 3-4: WFE does the following:
+* 3-4: WFEv2 does the following:
   * Return the authorization, with a unique URL
 
 ## New Order (ACME v2 Only)
-
-ACME v1:
-This version of the protocol does not use order objects or provide the newOrder
-endpoint.
 
 ACME v2:
 ```
@@ -178,26 +147,25 @@ ACME v2:
 
 ## Challenge Response
 
-ACME v1/ACME v2:
+ACME v2:
 
 ```
-1: Client ---chal--> WFE/WFEv2
-2:                   WFE/WFEv2 ---UpdateAuthorization--> RA
-3:                                                 RA ---PerformValidation--> VA
-4: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
-5:                                                 RA <-------return--------- VA
-6:                   WFE/WFEv2 <--------return---------- RA
-7: Client <--------- WFE/WFEv2
+1: Client ---chal--> WFEv2
+2:                   WFEv2 ---UpdateAuthorization--> RA
+3:                                                   RA ---PerformValidation--> VA
+4: Client <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~> VA
+5:                                                   RA <-------return--------- VA
+6:                   WFEv2 <--------return---------- RA
+7: Client <--------- WFEv2
 ```
 
-* 1-2: WFE/WFEv2 do the following:
+* 1-2: WFEv2 does the following:
   * Look up the referenced authorization object
   * Look up the referenced challenge within the authorization object
   * Verify that the request is a POST
   * Verify the JWS signature on the POST body
   * Verify that the JWS signature is by a registered key
   * Verify that the JWS key corresponds to the authorization
-  * WFEv1: Verify that the client has indicated agreement to terms
 
 * 2-3: RA does the following:
   * Store the updated authorization object
@@ -208,7 +176,7 @@ ACME v1/ACME v2:
 * 4-5: RA does the following:
   * Return the updated authorization object
 
-* 5-6: WFE/WFEv2 does the following:
+* 5-6: WFEv2 does the following:
   * Return the updated authorization object
 
 * 6: VA does the following:
@@ -220,19 +188,19 @@ ACME v1/ACME v2:
   * Mark the authorization as valid or invalid
   * Store the updated authorization object
 
-* 6-7: WFE/WFEv2 do the following:
+* 6-7: WFEv2 does the following:
   * Return the updated challenge object
 
 ## Authorization Poll
 
-ACME v1/ACME v2:
+ACME v2:
 
 ```
-1: Client ---authz--> WFE
-2: Client <---------- WFE
+1: Client ---authz--> WFEv2
+2: Client <---------- WFEv2
 ```
 
-* 1-2: WFE/WFEv2 do the following:
+* 1-2: WFEv2 does the following:
   * Look up the referenced authorization
   * Verify that the request is a GET
   * Return the authorization object
@@ -255,24 +223,11 @@ ACME v2:
 
 ## New Certificate (ACME v1 Only)
 
-ACME v1:
-
-```
-1: Client ---new-cert--> WFE
-2:                       WFE ---NewCertificate--> RA
-3:                                                RA ----------IssuePreCertificate---------> CA
-4:                                                RA <---------------return----------------- CA
-5:                                                RA ---IssueCertificateForPrecertificate--> CA
-6:                                                RA <---------------return----------------- CA
-7:                       WFE <------return------- RA
-8: Client <------------- WFE
-```
-
 ACME v2:
 This version of the protocol expects certificate issuance to occur only through
 order finalization and does not offer the new-cert endpoint.
 
-* 1-2: WFE does the following:
+* 1-2: WFEv2 does the following:
   * Verify that the request is a POST
   * Verify the JWS signature on the POST body
   * Verify that the JWS signature is by a registered key
@@ -320,14 +275,11 @@ order finalization and does not offer the new-cert endpoint.
   * Log the success or failure of the request
   * Return the certificate object
 
-* 7-8: WFE does the following:
+* 7-8: WFEv2 does the following:
   * Create a URL from the certificate's serial number
   * Return the certificate with its URL
 
 ## Order Finalization (ACME v2 Only)
-
-ACME v1:
-This version of the protocol does not use order objects.
 
 ACME v2:
 
@@ -397,7 +349,7 @@ ACME v2:
 
 ## Revoke Certificate
 
-ACME v1/v2:
+ACME v2:
 
 ```
 1: Client ---cert--> WFEv2
@@ -414,7 +366,7 @@ or
 ```
 
 
-* 1-2: WFE/WFEv2 do the following:
+* 1-2:WFEv2 does the following:
   * Verify that the request is a POST
   * Verify the JWS signature on the POST body
   * Verify that the JWS signature is either:
@@ -432,5 +384,5 @@ or
   * Sign an OCSP response indicating revoked status for this certificate
   * Store the OCSP response in the database
 
-* 3-4: WFE/WFEv2 do the following:
+* 3-4: WFEv2 does the following:
   * Return an indication of the success or failure of the revocation

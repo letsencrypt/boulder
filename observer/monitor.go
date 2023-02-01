@@ -18,8 +18,8 @@ type monitor struct {
 func (m monitor) start(logger blog.Logger) {
 	ticker := time.NewTicker(m.period)
 	timeout := m.period / 2
-	go func() {
-		for range ticker.C {
+	for {
+		go func() {
 			// Attempt to probe the configured target.
 			success, dur := m.prober.Probe(timeout)
 
@@ -32,6 +32,7 @@ func (m monitor) start(logger blog.Logger) {
 			logger.Infof(
 				"kind=[%s] success=[%v] duration=[%f] name=[%s]",
 				m.prober.Kind(), success, dur.Seconds(), m.prober.Name())
-		}
-	}()
+		}()
+		<-ticker.C
+	}
 }

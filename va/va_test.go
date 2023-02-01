@@ -19,7 +19,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/features"
@@ -31,7 +30,7 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 )
 
 var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
@@ -123,17 +122,7 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		userAgent = "user agent 1.0"
 	}
 
-	var portConfig cmd.PortConfig
-	if srv != nil {
-		port := getPort(srv)
-		portConfig = cmd.PortConfig{
-			HTTPPort: port,
-			TLSPort:  port,
-		}
-	}
 	va, err := NewValidationAuthorityImpl(
-		// Use the test server's port as both the HTTPPort and the TLSPort for the VA
-		&portConfig,
 		&bdns.MockClient{Log: logger},
 		nil,
 		maxRemoteFailures,
@@ -144,6 +133,15 @@ func setup(srv *httptest.Server, maxRemoteFailures int, userAgent string, remote
 		logger,
 		accountURIPrefixes,
 	)
+
+	// Adjusting industry regulated ACME challenge port settings is fine during
+	// testing
+	if srv != nil {
+		port := getPort(srv)
+		va.httpPort = port
+		va.tlsPort = port
+	}
+
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create validation authority: %v", err))
 	}

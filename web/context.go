@@ -127,7 +127,12 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}),
 	}
-	ctx := r.Context()
+	// We specifically override the default r.Context() because we would prefer
+	// for clients to not be able to cancel our operations in arbitrary places.
+	// Instead we start a new context, and apply timeouts in our various RPCs.
+	// TODO(go1.22?): Use context.Detach()
+	ctx := context.Background()
+	r = r.WithContext(ctx)
 	beeline.AddFieldToTrace(ctx, "real_ip", logEvent.RealIP)
 	beeline.AddFieldToTrace(ctx, "method", logEvent.Method)
 	beeline.AddFieldToTrace(ctx, "user_agent", logEvent.UserAgent)
@@ -141,10 +146,9 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//
 	// The main reason we want to strip these ports out is so that when this header
 	// is sent to the /directory endpoint we don't reply with directory URLs that
-	// also contain these ports, which would then in turn end up being sent in the JWS
-	// signature 'url' header, which we don't support.
+	// also contain these ports.
 	//
-	// We unconditionally strip :443 even when r.TLS is nil because the WFE/WFE2
+	// We unconditionally strip :443 even when r.TLS is nil because the WFE2
 	// may be deployed HTTP-only behind another service that terminates HTTPS on
 	// its behalf.
 	r.Host = strings.TrimSuffix(r.Host, ":443")

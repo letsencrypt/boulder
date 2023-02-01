@@ -59,7 +59,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
@@ -2610,12 +2610,6 @@ func TestFinalizeOrder(t *testing.T) {
 	// finalize the order will put it into processing state and the other tests
 	// will fail because you can't finalize an order that is already being
 	// processed.
-	emptyOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		Names:          []string{"000.example.com"},
-	})
-	test.AssertNotError(t, err, "Could not add test order for fake order ID")
-
 	// Add a new order for the fake reg ID
 	fakeRegOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
@@ -2646,11 +2640,31 @@ func TestFinalizeOrder(t *testing.T) {
 		ExpectIssuance bool
 	}{
 		{
+			Name: "No id in order",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{},
+				Csr:   oneDomainCSR,
+			},
+			ExpectedErrMsg: "invalid order ID: 0",
+		},
+		{
+			Name: "No account id in order",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Id: 1,
+				},
+				Csr: oneDomainCSR,
+			},
+			ExpectedErrMsg: "invalid account ID: 0",
+		},
+		{
 			Name: "No names in order",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusReady),
-					Names:  []string{},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusReady),
+					Names:          []string{},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2660,8 +2674,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Wrong order state (valid)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusValid),
-					Names:  []string{"a.com"},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusValid),
+					Names:          []string{"a.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2671,8 +2687,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Wrong order state (pending)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusPending),
-					Names:  []string{"a.com"},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusPending),
+					Names:          []string{"a.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2683,20 +2701,23 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Invalid CSR",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusReady),
-					Names:  []string{"a.com"},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusReady),
+					Names:          []string{"a.com"},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
 			},
-			ExpectedErrMsg: "asn1: syntax error: truncated tag or length",
+			ExpectedErrMsg: "unable to parse CSR: asn1: syntax error: truncated tag or length",
 		},
 		{
 			Name: "CSR and Order with diff number of names",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:             1,
+					RegistrationID: 1,
 					Status:         string(core.StatusReady),
 					Names:          []string{"a.com", "b.com"},
-					RegistrationID: fakeRegID,
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2706,9 +2727,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR and Order with diff number of names (other way)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:             1,
+					RegistrationID: 1,
 					Status:         string(core.StatusReady),
 					Names:          []string{"a.com"},
-					RegistrationID: fakeRegID,
 				},
 				Csr: twoDomainCSR,
 			},
@@ -2718,9 +2740,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR missing an order name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:             1,
+					RegistrationID: 1,
 					Status:         string(core.StatusReady),
 					Names:          []string{"foobar.com"},
-					RegistrationID: fakeRegID,
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2730,10 +2753,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR with policy forbidden name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:                1,
+					RegistrationID:    1,
 					Status:            string(core.StatusReady),
 					Names:             []string{"example.org"},
-					RegistrationID:    Registration.Id,
-					Id:                emptyOrder.Id,
 					Expires:           exp.UnixNano(),
 					CertificateSerial: "",
 					BeganProcessing:   false,
@@ -3333,12 +3356,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	csrOb, err := x509.ParseCertificateRequest(csr)
 	test.AssertNotError(t, err, "Error pasring generated CSR")
 
-	req := core.CertificateRequest{
-		Bytes: csr,
-		CSR:   csrOb,
-	}
-	logEvent := &certificateRequestEvent{}
-
 	testCases := []struct {
 		Name         string
 		Mock         capb.CertificateAuthorityClient
@@ -3386,7 +3403,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, req, accountID(Registration.Id), orderID(order.Id), issuance.IssuerNameID(0), logEvent)
+			_, err = ra.issueCertificateInner(ctx, csrOb, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3703,7 +3720,6 @@ func TestRevokeCertByKey(t *testing.T) {
 	// Revoking should work, but override the requested reason and block the key.
 	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
-		Code: ocsp.Unspecified,
 	})
 	test.AssertNotError(t, err, "should have succeeded")
 	test.AssertEquals(t, len(mockSA.blocked), 1)

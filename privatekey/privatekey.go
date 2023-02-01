@@ -106,14 +106,17 @@ func Load(keyPath string) (crypto.Signer, crypto.PublicKey, error) {
 	// Attempt to parse the PEM block as a private key in a PKCS #8 container.
 	signer, err := x509.ParsePKCS8PrivateKey(keyDER.Bytes)
 	if err == nil {
-		crytoSigner, ok := signer.(crypto.Signer)
+		cryptoSigner, ok := signer.(crypto.Signer)
 		if ok {
-			return verify(crytoSigner)
+			return verify(cryptoSigner)
 		}
 	}
 
 	// Attempt to parse the PEM block as a private key in a PKCS #1 container.
 	rsaSigner, err := x509.ParsePKCS1PrivateKey(keyDER.Bytes)
+	if err != nil && keyDER.Type == "RSA PRIVATE KEY" {
+		return nil, nil, fmt.Errorf("unable to parse %q as a PKCS#1 RSA private key: %w", keyPath, err)
+	}
 	if err == nil {
 		return verify(rsaSigner)
 	}

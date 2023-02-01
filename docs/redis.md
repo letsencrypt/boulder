@@ -1,5 +1,7 @@
 # Redis
 
+TODO(#6517): Update this to reflect the use of Redis Ring.
+
 We use Redis Cluster for OCSP. The Boulder dev environment stands up a cluster
 of 6 nodes, with 3 primaries and 3 replicas. Check docker-compose.yml for
 details of those.
@@ -20,7 +22,7 @@ script that handles all that for you: `test/redis-cli.sh`. First, make sure your
 redis cluster is running:
 
 ```
-docker-compose up bredis_clusterer
+docker compose up bredis_clusterer
 ```
 
 Then, in a different window, run:

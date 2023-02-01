@@ -98,7 +98,7 @@ USAGE="$(cat -- <<-EOM
 Usage:
 Boulder test suite CLI, intended to be run inside of a Docker container:
 
-  docker-compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
+  docker compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
 
 With no options passed, runs standard battery of tests (lint, unit, and integration)
 
@@ -154,7 +154,7 @@ while getopts lueciosvgmnhp:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run. Order doesn't matter. Note: gomod-vendor 
+# The list of segments to run. Order doesn't matter. Note: gomod-vendor
 # is specifically left out of the defaults, because we don't want to run
 # it locally (it could delete local state).
 if [ -z "${RUN[@]+x}" ]
@@ -241,7 +241,7 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
-# `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
+# `docker compose up` works, since that just runs start.py (via entrypoint.sh).
 STAGE="start"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"

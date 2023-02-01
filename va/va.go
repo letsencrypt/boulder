@@ -20,7 +20,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/canceled"
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -171,6 +170,33 @@ func initMetrics(stats prometheus.Registerer) *vaMetrics {
 	}
 }
 
+// PortConfig specifies what ports the VA should call to on the remote
+// host when performing its checks.
+type portConfig struct {
+	HTTPPort  int
+	HTTPSPort int
+	TLSPort   int
+}
+
+// newDefaultPortConfig is a constructor which returns a portConfig with default
+// settings.
+//
+// CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
+// (http), 443 (https), 25 (smtp), 22 (ssh).
+//
+// RFC 8555 section 8.3: Dereference the URL using an HTTP GET request. This
+// request MUST be sent to TCP port 80 on the HTTP server.
+//
+// RFC 8737 section 3: The ACME server initiates a TLS connection to the chosen
+// IP address. This connection MUST use TCP port 443.
+func newDefaultPortConfig() *portConfig {
+	return &portConfig{
+		HTTPPort:  80,
+		HTTPSPort: 443,
+		TLSPort:   443,
+	}
+}
+
 // ValidationAuthorityImpl represents a VA
 type ValidationAuthorityImpl struct {
 	vapb.UnimplementedVAServer
@@ -193,7 +219,6 @@ type ValidationAuthorityImpl struct {
 
 // NewValidationAuthorityImpl constructs a new VA
 func NewValidationAuthorityImpl(
-	pc *cmd.PortConfig,
 	resolver bdns.Client,
 	remoteVAs []RemoteVA,
 	maxRemoteFailures int,
@@ -204,19 +229,12 @@ func NewValidationAuthorityImpl(
 	logger blog.Logger,
 	accountURIPrefixes []string,
 ) (*ValidationAuthorityImpl, error) {
-	if pc.HTTPPort == 0 {
-		pc.HTTPPort = 80
-	}
-	if pc.HTTPSPort == 0 {
-		pc.HTTPSPort = 443
-	}
-	if pc.TLSPort == 0 {
-		pc.TLSPort = 443
-	}
 
 	if features.Enabled(features.CAAAccountURI) && len(accountURIPrefixes) == 0 {
 		return nil, errors.New("no account URI prefixes configured")
 	}
+
+	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
 		log:                logger,

@@ -40,7 +40,3 @@ export VERSION="${GO_VERSION}.$(date +%s)"
 
 # Build Boulder and produce a Debian Package at $PWD.
 make deb
-
-# We expect the final filename produced by `make deb` to be consistent.
-# Print it so that the github action can grab it as an output.
-echo ::set-output name=filename::boulder-${VERSION}-$(git rev-parse --short=8 HEAD).x86_64.deb
