@@ -41,12 +41,7 @@ type Config struct {
 }
 
 func derivePrefix(salt string, grpcAddr string) (string, error) {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return "", err
-	}
-
-	// If the configuration specifies an IPv4 address and port, we should use it
+	// If the configuration specifies an IP address and port, we should use it
 	// to derive the nonce prefix.
 	host, port, err := net.SplitHostPort(grpcAddr)
 	if err != nil {
@@ -54,31 +49,38 @@ func derivePrefix(salt string, grpcAddr string) (string, error) {
 	}
 	if host != "" && port != "" {
 		hostIP := net.ParseIP(host)
-		if hostIP != nil && hostIP.To4() != nil {
+		if hostIP != nil && (hostIP.To4() != nil || hostIP.To16() != nil) {
 			return nonce.DerivePrefix(grpcAddr, salt), nil
 		}
 	}
 
-	// Otherwise, we should use the only non-loopback interface with an IPv4
+	// Otherwise, we should use the only non-loopback interface with an IP
 	// address we find on the system and the port passed in the gRPC
-	// configuration.
+	// configuration. Technically, this could still fail if the system has
+	// multiple non-loopback interfaces, but that should be exceedingly rare.
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "", err
+	}
+
 	var interfaces []string
 	for _, a := range addrs {
 		ipnet, ok := a.(*net.IPNet)
 		if ok {
-			if !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+			if !ipnet.IP.IsLoopback() && (ipnet.IP.To4() != nil || ipnet.IP.To16() != nil) {
 				interfaces = append(interfaces, ipnet.IP.String())
 			}
 		}
 	}
 	if len(interfaces) == 0 {
 		// This should never happen.
-		return "", fmt.Errorf("found 0 non-loopback interfaces")
+		return "", fmt.Errorf("found 0 interfaces")
 	}
 	if len(interfaces) > 1 {
-		// This should (ideally) never happen. If it does, advise the operator to
-		// specify the IPv4 address in the address field of the gRPC configuration.
-		return "", fmt.Errorf("found more than one non-loopback interface, specify IPv4 address in gRPC configuration instead")
+		// This should (ideally) never happen. If it does, advise the operator
+		// to specify the IP address in the address field of the gRPC
+		// configuration.
+		return "", fmt.Errorf("found multiple interfaces, specify one of %q in the gRPC configuration", interfaces)
 	}
 	localAddr := interfaces[0] + ":" + port
 	return nonce.DerivePrefix(localAddr, salt), nil

@@ -1,15 +1,15 @@
-// Package nonce implements a service for generating and redeeming nonces. To
-// generate a nonce, it encrypts a monotonically increasing counter (latest)
+// Package nonce implements a service for generating and redeeming nonces.
+// To generate a nonce, it encrypts a monotonically increasing counter (latest)
 // using an authenticated cipher. To redeem a nonce, it checks that the nonce
 // decrypts to a valid integer between the earliest and latest counter values,
-// and that it's not on the cross-off list. To avoid a constantly growing
-// cross-off list, the nonce service periodically retires the oldest counter
-// values by finding the lowest counter value in the cross-off list, deleting
-// it, and setting "earliest" to its value. To make this efficient, the
-// cross-off list is represented two ways: Once as a map, for quick lookup of a
-// given value, and once as a heap, to quickly find the lowest value. The
-// MaxUsed value determines how long a generated nonce can be used before it is
-// forgotten. To calculate that period, divide the MaxUsed value by average
+// and that it's not on the cross-off list. To avoid a constantly growing cross-off
+// list, the nonce service periodically retires the oldest counter values by
+// finding the lowest counter value in the cross-off list, deleting it, and setting
+// "earliest" to its value. To make this efficient, the cross-off list is represented
+// two ways: Once as a map, for quick lookup of a given value, and once as a heap,
+// to quickly find the lowest value.
+// The MaxUsed value determines how long a generated nonce can be used before it
+// is forgotten. To calculate that period, divide the MaxUsed value by average
 // redemption rate (valid POSTs per second).
 package nonce
 

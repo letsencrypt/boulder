@@ -57,9 +57,9 @@ type Config struct {
 		// this should contain both local and remote nonce-service instances.
 		RedeemNonceService *cmd.GRPCClientConfig
 
-		// RedeemNonceSalt is a salt value used to derive a nonce prefix for
-		// necessary for redeeming nonces. In a multi-DC deployment this value
-		// should be the same across all WFE and nonce-service instances.
+		// RedeemNonceSalt is a salt value necessary for deriving the prefix of
+		// each nonce instance. In a multi-DC deployment this value should be
+		// the same across all WFE and nonce-service instances.
 		RedeemNonceSalt cmd.PasswordConfig
 
 		// RedeemNonceServices contains a map of nonce-service prefixes to

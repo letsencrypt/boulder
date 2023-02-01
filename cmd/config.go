@@ -306,7 +306,10 @@ type GRPCClientConfig struct {
 
 	// SRVLookups allows you to pass multiple SRV records to the gRPC client.
 	// The gRPC client will resolves each SRV record and use the results to
-	// construct a list of backends to connect to.
+	// construct a list of backends to connect to. For more details, see the
+	// documentation for the SRVLookup field. Note: while you can pass multiple
+	// targets to the gRPC client using this field, all of the targets will use
+	// the same HostOverride and TLS configuration.
 	SRVLookups []*ServiceDomain
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that

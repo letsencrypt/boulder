@@ -8,10 +8,6 @@ import (
 	"google.golang.org/grpc/balancer/base"
 )
 
-// Compile-time assertion that *Picker implements the base.PickerBuilder
-// interface.
-var _ base.PickerBuilder = (*Balancer)(nil)
-
 var errNoPrefix = errors.New("nonce.PrefixKey value required in RPC context")
 var errNoPrefixSalt = errors.New("nonce.PrefixSaltKey value required in RPC context")
 var errPrefixType = errors.New("nonce.PrefixKey value in RPC context must be a string")
@@ -23,6 +19,10 @@ var errPrefixSaltType = errors.New("nonce.PrefixSaltKey value in RPC context mus
 // `{"loadBalancingConfig":[{"nonce":{}}]}` as the default service config to
 // grpc.Dial().
 type Balancer struct{}
+
+// Compile-time assertion that *Picker implements the base.PickerBuilder
+// interface.
+var _ base.PickerBuilder = (*Balancer)(nil)
 
 // Build implements the base.PickerBuilder interface. It is called by the gRPC
 // runtime when the balancer is first initialized and when the set of backend
@@ -54,18 +54,6 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return result, balancer.ErrNoSubConnAvailable
 	}
 
-	// Get the destination prefix from the RPC context.
-	prefixVal := info.Ctx.Value(nonce.PrefixKey{})
-	if prefixVal == nil {
-		// This should never happen.
-		return result, errNoPrefix
-	}
-	destPrefix, ok := prefixVal.(string)
-	if !ok {
-		// This should never happen.
-		return result, errPrefixType
-	}
-
 	// Get the salt from the RPC context.
 	prefixSaltVal := info.Ctx.Value(nonce.PrefixSaltKey{})
 	if prefixSaltVal == nil {
@@ -81,11 +69,24 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	if p.prefixToBackend == nil {
 		// Iterate over the backends and build a map of the derived prefix for
 		// each backend SubConn.
-		p.prefixToBackend = make(map[string]balancer.SubConn)
+		prefixToBackend := make(map[string]balancer.SubConn)
 		for sc, scInfo := range p.backends {
 			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, prefixSalt)
-			p.prefixToBackend[scPrefix] = sc
+			prefixToBackend[scPrefix] = sc
 		}
+		p.prefixToBackend = prefixToBackend
+	}
+
+	// Get the destination prefix from the RPC context.
+	prefixVal := info.Ctx.Value(nonce.PrefixKey{})
+	if prefixVal == nil {
+		// This should never happen.
+		return result, errNoPrefix
+	}
+	destPrefix, ok := prefixVal.(string)
+	if !ok {
+		// This should never happen.
+		return result, errPrefixType
 	}
 
 	sc, ok := p.prefixToBackend[destPrefix]
