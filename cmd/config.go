@@ -346,11 +346,7 @@ type GRPCClientConfig struct {
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
 	HostOverride string
-
-	// LoadBalancing is an optional override for the load balancer
-	// implementation. The default is 'round_robin'.
-	// LoadBalancing string
-	Timeout ConfigDuration
+	Timeout      ConfigDuration
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will
