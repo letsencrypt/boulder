@@ -1089,8 +1089,8 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 
 	// Testing for the existence of these boxed nils is a definite break from
 	// our paradigm of avoiding passing around boxed nils whenever possible.
-	// However, the existence of these in relation to this test is actually
-	// expected. If these tests fail, then a possible SA refactor or RA bug
+	// However, the existence of these boxed nils in relation to this test is
+	// actually expected. If these tests fail, then a possible SA refactor or RA bug
 	// placed incorrect data into brand new authz input fields.
 	test.AssertBoxedNil(t, am.Attempted, "am.Attempted should be nil")
 	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
