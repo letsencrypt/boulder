@@ -944,7 +944,7 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	// Insert pre-existing authorizations to reference
+	// Insert two pre-existing authorizations to reference
 	idA := createPendingAuthorization(t, sa, "a.com", sa.clk.Now().Add(time.Hour))
 	idB := createPendingAuthorization(t, sa, "b.com", sa.clk.Now().Add(time.Hour))
 	test.AssertEquals(t, idA, int64(1))
