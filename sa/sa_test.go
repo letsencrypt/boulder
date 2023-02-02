@@ -1076,7 +1076,6 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 		&am,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = :regID AND
-			status = :status AND
 			expires > :validUntil AND
 			identifierType = :dnsType AND
 			identifierValue = :ident
@@ -1084,12 +1083,14 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 			LIMIT 1 `, authzFields),
 		map[string]interface{}{
 			"regID":      reg.Id,
-			"status":     statusUint(core.StatusPending),
 			"validUntil": validUntil,
 			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
 			"ident":      domain,
 		},
 	)
+
+	// If we're making a brand new authz, it should have the pending status.
+	test.AssertEquals(t, am.Status, statusUint(core.StatusPending))
 
 	// Testing for the existence of these boxed nils is a definite break from
 	// our paradigm of avoiding passing around boxed nils whenever possible.
