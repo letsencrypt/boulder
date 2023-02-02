@@ -30,6 +30,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -1022,8 +1023,8 @@ func TestNewOrderAndAuthzs_MissingInnerOrder(t *testing.T) {
 }
 
 func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
-	sa, fc, _ := initSA(t)
-	//defer cleanup()
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
 
 	// Create a test registration to reference
 	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
@@ -1034,26 +1035,25 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	// Set the order to expire in two hours
-	expires := fc.Now().Add(2 * time.Hour).UnixNano()
+	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	validUntil := fc.Now().Add(time.Hour * -1).UTC().UnixNano()
+	domain := "a.com"
 
 	// Create the order object
-
 	order := &corepb.Order{
 		RegistrationID: reg.Id,
 		Expires:        expires,
-		Names:          []string{"a.com"},
+		Names:          []string{domain},
 	}
 
-	// Create a pending authz that does not yet exist in the database. We want
-	// to ensure that upon insertion several fields are set to their zero-value
+	// Create a pending authz that does not yet exist in the database.
 	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewAuthzs: []*corepb.Authorization{
 			{
-				Identifier:     "a.com",
+				Identifier:     domain,
 				RegistrationID: reg.Id,
 				Expires:        expires,
-				Status:         "pending",
+				Status:         string(core.StatusPending),
 				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
 			},
 		},
@@ -1063,55 +1063,39 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 			Names:          order.Names,
 		},
 	})
-	fmt.Println(err)
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
-	/*
-		var authzIDs []string
-		phil, err := sa.dbMap.Select(&authzIDs, "SELECT * FROM authz2;")
-		if err != nil {
-			fmt.Println(err)
-		}
-		fmt.Println(phil)
-	*/
-	/*
-		dbVer, err := sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
-			RegistrationID:  reg.Id,
-			IdentifierType:  "0",
-			IdentifierValue: "a.com",
-		})
-		test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
-		test.AssertEquals(t, fmt.Sprintf("%d", 1), dbVer.Id)
-	*/
-	/*
-		expires := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
-		attemptedAt := fc.Now().UnixNano()
-		ip, _ := net.ParseIP("1.1.1.1").MarshalText()
 
-		_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-			Id: authzID,
-			ValidationRecords: []*corepb.ValidationRecord{
-				{
-					Hostname:    "aaa",
-					Port:        "123",
-					Url:         "http://asd",
-					AddressUsed: ip,
-				},
-			},
-			Status:      string(core.StatusValid),
-			Expires:     expires,
-			Attempted:   string(core.ChallengeTypeHTTP01),
-			AttemptedAt: attemptedAt,
-		})
-		test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	// Retrieve the new authz created above and verify that specific fields were
+	// set to their golang zero-value.
+	var am = authzModel{}
+	err = sa.dbReadOnlyMap.SelectOne(
+		&am,
+		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
+			registrationID = :regID AND
+			status = :status AND
+			expires > :validUntil AND
+			identifierType = :dnsType AND
+			identifierValue = :ident
+			ORDER BY expires ASC
+			LIMIT 1 `, authzFields),
+		map[string]interface{}{
+			"regID":      reg.Id,
+			"status":     statusUint(core.StatusPending),
+			"validUntil": validUntil,
+			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
+			"ident":      domain,
+		},
+	)
 
-		dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
-		test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
-		test.AssertEquals(t, dbVer.Status, string(core.StatusValid))
-		test.AssertEquals(t, time.Unix(0, dbVer.Expires).UTC(), fc.Now().Add(time.Hour*2).UTC())
-		test.AssertEquals(t, dbVer.Challenges[0].Status, string(core.StatusValid))
-		test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
-		test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), fc.Now().UTC())
-	*/
+	// Testing for the existence of these boxed nils is a definite break from
+	// our paradigm of avoiding passing around boxed nils whenever possible.
+	// However, the existence of these in relation to this test is actually
+	// expected. If these tests fail, then a possible SA refactor or RA bug
+	// placed incorrect data into brand new authz input fields.
+	test.AssertBoxedNil(t, am.Attempted, "am.Attempted should be nil")
+	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
+	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
+	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
 }
 
 func TestSetOrderProcessing(t *testing.T) {
