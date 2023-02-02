@@ -56,7 +56,7 @@ const (
 
 	// CertCheckerChecksValidations enables an extra query for each certificate
 	// checked, to find the relevant authzs. Since this query might be
-	// expensive, we get it behind a feature flag.
+	// expensive, we gate it behind a feature flag.
 	CertCheckerChecksValidations
 
 	// CertCheckerRequiresValidations causes cert-checker to fail if the
