@@ -255,6 +255,7 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 type ServiceDomain struct {
 	Service string
 	Domain  string
+	Scheme  string
 }
 
 // GRPCClientConfig contains the information necessary to setup a gRPC client
@@ -262,8 +263,8 @@ type ServiceDomain struct {
 //
 // ServerIPAddresses, [Timeout]
 // ServerAddress, [Timeout], [DNSAuthority], [HostOverride]
-// SRVLookup, [Timeout], [DNSAuthority], [HostOverride]
-// SRVLookups, [Timeout], [DNSAuthority], [HostOverride]
+// SRVLookup, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
+// SRVLookups, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
 type GRPCClientConfig struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
 	// to be used for resolution of gRPC backends. If the address contains a
@@ -313,6 +314,12 @@ type GRPCClientConfig struct {
 	// the same HostOverride and TLS configuration.
 	SRVLookups []*ServiceDomain
 
+	// SRVResolver is an optional override to indicate that a specific
+	// implementation of the SRV resolver should be used. The default is 'srv'
+	// For more details, see the documentation for the srvResolver in:
+	// grpc/internal/resolver/dns/dns_resolver.go.
+	SRVResolver string
+
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
 	// If the address provided is 'foo.service.consul:8080' then the dNSName to
@@ -352,8 +359,8 @@ type GRPCClientConfig struct {
 
 	// LoadBalancing is an optional override for the load balancer
 	// implementation. The default is 'round_robin'.
-	LoadBalancing string
-	Timeout       ConfigDuration
+	// LoadBalancing string
+	Timeout ConfigDuration
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will
@@ -381,6 +388,10 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), hostOverride, nil
 
 	} else if c.SRVLookup != nil {
+		scheme := "srv"
+		if c.SRVResolver != "" {
+			scheme = c.SRVResolver
+		}
 		if c.ServerIPAddresses != nil {
 			return "", "", errors.New(
 				"both 'SRVLookup' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
@@ -393,9 +404,13 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		if c.HostOverride != "" {
 			hostOverride = c.HostOverride
 		}
-		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), hostOverride, nil
+		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, targetHost), hostOverride, nil
 
 	} else if c.SRVLookups != nil {
+		scheme := "srv"
+		if c.SRVResolver != "" {
+			scheme = c.SRVResolver
+		}
 		if c.ServerIPAddresses != nil {
 			return "", "", errors.New(
 				"both 'SRVLookups' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
@@ -409,7 +424,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		if c.HostOverride != "" {
 			hostOverride = c.HostOverride
 		}
-		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, strings.Join(targetHosts, ",")), hostOverride, nil
+		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, strings.Join(targetHosts, ",")), hostOverride, nil
 
 	} else {
 		if c.ServerIPAddresses == nil {

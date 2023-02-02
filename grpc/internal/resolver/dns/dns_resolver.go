@@ -33,8 +33,10 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/grpc/internal/backoff"
+	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/serviceconfig"
 )
 
 var logger = grpclog.Component("srv")
@@ -47,7 +49,10 @@ var (
 )
 
 func init() {
-	resolver.Register(NewBuilder())
+	// Default SRV resolver uses the "srv" scheme.
+	resolver.Register(NewSRVBuilder())
+	// Default SRV resolver uses the "nonce-srv" scheme.
+	resolver.Register(NewNonceBuilder())
 }
 
 const defaultDNSSvrPort = "53"
@@ -88,15 +93,25 @@ var customAuthorityResolver = func(authority string) (*net.Resolver, error) {
 	}, nil
 }
 
-// NewBuilder creates a dnsBuilder which is used to factory DNS resolvers.
-func NewBuilder() resolver.Builder {
-	return &dnsBuilder{}
+// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS
+// resolvers.
+func NewSRVBuilder() resolver.Builder {
+	return &srvBuilder{scheme: "srv"}
 }
 
-type dnsBuilder struct{}
+// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS
+// resolvers with a custom grpc.Balancer use by nonce-service clients.
+func NewNonceBuilder() resolver.Builder {
+	return &srvBuilder{scheme: "nonce-srv", balancer: noncebalancer.Name}
+}
+
+type srvBuilder struct {
+	scheme   string
+	balancer string
+}
 
 // Build creates and starts a DNS resolver that watches the name resolution of the target.
-func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
+func (b *srvBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
 	var names []name
 	for _, i := range strings.Split(target.Endpoint, ",") {
 		service, domain, err := parseServiceDomain(i)
@@ -125,14 +140,18 @@ func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts 
 		}
 	}
 
+	if b.balancer != "" {
+		d.serviceConfig = cc.ParseServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, b.balancer))
+	}
+
 	d.wg.Add(1)
 	go d.watcher()
 	return d, nil
 }
 
 // Scheme returns the naming scheme of this resolver builder, which is "srv".
-func (b *dnsBuilder) Scheme() string {
-	return "srv"
+func (b *srvBuilder) Scheme() string {
+	return b.scheme
 }
 
 type netResolver interface {
@@ -160,7 +179,8 @@ type dnsResolver struct {
 	// If Close() doesn't wait for watcher() goroutine finishes, race detector sometimes
 	// will warns lookup (READ the lookup function pointers) inside watcher() goroutine
 	// has data race with replaceNetFunc (WRITE the lookup function pointers).
-	wg sync.WaitGroup
+	wg            sync.WaitGroup
+	serviceConfig *serviceconfig.ParseResult
 }
 
 // ResolveNow invoke an immediate resolution of the target that this dnsResolver watches.
@@ -186,6 +206,9 @@ func (d *dnsResolver) watcher() {
 			// Report error to the underlying grpc.ClientConn.
 			d.cc.ReportError(err)
 		} else {
+			if d.serviceConfig != nil {
+				state.ServiceConfig = d.serviceConfig
+			}
 			err = d.cc.UpdateState(*state)
 		}
 

@@ -8,17 +8,19 @@ import (
 	"google.golang.org/grpc/balancer/base"
 )
 
+const Name = "nonce"
+
 var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
 var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
 var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
 var errInvalidHMACKeyCtxKeyType = errors.New("nonce.HMACKeyCtxKey value in RPC context must be a string")
 
-// Balancer is a base.Balancer used to construct a new Picker. It implements the
-// base.PickerBuilder interface but should only be used as a base.Balancer for
-// nonce server clients.
+// Balancer implements the base.PickerBuilder interface. It's used to factory
+// new balancer.Picker instances. It should only be used by nonce-service
+// clients.
 type Balancer struct{}
 
-// Compile-time assertion that *Picker implements the base.PickerBuilder
+// Compile-time assertion that *Balancer implements the base.PickerBuilder
 // interface.
 var _ base.PickerBuilder = (*Balancer)(nil)
 

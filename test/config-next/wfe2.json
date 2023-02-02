@@ -58,9 +58,9 @@
           "domain": "service.consul"
         }
       ],
+      "srvResolver": "nonce-srv",
       "timeout": "15s",
-      "hostOverride": "nonce.boulder",
-      "loadBalancing": "nonce"
+      "hostOverride": "nonce.boulder"
     },
     "noncePrefixKey": {"passwordFile": "test/secrets/nonce_prefix_key"},
     "chains": [
