@@ -1072,7 +1072,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	// would be serialized into a protobuf message and the nils would be lost,
 	// rendering potential checking impossible.
 	var am = authzModel{}
-	err = sa.dbReadOnlyMap.SelectOne(
+	_ = sa.dbReadOnlyMap.SelectOne(
 		&am,
 		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = :regID AND
