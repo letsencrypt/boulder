@@ -2138,7 +2138,7 @@ func (mock *mockSACountPendingFails) CountPendingAuthorizations2(ctx context.Con
 	return nil, errors.New("counting is slow and boring")
 }
 
-// Ensure that we don't both to call the SA to count pending authorizations
+// Ensure that we don't bother to call the SA to count pending authorizations
 // when an "unlimited" limit is set.
 func TestPendingAuthorizationsUnlimited(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
