@@ -49,9 +49,7 @@ var (
 )
 
 func init() {
-	// Default SRV resolver uses the "srv" scheme.
 	resolver.Register(NewDefaultSRVBuilder())
-	// Default SRV resolver uses the "nonce-srv" scheme.
 	resolver.Register(NewNonceSRVBuilder())
 }
 
