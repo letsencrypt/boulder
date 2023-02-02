@@ -350,9 +350,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		testKeyPolicy,
 		certChains,
 		issuerCertificates,
-		map[string]nonce.Redeemer{
-			noncePrefix: nonceGRPCService,
-		},
 		blog.NewMock(),
 		10*time.Second,
 		30*24*time.Hour,
@@ -360,6 +357,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		&MockRegistrationAuthority{},
 		mockSA,
 		nonceGRPCService,
+		map[string]nonce.Redeemer{noncePrefix: nonceGRPCService},
 		nonceGRPCService,
 		"",
 		mockSA)

@@ -52,6 +52,16 @@ type Config struct {
 		// should refer to local nonce-service instances only.
 		GetNonceService *cmd.GRPCClientConfig
 
+		// RedeemNonceServices contains a map of nonce-service prefixes to
+		// gRPC configs we want to use to redeem nonces. In a multi-DC deployment
+		// this should contain all nonce-services from all DCs as we want to be
+		// able to redeem nonces generated at any DC.
+		//
+		// DEPRECATED: See RedeemNonceService, above.
+		// TODO (#6610) Remove this after all configs have migrated to
+		// `RedeemNonceService`.
+		RedeemNonceServices map[string]cmd.GRPCClientConfig
+
 		// RedeemNonceService contains a gRPC config for each nonce-service
 		// instance which we want to redeem nonces at. In a multi-DC deployment
 		// this should contain both local and remote nonce-service instances.
@@ -63,16 +73,6 @@ type Config struct {
 		// multi-DC deployment this value should be the same across all
 		// boulder-wfe and nonce-service instances.
 		NoncePrefixKey cmd.PasswordConfig
-
-		// RedeemNonceServices contains a map of nonce-service prefixes to
-		// gRPC configs we want to use to redeem nonces. In a multi-DC deployment
-		// this should contain all nonce-services from all DCs as we want to be
-		// able to redeem nonces generated at any DC.
-		//
-		// DEPRECATED: See RedeemNonceService, above.
-		// TODO (#6610) Remove this after all configs have migrated to
-		// `RedeemNonceService`.
-		RedeemNonceServices map[string]cmd.GRPCClientConfig
 
 		// CertificateChains maps AIA issuer URLs to certificate filenames.
 		// Certificates are read into the chain in the order they are defined in the
@@ -334,6 +334,11 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	var npm map[string]nonce.Redeemer
 	if c.WFE.RedeemNonceService != nil {
 		// Dispatch nonce redemption RPCs dynamically.
+		err := c.WFE.RedeemNonceService.UseCustomSRVResolver("nonce-srv")
+		if err != nil {
+			// This should never happen.
+			cmd.FailOnError(err, "Failed to set custom SRV resolver for redeemNonceService")
+		}
 		redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
 		rnc = nonce.NewRedeemer(redeemNonceConn)
@@ -478,15 +483,15 @@ func main() {
 		kp,
 		allCertChains,
 		issuerCerts,
-		npm,
 		logger,
 		c.WFE.StaleTimeout.Duration,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		rac,
 		sac,
-		rnc,
 		gnc,
+		npm,
+		rnc,
 		npKey,
 		accountGetter,
 	)
