@@ -89,16 +89,20 @@ var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
 type WebFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
+	// gnc is a nonce-service client used exclusively for the issuance of
+	// nonces. It's configured to route requests to backends colocated with the
+	// WFE.
+	gnc nonce.Getter
+	// Register of anti-replay nonces
+	//
+	// Deprecated: See `rnc`, above.
+	noncePrefixMap map[string]nonce.Redeemer
 	// rnc is a nonce-service client used exclusively for the redemption of
 	// nonces. It uses a custom RPC load balancer which is configured to route
 	// requests to backends based on the prefix and HMAC key passed as in the
 	// context of the request. The HMAC and prefix are passed using context keys
 	// `nonce.HMACKeyCtxKey` and `nonce.PrefixCtxKey`.
 	rnc nonce.Redeemer
-	// gnc is a nonce-service client used exclusively for the issuance of
-	// nonces. It's configured to route requests to backends colocated with the
-	// WFE.
-	gnc nonce.Getter
 	// rncKey is the HMAC key used to derive the prefix of nonce backends used
 	// for nonce redemption.
 	rncKey        string
@@ -134,11 +138,6 @@ type WebFrontEndImpl struct {
 	// See `cmd/boulder-wfe2/main.go`'s comment on the configuration field
 	// `LegacyKeyIDPrefix` for more information.
 	LegacyKeyIDPrefix string
-
-	// Register of anti-replay nonces
-	//
-	// Deprecated: See `rnc`, above.
-	noncePrefixMap map[string]nonce.Redeemer
 
 	// Key policy.
 	keyPolicy goodkey.KeyPolicy
