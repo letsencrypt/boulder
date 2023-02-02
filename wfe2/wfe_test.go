@@ -352,6 +352,7 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		issuerCertificates,
 		blog.NewMock(),
 		10*time.Second,
+		10*time.Second,
 		30*24*time.Hour,
 		7*24*time.Hour,
 		&MockRegistrationAuthority{},

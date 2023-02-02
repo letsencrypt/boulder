@@ -2,6 +2,7 @@
   "wfe": {
     "listenAddress": "0.0.0.0:4001",
     "TLSListenAddress": "0.0.0.0:4431",
+    "timeout": "30s",
     "serverCertificatePath": "test/wfe-tls/boulder/cert.pem",
     "serverKeyPath": "test/wfe-tls/boulder/key.pem",
     "allowOrigins": ["*"],

@@ -25,12 +25,12 @@ jobs:
 
       - run: git checkout -b ${{ steps.branch.outputs.name }}
 
-      # We run these inside docker-compose to ensure we use the same Go version
+      # We run these inside "docker compose" to ensure we use the same Go version
       # as elsewhere. They're run inside the netaccess container so they can
       # download the dependency files.
-      - run: docker-compose run netaccess go get github.com/weppos/publicsuffix-go@main
-      - run: docker-compose run netaccess go mod vendor
-      - run: docker-compose run netaccess go mod tidy
+      - run: docker compose run netaccess go get github.com/weppos/publicsuffix-go@main
+      - run: docker compose run netaccess go mod vendor
+      - run: docker compose run netaccess go mod tidy
 
       - run: git diff --numstat vendor/github.com/weppos/publicsuffix-go/publicsuffix/rules.go | awk '{ print "::set-output name=body::" $1 " additions and " $2 " removals." }'
         id: diff

@@ -33,6 +33,10 @@ type Config struct {
 		ListenAddress    string
 		TLSListenAddress string
 
+		// Timeout is the per-request overall timeout. This should be slightly
+		// lower than the upstream's timeout when making request to the WFE.
+		Timeout cmd.ConfigDuration
+
 		ServerCertificatePath string
 		ServerKeyPath         string
 
@@ -484,6 +488,7 @@ func main() {
 		allCertChains,
 		issuerCerts,
 		logger,
+		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,

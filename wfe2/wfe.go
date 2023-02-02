@@ -146,8 +146,8 @@ type WebFrontEndImpl struct {
 	// CORS settings
 	AllowOrigins []string
 
-	// Maximum duration of a request
-	RequestTimeout time.Duration
+	// requestTimeout is the per-request overall timeout.
+	requestTimeout time.Duration
 
 	// StaleTimeout determines the required staleness for resources allowed to be
 	// accessed via Boulder-specific GET-able APIs. Resources newer than
@@ -171,6 +171,7 @@ func NewWebFrontEndImpl(
 	certificateChains map[issuance.IssuerNameID][][]byte,
 	issuerCertificates map[issuance.IssuerNameID]*issuance.Certificate,
 	logger blog.Logger,
+	requestTimeout time.Duration,
 	staleTimeout time.Duration,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
@@ -206,6 +207,7 @@ func NewWebFrontEndImpl(
 		certificateChains:            certificateChains,
 		issuerCertificates:           issuerCertificates,
 		stats:                        initStats(stats),
+		requestTimeout:               requestTimeout,
 		staleTimeout:                 staleTimeout,
 		authorizationLifetime:        authorizationLifetime,
 		pendingAuthorizationLifetime: pendingAuthorizationLifetime,
@@ -300,12 +302,11 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 
 			wfe.setCORSHeaders(response, request, "")
 
-			timeout := wfe.RequestTimeout
+			timeout := wfe.requestTimeout
 			if timeout == 0 {
 				timeout = 5 * time.Minute
 			}
 			ctx, cancel := context.WithTimeout(ctx, timeout)
-			// TODO(riking): add request context using WithValue
 
 			// Call the wrapped handler.
 			h(ctx, logEvent, response, request)
