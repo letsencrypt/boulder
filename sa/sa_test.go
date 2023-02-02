@@ -1066,7 +1066,11 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
 	// Retrieve the new authz created above and verify that specific fields were
-	// set to their golang zero-value.
+	// set to their golang zero-value. We store the database output into the &am
+	// authzModel{} holder because we want to check for nil fields. If we were
+	// to use a function such as sa.GetAuthorizations2, then the database output
+	// would be serialized into a protobuf message and the nils would be lost,
+	// rendering potential checking impossible.
 	var am = authzModel{}
 	err = sa.dbReadOnlyMap.SelectOne(
 		&am,
@@ -1090,8 +1094,8 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	// Testing for the existence of these boxed nils is a definite break from
 	// our paradigm of avoiding passing around boxed nils whenever possible.
 	// However, the existence of these boxed nils in relation to this test is
-	// actually expected. If these tests fail, then a possible SA refactor or RA bug
-	// placed incorrect data into brand new authz input fields.
+	// actually expected. If these tests fail, then a possible SA refactor or RA
+	// bug placed incorrect data into brand new authz input fields.
 	test.AssertBoxedNil(t, am.Attempted, "am.Attempted should be nil")
 	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
 	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
