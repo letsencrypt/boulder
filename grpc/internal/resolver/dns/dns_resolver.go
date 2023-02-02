@@ -50,9 +50,9 @@ var (
 
 func init() {
 	// Default SRV resolver uses the "srv" scheme.
-	resolver.Register(NewSRVBuilder())
+	resolver.Register(NewDefaultSRVBuilder())
 	// Default SRV resolver uses the "nonce-srv" scheme.
-	resolver.Register(NewNonceBuilder())
+	resolver.Register(NewNonceSRVBuilder())
 }
 
 const defaultDNSSvrPort = "53"
@@ -93,15 +93,15 @@ var customAuthorityResolver = func(authority string) (*net.Resolver, error) {
 	}, nil
 }
 
-// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS
+// NewDefaultSRVBuilder creates a srvBuilder which is used to factory SRV DNS
 // resolvers.
-func NewSRVBuilder() resolver.Builder {
+func NewDefaultSRVBuilder() resolver.Builder {
 	return &srvBuilder{scheme: "srv"}
 }
 
-// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS
-// resolvers with a custom grpc.Balancer use by nonce-service clients.
-func NewNonceBuilder() resolver.Builder {
+// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS resolvers
+// with a custom grpc.Balancer use by nonce-service clients.
+func NewNonceSRVBuilder() resolver.Builder {
 	return &srvBuilder{scheme: "nonce-srv", balancer: noncebalancer.Name}
 }
 

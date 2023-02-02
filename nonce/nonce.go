@@ -57,9 +57,8 @@ type PrefixCtxKey struct{}
 type HMACKeyCtxKey struct{}
 
 // DerivePrefix derives a nonce prefix from the provided listening address and
-// key. The prefix is derived by taking the HMAC-SHA256 of the listening address
-// using the provided key. The first 8 characters of the base64url encoding of
-// the resulting HMAC are used as the prefix.
+// key. The prefix is derived by take the first 8 characters of the base64url
+// encoded HMAC-SHA256 hash of the listening address using the provided key.
 func DerivePrefix(grpcAddr, key string) string {
 	h := hmac.New(sha256.New, []byte(key))
 	h.Write([]byte(grpcAddr))

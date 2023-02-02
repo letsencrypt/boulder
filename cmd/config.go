@@ -255,7 +255,6 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 type ServiceDomain struct {
 	Service string
 	Domain  string
-	Scheme  string
 }
 
 // GRPCClientConfig contains the information necessary to setup a gRPC client
