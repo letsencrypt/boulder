@@ -15,8 +15,8 @@ func TestPickerPicksCorrectBackend(t *testing.T) {
 	_, p, subConns := setupTest(false)
 	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, "Kala namak")
 
-	testCtx := context.WithValue(context.Background(), nonce.PrefixKey{}, "QwvIHr--")
-	testCtx = context.WithValue(testCtx, nonce.PrefixSaltKey{}, prefix)
+	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "HNmOnt8w")
+	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, prefix)
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
@@ -24,50 +24,50 @@ func TestPickerPicksCorrectBackend(t *testing.T) {
 	test.AssertDeepEquals(t, subConns[0], gotPick.SubConn)
 }
 
-func TestPickerNoPrefixInCtx(t *testing.T) {
+func TestPickerMissingPrefixInCtx(t *testing.T) {
 	_, p, subConns := setupTest(false)
 	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, "Kala namak")
 
-	testCtx := context.WithValue(context.Background(), nonce.PrefixSaltKey{}, prefix)
+	testCtx := context.WithValue(context.Background(), nonce.HMACKeyCtxKey{}, prefix)
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
-	test.AssertErrorIs(t, err, errNoPrefix)
+	test.AssertErrorIs(t, err, errMissingPrefixCtxKey)
 	test.AssertNil(t, gotPick.SubConn, "subConn should be nil")
 }
 
-func TestPickerIntPrefixInCtx(t *testing.T) {
+func TestPickerInvalidPrefixInCtx(t *testing.T) {
 	_, p, _ := setupTest(false)
 
-	testCtx := context.WithValue(context.Background(), nonce.PrefixKey{}, 9)
-	testCtx = context.WithValue(testCtx, nonce.PrefixSaltKey{}, "foobar")
+	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, 9)
+	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, "foobar")
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
-	test.AssertErrorIs(t, err, errPrefixType)
+	test.AssertErrorIs(t, err, errInvalidPrefixCtxKeyType)
 	test.AssertNil(t, gotPick.SubConn, "subConn should be nil")
 }
 
-func TestPickerNoPrefixSaltInCtx(t *testing.T) {
+func TestPickerMissingHMACKeyInCtx(t *testing.T) {
 	_, p, _ := setupTest(false)
 
-	testCtx := context.WithValue(context.Background(), nonce.PrefixKey{}, "QwvIHr--")
+	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "HNmOnt8w")
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
-	test.AssertErrorIs(t, err, errNoPrefixSalt)
+	test.AssertErrorIs(t, err, errMissingHMACKeyCtxKey)
 	test.AssertNil(t, gotPick.SubConn, "subConn should be nil")
 }
 
-func TestPickerIntPrefixSaltInCtx(t *testing.T) {
+func TestPickerInvalidHMACKeyInCtx(t *testing.T) {
 	_, p, _ := setupTest(false)
 
-	testCtx := context.WithValue(context.Background(), nonce.PrefixKey{}, "QwvIHr--")
-	testCtx = context.WithValue(testCtx, nonce.PrefixSaltKey{}, 9)
+	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "HNmOnt8w")
+	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, 9)
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
-	test.AssertErrorIs(t, err, errPrefixSaltType)
+	test.AssertErrorIs(t, err, errInvalidHMACKeyCtxKeyType)
 	test.AssertNil(t, gotPick.SubConn, "subConn should be nil")
 }
 
@@ -75,8 +75,8 @@ func TestPickerNoMatchingSubConnAvailable(t *testing.T) {
 	_, p, subConns := setupTest(false)
 	prefix := nonce.DerivePrefix(subConns[0].addrs[0].Addr, "Kala namak")
 
-	testCtx := context.WithValue(context.Background(), nonce.PrefixKey{}, "rUsTrUin")
-	testCtx = context.WithValue(testCtx, nonce.PrefixSaltKey{}, prefix)
+	testCtx := context.WithValue(context.Background(), nonce.PrefixCtxKey{}, "rUsTrUin")
+	testCtx = context.WithValue(testCtx, nonce.HMACKeyCtxKey{}, prefix)
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)

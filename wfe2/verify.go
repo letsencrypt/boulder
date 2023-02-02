@@ -200,8 +200,8 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 	var err error
 	if wfe.noncePrefixMap == nil {
 		// Dispatch nonce redemption RPCs dynamically.
-		ctx = context.WithValue(ctx, nonce.PrefixKey{}, header.Nonce[:nonce.PrefixLen])
-		ctx = context.WithValue(ctx, nonce.PrefixSaltKey{}, wfe.rncSalt)
+		ctx = context.WithValue(ctx, nonce.PrefixCtxKey{}, header.Nonce[:nonce.PrefixLen])
+		ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, wfe.rncKey)
 		resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
 		if err != nil {
 			return web.ProblemDetailsForError(err, "failed to redeem nonce")

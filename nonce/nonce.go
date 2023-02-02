@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -36,7 +37,7 @@ import (
 const (
 	// PrefixLen is the character length of a nonce prefix.
 	//
-	// TODO(#6610): Remove once we've moved derivable prefixes by default.
+	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	PrefixLen = 8
 	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
@@ -49,17 +50,19 @@ const (
 
 var errInvalidNonceLength = errors.New("invalid nonce length")
 
-// PrefixKey is exported for use as a key in a context.Context.
-type PrefixKey struct{}
+// PrefixCtxKey is exported for use as a key in a context.Context.
+type PrefixCtxKey struct{}
 
-// PrefixSaltKey is exported for use as a key in a context.Context.
-type PrefixSaltKey struct{}
+// HMACKeyCtxKey is exported for use as a key in a context.Context.
+type HMACKeyCtxKey struct{}
 
-// DerivePrefix derives a nonce prefix from the first eight characters of the
-// SHA256 hash of the gRPC server's listening address + port and a salt value.
-func DerivePrefix(listeningAddr, salt string) string {
-	h := sha256.New()
-	h.Write([]byte(listeningAddr + salt))
+// DerivePrefix derives a nonce prefix from the provided listening address and
+// key. The prefix is derived by taking the HMAC-SHA256 of the listening address
+// using the provided key. The first 8 characters of the base64url encoding of
+// the resulting HMAC are used as the prefix.
+func DerivePrefix(grpcAddr, key string) string {
+	h := hmac.New(sha256.New, []byte(key))
+	h.Write([]byte(grpcAddr))
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))[:PrefixLen]
 }
 
@@ -76,7 +79,7 @@ type NonceService struct {
 	nonceCreates     prometheus.Counter
 	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
-	// TODO(#6610): Remove this field once we've moved derivable prefixes by
+	// TODO(#6610): Remove this field once we've moved to derivable prefixes by
 	// default.
 	prefixLen int
 }
@@ -171,8 +174,8 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		nonceCreates:     nonceCreates,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
-		// TODO(#6610): Remove this field once we've moved derivable prefixes by
-		// default.
+		// TODO(#6610): Remove this field once we've moved to derivable prefixes
+		// by default.
 		prefixLen: len(prefix),
 	}, nil
 }
@@ -291,8 +294,10 @@ func (ns *NonceService) Valid(nonce string) bool {
 
 // splitDeprecatedNonce splits a nonce into a prefix and a body.
 //
-// Deprecated: Use NonceService.splitDeprecatedNonce instead. TODO(#6610):
-// Remove this function once we've moved derivable prefixes by default.
+// Deprecated: Use NonceService.splitDeprecatedNonce instead.
+//
+// TODO(#6610): Remove this function once we've moved to derivable prefixes by
+// default.
 func splitDeprecatedNonce(nonce string) (string, string, error) {
 	if len(nonce) < DeprecatedPrefixLen {
 		return "", "", errInvalidNonceLength

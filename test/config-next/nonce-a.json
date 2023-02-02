@@ -2,7 +2,7 @@
   "NonceService": {
     "maxUsed": 131072,
     "useDerivablePrefix": true,
-    "prefixSalt": {"passwordFile": "test/secrets/nonce_salt"},
+    "noncePrefixKey": {"passwordFile": "test/secrets/nonce_prefix_key"},
     "syslog": {
       "stdoutLevel": 6,
       "syslogLevel": -1

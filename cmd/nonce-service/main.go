@@ -22,68 +22,43 @@ type Config struct {
 		// default.
 		NoncePrefix string
 
-		// UseDerivablePrefix indicates whether or not to use a nonce prefix
-		// derived from the SHA256 of the host's IP address and a salt.
+		// UseDerivablePrefix indicates whether to use a nonce prefix derived
+		// from the gRPC listening address. If this is false, the nonce prefix
+		// will be the value of the NoncePrefix field. If this is true, the
+		// NoncePrefixKey field is required.
 		//
 		// TODO(#6610): Remove once we've moved to derivable prefixes by
 		// default.
 		UseDerivablePrefix bool
-		// PrefixSalt is the path to a file containing the salt used to derive
-		// the nonce prefix. This is only used if UseDerivablePrefix is true.
+
+		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
+		// instance. It should contain 256 bits (32 bytes) of random data to be
+		// suitable as an HMAC-SHA256 key (e.g. the output of `openssl rand -hex
+		// 32`). In a multi-DC deployment this value should be the same across
+		// all boulder-wfe and nonce-service instances. This is only used if
+		// UseDerivablePrefix is true.
 		//
 		// TODO(#6610): Edit this comment once we've moved to derivable prefixes
 		// by default.
-		PrefixSalt cmd.PasswordConfig
+		NoncePrefixKey cmd.PasswordConfig
 
 		Syslog  cmd.SyslogConfig
 		Beeline cmd.BeelineConfig
 	}
 }
 
-func derivePrefix(salt string, grpcAddr string) (string, error) {
-	// If the configuration specifies an IP address and port, we should use it
-	// to derive the nonce prefix.
+func derivePrefix(key string, grpcAddr string) (string, error) {
 	host, port, err := net.SplitHostPort(grpcAddr)
 	if err != nil {
 		return "", fmt.Errorf("parsing gRPC listen address: %w", err)
 	}
 	if host != "" && port != "" {
 		hostIP := net.ParseIP(host)
-		if hostIP != nil && (hostIP.To4() != nil || hostIP.To16() != nil) {
-			return nonce.DerivePrefix(grpcAddr, salt), nil
+		if hostIP == nil {
+			return "", fmt.Errorf("parsing IP from gRPC listen address: %w", err)
 		}
 	}
-
-	// Otherwise, we should use the only non-loopback interface with an IP
-	// address we find on the system and the port passed in the gRPC
-	// configuration. Technically, this could still fail if the system has
-	// multiple non-loopback interfaces, but that should be exceedingly rare.
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return "", err
-	}
-
-	var interfaces []string
-	for _, a := range addrs {
-		ipnet, ok := a.(*net.IPNet)
-		if ok {
-			if !ipnet.IP.IsLoopback() && (ipnet.IP.To4() != nil || ipnet.IP.To16() != nil) {
-				interfaces = append(interfaces, ipnet.IP.String())
-			}
-		}
-	}
-	if len(interfaces) == 0 {
-		// This should never happen.
-		return "", fmt.Errorf("found 0 interfaces")
-	}
-	if len(interfaces) > 1 {
-		// This should (ideally) never happen. If it does, advise the operator
-		// to specify the IP address in the address field of the gRPC
-		// configuration.
-		return "", fmt.Errorf("found multiple interfaces, specify one of %q in the gRPC configuration", interfaces)
-	}
-	localAddr := interfaces[0] + ":" + port
-	return nonce.DerivePrefix(localAddr, salt), nil
+	return nonce.DerivePrefix(grpcAddr, key), nil
 }
 
 func main() {
@@ -109,14 +84,14 @@ func main() {
 	}
 
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
-	if c.NonceService.UseDerivablePrefix && c.NonceService.PrefixSalt.PasswordFile == "" {
-		cmd.Fail("Cannot set 'prefixSalt' without 'useDerivablePrefix'")
+	if c.NonceService.UseDerivablePrefix && c.NonceService.NoncePrefixKey.PasswordFile == "" {
+		cmd.Fail("Cannot set 'noncePrefixKey' without 'useDerivablePrefix'")
 	}
 
-	if c.NonceService.UseDerivablePrefix && c.NonceService.PrefixSalt.PasswordFile != "" {
-		salt, err := c.NonceService.PrefixSalt.Pass()
-		cmd.FailOnError(err, "Failed to load 'prefixSalt' file.")
-		c.NonceService.NoncePrefix, err = derivePrefix(salt, c.NonceService.GRPC.Address)
+	if c.NonceService.UseDerivablePrefix && c.NonceService.NoncePrefixKey.PasswordFile != "" {
+		key, err := c.NonceService.NoncePrefixKey.Pass()
+		cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
+		c.NonceService.NoncePrefix, err = derivePrefix(key, c.NonceService.GRPC.Address)
 		cmd.FailOnError(err, "Failed to derive nonce prefix")
 	}
 

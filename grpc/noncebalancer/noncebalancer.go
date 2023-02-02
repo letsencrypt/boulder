@@ -8,16 +8,14 @@ import (
 	"google.golang.org/grpc/balancer/base"
 )
 
-var errNoPrefix = errors.New("nonce.PrefixKey value required in RPC context")
-var errNoPrefixSalt = errors.New("nonce.PrefixSaltKey value required in RPC context")
-var errPrefixType = errors.New("nonce.PrefixKey value in RPC context must be a string")
-var errPrefixSaltType = errors.New("nonce.PrefixSaltKey value in RPC context must be a string")
+var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
+var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
+var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
+var errInvalidHMACKeyCtxKeyType = errors.New("nonce.HMACKeyCtxKey value in RPC context must be a string")
 
 // Balancer is a base.Balancer used to construct a new Picker. It implements the
 // base.PickerBuilder interface but should only be used as a base.Balancer for
-// nonce server clients. It can be invoked by passing
-// `{"loadBalancingConfig":[{"nonce":{}}]}` as the default service config to
-// grpc.Dial().
+// nonce server clients.
 type Balancer struct{}
 
 // Compile-time assertion that *Picker implements the base.PickerBuilder
@@ -54,16 +52,16 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		return result, balancer.ErrNoSubConnAvailable
 	}
 
-	// Get the salt from the RPC context.
-	prefixSaltVal := info.Ctx.Value(nonce.PrefixSaltKey{})
-	if prefixSaltVal == nil {
+	// Get the HMAC key from the RPC context.
+	hmacKeyVal := info.Ctx.Value(nonce.HMACKeyCtxKey{})
+	if hmacKeyVal == nil {
 		// This should never happen.
-		return result, errNoPrefixSalt
+		return result, errMissingHMACKeyCtxKey
 	}
-	prefixSalt, ok := prefixSaltVal.(string)
+	hmacKey, ok := hmacKeyVal.(string)
 	if !ok {
 		// This should never happen.
-		return result, errPrefixSaltType
+		return result, errInvalidHMACKeyCtxKeyType
 	}
 
 	if p.prefixToBackend == nil {
@@ -71,22 +69,22 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 		// each backend SubConn.
 		prefixToBackend := make(map[string]balancer.SubConn)
 		for sc, scInfo := range p.backends {
-			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, prefixSalt)
+			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, hmacKey)
 			prefixToBackend[scPrefix] = sc
 		}
 		p.prefixToBackend = prefixToBackend
 	}
 
 	// Get the destination prefix from the RPC context.
-	prefixVal := info.Ctx.Value(nonce.PrefixKey{})
-	if prefixVal == nil {
+	destPrefixVal := info.Ctx.Value(nonce.PrefixCtxKey{})
+	if destPrefixVal == nil {
 		// This should never happen.
-		return result, errNoPrefix
+		return result, errMissingPrefixCtxKey
 	}
-	destPrefix, ok := prefixVal.(string)
+	destPrefix, ok := destPrefixVal.(string)
 	if !ok {
 		// This should never happen.
-		return result, errPrefixType
+		return result, errInvalidPrefixCtxKeyType
 	}
 
 	sc, ok := p.prefixToBackend[destPrefix]

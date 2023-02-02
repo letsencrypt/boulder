@@ -57,10 +57,12 @@ type Config struct {
 		// this should contain both local and remote nonce-service instances.
 		RedeemNonceService *cmd.GRPCClientConfig
 
-		// RedeemNonceSalt is a salt value necessary for deriving the prefix of
-		// each nonce instance. In a multi-DC deployment this value should be
-		// the same across all WFE and nonce-service instances.
-		RedeemNonceSalt cmd.PasswordConfig
+		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
+		// instance. It should contain 256 bits of random data to be suitable as
+		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
+		// multi-DC deployment this value should be the same across all
+		// boulder-wfe and nonce-service instances.
+		NoncePrefixKey cmd.PasswordConfig
 
 		// RedeemNonceServices contains a map of nonce-service prefixes to
 		// gRPC configs we want to use to redeem nonces. In a multi-DC deployment
@@ -306,22 +308,22 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 
 	// TODO(#6610) Refactor these checks.
 	if c.WFE.RedeemNonceService != nil && c.WFE.RedeemNonceServices != nil {
-		cmd.Fail("Only one of 'redeemNonceService' and 'redeemNonceServices' should be configured.")
+		cmd.Fail("Only one of 'redeemNonceService' or 'redeemNonceServices' should be configured.")
 	}
 	if c.WFE.RedeemNonceService == nil && c.WFE.RedeemNonceServices == nil {
-		cmd.Fail("One of 'redeemNonceService' and 'redeemNonceServices' must be configured.")
+		cmd.Fail("One of 'redeemNonceService' or 'redeemNonceServices' must be configured.")
 	}
-	if c.WFE.RedeemNonceService != nil && c.WFE.RedeemNonceSalt.PasswordFile == "" {
-		cmd.Fail("'redeemNonceSalt' must be configured if 'redeemNonceService' is configured.")
+	if c.WFE.RedeemNonceService != nil && c.WFE.NoncePrefixKey.PasswordFile == "" {
+		cmd.Fail("'noncePrefixKey' must be configured if 'redeemNonceService' is configured.")
 	}
 	if c.WFE.GetNonceService == nil {
 		cmd.Fail("'getNonceService' must be configured")
 	}
 
-	var rncSalt string
-	if c.WFE.RedeemNonceSalt.PasswordFile != "" {
-		rncSalt, err = c.WFE.RedeemNonceSalt.Pass()
-		cmd.FailOnError(err, "Failed to load redeemNonceSalt")
+	var rncKey string
+	if c.WFE.NoncePrefixKey.PasswordFile != "" {
+		rncKey, err = c.WFE.NoncePrefixKey.Pass()
+		cmd.FailOnError(err, "Failed to load noncePrefixKey")
 	}
 
 	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk)
@@ -348,7 +350,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 		}
 	}
 
-	return rac, sac, gnc, npm, rnc, rncSalt
+	return rac, sac, gnc, npm, rnc, rncKey
 }
 
 type errorWriter struct {
@@ -433,7 +435,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, gnc, npm, rnc, rncSalt := setupWFE(c, stats, clk)
+	rac, sac, gnc, npm, rnc, npKey := setupWFE(c, stats, clk)
 
 	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -485,7 +487,7 @@ func main() {
 		sac,
 		rnc,
 		gnc,
-		rncSalt,
+		npKey,
 		accountGetter,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")

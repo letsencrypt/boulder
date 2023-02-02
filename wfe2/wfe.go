@@ -90,19 +90,18 @@ type WebFrontEndImpl struct {
 	ra rapb.RegistrationAuthorityClient
 	sa sapb.StorageAuthorityReadOnlyClient
 	// rnc is a nonce-service client used exclusively for the redemption of
-	// nonces. It uses an RPC load balancer which is configured to route
-	// requests to backends based on the prefix of the nonce being redeemed.
-	// When sending an RPC using this client ensure that you pass both the
-	// 'salt' and 'prefix' as metadata in the context of each RPC request.
+	// nonces. It uses a custom RPC load balancer which is configured to route
+	// requests to backends based on the prefix and HMAC key passed as in the
+	// context of the request. The HMAC and prefix are passed using context keys
+	// `nonce.HMACKeyCtxKey` and `nonce.PrefixCtxKey`.
 	rnc nonce.Redeemer
 	// gnc is a nonce-service client used exclusively for the issuance of
 	// nonces. It's configured to route requests to backends colocated with the
 	// WFE.
 	gnc nonce.Getter
-	// rncSalt is the salt used to derive the prefix of nonce backends used for
-	// nonce redemption. In multi-DC deployments this value should be the same
-	// across all WFEs and nonce-service instances.
-	rncSalt       string
+	// rncKey is the HMAC key used to derive the prefix of nonce backends used
+	// for nonce redemption.
+	rncKey        string
 	accountGetter AccountGetter
 	log           blog.Logger
 	clk           clock.Clock
@@ -180,7 +179,7 @@ func NewWebFrontEndImpl(
 	sac sapb.StorageAuthorityReadOnlyClient,
 	rnc nonce.Redeemer,
 	gnc nonce.Getter,
-	rncSalt string,
+	rncKey string,
 	accountGetter AccountGetter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
@@ -215,7 +214,7 @@ func NewWebFrontEndImpl(
 		sa:                           sac,
 		rnc:                          rnc,
 		gnc:                          gnc,
-		rncSalt:                      rncSalt,
+		rncKey:                       rncKey,
 		accountGetter:                accountGetter,
 	}
 

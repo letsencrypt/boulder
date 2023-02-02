@@ -62,7 +62,7 @@
       "hostOverride": "nonce.boulder",
       "loadBalancing": "nonce"
     },
-    "redeemNonceSalt": {"passwordFile": "test/secrets/nonce_salt"},
+    "noncePrefixKey": {"passwordFile": "test/secrets/nonce_prefix_key"},
     "chains": [
       [
         "/hierarchy/intermediate-cert-rsa-a.pem",
