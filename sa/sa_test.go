@@ -30,7 +30,6 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
@@ -992,10 +991,9 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
 }
 
-func TestNewOrderAndAuthzs_MissingInnerOrder(t *testing.T) {
-	// An inner NewOrder object must exist or a nil pointer dereference gets
-	// thrown by the SA.
-
+// TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
+// sapb.NewOrderAndAuthzsRequest NewOrder object returns an error.
+func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
@@ -1036,60 +1034,44 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
 	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
-	validUntil := fc.Now().Add(time.Hour * -1).UTC().UnixNano()
 	domain := "a.com"
 
-	// Create the order object
-	order := &corepb.Order{
-		RegistrationID: reg.Id,
-		Expires:        expires,
-		Names:          []string{domain},
-	}
-
-	// Create a pending authz that does not yet exist in the database.
-	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+	// Create an authz that does not yet exist in the database with some invalid
+	// data smuggled in.
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewAuthzs: []*corepb.Authorization{
 			{
 				Identifier:     domain,
 				RegistrationID: reg.Id,
 				Expires:        expires,
 				Status:         string(core.StatusPending),
-				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+				Challenges: []*corepb.Challenge{
+					{
+						Status: "real fake garbage data",
+						Token:  core.NewToken(),
+					},
+				},
 			},
 		},
 		NewOrder: &sapb.NewOrderRequest{
-			RegistrationID: order.RegistrationID,
-			Expires:        order.Expires,
-			Names:          order.Names,
+			RegistrationID: reg.Id,
+			Expires:        expires,
+			Names:          []string{domain},
 		},
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
-	// Retrieve the new authz created above and verify that specific fields were
-	// set to their golang zero-value. We store the database output into the &am
-	// authzModel{} holder because we want to check for nil fields. If we were
-	// to use a function such as sa.GetAuthorizations2, then the database output
-	// would be serialized into a protobuf message and the nils would be lost,
-	// rendering potential checking impossible.
-	var am = authzModel{}
-	_ = sa.dbReadOnlyMap.SelectOne(
-		&am,
-		fmt.Sprintf(`SELECT %s FROM authz2 WHERE
-			registrationID = :regID AND
-			expires > :validUntil AND
-			identifierType = :dnsType AND
-			identifierValue = :ident
-			ORDER BY expires ASC
-			LIMIT 1 `, authzFields),
-		map[string]interface{}{
-			"regID":      reg.Id,
-			"validUntil": validUntil,
-			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
-			"ident":      domain,
-		},
-	)
+	// Safely get the authz for the order we created above
+	obj, err := sa.dbReadOnlyMap.Get(authzModel{}, order.V2Authorizations[0])
+	test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
 
-	// If we're making a brand new authz, it should have the pending status.
+	// To access the data stored in obj at compile time, we type assert obj
+	// into a pointer to an authzModel.
+	am, ok := obj.(*authzModel)
+	test.Assert(t, ok, "Could not type assert obj into authzModel")
+
+	// If we're making a brand new authz, it should have the pending status
+	// regardless of what incorrect status value was passed in during construction.
 	test.AssertEquals(t, am.Status, statusUint(core.StatusPending))
 
 	// Testing for the existence of these boxed nils is a definite break from
@@ -1101,6 +1083,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
 	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
 	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
+
 }
 
 func TestSetOrderProcessing(t *testing.T) {

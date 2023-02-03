@@ -53,12 +53,15 @@ func AssertNotNil(t *testing.T, obj interface{}, message string) {
 // testing purposes only.
 func AssertBoxedNil(t *testing.T, obj interface{}, message string) {
 	t.Helper()
-	switch reflect.TypeOf(obj).Kind() {
+	typ := reflect.TypeOf(obj).Kind()
+	switch typ {
 	// .IsNil() only works on chan, func, interface, map, pointer, and slice.
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		if !reflect.ValueOf(obj).IsNil() {
 			t.Fatal(message)
 		}
+	default:
+		t.Fatalf("Cannot check type \"%s\". Needs to be of type chan, func, interface, map, pointer, or slice.", typ)
 	}
 }
 
