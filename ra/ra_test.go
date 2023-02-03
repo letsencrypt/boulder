@@ -2127,6 +2127,38 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertNotEquals(t, secondOrder.V2Authorizations[0], order.V2Authorizations[0])
 }
 
+// mockSACountPendingFails has a CountPendingAuthorizations2 implementation
+// that always returns error
+type mockSACountPendingFails struct {
+	mocks.StorageAuthority
+}
+
+func (mock *mockSACountPendingFails) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
+	return nil, errors.New("counting is slow and boring")
+}
+
+// Ensure that we don't bother to call the SA to count pending authorizations
+// when an "unlimited" limit is set.
+func TestPendingAuthorizationsUnlimited(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = &dummyRateLimitConfig{
+		PendingAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+			RegistrationOverrides: map[int64]int64{
+				13: -1,
+			},
+		},
+	}
+
+	ra.SA = &mockSACountPendingFails{}
+
+	err := ra.checkPendingAuthorizationLimit(context.Background(), 13)
+	test.AssertNotError(t, err, "checking pending authorization limit")
+}
+
 // Test that the failed authorizations limit is checked before authz reuse.
 func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	_, _, ra, _, cleanUp := initAuthorities(t)
