@@ -1083,7 +1083,6 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
 	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
 	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
-
 }
 
 func TestSetOrderProcessing(t *testing.T) {

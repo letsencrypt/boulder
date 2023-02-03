@@ -311,7 +311,6 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 // authorizations are created, but then their corresponding order is never
 // created, leading to "invisible" pending authorizations.
 func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
-
 	if req.NewOrder == nil {
 		return nil, errIncompleteRequest
 	}
