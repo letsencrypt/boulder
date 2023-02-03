@@ -16,6 +16,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/core"
+	"google.golang.org/grpc/resolver"
 )
 
 // PasswordConfig contains a path to a file containing a password.
@@ -245,12 +246,20 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	return nil
 }
 
+// ServiceDomain contains the service and domain name the gRPC client will use
+// to construct a SRV DNS query to lookup backends.
+type ServiceDomain struct {
+	Service string
+	Domain  string
+}
+
 // GRPCClientConfig contains the information necessary to setup a gRPC client
 // connection. The following field combinations are allowed:
 //
 // ServerIPAddresses, [Timeout]
 // ServerAddress, [Timeout], [DNSAuthority], [HostOverride]
-// SRVLookup, [Timeout], [DNSAuthority], [HostOverride]
+// SRVLookup, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
+// SRVLookups, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
 type GRPCClientConfig struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
 	// to be used for resolution of gRPC backends. If the address contains a
@@ -290,10 +299,21 @@ type GRPCClientConfig struct {
 	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
 	// 1 1 8080 0a585858.addr.dc1.consul.
 	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
-	SRVLookup *struct {
-		Service string
-		Domain  string
-	}
+	SRVLookup *ServiceDomain
+
+	// SRVLookups allows you to pass multiple SRV records to the gRPC client.
+	// The gRPC client will resolves each SRV record and use the results to
+	// construct a list of backends to connect to. For more details, see the
+	// documentation for the SRVLookup field. Note: while you can pass multiple
+	// targets to the gRPC client using this field, all of the targets will use
+	// the same HostOverride and TLS configuration.
+	SRVLookups []*ServiceDomain
+
+	// SRVResolver is an optional override to indicate that a specific
+	// implementation of the SRV resolver should be used. The default is 'srv'
+	// For more details, see the documentation in:
+	// grpc/internal/resolver/dns/dns_resolver.go.
+	SRVResolver string
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
@@ -359,6 +379,10 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), hostOverride, nil
 
 	} else if c.SRVLookup != nil {
+		scheme, err := c.makeSRVScheme()
+		if err != nil {
+			return "", "", err
+		}
 		if c.ServerIPAddresses != nil {
 			return "", "", errors.New(
 				"both 'SRVLookup' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
@@ -371,17 +395,51 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		if c.HostOverride != "" {
 			hostOverride = c.HostOverride
 		}
-		return fmt.Sprintf("srv://%s/%s", c.DNSAuthority, targetHost), hostOverride, nil
+		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, targetHost), hostOverride, nil
+
+	} else if c.SRVLookups != nil {
+		scheme, err := c.makeSRVScheme()
+		if err != nil {
+			return "", "", err
+		}
+		if c.ServerIPAddresses != nil {
+			return "", "", errors.New(
+				"both 'SRVLookups' and 'serverIPAddresses' in gRPC client config. Only one should be provided",
+			)
+		}
+		// Lookup backends using multiple DNS SRV records.
+		var targetHosts []string
+		for _, s := range c.SRVLookups {
+			targetHosts = append(targetHosts, s.Service+"."+s.Domain)
+		}
+		if c.HostOverride != "" {
+			hostOverride = c.HostOverride
+		}
+		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, strings.Join(targetHosts, ",")), hostOverride, nil
 
 	} else {
 		if c.ServerIPAddresses == nil {
 			return "", "", errors.New(
-				"neither 'serverAddress', 'SRVLookup' nor 'serverIPAddresses' in gRPC client config. One should be provided",
+				"neither 'serverAddress', 'SRVLookup', 'SRVLookups' nor 'serverIPAddresses' in gRPC client config. One should be provided",
 			)
 		}
 		// Specify backends as a list of IP addresses.
 		return "static:///" + strings.Join(c.ServerIPAddresses, ","), "", nil
 	}
+}
+
+// makeSRVScheme returns the scheme to use for SRV lookups. If the SRVResolver
+// field is empty, it returns "srv". Otherwise it checks that the specified
+// SRVResolver is registered with the gRPC runtime and returns it.
+func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
+	if c.SRVResolver == "" {
+		return "srv", nil
+	}
+	rb := resolver.Get(c.SRVResolver)
+	if rb == nil {
+		return "", fmt.Errorf("resolver %q is not registered", c.SRVResolver)
+	}
+	return c.SRVResolver, nil
 }
 
 // GRPCServerConfig contains the information needed to start a gRPC server.

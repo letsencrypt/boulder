@@ -18,9 +18,10 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
+	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe2"
@@ -50,15 +51,35 @@ type Config struct {
 
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
-		// GetNonceService contains a gRPC config for any nonce-service instances
-		// which we want to retrieve nonces from. In a multi-DC deployment this
-		// should refer to any local nonce-service instances.
+
+		// GetNonceService is a gRPC config which contains a single SRV name
+		// used to lookup nonce-service instances used exclusively for nonce
+		// creation. In a multi-DC deployment this should refer to local
+		// nonce-service instances only.
 		GetNonceService *cmd.GRPCClientConfig
+
 		// RedeemNonceServices contains a map of nonce-service prefixes to
 		// gRPC configs we want to use to redeem nonces. In a multi-DC deployment
 		// this should contain all nonce-services from all DCs as we want to be
 		// able to redeem nonces generated at any DC.
+		//
+		// DEPRECATED: See RedeemNonceService, below.
+		// TODO (#6610) Remove this after all configs have migrated to
+		// `RedeemNonceService`.
 		RedeemNonceServices map[string]cmd.GRPCClientConfig
+
+		// RedeemNonceService is a gRPC config which contains a list of SRV
+		// names used to lookup nonce-service instances used exclusively for
+		// nonce redemption. In a multi-DC deployment this should contain both
+		// local and remote nonce-service instances.
+		RedeemNonceService *cmd.GRPCClientConfig
+
+		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
+		// instance. It should contain 256 bits of random data to be suitable as
+		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
+		// multi-DC deployment this value should be the same across all
+		// boulder-wfe and nonce-service instances.
+		NoncePrefixKey cmd.PasswordConfig
 
 		// CertificateChains maps AIA issuer URLs to certificate filenames.
 		// Certificates are read into the chain in the order they are defined in the
@@ -280,7 +301,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, noncepb.NonceServiceClient, map[string]noncepb.NonceServiceClient) {
+func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, map[string]nonce.Redeemer, nonce.Redeemer, string) {
 	tlsConfig, err := c.WFE.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
@@ -292,21 +313,56 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
 
-	var rns noncepb.NonceServiceClient
-	npm := map[string]noncepb.NonceServiceClient{}
-	if c.WFE.GetNonceService != nil {
-		rnsConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk)
-		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
-		rns = noncepb.NewNonceServiceClient(rnsConn)
+	// TODO(#6610) Refactor these checks.
+	if c.WFE.RedeemNonceService != nil && c.WFE.RedeemNonceServices != nil {
+		cmd.Fail("Only one of 'redeemNonceService' or 'redeemNonceServices' should be configured.")
+	}
+	if c.WFE.RedeemNonceService == nil && c.WFE.RedeemNonceServices == nil {
+		cmd.Fail("One of 'redeemNonceService' or 'redeemNonceServices' must be configured.")
+	}
+	if c.WFE.RedeemNonceService != nil && c.WFE.NoncePrefixKey.PasswordFile == "" {
+		cmd.Fail("'noncePrefixKey' must be configured if 'redeemNonceService' is configured.")
+	}
+	if c.WFE.GetNonceService == nil {
+		cmd.Fail("'getNonceService' must be configured")
+	}
+
+	var rncKey string
+	if c.WFE.NoncePrefixKey.PasswordFile != "" {
+		rncKey, err = c.WFE.NoncePrefixKey.Pass()
+		cmd.FailOnError(err, "Failed to load noncePrefixKey")
+	}
+
+	getNonceConn, err := bgrpc.ClientSetup(c.WFE.GetNonceService, tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to get nonce service")
+	gnc := nonce.NewGetter(getNonceConn)
+
+	var rnc nonce.Redeemer
+	var npm map[string]nonce.Redeemer
+	if c.WFE.RedeemNonceService != nil {
+		// Dispatch nonce redemption RPCs dynamically.
+		if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme {
+			cmd.Fail(fmt.Sprintf(
+				"'redeemNonceService.SRVResolver' must be set to %q", noncebalancer.SRVResolverScheme),
+			)
+		}
+		redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, scope, clk)
+		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
+		rnc = nonce.NewRedeemer(redeemNonceConn)
+	} else {
+		// Dispatch nonce redpemption RPCs using a static mapping.
+		//
+		// TODO(#6610) Remove code below and the `npm` mapping.
+		npm = make(map[string]nonce.Redeemer)
 		for prefix, serviceConfig := range c.WFE.RedeemNonceServices {
 			serviceConfig := serviceConfig
 			conn, err := bgrpc.ClientSetup(&serviceConfig, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")
-			npm[prefix] = noncepb.NewNonceServiceClient(conn)
+			npm[prefix] = nonce.NewRedeemer(conn)
 		}
 	}
 
-	return rac, sac, rns, npm
+	return rac, sac, gnc, npm, rnc, rncKey
 }
 
 type errorWriter struct {
@@ -391,7 +447,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, rns, npm := setupWFE(c, stats, clk)
+	rac, sac, gnc, npm, rnc, npKey := setupWFE(c, stats, clk)
 
 	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -434,8 +490,6 @@ func main() {
 		kp,
 		allCertChains,
 		issuerCerts,
-		rns,
-		npm,
 		logger,
 		c.WFE.Timeout.Duration,
 		c.WFE.StaleTimeout.Duration,
@@ -443,6 +497,10 @@ func main() {
 		pendingAuthorizationLifetime,
 		rac,
 		sac,
+		gnc,
+		npm,
+		rnc,
+		npKey,
 		accountGetter,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
