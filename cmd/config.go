@@ -437,7 +437,7 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 	}
 	rb := resolver.Get(c.SRVResolver)
 	if rb == nil {
-		return "", fmt.Errorf("resolver %q not registered", c.SRVResolver)
+		return "", fmt.Errorf("resolver %q is not registered", c.SRVResolver)
 	}
 	return c.SRVResolver, nil
 }

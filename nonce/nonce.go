@@ -41,8 +41,9 @@ const (
 	PrefixLen = 8
 	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
-	// DEPRECATED: Use PrefixLen instead. TODO(#6610): Remove once we've moved
-	// to derivable prefixes by default.
+	// DEPRECATED: Use PrefixLen instead.
+	//
+	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	DeprecatedPrefixLen = 4
 	defaultMaxUsed      = 65536
 	nonceLen            = 32
@@ -252,8 +253,8 @@ func (ns *NonceService) Nonce() (string, error) {
 	return ns.encrypt(latest)
 }
 
-// Valid determines whether the provided Nonce string is valid, returning true
-// if so.
+// Valid determines whether the provided Nonce string is valid, returning
+// true if so.
 func (ns *NonceService) Valid(nonce string) bool {
 	c, err := ns.decrypt(nonce)
 	if err != nil {
