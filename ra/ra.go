@@ -91,7 +91,7 @@ type RegistrationAuthorityImpl struct {
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 	finalizeTimeout              time.Duration
-	finalizeCounter              sync.WaitGroup
+	finalizeWG                   sync.WaitGroup
 
 	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
 	issuersByID     map[issuance.IssuerID]*issuance.Certificate
@@ -240,7 +240,7 @@ func NewRegistrationAuthorityImpl(
 		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
 		finalizeTimeout:              finalizeTimeout,
-		finalizeCounter:              sync.WaitGroup{},
+		finalizeWG:                   sync.WaitGroup{},
 		ctpolicy:                     ctp,
 		ctpolicyResults:              ctpolicyResults,
 		purger:                       purger,
@@ -1024,7 +1024,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	// RA itself, so that it can wait for all goroutines to drain during shutdown,
 	// and one local to this request, so that this function can wait on the
 	// goroutine if the AsyncFinalize flag isn't enabled.
-	ra.finalizeCounter.Add(1)
+	ra.finalizeWG.Add(1)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -1075,7 +1075,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 		logEvent.ResponseTime = ra.clk.Now()
 		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
-		ra.finalizeCounter.Done()
+		ra.finalizeWG.Done()
 		wg.Done()
 	}()
 
@@ -2577,5 +2577,5 @@ func validateContactsPresent(contacts []string, contactsPresent bool) error {
 }
 
 func (ra *RegistrationAuthorityImpl) DrainFinalize() {
-	ra.finalizeCounter.Wait()
+	ra.finalizeWG.Wait()
 }

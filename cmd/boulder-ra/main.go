@@ -238,8 +238,8 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	if c.RA.FinalizeTimeout.Duration == 0 {
-		c.RA.FinalizeTimeout.Duration = 5 * time.Minute
+	if features.Enabled(features.AsyncFinalize) && c.RA.FinalizeTimeout.Duration == 0 {
+		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
 
 	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
