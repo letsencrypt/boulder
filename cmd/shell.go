@@ -258,12 +258,10 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 		ErrorLog: promLogger{logger},
 	}))
 
-	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
-	// because this endpoint is not exposed to the internet.
-	////nolint:gosec
 	server := http.Server{
-		Addr:    addr,
-		Handler: mux,
+		Addr:        addr,
+		Handler:     mux,
+		ReadTimeout: time.Minute,
 	}
 	go func() {
 		err := server.ListenAndServe()

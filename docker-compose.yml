@@ -3,7 +3,7 @@ services:
   boulder:
     # When updating the Go version here, please also update
     # .github/workflows/release.yml and .github/workflows/try-release.yml
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.19.5_2023-01-10}
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.19.5_2023-02-02}
     environment:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: &boulder_config_dir test/config

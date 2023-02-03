@@ -458,9 +458,6 @@ func main() {
 	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
 	handler := wfe.Handler(stats)
 
-	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
-	// because that field inherits its value from ReadTimeout.
-	////nolint:gosec
 	srv := http.Server{
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,

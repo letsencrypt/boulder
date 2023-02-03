@@ -10,7 +10,7 @@ DOCKER_REPO="letsencrypt/boulder-tools"
 # When updating these GO_VERSIONS, please also update
 # .github/workflows/release.yml and
 # .github/workflows/try-release.yml if appropriate.
-GO_VERSIONS=( "1.19.2" "1.19.5" )
+GO_VERSIONS=( "1.19.5" "1.20" )
 
 echo "Please login to allow push to DockerHub"
 docker login
