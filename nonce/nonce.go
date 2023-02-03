@@ -313,8 +313,8 @@ func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
 	return nonce[:ns.prefixLen], nonce[ns.prefixLen:], nil
 }
 
-// RemoteRedeem checks the nonce prefix and routes the Redeem RPC to the
-// associated remote nonce service
+// RemoteRedeem checks the nonce prefix and routes the Redeem RPC
+// to the associated remote nonce service
 func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]Redeemer, nonce string) (bool, error) {
 	prefix, _, err := splitDeprecatedNonce(nonce)
 	if err != nil {
@@ -342,8 +342,7 @@ type Server struct {
 	inner *NonceService
 }
 
-// Redeem accepts a nonce from a gRPC client and redeems it using the inner
-// nonce service.
+// Redeem accepts a nonce from a gRPC client and redeems it using the inner nonce service.
 func (ns *Server) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
 	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
 }
