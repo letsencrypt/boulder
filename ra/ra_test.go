@@ -2129,7 +2129,6 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 
 // mockSACountPendingFails has a CountPendingAuthorizations2 implementation
 // that always returns error
-// an HTTP-01 validated wildcard authz.
 type mockSACountPendingFails struct {
 	mocks.StorageAuthority
 }

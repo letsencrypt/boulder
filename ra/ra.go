@@ -532,10 +532,9 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
 	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
-		// Most rate limits have a key for overrides, but there is no meaningful key
-		// here.
-		noKey := ""
-		threshold := limit.GetThreshold(noKey, regID)
+		// This rate limit's threshold can only be overridden on a per-regID basis,
+		// not based on any other key.
+		threshold := limit.GetThreshold("", regID)
 		if threshold == -1 {
 			return nil
 		}
