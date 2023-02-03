@@ -478,8 +478,8 @@ func (ca *certificateAuthorityImpl) storeCertificate(
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
+		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
+			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), issuerID, regID, orderID, err)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      certDER,

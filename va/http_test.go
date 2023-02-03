@@ -348,9 +348,9 @@ func TestHTTPValidationDNSIdMismatchError(t *testing.T) {
 			`hostname=\[id\.mismatch\] ` +
 			`respHostname=\[id\.mismatch\.\] ` +
 			`queryType=\[A\] ` +
-			`err\=\[dns: id mismatch\] ` +
 			`msg=\[([A-Za-z0-9+=/\=]+)\] ` +
-			`resp=\[([A-Za-z0-9+=/\=]+)\]`,
+			`resp=\[([A-Za-z0-9+=/\=]+)\] ` +
+			`err\=\[dns: id mismatch\]`,
 	)
 
 	matches := expectedRegex.FindAllStringSubmatch(matchingLines[0], -1)
