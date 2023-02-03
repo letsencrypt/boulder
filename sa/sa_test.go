@@ -1024,7 +1024,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
 
-	// Create a test registration to reference
+	// Create a test registration to reference.
 	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
 	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
 	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
