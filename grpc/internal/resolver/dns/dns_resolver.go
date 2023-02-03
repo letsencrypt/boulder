@@ -147,7 +147,7 @@ func (b *srvBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts 
 	return d, nil
 }
 
-// Scheme returns the naming scheme of this resolver builder, which is "srv".
+// Scheme returns the naming scheme of this resolver builder.
 func (b *srvBuilder) Scheme() string {
 	return b.scheme
 }

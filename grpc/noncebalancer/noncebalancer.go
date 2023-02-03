@@ -25,9 +25,8 @@ var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in 
 var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
 var errInvalidHMACKeyCtxKeyType = errors.New("nonce.HMACKeyCtxKey value in RPC context must be a string")
 
-// Balancer implements the base.PickerBuilder interface. It's used to factory
-// new balancer.Picker instances. It should only be used by nonce-service
-// clients.
+// Balancer implements the base.PickerBuilder interface. It's used to create new
+// balancer.Picker instances. It should only be used by nonce-service clients.
 type Balancer struct{}
 
 // Compile-time assertion that *Balancer implements the base.PickerBuilder
@@ -58,22 +57,21 @@ var _ balancer.Picker = (*Picker)(nil)
 // runtime for each RPC message. It is responsible for picking a backend
 // (SubConn) based on the context of each RPC message.
 func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
-	var result balancer.PickResult
 	if len(p.backends) == 0 {
 		// The Picker must be rebuilt if there are no backends available.
-		return result, balancer.ErrNoSubConnAvailable
+		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
 
 	// Get the HMAC key from the RPC context.
 	hmacKeyVal := info.Ctx.Value(nonce.HMACKeyCtxKey{})
 	if hmacKeyVal == nil {
 		// This should never happen.
-		return result, errMissingHMACKeyCtxKey
+		return balancer.PickResult{}, errMissingHMACKeyCtxKey
 	}
 	hmacKey, ok := hmacKeyVal.(string)
 	if !ok {
 		// This should never happen.
-		return result, errInvalidHMACKeyCtxKeyType
+		return balancer.PickResult{}, errInvalidHMACKeyCtxKeyType
 	}
 
 	if p.prefixToBackend == nil {
@@ -91,22 +89,20 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	destPrefixVal := info.Ctx.Value(nonce.PrefixCtxKey{})
 	if destPrefixVal == nil {
 		// This should never happen.
-		return result, errMissingPrefixCtxKey
+		return balancer.PickResult{}, errMissingPrefixCtxKey
 	}
 	destPrefix, ok := destPrefixVal.(string)
 	if !ok {
 		// This should never happen.
-		return result, errInvalidPrefixCtxKeyType
+		return balancer.PickResult{}, errInvalidPrefixCtxKeyType
 	}
 
 	sc, ok := p.prefixToBackend[destPrefix]
 	if !ok {
 		// No backend SubConn was found for the destination prefix.
-		return result, balancer.ErrNoSubConnAvailable
+		return balancer.PickResult{}, balancer.ErrNoSubConnAvailable
 	}
-	result.SubConn = sc
-
-	return result, nil
+	return balancer.PickResult{SubConn: sc}, nil
 }
 
 func init() {

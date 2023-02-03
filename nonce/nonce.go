@@ -36,13 +36,10 @@ import (
 
 const (
 	// PrefixLen is the character length of a nonce prefix.
-	//
-	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	PrefixLen = 8
 	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead.
-	//
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	DeprecatedPrefixLen = 4
 	defaultMaxUsed      = 65536
@@ -292,10 +289,17 @@ func (ns *NonceService) Valid(nonce string) bool {
 	return true
 }
 
+// splitNonce splits a nonce into a prefix and a body.
+func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
+	if len(nonce) < ns.prefixLen {
+		return "", "", errInvalidNonceLength
+	}
+	return nonce[:ns.prefixLen], nonce[ns.prefixLen:], nil
+}
+
 // splitDeprecatedNonce splits a nonce into a prefix and a body.
 //
 // Deprecated: Use NonceService.splitDeprecatedNonce instead.
-//
 // TODO(#6610): Remove this function once we've moved to derivable prefixes by
 // default.
 func splitDeprecatedNonce(nonce string) (string, string, error) {
@@ -305,16 +309,11 @@ func splitDeprecatedNonce(nonce string) (string, string, error) {
 	return nonce[:DeprecatedPrefixLen], nonce[DeprecatedPrefixLen:], nil
 }
 
-// splitNonce splits a nonce into a prefix and a body.
-func (ns *NonceService) splitNonce(nonce string) (string, string, error) {
-	if len(nonce) < ns.prefixLen {
-		return "", "", errInvalidNonceLength
-	}
-	return nonce[:ns.prefixLen], nonce[ns.prefixLen:], nil
-}
-
 // RemoteRedeem checks the nonce prefix and routes the Redeem RPC
-// to the associated remote nonce service
+// to the associated remote nonce service.
+//
+// TODO(#6610): Remove this function once we've moved to derivable prefixes by
+// default.
 func RemoteRedeem(ctx context.Context, noncePrefixMap map[string]Redeemer, nonce string) (bool, error) {
 	prefix, _, err := splitDeprecatedNonce(nonce)
 	if err != nil {

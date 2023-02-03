@@ -52,9 +52,10 @@ type Config struct {
 		RAService *cmd.GRPCClientConfig
 		SAService *cmd.GRPCClientConfig
 
-		// GetNonceService contains a gRPC config for any nonce-service instances
-		// which we want to retrieve nonces from. In a multi-DC deployment this
-		// should refer to local nonce-service instances only.
+		// GetNonceService is a gRPC config which contains a single SRV name
+		// used to lookup nonce-service instances used exclusively for nonce
+		// creation. In a multi-DC deployment this should refer to local
+		// nonce-service instances only.
 		GetNonceService *cmd.GRPCClientConfig
 
 		// RedeemNonceServices contains a map of nonce-service prefixes to
@@ -67,9 +68,10 @@ type Config struct {
 		// `RedeemNonceService`.
 		RedeemNonceServices map[string]cmd.GRPCClientConfig
 
-		// RedeemNonceService contains a gRPC config for each nonce-service
-		// instance which we want to redeem nonces at. In a multi-DC deployment
-		// this should contain both local and remote nonce-service instances.
+		// RedeemNonceService is a gRPC config which contains a list of SRV
+		// names used to lookup nonce-service instances used exclusively for
+		// nonce redemption. In a multi-DC deployment this should contain both
+		// local and remote nonce-service instances.
 		RedeemNonceService *cmd.GRPCClientConfig
 
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
