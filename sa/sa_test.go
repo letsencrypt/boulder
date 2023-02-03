@@ -1016,7 +1016,6 @@ func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
 			},
 		},
 	})
-
 	test.AssertErrorIs(t, err, errIncompleteRequest)
 }
 
