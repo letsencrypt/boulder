@@ -466,7 +466,6 @@ func SelectAuthzsMatchingIssuance(
 	issued time.Time,
 	dnsNames []string,
 ) ([]*corepb.Authorization, error) {
-	var authzModels []authzModel
 	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
 			registrationID = ? AND
 			status IN (?, ?) AND
@@ -489,6 +488,7 @@ func SelectAuthzsMatchingIssuance(
 		args = append(args, name)
 	}
 
+	var authzModels []authzModel
 	_, err := s.Select(&authzModels, query, args...)
 	if err != nil {
 		return nil, err
