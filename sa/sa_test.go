@@ -1061,7 +1061,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
-	// Safely get the authz for the order we created above
+	// Safely get the authz for the order we created above.
 	obj, err := sa.dbReadOnlyMap.Get(authzModel{}, order.V2Authorizations[0])
 	test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
 
