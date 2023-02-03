@@ -8,7 +8,17 @@ import (
 	"google.golang.org/grpc/balancer/base"
 )
 
-const Name = "nonce"
+const (
+	// Name is the name used to register the nonce balancer with the gRPC
+	// runtime.
+	Name = "nonce"
+
+	// SRVResolverScheme is the scheme used to invoke an instance of the SRV
+	// resolver which will use the noncebalancer to pick backends. It would be
+	// ideal to export this from the SRV resolver package but that package is
+	// internal.
+	SRVResolverScheme = "nonce-srv"
+)
 
 var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
 var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
@@ -101,6 +111,6 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 
 func init() {
 	balancer.Register(
-		base.NewBalancerBuilder("nonce", &Balancer{}, base.Config{}),
+		base.NewBalancerBuilder(Name, &Balancer{}, base.Config{}),
 	)
 }

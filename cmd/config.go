@@ -258,8 +258,8 @@ type ServiceDomain struct {
 //
 // ServerIPAddresses, [Timeout]
 // ServerAddress, [Timeout], [DNSAuthority], [HostOverride]
-// SRVLookup, [Timeout], [DNSAuthority], [HostOverride], [srvResolver]
-// SRVLookups, [Timeout], [DNSAuthority], [HostOverride], [srvResolver]
+// SRVLookup, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
+// SRVLookups, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
 type GRPCClientConfig struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
 	// to be used for resolution of gRPC backends. If the address contains a
@@ -307,8 +307,13 @@ type GRPCClientConfig struct {
 	// documentation for the SRVLookup field. Note: while you can pass multiple
 	// targets to the gRPC client using this field, all of the targets will use
 	// the same HostOverride and TLS configuration.
-	SRVLookups  []*ServiceDomain
-	srvResolver string
+	SRVLookups []*ServiceDomain
+
+	// SRVResolver is an optional override to indicate that a specific
+	// implementation of the SRV resolver should be used. The default is 'srv'
+	// For more details, see the documentation in:
+	// grpc/internal/resolver/dns/dns_resolver.go.
+	SRVResolver string
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
@@ -374,9 +379,9 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), hostOverride, nil
 
 	} else if c.SRVLookup != nil {
-		scheme := "srv"
-		if c.srvResolver != "" {
-			scheme = c.srvResolver
+		scheme, err := c.makeSRVScheme()
+		if err != nil {
+			return "", "", err
 		}
 		if c.ServerIPAddresses != nil {
 			return "", "", errors.New(
@@ -393,9 +398,9 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, targetHost), hostOverride, nil
 
 	} else if c.SRVLookups != nil {
-		scheme := "srv"
-		if c.srvResolver != "" {
-			scheme = c.srvResolver
+		scheme, err := c.makeSRVScheme()
+		if err != nil {
+			return "", "", err
 		}
 		if c.ServerIPAddresses != nil {
 			return "", "", errors.New(
@@ -423,18 +428,18 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 	}
 }
 
-// UseCustomSRVResolver is used to specify that a different implementation of
-// the SRV resolver should be used. The default is 'srv' For more details, see
-// the documentation for the srvResolver in:
-// grpc/internal/resolver/dns/dns_resolver.go.
-func (c *GRPCClientConfig) UseCustomSRVResolver(srvScheme string) error {
-	// Check that the scheme is registered.
-	rb := resolver.Get(srvScheme)
-	if rb == nil {
-		return fmt.Errorf("scheme %q not registered", srvScheme)
+// makeSRVScheme returns the scheme to use for SRV lookups. If the SRVResolver
+// field is empty, it returns "srv". Otherwise it checks that the specified
+// SRVResolver is registered with the gRPC runtime and returns it.
+func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
+	if c.SRVResolver == "" {
+		return "srv", nil
 	}
-	c.srvResolver = srvScheme
-	return nil
+	rb := resolver.Get(c.SRVResolver)
+	if rb == nil {
+		return "", fmt.Errorf("resolver %q not registered", c.SRVResolver)
+	}
+	return c.SRVResolver, nil
 }
 
 // GRPCServerConfig contains the information needed to start a gRPC server.

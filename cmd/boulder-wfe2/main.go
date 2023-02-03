@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
@@ -338,10 +339,10 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 	var npm map[string]nonce.Redeemer
 	if c.WFE.RedeemNonceService != nil {
 		// Dispatch nonce redemption RPCs dynamically.
-		err := c.WFE.RedeemNonceService.UseCustomSRVResolver("nonce-srv")
-		if err != nil {
-			// This should never happen.
-			cmd.FailOnError(err, "Failed to set custom SRV resolver for redeemNonceService")
+		if c.WFE.RedeemNonceService.SRVResolver != noncebalancer.SRVResolverScheme {
+			cmd.Fail(fmt.Sprintf(
+				"'redeemNonceService.SRVResolver' must be set to %q", noncebalancer.SRVResolverScheme),
+			)
 		}
 		redeemNonceConn, err := bgrpc.ClientSetup(c.WFE.RedeemNonceService, tlsConfig, scope, clk)
 		cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to redeem nonce service")

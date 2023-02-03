@@ -59,6 +59,7 @@
           "domain": "service.consul"
         }
       ],
+      "srvResolver": "nonce-srv",
       "timeout": "15s",
       "hostOverride": "nonce.boulder"
     },
