@@ -1033,7 +1033,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't create test registration")
 
-	expires := fc.Now().Add(time.Hour).UTC().UnixNano()
+	expires := fc.Now().Add(time.Hour).UnixNano()
 	domain := "a.com"
 
 	// Create an authz that does not yet exist in the database with some invalid
