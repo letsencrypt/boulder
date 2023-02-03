@@ -53,23 +53,35 @@ const (
 	// rather than a SELECT from certificateStatus followed by thousands of
 	// one-row SELECTs from certificates.
 	ExpirationMailerUsesJoin
+
+	// CertCheckerChecksValidations enables an extra query for each certificate
+	// checked, to find the relevant authzs. Since this query might be
+	// expensive, we gate it behind a feature flag.
+	CertCheckerChecksValidations
+
+	// CertCheckerRequiresValidations causes cert-checker to fail if the
+	// query enabled by CertCheckerChecksValidations didn't find corresponding
+	// authorizations.
+	CertCheckerRequiresValidations
 )
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                    false,
-	CAAValidationMethods:      false,
-	CAAAccountURI:             false,
-	EnforceMultiVA:            false,
-	MultiVAFullResults:        false,
-	MandatoryPOSTAsGET:        false,
-	StoreRevokerInfo:          false,
-	ECDSAForAll:               false,
-	ServeRenewalInfo:          false,
-	AllowUnrecognizedFeatures: false,
-	ROCSPStage6:               false,
-	ROCSPStage7:               false,
-	ExpirationMailerUsesJoin:  false,
+	unused:                         false,
+	CAAValidationMethods:           false,
+	CAAAccountURI:                  false,
+	EnforceMultiVA:                 false,
+	MultiVAFullResults:             false,
+	MandatoryPOSTAsGET:             false,
+	StoreRevokerInfo:               false,
+	ECDSAForAll:                    false,
+	ServeRenewalInfo:               false,
+	AllowUnrecognizedFeatures:      false,
+	ROCSPStage6:                    false,
+	ROCSPStage7:                    false,
+	ExpirationMailerUsesJoin:       false,
+	CertCheckerChecksValidations:   false,
+	CertCheckerRequiresValidations: false,
 }
 
 var fMu = new(sync.RWMutex)

@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -443,6 +444,66 @@ type authzModel struct {
 	Token            []byte     `db:"token"`
 	ValidationError  []byte     `db:"validationError"`
 	ValidationRecord []byte     `db:"validationRecord"`
+}
+
+// SelectAuthzsMatchingIssuance looks for a set of authzs that would have
+// authorized a given issuance that is known to have occurred. The returned
+// authzs will all belong to the given regID, will have potentially been valid
+// at the time of issuance, and will have the appropriate identifier type and
+// value. This may return multiple authzs for the same identifier type and value.
+//
+// This returns "potentially" valid authzs because a client may have set an
+// authzs status to deactivated after issuance, so we return both valid and
+// deactivated authzs. It also uses a small amount of leeway (1s) to account
+// for possible clock skew.
+//
+// This function doesn't do anything special for authzs with an expiration in
+// the past. If the stored authz has a valid status, it is returned with a
+// valid status regardless of whether it is also expired.
+func SelectAuthzsMatchingIssuance(
+	s db.Selector,
+	regID int64,
+	issued time.Time,
+	dnsNames []string,
+) ([]*corepb.Authorization, error) {
+	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
+			registrationID = ? AND
+			status IN (?, ?) AND
+			expires >= ? AND
+			attemptedAt <= ? AND
+			identifierType = ? AND
+			identifierValue IN (%s)`,
+		authzFields,
+		db.QuestionMarks(len(dnsNames)))
+	var args []any
+	args = append(args,
+		regID,
+		statusToUint[core.StatusValid],
+		statusToUint[core.StatusDeactivated],
+		issued.Add(-1*time.Second), // leeway for clock skew
+		issued.Add(1*time.Second),  // leeway for clock skew
+		identifierTypeToUint[string(identifier.DNS)],
+	)
+	for _, name := range dnsNames {
+		args = append(args, name)
+	}
+
+	var authzModels []authzModel
+	_, err := s.Select(&authzModels, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var authzs []*corepb.Authorization
+	for _, model := range authzModels {
+		authz, err := modelToAuthzPB(model)
+		if err != nil {
+			return nil, err
+		}
+		authzs = append(authzs, authz)
+
+	}
+	return authzs, err
 }
 
 // hasMultipleNonPendingChallenges checks if a slice of challenges contains

@@ -25,6 +25,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
+	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -238,10 +239,46 @@ var expectedExtensionContent = map[string][]byte{
 	"1.3.6.1.5.5.7.1.24": {0x30, 0x03, 0x02, 0x01, 0x05}, // Must staple feature
 }
 
+// checkValidations checks the database for matching authorizations that were
+// likely valid at the time the certificate was issued. Authorizations with
+// status = "deactivated" are counted for this, so long as their validatedAt
+// is before the issuance and expiration is after.
+func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
+	authzs, err := sa.SelectAuthzsMatchingIssuance(c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
+	if err != nil {
+		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
+	}
+
+	if len(authzs) == 0 {
+		return fmt.Errorf("no relevant authzs found valid at %s", cert.Issued)
+	}
+
+	// We may get multiple authorizations for the same name, but that's okay.
+	// Any authorization for a given name is sufficient.
+	nameToAuthz := make(map[string]*corepb.Authorization)
+	for _, m := range authzs {
+		nameToAuthz[m.Identifier] = m
+	}
+
+	var errors []error
+	for _, name := range dnsNames {
+		_, ok := nameToAuthz[name]
+		if !ok {
+			errors = append(errors, fmt.Errorf("missing authz for %q", name))
+			continue
+		}
+	}
+	if len(errors) > 0 {
+		return fmt.Errorf("%s", errors)
+	}
+	return nil
+}
+
 // checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
 func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) ([]string, []string) {
 	var dnsNames []string
 	var problems []string
+
 	// Check that the digests match.
 	if cert.Digest != core.Fingerprint256(cert.DER) {
 		problems = append(problems, "Stored digest doesn't match certificate digest")
@@ -350,6 +387,17 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		err = c.kp.GoodKey(context.Background(), p.PublicKey)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
+		}
+
+		if features.Enabled(features.CertCheckerChecksValidations) {
+			err = c.checkValidations(cert, parsedCert.DNSNames)
+			if err != nil {
+				if features.Enabled(features.CertCheckerRequiresValidations) {
+					problems = append(problems, err.Error())
+				} else {
+					c.logger.Errf("Certificate %s %s: %s", cert.Serial, parsedCert.DNSNames, err)
+				}
+			}
 		}
 	}
 	return dnsNames, problems
