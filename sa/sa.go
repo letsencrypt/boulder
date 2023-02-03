@@ -312,6 +312,10 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 // authorizations are created, but then their corresponding order is never
 // created, leading to "invisible" pending authorizations.
 func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
+	if req.NewOrder == nil {
+		return nil, errIncompleteRequest
+	}
+
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
@@ -333,14 +337,14 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					am.IdentifierType,
 					am.IdentifierValue,
 					am.RegistrationID,
-					am.Status,
+					statusToUint[core.StatusPending],
 					am.Expires,
 					am.Challenges,
-					am.Attempted,
-					am.AttemptedAt,
+					nil,
+					nil,
 					am.Token,
-					am.ValidationError,
-					am.ValidationRecord,
+					nil,
+					nil,
 				})
 				if err != nil {
 					return nil, err

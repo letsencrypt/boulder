@@ -991,6 +991,99 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
 }
 
+// TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
+// sapb.NewOrderAndAuthzsRequest NewOrder object returns an error.
+func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewAuthzs: []*corepb.Authorization{
+			{
+				Identifier:     "a.com",
+				RegistrationID: reg.Id,
+				Expires:        fc.Now().Add(2 * time.Hour).UnixNano(),
+				Status:         "pending",
+				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+			},
+		},
+	})
+	test.AssertErrorIs(t, err, errIncompleteRequest)
+}
+
+func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	// Create a test registration to reference.
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	expires := fc.Now().Add(time.Hour).UnixNano()
+	domain := "a.com"
+
+	// Create an authz that does not yet exist in the database with some invalid
+	// data smuggled in.
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewAuthzs: []*corepb.Authorization{
+			{
+				Identifier:     domain,
+				RegistrationID: reg.Id,
+				Expires:        expires,
+				Status:         string(core.StatusPending),
+				Challenges: []*corepb.Challenge{
+					{
+						Status: "real fake garbage data",
+						Token:  core.NewToken(),
+					},
+				},
+			},
+		},
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        expires,
+			Names:          []string{domain},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+
+	// Safely get the authz for the order we created above.
+	obj, err := sa.dbReadOnlyMap.Get(authzModel{}, order.V2Authorizations[0])
+	test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
+
+	// To access the data stored in obj at compile time, we type assert obj
+	// into a pointer to an authzModel.
+	am, ok := obj.(*authzModel)
+	test.Assert(t, ok, "Could not type assert obj into authzModel")
+
+	// If we're making a brand new authz, it should have the pending status
+	// regardless of what incorrect status value was passed in during construction.
+	test.AssertEquals(t, am.Status, statusUint(core.StatusPending))
+
+	// Testing for the existence of these boxed nils is a definite break from
+	// our paradigm of avoiding passing around boxed nils whenever possible.
+	// However, the existence of these boxed nils in relation to this test is
+	// actually expected. If these tests fail, then a possible SA refactor or RA
+	// bug placed incorrect data into brand new authz input fields.
+	test.AssertBoxedNil(t, am.Attempted, "am.Attempted should be nil")
+	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
+	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
+	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
+}
+
 func TestSetOrderProcessing(t *testing.T) {
 	sa, fc, cleanup := initSA(t)
 	defer cleanup()
