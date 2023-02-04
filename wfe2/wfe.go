@@ -2266,6 +2266,11 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
+	if len(request.URL.Path) == 0 {
+		wfe.sendError(response, logEvent, probs.NotFound("Must specify a request path"), nil)
+		return
+	}
+
 	// The path prefix has already been stripped, so request.URL.Path here is just
 	// the base64url-encoded DER CertID sequence.
 	der, err := base64.RawURLEncoding.DecodeString(request.URL.Path)
