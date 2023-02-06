@@ -2,7 +2,7 @@ package notmain
 
 import (
 	"crypto"
-	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -219,7 +219,7 @@ func generateSKID(pk []byte) ([]byte, error) {
 	if _, err := asn1.Unmarshal(pk, &pkixPublicKey); err != nil {
 		return nil, err
 	}
-	skid := sha1.Sum(pkixPublicKey.BitString.Bytes)
+	skid := sha256.Sum256(pkixPublicKey.BitString.Bytes)
 	return skid[:], nil
 }
 
