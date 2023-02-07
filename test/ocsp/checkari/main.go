@@ -26,10 +26,6 @@ type certID struct {
 	SerialNumber   *big.Int
 }
 
-type AuthorityKeyIdentifier struct {
-	KeyIdentifier []byte `asn1:"optional,tag:0"`
-}
-
 func createRequest(cert *x509.Certificate) ([]byte, error) {
 	if !crypto.SHA256.Available() {
 		return nil, x509.ErrUnsupportedAlgorithm
@@ -104,10 +100,10 @@ func main() {
 		fmt.Printf("%s:\n", cert)
 		window, err := checkARI(*url, cert)
 		if err != nil {
-			fmt.Printf("  %s\n", err)
+			fmt.Printf("\t%s\n", err)
 		} else {
-			fmt.Printf("  Renew after : %s\n", window.SuggestedWindow.Start)
-			fmt.Printf("  Renew before: %s\n", window.SuggestedWindow.End)
+			fmt.Printf("\tRenew after : %s\n", window.SuggestedWindow.Start)
+			fmt.Printf("\tRenew before: %s\n", window.SuggestedWindow.End)
 		}
 	}
 }
