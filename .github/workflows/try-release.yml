@@ -20,5 +20,5 @@ jobs:
       - name: Build .deb
         id: build
         env:
-          GO_VERSION: 1.19.5
+          GO_VERSION: "1.19.5"
         run: ./tools/make-deb.sh
