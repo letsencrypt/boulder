@@ -11,6 +11,12 @@ on:
 
 jobs:
   try-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        GO_VERSION:
+          - "1.19.5"
+          - "1.20"
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -20,5 +26,5 @@ jobs:
       - name: Build .deb
         id: build
         env:
-          GO_VERSION: 1.19.5
+          GO_VERSION: ${{ matrix.GO_VERSION }}
         run: ./tools/make-deb.sh
