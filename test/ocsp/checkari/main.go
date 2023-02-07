@@ -89,10 +89,21 @@ func checkARI(baseURL string, certPath string) (*core.RenewalInfo, error) {
 }
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, `
+checkari [-url https://acme.api/ari/endpoint] FILE [FILE]...
+
+Tool for querying ARI. Provide a list of filenames for certificates in PEM
+format, and this tool will query for and output the suggested renewal window
+for each certificate.
+
+`)
+		flag.PrintDefaults()
+	}
 	url := flag.String("url", "https://acme-v02.api.letsencrypt.org/get/draft-ietf-acme-ari-00/renewalInfo/", "ACME server's RenewalInfo URL")
 	flag.Parse()
 	if len(flag.Args()) == 0 {
-		fmt.Println("Supply one or more paths to certs to check ARI for")
+		flag.Usage()
 		os.Exit(1)
 	}
 
