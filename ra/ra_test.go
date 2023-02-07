@@ -3093,7 +3093,8 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Cast the RA's mock log so we can ensure its cleared and can access the
 	// matched log lines
-	mockLog := ra.log.(*blog.Mock)
+	mockLog, ok := ra.log.(*blog.Mock)
+	test.Assert(t, ok, "Failed to cast RA log to Mock")
 	mockLog.Clear()
 
 	// Finalize the order with the CSR
@@ -3146,6 +3147,96 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		// The authz entry should have the correct challenge type
 		test.AssertEquals(t, authzEntry.ChallengeType, challs[i])
 	}
+}
+
+func TestIssueCertificateCAACheckLog(t *testing.T) {
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Set up order and authz expiries.
+	ra.orderLifetime = 24 * time.Hour
+	ra.authorizationLifetime = 15 * time.Hour
+
+	exp := fc.Now().Add(24 * time.Hour)
+	recent := fc.Now().Add(-1 * time.Hour)
+	older := fc.Now().Add(-8 * time.Hour)
+
+	// Make some valid authzs for four names. Half of them were validated
+	// recently and half were validated in excess of our CAA recheck time.
+	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	var authzIDs []int64
+	for i, name := range names {
+		if i%2 == 0 {
+			authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, recent))
+		} else {
+			authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, older))
+		}
+	}
+
+	// Create a pending order for all of the names.
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   Registration.Id,
+			Expires:          exp.UnixNano(),
+			Names:            names,
+			V2Authorizations: authzIDs,
+		},
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Generate a CSR covering the order names with a random RSA key.
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		Subject:            pkix.Name{CommonName: "not-example.com"},
+		DNSNames:           names,
+	}, testKey)
+	test.AssertNotError(t, err, "Could not create test order CSR")
+
+	// Create a mock certificate for the fake CA to return.
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(12),
+		Subject: pkix.Name{
+			CommonName: "not-example.com",
+		},
+		DNSNames:              names,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Failed to create mock cert for test CA")
+
+	// Set up the RA's CA with a mock that returns the cert from above.
+	ra.CA = &mocks.MockCA{
+		PEM: pem.EncodeToMemory(&pem.Block{
+			Bytes: cert,
+		}),
+	}
+
+	// Cast the RA's mock log so we can ensure its cleared and can access the
+	// matched log lines.
+	mockLog, ok := ra.log.(*blog.Mock)
+	test.Assert(t, ok, "Failed to cast RA log to Mock")
+	mockLog.Clear()
+
+	// Finalize the order with the CSR.
+	order.Status = string(core.StatusReady)
+	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
+		Order: order,
+		Csr:   csr,
+	})
+	test.AssertNotError(t, err, "Error finalizing test order")
+
+	// Get the logged lines from the mock logger.
+	loglines := mockLog.GetAllMatching("finalizing order with")
+	// There should be exactly 1 matching log line.
+	test.AssertEquals(t, len(loglines), 1)
+	// The log line should contain the expected number of authzs and CAA reuses/rechecks.
+	test.AssertEquals(t, loglines[0], "INFO: Id 1 finalizing order with 4 Authzs (2 CAA reused, 2 CAA rechecked)")
 }
 
 // TestUpdateMissingAuthorization tests the race condition where a challenge is

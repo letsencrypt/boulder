@@ -54,6 +54,12 @@ import (
 var (
 	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
 	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+
+	// caaRecheckDuration is the amount of time after a CAA check that we will
+	// recheck the CAA records for a domain. Per Baseline Requirements, we must
+	// recheck CAA records within 8 hours of issuance. We set this to 7 hours to
+	// stay on the safe side.
+	caaRecheckDuration = time.Duration(-7 * time.Hour)
 )
 
 type caaChecker interface {
@@ -771,14 +777,14 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	// check to see if the authorized challenge `AttemptedAt`
 	// (`Validated`) value from the database is before our caaRecheckTime.
 	// Set the recheck time to 7 hours ago.
-	caaRecheckAfter := now.Add(-7 * time.Hour)
+	caaRecheckAfter := now.Add(caaRecheckDuration)
 
 	// Set a CAA recheck time based on the assumption of a 30 day authz
 	// lifetime. This has been deprecated in favor of a new check based
 	// off the Validated time stored in the database, but we want to check
 	// both for a time and increment a stat if this code path is hit for
 	// compliance safety.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(caaRecheckDuration)
 
 	for _, name := range names {
 		authz := authzs[name]
@@ -1144,6 +1150,8 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Collect up a certificateRequestAuthz that stores the ID and challenge type
 	// of each of the valid authorizations we used for this issuance.
 	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrNames))
+	var caaReused int
+	var caaRechecked int
 	for name, authz := range authzs {
 		// No need to check for error here because we know this same call just
 		// succeeded inside ra.checkOrderAuthorizations
@@ -1152,11 +1160,32 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 			ID:            authz.ID,
 			ChallengeType: solvedByChallengeType,
 		}
+
+		// Count the number of authorizations where the original CAA check was
+		// reused and the number where it was rechecked.
+		var caaRecheckAfter = ra.clk.Now().Add(caaRecheckDuration)
+		staleCAA, _ := validatedBefore(authz, caaRecheckAfter)
+		if err != nil {
+			// This should never happen because we just checked the same thing
+			// inside ra.checkOrderAuthorizations.
+			return nil, err
+		}
+		if staleCAA {
+			caaRechecked++
+		} else {
+			caaReused++
+		}
+
 	}
 	logEvent.Authorizations = logEventAuthzs
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
+
+	// Log the number of CAA checks that were reused and the number that were
+	// rechecked.
+	ra.log.Info(fmt.Sprintf("Id %d finalizing order with %d Authzs (%d CAA reused, %d CAA rechecked)",
+		req.Order.RegistrationID, len(authzs), caaReused, caaRechecked))
 
 	return csr, nil
 }
