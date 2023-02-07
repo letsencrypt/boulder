@@ -2,7 +2,7 @@
 # tag pushes, additionally create a GitHub release and with the resulting Debian
 # package.
 # Keep in sync with try-release.yml, with the exception that try-release.yml
-# Can have multiple entries in its matrix but this should only have one.
+# can have multiple entries in its matrix but this should only have one.
 name: Build release
 on:
   push:
