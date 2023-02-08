@@ -49,7 +49,7 @@ type redisSource struct {
 // NewRedisSource returns a responder.Source which will look up OCSP responses in a
 // Redis table.
 func NewRedisSource(
-	client rocsp.Writer,
+	client *rocsp.RWClient,
 	signer responder.Source,
 	liveSigningPeriod time.Duration,
 	clk clock.Clock,
