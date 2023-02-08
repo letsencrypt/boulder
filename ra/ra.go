@@ -1163,8 +1163,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 		// Count the number of authorizations where the original CAA check was
 		// reused and the number where it was rechecked.
-		var caaRecheckAfter = ra.clk.Now().Add(caaRecheckDuration)
-		staleCAA, _ := validatedBefore(authz, caaRecheckAfter)
+		staleCAA, _ := validatedBefore(authz, ra.clk.Now().Add(caaRecheckDuration))
 		if err != nil {
 			// This should never happen because we just checked the same thing
 			// inside ra.checkOrderAuthorizations.
