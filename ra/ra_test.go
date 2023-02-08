@@ -370,8 +370,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.CA = ca
 	ra.OCSP = ca
 	ra.PA = pa
-	ra.reuseValidAuthz = true
-
+	test.Assert(t, ra.reuseValidAuthz, "ReuseValidAuthz should be true")
 	return va, sa, ra, fc, cleanUp
 }
 
