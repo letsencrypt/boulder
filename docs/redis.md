@@ -1,8 +1,8 @@
 # Redis
 
 We use Redis for OCSP. The Boulder dev environment stands up a two nodes. We use
-the Ring client in the github.com/redis/go-redis package to consistenly hash our
-reads and writes between these two nodes. 
+the Ring client in the github.com/redis/go-redis package to consistently hash
+our reads and writes across these two nodes. 
 
 ## Debugging
 
