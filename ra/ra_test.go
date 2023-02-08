@@ -3166,11 +3166,11 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
 	var authzIDs []int64
 	for i, name := range names {
+		attemptedAt := older
 		if i%2 == 0 {
-			authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, recent))
-		} else {
-			authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, older))
+			attemptedAt = recent
 		}
+		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, attemptedAt))
 	}
 
 	// Create a pending order for all of the names.
