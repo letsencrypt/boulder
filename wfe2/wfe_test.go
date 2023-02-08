@@ -3627,12 +3627,14 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+	test.AssertContains(t, resp.Body.String(), "Request used hash algorithm other than SHA-256")
 
 	// Ensure that a query with a non-CertID path fails.
 	req, event = makeGet(base64.RawURLEncoding.EncodeToString(ocspReqBytes), renewalInfoPath)
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+	test.AssertContains(t, resp.Body.String(), "Path was not a DER-encoded CertID sequence")
 
 	// Ensure that a query with a non-Base64URL path (including one in the old
 	// request path style, which included slashes) fails.
@@ -3647,6 +3649,14 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+	test.AssertContains(t, resp.Body.String(), "Path was not base64url-encoded")
+
+	// Ensure that a query with no path slug at all bails out early.
+	req, event = makeGet("", renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusNotFound)
+	test.AssertContains(t, resp.Body.String(), "Must specify a request path")
 }
 
 // TestIncidentARI tests that requests certs impacted by an ongoing revocation

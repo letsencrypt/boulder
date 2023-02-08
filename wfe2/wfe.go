@@ -2287,18 +2287,23 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
+	if len(request.URL.Path) == 0 {
+		wfe.sendError(response, logEvent, probs.NotFound("Must specify a request path"), nil)
+		return
+	}
+
 	// The path prefix has already been stripped, so request.URL.Path here is just
 	// the base64url-encoded DER CertID sequence.
 	der, err := base64.RawURLEncoding.DecodeString(request.URL.Path)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded: %w", err), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded"), nil)
 		return
 	}
 
 	var id certID
 	rest, err := asn1.Unmarshal(der, &id)
 	if err != nil || len(rest) != 0 {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence: %w", err), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence"), nil)
 		return
 	}
 
