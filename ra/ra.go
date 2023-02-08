@@ -231,7 +231,8 @@ func NewRegistrationAuthorityImpl(
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
-		reuseValidAuthz:              true, // TODO(#2734): Remove all reuseValidAuthz code per step 3
+        // TODO(#2734): Remove reuseValidAuthz hardcoding.
+		reuseValidAuthz:              true,
 		publisher:                    pubc,
 		caa:                          caaClient,
 		orderLifetime:                orderLifetime,
