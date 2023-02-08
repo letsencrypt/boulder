@@ -59,7 +59,7 @@ var (
 	// recheck the CAA records for a domain. Per Baseline Requirements, we must
 	// recheck CAA records within 8 hours of issuance. We set this to 7 hours to
 	// stay on the safe side.
-	caaRecheckDuration = time.Duration(-7 * time.Hour)
+	caaRecheckDuration = -7 * time.Hour
 )
 
 type caaChecker interface {
