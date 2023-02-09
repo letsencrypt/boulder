@@ -616,7 +616,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	// NewAccount uses `validSelfAuthenticatedPOST` instead of
 	// `validPOSTforAccount` because there is no account to authenticate against
 	// until after it is created!
-	body, key, prob := wfe.validSelfAuthenticatedPOST(ctx, request, logEvent)
+	body, key, prob := wfe.validSelfAuthenticatedPOST(ctx, request)
 	if prob != nil {
 		// validSelfAuthenticatedPOST handles its own setting of logEvent.Errors
 		wfe.sendError(response, logEvent, prob, nil)
@@ -815,6 +815,9 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	// Compute and record the serial number of the provided certificate
 	serial := core.SerialToString(parsedCertificate.SerialNumber)
 	logEvent.Extra["CertificateSerial"] = serial
+	if revokeRequest.Reason != nil {
+		logEvent.Extra["RevocationReason"] = *revokeRequest.Reason
+	}
 	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
 
 	// Try to validate the signature on the provided cert using its corresponding
@@ -828,8 +831,8 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	if err != nil {
 		return nil, 0, probs.NotFound("No such certificate")
 	}
-	logEvent.Extra["CertificateDNSNames"] = parsedCertificate.DNSNames
-	beeline.AddFieldToTrace(ctx, "cert.dnsnames", parsedCertificate.DNSNames)
+	logEvent.DNSNames = parsedCertificate.DNSNames
+	beeline.AddFieldToTrace(ctx, "dnsnames", parsedCertificate.DNSNames)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return nil, 0, probs.Unauthorized("Certificate is expired")
@@ -916,7 +919,7 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	// `validSelfAuthenticatedJWS` similar to new-reg and key rollover.
 	// We do *not* use `validSelfAuthenticatedPOST` here because we've already
 	// read the HTTP request body in `parseJWSRequest` and it is now empty.
-	jwsBody, jwk, prob := wfe.validSelfAuthenticatedJWS(ctx, outerJWS, request, logEvent)
+	jwsBody, jwk, prob := wfe.validSelfAuthenticatedJWS(ctx, outerJWS, request)
 	if prob != nil {
 		return prob
 	}
@@ -2035,6 +2038,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 
+	logEvent.DNSNames = names
+
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
@@ -2230,12 +2235,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	logEvent.Extra["CSRDNSNames"] = csr.DNSNames
-	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
-	logEvent.Extra["CSREmailAddresses"] = csr.EmailAddresses
-	beeline.AddFieldToTrace(ctx, "csr.email_addrs", csr.EmailAddresses)
-	logEvent.Extra["CSRIPAddresses"] = csr.IPAddresses
-	beeline.AddFieldToTrace(ctx, "csr.ip_addrs", csr.IPAddresses)
+	logEvent.DNSNames = order.Names
+	beeline.AddFieldToTrace(ctx, "dnsnames", csr.DNSNames)
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
 	beeline.AddFieldToTrace(ctx, "csr.key_type", web.KeyTypeToString(csr.PublicKey))
 

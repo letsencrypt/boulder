@@ -39,9 +39,8 @@ type RequestEvent struct {
 	Contacts       []string `json:",omitempty"`
 	UserAgent      string   `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
-	Origin  string                 `json:",omitempty"`
-	Payload string                 `json:",omitempty"`
-	Extra   map[string]interface{} `json:",omitempty"`
+	Origin string                 `json:",omitempty"`
+	Extra  map[string]interface{} `json:",omitempty"`
 
 	// For endpoints that create objects, the ID of the newly created object.
 	Created string `json:",omitempty"`
@@ -49,8 +48,12 @@ type RequestEvent struct {
 	// For challenge and authorization GETs and POSTs:
 	// the status of the authorization at the time the request began.
 	Status string `json:",omitempty"`
-	// The DNS name, if applicable
+	// The DNS name, if there is a single relevant name, for instance
+	// in an authorization or challenge request.
 	DNSName string `json:",omitempty"`
+	// The set of DNS names, if there are potentially multiple relevant
+	// names, for instance in a new-order, finalize, or revoke request.
+	DNSNames []string `json:",omitempty"`
 
 	// For challenge POSTs, the challenge type.
 	ChallengeType string `json:",omitempty"`

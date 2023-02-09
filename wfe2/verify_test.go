@@ -1295,14 +1295,12 @@ func TestValidJWSForKey(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			inputLogEvent := newRequestEvent()
 			request := makePostRequestWithPath("test", tc.Body)
-			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request, inputLogEvent)
+			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request)
 
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, inputLogEvent.Payload, payload)
 				test.AssertEquals(t, string(outPayload), payload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
@@ -1397,7 +1395,6 @@ func TestValidPOSTForAccount(t *testing.T) {
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAcct)
 				test.AssertMarshaledEquals(t, jws, tc.ExpectedJWS)
@@ -1437,7 +1434,6 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
 			ExpectedLogEvent: web.RequestEvent{
 				Contacts: []string{"mailto:person@mail.com"},
-				Payload:  "{}",
 			},
 		},
 		{
@@ -1544,15 +1540,13 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			inputLogEvent := newRequestEvent()
-			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request, inputLogEvent)
+			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				inThumb, _ := tc.ExpectedJWK.Thumbprint(crypto.SHA256)
 				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
 				test.AssertDeepEquals(t, inThumb, outThumb)
-				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
