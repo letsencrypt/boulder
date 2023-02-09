@@ -1751,22 +1751,22 @@ func TestRecheckCAADates(t *testing.T) {
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
 	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
-	err := ra.checkAuthorizationsCAA(context.Background(), names, authzs, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), Registration.Id, names, authzs, fc.Now())
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"twochallenges.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"twochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"nochallenges.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"nochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
 
 	// Should error if authorization's challenge has no validated timestamp
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"novalidationtime.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"novalidationtime.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
 
 	// Test to make sure the authorization lifetime codepath was not used
@@ -3219,8 +3219,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 
 	// Cast the RA's mock log so we can ensure its cleared and can access the
 	// matched log lines.
-	mockLog, ok := ra.log.(*blog.Mock)
-	test.Assert(t, ok, "Failed to cast RA log to Mock")
+	mockLog, _ := ra.log.(*blog.Mock)
 	mockLog.Clear()
 
 	// Finalize the order with the CSR.
@@ -3232,11 +3231,24 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	test.AssertNotError(t, err, "Error finalizing test order")
 
 	// Get the logged lines from the mock logger.
-	loglines := mockLog.GetAllMatching("finalizing order with")
+	loglines := mockLog.GetAllMatching("FinalizationCaaCheck JSON=")
 	// There should be exactly 1 matching log line.
 	test.AssertEquals(t, len(loglines), 1)
-	// The log line should contain the expected number of authzs and CAA reuses/rechecks.
-	test.AssertEquals(t, loglines[0], "INFO: Id 1 finalizing order with 4 Authzs (2 CAA reused, 2 CAA rechecked)")
+
+	// Strip away the stuff before 'JSON='
+	jsonContent := strings.TrimPrefix(loglines[0], "INFO: FinalizationCaaCheck JSON=")
+
+	// Unmarshal the JSON into a certificate request event object
+	var event finalizationCAACheckEvent
+	err = json.Unmarshal([]byte(jsonContent), &event)
+	// The JSON should unmarshal without error
+	test.AssertNotError(t, err, "Error unmarshalling logged JSON issuance event.")
+	// The event requester should be the expected registration ID.
+	test.AssertEquals(t, event.Requester, Registration.Id)
+	// The event should have the expected number of Authzs where CAA was reused.
+	test.AssertEquals(t, event.Reused, 2)
+	// The event should have the expected number of Authzs where CAA was rechecked.
+	test.AssertEquals(t, event.Rechecked, 2)
 }
 
 // TestUpdateMissingAuthorization tests the race condition where a challenge is

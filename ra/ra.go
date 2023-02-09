@@ -334,6 +334,20 @@ type certificateRevocationEvent struct {
 	Error string `json:",omitempty"`
 }
 
+// finalizationCAACheckEvent is a struct for holding information logged as JSON
+// to the info log as the result of an issuance event. It is logged when the RA
+// performs the final CAA check of a certificate finalization request.
+type finalizationCAACheckEvent struct {
+	// Requester is the associated account ID.
+	Requester int64 `json:",omitempty"`
+	// Rechecked is incremented for each Authz where a new CAA check was
+	// performed because the original check was older than 7 hours.
+	Rechecked int `json:",omitempty"`
+	// Reused is incremented for each Authz where the original CAA check was
+	// performed in the last 7 hours.
+	Reused int `json:",omitempty"`
+}
+
 // noRegistrationID is used for the regID parameter to GetThreshold when no
 // registration-based overrides are necessary.
 const noRegistrationID = -1
@@ -727,7 +741,8 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	names = core.UniqueLowerNames(names)
 
 	// Check the authorizations to ensure validity for the names required.
-	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, ra.clk.Now()); err != nil {
+	err = ra.checkAuthorizationsCAA(ctx, int64(acctID), names, authzs, ra.clk.Now())
+	if err != nil {
 		return nil, err
 	}
 
@@ -762,6 +777,7 @@ func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool,
 // If it returns an error, it will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	ctx context.Context,
+	acctID int64,
 	names []string,
 	authzs map[string]*core.Authorization,
 	now time.Time) error {
@@ -822,6 +838,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			strings.Join(badNames, ", "),
 		)
 	}
+
+	caaEvent := &finalizationCAACheckEvent{
+		Requester: acctID,
+		Reused:    len(authzs) - len(recheckAuthzs),
+		Rechecked: len(recheckAuthzs),
+	}
+	ra.log.InfoObject("FinalizationCaaCheck", caaEvent)
 
 	return nil
 }
@@ -1150,8 +1173,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	// Collect up a certificateRequestAuthz that stores the ID and challenge type
 	// of each of the valid authorizations we used for this issuance.
 	logEventAuthzs := make(map[string]certificateRequestAuthz, len(csrNames))
-	var caaReused int
-	var caaRechecked int
 	for name, authz := range authzs {
 		// No need to check for error here because we know this same call just
 		// succeeded inside ra.checkOrderAuthorizations
@@ -1160,31 +1181,11 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 			ID:            authz.ID,
 			ChallengeType: solvedByChallengeType,
 		}
-
-		// Count the number of authorizations where the original CAA check was
-		// reused and the number where it was rechecked.
-		staleCAA, err := validatedBefore(authz, ra.clk.Now().Add(caaRecheckDuration))
-		if err != nil {
-			// This should never happen because we just checked the same thing
-			// inside ra.checkOrderAuthorizations.
-			return nil, err
-		}
-		if staleCAA {
-			caaRechecked++
-		} else {
-			caaReused++
-		}
-
 	}
 	logEvent.Authorizations = logEventAuthzs
 
 	// Mark that we verified the CN and SANs
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
-
-	// Log the number of CAA checks that were reused and the number that were
-	// rechecked.
-	ra.log.Info(fmt.Sprintf("Id %d finalizing order with %d Authzs (%d CAA reused, %d CAA rechecked)",
-		req.Order.RegistrationID, len(authzs), caaReused, caaRechecked))
 
 	return csr, nil
 }
