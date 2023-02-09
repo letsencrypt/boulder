@@ -3093,7 +3093,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Cast the RA's mock log so we can ensure its cleared and can access the
 	// matched log lines
-	mockLog, _ := ra.log.(*blog.Mock)
+	mockLog := ra.log.(*blog.Mock)
 	mockLog.Clear()
 
 	// Finalize the order with the CSR
@@ -3218,7 +3218,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 
 	// Cast the RA's mock log so we can ensure its cleared and can access the
 	// matched log lines.
-	mockLog, _ := ra.log.(*blog.Mock)
+	mockLog := ra.log.(*blog.Mock)
 	mockLog.Clear()
 
 	// Finalize the order with the CSR.
