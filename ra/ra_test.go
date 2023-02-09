@@ -3234,19 +3234,20 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	// There should be exactly 1 matching log line.
 	test.AssertEquals(t, len(loglines), 1)
 
-	// Strip away the stuff before 'JSON='
+	// Strip away the stuff before 'JSON='.
 	jsonContent := strings.TrimPrefix(loglines[0], "INFO: FinalizationCaaCheck JSON=")
 
-	// Unmarshal the JSON into a certificate request event object
+	// Unmarshal the JSON into an event object.
 	var event finalizationCAACheckEvent
 	err = json.Unmarshal([]byte(jsonContent), &event)
-	// The JSON should unmarshal without error
+	// The JSON should unmarshal without error.
 	test.AssertNotError(t, err, "Error unmarshalling logged JSON issuance event.")
 	// The event requester should be the expected registration ID.
 	test.AssertEquals(t, event.Requester, Registration.Id)
 	// The event should have the expected number of Authzs where CAA was reused.
 	test.AssertEquals(t, event.Reused, 2)
-	// The event should have the expected number of Authzs where CAA was rechecked.
+	// The event should have the expected number of Authzs where CAA was
+	// rechecked.
 	test.AssertEquals(t, event.Rechecked, 2)
 }
 
