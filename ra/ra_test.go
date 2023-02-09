@@ -3093,8 +3093,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 
 	// Cast the RA's mock log so we can ensure its cleared and can access the
 	// matched log lines
-	mockLog, ok := ra.log.(*blog.Mock)
-	test.Assert(t, ok, "Failed to cast RA log to Mock")
+	mockLog, _ := ra.log.(*blog.Mock)
 	mockLog.Clear()
 
 	// Finalize the order with the CSR

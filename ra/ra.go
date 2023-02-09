@@ -340,12 +340,12 @@ type certificateRevocationEvent struct {
 type finalizationCAACheckEvent struct {
 	// Requester is the associated account ID.
 	Requester int64 `json:",omitempty"`
-	// Rechecked is incremented for each Authz where a new CAA check was
-	// performed because the original check was older than 7 hours.
-	Rechecked int `json:",omitempty"`
-	// Reused is incremented for each Authz where the original CAA check was
-	// performed in the last 7 hours.
+	// Reused is a count of Authz where the original CAA check was performed in
+	// the last 7 hours.
 	Reused int `json:",omitempty"`
+	// Rechecked is a count of Authz where a new CAA check was performed because
+	// the original check was older than 7 hours.
+	Rechecked int `json:",omitempty"`
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
