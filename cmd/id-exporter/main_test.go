@@ -448,7 +448,7 @@ func setup(t *testing.T) testCtx {
 	cleanUp := test.ResetBoulderTestDatabase(t)
 
 	fc := newFakeClock(t)
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, fc, log, metrics.NoopRegisterer)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}

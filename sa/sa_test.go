@@ -72,7 +72,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, fc, log)
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, 0, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

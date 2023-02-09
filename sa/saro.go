@@ -43,6 +43,26 @@ type SQLStorageAuthorityRO struct {
 	// threads).
 	parallelismPerRPC int
 
+	// highestSeenIDs is a map of table names to the greatest unique ID that the
+	// SA has seen returned in a query on that table. For example, an entry of
+	// "registrations: 123245" means that 12345 is the highest autoincrement ID
+	// that has been returned in a call to GetRegistration. This is useful for
+	// allowing various methods to wait-and-retry if they get a NotFound result
+	// when querying for an ID that is greater than the current high-water mark:
+	// perhaps that query was for an ID that simply hasn't replicated from the
+	// primary to a read-replica yet!
+	highestSeenIDs   map[string]int64
+	highestSeenMutex sync.RWMutex
+
+	// lagFactor is the amount of time we're willing to delay before retrying a
+	// request that may have failed due to replication lag. For example, a user
+	// might create a new account and then immediately create a new order, but
+	// validating that new-order request requires reading their account info from
+	// a read-only database replica... which may not have their brand new data
+	// yet. This value should be less than, but about the same order of magnitude
+	// as, the observed database replication lag.
+	lagFactor time.Duration
+
 	// We use function types here so we can mock out this internal function in
 	// unittests.
 	countCertificatesByName certCountFunc
@@ -57,6 +77,7 @@ func NewSQLStorageAuthorityRO(
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
 	parallelismPerRPC int,
+	lagFactor time.Duration,
 	clk clock.Clock,
 	logger blog.Logger,
 ) (*SQLStorageAuthorityRO, error) {
@@ -64,6 +85,8 @@ func NewSQLStorageAuthorityRO(
 		dbReadOnlyMap:     dbReadOnlyMap,
 		dbIncidentsMap:    dbIncidentsMap,
 		parallelismPerRPC: parallelismPerRPC,
+		lagFactor:         lagFactor,
+		highestSeenIDs:    make(map[string]int64),
 		clk:               clk,
 		log:               logger,
 	}
@@ -79,14 +102,31 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
+	ssa.highestSeenMutex.RLock()
+	highestId := ssa.highestSeenIDs["registrations"]
+	ssa.highestSeenMutex.RUnlock()
+
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
+	if db.IsNoRows(err) && req.Id > highestId {
+		// Specifically in the case that we got no results and the ID we were asking
+		// for is higher than any previously-seen ID (i.e. it is very new), sleep
+		// and try again. But only once.
+		time.Sleep(ssa.lagFactor)
+		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
+	}
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
 		}
 		return nil, err
 	}
+
+	ssa.highestSeenMutex.Lock()
+	if req.Id > ssa.highestSeenIDs["registrations"] {
+		ssa.highestSeenIDs["registrations"] = req.Id
+	}
+	ssa.highestSeenMutex.Unlock()
 
 	return registrationModelToPb(model)
 }
