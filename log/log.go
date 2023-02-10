@@ -320,7 +320,7 @@ func (log *impl) Infof(format string, a ...interface{}) {
 func (log *impl) InfoObject(msg string, obj interface{}) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
-		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
 		return
 	}
 
@@ -354,7 +354,7 @@ func (log *impl) AuditInfof(format string, a ...interface{}) {
 func (log *impl) AuditObject(msg string, obj interface{}) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
-		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
 		return
 	}
 
