@@ -13,8 +13,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/grpc"
 
 	"github.com/titanous/rocacheck"
 )
@@ -67,10 +65,12 @@ func badKey(msg string, args ...interface{}) error {
 	return fmt.Errorf("%w%s", ErrBadKey, fmt.Errorf(msg, args...))
 }
 
-// BlockedKeyCheckFunc is used to pass in the sa.BlockedKey method to KeyPolicy,
-// rather than storing a full sa.SQLStorageAuthority. This makes testing
+// BlockedKeyCheckFunc is used to pass in the sa.BlockedKey functionality to KeyPolicy,
+// rather than storing a full sa.SQLStorageAuthority. This allows external
+// users who don’t want to import all of boulder/sa, and makes testing
 // significantly simpler.
-type BlockedKeyCheckFunc func(context.Context, *sapb.KeyBlockedRequest, ...grpc.CallOption) (*sapb.Exists, error)
+// On success, the function returns a boolean which is true if the key is blocked.
+type BlockedKeyCheckFunc func(ctx context.Context, keyHash []byte) (bool, error)
 
 // KeyPolicy determines which types of key may be used with various boulder
 // operations.
@@ -146,10 +146,10 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 		if err != nil {
 			return badKey("%w", err)
 		}
-		exists, err := policy.dbCheck(ctx, &sapb.KeyBlockedRequest{KeyHash: digest[:]})
+		exists, err := policy.dbCheck(ctx, digest[:])
 		if err != nil {
 			return err
-		} else if exists.Exists {
+		} else if exists {
 			return badKey("public key is forbidden")
 		}
 	}

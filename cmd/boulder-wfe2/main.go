@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/issuance"
@@ -449,7 +450,7 @@ func main() {
 
 	rac, sac, gnc, npm, rnc, npKey := setupWFE(c, stats, clk)
 
-	kp, err := goodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
+	kp, err := sagoodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.WFE.StaleTimeout.Duration == 0 {
