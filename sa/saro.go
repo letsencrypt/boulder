@@ -123,8 +123,8 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 	}
 
 	ssa.highestSeenMutex.Lock()
-	if req.Id > ssa.highestSeenIDs["registrations"] {
-		ssa.highestSeenIDs["registrations"] = req.Id
+	if model.ID > ssa.highestSeenIDs["registrations"] {
+		ssa.highestSeenIDs["registrations"] = model.ID
 	}
 	ssa.highestSeenMutex.Unlock()
 
@@ -159,6 +159,12 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 		}
 		return nil, err
 	}
+
+	ssa.highestSeenMutex.Lock()
+	if model.ID > ssa.highestSeenIDs["registrations"] {
+		ssa.highestSeenIDs["registrations"] = model.ID
+	}
+	ssa.highestSeenMutex.Unlock()
 
 	return registrationModelToPb(model)
 }
