@@ -16,6 +16,7 @@ jobs:
       matrix:
         GO_VERSION:
           - "1.19.5"
+          - "1.20"
     runs-on: ubuntu-20.04
     permissions:
       contents: write
@@ -34,4 +35,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_create
-        run: gh release create "${GITHUB_REF_NAME}" boulder*.deb
+        run: gh release create "${GITHUB_REF_NAME}"
+        continue-on-error: true
+
+      - name: Upload release files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # https://cli.github.com/manual/gh_release_upload
+        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb
