@@ -226,6 +226,39 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
+func TestReplicationLagRetries(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// First, set the lagFactor to 0. Neither selecting a real registration nor
+	// selecting a nonexistent registration should cause the clock to advance.
+	sa.lagFactor = 0
+	start := clk.Now()
+
+	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "selecting extant registration")
+	test.AssertEquals(t, clk.Now(), start)
+
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
+	test.AssertError(t, err, "selecting nonexistent registration")
+	test.AssertEquals(t, clk.Now(), start)
+
+	// Now, set the lagFactor to 1. Trying to select a nonexistent registration
+	// should cause the clock to advance when GetRegistration sleeps and retries.
+	sa.lagFactor = 1
+	start = clk.Now()
+
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "selecting extant registration")
+	test.AssertEquals(t, clk.Now(), start)
+
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
+	test.AssertError(t, err, "selecting nonexistent registration")
+	test.AssertEquals(t, clk.Now(), start.Add(1))
+}
+
 func TestAddCertificate(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
