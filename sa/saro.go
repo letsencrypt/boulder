@@ -93,7 +93,7 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
-	if db.IsNoRows(err) {
+	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetRegistration is often called to validate a JWK belonging to a brand
 		// new account whose registrations table row hasn't propagated to the read
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
@@ -649,7 +649,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		return order, nil
 	}
 	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
-	if db.IsNoRows(err) || errors.Is(err, berrors.NotFound) {
+	if (db.IsNoRows(err) || errors.Is(err, berrors.NotFound)) && ssa.lagFactor != 0 {
 		// GetOrder is often called shortly after a new order is created, sometimes
 		// before the order or its associated rows have propagated to the read
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
@@ -745,7 +745,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		return nil, errIncompleteRequest
 	}
 	obj, err := ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
-	if db.IsNoRows(err) {
+	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetAuthorization2 is often called shortly after a new order is created,
 		// sometimes before the order's associated authz rows have propagated to the
 		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
