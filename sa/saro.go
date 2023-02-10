@@ -2,6 +2,7 @@ package sa
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -597,7 +598,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		return nil, errIncompleteRequest
 	}
 
-	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, func(txWithCtx db.Executor) (interface{}, error) {
+	txn := func(txWithCtx db.Executor) (interface{}, error) {
 		omObj, err := txWithCtx.Get(orderModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
@@ -646,7 +647,15 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		order.Status = status
 
 		return order, nil
-	})
+	}
+	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
+	if db.IsNoRows(err) || errors.Is(err, berrors.NotFound) {
+		// GetOrder is often called shortly after a new order is created, sometimes
+		// before the order or its associated rows have propagated to the read
+		// replica yet. If we get a NoRows, wait a little bit and retry, once.
+		time.Sleep(ssa.lagFactor)
+		output, err = db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -736,6 +745,13 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		return nil, errIncompleteRequest
 	}
 	obj, err := ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
+	if db.IsNoRows(err) {
+		// GetAuthorization2 is often called shortly after a new order is created,
+		// sometimes before the order's associated authz rows have propagated to the
+		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
+		time.Sleep(ssa.lagFactor)
+		obj, err = ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
+	}
 	if err != nil {
 		return nil, err
 	}
