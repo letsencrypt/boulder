@@ -58,10 +58,29 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 		return nil, err
 	}
 
+	customConfig := fmt.Sprintf(`{
+		"loadBalancingConfig": [{"%s": {}}],
+		"methodConfig": [{
+			"name": [
+				{"service": "sa.StorageAuthority", "method": "GetRegistration"},
+				{"service": "sa.StorageAuthority", "method": "GetOrder"},
+				{"service": "sa.StorageAuthority", "method": "GetAuthorization2"}
+			],
+			"waitForReady": true,
+			"retryPolicy": {
+				"MaxAttempts": 2,
+				"InitialBackoff": ".01s",
+				"MaxBackoff": ".01s",
+				"BackoffMultiplier": 1.0,
+				"RetryableStatusCodes": [ "NOT_FOUND" ]
+			}
+		}]
+	}`, roundrobin.Name)
+
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
 	return grpc.Dial(
 		target,
-		grpc.WithDefaultServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, roundrobin.Name)),
+		grpc.WithDefaultServiceConfig(customConfig),
 		grpc.WithTransportCredentials(creds),
 		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
