@@ -794,7 +794,7 @@ func main() {
 	var ct struct {
 		CeremonyType string `yaml:"ceremony-type"`
 	}
-	err = yaml.Unmarshal(configBytes, &ct)
+	err = cmd.UnmarshalYAML(configBytes, &ct)
 	if err != nil {
 		log.Fatalf("Failed to parse config: %s", err)
 	}

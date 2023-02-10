@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -28,7 +28,8 @@ func (c CRLConf) Kind() string {
 // UnmarshalSettings constructs a CRLConf object from YAML as bytes.
 func (c CRLConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf CRLConf
-	err := yaml.Unmarshal(settings, &conf)
+	err := cmd.UnmarshalYAML(settings, &conf)
+
 	if err != nil {
 		return nil, err
 	}

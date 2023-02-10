@@ -16,13 +16,13 @@ import (
 	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
-	"gopkg.in/yaml.v3"
 )
 
 // AuthorityImpl enforces CA policy decisions.
@@ -89,7 +89,7 @@ func (pa *AuthorityImpl) loadHostnamePolicy(contents []byte) error {
 	hash := sha256.Sum256(contents)
 	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
 	var policy blockedNamesPolicy
-	err := yaml.Unmarshal(contents, &policy)
+	err := cmd.UnmarshalYAML(contents, &policy)
 	if err != nil {
 		return err
 	}

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v3"
 )
 
 // HTTPConf is exported to receive YAML configuration.
@@ -26,7 +26,7 @@ func (c HTTPConf) Kind() string {
 // HTTPConf object.
 func (c HTTPConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf HTTPConf
-	err := yaml.Unmarshal(settings, &conf)
+	err := cmd.UnmarshalYAML(settings, &conf)
 	if err != nil {
 		return nil, err
 	}

@@ -3,10 +3,10 @@ package ca
 import (
 	"sync"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v3"
 )
 
 // ECDSAAllowList acts as a container for a map of Registration IDs, a
@@ -24,7 +24,7 @@ type ECDSAAllowList struct {
 // of a YAML list (as bytes).
 func (e *ECDSAAllowList) Update(contents []byte) error {
 	var regIDs []int64
-	err := yaml.Unmarshal(contents, &regIDs)
+	err := cmd.UnmarshalYAML(contents, &regIDs)
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,6 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer"
-	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -19,7 +18,8 @@ func main() {
 
 	// Parse the YAML config file.
 	var config observer.ObsConf
-	err = yaml.Unmarshal(configYAML, &config)
+	err = cmd.UnmarshalYAML(configYAML, &config)
+
 	if err != nil {
 		cmd.FailOnError(err, "failed to parse YAML config")
 	}
