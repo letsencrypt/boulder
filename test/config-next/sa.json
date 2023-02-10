@@ -13,6 +13,7 @@
       "maxOpenConns": 100
     },
     "ParallelismPerRPC": 20,
+    "lagFactor": "200ms",
     "debugAddr": ":8003",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
