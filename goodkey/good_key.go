@@ -81,7 +81,7 @@ type KeyPolicy struct {
 	weakRSAList        *WeakRSAKeys
 	blockedList        *blockedKeys
 	fermatRounds       int
-	dbCheck            BlockedKeyCheckFunc
+	blockedCheck       BlockedKeyCheckFunc
 }
 
 // NewKeyPolicy returns a KeyPolicy that allows RSA, ECDSA256 and ECDSA384.
@@ -96,7 +96,7 @@ func NewKeyPolicy(config *Config, bkc BlockedKeyCheckFunc) (KeyPolicy, error) {
 		AllowRSA:           true,
 		AllowECDSANISTP256: true,
 		AllowECDSANISTP384: true,
-		dbCheck:            bkc,
+		blockedCheck:       bkc,
 	}
 	if config.WeakKeyFile != "" {
 		keyList, err := LoadWeakRSASuffixes(config.WeakKeyFile)
@@ -141,12 +141,12 @@ func (policy *KeyPolicy) GoodKey(ctx context.Context, key crypto.PublicKey) erro
 			return badKey("public key is forbidden")
 		}
 	}
-	if policy.dbCheck != nil {
+	if policy.blockedCheck != nil {
 		digest, err := core.KeyDigest(key)
 		if err != nil {
 			return badKey("%w", err)
 		}
-		exists, err := policy.dbCheck(ctx, digest[:])
+		exists, err := policy.blockedCheck(ctx, digest[:])
 		if err != nil {
 			return err
 		} else if exists {
