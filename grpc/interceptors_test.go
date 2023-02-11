@@ -136,7 +136,7 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 		spent := int64(time.Since(start) / time.Nanosecond)
 		return &test_proto.Time{Time: spent}, nil
 	case <-ctx.Done():
-		return nil, status.Errorf(codes.DeadlineExceeded, "the chiller overslept")
+		return nil, status.Errorf(codes.Canceled, "the chiller overslept")
 	}
 }
 
@@ -182,7 +182,7 @@ func TestTimeouts(t *testing.T) {
 		timeout             time.Duration
 		expectedErrorPrefix string
 	}{
-		{250 * time.Millisecond, "rpc error: code = Unknown desc = rpc error: code = DeadlineExceeded desc = the chiller overslept"},
+		{250 * time.Millisecond, "rpc error: code = Canceled desc = the chiller overslept"},
 		{100 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
 		{10 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
 	}
