@@ -15,6 +15,7 @@ import (
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
@@ -239,7 +240,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := sapb.NewStorageAuthorityClient(conn)
 
-	kp, err := goodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
+	kp, err := sagoodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var orphanQueue *goque.Queue

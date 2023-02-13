@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	"github.com/letsencrypt/boulder/identifier"
 	_ "github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
@@ -487,7 +488,7 @@ func main() {
 	if config.CertChecker.GoodKey.BlockedKeyFile != "" {
 		cmd.Fail("cert-checker does not support checking against blocked key files")
 	}
-	kp, err := goodkey.NewKeyPolicy(&config.CertChecker.GoodKey, nil)
+	kp, err := sagoodkey.NewKeyPolicy(&config.CertChecker.GoodKey, nil)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	saDbMap, err := sa.InitWrappedDb(config.CertChecker.DB, prometheus.DefaultRegisterer, logger)
