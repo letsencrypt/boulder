@@ -2,13 +2,10 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"expvar"
 	"fmt"
-	"io"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -22,7 +19,6 @@ import (
 	"time"
 
 	"google.golang.org/grpc/grpclog"
-	"gopkg.in/yaml.v3"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
@@ -312,24 +308,6 @@ func ReadConfigFile(filename string, out interface{}) error {
 	decoder := json.NewDecoder(file)
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(out)
-}
-
-// UnmarshalYAMLStrict takes a byte array and an arbitrary interface as arguments and
-// attempts to unmarshal the contents of the byte array into a defined struct. Any
-// config keys from the incoming YAML document which do not correspond to
-// expected keys in the config struct will result in errors.
-//
-// TODO(https://github.com/go-yaml/yaml/issues/639): Replace this function with
-// yaml.Unmarshal once a more ergonomic way to set unmarshal options is added upstream.
-func UnmarshalYAMLStrict(b []byte, yamlObj interface{}) error {
-	decoder := yaml.NewDecoder(bytes.NewReader(b))
-	decoder.KnownFields(true)
-
-	err := decoder.Decode(yamlObj)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return err
-	}
-	return err
 }
 
 // VersionString produces a friendly Application version string.

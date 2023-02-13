@@ -3,9 +3,9 @@ package ca
 import (
 	"sync"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -24,7 +24,7 @@ type ECDSAAllowList struct {
 // of a YAML list (as bytes).
 func (e *ECDSAAllowList) Update(contents []byte) error {
 	var regIDs []int64
-	err := cmd.UnmarshalYAMLStrict(contents, &regIDs)
+	err := strictyaml.Unmarshal(contents, &regIDs)
 	if err != nil {
 		return err
 	}

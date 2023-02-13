@@ -5,6 +5,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -24,7 +25,7 @@ func (c MockConfigurer) Kind() string {
 
 func (c MockConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf MockConfigurer
-	err := cmd.UnmarshalYAMLStrict(settings, &conf)
+	err := strictyaml.Unmarshal(settings, &conf)
 	if err != nil {
 		return nil, err
 	}

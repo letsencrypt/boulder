@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -33,7 +33,7 @@ func (c DNSConf) Kind() string {
 // UnmarshalSettings constructs a DNSConf object from YAML as bytes.
 func (c DNSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf DNSConf
-	err := cmd.UnmarshalYAMLStrict(settings, &conf)
+	err := strictyaml.Unmarshal(settings, &conf)
 	if err != nil {
 		return nil, err
 	}
