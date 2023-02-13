@@ -116,7 +116,7 @@ func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
 // YAML configuration (typically read from disk by a reloader)
 func (r *limitsImpl) LoadPolicies(contents []byte) error {
 	var newPolicy rateLimitConfig
-	err := cmd.UnmarshalYAML(contents, &newPolicy)
+	err := cmd.UnmarshalYAMLStrict(contents, &newPolicy)
 	if err != nil {
 		return err
 	}

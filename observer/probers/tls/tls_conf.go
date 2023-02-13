@@ -32,7 +32,7 @@ func (c TLSConf) Kind() string {
 // object.
 func (c TLSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf TLSConf
-	err := cmd.UnmarshalYAML(settings, &conf)
+	err := cmd.UnmarshalYAMLStrict(settings, &conf)
 	if err != nil {
 		return nil, err
 	}

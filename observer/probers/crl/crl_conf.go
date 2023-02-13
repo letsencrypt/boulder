@@ -28,7 +28,7 @@ func (c CRLConf) Kind() string {
 // UnmarshalSettings constructs a CRLConf object from YAML as bytes.
 func (c CRLConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf CRLConf
-	err := cmd.UnmarshalYAML(settings, &conf)
+	err := cmd.UnmarshalYAMLStrict(settings, &conf)
 
 	if err != nil {
 		return nil, err

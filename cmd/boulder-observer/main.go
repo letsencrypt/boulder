@@ -18,7 +18,7 @@ func main() {
 
 	// Parse the YAML config file.
 	var config observer.ObsConf
-	err = cmd.UnmarshalYAML(configYAML, &config)
+	err = cmd.UnmarshalYAMLStrict(configYAML, &config)
 
 	if err != nil {
 		cmd.FailOnError(err, "failed to parse YAML config")

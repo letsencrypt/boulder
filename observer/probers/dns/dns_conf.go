@@ -33,7 +33,7 @@ func (c DNSConf) Kind() string {
 // UnmarshalSettings constructs a DNSConf object from YAML as bytes.
 func (c DNSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf DNSConf
-	err := cmd.UnmarshalYAML(settings, &conf)
+	err := cmd.UnmarshalYAMLStrict(settings, &conf)
 	if err != nil {
 		return nil, err
 	}

@@ -314,13 +314,14 @@ func ReadConfigFile(filename string, out interface{}) error {
 	return decoder.Decode(out)
 }
 
-// TODO(https://github.com/go-yaml/yaml/issues/639): Use yaml.Unmarshal again
-// once this is implemented.
-// UnmarshalYAML takes a byte array and an arbitrary interface as arguments and
+// UnmarshalYAMLStrict takes a byte array and an arbitrary interface as arguments and
 // attempts to unmarshal the contents of the byte array into a defined struct. Any
 // config keys from the incoming YAML document which do not correspond to
 // expected keys in the config struct will result in errors.
-func UnmarshalYAML(b []byte, yamlObj interface{}) error {
+//
+// TODO(https://github.com/go-yaml/yaml/issues/639): Replace this function with
+// yaml.Unmarshal once a more ergonomic way to set unmarshal options is added upstream.
+func UnmarshalYAMLStrict(b []byte, yamlObj interface{}) error {
 	decoder := yaml.NewDecoder(bytes.NewReader(b))
 	decoder.KnownFields(true)
 

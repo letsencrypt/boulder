@@ -24,7 +24,7 @@ func (c MockConfigurer) Kind() string {
 
 func (c MockConfigurer) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf MockConfigurer
-	err := cmd.UnmarshalYAML(settings, &conf)
+	err := cmd.UnmarshalYAMLStrict(settings, &conf)
 	if err != nil {
 		return nil, err
 	}

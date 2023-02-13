@@ -89,7 +89,7 @@ func (pa *AuthorityImpl) loadHostnamePolicy(contents []byte) error {
 	hash := sha256.Sum256(contents)
 	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
 	var policy blockedNamesPolicy
-	err := cmd.UnmarshalYAML(contents, &policy)
+	err := cmd.UnmarshalYAMLStrict(contents, &policy)
 	if err != nil {
 		return err
 	}

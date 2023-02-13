@@ -26,7 +26,7 @@ func (c HTTPConf) Kind() string {
 // HTTPConf object.
 func (c HTTPConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf HTTPConf
-	err := cmd.UnmarshalYAML(settings, &conf)
+	err := cmd.UnmarshalYAMLStrict(settings, &conf)
 	if err != nil {
 		return nil, err
 	}

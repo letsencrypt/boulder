@@ -57,7 +57,7 @@ func loadBlockedKeysList(filename string) (*blockedKeys, error) {
 		BlockedHashes    []string `yaml:"blocked"`
 		BlockedHashesHex []string `yaml:"blockedHashesHex"`
 	}
-	err = cmd.UnmarshalYAML(yamlBytes, &list)
+	err = cmd.UnmarshalYAMLStrict(yamlBytes, &list)
 	if err != nil {
 		return nil, err
 	}

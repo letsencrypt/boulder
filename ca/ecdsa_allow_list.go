@@ -24,7 +24,7 @@ type ECDSAAllowList struct {
 // of a YAML list (as bytes).
 func (e *ECDSAAllowList) Update(contents []byte) error {
 	var regIDs []int64
-	err := cmd.UnmarshalYAML(contents, &regIDs)
+	err := cmd.UnmarshalYAMLStrict(contents, &regIDs)
 	if err != nil {
 		return err
 	}
