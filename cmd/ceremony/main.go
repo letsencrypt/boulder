@@ -794,7 +794,12 @@ func main() {
 	var ct struct {
 		CeremonyType string `yaml:"ceremony-type"`
 	}
-	err = cmd.UnmarshalYAML(configBytes, &ct)
+
+	// We are intentionally using non-strict unmarshaling to read the top level
+	// tags to populate the "ct" struct for use in the switch statement below.
+	// Further strict processing of each yaml node is done on a case by case basis
+	// inside the switch statement.
+	err = yaml.Unmarshal(configBytes, &ct)
 	if err != nil {
 		log.Fatalf("Failed to parse config: %s", err)
 	}
