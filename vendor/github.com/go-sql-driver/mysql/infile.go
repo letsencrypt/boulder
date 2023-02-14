@@ -23,16 +23,17 @@ var (
 	readerRegisterLock sync.RWMutex
 )
 
-// RegisterLocalFile adds the given file to the file allowlist,
+// RegisterLocalFile adds the given file to the file whitelist,
 // so that it can be used by "LOAD DATA LOCAL INFILE <filepath>".
 // Alternatively you can allow the use of all local files with
 // the DSN parameter 'allowAllFiles=true'
 //
-//	filePath := "/home/gopher/data.csv"
-//	mysql.RegisterLocalFile(filePath)
-//	err := db.Exec("LOAD DATA LOCAL INFILE '" + filePath + "' INTO TABLE foo")
-//	if err != nil {
-//	...
+//  filePath := "/home/gopher/data.csv"
+//  mysql.RegisterLocalFile(filePath)
+//  err := db.Exec("LOAD DATA LOCAL INFILE '" + filePath + "' INTO TABLE foo")
+//  if err != nil {
+//  ...
+//
 func RegisterLocalFile(filePath string) {
 	fileRegisterLock.Lock()
 	// lazy map init
@@ -44,7 +45,7 @@ func RegisterLocalFile(filePath string) {
 	fileRegisterLock.Unlock()
 }
 
-// DeregisterLocalFile removes the given filepath from the allowlist.
+// DeregisterLocalFile removes the given filepath from the whitelist.
 func DeregisterLocalFile(filePath string) {
 	fileRegisterLock.Lock()
 	delete(fileRegister, strings.Trim(filePath, `"`))
@@ -57,14 +58,15 @@ func DeregisterLocalFile(filePath string) {
 // If the handler returns a io.ReadCloser Close() is called when the
 // request is finished.
 //
-//	mysql.RegisterReaderHandler("data", func() io.Reader {
-//		var csvReader io.Reader // Some Reader that returns CSV data
-//		... // Open Reader here
-//		return csvReader
-//	})
-//	err := db.Exec("LOAD DATA LOCAL INFILE 'Reader::data' INTO TABLE foo")
-//	if err != nil {
-//	...
+//  mysql.RegisterReaderHandler("data", func() io.Reader {
+//  	var csvReader io.Reader // Some Reader that returns CSV data
+//  	... // Open Reader here
+//  	return csvReader
+//  })
+//  err := db.Exec("LOAD DATA LOCAL INFILE 'Reader::data' INTO TABLE foo")
+//  if err != nil {
+//  ...
+//
 func RegisterReaderHandler(name string, handler func() io.Reader) {
 	readerRegisterLock.Lock()
 	// lazy map init
@@ -91,12 +93,10 @@ func deferredClose(err *error, closer io.Closer) {
 	}
 }
 
-const defaultPacketSize = 16 * 1024 // 16KB is small enough for disk readahead and large enough for TCP
-
 func (mc *mysqlConn) handleInFileRequest(name string) (err error) {
 	var rdr io.Reader
 	var data []byte
-	packetSize := defaultPacketSize
+	packetSize := 16 * 1024 // 16KB is small enough for disk readahead and large enough for TCP
 	if mc.maxWriteSize < packetSize {
 		packetSize = mc.maxWriteSize
 	}

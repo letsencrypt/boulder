@@ -48,7 +48,7 @@ func TestErrDatabaseOpError(t *testing.T) {
 	}
 }
 
-func TestIsNoRows(t *testing.T) {
+func TestErrDatabaseOpNoRows(t *testing.T) {
 	testCases := []struct {
 		name           string
 		err            ErrDatabaseOp
@@ -59,7 +59,7 @@ func TestIsNoRows(t *testing.T) {
 			err: ErrDatabaseOp{
 				Op:    "test",
 				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", sql.ErrNoRows),
+				Err:   sql.ErrNoRows,
 			},
 			expectedNoRows: true,
 		},
@@ -68,7 +68,7 @@ func TestIsNoRows(t *testing.T) {
 			err: ErrDatabaseOp{
 				Op:    "test",
 				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", errors.New("lots of rows. too many rows.")),
+				Err:   errors.New("lots of rows. too many rows."),
 			},
 			expectedNoRows: false,
 		},
@@ -76,12 +76,12 @@ func TestIsNoRows(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			test.AssertEquals(t, IsNoRows(tc.err), tc.expectedNoRows)
+			test.AssertEquals(t, tc.err.noRows(), tc.expectedNoRows)
 		})
 	}
 }
 
-func TestIsDuplicate(t *testing.T) {
+func TestErrDatabaseOpDuplicate(t *testing.T) {
 	testCases := []struct {
 		name            string
 		err             ErrDatabaseOp
@@ -92,7 +92,7 @@ func TestIsDuplicate(t *testing.T) {
 			err: ErrDatabaseOp{
 				Op:    "test",
 				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", &mysql.MySQLError{Number: 1062}),
+				Err:   errors.New("Error 1062: Duplicate entry detected!!!!!!!"),
 			},
 			expectDuplicate: true,
 		},
@@ -101,7 +101,7 @@ func TestIsDuplicate(t *testing.T) {
 			err: ErrDatabaseOp{
 				Op:    "test",
 				Table: "testTable",
-				Err:   fmt.Errorf("some wrapper around %w", &mysql.MySQLError{Number: 1234}),
+				Err:   errors.New("DB forgot to save your data."),
 			},
 			expectDuplicate: false,
 		},
@@ -109,7 +109,7 @@ func TestIsDuplicate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			test.AssertEquals(t, IsDuplicate(tc.err), tc.expectDuplicate)
+			test.AssertEquals(t, tc.err.duplicate(), tc.expectDuplicate)
 		})
 	}
 }

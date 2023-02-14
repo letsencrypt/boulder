@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	gorp "github.com/go-gorp/gorp/v3"
-	"github.com/go-sql-driver/mysql"
 )
 
 // ErrDatabaseOp wraps an underlying err with a description of the operation
@@ -18,6 +18,21 @@ type ErrDatabaseOp struct {
 	Op    string
 	Table string
 	Err   error
+}
+
+// noRows returns true when the underlying error is sql.ErrNoRows and indicates
+// that the error was that no results were found.
+func (e ErrDatabaseOp) noRows() bool {
+	return e.Err == sql.ErrNoRows
+}
+
+// duplicate returns true when the underlying error has a message with a prefix
+// matching "Error 1062: Duplicate entry". This is the error prefixed returned
+// by MariaDB when a duplicate row is to be inserted.
+func (e ErrDatabaseOp) duplicate() bool {
+	return strings.HasPrefix(
+		e.Err.Error(),
+		"Error 1062: Duplicate entry")
 }
 
 // Error for an ErrDatabaseOp composes a message with context about the
@@ -42,19 +57,31 @@ func (e ErrDatabaseOp) Unwrap() error {
 	return e.Err
 }
 
-// IsNoRows is a utility function for determining if an error wraps the go sql
-// package's ErrNoRows, which is returned when a Scan operation has no more
-// results to return, and as such is returned by many gorp methods.
+// IsNoRows is a utility function for casting an error to ErrDatabaseOp and
+// returning true if its wrapped err is sql.ErrNoRows. If the error is not an
+// ErrDatabaseOp the return value of IsNoRows will always be false.
 func IsNoRows(err error) bool {
-	return errors.Is(err, sql.ErrNoRows)
+	// if the err is an ErrDatabaseOp instance, return its noRows() result to see
+	// if the inner err is sql.ErrNoRows
+	var dbErr ErrDatabaseOp
+	if errors.As(err, &dbErr) {
+		return dbErr.noRows()
+	}
+	return false
 }
 
-// IsDuplicate is a utility function for determining if an error wrap MySQL's
-// Error 1062: Duplicate entry. This error is returned when inserting a row
-// would violate a unique key constraint.
+// IsDuplicate is a utility function for casting an error to ErrDatabaseOp and
+// returning a boolean indicating if it is a duplicate error or not. If the
+// error is not an ErrDatabaseOp the return value of IsDuplicate will always be
+// false.
 func IsDuplicate(err error) bool {
-	var dbErr *mysql.MySQLError
-	return errors.As(err, &dbErr) && dbErr.Number == 1062
+	// if the err is an ErrDatabaseOp instance, return its duplicate() result to
+	// see if the inner err indicates a duplicate row error.
+	var dbErr ErrDatabaseOp
+	if errors.As(err, &dbErr) {
+		return dbErr.duplicate()
+	}
+	return false
 }
 
 // WrappedMap wraps a *gorp.DbMap such that its major functions wrap error
