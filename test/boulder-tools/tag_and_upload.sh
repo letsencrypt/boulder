@@ -31,5 +31,4 @@ do
 done
 
 echo "Updating container build timestamp in docker-compose.yml"
-OLD_DATESTAMP="$(awk -F'_' '/BOULDER_TOOLS_TAG/ {print $5}' "${DIR}/docker-compose.yml" | sed 's/}$//')"
-sed -i'' "s/${OLD_DATESTAMP}/${DATESTAMP}/" "${DIR}/docker-compose.yml"
+sed -i'' -E "s|BOULDER_TOOLS_TAG:-(.*)_(.*)}$|BOULDER_TOOLS_TAG:-\1_${DATESTAMP}}|" "${DIR}/docker-compose.yml"
