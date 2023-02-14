@@ -11,7 +11,7 @@ require (
 	github.com/eggsampler/acme/v3 v3.3.0
 	github.com/go-gorp/gorp/v3 v3.0.2
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/go-sql-driver/mysql v1.5.0
+	github.com/go-sql-driver/mysql v1.7.0
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
