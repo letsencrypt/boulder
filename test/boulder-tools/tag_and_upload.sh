@@ -11,7 +11,7 @@ DOCKER_REPO="letsencrypt/boulder-tools"
 # .github/workflows/release.yml,
 # .github/workflows/try-release.yml if appropriate,
 # .github/workflows/boulder-ci.yml with the new container tag.
-GO_VERSIONS=( "1.19.5" "1.19.6" "1.21" )
+GO_VERSIONS=( "1.19.5" "1.19.6" "1.20.1" )
 
 echo "Please login to allow push to DockerHub"
 docker login
