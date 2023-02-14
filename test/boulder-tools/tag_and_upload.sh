@@ -8,9 +8,10 @@ DATESTAMP=$(date +%Y-%m-%d)
 DOCKER_REPO="letsencrypt/boulder-tools"
 
 # When updating these GO_VERSIONS, please also update
-# .github/workflows/release.yml and
-# .github/workflows/try-release.yml if appropriate.
-GO_VERSIONS=( "1.19.5" "1.20" )
+# .github/workflows/release.yml,
+# .github/workflows/try-release.yml if appropriate,
+# .github/workflows/boulder-ci.yml with the new container tag.
+GO_VERSIONS=( "1.19.5" "1.19.6" "1.20.1" )
 
 echo "Please login to allow push to DockerHub"
 docker login
