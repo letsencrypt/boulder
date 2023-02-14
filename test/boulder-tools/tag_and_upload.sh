@@ -2,6 +2,7 @@
 
 set -feuxo pipefail
 
+DIR=$(pwd)
 cd $(dirname $0)
 
 DATESTAMP=$(date +%Y-%m-%d)
@@ -23,11 +24,12 @@ do
   echo "Building boulder-tools image ${TAG_NAME}"
 
   # build, tag, and push the image.
-  docker buildx build --build-arg "GO_VERSION=${GO_VERSION}" \
+  time docker buildx build --build-arg "GO_VERSION=${GO_VERSION}" \
     --progress plain \
     --push --tag "${TAG_NAME}" \
     --platform=linux/amd64,linux/arm64 .
 done
 
-# TODO(@cpu): Figure out a `sed` for updating the date in `docker-compose.yml`'s
-# `image` lines with $DATESTAMP
+echo "Updating container build timestamp in docker-compose.yml"
+OLD_DATESTAMP="$(awk -F'_' '/BOULDER_TOOLS_TAG/ {print $5}' "${DIR}/docker-compose.yml" | sed 's/}$//')"
+sed -i'' "s/${OLD_DATESTAMP}/${DATESTAMP}/" "${DIR}/docker-compose.yml"
