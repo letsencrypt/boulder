@@ -29,6 +29,6 @@ do
     --platform=linux/amd64,linux/arm64 .
 done
 
-echo "Updating the docker-compose.yml BOULDER_TOOLS_TAG date stamp"
-OLD_DATESTAMP=$(grep 'BOULDER_TOOLS_TAG' docker-compose.yml | awk -F':' '{print $4}' | awk -F'_' '{print $2}' | sed 's/}$//')
-sed -i '' "s/${OLD_DATESTAMP}/${DATESTAMP}/" docker-compose.yml
+# TODO(@cpu): Figure out a `sed` for updating the date in `docker-compose.yml`'s
+# `image` lines with $DATESTAMP
+
