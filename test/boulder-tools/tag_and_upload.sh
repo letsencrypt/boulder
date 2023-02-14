@@ -24,11 +24,11 @@ do
   echo "Building boulder-tools image ${TAG_NAME}"
 
   # build, tag, and push the image.
-  time docker buildx build --build-arg "GO_VERSION=${GO_VERSION}" \
+  docker buildx build --build-arg "GO_VERSION=${GO_VERSION}" \
     --progress plain \
     --push --tag "${TAG_NAME}" \
     --platform=linux/amd64,linux/arm64 .
 done
 
 echo "Updating container build timestamp in docker-compose.yml"
-sed -i'' -E "s|BOULDER_TOOLS_TAG:-(.*)_(.*)}$|BOULDER_TOOLS_TAG:-\1_${DATESTAMP}}|" "${DIR}/docker-compose.yml"
+sed -i'' -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go\1_${DATESTAMP}}|" "${DIR}/docker-compose.yml"
