@@ -5,17 +5,10 @@ apt-get update
 # Install system deps
 apt-get install -y --no-install-recommends \
   mariadb-client-core-10.3 \
-  rpm \
-  ruby \
-  ruby-dev \
   rsyslog \
-  build-essential \
-  cmake \
-  libssl-dev \
   opensc \
   unzip \
   python3-pip \
-  gcc \
   ca-certificates \
   openssl \
   softhsm2
