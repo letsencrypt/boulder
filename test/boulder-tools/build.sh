@@ -6,11 +6,12 @@ apt-get update
 apt-get install -y --no-install-recommends \
   mariadb-client-core-10.3 \
   rsyslog \
+  build-essential \
   opensc \
   unzip \
   python3-pip \
+  gcc \
   ca-certificates \
-  openssl \
   softhsm2
 
 PROTO_ARCH=x86_64
@@ -24,7 +25,6 @@ unzip /tmp/protoc.zip -d /usr/local/protoc
 
 pip3 install -r /tmp/requirements.txt
 
-apt-get autoremove -y libssl-dev ruby-dev cmake pkg-config libtool autoconf automake
 apt-get clean -y
 
 # Tell git to trust the directory where the boulder repo volume is mounted
