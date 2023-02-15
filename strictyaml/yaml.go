@@ -10,8 +10,8 @@ import (
 )
 
 // Unmarshal takes a byte array and an interface passed by reference. The
-// decode.Decode reads the next YAML-encoded value from its input and stores it
-// in the value pointed to by yamlObj. Any config keys from the incoming YAML
+// decode.Decode will read the next YAML-encoded value from its input and store
+// it in the value pointed to by yamlObj. Any config keys from the incoming YAML
 // document which do not correspond to expected keys in the config struct will
 // result in errors.
 //
