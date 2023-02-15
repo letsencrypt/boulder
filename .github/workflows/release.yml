@@ -30,7 +30,7 @@ jobs:
         id: build
         env:
           GO_VERSION: ${{ matrix.GO_VERSION }}
-        run: ./tools/make-deb.sh
+        run: ./tools/make-assets.sh
 
       - name: Create release
         env:
@@ -43,4 +43,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # https://cli.github.com/manual/gh_release_upload
-        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb
+        run: gh release upload "${GITHUB_REF_NAME}" boulder*.deb boulder*.tar.gz
