@@ -7,6 +7,7 @@
       "keyFile": "test/grpc-creds/crl-updater.boulder/key.pem"
     },
     "saService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "sa",
         "domain": "service.consul"
@@ -15,6 +16,7 @@
       "hostOverride": "sa.boulder"
     },
     "crlGeneratorService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ca",
         "domain": "service.consul"
@@ -23,6 +25,7 @@
       "hostOverride": "ca.boulder"
     },
     "crlStorerService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "crl-storer",
         "domain": "service.consul"
