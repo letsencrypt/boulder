@@ -7,6 +7,7 @@ import (
 )
 
 var (
+	emptyConfig = []byte(``)
 	validConfig = []byte(`
 a: c
 d: c
@@ -23,7 +24,7 @@ x:
 `)
 )
 
-func TestCeremonyConfigUnmarshal(t *testing.T) {
+func TestStrictYAMLUnmarshal(t *testing.T) {
 	var config struct {
 		A string `yaml:"a"`
 		D string `yaml:"d"`
@@ -31,10 +32,15 @@ func TestCeremonyConfigUnmarshal(t *testing.T) {
 
 	err := Unmarshal(validConfig, &config)
 	test.AssertNotError(t, err, "yaml: unmarshal errors")
+	test.AssertNotError(t, err, "EOF")
 
 	err = Unmarshal(invalidConfig1, &config)
 	test.AssertError(t, err, "yaml: unmarshal errors")
 
 	err = Unmarshal(invalidConfig2, &config)
 	test.AssertError(t, err, "yaml: unmarshal errors")
+
+	// Test an empty buffer (config file)
+	err = Unmarshal(emptyConfig, &config)
+	test.AssertError(t, err, "EOF")
 }
