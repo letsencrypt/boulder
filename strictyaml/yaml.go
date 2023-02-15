@@ -9,20 +9,23 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Unmarshal takes a byte array and an arbitrary interface as arguments and
-// attempts to unmarshal the contents of the byte array into a defined struct. Any
-// config keys from the incoming YAML document which do not correspond to
-// expected keys in the config struct will result in errors.
+// Unmarshal takes a byte array and an interface passed by reference. The
+// decode.Decode reads the next YAML-encoded value from its input and stores it
+// in the value pointed to by yamlObj. Any config keys from the incoming YAML
+// document which do not correspond to expected keys in the config struct will
+// result in errors.
 //
 // TODO(https://github.com/go-yaml/yaml/issues/639): Replace this function with
-// yaml.Unmarshal once a more ergonomic way to set unmarshal options is added upstream.
+// yaml.Unmarshal once a more ergonomic way to set unmarshal options is added
+// upstream.
 func Unmarshal(b []byte, yamlObj interface{}) error {
 	decoder := yaml.NewDecoder(bytes.NewReader(b))
 	decoder.KnownFields(true)
 
+	// decoder.Decode will mutate yamlObj
 	err := decoder.Decode(yamlObj)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
-	return err
+	return nil
 }
