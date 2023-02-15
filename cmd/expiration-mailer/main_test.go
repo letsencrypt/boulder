@@ -899,7 +899,7 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 
 	fc := newFakeClock(t)
 	log := blog.NewMock()
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, fc, log, metrics.NoopRegisterer)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}

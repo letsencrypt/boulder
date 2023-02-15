@@ -55,7 +55,7 @@ func setup(t *testing.T) (*OCSPUpdater, sapb.StorageAuthorityClient, *db.Wrapped
 	fc := clock.NewFake()
 	fc.Add(1 * time.Hour)
 
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, fc, log, metrics.NoopRegisterer)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, fc, log, metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Failed to create SA")
 
 	updater, err := New(

@@ -201,7 +201,7 @@ func setup(t *testing.T) testCtx {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
 
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, clock.New(), log, metrics.NoopRegisterer)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, clock.New(), log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}
