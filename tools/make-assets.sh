@@ -38,5 +38,5 @@ export ARCHIVEDIR="${PWD}"
 # Set $VERSION to be a simulacrum of what is set in other build environments.
 export VERSION="${GO_VERSION}.$(date +%s)"
 
-# Build Boulder and produce a Debian Package at $PWD.
-make deb
+# Build Boulder and produce an RPM, a .deb, and a tar.gz file in $PWD.
+make rpm deb tar
