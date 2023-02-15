@@ -43,6 +43,7 @@
       "ttl": "5s"
     },
     "getNonceService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "nonce",
         "domain": "service.consul"
@@ -51,6 +52,7 @@
       "hostOverride": "nonce.boulder"
     },
     "redeemNonceService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookups": [
         {
           "service": "nonce1",
