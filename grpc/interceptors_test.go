@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -136,7 +135,7 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 		spent := int64(time.Since(start) / time.Nanosecond)
 		return &test_proto.Time{Time: spent}, nil
 	case <-ctx.Done():
-		return nil, status.Errorf(codes.DeadlineExceeded, "the chiller overslept")
+		return nil, errors.New("unique error indicating that the server's shortened context timed itself out")
 	}
 }
 
@@ -182,7 +181,7 @@ func TestTimeouts(t *testing.T) {
 		timeout             time.Duration
 		expectedErrorPrefix string
 	}{
-		{250 * time.Millisecond, "rpc error: code = Unknown desc = rpc error: code = DeadlineExceeded desc = the chiller overslept"},
+		{250 * time.Millisecond, "rpc error: code = Unknown desc = unique error indicating that the server's shortened context timed itself out"},
 		{100 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
 		{10 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
 	}

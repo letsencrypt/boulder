@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/identifier"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ErrorType provides a coarse category for BoulderErrors.
@@ -76,6 +78,54 @@ func (be *BoulderError) Error() string {
 
 func (be *BoulderError) Unwrap() error {
 	return be.Type
+}
+
+// GRPCStatus implements the interface implicitly defined by gRPC's
+// status.FromError, which uses this function to detect if the error produced
+// by the gRPC server implementation code is a gRPC status.Status. Implementing
+// this means that BoulderErrors serialized in gRPC response metadata can be
+// accompanied by a gRPC status other than "UNKNOWN".
+func (be *BoulderError) GRPCStatus() *status.Status {
+	var c codes.Code
+	switch be.Type {
+	case InternalServer:
+		c = codes.Internal
+	case Malformed:
+		c = codes.InvalidArgument
+	case Unauthorized:
+		c = codes.PermissionDenied
+	case NotFound:
+		c = codes.NotFound
+	case RateLimit:
+		c = codes.ResourceExhausted
+	case RejectedIdentifier:
+		c = codes.InvalidArgument
+	case InvalidEmail:
+		c = codes.InvalidArgument
+	case ConnectionFailure:
+		c = codes.Unavailable
+	case CAA:
+		c = codes.FailedPrecondition
+	case MissingSCTs:
+		c = codes.Internal
+	case Duplicate:
+		c = codes.AlreadyExists
+	case OrderNotReady:
+		c = codes.FailedPrecondition
+	case DNS:
+		c = codes.Unknown
+	case BadPublicKey:
+		c = codes.InvalidArgument
+	case BadCSR:
+		c = codes.InvalidArgument
+	case AlreadyRevoked:
+		c = codes.AlreadyExists
+	case BadRevocationReason:
+		c = codes.InvalidArgument
+	default:
+		c = codes.Unknown
+	}
+	return status.New(c, be.Error())
 }
 
 // WithSubErrors returns a new BoulderError instance created by adding the
