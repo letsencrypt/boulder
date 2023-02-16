@@ -90,7 +90,6 @@
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "features": {
-      "MandatoryPOSTAsGET": true,
       "ServeRenewalInfo": true
     }
   },

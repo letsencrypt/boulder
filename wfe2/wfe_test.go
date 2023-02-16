@@ -1756,13 +1756,8 @@ type mockSAWithCert struct {
 	status core.OCSPStatus
 }
 
-func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityReadOnlyClient, zeroNotBefore bool) *mockSAWithCert {
+func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityReadOnlyClient) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
-	if zeroNotBefore {
-		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the
-		// Issued timestamp of this certificate to be very old (the year 0).
-		cert.NotBefore = time.Time{}
-	}
 	test.AssertNotError(t, err, "Failed to load test cert")
 	return &mockSAWithCert{sa, cert, core.OCSPStatusGood}
 }
@@ -1831,7 +1826,7 @@ func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Se
 
 func TestGetCertificate(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -2180,7 +2175,7 @@ func TestGetCertificateNew(t *testing.T) {
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	certPemBytes, _ := os.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -2949,7 +2944,7 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 // issuing account key.
 func TestRevokeCertificateByApplicantValid(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -2973,7 +2968,7 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 // certificate private key.
 func TestRevokeCertificateByKeyValid(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -3002,7 +2997,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -3037,7 +3032,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3062,7 +3057,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 	ra := wfe.ra.(*MockRegistrationAuthority)
 
 	reason0 := revocation.Reason(ocsp.Unspecified)
@@ -3128,7 +3123,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // A revocation request signed by an incorrect certificate private key.
 func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-e1.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3309,66 +3304,6 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	})
 }
 
-// TestMandatoryPOSTAsGET tests that the MandatoryPOSTAsGET feature flag
-// correctly causes unauthenticated GET requests to ACME resources to be
-// forbidden.
-func TestMandatoryPOSTAsGET(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-
-	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
-	defer features.Reset()
-
-	// CheckProblem matches a HTTP response body to a Method Not Allowed problem.
-	checkProblem := func(actual []byte) {
-		var prob probs.ProblemDetails
-		err := json.Unmarshal(actual, &prob)
-		test.AssertNotError(t, err, "error unmarshaling HTTP response body as problem")
-		test.AssertEquals(t, string(prob.Type), "urn:ietf:params:acme:error:malformed")
-		test.AssertEquals(t, prob.Detail, "Method not allowed")
-		test.AssertEquals(t, prob.HTTPStatus, http.StatusMethodNotAllowed)
-	}
-
-	testCases := []struct {
-		name    string
-		path    string
-		handler web.WFEHandlerFunc
-	}{
-		{
-			// GET requests to a mocked order path should return an error
-			name:    "GET Order",
-			path:    "1/1",
-			handler: wfe.GetOrder,
-		},
-		{
-			// GET requests to a mocked authorization path should return an error
-			name:    "GET Authz",
-			path:    "1",
-			handler: wfe.Authorization,
-		},
-		{
-			// GET requests to a mocked challenge path should return an error
-			name:    "GET Chall",
-			path:    "1/-ZfxEw",
-			handler: wfe.Challenge,
-		},
-		{
-			// GET requests to a mocked certificate serial path should return an error
-			name:    "GET Cert",
-			path:    "acme/cert/0000000000000000000000000000000000b2",
-			handler: wfe.Certificate,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			responseWriter := httptest.NewRecorder()
-			req := &http.Request{URL: &url.URL{Path: tc.path}, Method: "GET"}
-			tc.handler(ctx, newRequestEvent(), responseWriter, req)
-			checkProblem(responseWriter.Body.Bytes())
-		})
-	}
-}
-
 func TestGetChallengeUpRel(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
@@ -3504,34 +3439,11 @@ func TestIndexGet404(t *testing.T) {
 	test.AssertEquals(t, logEvent.Slug, path[1:])
 }
 
-// TestGetAPIAndMandatoryPOSTAsGet that, even when MandatoryPOSTAsGet is on,
-// we are still willing to allow a GET request for a certificate that is old
-// enough that we're no longer worried about stale info being cached.
-func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, true)
-
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
-	}
-	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
-	defer features.Reset()
-
-	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
-	test.AssertNotError(t, err, "failed to load test certificate")
-
-	req, event := makeGet(core.SerialToString(cert.SerialNumber), getCertPath)
-	resp := httptest.NewRecorder()
-	wfe.Certificate(context.Background(), event, resp, req)
-	test.AssertEquals(t, resp.Code, 200)
-}
-
 // TestARI tests that requests for real certs result in renewal info, while
 // requests for certs that don't exist result in errors.
 func TestARI(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
-	msa := newMockSAWithCert(t, wfe.sa, false)
+	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
