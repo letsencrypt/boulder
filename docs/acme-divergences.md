@@ -7,9 +7,8 @@ Presently, Boulder diverges from the RFC 8555 ACME spec in the following ways:
 
 ## [Section 6.3](https://tools.ietf.org/html/rfc8555#section-6.3)
 
-Boulder supports POST-as-GET but does not mandate it by default for requests
+Boulder supports POST-as-GET but does not mandate it for requests
 that simply fetch a resource (certificate, order, authorization, or challenge).
-Neither the Let's Encrypt's Staging nor Production environment mandate POST-as-GET.
 
 ## [Section 6.6](https://tools.ietf.org/html/rfc8555#section-6.6)
 
