@@ -2,7 +2,6 @@
 
 set -feuxo pipefail
 
-DIR=$(pwd)
 cd $(dirname $0)
 
 DATESTAMP=$(date +%Y-%m-%d)
@@ -32,5 +31,5 @@ done
 
 # This needs to work with both GNU sed and BSD sed
 echo "Updating container build timestamp in docker-compose.yml"
-sed -i.bak -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go\1_${DATESTAMP}}|" "${DIR}/docker-compose.yml"
-rm -f ${DIR}/docker-compose.yml.bak
+sed -i.bak -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go\1_${DATESTAMP}}|" ../../docker-compose.yml
+rm -f ../../docker-compose.yml.bak
