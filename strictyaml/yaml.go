@@ -28,24 +28,18 @@ func Unmarshal(b []byte, yamlObj interface{}) error {
 	// d.Decode will mutate yamlObj
 	err := d.Decode(yamlObj)
 
-	// As bytes are read, the length of the byte buffer should decrease. If it
-	// doesn't, there's a problem.
+	if err != nil {
+		// io.EOF is returned when the YAML document is empty.
+		if errors.Is(err, io.EOF) {
+			return fmt.Errorf("unmarshalling YAML, bytes cannot be nil: %w", err)
+		}
+		return fmt.Errorf("unmarshalling YAML: %w", err)
+	}
+
+	// As bytes are read by the decoder, the length of the byte buffer should
+	// decrease. If it doesn't, there's a problem.
 	if r.Len() != 0 {
 		return fmt.Errorf("yaml object of size %d bytes had %d bytes of unexpected unconsumed trailers", r.Size(), r.Len())
-	}
-
-	// Show potential error other than EOF which we'll handle later.
-	if err != nil && !errors.Is(err, io.EOF) {
-		return err
-	}
-
-	// When Decode() attempts to parse an empty buffer (config file), an io.EOF is ultimately returned.
-	// 1) Parsing until the end of file returns a nil:
-	//    https://github.com/go-yaml/yaml/blob/f6f7691b1fdeb513f56608cd2c32c51f8194bf51/decode.go#L160-L162
-	// 2) The Decode() checks for that nil and returns the io.EOF
-	//    https://github.com/go-yaml/yaml/blob/f6f7691b1fdeb513f56608cd2c32c51f8194bf51/yaml.go#L123-L126
-	if errors.Is(err, io.EOF) {
-		return fmt.Errorf("yaml object is empty: %s", err)
 	}
 
 	return nil

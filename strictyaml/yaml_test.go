@@ -1,6 +1,7 @@
 package strictyaml
 
 import (
+	"io"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -42,5 +43,5 @@ func TestStrictYAMLUnmarshal(t *testing.T) {
 
 	// Test an empty buffer (config file)
 	err = Unmarshal(emptyConfig, &config)
-	test.AssertError(t, err, "EOF")
+	test.AssertErrorIs(t, err, io.EOF)
 }
