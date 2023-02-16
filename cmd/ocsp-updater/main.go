@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 
@@ -14,20 +15,21 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/validator/v10"
 )
 
 type Config struct {
 	OCSPUpdater struct {
 		cmd.ServiceConfig
-		DB         cmd.DBConfig
-		ReadOnlyDB cmd.DBConfig
+		DB         cmd.DBConfig `validate:"required"`
+		ReadOnlyDB cmd.DBConfig `validate:"required"`
 
 		// Issuers is a map from filenames to short issuer IDs.
 		// Each filename must contain an issuer certificate. The short issuer
 		// IDs are arbitrarily assigned and must be consistent across OCSP
 		// components. For production we'll use the number part of the CN, i.e.
 		// E1 -> 1, R3 -> 3, etc.
-		Issuers map[string]int
+		Issuers map[string]int `validate:"required,dive,keys,required,endkeys,required"`
 
 		// OldOCSPWindow controls how frequently ocsp-updater signs a batch
 		// of responses.
@@ -58,7 +60,7 @@ type Config struct {
 		OCSPGeneratorService *cmd.GRPCClientConfig
 
 		Features map[string]bool
-	}
+	} `validate:"required"`
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
@@ -75,6 +77,16 @@ func main() {
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
+
+	validate := validator.New()
+	err = validate.Struct(c)
+	if err != nil {
+		validationErrors := err.(validator.ValidationErrors)
+		if len(validationErrors) > 0 {
+			fmt.Println(validationErrors)
+			cmd.FailOnError(validationErrors[0], "Failed to validate config")
+		}
+	}
 
 	conf := c.OCSPUpdater
 	err = features.Set(conf.Features)

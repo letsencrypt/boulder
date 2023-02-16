@@ -41,6 +41,11 @@ require (
 )
 
 require (
+	github.com/go-playground/locales v0.14.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+)
+
+require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.10 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.9 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.21 // indirect
@@ -66,6 +71,7 @@ require (
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/honeycombio/libhoney-go v1.16.0 // indirect
 	github.com/klauspost/compress v1.15.7 // indirect
+	github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/pelletier/go-toml v1.9.3 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
