@@ -12,7 +12,7 @@ DOCKER_REPO="letsencrypt/boulder-tools"
 # .github/workflows/release.yml,
 # .github/workflows/try-release.yml if appropriate,
 # and .github/workflows/boulder-ci.yml with the new container tag.
-GO_CI_VERSIONS=( "1.19.5" "1.19.6" "1.20.1" )
+GO_CI_VERSIONS=( "1.20.1" )
 # These versions are built for both platforms that boulder devs use.
 # When updating GO_DEV_VERSIONS, please also update
 # ../../docker-compose.yml's default Go version.
