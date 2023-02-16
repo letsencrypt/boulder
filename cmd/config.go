@@ -402,7 +402,7 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 
 	} else if c.SRVLookups != nil {
 		if c.DNSAuthority == "" {
-			return "", "", errors.New("field 'dnsAuthority' is required in gRPC client config with SRVLookup")
+			return "", "", errors.New("field 'dnsAuthority' is required in gRPC client config with SRVLookups")
 		}
 		scheme, err := c.makeSRVScheme()
 		if err != nil {
