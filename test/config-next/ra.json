@@ -24,6 +24,7 @@
       "keyFile": "test/grpc-creds/ra.boulder/key.pem"
     },
     "vaService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "va",
         "domain": "service.consul"
@@ -32,6 +33,7 @@
       "hostOverride": "va.boulder"
     },
     "caService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ca",
         "domain": "service.consul"
@@ -40,6 +42,7 @@
       "hostOverride": "ca.boulder"
     },
     "ocspService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ca",
         "domain": "service.consul"
@@ -48,6 +51,7 @@
       "hostOverride": "ca.boulder"
     },
     "publisherService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "publisher",
         "domain": "service.consul"
@@ -56,6 +60,7 @@
       "hostOverride": "publisher.boulder"
     },
     "saService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "sa",
         "domain": "service.consul"
@@ -64,6 +69,7 @@
       "hostOverride": "sa.boulder"
     },
     "akamaiPurgerService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "akamai-purger",
         "domain": "service.consul"

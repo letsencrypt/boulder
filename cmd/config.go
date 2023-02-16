@@ -257,9 +257,9 @@ type ServiceDomain struct {
 // connection. The following field combinations are allowed:
 //
 // ServerIPAddresses, [Timeout]
-// ServerAddress, [Timeout], [DNSAuthority], [HostOverride]
-// SRVLookup, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
-// SRVLookups, [Timeout], [DNSAuthority], [HostOverride], [SRVResolver]
+// ServerAddress, DNSAuthority, [Timeout], [HostOverride]
+// SRVLookup, DNSAuthority, [Timeout], [HostOverride], [SRVResolver]
+// SRVLookups, DNSAuthority, [Timeout], [HostOverride], [SRVResolver]
 type GRPCClientConfig struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
 	// to be used for resolution of gRPC backends. If the address contains a
@@ -379,6 +379,9 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("dns://%s/%s", c.DNSAuthority, c.ServerAddress), hostOverride, nil
 
 	} else if c.SRVLookup != nil {
+		if c.DNSAuthority == "" {
+			return "", "", errors.New("field 'dnsAuthority' is required in gRPC client config with SRVLookup")
+		}
 		scheme, err := c.makeSRVScheme()
 		if err != nil {
 			return "", "", err
@@ -398,6 +401,9 @@ func (c *GRPCClientConfig) MakeTargetAndHostOverride() (string, string, error) {
 		return fmt.Sprintf("%s://%s/%s", scheme, c.DNSAuthority, targetHost), hostOverride, nil
 
 	} else if c.SRVLookups != nil {
+		if c.DNSAuthority == "" {
+			return "", "", errors.New("field 'dnsAuthority' is required in gRPC client config with SRVLookups")
+		}
 		scheme, err := c.makeSRVScheme()
 		if err != nil {
 			return "", "", err

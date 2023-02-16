@@ -21,6 +21,7 @@
       "keyFile": "test/grpc-creds/expiration-mailer.boulder/key.pem"
     },
     "saService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "sa",
         "domain": "service.consul"

@@ -8,10 +8,6 @@ services:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: &boulder_config_dir test/config
       GOFLAGS: -mod=vendor
-      # Go 1.18 turned off SHA-1 validation on CSRs (and certs, but that doesn't
-      # affect us) by default, but it can be turned back on with the x509sha1
-      # flag. This override will stop working in an unknown future release.
-      GODEBUG: x509sha1=1
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
@@ -26,14 +22,14 @@ services:
         ipv4_address: 10.33.33.33
       consulnet:
         ipv4_address: 10.55.55.55
-    extra_hosts:
-      # This is used by TestOldTLS in va/http_test.go
-      # TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
-      - "example.com:127.0.0.1"
-    # Use consul as a backup to Docker's embedded DNS server If there's a name
+    # Use consul as a backup to Docker's embedded DNS server. If there's a name
     # Docker's DNS server doesn't know about, it will forward the query to this
     # IP (running consul).
     # (https://docs.docker.com/config/containers/container-networking/#dns-services).
+    # This is used to look up service names via A records (like ra.service.consul) that
+    # are configured via the ServerAddress field of cmd.GRPCClientConfig.
+    # TODO: Remove this when ServerAddress is deprecated in favor of SRV records
+    # and DNSAuthority.
     dns: 10.55.55.10
     ports:
       - 4001:4001 # ACMEv2

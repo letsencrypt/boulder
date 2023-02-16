@@ -26,18 +26,12 @@
       "keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
     },
     "raService": {
-      "srvLookup": {
-        "service": "ra",
-        "domain": "service.consul"
-      },
+      "serverAddress": "ra.service.consul:9094",
       "hostOverride": "ra.boulder",
       "timeout": "15s"
     },
     "saService": {
-      "srvLookup": {
-        "service": "sa",
-        "domain": "service.consul"
-      },
+      "serverAddress": "sa.service.consul:9095",
       "timeout": "15s",
       "hostOverride": "sa.boulder"
     },

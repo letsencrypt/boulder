@@ -21,6 +21,7 @@
       "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
     },
     "raService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ra",
         "domain": "service.consul"
@@ -29,6 +30,7 @@
       "hostOverride": "ra.boulder"
     },
     "saService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "sa",
         "domain": "service.consul"
@@ -41,6 +43,7 @@
       "ttl": "5s"
     },
     "getNonceService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "nonce",
         "domain": "service.consul"
@@ -49,6 +52,7 @@
       "hostOverride": "nonce.boulder"
     },
     "redeemNonceService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookups": [
         {
           "service": "nonce1",
