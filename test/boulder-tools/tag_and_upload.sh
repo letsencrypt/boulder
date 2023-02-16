@@ -46,5 +46,7 @@ do
   build_and_push_image $GO_VERSION linux/amd64,linux/arm64
 done
 
-# TODO(@cpu): Figure out a `sed` for updating the date in `docker-compose.yml`'s
-# `image` lines with $DATESTAMP
+# This needs to work with both GNU sed and BSD sed
+echo "Updating container build timestamp in docker-compose.yml"
+sed -i.bak -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go\1_${DATESTAMP}}|" ../../docker-compose.yml
+rm -f ../../docker-compose.yml.bak
