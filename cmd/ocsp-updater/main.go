@@ -8,6 +8,8 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 
+	english "github.com/go-playground/locales/en"
+	ut "github.com/go-playground/universal-translator"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -16,6 +18,7 @@ import (
 	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/validator/v10"
+	translations "github.com/letsencrypt/validator/v10/translations/en"
 )
 
 type Config struct {
@@ -29,41 +32,51 @@ type Config struct {
 		// IDs are arbitrarily assigned and must be consistent across OCSP
 		// components. For production we'll use the number part of the CN, i.e.
 		// E1 -> 1, R3 -> 3, etc.
-		Issuers map[string]int `validate:"required,dive,keys,required,endkeys,required"`
+		Issuers map[string]int `validate:"isdefault"`
 
 		// OldOCSPWindow controls how frequently ocsp-updater signs a batch
 		// of responses.
-		OldOCSPWindow cmd.ConfigDuration
+		OldOCSPWindow cmd.ConfigDuration `validate:"required"`
 		// OldOCSPBatchSize controls the maximum number of responses
 		// ocsp-updater will sign every OldOCSPWindow.
-		OldOCSPBatchSize int
+		OldOCSPBatchSize int `validate:"required"`
 
 		// The worst-case freshness of a response during normal operations.
 		// This is related to to ExpectedFreshness in ocsp-responder's config,
 		// and both are related to the mandated refresh times in the BRs and
 		// root programs (minus a safety margin).
-		OCSPMinTimeToExpiry cmd.ConfigDuration
+		OCSPMinTimeToExpiry cmd.ConfigDuration `validate:"required"`
 
 		// ParallelGenerateOCSPRequests determines how many requests to the CA
 		// may be inflight at once.
-		ParallelGenerateOCSPRequests int
+		ParallelGenerateOCSPRequests int `validate:"required"`
 
 		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
-		SignFailureBackoffFactor float64
-		SignFailureBackoffMax    cmd.ConfigDuration
+		SignFailureBackoffFactor float64            `validate:"required"`
+		SignFailureBackoffMax    cmd.ConfigDuration `validate:"required"`
 
 		// SerialSuffixShards is a whitespace-separated list of single hex
 		// digits. When searching for work to do, ocsp-updater will query
 		// for only those certificates end in one of the specified hex digits.
-		SerialSuffixShards string
+		SerialSuffixShards string `validate:"suffixshards"`
 
-		OCSPGeneratorService *cmd.GRPCClientConfig
+		OCSPGeneratorService *cmd.GRPCClientConfig `validate:"required"`
 
 		Features map[string]bool
 	} `validate:"required"`
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
+}
+
+// SuffixShardsVal implements validator.Func to validate the SerialSuffixShards
+// field of the Config struct.
+func SuffixShardsVal(fl validator.FieldLevel) bool {
+	err := ocsp_updater.SerialSuffixShardsValid(strings.Fields(fl.Field().String()))
+	if err != nil {
+		return false
+	}
+	return true
 }
 
 func main() {
@@ -78,13 +91,26 @@ func main() {
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 
+	eng := english.New()
+	uni := ut.New(eng, eng)
+	trans, ok := uni.GetTranslator("en")
+	if !ok {
+		cmd.Fail("Failed to get translator")
+	}
 	validate := validator.New()
+	translations.RegisterDefaultTranslations(validate, trans)
+	cmd.FailOnError(err, "Failed to register default translations")
+
+	validate.RegisterValidation("suffixshards", SuffixShardsVal)
 	err = validate.Struct(c)
 	if err != nil {
-		validationErrors := err.(validator.ValidationErrors)
-		if len(validationErrors) > 0 {
-			fmt.Println(validationErrors)
-			cmd.FailOnError(validationErrors[0], "Failed to validate config")
+		errs := err.(validator.ValidationErrors)
+		if len(errs) > 0 {
+			transErrs := errs.Translate(trans)
+			for e := range transErrs {
+				fmt.Println(transErrs[e])
+			}
+			os.Exit(1)
 		}
 	}
 

@@ -51,14 +51,14 @@ type ServiceConfig struct {
 // which we want to keep out of configs.
 type DBConfig struct {
 	// A file containing a connect URL for the DB.
-	DBConnectFile string
+	DBConnectFile string `validate:"required"`
 
 	// MaxOpenConns sets the maximum number of open connections to the
 	// database. If MaxIdleConns is greater than 0 and MaxOpenConns is
 	// less than MaxIdleConns, then MaxIdleConns will be reduced to
 	// match the new MaxOpenConns limit. If n < 0, then there is no
 	// limit on the number of open connections.
-	MaxOpenConns int
+	MaxOpenConns int `validate:"required"`
 
 	// MaxIdleConns sets the maximum number of connections in the idle
 	// connection pool. If MaxOpenConns is greater than 0 but less than
@@ -249,8 +249,8 @@ func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // ServiceDomain contains the service and domain name the gRPC client will use
 // to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
-	Service string
-	Domain  string
+	Service string `validate:"required"`
+	Domain  string `validate:"required"`
 }
 
 // GRPCClientConfig contains the information necessary to setup a gRPC client
@@ -266,7 +266,7 @@ type GRPCClientConfig struct {
 	// hostname the gRPC client will resolve it via the system DNS. If the
 	// address contains a port, the client will use it directly, otherwise port
 	// 53 is used.
-	DNSAuthority string
+	DNSAuthority string `validate:"required_with=SRVLookup SRVLookups,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name the gRPC client will use
 	// to construct a SRV DNS query to lookup backends. For example: if the
@@ -299,7 +299,7 @@ type GRPCClientConfig struct {
 	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
 	// 1 1 8080 0a585858.addr.dc1.consul.
 	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
-	SRVLookup *ServiceDomain
+	SRVLookup *ServiceDomain `validate:"required_without=SRVLookups ServerAddress ServerIPAddresses"`
 
 	// SRVLookups allows you to pass multiple SRV records to the gRPC client.
 	// The gRPC client will resolves each SRV record and use the results to
@@ -307,13 +307,13 @@ type GRPCClientConfig struct {
 	// documentation for the SRVLookup field. Note: while you can pass multiple
 	// targets to the gRPC client using this field, all of the targets will use
 	// the same HostOverride and TLS configuration.
-	SRVLookups []*ServiceDomain
+	SRVLookups []*ServiceDomain `validate:"required_without_all=SRVLookup ServerAddress ServerIPAddresses"`
 
 	// SRVResolver is an optional override to indicate that a specific
 	// implementation of the SRV resolver should be used. The default is 'srv'
 	// For more details, see the documentation in:
 	// grpc/internal/resolver/dns/dns_resolver.go.
-	SRVResolver string
+	SRVResolver string `validate:"excluded_with=ServerAddress ServerIPAddresses,isdefault|oneof=srv nonce-srv"`
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
@@ -339,18 +339,18 @@ type GRPCClientConfig struct {
 	// $ dig A @10.55.55.10 foo.service.consul +short
 	// 10.77.77.77
 	// 10.88.88.88
-	ServerAddress string
+	ServerAddress string `validate:"required_without_all=ServerIPAddresses SRVLookup SRVLookups,omitempty,hostname_port"`
 
 	// ServerIPAddresses is a comma separated list of IP addresses, in the
 	// format `<IPv4|[IPv6]>:<port>` or `:<port>`, that the gRPC client will
 	// connect to. If the addresses provided are ["10.77.77.77", "10.88.88.88"]
 	// then the iPAddress' to be authenticated in the server certificate would
 	// be '10.77.77.77' and '10.88.88.88'.
-	ServerIPAddresses []string
+	ServerIPAddresses []string `validate:"required_without_all=ServerAddress SRVLookup SRVLookups,omitempty,dive,hostname_port"`
 
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
-	HostOverride string
+	HostOverride string `validate:"excluded_with=ServerIPAddresses"`
 	Timeout      ConfigDuration
 }
 

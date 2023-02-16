@@ -145,6 +145,7 @@ github.com/go-gorp/gorp/v3
 ## explicit; go 1.17
 github.com/go-playground/locales
 github.com/go-playground/locales/currency
+github.com/go-playground/locales/en
 # github.com/go-playground/universal-translator v0.18.1
 ## explicit; go 1.18
 github.com/go-playground/universal-translator
@@ -232,6 +233,7 @@ github.com/letsencrypt/pkcs11key/v4
 # github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
 ## explicit; go 1.18
 github.com/letsencrypt/validator/v10
+github.com/letsencrypt/validator/v10/translations/en
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 ## explicit
 github.com/matttproud/golang_protobuf_extensions/pbutil
