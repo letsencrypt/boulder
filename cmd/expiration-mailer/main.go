@@ -44,16 +44,70 @@ type regStore interface {
 	GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error)
 }
 
+// limiter tracks how many mails we've sent to a given address in a given day.
+type limiter struct {
+	sync.RWMutex
+	// currentDay is a day in UTC, truncated to 24 hours. When the current
+	// time is more than 24 hours past this date, all counts reset and this
+	// date is updated.
+	currentDay time.Time
+
+	// counts is a map from address to number of mails we have attempted to
+	// send during `currentDay`.
+	counts map[string]int
+
+	// limit is the number of sends after which we'll return an error from
+	// check()
+	limit int
+
+	clk clock.Clock
+}
+
+// inc increments the count for the current day, and cleans up previous days
+// if needed.
+func (lim *limiter) inc(address string) {
+	lim.Lock()
+	defer lim.Unlock()
+
+	today := lim.clk.Now().UTC().Truncate(24 * time.Hour)
+	if today.Sub(lim.currentDay) < 24*time.Hour {
+		lim.counts[address] += 1
+		return
+	}
+
+	// Throw away counts so far and switch to a new day.
+	// This also does the initialization of counts and currentDay the first
+	// time inc() is called.
+	lim.counts = make(map[string]int)
+	lim.counts[address] = 1
+	lim.currentDay = today
+}
+
+// check checks whether the count for the given address is at the limit,
+// and returns an error if so.
+func (lim *limiter) get(address string) error {
+	lim.RLock()
+	defer lim.Unlock()
+
+	if lim.counts[address] >= lim.limit {
+		return fmt.Errorf("daily mail limit exceeded for %q", address)
+	}
+	return nil
+}
+
 type mailer struct {
-	log             blog.Logger
-	dbMap           *db.WrappedMap
-	rs              regStore
-	mailer          bmail.Mailer
-	emailTemplate   *template.Template
-	subjectTemplate *template.Template
-	nagTimes        []time.Duration
-	parallelSends   uint
-	limit           int
+	log                 blog.Logger
+	dbMap               *db.WrappedMap
+	rs                  regStore
+	mailer              bmail.Mailer
+	emailTemplate       *template.Template
+	subjectTemplate     *template.Template
+	nagTimes            []time.Duration
+	parallelSends       uint
+	certificatesPerTick int
+	// addressLimiter limits how many mails we'll send to a single address in
+	// a single day.
+	addressLimiter *limiter
 	// Maximum number of rows to update in a single SQL UPDATE statement.
 	updateChunkSize int
 	clk             clock.Clock
@@ -416,17 +470,17 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 
 		m.stats.certificatesExamined.Add(float64(len(certs)))
 
-		// If the number of rows was exactly `m.limit` rows we need to increment
-		// a stat indicating that this nag group is at capacity based on the
-		// configured cert limit. If this condition continually occurs across mailer
-		// runs then we will not catch up, resulting in under-sending expiration
-		// mails. The effects of this were initially described in issue #2002[0].
+		// If the number of rows was exactly `m.certificatesPerTick` rows we need to increment
+		// a stat indicating that this nag group is at capacity. If this condition
+		// continually occurs across mailer runs then we will not catch up,
+		// resulting in under-sending expiration mails. The effects of this
+		// were initially described in issue #2002[0].
 		//
 		// 0: https://github.com/letsencrypt/boulder/issues/2002
 		atCapacity := float64(0)
-		if len(certs) == m.limit {
+		if len(certs) == m.certificatesPerTick {
 			m.log.Infof("nag group %s expiring certificates at configured capacity (select limit %d)",
-				expiresIn.String(), m.limit)
+				expiresIn.String(), m.certificatesPerTick)
 			atCapacity = float64(1)
 		}
 		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
@@ -469,12 +523,12 @@ func (m *mailer) getCertsWithJoin(ctx context.Context, left, right time.Time, ex
 				AND cs.status != "revoked"
 				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
 				ORDER BY cs.notAfter ASC
-				LIMIT :limit`,
+				LIMIT :certificatesPerTick`,
 		map[string]interface{}{
-			"cutoffA":   left,
-			"cutoffB":   right,
-			"nagCutoff": expiresIn.Seconds(),
-			"limit":     m.limit,
+			"cutoffA":             left,
+			"cutoffB":             right,
+			"nagCutoff":           expiresIn.Seconds(),
+			"certificatesPerTick": m.certificatesPerTick,
 		},
 	)
 	if err != nil {
@@ -503,10 +557,10 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 				ORDER BY cs.notAfter ASC
 				LIMIT :limit`,
 		map[string]interface{}{
-			"cutoffA":   left,
-			"cutoffB":   right,
-			"nagCutoff": expiresIn.Seconds(),
-			"limit":     m.limit,
+			"cutoffA":             left,
+			"cutoffB":             right,
+			"nagCutoff":           expiresIn.Seconds(),
+			"certificatesPerTick": m.certificatesPerTick,
 		},
 	)
 	if err != nil {
@@ -583,6 +637,10 @@ type Config struct {
 		// CertLimit is the maximum number of certificates to investigate in a
 		// single batch.
 		CertLimit int
+
+		// MailsPerAddressPerDay is the maximum number of emails we'll send to
+		// a single address in a single day. Defaults to 0 (unlimited).
+		MailsPerAddressPerDay int
 
 		// UpdateChunkSize is the maximum number of rows to update in a single
 		// SQL UPDATE statement.
@@ -738,6 +796,10 @@ func main() {
 		c.Mailer.CertLimit = 100
 	}
 
+	if c.Mailer.MailsPerAddressPerDay == 0 {
+		c.Mailer.MailsPerAddressPerDay = math.MaxInt
+	}
+
 	dbMap, err := sa.InitWrappedDb(c.Mailer.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
@@ -813,18 +875,19 @@ func main() {
 	}
 
 	m := mailer{
-		log:             logger,
-		dbMap:           dbMap,
-		rs:              sac,
-		mailer:          mailClient,
-		subjectTemplate: subjTmpl,
-		emailTemplate:   tmpl,
-		nagTimes:        nags,
-		limit:           c.Mailer.CertLimit,
-		updateChunkSize: c.Mailer.UpdateChunkSize,
-		parallelSends:   c.Mailer.ParallelSends,
-		clk:             clk,
-		stats:           initStats(scope),
+		log:                 logger,
+		dbMap:               dbMap,
+		rs:                  sac,
+		mailer:              mailClient,
+		subjectTemplate:     subjTmpl,
+		emailTemplate:       tmpl,
+		nagTimes:            nags,
+		certificatesPerTick: c.Mailer.CertLimit,
+		addressLimiter:      &limiter{clk: cmd.Clock(), limit: c.Mailer.MailsPerAddressPerDay},
+		updateChunkSize:     c.Mailer.UpdateChunkSize,
+		parallelSends:       c.Mailer.ParallelSends,
+		clk:                 clk,
+		stats:               initStats(scope),
 	}
 
 	// Prefill this labelled stat with the possible label values, so each value is
