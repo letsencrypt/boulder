@@ -568,7 +568,7 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 				AND cs.status != "revoked"
 				AND COALESCE(TIMESTAMPDIFF(SECOND, cs.lastExpirationNagSent, cs.notAfter) > :nagCutoff, 1)
 				ORDER BY cs.notAfter ASC
-				LIMIT :limit`,
+				LIMIT :certificatesPerTick`,
 		map[string]interface{}{
 			"cutoffA":             left,
 			"cutoffB":             right,
