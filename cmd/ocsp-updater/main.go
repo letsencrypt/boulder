@@ -2,14 +2,11 @@ package notmain
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/honeycombio/beeline-go"
 
-	english "github.com/go-playground/locales/en"
-	ut "github.com/go-playground/universal-translator"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -18,8 +15,9 @@ import (
 	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/validator/v10"
-	translations "github.com/letsencrypt/validator/v10/translations/en"
 )
+
+const cmdName = "ocsp-updater"
 
 type Config struct {
 	OCSPUpdater struct {
@@ -69,50 +67,23 @@ type Config struct {
 	Beeline cmd.BeelineConfig
 }
 
-// SuffixShardsVal implements validator.Func to validate the SerialSuffixShards
-// field of the Config struct.
-func SuffixShardsVal(fl validator.FieldLevel) bool {
-	err := ocsp_updater.SerialSuffixShardsValid(strings.Fields(fl.Field().String()))
-	if err != nil {
-		return false
-	}
-	return true
-}
-
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
 
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+	}
+
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
-
-	eng := english.New()
-	uni := ut.New(eng, eng)
-	trans, ok := uni.GetTranslator("en")
-	if !ok {
-		cmd.Fail("Failed to get translator")
-	}
-	validate := validator.New()
-	translations.RegisterDefaultTranslations(validate, trans)
-	cmd.FailOnError(err, "Failed to register default translations")
-
-	validate.RegisterValidation("suffixshards", SuffixShardsVal)
-	err = validate.Struct(c)
-	if err != nil {
-		errs := err.(validator.ValidationErrors)
-		if len(errs) > 0 {
-			transErrs := errs.Translate(trans)
-			for e := range transErrs {
-				fmt.Println(transErrs[e])
-			}
-			os.Exit(1)
-		}
-	}
 
 	conf := c.OCSPUpdater
 	err = features.Set(conf.Features)
@@ -176,6 +147,19 @@ func main() {
 	}
 }
 
+// SuffixShardsVal implements validator.Func to validate the SerialSuffixShards
+// field of the Config struct.
+func SuffixShardsVal(fl validator.FieldLevel) bool {
+	err := ocsp_updater.SerialSuffixShardsValid(strings.Fields(fl.Field().String()))
+	return (err == nil)
+}
+
 func init() {
-	cmd.RegisterCommand("ocsp-updater", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{
+		Config: &Config{},
+		Validators: map[string]validator.Func{
+			"suffixshards": SuffixShardsVal,
+		},
+	})
 }

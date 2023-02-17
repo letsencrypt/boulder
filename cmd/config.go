@@ -190,10 +190,10 @@ type SyslogConfig struct {
 	// When absent or zero, this causes no logs to be emitted on stdout/stderr.
 	// Errors and warnings will be emitted on stderr if the configured level
 	// allows.
-	StdoutLevel int
+	StdoutLevel int `validate:"min=-1,max=7"`
 	// When absent or zero, this defaults to logging all messages of level 6
 	// or below. To disable syslog logging entirely, set this to -1.
-	SyslogLevel int
+	SyslogLevel int `validate:"min=-1,max=7"`
 }
 
 // ConfigDuration is just an alias for time.Duration that allows

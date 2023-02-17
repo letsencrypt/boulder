@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"expvar"
 	"fmt"
+	"io"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -18,16 +19,18 @@ import (
 	"syscall"
 	"time"
 
-	"google.golang.org/grpc/grpclog"
-
+	"github.com/go-playground/locales/en"
+	ut "github.com/go-playground/universal-translator"
 	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
+	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/validator/v10"
+	translations "github.com/letsencrypt/validator/v10/translations/en"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-
-	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
+	"google.golang.org/grpc/grpclog"
 )
 
 func command() string {
@@ -293,6 +296,13 @@ func FailOnError(err error, msg string) {
 	}
 }
 
+func decodeJSONStrict(in io.Reader, out interface{}) error {
+	decoder := json.NewDecoder(in)
+	decoder.DisallowUnknownFields()
+
+	return decoder.Decode(out)
+}
+
 // ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
 // configuration of a boulder component. Any config keys in the JSON
@@ -305,9 +315,63 @@ func ReadConfigFile(filename string, out interface{}) error {
 	}
 	defer file.Close()
 
-	decoder := json.NewDecoder(file)
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(out)
+	return decodeJSONStrict(file, out)
+}
+
+func ReadAndValidateConfigFile(name, filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return ValidateConfigByName(name, file)
+}
+
+func ValidateConfigByName(name string, in io.Reader) error {
+	c := LookupConfig(name)
+	if c == nil {
+		return fmt.Errorf("no config found for %q", name)
+	}
+
+	et := en.New()
+	ut := ut.New(et, et)
+	translator, ok := ut.GetTranslator("en")
+	if !ok {
+		Fail("Failed to get translator")
+	}
+
+	// Initialize the validator and load any custom tags.
+	validate := validator.New()
+	if c.Validators != nil {
+		for tag, v := range c.Validators {
+			validate.RegisterValidation(tag, v)
+		}
+	}
+	// In the future, if we add custom translations we should load them after
+	// the default translations.
+	translations.RegisterDefaultTranslations(validate, translator)
+
+	err := decodeJSONStrict(in, c.Config)
+	if err != nil {
+		return err
+	}
+	err = validate.Struct(c.Config)
+	if err != nil {
+		errs, ok := err.(validator.ValidationErrors)
+		if !ok {
+			// This should never happen.
+			return err
+		}
+		if len(errs) > 0 {
+			translatedErrs := errs.Translate(translator)
+			allErrs := []string{}
+			for e := range translatedErrs {
+				allErrs = append(allErrs, translatedErrs[e])
+			}
+			return fmt.Errorf("config validation errors: %s", strings.Join(allErrs, ", "))
+		}
+	}
+	return nil
 }
 
 // VersionString produces a friendly Application version string.
