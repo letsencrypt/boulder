@@ -147,9 +147,17 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 			m.log.AuditErrf("parsing contact email %s: %s", contact, err)
 			continue
 		}
-		if parsed.Scheme == "mailto" {
-			emails = append(emails, parsed.Opaque)
+		if parsed.Scheme != "mailto" {
+			continue
 		}
+		address := parsed.Opaque
+		err = m.addressLimiter.check(address)
+		if err != nil {
+			m.log.AuditInfof("not sending mail: %s", err)
+			continue
+		}
+		m.addressLimiter.inc(address)
+		emails = append(emails, parsed.Opaque)
 	}
 	if len(emails) == 0 {
 		return nil
