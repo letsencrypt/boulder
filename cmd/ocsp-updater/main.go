@@ -21,20 +21,21 @@ const cmdName = "ocsp-updater"
 
 type Config struct {
 	OCSPUpdater struct {
-		cmd.ServiceConfig
-		DB         cmd.DBConfig `validate:"required"`
-		ReadOnlyDB cmd.DBConfig `validate:"required"`
+		DebugAddr  string `validate:"required,hostname_port"`
+		TLS        cmd.TLSConfig
+		DB         cmd.DBConfig
+		ReadOnlyDB cmd.DBConfig
 
 		// Issuers is a map from filenames to short issuer IDs.
 		// Each filename must contain an issuer certificate. The short issuer
 		// IDs are arbitrarily assigned and must be consistent across OCSP
 		// components. For production we'll use the number part of the CN, i.e.
 		// E1 -> 1, R3 -> 3, etc.
-		Issuers map[string]int `validate:"isdefault"`
+		Issuers map[string]int
 
 		// OldOCSPWindow controls how frequently ocsp-updater signs a batch
 		// of responses.
-		OldOCSPWindow cmd.ConfigDuration `validate:"required"`
+		OldOCSPWindow cmd.ConfigDuration
 		// OldOCSPBatchSize controls the maximum number of responses
 		// ocsp-updater will sign every OldOCSPWindow.
 		OldOCSPBatchSize int `validate:"required"`
@@ -43,25 +44,25 @@ type Config struct {
 		// This is related to to ExpectedFreshness in ocsp-responder's config,
 		// and both are related to the mandated refresh times in the BRs and
 		// root programs (minus a safety margin).
-		OCSPMinTimeToExpiry cmd.ConfigDuration `validate:"required"`
+		OCSPMinTimeToExpiry cmd.ConfigDuration
 
 		// ParallelGenerateOCSPRequests determines how many requests to the CA
 		// may be inflight at once.
 		ParallelGenerateOCSPRequests int `validate:"required"`
 
 		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
-		SignFailureBackoffFactor float64            `validate:"required"`
-		SignFailureBackoffMax    cmd.ConfigDuration `validate:"required"`
+		SignFailureBackoffFactor float64 `validate:"required"`
+		SignFailureBackoffMax    cmd.ConfigDuration
 
 		// SerialSuffixShards is a whitespace-separated list of single hex
 		// digits. When searching for work to do, ocsp-updater will query
 		// for only those certificates end in one of the specified hex digits.
 		SerialSuffixShards string `validate:"suffixshards"`
 
-		OCSPGeneratorService *cmd.GRPCClientConfig `validate:"required"`
+		OCSPGeneratorService *cmd.GRPCClientConfig
 
 		Features map[string]bool
-	} `validate:"required"`
+	}
 
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig

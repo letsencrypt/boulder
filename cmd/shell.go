@@ -362,6 +362,7 @@ func ValidateConfigByName(name string, in io.Reader) error {
 			// This should never happen.
 			return err
 		}
+		fmt.Print(len(errs), len(errs.Translate(translator)))
 		if len(errs) > 0 {
 			translatedErrs := errs.Translate(translator)
 			allErrs := []string{}

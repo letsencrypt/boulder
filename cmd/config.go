@@ -41,7 +41,7 @@ func (pc *PasswordConfig) Pass() (string, error) {
 // be embedded in other config structs.
 type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
+	DebugAddr string `validate:"required,hostname_port"`
 	GRPC      *GRPCServerConfig
 	TLS       TLSConfig
 }
@@ -69,13 +69,13 @@ type DBConfig struct {
 	// ConnMaxLifetime sets the maximum amount of time a connection may
 	// be reused. Expired connections may be closed lazily before reuse.
 	// If d < 0, connections are not closed due to a connection's age.
-	ConnMaxLifetime ConfigDuration
+	ConnMaxLifetime ConfigDuration `validate:"-"`
 
 	// ConnMaxIdleTime sets the maximum amount of time a connection may
 	// be idle. Expired connections may be closed lazily before reuse.
 	// If d < 0, connections are not closed due to a connection's idle
 	// time.
-	ConnMaxIdleTime ConfigDuration
+	ConnMaxIdleTime ConfigDuration `validate:"-"`
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, loading it
@@ -136,9 +136,9 @@ type HostnamePolicyConfig struct {
 
 // TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
-	CertFile   *string
-	KeyFile    *string
-	CACertFile *string
+	CertFile   *string `validate:"required"`
+	KeyFile    *string `validate:"required"`
+	CACertFile *string `validate:"required"`
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
@@ -199,7 +199,7 @@ type SyslogConfig struct {
 // ConfigDuration is just an alias for time.Duration that allows
 // serialization to YAML as well as JSON.
 type ConfigDuration struct {
-	time.Duration
+	time.Duration `validate:"required"`
 }
 
 // ErrDurationMustBeString is returned when a non-string value is
@@ -450,23 +450,23 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
-	Address string `json:"address"`
+	Address string `json:"address" validate:"required,hostname_port"`
 	// ClientNames is a list of allowed client certificate subject alternate names
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	// DEPRECATED: Use the ClientNames field within each Service instead.
-	ClientNames []string `json:"clientNames"`
+	ClientNames []string `json:"clientNames" validate:"required,dive,hostname"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
 	// the package names set in those files (e.g. "ca.CertificateAuthority").
-	Services map[string]GRPCServiceConfig `json:"services"`
+	Services map[string]GRPCServiceConfig `json:"services" validate:"required,dive,keys,required"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
 	// backends.
 	// https://pkg.go.dev/google.golang.org/grpc/keepalive#ServerParameters
-	MaxConnectionAge ConfigDuration
+	MaxConnectionAge ConfigDuration `validate:"required"`
 }
 
 // GRPCServiceConfig contains the information needed to configure a gRPC service.
@@ -475,7 +475,7 @@ type GRPCServiceConfig struct {
 	// SANs. The upstream listening server will reject connections from clients
 	// which do not appear in this list, and the server interceptor will reject
 	// RPC calls for this service from clients which are not listed here.
-	ClientNames []string `json:"clientNames"`
+	ClientNames []string `json:"clientNames" validate:"required,dive,hostname"`
 }
 
 // BeelineConfig provides config options for the Honeycomb beeline-go library,
