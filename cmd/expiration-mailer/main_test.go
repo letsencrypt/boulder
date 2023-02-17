@@ -578,7 +578,7 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	addExpiringCerts(t, testCtx)
 
 	// Set the limit to 1 so we are "at capacity" with one result
-	testCtx.m.limit = 1
+	testCtx.m.certificatesPerTick = 1
 
 	err := testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
@@ -913,16 +913,16 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 
 	m := &mailer{
-		log:             log,
-		mailer:          mc,
-		emailTemplate:   tmpl,
-		subjectTemplate: subjTmpl,
-		dbMap:           dbMap,
-		rs:              isa.SA{Impl: ssa},
-		nagTimes:        offsetNags,
-		limit:           100,
-		clk:             fc,
-		stats:           initStats(metrics.NoopRegisterer),
+		log:                 log,
+		mailer:              mc,
+		emailTemplate:       tmpl,
+		subjectTemplate:     subjTmpl,
+		dbMap:               dbMap,
+		rs:                  isa.SA{Impl: ssa},
+		nagTimes:            offsetNags,
+		certificatesPerTick: 100,
+		clk:                 fc,
+		stats:               initStats(metrics.NoopRegisterer),
 	}
 	return &testCtx{
 		dbMap:   dbMap,
@@ -933,4 +933,25 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		log:     log,
 		cleanUp: cleanUp,
 	}
+}
+
+func TestLimiter(t *testing.T) {
+	clk := clock.NewFake()
+	lim := &limiter{clk: clk, limit: 4}
+	fooAtExample := "foo@example.com"
+	lim.inc(fooAtExample)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
+	lim.inc(fooAtExample)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
+	lim.inc(fooAtExample)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
+	lim.inc(fooAtExample)
+	test.AssertError(t, lim.check(fooAtExample), "expected an error")
+
+	clk.Sleep(time.Hour)
+	test.AssertError(t, lim.check(fooAtExample), "expected an error")
+
+	// Sleep long enough to reset the limit
+	clk.Sleep(24 * time.Hour)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
 }

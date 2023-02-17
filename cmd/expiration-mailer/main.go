@@ -63,32 +63,37 @@ type limiter struct {
 	clk clock.Clock
 }
 
+// expects limiter is locked
+func (lim *limiter) maybeBumpDay() {
+	today := lim.clk.Now().UTC().Truncate(24 * time.Hour)
+	if (today.Sub(lim.currentDay) >= 24*time.Hour && len(lim.counts) > 0) ||
+		lim.counts == nil {
+		// Throw away counts so far and switch to a new day.
+		// This also does the initialization of counts and currentDay the first
+		// time inc() is called.
+		lim.counts = make(map[string]int)
+		lim.currentDay = today
+	}
+}
+
 // inc increments the count for the current day, and cleans up previous days
 // if needed.
 func (lim *limiter) inc(address string) {
 	lim.Lock()
 	defer lim.Unlock()
 
-	today := lim.clk.Now().UTC().Truncate(24 * time.Hour)
-	if today.Sub(lim.currentDay) < 24*time.Hour {
-		lim.counts[address] += 1
-		return
-	}
+	lim.maybeBumpDay()
 
-	// Throw away counts so far and switch to a new day.
-	// This also does the initialization of counts and currentDay the first
-	// time inc() is called.
-	lim.counts = make(map[string]int)
-	lim.counts[address] = 1
-	lim.currentDay = today
+	lim.counts[address] += 1
 }
 
 // check checks whether the count for the given address is at the limit,
 // and returns an error if so.
-func (lim *limiter) get(address string) error {
+func (lim *limiter) check(address string) error {
 	lim.RLock()
-	defer lim.Unlock()
+	defer lim.RUnlock()
 
+	lim.maybeBumpDay()
 	if lim.counts[address] >= lim.limit {
 		return fmt.Errorf("daily mail limit exceeded for %q", address)
 	}
