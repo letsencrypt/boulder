@@ -45,6 +45,7 @@ type regStore interface {
 }
 
 // limiter tracks how many mails we've sent to a given address in a given day.
+// Note that this does not track mails across restarts of the process.
 type limiter struct {
 	sync.RWMutex
 	// currentDay is a day in UTC, truncated to 24 hours. When the current
@@ -144,7 +145,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 	for _, contact := range contacts {
 		parsed, err := url.Parse(contact)
 		if err != nil {
-			m.log.AuditErrf("parsing contact email %s: %s", contact, err)
+			m.log.Errf("parsing contact email %s: %s", contact, err)
 			continue
 		}
 		if parsed.Scheme != "mailto" {
@@ -153,7 +154,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 		address := parsed.Opaque
 		err = m.addressLimiter.check(address)
 		if err != nil {
-			m.log.AuditInfof("not sending mail: %s", err)
+			m.log.Infof("not sending mail: %s", err)
 			continue
 		}
 		m.addressLimiter.inc(address)
@@ -653,6 +654,9 @@ type Config struct {
 
 		// MailsPerAddressPerDay is the maximum number of emails we'll send to
 		// a single address in a single day. Defaults to 0 (unlimited).
+		// Note that this does not track sends across restarts of the process,
+		// so we may send more than this when we restart expiration-mailer.
+		// This is a best-effort limitation.
 		MailsPerAddressPerDay int
 
 		// UpdateChunkSize is the maximum number of rows to update in a single
