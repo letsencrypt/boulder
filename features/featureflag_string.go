@@ -14,20 +14,19 @@ func _() {
 	_ = x[CAAAccountURI-3]
 	_ = x[EnforceMultiVA-4]
 	_ = x[MultiVAFullResults-5]
-	_ = x[MandatoryPOSTAsGET-6]
-	_ = x[ECDSAForAll-7]
-	_ = x[ServeRenewalInfo-8]
-	_ = x[AllowUnrecognizedFeatures-9]
-	_ = x[ROCSPStage6-10]
-	_ = x[ROCSPStage7-11]
-	_ = x[ExpirationMailerUsesJoin-12]
-	_ = x[CertCheckerChecksValidations-13]
-	_ = x[CertCheckerRequiresValidations-14]
+	_ = x[ECDSAForAll-6]
+	_ = x[ServeRenewalInfo-7]
+	_ = x[AllowUnrecognizedFeatures-8]
+	_ = x[ROCSPStage6-9]
+	_ = x[ROCSPStage7-10]
+	_ = x[ExpirationMailerUsesJoin-11]
+	_ = x[CertCheckerChecksValidations-12]
+	_ = x[CertCheckerRequiresValidations-13]
 }
 
-const _FeatureFlag_name = "unusedStoreRevokerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidations"
+const _FeatureFlag_name = "unusedStoreRevokerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidations"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 22, 42, 55, 69, 87, 105, 116, 132, 157, 168, 179, 203, 231, 261}
+var _FeatureFlag_index = [...]uint8{0, 6, 22, 42, 55, 69, 87, 98, 114, 139, 150, 161, 185, 213, 243}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

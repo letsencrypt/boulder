@@ -26,9 +26,6 @@ const (
 	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
 	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
-	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
-	// resources.
-	MandatoryPOSTAsGET
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
@@ -72,7 +69,6 @@ var features = map[FeatureFlag]bool{
 	CAAAccountURI:                  false,
 	EnforceMultiVA:                 false,
 	MultiVAFullResults:             false,
-	MandatoryPOSTAsGET:             false,
 	StoreRevokerInfo:               false,
 	ECDSAForAll:                    false,
 	ServeRenewalInfo:               false,
