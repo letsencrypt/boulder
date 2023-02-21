@@ -432,7 +432,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return hnynethttp.WrapHandler(measured_http.New(m, wfe.clk, stats))
+	return hnynethttp.WrapHandler(measured_http.New(m, wfe.clk, stats, nil))
 }
 
 // Method implementations

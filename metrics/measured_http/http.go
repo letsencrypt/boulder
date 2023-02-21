@@ -46,11 +46,17 @@ type MeasuredHandler struct {
 	stat *prometheus.HistogramVec
 }
 
-func New(m serveMux, clk clock.Clock, stats prometheus.Registerer) *MeasuredHandler {
+// New creates a MeasuredHandler that wraps m (an http.ServeMux).
+// It registers a single histogram metric with the provided
+// prometheus.Registerer, `response_time`. If buckets is non-nil, it is used as
+// a list of buckets for the histogram. Otherwise, default buckets are used. See
+// https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#HistogramOpts
+func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, buckets []float64) *MeasuredHandler {
 	responseTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "response_time",
-			Help: "Time taken to respond to a request",
+			Name:    "response_time",
+			Help:    "Time taken to respond to a request",
+			Buckets: buckets,
 		},
 		[]string{"endpoint", "method", "code"})
 	stats.MustRegister(responseTime)
