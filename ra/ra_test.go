@@ -361,6 +361,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
+<<<<<<< HEAD
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
 		1, testKeyPolicy, 100, true,
@@ -368,18 +369,18 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		nil, noopCAA{},
 		0, 5*time.Minute,
 		ctp, nil, nil)
+=======
+	ra := NewRegistrationAuthorityImpl(fc,
+		log,
+		stats,
+		1, testKeyPolicy, 100, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
+>>>>>>> 433e15f43 (Remove ReuseValidAuthz flag code)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
 	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
 	return va, sa, ra, fc, cleanUp
-}
-
-func TestReuseValidAuthzDefaultIsTrue(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	test.Assert(t, ra.reuseValidAuthz, "ReuseValidAuthz should be true")
 }
 
 func TestValidateContacts(t *testing.T) {
@@ -755,7 +756,6 @@ func TestPerformValidationExpired(t *testing.T) {
 func TestPerformValidationAlreadyValid(t *testing.T) {
 	va, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.reuseValidAuthz = false
 
 	// Create a finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
@@ -789,10 +789,12 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 	}
 
 	// A subsequent call to perform validation should return the expected error
-	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	whatisit, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: int64(ResponseIndex),
 	})
+	fmt.Println(whatisit)
+	fmt.Println(err)
 	test.AssertErrorIs(t, err, berrors.Malformed)
 }
 
@@ -2312,35 +2314,6 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(order), 1)
 	// It should *not* be the bad authorization!
 	test.AssertNotEquals(t, order.V2Authorizations[0], int64(1))
-}
-
-func TestNewOrderAuthzReuseDisabled(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ctx := context.Background()
-	names := []string{"zombo.com"}
-
-	// Use a mock SA that always returns a valid HTTP-01 authz for the name
-	// "zombo.com"
-	ra.SA = &mockSAUnsafeAuthzReuse{}
-
-	// Disable authz reuse
-	ra.reuseValidAuthz = false
-
-	// Create an initial request with regA and names
-	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		Names:          names,
-	}
-
-	// Create an order for that request
-	order, err := ra.NewOrder(ctx, orderReq)
-	// It shouldn't fail
-	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	test.AssertEquals(t, numAuthorizations(order), 1)
-	// It should *not* be the bad authorization that indicates reuse!
-	test.AssertNotEquals(t, order.V2Authorizations[0], int64(2))
 }
 
 func TestNewOrderWildcard(t *testing.T) {

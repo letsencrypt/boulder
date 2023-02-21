@@ -5,7 +5,6 @@
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "maxNames": 100,
-    "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "goodkey": {
