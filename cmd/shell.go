@@ -4,6 +4,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
 	"io"
@@ -19,14 +20,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-playground/locales/en"
-	ut "github.com/go-playground/universal-translator"
 	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/validator/v10"
-	translations "github.com/letsencrypt/validator/v10/translations/en"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -333,13 +331,6 @@ func ValidateConfigByName(name string, in io.Reader) error {
 		return fmt.Errorf("no config found for %q", name)
 	}
 
-	et := en.New()
-	ut := ut.New(et, et)
-	translator, ok := ut.GetTranslator("en")
-	if !ok {
-		Fail("Failed to get translator")
-	}
-
 	// Initialize the validator and load any custom tags.
 	validate := validator.New()
 	if c.Validators != nil {
@@ -347,9 +338,6 @@ func ValidateConfigByName(name string, in io.Reader) error {
 			validate.RegisterValidation(tag, v)
 		}
 	}
-	// In the future, if we add custom translations we should load them after
-	// the default translations.
-	translations.RegisterDefaultTranslations(validate, translator)
 
 	err := decodeJSONStrict(in, c.Config)
 	if err != nil {
@@ -362,14 +350,12 @@ func ValidateConfigByName(name string, in io.Reader) error {
 			// This should never happen.
 			return err
 		}
-		fmt.Print(len(errs), len(errs.Translate(translator)))
 		if len(errs) > 0 {
-			translatedErrs := errs.Translate(translator)
 			allErrs := []string{}
-			for e := range translatedErrs {
-				allErrs = append(allErrs, translatedErrs[e])
+			for _, e := range errs {
+				allErrs = append(allErrs, e.Error())
 			}
-			return fmt.Errorf("config validation errors: %s", strings.Join(allErrs, ", "))
+			return errors.New(strings.Join(allErrs, ", "))
 		}
 	}
 	return nil
