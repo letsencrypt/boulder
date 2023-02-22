@@ -93,6 +93,9 @@ func main() {
 	http.HandleFunc("/clear", srv.handleClear)
 	http.HandleFunc("/query", srv.handleQuery)
 
+	// The gosec linter complains that timeouts cannot be set here. That's fine,
+	// because this is test-only code.
+	////nolint:gosec
 	go log.Fatal(http.ListenAndServe(*listenAddr, nil))
 	cmd.CatchSignals(nil, nil)
 }

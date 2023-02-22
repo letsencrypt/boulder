@@ -4,9 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/strictyaml"
 )
 
 // Limits is defined to allow mock implementations be provided during unit
@@ -118,7 +117,7 @@ func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
 // YAML configuration (typically read from disk by a reloader)
 func (r *limitsImpl) LoadPolicies(contents []byte) error {
 	var newPolicy rateLimitConfig
-	err := yaml.Unmarshal(contents, &newPolicy)
+	err := strictyaml.Unmarshal(contents, &newPolicy)
 	if err != nil {
 		return err
 	}
@@ -185,7 +184,8 @@ type RateLimitPolicy struct {
 	// For instance, a rate limit on the number of certificates per name uses name as
 	// a key, while a rate limit on the number of registrations per IP subnet would
 	// use subnet as a key. Note that a zero entry in the overrides map does not
-	// mean "no limit," it means a limit of zero.
+	// mean "no limit," it means a limit of zero. An entry of -1 means
+	// "no limit", only for the pending authorizations rate limit.
 	Overrides map[string]int64 `yaml:"overrides"`
 	// A per-registration override setting. This can be used, e.g. if there are
 	// hosting providers that we would like to grant a higher rate of issuance

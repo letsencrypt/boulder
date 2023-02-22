@@ -12,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	"github.com/letsencrypt/boulder/sa"
@@ -113,7 +114,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	if dbErr != nil {
 		// If the DB says "not found", the certificate either doesn't exist or has
 		// expired and been removed from the DB. We don't need to check the Redis error.
-		if db.IsNoRows(dbErr) {
+		if db.IsNoRows(dbErr) || errors.Is(dbErr, berrors.NotFound) {
 			src.counter.WithLabelValues("not_found").Inc()
 			return nil, responder.ErrNotFound
 		}

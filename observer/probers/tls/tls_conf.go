@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -32,7 +32,7 @@ func (c TLSConf) Kind() string {
 // object.
 func (c TLSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf TLSConf
-	err := yaml.Unmarshal(settings, &conf)
+	err := strictyaml.Unmarshal(settings, &conf)
 	if err != nil {
 		return nil, err
 	}

@@ -25,12 +25,6 @@ type RedisConfig struct {
 	TLS cmd.TLSConfig
 	// Username is a Redis username.
 	Username string
-	// Addrs is a list of IP address:port pairs. The go-redis `ClusterClient`
-	// will use this list to discover a cluster of Redis servers configured in
-	// Cluster mode.
-	//
-	// DEPRECATED: Use `ShardAddrs` instead. TODO(#6517) remove `Addrs`.
-	Addrs []string
 	// ShardAddrs is a map of shard names to IP address:port pairs. The go-redis
 	// `Ring` client will shard reads and writes across the provided Redis
 	// Servers based on a consistent hashing algorithm.
@@ -100,7 +94,7 @@ type RedisConfig struct {
 }
 
 // MakeClient produces a read-write ROCSP client from a config.
-func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (rocsp.Writer, error) {
+func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*rocsp.RWClient, error) {
 	password, err := c.PasswordConfig.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)
@@ -109,38 +103,6 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (r
 	tlsConfig, err := c.TLS.Load()
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
-	}
-
-	timeout := c.Timeout.Duration
-
-	// TODO(#6517) remove this block.
-	if len(c.Addrs) > 0 && len(c.ShardAddrs) > 0 {
-		return nil, errors.New("both 'addrs' and 'shardAddrs' were provided, only one is allowed")
-	}
-
-	// TODO(#6517) remove this block.
-	if len(c.Addrs) > 0 {
-		rdb := redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:     c.Addrs,
-			Username:  c.Username,
-			Password:  password,
-			TLSConfig: tlsConfig,
-
-			MaxRetries:      c.MaxRetries,
-			MinRetryBackoff: c.MinRetryBackoff.Duration,
-			MaxRetryBackoff: c.MaxRetryBackoff.Duration,
-			DialTimeout:     c.DialTimeout.Duration,
-			ReadTimeout:     c.ReadTimeout.Duration,
-			WriteTimeout:    c.WriteTimeout.Duration,
-
-			PoolSize:           c.PoolSize,
-			MinIdleConns:       c.MinIdleConns,
-			MaxConnAge:         c.MaxConnAge.Duration,
-			PoolTimeout:        c.PoolTimeout.Duration,
-			IdleTimeout:        c.IdleTimeout.Duration,
-			IdleCheckFrequency: c.IdleCheckFrequency.Duration,
-		})
-		return rocsp.NewClusterWritingClient(rdb, timeout, clk, stats), nil
 	}
 
 	rdb := redis.NewRing(&redis.RingOptions{
@@ -163,13 +125,13 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (r
 		IdleTimeout:        c.IdleTimeout.Duration,
 		IdleCheckFrequency: c.IdleCheckFrequency.Duration,
 	})
-	return rocsp.NewWritingClient(rdb, timeout, clk, stats), nil
+	return rocsp.NewWritingClient(rdb, c.Timeout.Duration, clk, stats), nil
 }
 
 // MakeReadClient produces a read-only ROCSP client from a config.
-func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (rocsp.Reader, error) {
-	if len(c.Addrs) == 0 {
-		return nil, errors.New("redis config's 'addrs' field was empty")
+func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*rocsp.ROClient, error) {
+	if len(c.ShardAddrs) == 0 {
+		return nil, errors.New("redis config's 'shardAddrs' field was empty")
 	}
 
 	password, err := c.PasswordConfig.Pass()
@@ -182,42 +144,6 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
 
-	timeout := c.Timeout.Duration
-
-	// TODO(#6517) remove this block.
-	if len(c.Addrs) > 0 && len(c.ShardAddrs) > 0 {
-		return nil, errors.New("both 'addrs' and 'shardAddrs' were provided, only one is allowed")
-	}
-
-	// TODO(#6517) remove this block.
-	if len(c.Addrs) > 0 {
-		rdb := redis.NewClusterClient(&redis.ClusterOptions{
-			Addrs:     c.Addrs,
-			Username:  c.Username,
-			Password:  password,
-			TLSConfig: tlsConfig,
-
-			ReadOnly:       c.ReadOnly,
-			RouteByLatency: c.RouteByLatency,
-			RouteRandomly:  c.RouteRandomly,
-
-			PoolFIFO: c.PoolFIFO,
-
-			MaxRetries:      c.MaxRetries,
-			MinRetryBackoff: c.MinRetryBackoff.Duration,
-			MaxRetryBackoff: c.MaxRetryBackoff.Duration,
-			DialTimeout:     c.DialTimeout.Duration,
-			ReadTimeout:     c.ReadTimeout.Duration,
-
-			PoolSize:           c.PoolSize,
-			MinIdleConns:       c.MinIdleConns,
-			MaxConnAge:         c.MaxConnAge.Duration,
-			PoolTimeout:        c.PoolTimeout.Duration,
-			IdleTimeout:        c.IdleTimeout.Duration,
-			IdleCheckFrequency: c.IdleCheckFrequency.Duration,
-		})
-		return rocsp.NewClusterReadingClient(rdb, timeout, clk, stats), nil
-	}
 	rdb := redis.NewRing(&redis.RingOptions{
 		Addrs:     c.ShardAddrs,
 		Username:  c.Username,
@@ -239,7 +165,7 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		IdleTimeout:        c.IdleTimeout.Duration,
 		IdleCheckFrequency: c.IdleCheckFrequency.Duration,
 	})
-	return rocsp.NewReadingClient(rdb, timeout, clk, stats), nil
+	return rocsp.NewReadingClient(rdb, c.Timeout.Duration, clk, stats), nil
 }
 
 // A ShortIDIssuer combines an issuance.Certificate with some fields necessary

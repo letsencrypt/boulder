@@ -55,6 +55,12 @@ import (
 var (
 	errIncompleteGRPCRequest  = errors.New("incomplete gRPC request message")
 	errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
+
+	// caaRecheckDuration is the amount of time after a CAA check that we will
+	// recheck the CAA records for a domain. Per Baseline Requirements, we must
+	// recheck CAA records within 8 hours of issuance. We set this to 7 hours to
+	// stay on the safe side.
+	caaRecheckDuration = -7 * time.Hour
 )
 
 type caaChecker interface {
@@ -235,27 +241,27 @@ func NewRegistrationAuthorityImpl(
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
-		reuseValidAuthz:              reuseValidAuthz,
-		publisher:                    pubc,
-		caa:                          caaClient,
-		orderLifetime:                orderLifetime,
-		finalizeTimeout:              finalizeTimeout,
-		finalizeWG:                   sync.WaitGroup{},
-		ctpolicy:                     ctp,
-		ctpolicyResults:              ctpolicyResults,
-		purger:                       purger,
-		issuersByNameID:              issuersByNameID,
-		issuersByID:                  issuersByID,
-		namesPerCert:                 namesPerCert,
-		rateLimitCounter:             rateLimitCounter,
-		newRegCounter:                newRegCounter,
-		reusedValidAuthzCounter:      reusedValidAuthzCounter,
-		recheckCAACounter:            recheckCAACounter,
-		newCertCounter:               newCertCounter,
-		revocationReasonCounter:      revocationReasonCounter,
-		recheckCAAUsedAuthzLifetime:  recheckCAAUsedAuthzLifetime,
-		authzAges:                    authzAges,
-		orderAges:                    orderAges,
+		// TODO(#2734): Remove reuseValidAuthz hardcoding.
+		reuseValidAuthz:             true,
+		publisher:                   pubc,
+		caa:                         caaClient,
+		orderLifetime:               orderLifetime,
+		finalizeTimeout:             finalizeTimeout,
+		ctpolicy:                    ctp,
+		ctpolicyResults:             ctpolicyResults,
+		purger:                      purger,
+		issuersByNameID:             issuersByNameID,
+		issuersByID:                 issuersByID,
+		namesPerCert:                namesPerCert,
+		rateLimitCounter:            rateLimitCounter,
+		newRegCounter:               newRegCounter,
+		reusedValidAuthzCounter:     reusedValidAuthzCounter,
+		recheckCAACounter:           recheckCAACounter,
+		newCertCounter:              newCertCounter,
+		revocationReasonCounter:     revocationReasonCounter,
+		recheckCAAUsedAuthzLifetime: recheckCAAUsedAuthzLifetime,
+		authzAges:                   authzAges,
+		orderAges:                   orderAges,
 	}
 	return ra
 }
@@ -332,6 +338,20 @@ type certificateRevocationEvent struct {
 	AdminName string `json:",omitempty"`
 	// Error contains any error encountered during revocation.
 	Error string `json:",omitempty"`
+}
+
+// finalizationCAACheckEvent is a struct for holding information logged as JSON
+// to the info log as the result of an issuance event. It is logged when the RA
+// performs the final CAA check of a certificate finalization request.
+type finalizationCAACheckEvent struct {
+	// Requester is the associated account ID.
+	Requester int64 `json:",omitempty"`
+	// Reused is a count of Authz where the original CAA check was performed in
+	// the last 7 hours.
+	Reused int `json:",omitempty"`
+	// Rechecked is a count of Authz where a new CAA check was performed because
+	// the original check was older than 7 hours.
+	Rechecked int `json:",omitempty"`
 }
 
 // noRegistrationID is used for the regID parameter to GetThreshold when no
@@ -538,16 +558,19 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64) error {
 	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
 	if limit.Enabled() {
+		// This rate limit's threshold can only be overridden on a per-regID basis,
+		// not based on any other key.
+		threshold := limit.GetThreshold("", regID)
+		if threshold == -1 {
+			return nil
+		}
 		countPB, err := ra.SA.CountPendingAuthorizations2(ctx, &sapb.RegistrationID{
 			Id: regID,
 		})
 		if err != nil {
 			return err
 		}
-		// Most rate limits have a key for overrides, but there is no meaningful key
-		// here.
-		noKey := ""
-		if countPB.Count >= limit.GetThreshold(noKey, regID) {
+		if countPB.Count >= threshold {
 			ra.rateLimitCounter.WithLabelValues("pending_authorizations_by_registration_id", "exceeded").Inc()
 			ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 			return berrors.RateLimitError(0, "too many currently pending authorizations: %d", countPB.Count)
@@ -724,7 +747,8 @@ func (ra *RegistrationAuthorityImpl) checkOrderAuthorizations(
 	names = core.UniqueLowerNames(names)
 
 	// Check the authorizations to ensure validity for the names required.
-	if err = ra.checkAuthorizationsCAA(ctx, names, authzs, ra.clk.Now()); err != nil {
+	err = ra.checkAuthorizationsCAA(ctx, int64(acctID), names, authzs, ra.clk.Now())
+	if err != nil {
 		return nil, err
 	}
 
@@ -759,6 +783,7 @@ func validatedBefore(authz *core.Authorization, caaRecheckTime time.Time) (bool,
 // If it returns an error, it will be of type BoulderError.
 func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	ctx context.Context,
+	acctID int64,
 	names []string,
 	authzs map[string]*core.Authorization,
 	now time.Time) error {
@@ -774,14 +799,14 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 	// check to see if the authorized challenge `AttemptedAt`
 	// (`Validated`) value from the database is before our caaRecheckTime.
 	// Set the recheck time to 7 hours ago.
-	caaRecheckAfter := now.Add(-7 * time.Hour)
+	caaRecheckAfter := now.Add(caaRecheckDuration)
 
 	// Set a CAA recheck time based on the assumption of a 30 day authz
 	// lifetime. This has been deprecated in favor of a new check based
 	// off the Validated time stored in the database, but we want to check
 	// both for a time and increment a stat if this code path is hit for
 	// compliance safety.
-	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(-7 * time.Hour)
+	caaRecheckTime := now.Add(ra.authorizationLifetime).Add(caaRecheckDuration)
 
 	for _, name := range names {
 		authz := authzs[name]
@@ -819,6 +844,13 @@ func (ra *RegistrationAuthorityImpl) checkAuthorizationsCAA(
 			strings.Join(badNames, ", "),
 		)
 	}
+
+	caaEvent := &finalizationCAACheckEvent{
+		Requester: acctID,
+		Reused:    len(authzs) - len(recheckAuthzs),
+		Rechecked: len(recheckAuthzs),
+	}
+	ra.log.InfoObject("FinalizationCaaCheck", caaEvent)
 
 	return nil
 }
@@ -1789,8 +1821,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 
 		err = ra.recordValidation(vaCtx, authz.ID, authz.Expires, challenge)
 		if err != nil {
-			ra.log.AuditErrf("Could not record updated validation: err=[%s] regID=[%d] authzID=[%s]",
-				err, authz.RegistrationID, authz.ID)
+			ra.log.AuditErrf("Could not record updated validation: regID=[%d] authzID=[%s] err=[%s]",
+				authz.RegistrationID, authz.ID, err)
 		}
 	}(authz)
 	return bgrpc.AuthzToPB(authz)

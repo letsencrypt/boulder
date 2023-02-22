@@ -2,6 +2,7 @@
   "wfe": {
     "listenAddress": "0.0.0.0:4001",
     "TLSListenAddress": "0.0.0.0:4431",
+    "timeout": "30s",
     "serverCertificatePath": "test/wfe-tls/boulder/cert.pem",
     "serverKeyPath": "test/wfe-tls/boulder/key.pem",
     "allowOrigins": ["*"],
@@ -20,6 +21,7 @@
       "keyFile": "test/grpc-creds/wfe.boulder/key.pem"
     },
     "raService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ra",
         "domain": "service.consul"
@@ -28,6 +30,7 @@
       "hostOverride": "ra.boulder"
     },
     "saService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "sa",
         "domain": "service.consul"
@@ -40,6 +43,7 @@
       "ttl": "5s"
     },
     "getNonceService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "nonce",
         "domain": "service.consul"
@@ -47,24 +51,23 @@
       "timeout": "15s",
       "hostOverride": "nonce.boulder"
     },
-    "redeemNonceServices": {
-      "taro": {
-        "srvLookup": {
+    "redeemNonceService": {
+      "dnsAuthority": "10.55.55.10",
+      "srvLookups": [
+        {
           "service": "nonce1",
           "domain": "service.consul"
         },
-        "timeout": "15s",
-        "hostOverride": "nonce1.boulder"
-      },
-      "zinc": {
-        "srvLookup": {
+        {
           "service": "nonce2",
           "domain": "service.consul"
-        },
-        "timeout": "15s",
-        "hostOverride": "nonce2.boulder"
-      }
+        }
+      ],
+      "srvResolver": "nonce-srv",
+      "timeout": "15s",
+      "hostOverride": "nonce.boulder"
     },
+    "noncePrefixKey": {"passwordFile": "test/secrets/nonce_prefix_key"},
     "chains": [
       [
         "/hierarchy/intermediate-cert-rsa-a.pem",
@@ -87,7 +90,6 @@
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "features": {
-      "MandatoryPOSTAsGET": true,
       "ServeRenewalInfo": true
     }
   },

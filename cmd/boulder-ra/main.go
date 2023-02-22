@@ -14,6 +14,7 @@ import (
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/policy"
@@ -242,7 +243,7 @@ func main() {
 		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
 	}
 
-	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
+	kp, err := sagoodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {

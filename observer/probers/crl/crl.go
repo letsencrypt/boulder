@@ -1,7 +1,7 @@
 package probers
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -36,7 +36,7 @@ func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 		return false, time.Since(start)
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return false, time.Since(start)
 	}

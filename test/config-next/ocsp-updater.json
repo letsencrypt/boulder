@@ -22,6 +22,7 @@
       "keyFile": "test/grpc-creds/ocsp-updater.boulder/key.pem"
     },
     "ocspGeneratorService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ca",
         "domain": "service.consul"

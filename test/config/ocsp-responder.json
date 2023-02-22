@@ -7,9 +7,10 @@
     "redis": {
       "username": "ocsp-responder",
       "passwordFile": "test/secrets/ocsp_responder_redis_password",
-      "addrs": [
-        "10.33.33.7:4218"
-      ],
+      "shardAddrs": {
+        "shard1": "10.33.33.2:4218",
+        "shard2": "10.33.33.3:4218"
+      },
       "timeout": "5s",
       "poolSize": 100,
       "routeRandomly": true,
@@ -25,18 +26,12 @@
       "keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
     },
     "raService": {
-      "srvLookup": {
-        "service": "ra",
-        "domain": "service.consul"
-      },
+      "serverAddress": "ra.service.consul:9094",
       "hostOverride": "ra.boulder",
       "timeout": "15s"
     },
     "saService": {
-      "srvLookup": {
-        "service": "sa",
-        "domain": "service.consul"
-      },
+      "serverAddress": "sa.service.consul:9095",
       "timeout": "15s",
       "hostOverride": "sa.boulder"
     },

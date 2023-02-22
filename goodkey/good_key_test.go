@@ -10,9 +10,7 @@ import (
 	"math/big"
 	"testing"
 
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
 )
 
 var testingPolicy = &KeyPolicy{
@@ -259,22 +257,25 @@ func TestNonRefKey(t *testing.T) {
 }
 
 func TestDBBlocklistAccept(t *testing.T) {
-	testCheck := func(context.Context, *sapb.KeyBlockedRequest, ...grpc.CallOption) (*sapb.Exists, error) {
-		return &sapb.Exists{Exists: false}, nil
+	for _, testCheck := range []BlockedKeyCheckFunc{
+		nil,
+		func(context.Context, []byte) (bool, error) {
+			return false, nil
+		},
+	} {
+		policy, err := NewKeyPolicy(&Config{}, testCheck)
+		test.AssertNotError(t, err, "NewKeyPolicy failed")
+
+		k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
+		err = policy.GoodKey(context.Background(), k.Public())
+		test.AssertNotError(t, err, "GoodKey failed with a non-blocked key")
 	}
-
-	policy, err := NewKeyPolicy(&Config{}, testCheck)
-	test.AssertNotError(t, err, "NewKeyPolicy failed")
-
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
-	err = policy.GoodKey(context.Background(), k.Public())
-	test.AssertNotError(t, err, "GoodKey failed with a non-blocked key")
 }
 
 func TestDBBlocklistReject(t *testing.T) {
-	testCheck := func(context.Context, *sapb.KeyBlockedRequest, ...grpc.CallOption) (*sapb.Exists, error) {
-		return &sapb.Exists{Exists: true}, nil
+	testCheck := func(context.Context, []byte) (bool, error) {
+		return true, nil
 	}
 
 	policy, err := NewKeyPolicy(&Config{}, testCheck)

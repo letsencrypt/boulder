@@ -30,6 +30,7 @@ type Logger interface {
 	Warningf(format string, a ...interface{})
 	Info(msg string)
 	Infof(format string, a ...interface{})
+	InfoObject(string, interface{})
 	Debug(msg string)
 	Debugf(format string, a ...interface{})
 	AuditPanic()
@@ -315,6 +316,17 @@ func (log *impl) Infof(format string, a ...interface{}) {
 	log.Info(fmt.Sprintf(format, a...))
 }
 
+// InfoObject logs an INFO level JSON-serialized object message.
+func (log *impl) InfoObject(msg string, obj interface{}) {
+	jsonObj, err := json.Marshal(obj)
+	if err != nil {
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
+		return
+	}
+
+	log.Infof("%s JSON=%s", msg, jsonObj)
+}
+
 // Debug level messages pass through normally.
 func (log *impl) Debug(msg string) {
 	log.w.logAtLevel(syslog.LOG_DEBUG, msg)
@@ -342,7 +354,7 @@ func (log *impl) AuditInfof(format string, a ...interface{}) {
 func (log *impl) AuditObject(msg string, obj interface{}) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
-		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
 		return
 	}
 

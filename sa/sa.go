@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -80,11 +81,13 @@ func NewSQLStorageAuthority(
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
 	parallelismPerRPC int,
+	lagFactor time.Duration,
 	clk clock.Clock,
 	logger blog.Logger,
 	stats prometheus.Registerer,
 ) (*SQLStorageAuthority, error) {
-	ssaro, err := NewSQLStorageAuthorityRO(dbReadOnlyMap, dbIncidentsMap, parallelismPerRPC, clk, logger)
+	ssaro, err := NewSQLStorageAuthorityRO(
+		dbReadOnlyMap, dbIncidentsMap, parallelismPerRPC, lagFactor, clk, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -311,11 +314,15 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 // authorizations are created, but then their corresponding order is never
 // created, leading to "invisible" pending authorizations.
 func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest) (*corepb.Order, error) {
+	if req.NewOrder == nil {
+		return nil, errIncompleteRequest
+	}
+
 	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
 		if len(req.NewAuthzs) != 0 {
-			inserter, err := db.NewMultiInserter("authz2", authzFields, "id")
+			inserter, err := db.NewMultiInserter("authz2", strings.Split(authzFields, ", "), "id")
 			if err != nil {
 				return nil, err
 			}
@@ -332,14 +339,14 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					am.IdentifierType,
 					am.IdentifierValue,
 					am.RegistrationID,
-					am.Status,
+					statusToUint[core.StatusPending],
 					am.Expires,
 					am.Challenges,
-					am.Attempted,
-					am.AttemptedAt,
+					nil,
+					nil,
 					am.Token,
-					am.ValidationError,
-					am.ValidationRecord,
+					nil,
+					nil,
 				})
 				if err != nil {
 					return nil, err
@@ -363,7 +370,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Third, insert all of the orderToAuthz relations.
-		inserter, err := db.NewMultiInserter("orderToAuthz2", "orderID, authzID", "")
+		inserter, err := db.NewMultiInserter("orderToAuthz2", []string{"orderID", "authzID"}, "")
 		if err != nil {
 			return nil, err
 		}
@@ -385,7 +392,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fourth, insert all of the requestedNames.
-		inserter, err = db.NewMultiInserter("requestedNames", "orderID, reversedName", "")
+		inserter, err = db.NewMultiInserter("requestedNames", []string{"orderID", "reversedName"}, "")
 		if err != nil {
 			return nil, err
 		}

@@ -447,7 +447,7 @@ func setup(t *testing.T) testCtx {
 	incidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidents, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, 1, fc, log, metrics.NoopRegisterer)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}

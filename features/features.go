@@ -26,9 +26,6 @@ const (
 	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
 	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
-	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
-	// resources.
-	MandatoryPOSTAsGET
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
@@ -53,6 +50,17 @@ const (
 	// rather than a SELECT from certificateStatus followed by thousands of
 	// one-row SELECTs from certificates.
 	ExpirationMailerUsesJoin
+
+	// CertCheckerChecksValidations enables an extra query for each certificate
+	// checked, to find the relevant authzs. Since this query might be
+	// expensive, we gate it behind a feature flag.
+	CertCheckerChecksValidations
+
+	// CertCheckerRequiresValidations causes cert-checker to fail if the
+	// query enabled by CertCheckerChecksValidations didn't find corresponding
+	// authorizations.
+	CertCheckerRequiresValidations
+
 	// AsyncFinalize enables the RA to return approximately immediately from
 	// requests to finalize orders. This allows us to take longer getting SCTs,
 	// issuing certs, and updating the database; it indirectly reduces the number
@@ -63,20 +71,21 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                    false,
-	CAAValidationMethods:      false,
-	CAAAccountURI:             false,
-	EnforceMultiVA:            false,
-	MultiVAFullResults:        false,
-	MandatoryPOSTAsGET:        false,
-	StoreRevokerInfo:          false,
-	ECDSAForAll:               false,
-	ServeRenewalInfo:          false,
-	AllowUnrecognizedFeatures: false,
-	ROCSPStage6:               false,
-	ROCSPStage7:               false,
-	ExpirationMailerUsesJoin:  false,
-	AsyncFinalize:             false,
+	unused:                         false,
+	CAAValidationMethods:           false,
+	CAAAccountURI:                  false,
+	EnforceMultiVA:                 false,
+	MultiVAFullResults:             false,
+	StoreRevokerInfo:               false,
+	ECDSAForAll:                    false,
+	ServeRenewalInfo:               false,
+	AllowUnrecognizedFeatures:      false,
+	ROCSPStage6:                    false,
+	ROCSPStage7:                    false,
+	ExpirationMailerUsesJoin:       false,
+	CertCheckerChecksValidations:   false,
+	CertCheckerRequiresValidations: false,
+	AsyncFinalize:                  false,
 }
 
 var fMu = new(sync.RWMutex)

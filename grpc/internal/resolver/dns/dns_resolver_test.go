@@ -223,7 +223,7 @@ func testDNSResolver(t *testing.T) {
 	}
 
 	for _, a := range tests {
-		b := NewBuilder()
+		b := NewDefaultSRVBuilder()
 		cc := &testClientConn{target: a.target}
 		r, err := b.Build(resolver.Target{Endpoint: a.target}, cc, resolver.BuildOptions{})
 		if err != nil {
@@ -266,7 +266,7 @@ func TestDNSResolverExponentialBackoff(t *testing.T) {
 	target := "foo.ipv4.single.fake"
 	wantAddr := []resolver.Address{{Addr: "2.4.6.8:1234", ServerName: "ipv4.single.fake"}}
 
-	b := NewBuilder()
+	b := NewDefaultSRVBuilder()
 	cc := &testClientConn{target: target}
 	// Cause ClientConn to return an error.
 	cc.updateStateErr = balancer.ErrBadResolverState
@@ -395,7 +395,7 @@ func testDNSResolveNow(t *testing.T) {
 	}
 
 	for _, a := range tests {
-		b := NewBuilder()
+		b := NewDefaultSRVBuilder()
 		cc := &testClientConn{target: a.target}
 		r, err := b.Build(resolver.Target{Endpoint: a.target}, cc, resolver.BuildOptions{})
 		if err != nil {
@@ -445,7 +445,7 @@ func TestDNSResolverRetry(t *testing.T) {
 		// Will never fire on its own, will protect from triggering exponential backoff.
 		return time.NewTimer(time.Hour)
 	}
-	b := NewBuilder()
+	b := NewDefaultSRVBuilder()
 	target := "foo.ipv4.single.fake"
 	cc := &testClientConn{target: target}
 	r, err := b.Build(resolver.Target{Endpoint: target}, cc, resolver.BuildOptions{})
@@ -586,7 +586,7 @@ func TestCustomAuthority(t *testing.T) {
 			}
 		}
 
-		b := NewBuilder()
+		b := NewDefaultSRVBuilder()
 		cc := &testClientConn{target: "foo.bar.com", errChan: make(chan error, 1)}
 		r, err := b.Build(resolver.Target{Endpoint: "foo.bar.com", Authority: a.authority}, cc, resolver.BuildOptions{})
 
@@ -640,7 +640,7 @@ func TestRateLimitedResolve(t *testing.T) {
 	defer nc()
 
 	target := "foo.ipv4.single.fake"
-	b := NewBuilder()
+	b := NewDefaultSRVBuilder()
 	cc := &testClientConn{target: target}
 
 	r, err := b.Build(resolver.Target{Endpoint: target}, cc, resolver.BuildOptions{})
@@ -751,7 +751,7 @@ func TestReportError(t *testing.T) {
 	}
 	cc := &testClientConn{target: target, errChan: make(chan error)}
 	totalTimesCalledError := 0
-	b := NewBuilder()
+	b := NewDefaultSRVBuilder()
 	r, err := b.Build(resolver.Target{Endpoint: target}, cc, resolver.BuildOptions{})
 	if err != nil {
 		t.Fatalf("Error building resolver for target %v: %v", target, err)

@@ -162,7 +162,7 @@ func TestRemoteRedeem(t *testing.T) {
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, !valid, "RemoteRedeem accepted an empty nonce")
 
-	prefixMap := map[string]noncepb.NonceServiceClient{
+	prefixMap := map[string]Redeemer{
 		"abcd": &malleableNonceClient{
 			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
 				return nil, errors.New("wrong one!")
@@ -209,4 +209,9 @@ func TestNoncePrefixValidation(t *testing.T) {
 	test.AssertError(t, err, "NewNonceService didn't fail with invalid base64")
 	_, err = NewNonceService(metrics.NoopRegisterer, 0, "heyy")
 	test.AssertNotError(t, err, "NewNonceService failed with valid nonce prefix")
+}
+
+func TestDerivePrefix(t *testing.T) {
+	prefix := DerivePrefix("192.168.1.1:8080", "3b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
+	test.AssertEquals(t, prefix, "P9qQaK4o")
 }

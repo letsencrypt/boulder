@@ -28,6 +28,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/policy"
@@ -56,7 +57,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{FermatRounds: 100}, nil)
+	kp, err = sagoodkey.NewKeyPolicy(&goodkey.Config{FermatRounds: 100}, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -331,7 +332,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	fc.Set(fc.Now().Add(time.Hour))
 
 	checker := newChecker(saDbMap, fc, pa, kp, time.Hour, testValidityDurations, blog.NewMock())
-	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, 1, fc, blog.NewMock(), metrics.NoopRegisterer)
+	sa, err := sa.NewSQLStorageAuthority(saDbMap, saDbMap, nil, 1, 0, fc, blog.NewMock(), metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "Couldn't create SA to insert certificates")
 	saCleanUp := test.ResetBoulderTestDatabase(t)
 	defer func() {
