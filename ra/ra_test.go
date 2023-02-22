@@ -790,10 +790,11 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 
 	// A subsequent call to perform validation should return nil due
 	// to being short-circuited because of valid authz reuse.
-	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	val, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: int64(ResponseIndex),
 	})
+	test.Assert(t, core.AcmeStatus(val.Status) == core.StatusValid, "Validation should have been valid")
 	test.AssertNotError(t, err, "Error was not nil, but should have been nil")
 }
 
