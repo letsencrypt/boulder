@@ -86,7 +86,8 @@ function run_unit_tests() {
     # spuriously because one test is modifying a table (especially
     # registrations) while another test is reading it.
     # https://github.com/letsencrypt/boulder/issues/1499
-    go test -v -count=1 "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
+    #go test -v "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
+    go test "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
   fi
 }
 
