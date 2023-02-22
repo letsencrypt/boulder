@@ -60,6 +60,7 @@ descriptions:
 flags:
   all:
     -config              File path to the configuration file for this service (required)
+    -validate            Validate the configuration file and exit.
 
   private-key-block | private-key-revoke:
     -dry-run             true (default): only queries for affected certificates. false: will
@@ -67,6 +68,8 @@ flags:
                          private-key-block and private-key-revoke.
     -comment             Comment to include in the blocked keys table entry. (default: "")
 `
+
+const cmdName = "admin-revoker"
 
 type Config struct {
 	Revoker struct {
@@ -497,17 +500,25 @@ func main() {
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
+	validate := flagSet.Bool("validate", false, "Validate the config file and exit")
 	dryRun := flagSet.Bool(
 		"dry-run",
 		true,
 		"true (default): only queries for affected certificates. false: will perform the requested block or revoke action",
 	)
 	comment := flagSet.String("comment", "", "Comment to include in the blocked key database entry ")
+
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
 
 	if *configFile == "" {
 		usage()
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -620,5 +631,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("admin-revoker", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }

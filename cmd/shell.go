@@ -316,6 +316,11 @@ func ReadConfigFile(filename string, out interface{}) error {
 	return decodeJSONStrict(file, out)
 }
 
+// ReadAndValidateConfigFile takes a file path as an argument and attempts to
+// unmarshal the content of the file into a struct containing a configuration of
+// a boulder component. Any config keys in the JSON file which do not correspond
+// to expected keys in the config struct will result in errors. It also
+// validates the config using the struct tags defined in the config struct.
 func ReadAndValidateConfigFile(name, filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -325,6 +330,9 @@ func ReadAndValidateConfigFile(name, filename string) error {
 	return ValidateConfigByName(name, file)
 }
 
+// ValidateConfigByName takes a config name and an io.Reader containing a JSON
+// representation of a config and validates the config using the struct tags
+// defined in the config struct.
 func ValidateConfigByName(name string, in io.Reader) error {
 	c := LookupConfig(name)
 	if c == nil {

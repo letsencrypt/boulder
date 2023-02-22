@@ -80,6 +80,7 @@ func main() {
 	if *validate {
 		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
 		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
