@@ -194,7 +194,7 @@ func adjustMySQLConfig(conf *mysql.Config) {
 		}
 	}
 
-	setDefault("sql_mode", "STRICT_ALL_TABLES")
+	setDefault("sql_mode", "'STRICT_ALL_TABLES'")
 
 	// If a read timeout is set, we set max_statement_time to 95% of that, and
 	// long_query_time to 80% of that. That way we get logs of queries that are
