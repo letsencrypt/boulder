@@ -9,7 +9,7 @@ require (
 	github.com/aws/smithy-go v1.13.5
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
 	github.com/eggsampler/acme/v3 v3.3.0
-	github.com/go-gorp/gorp/v3 v3.0.2
+	github.com/go-gorp/gorp/v3 v3.1.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.7.0
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da

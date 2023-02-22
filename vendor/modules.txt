@@ -138,8 +138,8 @@ github.com/facebookgo/muster
 # github.com/felixge/httpsnoop v1.0.3
 ## explicit; go 1.13
 github.com/felixge/httpsnoop
-# github.com/go-gorp/gorp/v3 v3.0.2
-## explicit; go 1.13
+# github.com/go-gorp/gorp/v3 v3.1.0
+## explicit; go 1.18
 github.com/go-gorp/gorp/v3
 # github.com/go-redis/redis/v8 v8.11.5
 ## explicit; go 1.17
