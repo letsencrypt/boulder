@@ -97,7 +97,7 @@ func (be *BoulderError) GRPCStatus() *status.Status {
 	case NotFound:
 		c = codes.NotFound
 	case RateLimit:
-		c = codes.ResourceExhausted
+		c = codes.Unknown
 	case RejectedIdentifier:
 		c = codes.InvalidArgument
 	case InvalidEmail:
