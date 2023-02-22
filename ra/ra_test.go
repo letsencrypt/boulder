@@ -788,14 +788,13 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		Problems: nil,
 	}
 
-	// A subsequent call to perform validation should return the expected error
-	whatisit, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	// A subsequent call to perform validation should return nil due
+	// to being short-circuited because of valid authz reuse.
+	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: int64(ResponseIndex),
 	})
-	fmt.Println(whatisit)
-	fmt.Println(err)
-	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.AssertNotError(t, err, "Error was not nil, but should have been nil")
 }
 
 func TestPerformValidationSuccess(t *testing.T) {
@@ -2536,9 +2535,14 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	// Create an order for that request
 	order, err := ra.NewOrder(ctx, orderReq)
+	fmt.Println(order)
+	fmt.Println(err)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an order for regA failed")
+	fmt.Println(1)
+	fmt.Println(numAuthorizations(order))
 	test.AssertEquals(t, numAuthorizations(order), 1)
+	fmt.Println(2)
 	// It should be the fake near-expired-authz authz
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the fake authz's expiry since it is sooner

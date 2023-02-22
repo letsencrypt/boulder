@@ -1733,8 +1733,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// We expect some clients to try and update a challenge for an authorization
 	// that is already valid. In this case we don't need to process the
 	// challenge update. It wouldn't be helpful, the overall authorization is
-	// already good! We increment a stat for this reusing valid authz case and
-	// return early.
+	// already good! We return early for the valid authz reuse case.
 	if authz.Status == core.StatusValid {
 		return req.Authz, nil
 	}
