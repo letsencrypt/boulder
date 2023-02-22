@@ -99,9 +99,10 @@ func TestSendNagsManyCerts(t *testing.T) {
 		`cert for DNS names {{.TruncatedDNSNames}} is going to expire in {{.DaysToExpiration}} days ({{.ExpirationDate}})`))
 
 	m := mailer{
-		log:           blog.NewMock(),
-		mailer:        &mc,
-		emailTemplate: tmpl,
+		log:            blog.NewMock(),
+		mailer:         &mc,
+		emailTemplate:  tmpl,
+		addressLimiter: &limiter{clk: fc, limit: 4},
 		// Explicitly override the default subject to use testEmailSubject
 		subjectTemplate: staticTmpl,
 		rs:              rs,
@@ -138,9 +139,10 @@ func TestSendNags(t *testing.T) {
 
 	log := blog.NewMock()
 	m := mailer{
-		log:           log,
-		mailer:        &mc,
-		emailTemplate: tmpl,
+		log:            log,
+		mailer:         &mc,
+		emailTemplate:  tmpl,
+		addressLimiter: &limiter{clk: fc, limit: 4},
 		// Explicitly override the default subject to use testEmailSubject
 		subjectTemplate: staticTmpl,
 		rs:              rs,
@@ -205,6 +207,55 @@ func TestSendNags(t *testing.T) {
 	if !strings.Contains(sendLogs[0], `"TruncatedDNSNames":["example.com"]`) {
 		t.Errorf("expected first 'attempting send' log line to have 1 domain, 'example.com', got %q", sendLogs[0])
 	}
+}
+
+func TestSendNagsAddressLimited(t *testing.T) {
+	mc := mocks.Mailer{}
+	rs := newFakeRegStore()
+	fc := newFakeClock(t)
+
+	staticTmpl := template.Must(template.New("expiry-email-subject-static").Parse(testEmailSubject))
+
+	log := blog.NewMock()
+	m := mailer{
+		log:            log,
+		mailer:         &mc,
+		emailTemplate:  tmpl,
+		addressLimiter: &limiter{clk: fc, limit: 1},
+		// Explicitly override the default subject to use testEmailSubject
+		subjectTemplate: staticTmpl,
+		rs:              rs,
+		clk:             fc,
+		stats:           initStats(metrics.NoopRegisterer),
+	}
+
+	m.addressLimiter.inc(emailARaw)
+
+	cert := &x509.Certificate{
+		SerialNumber: big.NewInt(0x0304),
+		NotAfter:     fc.Now().AddDate(0, 0, 2),
+		DNSNames:     []string{"example.com"},
+	}
+
+	conn, err := m.mailer.Connect()
+	test.AssertNotError(t, err, "connecting SMTP")
+
+	// Try sending a message to an over-the-limit address
+	err = m.sendNags(conn, []string{emailA}, []*x509.Certificate{cert})
+	test.AssertNotError(t, err, "sending warning messages")
+	// Expect that no messages were sent because this address was over the limit
+	test.AssertEquals(t, len(mc.Messages), 0)
+
+	// Try sending a message to an over-the-limit address and an under-the-limit
+	// one. It should only go to the under-the-limit one.
+	err = m.sendNags(conn, []string{emailA, emailB}, []*x509.Certificate{cert})
+	test.AssertNotError(t, err, "sending warning messages to two addresses")
+	test.AssertEquals(t, len(mc.Messages), 1)
+	test.AssertEquals(t, mocks.MailerMessage{
+		To:      emailBRaw,
+		Subject: testEmailSubject,
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.RFC822Z)),
+	}, mc.Messages[0])
 }
 
 var serial1 = big.NewInt(0x1336)
@@ -578,7 +629,7 @@ func TestFindCertsAtCapacity(t *testing.T) {
 	addExpiringCerts(t, testCtx)
 
 	// Set the limit to 1 so we are "at capacity" with one result
-	testCtx.m.limit = 1
+	testCtx.m.certificatesPerTick = 1
 
 	err := testCtx.m.findExpiringCertificates(context.Background())
 	test.AssertNotError(t, err, "Failed to find expiring certs")
@@ -913,16 +964,17 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	}
 
 	m := &mailer{
-		log:             log,
-		mailer:          mc,
-		emailTemplate:   tmpl,
-		subjectTemplate: subjTmpl,
-		dbMap:           dbMap,
-		rs:              isa.SA{Impl: ssa},
-		nagTimes:        offsetNags,
-		limit:           100,
-		clk:             fc,
-		stats:           initStats(metrics.NoopRegisterer),
+		log:                 log,
+		mailer:              mc,
+		emailTemplate:       tmpl,
+		subjectTemplate:     subjTmpl,
+		dbMap:               dbMap,
+		rs:                  isa.SA{Impl: ssa},
+		nagTimes:            offsetNags,
+		addressLimiter:      &limiter{clk: fc, limit: 4},
+		certificatesPerTick: 100,
+		clk:                 fc,
+		stats:               initStats(metrics.NoopRegisterer),
 	}
 	return &testCtx{
 		dbMap:   dbMap,
@@ -933,4 +985,25 @@ func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 		log:     log,
 		cleanUp: cleanUp,
 	}
+}
+
+func TestLimiter(t *testing.T) {
+	clk := clock.NewFake()
+	lim := &limiter{clk: clk, limit: 4}
+	fooAtExample := "foo@example.com"
+	lim.inc(fooAtExample)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
+	lim.inc(fooAtExample)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
+	lim.inc(fooAtExample)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
+	lim.inc(fooAtExample)
+	test.AssertError(t, lim.check(fooAtExample), "expected an error")
+
+	clk.Sleep(time.Hour)
+	test.AssertError(t, lim.check(fooAtExample), "expected an error")
+
+	// Sleep long enough to reset the limit
+	clk.Sleep(24 * time.Hour)
+	test.AssertNotError(t, lim.check(fooAtExample), "expected no error")
 }

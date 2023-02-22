@@ -10,6 +10,7 @@
       "maxOpenConns": 10
     },
     "certLimit": 100000,
+    "mailsPerAddressPerDay": 4,
     "updateChunkSize": 1000,
     "nagTimes": ["480h", "240h"],
     "emailTemplate": "test/config-next/expiration-mailer.gotmpl",
