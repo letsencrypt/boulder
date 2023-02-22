@@ -294,7 +294,7 @@ github.com/zmap/zcrypto/util
 github.com/zmap/zcrypto/x509
 github.com/zmap/zcrypto/x509/ct
 github.com/zmap/zcrypto/x509/pkix
-# github.com/zmap/zlint/v3 v3.4.0
+# github.com/zmap/zlint/v3 v3.4.1
 ## explicit; go 1.18
 github.com/zmap/zlint/v3
 github.com/zmap/zlint/v3/lint

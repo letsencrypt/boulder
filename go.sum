@@ -489,8 +489,8 @@ github.com/zmap/rc2 v0.0.0-20131011165748-24b9757f5521/go.mod h1:3YZ9o3WnatTIZhu
 github.com/zmap/zcertificate v0.0.0-20180516150559-0e3d58b1bac4/go.mod h1:5iU54tB79AMBcySS0R2XIyZBAVmeHranShAFELYx7is=
 github.com/zmap/zcrypto v0.0.0-20220402174210-599ec18ecbac h1:+nr36qrZEH0RIYNjcUEnOrCUdcSG3om2ANaFA6iSVWA=
 github.com/zmap/zcrypto v0.0.0-20220402174210-599ec18ecbac/go.mod h1:egdRkzUylATvPkWMpebZbXhv0FMEMJGX/ur0D3Csk2s=
-github.com/zmap/zlint/v3 v3.4.0 h1:Xs/lrMJY74MpJx/jSx2oVvZBrqlyUyFaLLBRyf68cqg=
-github.com/zmap/zlint/v3 v3.4.0/go.mod h1:WgepL2QqxyMHnrOWJ54NqrgfMtOyuXr52wEE0tcfo9k=
+github.com/zmap/zlint/v3 v3.4.1 h1:zhGB2Q1oPNS+bODC5tTPlKDOnLfDGyxejgAEp1SfFiQ=
+github.com/zmap/zlint/v3 v3.4.1/go.mod h1:WgepL2QqxyMHnrOWJ54NqrgfMtOyuXr52wEE0tcfo9k=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=
