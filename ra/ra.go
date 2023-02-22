@@ -2422,9 +2422,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorizations correspond to
 	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(newOrder.Names))
 	for _, v := range existingAuthz.Authz {
-		if v.Authz.Status == string(core.StatusValid) {
-			continue
-		}
 		nameToExistingAuthz[v.Domain] = v.Authz
 	}
 
