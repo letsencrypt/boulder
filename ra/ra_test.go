@@ -2536,14 +2536,9 @@ func TestNewOrderExpiry(t *testing.T) {
 
 	// Create an order for that request
 	order, err := ra.NewOrder(ctx, orderReq)
-	fmt.Println(order)
-	fmt.Println(err)
 	// It shouldn't fail
 	test.AssertNotError(t, err, "Adding an order for regA failed")
-	fmt.Println(1)
-	fmt.Println(numAuthorizations(order))
 	test.AssertEquals(t, numAuthorizations(order), 1)
-	fmt.Println(2)
 	// It should be the fake near-expired-authz authz
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the fake authz's expiry since it is sooner
