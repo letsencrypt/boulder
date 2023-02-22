@@ -455,12 +455,12 @@ type GRPCServerConfig struct {
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	// DEPRECATED: Use the ClientNames field within each Service instead.
-	ClientNames []string `json:"clientNames" validate:"required,dive,hostname"`
+	ClientNames []string `json:"clientNames" validate:"dive,hostname"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
 	// the package names set in those files (e.g. "ca.CertificateAuthority").
-	Services map[string]GRPCServiceConfig `json:"services" validate:"required,dive,keys,required"`
+	Services map[string]GRPCServiceConfig `json:"services" validate:"required,dive,required"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
@@ -475,7 +475,7 @@ type GRPCServiceConfig struct {
 	// SANs. The upstream listening server will reject connections from clients
 	// which do not appear in this list, and the server interceptor will reject
 	// RPC calls for this service from clients which are not listed here.
-	ClientNames []string `json:"clientNames" validate:"required,dive,hostname"`
+	ClientNames []string `json:"clientNames" validate:"gt=0,dive,hostname,required"`
 }
 
 // BeelineConfig provides config options for the Honeycomb beeline-go library,

@@ -507,7 +507,6 @@ func main() {
 		"true (default): only queries for affected certificates. false: will perform the requested block or revoke action",
 	)
 	comment := flagSet.String("comment", "", "Comment to include in the blocked key database entry ")
-
 	err := flagSet.Parse(os.Args[2:])
 	cmd.FailOnError(err, "Error parsing flagset")
 
