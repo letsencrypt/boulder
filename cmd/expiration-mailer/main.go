@@ -46,6 +46,7 @@ type regStore interface {
 
 // limiter tracks how many mails we've sent to a given address in a given day.
 // Note that this does not track mails across restarts of the process.
+// Modifications to `counts` and `currentDay` are protected by a mutex.
 type limiter struct {
 	sync.RWMutex
 	// currentDay is a day in UTC, truncated to 24 hours. When the current
@@ -64,10 +65,13 @@ type limiter struct {
 	clk clock.Clock
 }
 
-// expects limiter is locked
+const oneDay = 24 * time.Hour
+
+// maybeBumpDay updates lim.currentDay if its current value is more than 24
+// hours ago, and resets the counts map. Expects limiter is locked.
 func (lim *limiter) maybeBumpDay() {
-	today := lim.clk.Now().UTC().Truncate(24 * time.Hour)
-	if (today.Sub(lim.currentDay) >= 24*time.Hour && len(lim.counts) > 0) ||
+	today := lim.clk.Now().Truncate(oneDay)
+	if (today.Sub(lim.currentDay) >= oneDay && len(lim.counts) > 0) ||
 		lim.counts == nil {
 		// Throw away counts so far and switch to a new day.
 		// This also does the initialization of counts and currentDay the first
