@@ -116,6 +116,7 @@ type RegistrationAuthorityImpl struct {
 	recheckCAAUsedAuthzLifetime prometheus.Counter
 	authzAges                   prometheus.Histogram
 	orderAges                   prometheus.Histogram
+	inflightFinalizes           prometheus.Gauge
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -225,6 +226,11 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(orderAges)
 
+	inflightFinalizes := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "inflight_finalizes",
+		Help: "Gauge of the number of current asynchronous finalize goroutines",
+	})
+
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
 	for _, issuer := range issuers {
@@ -262,6 +268,7 @@ func NewRegistrationAuthorityImpl(
 		recheckCAAUsedAuthzLifetime: recheckCAAUsedAuthzLifetime,
 		authzAges:                   authzAges,
 		orderAges:                   orderAges,
+		inflightFinalizes:           inflightFinalizes,
 	}
 	return ra
 }
@@ -1060,6 +1067,9 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
+		ra.inflightFinalizes.Inc()
+		defer ra.inflightFinalizes.Dec()
+
 		// Step 3: Issue the Certificate
 		var cert *x509.Certificate
 		cert, err = ra.issueCertificateInner(
