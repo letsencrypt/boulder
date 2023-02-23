@@ -164,7 +164,7 @@ func TestSendNags(t *testing.T) {
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      emailARaw,
 		Subject: testEmailSubject,
-		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format("2006-01-02")),
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.DateOnly)),
 	}, mc.Messages[0])
 
 	mc.Clear()
@@ -176,12 +176,12 @@ func TestSendNags(t *testing.T) {
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      emailARaw,
 		Subject: testEmailSubject,
-		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format("2006-01-02")),
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.DateOnly)),
 	}, mc.Messages[0])
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      emailBRaw,
 		Subject: testEmailSubject,
-		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format("2006-01-02")),
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.DateOnly)),
 	}, mc.Messages[1])
 
 	mc.Clear()
@@ -254,7 +254,7 @@ func TestSendNagsAddressLimited(t *testing.T) {
 	test.AssertEquals(t, mocks.MailerMessage{
 		To:      emailBRaw,
 		Subject: testEmailSubject,
-		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format("2006-01-02")),
+		Body:    fmt.Sprintf(`hi, cert for DNS names example.com is going to expire in 2 days (%s)`, cert.NotAfter.Format(time.DateOnly)),
 	}, mc.Messages[0])
 }
 
@@ -925,7 +925,7 @@ func TestDedupOnRegistration(t *testing.T) {
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 1 days (%s)`,
 			domains,
-			expires.Format("2006-01-02")),
+			expires.Format(time.DateOnly)),
 	}
 	test.AssertEquals(t, expected, testCtx.mc.Messages[0])
 }

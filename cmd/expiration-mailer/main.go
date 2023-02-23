@@ -224,7 +224,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 		TruncatedDNSNames  string
 		NumDNSNamesOmitted int
 	}{
-		ExpirationDate:     expDate.UTC().Format("2006-01-02"),
+		ExpirationDate:     expDate.UTC().Format(time.DateOnly),
 		DaysToExpiration:   int(expiresIn.Hours() / 24),
 		DNSNames:           strings.Join(domains, "\n"),
 		TruncatedDNSNames:  strings.Join(truncatedDomains, "\n"),
