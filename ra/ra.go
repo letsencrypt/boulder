@@ -1053,84 +1053,26 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	order := req.Order
 	order.Status = string(core.StatusProcessing)
 
-	// We do steps 3 and 4 in a goroutine so that we can better handle latency
-	// from getting SCTs and writing the (pre)certificate to the database. This
-	// lets us return the order in the Processing state to the client immediately,
-	// prompting them to poll the Order object and wait for it to be put into its
-	// final state.
-	//
-	// We track this goroutine's lifetime in two separate waitgroups: one on the
-	// RA itself, so that it can wait for all goroutines to drain during shutdown,
-	// and one local to this request, so that this function can wait on the
-	// goroutine if the AsyncFinalize flag isn't enabled.
-	ra.finalizeWG.Add(1)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		ra.inflightFinalizes.Inc()
-		defer ra.inflightFinalizes.Dec()
-
-		// Step 3: Issue the Certificate
-		var cert *x509.Certificate
-		cert, err = ra.issueCertificateInner(
-			ctx, csr, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
-
-		// Step 4: Fail the order if necessary, and update metrics and log fields
-		var result string
-		if err != nil {
-			// The problem is computed using `web.ProblemDetailsForError`, the same
-			// function the WFE uses to convert between `berrors` and problems. This
-			// will turn normal expected berrors like berrors.UnauthorizedError into the
-			// correct `urn:ietf:params:acme:error:unauthorized` problem while not
-			// letting anything like a server internal error through with sensitive
-			// info.
-			ra.failOrder(ctx, req.Order, web.ProblemDetailsForError(err, "Error finalizing order"))
-			order.Status = string(core.StatusInvalid)
-
-			logEvent.Error = err.Error()
-			beeline.AddFieldToTrace(ctx, "issuance.error", err)
-
-			result = "error"
-		} else {
-			order.CertificateSerial = core.SerialToString(cert.SerialNumber)
-			order.Status = string(core.StatusValid)
-
-			ra.namesPerCert.With(
-				prometheus.Labels{"type": "issued"},
-			).Observe(float64(len(order.Names)))
-
-			ra.newCertCounter.Inc()
-
-			logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
-			beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(cert.SerialNumber))
-			logEvent.CommonName = cert.Subject.CommonName
-			beeline.AddFieldToTrace(ctx, "cert.common_name", cert.Subject.CommonName)
-			logEvent.Names = cert.DNSNames
-			beeline.AddFieldToTrace(ctx, "cert.dns_names", cert.DNSNames)
-			logEvent.NotBefore = cert.NotBefore
-			beeline.AddFieldToTrace(ctx, "cert.not_before", cert.NotBefore)
-			logEvent.NotAfter = cert.NotAfter
-			beeline.AddFieldToTrace(ctx, "cert.not_after", cert.NotAfter)
-
-			result = "successful"
-		}
-
-		logEvent.ResponseTime = ra.clk.Now()
-		ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
-		ra.finalizeWG.Done()
-		wg.Done()
-	}()
-
-	// If we haven't turned on asynchronous finalization yet, wait for the
-	// goroutine just like in the good old days!
-	if !features.Enabled(features.AsyncFinalize) {
-		wg.Wait()
+	// Steps 3 (issuance) and 4 (cleanup) are done inside a helper function so
+	// that we can control whether or not that work happens asynchronously.
+	if features.Enabled(features.AsyncFinalize) {
+		// We do this work in a goroutine so that we can better handle latency from
+		// getting SCTs and writing the (pre)certificate to the database. This lets
+		// us return the order in the Processing state to the client immediately,
+		// prompting them to poll the Order object and wait for it to be put into
+		// its final state.
+		//
+		// We track this goroutine's lifetime in a waitgroup global to this RA, so
+		// that it can wait for all goroutines to drain during shutdown.
+		ra.finalizeWG.Add(1)
+		go func() {
+			ra.issueCertificateOuter(ctx, order, csr, logEvent)
+			ra.finalizeWG.Done()
+		}()
+		return order, nil
+	} else {
+		return ra.issueCertificateOuter(ctx, order, csr, logEvent)
 	}
-
-	// For now, return both the order and the error, to capture any errors which
-	// may have been set in the goroutine if we waited for it. Remove this and
-	// just return a nil error once the AsyncFinalize flag is removed.
-	return order, err
 }
 
 // validateFinalizeRequest checks that a FinalizeOrder request is fully correct
@@ -1236,6 +1178,68 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	logEvent.VerifiedFields = []string{"subject.commonName", "subjectAltName"}
 
 	return csr, nil
+}
+
+// issueCertificateOuter exists solely to ensure that all calls to
+// issueCertificateInner have their result handled uniformly, no matter what
+// return path that inner function takes.
+func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
+	ctx context.Context,
+	order *corepb.Order,
+	csr *x509.CertificateRequest,
+	logEvent certificateRequestEvent,
+) (*corepb.Order, error) {
+	ra.inflightFinalizes.Inc()
+	defer ra.inflightFinalizes.Dec()
+
+	// Step 3: Issue the Certificate
+	cert, err := ra.issueCertificateInner(
+		ctx, csr, accountID(order.RegistrationID), orderID(order.Id))
+
+	// Step 4: Fail the order if necessary, and update metrics and log fields
+	var result string
+	if err != nil {
+		// The problem is computed using `web.ProblemDetailsForError`, the same
+		// function the WFE uses to convert between `berrors` and problems. This
+		// will turn normal expected berrors like berrors.UnauthorizedError into the
+		// correct `urn:ietf:params:acme:error:unauthorized` problem while not
+		// letting anything like a server internal error through with sensitive
+		// info.
+		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
+		order.Status = string(core.StatusInvalid)
+
+		logEvent.Error = err.Error()
+		beeline.AddFieldToTrace(ctx, "issuance.error", err)
+
+		result = "error"
+	} else {
+		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
+		order.Status = string(core.StatusValid)
+
+		ra.namesPerCert.With(
+			prometheus.Labels{"type": "issued"},
+		).Observe(float64(len(order.Names)))
+
+		ra.newCertCounter.Inc()
+
+		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
+		beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(cert.SerialNumber))
+		logEvent.CommonName = cert.Subject.CommonName
+		beeline.AddFieldToTrace(ctx, "cert.common_name", cert.Subject.CommonName)
+		logEvent.Names = cert.DNSNames
+		beeline.AddFieldToTrace(ctx, "cert.dns_names", cert.DNSNames)
+		logEvent.NotBefore = cert.NotBefore
+		beeline.AddFieldToTrace(ctx, "cert.not_before", cert.NotBefore)
+		logEvent.NotAfter = cert.NotAfter
+		beeline.AddFieldToTrace(ctx, "cert.not_after", cert.NotAfter)
+
+		result = "successful"
+	}
+
+	logEvent.ResponseTime = ra.clk.Now()
+	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
+
+	return order, err
 }
 
 // issueCertificateInner handles the heavy lifting aspects of certificate
