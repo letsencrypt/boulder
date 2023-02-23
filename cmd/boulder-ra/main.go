@@ -158,13 +158,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
 
-	var ocspc capb.OCSPGeneratorClient
-	ocspc = cac
-	if c.RA.OCSPService != nil {
-		ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
-		cmd.FailOnError(err, "Unable to create CA client")
-		ocspc = capb.NewOCSPGeneratorClient(ocspConn)
-	}
+	ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Unable to create CA OCSP client")
+	ocspc := capb.NewOCSPGeneratorClient(ocspConn)
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")

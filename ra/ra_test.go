@@ -368,7 +368,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
-	ra.OCSP = ca
+	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
 	return va, sa, ra, fc, cleanUp
 }
