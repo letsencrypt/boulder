@@ -452,7 +452,10 @@ type CertificateStatus struct {
 
 	// Note: this is not an issuance.IssuerNameID because that would create an
 	// import cycle between core and issuance.
-	IssuerNameID int64
+	// Note2: This field used to be called `issuerID`. We keep the old name in
+	// the DB, but update the Go field name to be clear which type of ID this
+	// is.
+	IssuerNameID int64 `db:"issuerID"`
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames

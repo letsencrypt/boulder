@@ -403,10 +403,10 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 
 	_, err = c.ssa.AddPrecertificate(
 		context.Background(), &sapb.AddCertificateRequest{
-			Der:      rawCert,
-			RegID:    regId,
-			Issued:   time.Now().UnixNano(),
-			IssuerID: 1,
+			Der:          rawCert,
+			RegID:        regId,
+			Issued:       time.Now().UnixNano(),
+			IssuerNameID: 1,
 		},
 	)
 	test.AssertNotError(t, err, "Failed to add test precert")
