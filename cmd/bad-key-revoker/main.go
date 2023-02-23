@@ -28,7 +28,10 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-const blockedKeysGaugeLimit = 1000
+const (
+	cmdName               = "bad-key-revoker"
+	blockedKeysGaugeLimit = 1000
+)
 
 var keysToProcess = prometheus.NewGauge(prometheus.GaugeOpts{
 	Name: "bad_keys_to_process",
@@ -385,7 +388,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 type Config struct {
 	BadKeyRevoker struct {
 		DB        cmd.DBConfig
-		DebugAddr string
+		DebugAddr string `validate:"required,hostname_port"`
 
 		TLS       cmd.TLSConfig
 		RAService *cmd.GRPCClientConfig
@@ -394,30 +397,30 @@ type Config struct {
 		// a key hash that bad-key-revoker will attempt to revoke. If the number of certificates
 		// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
 		// progress until this is addressed.
-		MaximumRevocations int
+		MaximumRevocations int `validate:"required,gte=0"`
 		// FindCertificatesBatchSize specifies the maximum number of serials to select from the
 		// keyHashToSerial table at once
-		FindCertificatesBatchSize int
+		FindCertificatesBatchSize int `validate:"required"`
 
 		// Interval specifies the minimum duration bad-key-revoker
 		// should sleep between attempting to find blockedKeys rows to
 		// process when there is an error or no work to do.
-		Interval cmd.ConfigDuration
+		Interval cmd.ConfigDuration `validate:"-"`
 
 		// BackoffIntervalMax specifies a maximum duration the backoff
 		// algorithm will wait before retrying in the event of error
 		// or no work to do.
-		BackoffIntervalMax cmd.ConfigDuration
+		BackoffIntervalMax cmd.ConfigDuration `validate:"-"`
 
 		Mailer struct {
 			cmd.SMTPConfig
 			// Path to a file containing a list of trusted root certificates for use
 			// during the SMTP connection (as opposed to the gRPC connections).
-			SMTPTrustedRootFile string
+			SMTPTrustedRootFile string `validate:"required"`
 
-			From          string
-			EmailSubject  string
-			EmailTemplate string
+			From          string `validate:"required"`
+			EmailSubject  string `validate:"required"`
+			EmailTemplate string `validate:"required"`
 		}
 	}
 
@@ -427,12 +430,20 @@ type Config struct {
 
 func main() {
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 
 	if *configPath == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configPath)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
+	}
+
 	var config Config
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
@@ -566,5 +577,6 @@ func (bkr *badKeyRevoker) backoffReset() {
 }
 
 func init() {
-	cmd.RegisterCommand("bad-key-revoker", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }

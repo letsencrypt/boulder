@@ -131,7 +131,7 @@ func (pc PAConfig) CheckChallenges() error {
 // HostnamePolicyConfig specifies a file from which to load a policy regarding
 // what hostnames to issue for.
 type HostnamePolicyConfig struct {
-	HostnamePolicyFile string
+	HostnamePolicyFile string `validate:"required"`
 }
 
 // TLSConfig represents certificates and a key for authenticated TLS.
