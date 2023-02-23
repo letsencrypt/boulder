@@ -647,7 +647,7 @@ func TestRetry(t *testing.T) {
 					t, dr.timeoutCounter, prometheus.Labels{
 						"qtype":    "TXT",
 						"type":     "out of retries",
-						"resolver": dnsLoopbackAddr,
+						"resolver": "127.0.0.1",
 						"isTLD":    "false",
 					}, tc.metricsAllRetries)
 			}
@@ -690,14 +690,14 @@ func TestRetry(t *testing.T) {
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"type":     "canceled",
-			"resolver": dnsLoopbackAddr,
+			"resolver": "127.0.0.1",
 		}, 1)
 
 	test.AssertMetricWithLabelsEquals(
 		t, dr.timeoutCounter, prometheus.Labels{
 			"qtype":    "TXT",
 			"type":     "deadline exceeded",
-			"resolver": dnsLoopbackAddr,
+			"resolver": "127.0.0.1",
 		}, 2)
 }
 
