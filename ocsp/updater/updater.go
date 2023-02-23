@@ -291,7 +291,7 @@ func statusFromMetaAndResp(meta *sa.CertStatusMetadata, resp []byte) *core.Certi
 		OCSPResponse:          resp,
 		NotAfter:              meta.NotAfter,
 		IsExpired:             meta.IsExpired,
-		IssuerID:              meta.IssuerID,
+		IssuerNameID:          meta.IssuerID,
 	}
 }
 
