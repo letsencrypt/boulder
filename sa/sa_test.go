@@ -2647,7 +2647,7 @@ func TestIncidentsForSerial(t *testing.T) {
 			affectedCertA.Serial,
 			affectedCertA.RegistrationID,
 			affectedCertA.OrderID,
-			affectedCertA.LastNoticeSent.Format("2006-01-02 15:04:05"),
+			affectedCertA.LastNoticeSent.Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "Error while inserting row for '1338' into incident table")
@@ -2670,7 +2670,7 @@ func TestIncidentsForSerial(t *testing.T) {
 			affectedCertB.Serial,
 			affectedCertB.RegistrationID,
 			affectedCertB.OrderID,
-			affectedCertB.LastNoticeSent.Format("2006-01-02 15:04:05"),
+			affectedCertB.LastNoticeSent.Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "Error while inserting row for '1337' into incident table")
@@ -2777,7 +2777,7 @@ func TestSerialsForIncident(t *testing.T) {
 				i,
 				randInt(),
 				randInt(),
-				sa.clk.Now().Add(time.Hour*24*7).Format("2006-01-02 15:04:05"),
+				sa.clk.Now().Add(time.Hour*24*7).Format(time.DateTime),
 			),
 		)
 		test.AssertNotError(t, err, fmt.Sprintf("Error while inserting row for '%s' into incident table", i))
