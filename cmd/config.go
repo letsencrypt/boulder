@@ -266,7 +266,7 @@ type GRPCClientConfig struct {
 	// hostname the gRPC client will resolve it via the system DNS. If the
 	// address contains a port, the client will use it directly, otherwise port
 	// 53 is used.
-	DNSAuthority string `validate:"required_with=SRVLookup SRVLookups,ip|hostname|hostname_port"`
+	DNSAuthority string `validate:"required_with=SRVLookup SRVLookups,omitempty,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name the gRPC client will use
 	// to construct a SRV DNS query to lookup backends. For example: if the
@@ -299,7 +299,7 @@ type GRPCClientConfig struct {
 	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
 	// 1 1 8080 0a585858.addr.dc1.consul.
 	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
-	SRVLookup *ServiceDomain `validate:"required_without=SRVLookups ServerAddress ServerIPAddresses"`
+	SRVLookup *ServiceDomain `validate:"required_without_all=SRVLookups ServerAddress ServerIPAddresses"`
 
 	// SRVLookups allows you to pass multiple SRV records to the gRPC client.
 	// The gRPC client will resolves each SRV record and use the results to
@@ -350,7 +350,7 @@ type GRPCClientConfig struct {
 
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
-	HostOverride string `validate:"excluded_with=ServerIPAddresses"`
+	HostOverride string `validate:"excluded_with=ServerIPAddresses,hostname"`
 	Timeout      ConfigDuration
 }
 
