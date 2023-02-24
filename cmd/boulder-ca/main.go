@@ -23,11 +23,12 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
+const cmdName = "boulder-ca"
+
 type Config struct {
 	CA struct {
 		cmd.ServiceConfig
 
-		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
 		GRPCCA            *cmd.GRPCServerConfig
@@ -50,10 +51,10 @@ type Config struct {
 		Backdate cmd.ConfigDuration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int
+		SerialPrefix int `validator:"required,min=1,max=255"`
 
 		// The maximum number of subjectAltNames in a single certificate
-		MaxNames int
+		MaxNames int `validator:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. It should be
 		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
@@ -93,12 +94,12 @@ type Config struct {
 		// CTLogListFile is the path to a JSON file on disk containing the set of
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
-		CTLogListFile string
+		CTLogListFile string `validator:"required,endswith=.json"`
 
 		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
 		// across all issuers and shards. It must use the http:// scheme, and must
 		// not end with a slash. Example: "http://prod.c.lencr.org".
-		CRLDPBase string
+		CRLDPBase string `validator:"required,url,startswith=http://,endsnotwith=/"`
 
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
@@ -153,10 +154,17 @@ func main() {
 	crlAddr := flag.String("crl-addr", "", "CRL gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -391,5 +399,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-ca", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }

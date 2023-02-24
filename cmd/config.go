@@ -110,8 +110,8 @@ type SMTPConfig struct {
 // database, what policies it should enforce, and what challenges
 // it should offer.
 type PAConfig struct {
-	DBConfig
-	Challenges map[core.AcmeChallenge]bool
+	DBConfig   `validate:"-"`
+	Challenges map[core.AcmeChallenge]bool `validate:"gt=0,dive,keys,oneof=http-01 dns-01 tls-alpn-01,endkeys,required"`
 }
 
 // CheckChallenges checks whether the list of challenges in the PA config

@@ -43,11 +43,11 @@ type Config struct {
 	// WeakKeyFile is the path to a JSON file containing truncated modulus hashes
 	// of known weak RSA keys. If this config value is empty, then RSA modulus
 	// hash checking will be disabled.
-	WeakKeyFile string
+	WeakKeyFile string `validator:"required"`
 	// BlockedKeyFile is the path to a YAML file containing base64-encoded SHA256
 	// hashes of PKIX Subject Public Keys that should be blocked. If this config
 	// value is empty, then blocked key checking will be disabled.
-	BlockedKeyFile string
+	BlockedKeyFile string `validator:"required"`
 	// FermatRounds is an integer number of rounds of Fermat's factorization
 	// method that should be performed to attempt to detect keys whose modulus can
 	// be trivially factored because the two factors are very close to each other.
