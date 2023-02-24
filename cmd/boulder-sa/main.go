@@ -13,23 +13,25 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
+const cmdName = "boulder-sa"
+
 type Config struct {
 	SA struct {
 		cmd.ServiceConfig
 		DB          cmd.DBConfig
-		ReadOnlyDB  cmd.DBConfig
-		IncidentsDB cmd.DBConfig
-		Redis       *rocsp_config.RedisConfig
+		ReadOnlyDB  cmd.DBConfig              `validate:"-"`
+		IncidentsDB cmd.DBConfig              `validate:"-"`
+		Redis       *rocsp_config.RedisConfig `validate:"-"`
 		// TODO(#6285): Remove this field, as it is no longer used.
 		Issuers map[string]int
 
 		Features map[string]bool
 
 		// Max simultaneous SQL queries caused by a single RPC.
-		ParallelismPerRPC int
+		ParallelismPerRPC int `validate:"omitempty,min=1"`
 		// LagFactor is how long to sleep before retrying a read request that may
 		// have failed solely due to replication lag.
-		LagFactor cmd.ConfigDuration
+		LagFactor cmd.ConfigDuration `validate:"-"`
 	}
 
 	Syslog  cmd.SyslogConfig
@@ -40,10 +42,17 @@ func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -113,4 +122,5 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("boulder-sa", main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }
