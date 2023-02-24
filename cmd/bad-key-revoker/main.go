@@ -416,7 +416,7 @@ type Config struct {
 			cmd.SMTPConfig
 			// Path to a file containing a list of trusted root certificates for use
 			// during the SMTP connection (as opposed to the gRPC connections).
-			SMTPTrustedRootFile string `validate:"required"`
+			SMTPTrustedRootFile string
 
 			From          string `validate:"required"`
 			EmailSubject  string `validate:"required"`

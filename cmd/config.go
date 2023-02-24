@@ -101,9 +101,9 @@ func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
 
 type SMTPConfig struct {
 	PasswordConfig
-	Server   string
-	Port     string
-	Username string
+	Server   string `validate:"required"`
+	Port     string `validate:"required"`
+	Username string `validate:"required"`
 }
 
 // PAConfig specifies how a policy authority should connect to its
