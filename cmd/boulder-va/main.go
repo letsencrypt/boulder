@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 	"github.com/letsencrypt/boulder/va"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
+
+const vaCmdName = "boulder-va"
+const rvaCmdName = "boulder-remoteva"
 
 type Config struct {
 	VA struct {
@@ -30,15 +34,15 @@ type Config struct {
 			Proxies     []string
 		}
 
-		// The number of times to try a DNS query (that has a temporary error)
+		// DNSTries is the number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries                  int
-		DNSResolver               string
-		DNSTimeout                string
+		DNSResolver               string `validate:"required"`
+		DNSTimeout                string `validate:"required_without=Common.DNSTimeout"`
 		DNSAllowLoopbackAddresses bool
 
-		RemoteVAs                   []cmd.GRPCClientConfig
+		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int
 
 		Features map[string]bool
@@ -59,10 +63,19 @@ func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	fmt.Println(os.Args)
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(vaCmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -172,8 +185,11 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-va", main)
+	cmd.RegisterCommand(vaCmdName, main)
 	// We register under two different names, because it's convenient for the
 	// remote VAs to show up under a different program name when looking at logs.
-	cmd.RegisterCommand("boulder-remoteva", main)
+	cmd.RegisterCommand(rvaCmdName, main)
+	cmd.RegisterConfig(vaCmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterConfig(rvaCmdName, &cmd.ConfigValidator{Config: &Config{}})
+
 }
