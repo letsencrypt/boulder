@@ -9,10 +9,19 @@ import (
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
+const cmdName = "boulder-observer"
+
 func main() {
 	configPath := flag.String(
 		"config", "config.yml", "Path to boulder-observer configuration file")
+	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configPath)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
+	}
 
 	configYAML, err := os.ReadFile(*configPath)
 	cmd.FailOnError(err, "failed to read config file")
@@ -36,5 +45,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-observer", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &observer.ObsConf{}})
 }

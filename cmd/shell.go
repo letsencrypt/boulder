@@ -8,6 +8,7 @@ import (
 	"expvar"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/validator/v10"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -327,13 +329,17 @@ func ReadAndValidateConfigFile(name, filename string) error {
 		return err
 	}
 	defer file.Close()
-	return ValidateConfigByName(name, file)
+	if name == "boulder-observer" {
+		// Only the boulder-observer uses YAML config files.
+		return ValidateYAMLConfigByName(name, file)
+	}
+	return ValidateJSONConfigByName(name, file)
 }
 
-// ValidateConfigByName takes a config name and an io.Reader containing a JSON
+// ValidateJSONConfigByName takes a config name and an io.Reader containing a JSON
 // representation of a config and validates the config using the struct tags
 // defined in the config struct.
-func ValidateConfigByName(name string, in io.Reader) error {
+func ValidateJSONConfigByName(name string, in io.Reader) error {
 	c := LookupConfig(name)
 	if c == nil {
 		return fmt.Errorf("no config found for %q", name)
@@ -348,6 +354,49 @@ func ValidateConfigByName(name string, in io.Reader) error {
 	}
 
 	err := decodeJSONStrict(in, c.Config)
+	if err != nil {
+		return err
+	}
+	err = validate.Struct(c.Config)
+	if err != nil {
+		errs, ok := err.(validator.ValidationErrors)
+		if !ok {
+			// This should never happen.
+			return err
+		}
+		if len(errs) > 0 {
+			allErrs := []string{}
+			for _, e := range errs {
+				allErrs = append(allErrs, e.Error())
+			}
+			return errors.New(strings.Join(allErrs, ", "))
+		}
+	}
+	return nil
+}
+
+// ValidateYAMLConfigByName takes a config name and an io.Reader containing a YAML
+// representation of a config and validates the config using the struct tags
+// defined in the config struct.
+func ValidateYAMLConfigByName(name string, in io.Reader) error {
+	c := LookupConfig(name)
+	if c == nil {
+		return fmt.Errorf("no config found for %q", name)
+	}
+
+	// Initialize the validator and load any custom tags.
+	validate := validator.New()
+	if c.Validators != nil {
+		for tag, v := range c.Validators {
+			validate.RegisterValidation(tag, v)
+		}
+	}
+
+	inBytes, err := ioutil.ReadAll(in)
+	if err != nil {
+		return err
+	}
+	err = strictyaml.Unmarshal(inBytes, c.Config)
 	if err != nil {
 		return err
 	}

@@ -13,8 +13,8 @@ import (
 // MonConf is exported to receive YAML configuration in `ObsConf`.
 type MonConf struct {
 	Period   cmd.ConfigDuration `yaml:"period"`
-	Kind     string             `yaml:"kind"`
-	Settings probers.Settings   `yaml:"settings"`
+	Kind     string             `yaml:"kind" validate:"required,oneof=DNS HTTP CRL TLS"`
+	Settings probers.Settings   `yaml:"settings" validate:"gt=0,dive"`
 }
 
 // validatePeriod ensures the received `Period` field is at least 1µs.

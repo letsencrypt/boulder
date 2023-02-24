@@ -24,10 +24,10 @@ var (
 
 // ObsConf is exported to receive YAML configuration.
 type ObsConf struct {
-	DebugAddr string           `yaml:"debugaddr"`
-	Buckets   []float64        `yaml:"buckets"`
+	DebugAddr string           `yaml:"debugaddr" validate:"required,hostname_port"`
+	Buckets   []float64        `yaml:"buckets" validate:"gt=0,dive"`
 	Syslog    cmd.SyslogConfig `yaml:"syslog"`
-	MonConfs  []*MonConf       `yaml:"monitors"`
+	MonConfs  []*MonConf       `yaml:"monitors" validate:"gt=0,dive"`
 }
 
 // validateSyslog ensures the the `Syslog` field received by `ObsConf`
