@@ -60,6 +60,13 @@ const (
 	// query enabled by CertCheckerChecksValidations didn't find corresponding
 	// authorizations.
 	CertCheckerRequiresValidations
+
+	// AsyncFinalize enables the RA to return approximately immediately from
+	// requests to finalize orders. This allows us to take longer getting SCTs,
+	// issuing certs, and updating the database; it indirectly reduces the number
+	// of "orphaned" certs we have. However, it also requires clients to properly
+	// implement polling the Order object to wait for the cert URL to appear.
+	AsyncFinalize
 )
 
 // List of features and their default value, protected by fMu
@@ -78,6 +85,7 @@ var features = map[FeatureFlag]bool{
 	ExpirationMailerUsesJoin:       false,
 	CertCheckerChecksValidations:   false,
 	CertCheckerRequiresValidations: false,
+	AsyncFinalize:                  false,
 }
 
 var fMu = new(sync.RWMutex)
