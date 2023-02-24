@@ -97,9 +97,9 @@ type CTConfig struct {
 	Stagger cmd.ConfigDuration
 	// LogListFile is a path to a JSON log list file. The file must match Chrome's
 	// schema: https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
-	LogListFile string
+	LogListFile string `validate:"required,endswith=.json"`
 	// SCTLogs is a list of CT log names to submit precerts to in order to get SCTs.
-	SCTLogs []string
+	SCTLogs []string `validate:"gt=0"`
 	// InfoLogs is a list of CT log names to submit precerts to on a best-effort
 	// basis. Logs are included here for the sake of wider distribution of our
 	// precerts, and to exercise logs that in the qualification process.
@@ -107,7 +107,7 @@ type CTConfig struct {
 	// FinalLogs is a list of CT log names to submit final certificates to.
 	// This may include duplicates from the lists above, to submit both precerts
 	// and final certs to the same log.
-	FinalLogs []string
+	FinalLogs []string `validate:"gt=0"`
 }
 
 // LogID holds enough information to uniquely identify a CT Log: its log_id

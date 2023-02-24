@@ -25,12 +25,14 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
+const cmdName = "boulder-ra"
+
 type Config struct {
 	RA struct {
 		cmd.ServiceConfig
 		cmd.HostnamePolicyConfig
 
-		RateLimitPoliciesFilename string
+		RateLimitPoliciesFilename string `validate:"required"`
 
 		MaxContactsPerRegistration int
 
@@ -41,7 +43,7 @@ type Config struct {
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
-		MaxNames int
+		MaxNames int `validator:"required,min=1"`
 
 		// Controls behaviour of the RA when asked to create a new authz for
 		// a name/regID that already has a valid authz. False preserves historic
@@ -54,12 +56,12 @@ type Config struct {
 		// considered valid for. Given a value of 300 days when used with a 90-day
 		// cert lifetime, this allows creation of certs that will cover a whole
 		// year, plus a grace period of a month.
-		AuthorizationLifetimeDays int
+		AuthorizationLifetimeDays int `validate:"required,min=1,max=397"`
 
 		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
 		// the pending state. If you can't respond to a challenge this quickly, then
 		// you need to request a new challenge.
-		PendingAuthorizationLifetimeDays int
+		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -74,7 +76,7 @@ type Config struct {
 		// manage the shutdown of an RA must be willing to wait at least this long
 		// after sending the shutdown signal, to allow background goroutines to
 		// complete.
-		FinalizeTimeout cmd.ConfigDuration
+		FinalizeTimeout cmd.ConfigDuration `validate:"-"`
 
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we
@@ -98,7 +100,7 @@ type Config struct {
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
 		// generate OCSP URLs to purge during revocation.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"gt=0,dive,endswith=.pem"`
 
 		Features map[string]bool
 	}
@@ -113,10 +115,17 @@ func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -286,5 +295,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-ra", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }
