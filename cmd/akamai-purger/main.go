@@ -146,7 +146,7 @@ type Config struct {
 		// PurgeRetryBackoff is the base duration that will be waited before
 		// attempting to purge a batch of URLs which previously failed to be
 		// purged.
-		PurgeRetryBackoff cmd.ConfigDuration
+		PurgeRetryBackoff cmd.ConfigDuration `validate:"-"`
 	}
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig

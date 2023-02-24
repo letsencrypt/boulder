@@ -350,7 +350,7 @@ type GRPCClientConfig struct {
 
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
-	HostOverride string `validate:"excluded_with=ServerIPAddresses,hostname"`
+	HostOverride string `validate:"excluded_with=ServerIPAddresses,omitempty,hostname"`
 	Timeout      ConfigDuration
 }
 
