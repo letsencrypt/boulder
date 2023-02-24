@@ -22,6 +22,7 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/go-jose/go-jose.v2"
 
@@ -1067,7 +1068,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// that it can wait for all goroutines to drain during shutdown.
 		ra.finalizeWG.Add(1)
 		go func() {
-			ra.issueCertificateOuter(ctx, proto.Clone(order), csr, logEvent)
+			ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
 			ra.finalizeWG.Done()
 		}()
 		return order, nil
@@ -1207,7 +1208,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		// correct `urn:ietf:params:acme:error:unauthorized` problem while not
 		// letting anything like a server internal error through with sensitive
 		// info.
-		ra.web.ProblemDetailsForError(err, "Error finalizing order"))
+		ra.failOrder(order, web.ProblemDetailsForError(err, "Error finalizing order"))
 		order.Status = string(core.StatusInvalid)
 
 		logEvent.Error = err.Error()
