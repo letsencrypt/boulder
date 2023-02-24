@@ -64,7 +64,17 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
+		// OrderLifetime is how far in the future an Order's expiration date should
+		// be set when it is first created.
 		OrderLifetime cmd.ConfigDuration
+
+		// FinalizeTimeout is how long the RA is willing to wait for the Order
+		// finalization process to take. This config parameter only has an effect
+		// if the AsyncFinalization feature flag is enabled. Any systems which
+		// manage the shutdown of an RA must be willing to wait at least this long
+		// after sending the shutdown signal, to allow background goroutines to
+		// complete.
+		FinalizeTimeout cmd.ConfigDuration
 
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we
@@ -158,13 +168,9 @@ func main() {
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
 
-	var ocspc capb.OCSPGeneratorClient
-	ocspc = cac
-	if c.RA.OCSPService != nil {
-		ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
-		cmd.FailOnError(err, "Unable to create CA client")
-		ocspc = capb.NewOCSPGeneratorClient(ocspConn)
-	}
+	ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Unable to create CA OCSP client")
+	ocspc := capb.NewOCSPGeneratorClient(ocspConn)
 
 	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
@@ -229,6 +235,10 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
+	if features.Enabled(features.AsyncFinalize) && c.RA.FinalizeTimeout.Duration == 0 {
+		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
+	}
+
 	kp, err := sagoodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
@@ -249,6 +259,7 @@ func main() {
 		pubc,
 		caaClient,
 		c.RA.OrderLifetime.Duration,
+		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		apc,
 		issuerCerts,
@@ -267,7 +278,10 @@ func main() {
 		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
+	go cmd.CatchSignals(logger, func() {
+		stop()
+		rai.DrainFinalize()
+	})
 	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 

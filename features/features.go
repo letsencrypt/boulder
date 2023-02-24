@@ -26,9 +26,6 @@ const (
 	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
 	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
-	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
-	// resources.
-	MandatoryPOSTAsGET
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
@@ -63,6 +60,13 @@ const (
 	// query enabled by CertCheckerChecksValidations didn't find corresponding
 	// authorizations.
 	CertCheckerRequiresValidations
+
+	// AsyncFinalize enables the RA to return approximately immediately from
+	// requests to finalize orders. This allows us to take longer getting SCTs,
+	// issuing certs, and updating the database; it indirectly reduces the number
+	// of "orphaned" certs we have. However, it also requires clients to properly
+	// implement polling the Order object to wait for the cert URL to appear.
+	AsyncFinalize
 )
 
 // List of features and their default value, protected by fMu
@@ -72,7 +76,6 @@ var features = map[FeatureFlag]bool{
 	CAAAccountURI:                  false,
 	EnforceMultiVA:                 false,
 	MultiVAFullResults:             false,
-	MandatoryPOSTAsGET:             false,
 	StoreRevokerInfo:               false,
 	ECDSAForAll:                    false,
 	ServeRenewalInfo:               false,
@@ -82,6 +85,7 @@ var features = map[FeatureFlag]bool{
 	ExpirationMailerUsesJoin:       false,
 	CertCheckerChecksValidations:   false,
 	CertCheckerRequiresValidations: false,
+	AsyncFinalize:                  false,
 }
 
 var fMu = new(sync.RWMutex)

@@ -4,9 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/yaml.v3"
-
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/strictyaml"
 )
 
 // Limits is defined to allow mock implementations be provided during unit
@@ -118,7 +117,7 @@ func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
 // YAML configuration (typically read from disk by a reloader)
 func (r *limitsImpl) LoadPolicies(contents []byte) error {
 	var newPolicy rateLimitConfig
-	err := yaml.Unmarshal(contents, &newPolicy)
+	err := strictyaml.Unmarshal(contents, &newPolicy)
 	if err != nil {
 		return err
 	}

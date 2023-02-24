@@ -25,8 +25,6 @@ const _ = grpc.SupportPackageIsVersion7
 type CertificateAuthorityClient interface {
 	IssuePrecertificate(ctx context.Context, in *IssueCertificateRequest, opts ...grpc.CallOption) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(ctx context.Context, in *IssueCertificateForPrecertificateRequest, opts ...grpc.CallOption) (*proto.Certificate, error)
-	GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*OCSPResponse, error)
-	GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (CertificateAuthority_GenerateCRLClient, error)
 }
 
 type certificateAuthorityClient struct {
@@ -55,54 +53,12 @@ func (c *certificateAuthorityClient) IssueCertificateForPrecertificate(ctx conte
 	return out, nil
 }
 
-func (c *certificateAuthorityClient) GenerateOCSP(ctx context.Context, in *GenerateOCSPRequest, opts ...grpc.CallOption) (*OCSPResponse, error) {
-	out := new(OCSPResponse)
-	err := c.cc.Invoke(ctx, "/ca.CertificateAuthority/GenerateOCSP", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *certificateAuthorityClient) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (CertificateAuthority_GenerateCRLClient, error) {
-	stream, err := c.cc.NewStream(ctx, &CertificateAuthority_ServiceDesc.Streams[0], "/ca.CertificateAuthority/GenerateCRL", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &certificateAuthorityGenerateCRLClient{stream}
-	return x, nil
-}
-
-type CertificateAuthority_GenerateCRLClient interface {
-	Send(*GenerateCRLRequest) error
-	Recv() (*GenerateCRLResponse, error)
-	grpc.ClientStream
-}
-
-type certificateAuthorityGenerateCRLClient struct {
-	grpc.ClientStream
-}
-
-func (x *certificateAuthorityGenerateCRLClient) Send(m *GenerateCRLRequest) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *certificateAuthorityGenerateCRLClient) Recv() (*GenerateCRLResponse, error) {
-	m := new(GenerateCRLResponse)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // CertificateAuthorityServer is the server API for CertificateAuthority service.
 // All implementations must embed UnimplementedCertificateAuthorityServer
 // for forward compatibility
 type CertificateAuthorityServer interface {
 	IssuePrecertificate(context.Context, *IssueCertificateRequest) (*IssuePrecertificateResponse, error)
 	IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error)
-	GenerateOCSP(context.Context, *GenerateOCSPRequest) (*OCSPResponse, error)
-	GenerateCRL(CertificateAuthority_GenerateCRLServer) error
 	mustEmbedUnimplementedCertificateAuthorityServer()
 }
 
@@ -115,12 +71,6 @@ func (UnimplementedCertificateAuthorityServer) IssuePrecertificate(context.Conte
 }
 func (UnimplementedCertificateAuthorityServer) IssueCertificateForPrecertificate(context.Context, *IssueCertificateForPrecertificateRequest) (*proto.Certificate, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IssueCertificateForPrecertificate not implemented")
-}
-func (UnimplementedCertificateAuthorityServer) GenerateOCSP(context.Context, *GenerateOCSPRequest) (*OCSPResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GenerateOCSP not implemented")
-}
-func (UnimplementedCertificateAuthorityServer) GenerateCRL(CertificateAuthority_GenerateCRLServer) error {
-	return status.Errorf(codes.Unimplemented, "method GenerateCRL not implemented")
 }
 func (UnimplementedCertificateAuthorityServer) mustEmbedUnimplementedCertificateAuthorityServer() {}
 
@@ -171,50 +121,6 @@ func _CertificateAuthority_IssueCertificateForPrecertificate_Handler(srv interfa
 	return interceptor(ctx, in, info, handler)
 }
 
-func _CertificateAuthority_GenerateOCSP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GenerateOCSPRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CertificateAuthorityServer).GenerateOCSP(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/ca.CertificateAuthority/GenerateOCSP",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CertificateAuthorityServer).GenerateOCSP(ctx, req.(*GenerateOCSPRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _CertificateAuthority_GenerateCRL_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(CertificateAuthorityServer).GenerateCRL(&certificateAuthorityGenerateCRLServer{stream})
-}
-
-type CertificateAuthority_GenerateCRLServer interface {
-	Send(*GenerateCRLResponse) error
-	Recv() (*GenerateCRLRequest, error)
-	grpc.ServerStream
-}
-
-type certificateAuthorityGenerateCRLServer struct {
-	grpc.ServerStream
-}
-
-func (x *certificateAuthorityGenerateCRLServer) Send(m *GenerateCRLResponse) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func (x *certificateAuthorityGenerateCRLServer) Recv() (*GenerateCRLRequest, error) {
-	m := new(GenerateCRLRequest)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 // CertificateAuthority_ServiceDesc is the grpc.ServiceDesc for CertificateAuthority service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -230,19 +136,8 @@ var CertificateAuthority_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "IssueCertificateForPrecertificate",
 			Handler:    _CertificateAuthority_IssueCertificateForPrecertificate_Handler,
 		},
-		{
-			MethodName: "GenerateOCSP",
-			Handler:    _CertificateAuthority_GenerateOCSP_Handler,
-		},
 	},
-	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "GenerateCRL",
-			Handler:       _CertificateAuthority_GenerateCRL_Handler,
-			ServerStreams: true,
-			ClientStreams: true,
-		},
-	},
+	Streams:  []grpc.StreamDesc{},
 	Metadata: "ca.proto",
 }
 

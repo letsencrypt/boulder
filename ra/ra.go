@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/honeycombio/beeline-go"
@@ -21,6 +22,7 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	grpc "google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/go-jose/go-jose.v2"
 
@@ -95,6 +97,8 @@ type RegistrationAuthorityImpl struct {
 	maxNames                     int
 	reuseValidAuthz              bool
 	orderLifetime                time.Duration
+	finalizeTimeout              time.Duration
+	finalizeWG                   sync.WaitGroup
 
 	issuersByNameID map[issuance.IssuerNameID]*issuance.Certificate
 	issuersByID     map[issuance.IssuerID]*issuance.Certificate
@@ -113,6 +117,7 @@ type RegistrationAuthorityImpl struct {
 	recheckCAAUsedAuthzLifetime prometheus.Counter
 	authzAges                   prometheus.Histogram
 	orderAges                   prometheus.Histogram
+	inflightFinalizes           prometheus.Gauge
 }
 
 // NewRegistrationAuthorityImpl constructs a new RA object.
@@ -129,6 +134,7 @@ func NewRegistrationAuthorityImpl(
 	pubc pubpb.PublisherClient,
 	caaClient caaChecker,
 	orderLifetime time.Duration,
+	finalizeTimeout time.Duration,
 	ctp *ctpolicy.CTPolicy,
 	purger akamaipb.AkamaiPurgerClient,
 	issuers []*issuance.Certificate,
@@ -221,6 +227,11 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(orderAges)
 
+	inflightFinalizes := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "inflight_finalizes",
+		Help: "Gauge of the number of current asynchronous finalize goroutines",
+	})
+
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
 	for _, issuer := range issuers {
@@ -242,6 +253,7 @@ func NewRegistrationAuthorityImpl(
 		publisher:                   pubc,
 		caa:                         caaClient,
 		orderLifetime:               orderLifetime,
+		finalizeTimeout:             finalizeTimeout,
 		ctpolicy:                    ctp,
 		ctpolicyResults:             ctpolicyResults,
 		purger:                      purger,
@@ -257,6 +269,7 @@ func NewRegistrationAuthorityImpl(
 		recheckCAAUsedAuthzLifetime: recheckCAAUsedAuthzLifetime,
 		authzAges:                   authzAges,
 		orderAges:                   orderAges,
+		inflightFinalizes:           inflightFinalizes,
 	}
 	return ra
 }
@@ -949,10 +962,18 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 // log it and don't modify the input order. There aren't any alternatives if we
 // can't add the error to the order. This function MUST only be called when we
 // are already returning an error for another reason.
+//
+// TODO(go1.22?): take a context as an argument so its metadata can be used.
 func (ra *RegistrationAuthorityImpl) failOrder(
-	ctx context.Context,
 	order *corepb.Order,
 	prob *probs.ProblemDetails) {
+	// Use a separate context with its own timeout, since the error we encountered
+	// may have been a context cancellation or timeout, and these operations still
+	// need to succeed.
+	// TODO(go1.22?): use context.Detach to preserve tracing metadata.
+	var cancel func()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 
 	// Convert the problem to a protobuf problem for the *corepb.Order field
 	pbProb, err := bgrpc.ProblemDetailsToPB(prob)
@@ -1025,65 +1046,35 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
-		ra.failOrder(ctx, req.Order, probs.ServerInternal("Error setting order processing"))
+		ra.failOrder(req.Order, probs.ServerInternal("Error setting order processing"))
 		return nil, err
 	}
 
-	// Step 3: Issue the Certificate
-	cert, err := ra.issueCertificateInner(
-		ctx, csr, accountID(req.Order.RegistrationID), orderID(req.Order.Id))
-
-	// Step 4: Fail the order if necessary, and update metrics and log fields
-	var result string
+	// Update the order status locally since the SA doesn't return the updated
+	// order itself after setting the status
 	order := req.Order
-	if err != nil {
-		// The problem is computed using `web.ProblemDetailsForError`, the same
-		// function the WFE uses to convert between `berrors` and problems. This
-		// will turn normal expected berrors like berrors.UnauthorizedError into the
-		// correct `urn:ietf:params:acme:error:unauthorized` problem while not
-		// letting anything like a server internal error through with sensitive
-		// info.
-		ra.failOrder(ctx, req.Order, web.ProblemDetailsForError(err, "Error finalizing order"))
+	order.Status = string(core.StatusProcessing)
 
-		// Update the order status locally since the SA doesn't return the updated
-		// order itself after setting the status
-		order.Status = string(core.StatusInvalid)
-
-		logEvent.Error = err.Error()
-		beeline.AddFieldToTrace(ctx, "issuance.error", err)
-		result = "error"
+	// Steps 3 (issuance) and 4 (cleanup) are done inside a helper function so
+	// that we can control whether or not that work happens asynchronously.
+	if features.Enabled(features.AsyncFinalize) {
+		// We do this work in a goroutine so that we can better handle latency from
+		// getting SCTs and writing the (pre)certificate to the database. This lets
+		// us return the order in the Processing state to the client immediately,
+		// prompting them to poll the Order object and wait for it to be put into
+		// its final state.
+		//
+		// We track this goroutine's lifetime in a waitgroup global to this RA, so
+		// that it can wait for all goroutines to drain during shutdown.
+		ra.finalizeWG.Add(1)
+		go func() {
+			ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
+			ra.finalizeWG.Done()
+		}()
+		return order, nil
 	} else {
-		// Update the order status locally since the SA doesn't return the updated
-		// order itself after setting the status
-		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
-		order.Status = string(core.StatusValid)
-
-		ra.namesPerCert.With(
-			prometheus.Labels{"type": "issued"},
-		).Observe(float64(len(order.Names)))
-
-		ra.newCertCounter.Inc()
-
-		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
-		beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(cert.SerialNumber))
-		logEvent.CommonName = cert.Subject.CommonName
-		beeline.AddFieldToTrace(ctx, "cert.common_name", cert.Subject.CommonName)
-		logEvent.Names = cert.DNSNames
-		beeline.AddFieldToTrace(ctx, "cert.dns_names", cert.DNSNames)
-		logEvent.NotBefore = cert.NotBefore
-		beeline.AddFieldToTrace(ctx, "cert.not_before", cert.NotBefore)
-		logEvent.NotAfter = cert.NotAfter
-		beeline.AddFieldToTrace(ctx, "cert.not_after", cert.NotAfter)
-
-		result = "successful"
+		return ra.issueCertificateOuter(ctx, order, csr, logEvent)
 	}
-
-	logEvent.ResponseTime = ra.clk.Now()
-	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
-
-	// Return both the order and the error: if issueCertificateInner worked, then
-	// err will be nil; if it didn't, then we'll propagate that error upwards.
-	return order, err
 }
 
 // validateFinalizeRequest checks that a FinalizeOrder request is fully correct
@@ -1191,6 +1182,69 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 	return csr, nil
 }
 
+// issueCertificateOuter exists solely to ensure that all calls to
+// issueCertificateInner have their result handled uniformly, no matter what
+// return path that inner function takes. It takes ownership of the logEvent,
+// mutates it, and is responsible for outputting its final state.
+func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
+	ctx context.Context,
+	order *corepb.Order,
+	csr *x509.CertificateRequest,
+	logEvent certificateRequestEvent,
+) (*corepb.Order, error) {
+	ra.inflightFinalizes.Inc()
+	defer ra.inflightFinalizes.Dec()
+
+	// Step 3: Issue the Certificate
+	cert, err := ra.issueCertificateInner(
+		ctx, csr, accountID(order.RegistrationID), orderID(order.Id))
+
+	// Step 4: Fail the order if necessary, and update metrics and log fields
+	var result string
+	if err != nil {
+		// The problem is computed using `web.ProblemDetailsForError`, the same
+		// function the WFE uses to convert between `berrors` and problems. This
+		// will turn normal expected berrors like berrors.UnauthorizedError into the
+		// correct `urn:ietf:params:acme:error:unauthorized` problem while not
+		// letting anything like a server internal error through with sensitive
+		// info.
+		ra.failOrder(order, web.ProblemDetailsForError(err, "Error finalizing order"))
+		order.Status = string(core.StatusInvalid)
+
+		logEvent.Error = err.Error()
+		beeline.AddFieldToTrace(ctx, "issuance.error", err)
+
+		result = "error"
+	} else {
+		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
+		order.Status = string(core.StatusValid)
+
+		ra.namesPerCert.With(
+			prometheus.Labels{"type": "issued"},
+		).Observe(float64(len(order.Names)))
+
+		ra.newCertCounter.Inc()
+
+		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
+		beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(cert.SerialNumber))
+		logEvent.CommonName = cert.Subject.CommonName
+		beeline.AddFieldToTrace(ctx, "cert.common_name", cert.Subject.CommonName)
+		logEvent.Names = cert.DNSNames
+		beeline.AddFieldToTrace(ctx, "cert.dns_names", cert.DNSNames)
+		logEvent.NotBefore = cert.NotBefore
+		beeline.AddFieldToTrace(ctx, "cert.not_before", cert.NotBefore)
+		logEvent.NotAfter = cert.NotAfter
+		beeline.AddFieldToTrace(ctx, "cert.not_after", cert.NotAfter)
+
+		result = "successful"
+	}
+
+	logEvent.ResponseTime = ra.clk.Now()
+	ra.log.AuditObject(fmt.Sprintf("Certificate request - %s", result), logEvent)
+
+	return order, err
+}
+
 // issueCertificateInner handles the heavy lifting aspects of certificate
 // issuance.
 //
@@ -1209,6 +1263,14 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	csr *x509.CertificateRequest,
 	acctID accountID,
 	oID orderID) (*x509.Certificate, error) {
+	if features.Enabled(features.AsyncFinalize) {
+		// If we're in async mode, use a context with a much longer timeout.
+		// TODO(go1.22?): use context.Detach to preserve tracing metadata.
+		var cancel func()
+		ctx, cancel = context.WithTimeout(context.Background(), ra.finalizeTimeout)
+		defer cancel()
+	}
+
 	// wrapError adds a prefix to an error. If the error is a boulder error then
 	// the problem detail is updated with the prefix. Otherwise a new error is
 	// returned with the message prefixed using `fmt.Errorf`
@@ -2561,4 +2623,8 @@ func validateContactsPresent(contacts []string, contactsPresent bool) error {
 		return berrors.InternalServerError("account contacts present but contactsPresent false")
 	}
 	return nil
+}
+
+func (ra *RegistrationAuthorityImpl) DrainFinalize() {
+	ra.finalizeWG.Wait()
 }

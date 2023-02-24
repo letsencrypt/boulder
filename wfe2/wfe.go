@@ -944,9 +944,8 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 		Method: "privkey",
 	})
 
-	// The RA will confirm that the authenticated account either originally
-	// issued the certificate, or has demonstrated control over all identifiers
-	// in the certificate.
+	// The RA assumes here that the WFE2 has validated the JWS as proving
+	// control of the private key corresponding to this certificate.
 	_, err := wfe.ra.RevokeCertByKey(ctx, &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
 	})
@@ -1051,11 +1050,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 	challengeIndex := authz.FindChallengeByStringID(challengeID)
 	if challengeIndex == -1 {
 		notFound()
-		return
-	}
-
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
-		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
 		return
 	}
 
@@ -1454,12 +1448,6 @@ func (wfe *WebFrontEndImpl) Authorization(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
-		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
-		return
-	}
-
 	var requestAccount *core.Registration
 	var requestBody []byte
 	// If the request is a POST it is either:
@@ -1560,11 +1548,6 @@ func (wfe *WebFrontEndImpl) Authorization(
 // Certificate is used by clients to request a copy of their current certificate, or to
 // request a reissuance of the certificate.
 func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
-		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
-		return
-	}
-
 	var requesterAccount *core.Registration
 	// Any POSTs to the Certificate endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.
@@ -2065,11 +2048,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 // GetOrder is used to retrieve a existing order object
 func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
-	if features.Enabled(features.MandatoryPOSTAsGET) && request.Method != http.MethodPost && !requiredStale(request, logEvent) {
-		wfe.sendError(response, logEvent, probs.MethodNotAllowed(), nil)
-		return
-	}
-
 	var requesterAccount *core.Registration
 	// Any POSTs to the Order endpoint should be POST-as-GET requests. There are
 	// no POSTs with a body allowed for this endpoint.

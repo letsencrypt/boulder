@@ -99,7 +99,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 			core.SerialToString(entries[0].serial),
 			entries[0].regId,
 			42,
-			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format("2006-01-02 15:04:05"),
+			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "while inserting row into incident table")
@@ -474,6 +474,7 @@ func setup(t *testing.T) testCtx {
 		7*24*time.Hour,
 		nil,
 		nil,
+		0,
 		0,
 		nil,
 		&mockPurger{},

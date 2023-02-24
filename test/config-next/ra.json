@@ -13,6 +13,7 @@
       "fermatRounds": 100
     },
     "orderLifetime": "168h",
+    "finalizeTimeout": "30s",
     "issuerCerts": [
       "/hierarchy/intermediate-cert-rsa-a.pem",
       "/hierarchy/intermediate-cert-rsa-b.pem",
@@ -98,7 +99,8 @@
     },
     "features": {
       "StoreRevokerInfo": true,
-      "ROCSPStage7": true
+      "ROCSPStage7": true,
+      "AsyncFinalize": true
     },
     "ctLogs": {
       "stagger": "500ms",

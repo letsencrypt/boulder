@@ -195,7 +195,7 @@ func New(
 			Help:    "Time taken to perform a DNS query",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"qtype", "result", "authenticated_data", "resolver"},
+		[]string{"qtype", "result", "resolver"},
 	)
 	totalLookupTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -203,7 +203,7 @@ func New(
 			Help:    "Time taken to perform a DNS lookup, including all retried queries",
 			Buckets: metrics.InternetFacingBuckets,
 		},
-		[]string{"qtype", "result", "authenticated_data", "retries", "resolver"},
+		[]string{"qtype", "result", "retries", "resolver"},
 	)
 	timeoutCounter := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -277,48 +277,62 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 	chosenServerIndex := 0
 	chosenServer := servers[chosenServerIndex]
 
+	// Strip off the IP address part of the server address because
+	// we talk to the same server on multiple ports, and don't want
+	// to blow up the cardinality.
+	chosenServerIP, _, err := net.SplitHostPort(chosenServer)
+	if err != nil {
+		return
+	}
+
 	start := dnsClient.clk.Now()
 	client := dnsClient.dnsClient
 	qtypeStr := dns.TypeToString[qtype]
 	tries := 1
 	defer func() {
-		result, authenticated := "failed", ""
+		result := "failed"
 		if resp != nil {
 			result = dns.RcodeToString[resp.Rcode]
-			authenticated = fmt.Sprintf("%t", resp.AuthenticatedData)
 		}
 		dnsClient.totalLookupTime.With(prometheus.Labels{
-			"qtype":              qtypeStr,
-			"result":             result,
-			"authenticated_data": authenticated,
-			"retries":            strconv.Itoa(tries),
-			"resolver":           chosenServer,
+			"qtype":    qtypeStr,
+			"result":   result,
+			"retries":  strconv.Itoa(tries),
+			"resolver": chosenServerIP,
 		}).Observe(dnsClient.clk.Since(start).Seconds())
 	}()
 	for {
 		ch := make(chan dnsResp, 1)
 
+		// Strip off the IP address part of the server address because
+		// we talk to the same server on multiple ports, and don't want
+		// to blow up the cardinality.
+		// Note: validateServerAddress() has already checked net.SplitHostPort()
+		// and ensures that chosenServer can't be a bare port, e.g. ":1337"
+		chosenServerIP, _, err = net.SplitHostPort(chosenServer)
+		if err != nil {
+			return
+		}
+
 		go func() {
 			rsp, rtt, err := client.Exchange(m, chosenServer)
-			result, authenticated := "failed", ""
+			result := "failed"
 			if rsp != nil {
 				result = dns.RcodeToString[rsp.Rcode]
-				authenticated = fmt.Sprintf("%t", rsp.AuthenticatedData)
 			}
 			if err != nil {
 				logDNSError(dnsClient.log, chosenServer, hostname, m, rsp, err)
 				if err == dns.ErrId {
 					dnsClient.idMismatchCounter.With(prometheus.Labels{
 						"qtype":    qtypeStr,
-						"resolver": chosenServer,
+						"resolver": chosenServerIP,
 					}).Inc()
 				}
 			}
 			dnsClient.queryTime.With(prometheus.Labels{
-				"qtype":              qtypeStr,
-				"result":             result,
-				"authenticated_data": authenticated,
-				"resolver":           chosenServer,
+				"qtype":    qtypeStr,
+				"result":   result,
+				"resolver": chosenServerIP,
 			}).Observe(rtt.Seconds())
 			ch <- dnsResp{m: rsp, err: err}
 		}()
@@ -328,21 +342,21 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 				dnsClient.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"type":     "deadline exceeded",
-					"resolver": chosenServer,
+					"resolver": chosenServerIP,
 					"isTLD":    isTLD(hostname),
 				}).Inc()
 			} else if ctx.Err() == context.Canceled {
 				dnsClient.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"type":     "canceled",
-					"resolver": chosenServer,
+					"resolver": chosenServerIP,
 					"isTLD":    isTLD(hostname),
 				}).Inc()
 			} else {
 				dnsClient.timeoutCounter.With(prometheus.Labels{
 					"qtype":    qtypeStr,
 					"type":     "unknown",
-					"resolver": chosenServer,
+					"resolver": chosenServerIP,
 				}).Inc()
 			}
 			err = ctx.Err()
@@ -366,7 +380,7 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 					dnsClient.timeoutCounter.With(prometheus.Labels{
 						"qtype":    qtypeStr,
 						"type":     "out of retries",
-						"resolver": chosenServer,
+						"resolver": chosenServerIP,
 						"isTLD":    isTLD(hostname),
 					}).Inc()
 				}

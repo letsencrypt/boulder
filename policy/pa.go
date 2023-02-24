@@ -22,7 +22,7 @@ import (
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/reloader"
-	"gopkg.in/yaml.v3"
+	"github.com/letsencrypt/boulder/strictyaml"
 )
 
 // AuthorityImpl enforces CA policy decisions.
@@ -89,7 +89,7 @@ func (pa *AuthorityImpl) loadHostnamePolicy(contents []byte) error {
 	hash := sha256.Sum256(contents)
 	pa.log.Infof("loading hostname policy, sha256: %s", hex.EncodeToString(hash[:]))
 	var policy blockedNamesPolicy
-	err := yaml.Unmarshal(contents, &policy)
+	err := strictyaml.Unmarshal(contents, &policy)
 	if err != nil {
 		return err
 	}
