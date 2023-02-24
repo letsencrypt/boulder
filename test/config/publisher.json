@@ -24,11 +24,19 @@
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9091",
-      "clientNames": [
-        "health-checker.boulder",
-        "ocsp-updater.boulder",
-        "ra.boulder"
-      ]
+      "services": {
+        "Publisher": {
+          "clientNames": [
+            "ocsp-updater.boulder",
+            "ra.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
