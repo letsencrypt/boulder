@@ -961,8 +961,9 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 // log it and don't modify the input order. There aren't any alternatives if we
 // can't add the error to the order. This function MUST only be called when we
 // are already returning an error for another reason.
+//
+// TODO(go1.22?): take a context as an argument so its metadata can be used.
 func (ra *RegistrationAuthorityImpl) failOrder(
-	_ context.Context,
 	order *corepb.Order,
 	prob *probs.ProblemDetails) {
 	// Use a separate context with its own timeout, since the error we encountered
@@ -1044,7 +1045,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
-		ra.failOrder(ctx, req.Order, probs.ServerInternal("Error setting order processing"))
+		ra.failOrder(req.Order, probs.ServerInternal("Error setting order processing"))
 		return nil, err
 	}
 
@@ -1066,7 +1067,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// that it can wait for all goroutines to drain during shutdown.
 		ra.finalizeWG.Add(1)
 		go func() {
-			ra.issueCertificateOuter(ctx, order, csr, logEvent)
+			ra.issueCertificateOuter(ctx, proto.Clone(order), csr, logEvent)
 			ra.finalizeWG.Done()
 		}()
 		return order, nil
@@ -1182,7 +1183,8 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 // issueCertificateOuter exists solely to ensure that all calls to
 // issueCertificateInner have their result handled uniformly, no matter what
-// return path that inner function takes.
+// return path that inner function takes. It takes ownership of the logEvent,
+// mutates it, and is responsible for outputting its final state.
 func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 	ctx context.Context,
 	order *corepb.Order,
@@ -1205,7 +1207,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		// correct `urn:ietf:params:acme:error:unauthorized` problem while not
 		// letting anything like a server internal error through with sensitive
 		// info.
-		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
+		ra.web.ProblemDetailsForError(err, "Error finalizing order"))
 		order.Status = string(core.StatusInvalid)
 
 		logEvent.Error = err.Error()
