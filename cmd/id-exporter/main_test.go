@@ -334,7 +334,7 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Primes:    []*big.Int{p, q},
 	}
 
-	fc := newFakeClock(t)
+	fc := clock.NewFake()
 
 	// Add one cert for RegA that expires in 30 days
 	rawCertA := x509.Certificate{
@@ -439,6 +439,7 @@ func (tc testCtx) addCertificates(t *testing.T) {
 
 func setup(t *testing.T) testCtx {
 	log := blog.UseMock()
+	fc := clock.NewFake()
 
 	// Using DBConnSAFullPerms to be able to insert registrations and certificates
 	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
@@ -447,7 +448,6 @@ func setup(t *testing.T) testCtx {
 	}
 	cleanUp := test.ResetBoulderTestDatabase(t)
 
-	fc := newFakeClock(t)
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
@@ -473,15 +473,4 @@ func bigIntFromB64(b64 string) *big.Int {
 
 func intFromB64(b64 string) int {
 	return int(bigIntFromB64(b64).Int64())
-}
-
-func newFakeClock(t *testing.T) clock.FakeClock {
-	const fakeTimeFormat = "2006-01-02T15:04:05.999999999Z"
-	ft, err := time.Parse(fakeTimeFormat, fakeTimeFormat)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fc := clock.NewFake()
-	fc.Set(ft.UTC())
-	return fc
 }

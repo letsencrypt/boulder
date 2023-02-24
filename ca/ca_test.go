@@ -1003,7 +1003,7 @@ func TestOrphanQueue(t *testing.T) {
 
 	qsa := &queueSA{fail: true}
 	testCtx := setup(t)
-	fakeNow, err := time.Parse("Mon Jan 2 15:04:05 2006", "Mon Jan 2 15:04:05 2006")
+	fakeNow, err := time.Parse(time.ANSIC, "Mon Jan 2 15:04:05 2006")
 	if err != nil {
 		t.Fatal(err)
 	}

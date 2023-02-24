@@ -284,12 +284,12 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 			return nil, fmt.Errorf("unsupported signature algorithm %q", profile.SignatureAlgorithm)
 		}
 		cert.SignatureAlgorithm = sigAlg
-		notBefore, err := time.Parse(configDateLayout, profile.NotBefore)
+		notBefore, err := time.Parse(time.DateTime, profile.NotBefore)
 		if err != nil {
 			return nil, err
 		}
 		cert.NotBefore = notBefore
-		notAfter, err := time.Parse(configDateLayout, profile.NotAfter)
+		notAfter, err := time.Parse(time.DateTime, profile.NotAfter)
 		if err != nil {
 			return nil, err
 		}

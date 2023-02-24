@@ -504,7 +504,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
 
 		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
-			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04"))
+			left.Format(time.DateTime), right.Format(time.DateTime))
 
 		if len(certs) == 0 {
 			continue // nothing to do
