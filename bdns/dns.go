@@ -307,6 +307,8 @@ func (dnsClient *impl) exchangeOne(ctx context.Context, hostname string, qtype u
 		// Strip off the IP address part of the server address because
 		// we talk to the same server on multiple ports, and don't want
 		// to blow up the cardinality.
+		// Note: validateServerAddress() has already checked net.SplitHostPort()
+		// and ensures that chosenServer can't be a bare port, e.g. ":1337"
 		chosenServerIP, _, err = net.SplitHostPort(chosenServer)
 		if err != nil {
 			return
