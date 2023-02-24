@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
 	"github.com/letsencrypt/boulder/sa"
 )
 
 type contactAuditor struct {
-	db            *sql.DB
+	db            *db.WrappedMap
 	resultsFile   *os.File
 	writeToStdout bool
 	logger        blog.Logger
@@ -166,7 +167,7 @@ func main() {
 	err = json.Unmarshal(configData, &cfg)
 	cmd.FailOnError(err, "Couldn't unmarshal config")
 
-	db, err := sa.InitSqlDb(cfg.ContactAuditor.DB, nil)
+	db, err := sa.InitWrappedDb(cfg.ContactAuditor.DB, nil, logger)
 	cmd.FailOnError(err, "Couldn't setup database client")
 
 	var resultsFile *os.File

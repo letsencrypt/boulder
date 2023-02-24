@@ -8,7 +8,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"google.golang.org/grpc"
 	_ "google.golang.org/grpc/health"
 )
 
@@ -30,7 +29,7 @@ func TestClientSetup(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := ClientSetup(tt.cfg, &tls.Config{}, metrics.NoopRegisterer, clock.NewFake(), []grpc.UnaryClientInterceptor{}...)
+			client, err := ClientSetup(tt.cfg, &tls.Config{}, metrics.NoopRegisterer, clock.NewFake())
 			if tt.wantErr {
 				test.AssertError(t, err, "expected error, got nil")
 			} else {

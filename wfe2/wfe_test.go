@@ -33,7 +33,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -350,16 +350,17 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		testKeyPolicy,
 		certChains,
 		issuerCertificates,
-		nonceGRPCService,
-		map[string]noncepb.NonceServiceClient{
-			noncePrefix: nonceGRPCService,
-		},
 		blog.NewMock(),
+		10*time.Second,
 		10*time.Second,
 		30*24*time.Hour,
 		7*24*time.Hour,
 		&MockRegistrationAuthority{},
 		mockSA,
+		nonceGRPCService,
+		map[string]nonce.Redeemer{noncePrefix: nonceGRPCService},
+		nonceGRPCService,
+		"",
 		mockSA)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
@@ -418,23 +419,6 @@ func addHeadIfGet(s []string) []string {
 		}
 	}
 	return s
-}
-
-func TestGetNonceCancellationBecomes408(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	mux := http.NewServeMux()
-	rw := httptest.NewRecorder()
-
-	for k := range wfe.noncePrefixMap {
-		wfe.noncePrefixMap[k] = alwaysCancelNonceService{}
-	}
-	wfe.remoteNonceService = alwaysCancelNonceService{}
-	wfe.HandleFunc(mux, "/foo", func(context.Context, *web.RequestEvent, http.ResponseWriter, *http.Request) {
-	}, "POST")
-	req, err := http.NewRequest("POST", "/foo", nil)
-	test.AssertNotError(t, err, "creating request")
-	mux.ServeHTTP(rw, req)
-	test.AssertEquals(t, rw.Code, 408)
 }
 
 func TestHandleFunc(t *testing.T) {
@@ -930,7 +914,7 @@ func TestNonceEndpoint(t *testing.T) {
 			test.AssertEquals(t, responseWriter.Code, tc.expectedStatus)
 			// And the response should contain a valid nonce in the Replay-Nonce header
 			nonce := responseWriter.Header().Get("Replay-Nonce")
-			redeemResp, err := wfe.remoteNonceService.Redeem(context.Background(), &noncepb.NonceMessage{Nonce: nonce})
+			redeemResp, err := wfe.rnc.Redeem(context.Background(), &noncepb.NonceMessage{Nonce: nonce})
 			test.AssertNotError(t, err, "redeeming nonce")
 			test.AssertEquals(t, redeemResp.Valid, true)
 			// The server MUST include a Cache-Control header field with the "no-store"
@@ -1190,54 +1174,6 @@ func TestChallenge(t *testing.T) {
 			test.AssertUnmarshaledEquals(t, body, tc.ExpectedBody)
 		})
 	}
-}
-
-type mockSAGetCertificateCanceled struct {
-	*mocks.StorageAuthorityReadOnly
-}
-
-func (mockSAGetCertificateCanceled) GetCertificate(context.Context, *sapb.Serial, ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
-// When SA.GetCertificate is canceled, return 408.
-func TestGetCertificateCanceled(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	wfe.sa = mockSAGetCertificateCanceled{}
-	responseWriter := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "333333333333333333333333333333333333", nil)
-	test.AssertNotError(t, err, "creating request")
-
-	wfe.Certificate(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
-}
-
-type mockSAGetAuthorization2Canceled struct {
-	*mocks.StorageAuthorityReadOnly
-}
-
-func (mockSAGetAuthorization2Canceled) GetAuthorization2(context.Context, *sapb.AuthorizationID2, ...grpc.CallOption) (*corepb.Authorization, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
-// When SA.GetAuthorization2 is canceled during a Challenge POST or Authorization GET, return 408.
-func TestGetAuthorization2Canceled408(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	wfe.sa = mockSAGetAuthorization2Canceled{}
-	post := func(path string) *http.Request {
-		signedURL := fmt.Sprintf("http://localhost/%s", path)
-		_, _, jwsBody := signer.byKeyID(1, nil, signedURL, `{}`)
-		return makePostRequestWithPath(path, jwsBody)
-	}
-	responseWriter := httptest.NewRecorder()
-	wfe.Challenge(ctx, newRequestEvent(), responseWriter, post("1/-ZfxEw"))
-	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
-
-	req, err := http.NewRequest("GET", "3", nil)
-	test.AssertNotError(t, err, "creating request")
-	responseWriter = httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
 }
 
 // MockRAPerformValidationError is a mock RA that just returns an error on
@@ -1820,13 +1756,8 @@ type mockSAWithCert struct {
 	status core.OCSPStatus
 }
 
-func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityReadOnlyClient, zeroNotBefore bool) *mockSAWithCert {
+func newMockSAWithCert(t *testing.T, sa sapb.StorageAuthorityReadOnlyClient) *mockSAWithCert {
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
-	if zeroNotBefore {
-		// Just for the sake of TestGetAPIAndMandatoryPOSTAsGET, we set the
-		// Issued timestamp of this certificate to be very old (the year 0).
-		cert.NotBefore = time.Time{}
-	}
 	test.AssertNotError(t, err, "Failed to load test cert")
 	return &mockSAWithCert{sa, cert, core.OCSPStatusGood}
 }
@@ -1895,7 +1826,7 @@ func (sa *mockSAWithIncident) IncidentsForSerial(_ context.Context, req *sapb.Se
 
 func TestGetCertificate(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 	mux := wfe.Handler(metrics.NoopRegisterer)
 
 	makeGet := func(path string) *http.Request {
@@ -2244,7 +2175,7 @@ func TestGetCertificateNew(t *testing.T) {
 // body from being sent like the net/http Server's actually do.
 func TestGetCertificateHEADHasCorrectBodyLength(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	certPemBytes, _ := os.ReadFile("../test/hierarchy/ee-r3.cert.pem")
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -2883,30 +2814,6 @@ func TestKeyRolloverMismatchedJWSURLs(t *testing.T) {
 		}`)
 }
 
-type mockSAGetOrderCanceled struct {
-	sapb.StorageAuthorityReadOnlyClient
-}
-
-func (sa mockSAGetOrderCanceled) GetOrder(_ context.Context, req *sapb.OrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
-func TestGetOrderCanceled408(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	wfe.sa = mockSAGetOrderCanceled{}
-	responseWriter := httptest.NewRecorder()
-	req, err := http.NewRequest("GET", "123/456", nil)
-	test.AssertNotError(t, err, "creating request")
-	wfe.GetOrder(ctx, newRequestEvent(), responseWriter, req)
-	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
-
-	_, _, jwsBody := signer.byKeyID(1, nil, "http://localhost/123/456", "{}")
-	postReq := makePostRequestWithPath("123/456", jwsBody)
-	responseWriter = httptest.NewRecorder()
-	wfe.FinalizeOrder(ctx, newRequestEvent(), responseWriter, postReq)
-	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
-}
-
 func TestGetOrder(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
@@ -3037,7 +2944,7 @@ func makeRevokeRequestJSONForCert(der []byte, reason *revocation.Reason) ([]byte
 // issuing account key.
 func TestRevokeCertificateByApplicantValid(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -3061,7 +2968,7 @@ func TestRevokeCertificateByApplicantValid(t *testing.T) {
 // certificate private key.
 func TestRevokeCertificateByKeyValid(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	mockLog := wfe.log.(*blog.Mock)
 	mockLog.Clear()
@@ -3090,7 +2997,7 @@ func TestRevokeCertificateByKeyValid(t *testing.T) {
 // wasn't issued by any issuer the Boulder is aware of.
 func TestRevokeCertificateNotIssued(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	// Make a self-signed junk certificate
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -3125,7 +3032,7 @@ func TestRevokeCertificateNotIssued(t *testing.T) {
 
 func TestRevokeCertificateExpired(t *testing.T) {
 	wfe, fc, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3150,7 +3057,7 @@ func TestRevokeCertificateExpired(t *testing.T) {
 
 func TestRevokeCertificateReasons(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 	ra := wfe.ra.(*MockRegistrationAuthority)
 
 	reason0 := revocation.Reason(ocsp.Unspecified)
@@ -3216,7 +3123,7 @@ func TestRevokeCertificateReasons(t *testing.T) {
 // A revocation request signed by an incorrect certificate private key.
 func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, false)
+	wfe.sa = newMockSAWithCert(t, wfe.sa)
 
 	keyPemBytes, err := os.ReadFile("../test/hierarchy/ee-e1.key.pem")
 	test.AssertNotError(t, err, "Failed to load key")
@@ -3266,29 +3173,6 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	}
 }
 
-type mockSAGetRegByKeyCanceled struct {
-	sapb.StorageAuthorityReadOnlyClient
-}
-
-func (sa *mockSAGetRegByKeyCanceled) GetRegistrationByKey(_ context.Context, req *sapb.JSONWebKey, _ ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
-// When SA.GetRegistrationByKey is canceled (i.e. by the client), NewAccount should
-// return 408.
-func TestNewAccountWhenGetRegByKeyCanceled(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	wfe.sa = &mockSAGetRegByKeyCanceled{wfe.sa}
-	key := loadKey(t, []byte(testE2KeyPrivatePEM))
-	_, ok := key.(*ecdsa.PrivateKey)
-	test.Assert(t, ok, "Couldn't load ECDSA key")
-	payload := `{"contact":["mailto:person@mail.com"],"agreement":"` + agreementURL + `"}`
-	responseWriter := httptest.NewRecorder()
-	_, _, body := signer.embeddedJWK(key, "http://localhost/new-account", payload)
-	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
-	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
-}
-
 type mockSAGetRegByKeyNotFound struct {
 	sapb.StorageAuthorityReadOnlyClient
 }
@@ -3330,30 +3214,6 @@ func TestNewAccountWhenGetRegByKeyNotFound(t *testing.T) {
 	}`)
 }
 
-// mockRANewRegCanceled is a mock RA that always returns a `berrors.MissingSCTsError` from `FinalizeOrder`
-type mockRANewRegCanceled struct {
-	MockRegistrationAuthority
-}
-
-func (ra *mockRANewRegCanceled) NewRegistration(context.Context, *corepb.Registration, ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, probs.Canceled("canceled!")
-}
-
-// When RA.GetRegistrationByKey is canceled (i.e. by the client), NewAccount should
-// return 408.
-func TestNewAccountWhenRANewRegCanceled(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	wfe.ra = &mockRANewRegCanceled{}
-	key := loadKey(t, []byte(testE2KeyPrivatePEM))
-	_, ok := key.(*ecdsa.PrivateKey)
-	test.Assert(t, ok, "Couldn't load ECDSA key")
-	payload := `{"contact":["mailto:person@mail.com"],"termsOfServiceAgreed":true}`
-	responseWriter := httptest.NewRecorder()
-	_, _, body := signer.embeddedJWK(key, "http://localhost/new-account", payload)
-	wfe.NewAccount(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("/new-account", body))
-	test.AssertEquals(t, responseWriter.Code, http.StatusRequestTimeout)
-}
-
 func TestPrepAuthzForDisplay(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
 
@@ -3369,7 +3229,6 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 				ProvidedKeyAuthorization: "	🔑",
 			},
 		},
-		Combinations: [][]int{{1, 2, 3}, {4}, {5, 6}},
 	}
 
 	// Prep the wildcard authz for display
@@ -3379,12 +3238,6 @@ func TestPrepAuthzForDisplay(t *testing.T) {
 	test.AssertEquals(t, strings.HasPrefix(authz.Identifier.Value, "*."), false)
 	// The authz should be marked as corresponding to a wildcard name
 	test.AssertEquals(t, authz.Wildcard, true)
-	// The authz should not have any combinations
-	// NOTE(@cpu): We don't use test.AssertNotNil here because its use of
-	// interface{} types makes a comparison of [][]int{nil} and nil fail.
-	if authz.Combinations != nil {
-		t.Errorf("Authz had a non-nil combinations")
-	}
 
 	// We expect the authz challenge has its URL set and the URI emptied.
 	authz.ID = "12345"
@@ -3449,66 +3302,6 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 		"http://localhost/acme/authz-v3/1",
 		"http://localhost/acme/authz-v3/2",
 	})
-}
-
-// TestMandatoryPOSTAsGET tests that the MandatoryPOSTAsGET feature flag
-// correctly causes unauthenticated GET requests to ACME resources to be
-// forbidden.
-func TestMandatoryPOSTAsGET(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-
-	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
-	defer features.Reset()
-
-	// CheckProblem matches a HTTP response body to a Method Not Allowed problem.
-	checkProblem := func(actual []byte) {
-		var prob probs.ProblemDetails
-		err := json.Unmarshal(actual, &prob)
-		test.AssertNotError(t, err, "error unmarshaling HTTP response body as problem")
-		test.AssertEquals(t, string(prob.Type), "urn:ietf:params:acme:error:malformed")
-		test.AssertEquals(t, prob.Detail, "Method not allowed")
-		test.AssertEquals(t, prob.HTTPStatus, http.StatusMethodNotAllowed)
-	}
-
-	testCases := []struct {
-		name    string
-		path    string
-		handler web.WFEHandlerFunc
-	}{
-		{
-			// GET requests to a mocked order path should return an error
-			name:    "GET Order",
-			path:    "1/1",
-			handler: wfe.GetOrder,
-		},
-		{
-			// GET requests to a mocked authorization path should return an error
-			name:    "GET Authz",
-			path:    "1",
-			handler: wfe.Authorization,
-		},
-		{
-			// GET requests to a mocked challenge path should return an error
-			name:    "GET Chall",
-			path:    "1/-ZfxEw",
-			handler: wfe.Challenge,
-		},
-		{
-			// GET requests to a mocked certificate serial path should return an error
-			name:    "GET Cert",
-			path:    "acme/cert/0000000000000000000000000000000000b2",
-			handler: wfe.Certificate,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			responseWriter := httptest.NewRecorder()
-			req := &http.Request{URL: &url.URL{Path: tc.path}, Method: "GET"}
-			tc.handler(ctx, newRequestEvent(), responseWriter, req)
-			checkProblem(responseWriter.Body.Bytes())
-		})
-	}
 }
 
 func TestGetChallengeUpRel(t *testing.T) {
@@ -3646,34 +3439,11 @@ func TestIndexGet404(t *testing.T) {
 	test.AssertEquals(t, logEvent.Slug, path[1:])
 }
 
-// TestGetAPIAndMandatoryPOSTAsGet that, even when MandatoryPOSTAsGet is on,
-// we are still willing to allow a GET request for a certificate that is old
-// enough that we're no longer worried about stale info being cached.
-func TestGetAPIAndMandatoryPOSTAsGET(t *testing.T) {
-	wfe, _, _ := setupWFE(t)
-	wfe.sa = newMockSAWithCert(t, wfe.sa, true)
-
-	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
-		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
-			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
-	}
-	_ = features.Set(map[string]bool{"MandatoryPOSTAsGET": true})
-	defer features.Reset()
-
-	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
-	test.AssertNotError(t, err, "failed to load test certificate")
-
-	req, event := makeGet(core.SerialToString(cert.SerialNumber), getCertPath)
-	resp := httptest.NewRecorder()
-	wfe.Certificate(context.Background(), event, resp, req)
-	test.AssertEquals(t, resp.Code, 200)
-}
-
 // TestARI tests that requests for real certs result in renewal info, while
 // requests for certs that don't exist result in errors.
 func TestARI(t *testing.T) {
 	wfe, _, _ := setupWFE(t)
-	msa := newMockSAWithCert(t, wfe.sa, false)
+	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
@@ -3762,12 +3532,14 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+	test.AssertContains(t, resp.Body.String(), "Request used hash algorithm other than SHA-256")
 
 	// Ensure that a query with a non-CertID path fails.
 	req, event = makeGet(base64.RawURLEncoding.EncodeToString(ocspReqBytes), renewalInfoPath)
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+	test.AssertContains(t, resp.Body.String(), "Path was not a DER-encoded CertID sequence")
 
 	// Ensure that a query with a non-Base64URL path (including one in the old
 	// request path style, which included slashes) fails.
@@ -3782,6 +3554,14 @@ func TestARI(t *testing.T) {
 	resp = httptest.NewRecorder()
 	wfe.RenewalInfo(context.Background(), event, resp, req)
 	test.AssertEquals(t, resp.Code, http.StatusBadRequest)
+	test.AssertContains(t, resp.Body.String(), "Path was not base64url-encoded")
+
+	// Ensure that a query with no path slug at all bails out early.
+	req, event = makeGet("", renewalInfoPath)
+	resp = httptest.NewRecorder()
+	wfe.RenewalInfo(context.Background(), event, resp, req)
+	test.AssertEquals(t, resp.Code, http.StatusNotFound)
+	test.AssertContains(t, resp.Body.String(), "Must specify a request path")
 }
 
 // TestIncidentARI tests that requests certs impacted by an ongoing revocation

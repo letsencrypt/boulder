@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -9,8 +10,13 @@ import (
 	"time"
 
 	"github.com/go-gorp/gorp/v3"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
@@ -19,9 +25,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // echoSource implements rocspSourceInterface, returning the provided response
@@ -94,6 +97,20 @@ func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
 	return s
 }
 
+// notFoundSelector always returns an NoRows error.
+type notFoundSelector struct {
+	db.MockSqlExecutor
+}
+
+func (s notFoundSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+	return db.ErrDatabaseOp{Err: sql.ErrNoRows}
+}
+
+func (s notFoundSelector) WithContext(context.Context) gorp.SqlExecutor {
+	return s
+}
+
+// echoSA always returns the given revocation status.
 type echoSA struct {
 	mocks.StorageAuthorityReadOnly
 	status *sapb.RevocationStatus
@@ -103,12 +120,22 @@ func (s *echoSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...g
 	return s.status, nil
 }
 
+// errorSA always returns an error.
 type errorSA struct {
 	mocks.StorageAuthorityReadOnly
 }
 
 func (s *errorSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	return nil, errors.New("oops")
+}
+
+// notFoundSA always returns a NotFound error.
+type notFoundSA struct {
+	mocks.StorageAuthorityReadOnly
+}
+
+func (s *notFoundSA) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
+	return nil, berrors.NotFoundError("purged")
 }
 
 func TestCheckedRedisSourceSuccess(t *testing.T) {
@@ -149,6 +176,14 @@ func TestCheckedRedisSourceDBError(t *testing.T) {
 		SerialNumber: serial,
 	})
 	test.AssertError(t, err, "getting response")
+	test.AssertContains(t, err.Error(), "oops")
+
+	src = newCheckedRedisSource(echoSource{resp: resp}, notFoundSelector{}, nil, metrics.NoopRegisterer, blog.NewMock())
+	_, err = src.Response(context.Background(), &ocsp.Request{
+		SerialNumber: serial,
+	})
+	test.AssertError(t, err, "getting response")
+	test.AssertErrorIs(t, err, responder.ErrNotFound)
 }
 
 func TestCheckedRedisSourceSAError(t *testing.T) {
@@ -167,6 +202,14 @@ func TestCheckedRedisSourceSAError(t *testing.T) {
 		SerialNumber: serial,
 	})
 	test.AssertError(t, err, "getting response")
+	test.AssertContains(t, err.Error(), "oops")
+
+	src = newCheckedRedisSource(echoSource{resp: resp}, nil, &notFoundSA{}, metrics.NoopRegisterer, blog.NewMock())
+	_, err = src.Response(context.Background(), &ocsp.Request{
+		SerialNumber: serial,
+	})
+	test.AssertError(t, err, "getting response")
+	test.AssertErrorIs(t, err, responder.ErrNotFound)
 }
 
 func TestCheckedRedisSourceRedisError(t *testing.T) {

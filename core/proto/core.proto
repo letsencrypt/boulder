@@ -76,7 +76,7 @@ message Authorization {
   string status = 4;
   int64 expires = 5; // Unix timestamp (nanoseconds)
   repeated core.Challenge challenges = 6;
-  reserved 7; // previously combinations
+  reserved 7; // previously ACMEv1 combinations
   reserved 8; // previously v2
 }
 

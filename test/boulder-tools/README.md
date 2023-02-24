@@ -11,26 +11,6 @@ To build boulder-tools images, you'll need a Docker set up to do cross-platform
 builds (we build for both amd64 and arm64 so developers with Apple silicon can use
 boulder-tools in their dev environment).
 
-### Dockerd configuration (all platforms):
-You may encounter and error like the following when executing the gem install
-steps of `build.sh`:
-
-```shell
-+ gem install --no-document fpm
-ERROR:  Could not find a valid gem 'fpm' (>= 0), here is why:
-          Unable to download data from https://rubygems.org/ - timed out (https://rubygems.org/specs.4.8.gz)
-```
-
-You can fix this by adding the following lines to your `dockerd` configuration
-file (default: "/etc/docker/daemon.json"):
-
-```json
-  "dns-opts": [
-    "single-request",
-    "single-request-reopen"
-  ],
-```
-
 ### Ubuntu steps:
 ```sh
 sudo apt-get install qemu binfmt-support qemu-user-static

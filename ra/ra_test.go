@@ -59,7 +59,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
@@ -314,7 +314,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, fc, log, metrics.NoopRegisterer)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -370,9 +370,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.CA = ca
 	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
-	ra.reuseValidAuthz = true
-
 	return va, sa, ra, fc, cleanUp
+}
+
+func TestReuseValidAuthzDefaultIsTrue(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+	test.Assert(t, ra.reuseValidAuthz, "ReuseValidAuthz should be true")
 }
 
 func TestValidateContacts(t *testing.T) {
@@ -1751,22 +1755,22 @@ func TestRecheckCAADates(t *testing.T) {
 	// NOTE: The names provided here correspond to authorizations in the
 	// `mockSAWithRecentAndOlder`
 	names := []string{"recent.com", "older.com", "older2.com", "wildcard.com", "*.wildcard.com"}
-	err := ra.checkAuthorizationsCAA(context.Background(), names, authzs, fc.Now())
+	err := ra.checkAuthorizationsCAA(context.Background(), Registration.Id, names, authzs, fc.Now())
 	// We expect that there is no error rechecking authorizations for these names
 	if err != nil {
 		t.Errorf("expected nil err, got %s", err)
 	}
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"twochallenges.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"twochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 2 found for: id twochal")
 
 	// Should error if a authorization has `!= 1` challenge
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"nochallenges.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"nochallenges.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization has incorrect number of challenges. 1 expected, 0 found for: id nochal")
 
 	// Should error if authorization's challenge has no validated timestamp
-	err = ra.checkAuthorizationsCAA(context.Background(), []string{"novalidationtime.com"}, authzs, fc.Now())
+	err = ra.checkAuthorizationsCAA(context.Background(), Registration.Id, []string{"novalidationtime.com"}, authzs, fc.Now())
 	test.AssertEquals(t, err.Error(), "authorization's challenge has no validated timestamp for: id noval")
 
 	// Test to make sure the authorization lifetime codepath was not used
@@ -2125,6 +2129,38 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(secondOrder), 1)
 	// It should have a different authorization than the first order's now-invalid authorization
 	test.AssertNotEquals(t, secondOrder.V2Authorizations[0], order.V2Authorizations[0])
+}
+
+// mockSACountPendingFails has a CountPendingAuthorizations2 implementation
+// that always returns error
+type mockSACountPendingFails struct {
+	mocks.StorageAuthority
+}
+
+func (mock *mockSACountPendingFails) CountPendingAuthorizations2(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*sapb.Count, error) {
+	return nil, errors.New("counting is slow and boring")
+}
+
+// Ensure that we don't bother to call the SA to count pending authorizations
+// when an "unlimited" limit is set.
+func TestPendingAuthorizationsUnlimited(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.rlPolicies = &dummyRateLimitConfig{
+		PendingAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
+			Threshold: 1,
+			Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+			RegistrationOverrides: map[int64]int64{
+				13: -1,
+			},
+		},
+	}
+
+	ra.SA = &mockSACountPendingFails{}
+
+	err := ra.checkPendingAuthorizationLimit(context.Background(), 13)
+	test.AssertNotError(t, err, "checking pending authorization limit")
 }
 
 // Test that the failed authorizations limit is checked before authz reuse.
@@ -2610,12 +2646,6 @@ func TestFinalizeOrder(t *testing.T) {
 	// finalize the order will put it into processing state and the other tests
 	// will fail because you can't finalize an order that is already being
 	// processed.
-	emptyOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		Names:          []string{"000.example.com"},
-	})
-	test.AssertNotError(t, err, "Could not add test order for fake order ID")
-
 	// Add a new order for the fake reg ID
 	fakeRegOrder, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
@@ -2646,11 +2676,31 @@ func TestFinalizeOrder(t *testing.T) {
 		ExpectIssuance bool
 	}{
 		{
+			Name: "No id in order",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{},
+				Csr:   oneDomainCSR,
+			},
+			ExpectedErrMsg: "invalid order ID: 0",
+		},
+		{
+			Name: "No account id in order",
+			OrderReq: &rapb.FinalizeOrderRequest{
+				Order: &corepb.Order{
+					Id: 1,
+				},
+				Csr: oneDomainCSR,
+			},
+			ExpectedErrMsg: "invalid account ID: 0",
+		},
+		{
 			Name: "No names in order",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusReady),
-					Names:  []string{},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusReady),
+					Names:          []string{},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2660,8 +2710,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Wrong order state (valid)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusValid),
-					Names:  []string{"a.com"},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusValid),
+					Names:          []string{"a.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2671,8 +2723,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Wrong order state (pending)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusPending),
-					Names:  []string{"a.com"},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusPending),
+					Names:          []string{"a.com"},
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2683,20 +2737,23 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "Invalid CSR",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
-					Status: string(core.StatusReady),
-					Names:  []string{"a.com"},
+					Id:             1,
+					RegistrationID: 1,
+					Status:         string(core.StatusReady),
+					Names:          []string{"a.com"},
 				},
 				Csr: []byte{0xC0, 0xFF, 0xEE},
 			},
-			ExpectedErrMsg: "asn1: syntax error: truncated tag or length",
+			ExpectedErrMsg: "unable to parse CSR: asn1: syntax error: truncated tag or length",
 		},
 		{
 			Name: "CSR and Order with diff number of names",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:             1,
+					RegistrationID: 1,
 					Status:         string(core.StatusReady),
 					Names:          []string{"a.com", "b.com"},
-					RegistrationID: fakeRegID,
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2706,9 +2763,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR and Order with diff number of names (other way)",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:             1,
+					RegistrationID: 1,
 					Status:         string(core.StatusReady),
 					Names:          []string{"a.com"},
-					RegistrationID: fakeRegID,
 				},
 				Csr: twoDomainCSR,
 			},
@@ -2718,9 +2776,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR missing an order name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:             1,
+					RegistrationID: 1,
 					Status:         string(core.StatusReady),
 					Names:          []string{"foobar.com"},
-					RegistrationID: fakeRegID,
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2730,10 +2789,10 @@ func TestFinalizeOrder(t *testing.T) {
 			Name: "CSR with policy forbidden name",
 			OrderReq: &rapb.FinalizeOrderRequest{
 				Order: &corepb.Order{
+					Id:                1,
+					RegistrationID:    1,
 					Status:            string(core.StatusReady),
 					Names:             []string{"example.org"},
-					RegistrationID:    Registration.Id,
-					Id:                emptyOrder.Id,
 					Expires:           exp.UnixNano(),
 					CertificateSerial: "",
 					BeganProcessing:   false,
@@ -3093,6 +3152,109 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	}
 }
 
+func TestIssueCertificateCAACheckLog(t *testing.T) {
+	_, sa, ra, fc, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	// Set up order and authz expiries.
+	ra.orderLifetime = 24 * time.Hour
+	ra.authorizationLifetime = 15 * time.Hour
+
+	exp := fc.Now().Add(24 * time.Hour)
+	recent := fc.Now().Add(-1 * time.Hour)
+	older := fc.Now().Add(-8 * time.Hour)
+
+	// Make some valid authzs for four names. Half of them were validated
+	// recently and half were validated in excess of our CAA recheck time.
+	names := []string{"not-example.com", "www.not-example.com", "still.not-example.com", "definitely.not-example.com"}
+	var authzIDs []int64
+	for i, name := range names {
+		attemptedAt := older
+		if i%2 == 0 {
+			attemptedAt = recent
+		}
+		authzIDs = append(authzIDs, createFinalizedAuthorization(t, sa, name, exp, core.ChallengeTypeHTTP01, attemptedAt))
+	}
+
+	// Create a pending order for all of the names.
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID:   Registration.Id,
+			Expires:          exp.UnixNano(),
+			Names:            names,
+			V2Authorizations: authzIDs,
+		},
+	})
+	test.AssertNotError(t, err, "Could not add test order with finalized authz IDs")
+
+	// Generate a CSR covering the order names with a random RSA key.
+	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "error generating test key")
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+		PublicKey:          testKey.PublicKey,
+		SignatureAlgorithm: x509.SHA256WithRSA,
+		Subject:            pkix.Name{CommonName: "not-example.com"},
+		DNSNames:           names,
+	}, testKey)
+	test.AssertNotError(t, err, "Could not create test order CSR")
+
+	// Create a mock certificate for the fake CA to return.
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(12),
+		Subject: pkix.Name{
+			CommonName: "not-example.com",
+		},
+		DNSNames:              names,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(0, 0, 1),
+		BasicConstraintsValid: true,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, testKey.Public(), testKey)
+	test.AssertNotError(t, err, "Failed to create mock cert for test CA")
+
+	// Set up the RA's CA with a mock that returns the cert from above.
+	ra.CA = &mocks.MockCA{
+		PEM: pem.EncodeToMemory(&pem.Block{
+			Bytes: cert,
+		}),
+	}
+
+	// Cast the RA's mock log so we can ensure its cleared and can access the
+	// matched log lines.
+	mockLog := ra.log.(*blog.Mock)
+	mockLog.Clear()
+
+	// Finalize the order with the CSR.
+	order.Status = string(core.StatusReady)
+	_, err = ra.FinalizeOrder(context.Background(), &rapb.FinalizeOrderRequest{
+		Order: order,
+		Csr:   csr,
+	})
+	test.AssertNotError(t, err, "Error finalizing test order")
+
+	// Get the logged lines from the mock logger.
+	loglines := mockLog.GetAllMatching("FinalizationCaaCheck JSON=")
+	// There should be exactly 1 matching log line.
+	test.AssertEquals(t, len(loglines), 1)
+
+	// Strip away the stuff before 'JSON='.
+	jsonContent := strings.TrimPrefix(loglines[0], "INFO: FinalizationCaaCheck JSON=")
+
+	// Unmarshal the JSON into an event object.
+	var event finalizationCAACheckEvent
+	err = json.Unmarshal([]byte(jsonContent), &event)
+	// The JSON should unmarshal without error.
+	test.AssertNotError(t, err, "Error unmarshalling logged JSON issuance event.")
+	// The event requester should be the expected registration ID.
+	test.AssertEquals(t, event.Requester, Registration.Id)
+	// The event should have the expected number of Authzs where CAA was reused.
+	test.AssertEquals(t, event.Reused, 2)
+	// The event should have the expected number of Authzs where CAA was
+	// rechecked.
+	test.AssertEquals(t, event.Rechecked, 2)
+}
+
 // TestUpdateMissingAuthorization tests the race condition where a challenge is
 // updated to valid concurrently with another attempt to have the challenge
 // updated. Previously this would return a `berrors.InternalServer` error when
@@ -3333,8 +3495,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	csrOb, err := x509.ParseCertificateRequest(csr)
 	test.AssertNotError(t, err, "Error pasring generated CSR")
 
-	logEvent := &certificateRequestEvent{}
-
 	testCases := []struct {
 		Name         string
 		Mock         capb.CertificateAuthorityClient
@@ -3382,7 +3542,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 			// Mock the CA
 			ra.CA = tc.Mock
 			// Attempt issuance
-			_, err = ra.issueCertificateInner(ctx, csrOb, accountID(Registration.Id), orderID(order.Id), issuance.IssuerNameID(0), logEvent)
+			_, err = ra.issueCertificateInner(ctx, csrOb, accountID(Registration.Id), orderID(order.Id))
 			// We expect all of the testcases to fail because all use mocked CAs that deliberately error
 			test.AssertError(t, err, "issueCertificateInner with failing mock CA did not fail")
 			// If there is an expected `error` then match the error message
@@ -3699,7 +3859,6 @@ func TestRevokeCertByKey(t *testing.T) {
 	// Revoking should work, but override the requested reason and block the key.
 	_, err = ra.RevokeCertByKey(context.Background(), &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
-		Code: ocsp.Unspecified,
 	})
 	test.AssertNotError(t, err, "should have succeeded")
 	test.AssertEquals(t, len(mockSA.blocked), 1)

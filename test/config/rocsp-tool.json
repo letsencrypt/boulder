@@ -4,9 +4,10 @@
     "redis": {
       "username": "ocsp-updater",
       "passwordFile": "test/secrets/rocsp_tool_password",
-      "addrs": [
-        "10.33.33.7:4218"
-      ],
+      "shardAddrs": {
+        "shard1": "10.33.33.2:4218",
+        "shard2": "10.33.33.3:4218"
+      },
       "timeout": "5s",
       "tls": {
         "caCertFile": "test/redis-tls/minica.pem",

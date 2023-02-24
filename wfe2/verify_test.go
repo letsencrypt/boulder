@@ -16,7 +16,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/mocks"
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -24,8 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 )
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
@@ -1297,14 +1295,12 @@ func TestValidJWSForKey(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			inputLogEvent := newRequestEvent()
 			request := makePostRequestWithPath("test", tc.Body)
-			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request, inputLogEvent)
+			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request)
 
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, inputLogEvent.Payload, payload)
 				test.AssertEquals(t, string(outPayload), payload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
@@ -1399,7 +1395,6 @@ func TestValidPOSTForAccount(t *testing.T) {
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAcct)
 				test.AssertMarshaledEquals(t, jws, tc.ExpectedJWS)
@@ -1439,7 +1434,6 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
 			ExpectedLogEvent: web.RequestEvent{
 				Contacts: []string{"mailto:person@mail.com"},
-				Payload:  "{}",
 			},
 		},
 		{
@@ -1546,15 +1540,13 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			inputLogEvent := newRequestEvent()
-			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request, inputLogEvent)
+			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				inThumb, _ := tc.ExpectedJWK.Thumbprint(crypto.SHA256)
 				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
 				test.AssertDeepEquals(t, inThumb, outThumb)
-				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
@@ -1648,53 +1640,4 @@ func TestMatchJWSURLs(t *testing.T) {
 			}
 		})
 	}
-}
-
-type alwaysCancelNonceService struct{}
-
-func (acns alwaysCancelNonceService) Redeem(ctx context.Context, msg *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return nil, probs.Canceled("user canceled request")
-}
-
-func (acns alwaysCancelNonceService) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	return nil, probs.Canceled("user canceled request")
-}
-
-// Test that cancellation of the nonce lookup will result in a 408, via the
-// CancelTo408Interceptor in grpc/interceptors.go.
-func TestNoncePassThrough408Problem(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-
-	jws, _, _ := signer.byKeyID(1234, nil, "http://example.com/", "request-body")
-
-	for k := range wfe.noncePrefixMap {
-		wfe.noncePrefixMap[k] = alwaysCancelNonceService{}
-	}
-	wfe.remoteNonceService = alwaysCancelNonceService{}
-
-	prob := wfe.validNonce(context.Background(), jws)
-	fmt.Printf("%s", prob)
-	test.AssertNotNil(t, prob, "expected failure")
-	test.AssertEquals(t, prob.HTTPStatus, http.StatusRequestTimeout)
-}
-
-type alwaysCancelAccountGetter struct{}
-
-// GetRegistration implements AccountGetter
-func (alwaysCancelAccountGetter) GetRegistration(ctx context.Context, regID *sapb.RegistrationID, opts ...grpc.CallOption) (*corepb.Registration, error) {
-	return nil, probs.Canceled("user canceled request")
-}
-
-// Test that cancellation of the account lookup will result in a 408, via the
-// CancelTo408Interceptor in grpc/interceptors.go.
-func TestAccountLookupPassThrough408Problem(t *testing.T) {
-	wfe, _, signer := setupWFE(t)
-	wfe.accountGetter = alwaysCancelAccountGetter{}
-
-	jws, _, jwsBody := signer.byKeyID(1234, nil, "http://example.com/", "request-body")
-	req := makePostRequestWithPath("test-path", jwsBody)
-
-	_, _, prob := wfe.lookupJWK(jws, context.Background(), req, newRequestEvent())
-	test.AssertNotNil(t, prob, "expected failure")
-	test.AssertEquals(t, prob.HTTPStatus, http.StatusRequestTimeout)
 }

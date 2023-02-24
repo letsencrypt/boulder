@@ -11,6 +11,7 @@
       "keyFile": "test/grpc-creds/bad-key-revoker.boulder/key.pem"
     },
     "raService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ra",
         "domain": "service.consul"

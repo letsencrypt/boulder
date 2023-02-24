@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -32,7 +32,7 @@ func (c TLSConf) Kind() string {
 // object.
 func (c TLSConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf TLSConf
-	err := yaml.Unmarshal(settings, &conf)
+	err := strictyaml.Unmarshal(settings, &conf)
 	if err != nil {
 		return nil, err
 	}
@@ -81,11 +81,6 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 	err = c.validateResponse()
 	if err != nil {
 		return nil, err
-	}
-
-	// Set default Root Organization if none set.
-	if c.RootOrg == "" {
-		c.RootOrg = "Internet Security Research Group"
 	}
 
 	// Validate the Prometheus collectors that were passed in

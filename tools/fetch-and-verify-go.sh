@@ -227,8 +227,8 @@ EOF
 OUTPUT_DIR="$(mktemp -d)"
 FILENAME="go${VERSION}.${PLATFORM}.tar.gz"
 OUTPUT_FILE="${OUTPUT_DIR}/${FILENAME}"
-curl -sSL "https://dl.google.com/go/${FILENAME}.asc" -o "${OUTPUT_FILE}.asc"
-curl -sSL "https://dl.google.com/go/${FILENAME}" -o "${OUTPUT_FILE}"
+curl -fsSL "https://dl.google.com/go/${FILENAME}.asc" -o "${OUTPUT_FILE}.asc"
+curl -fsSL "https://dl.google.com/go/${FILENAME}" -o "${OUTPUT_FILE}"
 
 gpg2 --verify --trust-model=always "${OUTPUT_FILE}.asc" "${OUTPUT_FILE}"
 

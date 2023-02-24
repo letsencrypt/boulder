@@ -15,12 +15,13 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
@@ -195,9 +196,25 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, jws *jose.JSONWebSig
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	}
-	valid, err := nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
-	if err != nil {
-		return web.ProblemDetailsForError(err, "failed to redeem nonce")
+	var valid bool
+	var err error
+	if wfe.noncePrefixMap == nil {
+		// Dispatch nonce redemption RPCs dynamically.
+		ctx = context.WithValue(ctx, nonce.PrefixCtxKey{}, header.Nonce[:nonce.PrefixLen])
+		ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, wfe.rncKey)
+		resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
+		if err != nil {
+			return web.ProblemDetailsForError(err, "failed to redeem nonce")
+		}
+		valid = resp.Valid
+	} else {
+		// Dispatch nonce redpemption RPCs using a static mapping.
+		//
+		// TODO(#6610) Remove code below and the `npm` mapping.
+		valid, err = nonce.RemoteRedeem(ctx, wfe.noncePrefixMap, header.Nonce)
+		if err != nil {
+			return web.ProblemDetailsForError(err, "failed to redeem nonce")
+		}
 	}
 	if !valid {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
@@ -500,8 +517,7 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 	ctx context.Context,
 	jws *jose.JSONWebSignature,
 	jwk *jose.JSONWebKey,
-	request *http.Request,
-	logEvent *web.RequestEvent) ([]byte, *probs.ProblemDetails) {
+	request *http.Request) ([]byte, *probs.ProblemDetails) {
 
 	// Check that the public key and JWS algorithms match expected
 	err := checkAlgorithm(jwk, jws)
@@ -521,9 +537,6 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSVerifyFailed"}).Inc()
 		return nil, probs.Malformed("JWS verification error")
 	}
-	// Store the verified payload in the logEvent
-	logEvent.Payload = string(payload)
-	beeline.AddFieldToTrace(ctx, "payload", string(payload))
 
 	// Check that the JWS contains a correct Nonce header
 	if prob := wfe.validNonce(ctx, jws); prob != nil {
@@ -569,7 +582,7 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	}
 
 	// Verify the JWS with the JWK from the SA
-	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request, logEvent)
+	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request)
 	if prob != nil {
 		return nil, nil, nil, prob
 	}
@@ -641,8 +654,7 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	ctx context.Context,
 	jws *jose.JSONWebSignature,
-	request *http.Request,
-	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
+	request *http.Request) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Extract the embedded JWK from the parsed JWS
 	pubKey, prob := wfe.extractJWK(jws)
 	if prob != nil {
@@ -650,7 +662,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	}
 
 	// Verify the JWS with the embedded JWK
-	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request, logEvent)
+	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request)
 	if prob != nil {
 		return nil, nil, prob
 	}
@@ -663,8 +675,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 // goodkey policies (key algorithm, length, blocklist, etc).
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	ctx context.Context,
-	request *http.Request,
-	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
+	request *http.Request) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
@@ -672,7 +683,7 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	}
 
 	// Extract and validate the embedded JWK from the parsed JWS
-	payload, pubKey, prob := wfe.validSelfAuthenticatedJWS(ctx, jws, request, logEvent)
+	payload, pubKey, prob := wfe.validSelfAuthenticatedJWS(ctx, jws, request)
 	if prob != nil {
 		return nil, nil, prob
 	}

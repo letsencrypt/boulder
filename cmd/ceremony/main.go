@@ -17,6 +17,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v3"
 )
@@ -465,11 +466,8 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 }
 
 func rootCeremony(configBytes []byte) error {
-	d := yaml.NewDecoder(bytes.NewReader(configBytes))
-	d.KnownFields(true)
-
 	var config rootConfig
-	err := d.Decode(&config)
+	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -504,11 +502,8 @@ func rootCeremony(configBytes []byte) error {
 }
 
 func intermediateCeremony(configBytes []byte, ct certType) error {
-	d := yaml.NewDecoder(bytes.NewReader(configBytes))
-	d.KnownFields(true)
-
 	var config intermediateConfig
-	err := d.Decode(&config)
+	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -554,11 +549,8 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 }
 
 func csrCeremony(configBytes []byte) error {
-	d := yaml.NewDecoder(bytes.NewReader(configBytes))
-	d.KnownFields(true)
-
 	var config csrConfig
-	err := d.Decode(&config)
+	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -600,11 +592,8 @@ func csrCeremony(configBytes []byte) error {
 }
 
 func keyCeremony(configBytes []byte) error {
-	d := yaml.NewDecoder(bytes.NewReader(configBytes))
-	d.KnownFields(true)
-
 	var config keyConfig
-	err := d.Decode(&config)
+	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -636,11 +625,8 @@ func keyCeremony(configBytes []byte) error {
 }
 
 func ocspRespCeremony(configBytes []byte) error {
-	d := yaml.NewDecoder(bytes.NewReader(configBytes))
-	d.KnownFields(true)
-
 	var config ocspRespConfig
-	err := d.Decode(&config)
+	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -709,11 +695,8 @@ func ocspRespCeremony(configBytes []byte) error {
 }
 
 func crlCeremony(configBytes []byte) error {
-	d := yaml.NewDecoder(bytes.NewReader(configBytes))
-	d.KnownFields(true)
-
 	var config crlConfig
-	err := d.Decode(&config)
+	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
@@ -794,6 +777,11 @@ func main() {
 	var ct struct {
 		CeremonyType string `yaml:"ceremony-type"`
 	}
+
+	// We are intentionally using non-strict unmarshaling to read the top level
+	// tags to populate the "ct" struct for use in the switch statement below.
+	// Further strict processing of each yaml node is done on a case by case basis
+	// inside the switch statement.
 	err = yaml.Unmarshal(configBytes, &ct)
 	if err != nil {
 		log.Fatalf("Failed to parse config: %s", err)
