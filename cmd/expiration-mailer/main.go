@@ -640,8 +640,8 @@ func (ds durationSlice) Swap(a, b int) {
 
 type Config struct {
 	Mailer struct {
-		cmd.ServiceConfig
-		DB cmd.DBConfig
+		DebugAddr string
+		DB        cmd.DBConfig
 		cmd.SMTPConfig
 
 		// From is the "From" address for reminder messages.

@@ -18,7 +18,10 @@ import (
 
 type Config struct {
 	OCSPUpdater struct {
-		cmd.ServiceConfig
+		DebugAddr string
+
+		// TLS client certificate, private key, and trusted root bundle.
+		TLS        cmd.TLSConfig
 		DB         cmd.DBConfig
 		ReadOnlyDB cmd.DBConfig
 
