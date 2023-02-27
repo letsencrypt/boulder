@@ -2143,19 +2143,19 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 	acctID, err := strconv.ParseInt(fields[0], 10, 64)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), err)
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid account ID"), nil)
 		return
 	}
 	orderID, err := strconv.ParseInt(fields[1], 10, 64)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), err)
+		wfe.sendError(response, logEvent, probs.Malformed("Invalid order ID"), nil)
 		return
 	}
 
 	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
-			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), err)
+			wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("No order for ID %d", orderID)), nil)
 			return
 		}
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err,
