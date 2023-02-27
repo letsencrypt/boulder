@@ -29,18 +29,28 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const cmdName = "boulder-wfe2"
+
 type Config struct {
 	WFE struct {
-		DebugAddr        string
-		ListenAddress    string
-		TLSListenAddress string
+		DebugAddr string `validate:"required,hostname_port"`
+
+		// ListenAddress is the address:port on which the WFE will listen for
+		// incoming HTTP requests. If none is provided the WFE will listen on
+		// 80 by default.
+		ListenAddress string `validate:"omitempty,hostname_port"`
+
+		//TLSListenAddress is the address:port on which the WFE will listen for
+		// incoming HTTPS requests. If none is provided the WFE will not listen
+		// for HTTPS requests.
+		TLSListenAddress string `validate:"omitempty,hostname_port"`
 
 		// Timeout is the per-request overall timeout. This should be slightly
 		// lower than the upstream's timeout when making request to the WFE.
-		Timeout cmd.ConfigDuration
+		Timeout cmd.ConfigDuration `validate:"-"`
 
-		ServerCertificatePath string
-		ServerKeyPath         string
+		ServerCertificatePath string `validate:"required_with=TLSListenAddress"`
+		ServerKeyPath         string `validate:"required_with=TLSListenAddress"`
 
 		AllowOrigins []string
 
@@ -67,33 +77,33 @@ type Config struct {
 		// DEPRECATED: See RedeemNonceService, below.
 		// TODO (#6610) Remove this after all configs have migrated to
 		// `RedeemNonceService`.
-		RedeemNonceServices map[string]cmd.GRPCClientConfig
+		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,gt=0"`
 
 		// RedeemNonceService is a gRPC config which contains a list of SRV
 		// names used to lookup nonce-service instances used exclusively for
 		// nonce redemption. In a multi-DC deployment this should contain both
 		// local and remote nonce-service instances.
-		RedeemNonceService *cmd.GRPCClientConfig
+		RedeemNonceService *cmd.GRPCClientConfig `validate:"required_without=RedeemNonceServices"`
 
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
 		// instance. It should contain 256 bits of random data to be suitable as
 		// an HMAC-SHA256 key (e.g. the output of `openssl rand -hex 32`). In a
 		// multi-DC deployment this value should be the same across all
 		// boulder-wfe and nonce-service instances.
-		NoncePrefixKey cmd.PasswordConfig
+		NoncePrefixKey cmd.PasswordConfig `validate:"-"`
 
 		// CertificateChains maps AIA issuer URLs to certificate filenames.
 		// Certificates are read into the chain in the order they are defined in the
 		// slice of filenames.
 		// DEPRECATED: See Chains, below.
 		// TODO(5164): Remove this after all configs have migrated to `Chains`.
-		CertificateChains map[string][]string
+		CertificateChains map[string][]string `validate:"required_without=Chains,omitempty,dive,keys,url,endkeys,gt=0,dive,endswith=.pem"`
 
 		// AlternateCertificateChains maps AIA issuer URLs to an optional alternate
 		// certificate chain, represented by an ordered slice of certificate filenames.
 		// DEPRECATED: See Chains, below.
 		// TODO(5164): Remove this after all configs have migrated to `Chains`.
-		AlternateCertificateChains map[string][]string
+		AlternateCertificateChains map[string][]string `validate:"excluded_without=CertificateChains,omitempty,dive,keys,url,endkeys,gt=0,dive,endswith=.pem"`
 
 		// Chains is a list of lists of certificate filenames. Each inner list is
 		// a chain (starting with the issuing intermediate, followed by one or
@@ -106,17 +116,17 @@ type Config struct {
 		// NOTE: This config field deprecates the CertificateChains and
 		// AlternateCertificateChains fields. If it is present, those fields are
 		// ignored. They will be removed in a future release.
-		Chains [][]string
+		Chains [][]string `validate:"required_without_all=CertificateChains AlternateCertificateChains,omitempty,gt=0,dive,gt=0,min=2,max=3,dive,endswith=.pem"`
 
 		Features map[string]bool
 
 		// DirectoryCAAIdentity is used for the /directory response's "meta"
 		// element's "caaIdentities" field. It should match the VA's "issuerDomain"
 		// configuration value (this value is the one used to enforce CAA)
-		DirectoryCAAIdentity string
+		DirectoryCAAIdentity string `validate:"required,fqdn"`
 		// DirectoryWebsite is used for the /directory response's "meta" element's
 		// "website" field.
-		DirectoryWebsite string
+		DirectoryWebsite string `validate:"required,url"`
 
 		// ACMEv2 requests (outside some registration/revocation messages) use a JWS with
 		// a KeyID header containing the full account URL. For new accounts this
@@ -125,25 +135,25 @@ type Config struct {
 		// ID prefix that legacy accounts would have been using based on the Host
 		// header of the WFE1 instance and the legacy 'reg' path component. This
 		// will differ in configuration for production and staging.
-		LegacyKeyIDPrefix string
+		LegacyKeyIDPrefix string `validate:"required,url"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
-		StaleTimeout cmd.ConfigDuration
+		StaleTimeout cmd.ConfigDuration `validate:"-"`
 
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. The WFE uses this to find the creation date of
 		// authorizations by subtracing this value from the expiry. It should match
 		// the value configured in the RA.
-		AuthorizationLifetimeDays int
+		AuthorizationLifetimeDays int `validate:"required,min=1,max=397"`
 
 		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
 		// the pending state before expiry. The WFE uses this to find the creation
 		// date of pending authorizations by subtracting this value from the expiry.
 		// It should match the value configured in the RA.
-		PendingAuthorizationLifetimeDays int
+		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
 
 		AccountCache *CacheConfig
 	}
@@ -384,10 +394,17 @@ func (ew errorWriter) Write(p []byte) (n int, err error) {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -570,5 +587,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-wfe2", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }

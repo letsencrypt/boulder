@@ -2,7 +2,6 @@ package notmain
 
 import (
 	"flag"
-	"fmt"
 	"os"
 	"time"
 
@@ -61,8 +60,6 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-
-	fmt.Println(os.Args)
 
 	if *validate {
 		err := cmd.ReadAndValidateConfigFile(vaCmdName, *configFile)
