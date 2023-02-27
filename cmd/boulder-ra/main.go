@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/honeycombio/beeline-go"
+
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -66,7 +68,7 @@ type Config struct {
 
 		// OrderLifetime is how far in the future an Order's expiration date should
 		// be set when it is first created.
-		OrderLifetime cmd.ConfigDuration
+		OrderLifetime config.Duration
 
 		// FinalizeTimeout is how long the RA is willing to wait for the Order
 		// finalization process to take. This config parameter only has an effect
@@ -74,7 +76,7 @@ type Config struct {
 		// manage the shutdown of an RA must be willing to wait at least this long
 		// after sending the shutdown signal, to allow background goroutines to
 		// complete.
-		FinalizeTimeout cmd.ConfigDuration
+		FinalizeTimeout config.Duration
 
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we

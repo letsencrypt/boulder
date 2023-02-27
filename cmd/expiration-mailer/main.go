@@ -22,7 +22,10 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -33,7 +36,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -676,7 +678,7 @@ type Config struct {
 		EmailTemplate string
 
 		// How often to process a batch of certificates
-		Frequency cmd.ConfigDuration
+		Frequency config.Duration
 
 		// How many parallel goroutines should process each batch of emails
 		ParallelSends uint

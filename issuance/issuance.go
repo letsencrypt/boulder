@@ -25,13 +25,14 @@ import (
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
+	"golang.org/x/crypto/ocsp"
+
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/pkcs11key/v4"
-	"golang.org/x/crypto/ocsp"
 )
 
 // ProfileConfig describes the certificate issuance constraints for all issuers.
@@ -42,8 +43,8 @@ type ProfileConfig struct {
 	AllowCommonName bool
 
 	Policies            []PolicyInformation
-	MaxValidityPeriod   cmd.ConfigDuration
-	MaxValidityBackdate cmd.ConfigDuration
+	MaxValidityPeriod   config.Duration
+	MaxValidityBackdate config.Duration
 }
 
 // PolicyInformation describes a policy

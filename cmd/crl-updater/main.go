@@ -10,6 +10,7 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/crl/updater"
 	"github.com/letsencrypt/boulder/features"
@@ -47,14 +48,14 @@ type Config struct {
 		// with more confusing mappings of serials to shards).
 		// WARNING: When this number is changed, revocation entries will move
 		// between shards.
-		ShardWidth cmd.ConfigDuration
+		ShardWidth config.Duration
 
 		// LookbackPeriod is how far back the updater should look for revoked expired
 		// certificates. We are required to include every revoked cert in at least
 		// one CRL, even if it is revoked seconds before it expires, so this must
 		// always be greater than the UpdatePeriod, and should be increased when
 		// recovering from an outage to ensure continuity of coverage.
-		LookbackPeriod cmd.ConfigDuration
+		LookbackPeriod config.Duration
 
 		// CertificateLifetime is the validity period (usually expressed in hours,
 		// like "2160h") of the longest-lived currently-unexpired certificate. For
@@ -65,21 +66,21 @@ type Config struct {
 		// the old validity period have expired.
 		// DEPRECATED: This config value is no longer used.
 		// TODO(#6438): Remove this value.
-		CertificateLifetime cmd.ConfigDuration
+		CertificateLifetime config.Duration
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
 		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7
 		// state that this MUST NOT be more than 7 days. We believe that future
 		// updates may require that this not be more than 24 hours, and currently
 		// recommend an UpdatePeriod of 6 hours.
-		UpdatePeriod cmd.ConfigDuration
+		UpdatePeriod config.Duration
 
 		// UpdateOffset controls the times at which crl-updater runs, to avoid
 		// scheduling the batch job at exactly midnight. The updater runs every
 		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
 		// continuing forward into the future forever. This value must be strictly
 		// less than the UpdatePeriod.
-		UpdateOffset cmd.ConfigDuration
+		UpdateOffset config.Duration
 
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards

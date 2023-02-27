@@ -3,13 +3,13 @@ package probers
 import (
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 )
 
 type MockProber struct {
 	name    string
 	kind    string
-	took    cmd.ConfigDuration
+	took    config.Duration
 	success bool
 }
 

@@ -27,7 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -194,8 +194,8 @@ func setup(t *testing.T) *testCtx {
 				Policies: []issuance.PolicyInformation{
 					{OID: "2.23.140.1.2.1"},
 				},
-				MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
-				MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
+				MaxValidityBackdate: config.Duration{Duration: time.Hour},
 			},
 			issuance.IssuerConfig{
 				UseForECDSALeaves: ecdsa,
