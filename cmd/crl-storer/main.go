@@ -21,6 +21,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
+const cmdName = "crl-storer"
+
 type Config struct {
 	CRLStorer struct {
 		cmd.ServiceConfig
@@ -28,24 +30,24 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. These will
 		// be used to validate the CRLs received by this service before uploading
 		// them.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"gt=0,dive,endswith=.pem"`
 
 		// S3Endpoint is the URL at which the S3-API-compatible object storage
 		// service can be reached. This can be used to point to a non-Amazon storage
 		// service, or to point to a fake service for testing. It should be left
 		// blank by default.
-		S3Endpoint string
+		S3Endpoint string `validate:"omitempty,url"`
 		// S3Bucket is the AWS Bucket that uploads should go to. Must be created
 		// (and have appropriate permissions set) beforehand.
 		S3Bucket string
 		// AWSConfigFile is the path to a file on disk containing an AWS config.
 		// The format of the configuration file is specified at
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
-		AWSConfigFile string
+		AWSConfigFile string `validate:"omitempty,endswith=.ini"`
 		// AWSCredsFile is the path to a file on disk containing AWS credentials.
 		// The format of the credentials file is specified at
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
-		AWSCredsFile string
+		AWSCredsFile string `validate:"omitempty,endswith=.ini"`
 
 		Features map[string]bool
 	}
@@ -70,10 +72,17 @@ func (log awsLogger) Logf(c awsl.Classification, format string, v ...interface{}
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -140,4 +149,5 @@ func main() {
 
 func init() {
 	cmd.RegisterCommand("crl-storer", main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }
