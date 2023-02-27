@@ -49,7 +49,7 @@ descriptions:
   malformed-revoke       Revoke a single certificate by the hex serial number. Works even
                          if the certificate cannot be parsed from the database.
                          Note: This does not purge the Akamai cache.
-												 Note: This cannot be used to revoke for key compromise.
+			 Note: This cannot be used to revoke for key compromise.
   batched-serial-revoke  Revoke all certificates contained in a file of hex serial numbers.
   incident-table-revoke  Revoke all certificates in the provided incident table.
   reg-revoke             Revoke all certificates associated with a registration ID.
