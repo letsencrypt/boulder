@@ -232,11 +232,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 	}
 }
 
-// GetPrecertificate is a mock
-func (sa *StorageAuthorityReadOnly) GetPrecertificate(_ context.Context, _ *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, nil
-}
-
 // GetCertificateStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	// Serial ee == 238.crt
