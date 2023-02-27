@@ -8,7 +8,6 @@ import (
 	"expvar"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -392,7 +391,7 @@ func ValidateYAMLConfigByName(name string, in io.Reader) error {
 		}
 	}
 
-	inBytes, err := ioutil.ReadAll(in)
+	inBytes, err := io.ReadAll(in)
 	if err != nil {
 		return err
 	}
