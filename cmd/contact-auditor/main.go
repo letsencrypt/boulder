@@ -17,6 +17,8 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
+const cmdName = "contact-auditor"
+
 type contactAuditor struct {
 	db            *db.WrappedMap
 	resultsFile   *os.File
@@ -155,9 +157,21 @@ func main() {
 	configFile := flag.String("config", "", "File containing a JSON config.")
 	writeToStdout := flag.Bool("to-stdout", false, "Print the audit results to stdout.")
 	writeToFile := flag.Bool("to-file", false, "Write the audit results to a file.")
+	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
+	}
 
 	// Load config from JSON.
 	configData, err := os.ReadFile(*configFile)
@@ -201,5 +215,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("contact-auditor", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }
