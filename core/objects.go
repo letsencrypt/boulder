@@ -450,9 +450,12 @@ type CertificateStatus struct {
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 
-	// TODO(#5152): Change this to an issuance.Issuer(Name)ID after it no longer
-	// has to support both IssuerNameIDs and IssuerIDs.
-	IssuerID int64
+	// Note: this is not an issuance.IssuerNameID because that would create an
+	// import cycle between core and issuance.
+	// Note2: This field used to be called `issuerID`. We keep the old name in
+	// the DB, but update the Go field name to be clear which type of ID this
+	// is.
+	IssuerNameID int64 `db:"issuerID"`
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames

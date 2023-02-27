@@ -303,8 +303,8 @@ func main() {
 		ocspi = ca.NewDisabledOCSPImpl()
 	}
 
-	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
-	// no longer needs crli as an argument.
+	// TODO(#6448): Remove this predeclaration when the separate CRL and OCSP
+	// servers listening on separate ports have been remove.
 	var crli capb.CRLGeneratorServer
 	if !c.CA.DisableCRLService {
 		crli, err = ca.NewCRLImpl(
@@ -326,8 +326,6 @@ func main() {
 			wg.Done()
 		}()
 		stopFns = append(stopFns, crlStop)
-	} else {
-		crli = ca.NewDisabledCRLImpl()
 	}
 
 	if !c.CA.DisableCertService {
@@ -335,7 +333,6 @@ func main() {
 			sa,
 			pa,
 			ocspi,
-			crli,
 			boulderIssuers,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,

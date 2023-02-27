@@ -236,7 +236,7 @@ func TestMakeMessageBody(t *testing.T) {
 		emailTemplate: template.Must(template.New("email").Parse(emailTemplate)).Option("missingkey=error"),
 		sleepInterval: 0,
 		targetRange:   interval{end: "\xFF"},
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 		recipients:    nil,
 		dbMap:         mockEmailResolver{},
 	}
@@ -286,7 +286,7 @@ func TestSleepInterval(t *testing.T) {
 		sleepInterval: sleepLen * time.Second,
 		parallelSends: 1,
 		targetRange:   interval{start: "", end: "\xFF"},
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 		recipients:    recipients,
 		dbMap:         dbMap,
 	}
@@ -296,7 +296,7 @@ func TestSleepInterval(t *testing.T) {
 	// elapsed
 	err := m.run()
 	test.AssertNotError(t, err, "error calling mailer run()")
-	expectedEnd := newFakeClock(t)
+	expectedEnd := clock.NewFake()
 	expectedEnd.Add(time.Second * time.Duration(sleepLen*len(recipients)))
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
 
@@ -307,7 +307,7 @@ func TestSleepInterval(t *testing.T) {
 		emailTemplate: tmpl,
 		sleepInterval: 0,
 		targetRange:   interval{end: "\xFF"},
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 		recipients:    recipients,
 		dbMap:         dbMap,
 	}
@@ -316,7 +316,7 @@ func TestSleepInterval(t *testing.T) {
 	// After it returns, we expect no clock time to have elapsed on the fake clock
 	err = m.run()
 	test.AssertNotError(t, err, "error calling mailer run()")
-	expectedEnd = newFakeClock(t)
+	expectedEnd = clock.NewFake()
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
 }
 
@@ -340,7 +340,7 @@ func TestMailIntervals(t *testing.T) {
 		emailTemplate: tmpl,
 		targetRange:   interval{start: "\xFF", end: "\xFF\xFF"},
 		sleepInterval: 0,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	// Run the mailer. It should produce an error about the interval start
@@ -359,7 +359,7 @@ func TestMailIntervals(t *testing.T) {
 		emailTemplate: tmpl,
 		targetRange:   interval{},
 		sleepInterval: -10,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	// Run the mailer. It should produce an error about the sleep interval
@@ -379,7 +379,7 @@ func TestMailIntervals(t *testing.T) {
 		emailTemplate: tmpl,
 		targetRange:   interval{start: "test-example-updated@letsencrypt.org", end: "\xFF"},
 		sleepInterval: 0,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	// Run the mailer. Two messages should have been produced, one to
@@ -411,7 +411,7 @@ func TestMailIntervals(t *testing.T) {
 		emailTemplate: tmpl,
 		targetRange:   interval{end: "test-example-updated@letsencrypt.org"},
 		sleepInterval: 0,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	// Run the mailer. Two messages should have been produced, one to
@@ -452,7 +452,7 @@ func TestParallelism(t *testing.T) {
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
 		parallelSends: 10,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	mc.Clear()
@@ -461,7 +461,7 @@ func TestParallelism(t *testing.T) {
 
 	// The fake clock should have advanced 9 seconds, one for each parallel
 	// goroutine after the first doing its polite 1-second sleep at startup.
-	expectedEnd := newFakeClock(t)
+	expectedEnd := clock.NewFake()
 	expectedEnd.Add(9 * time.Second)
 	test.AssertEquals(t, m.clk.Now(), expectedEnd.Now())
 
@@ -494,7 +494,7 @@ func TestMessageContentStatic(t *testing.T) {
 		emailTemplate: template.Must(template.New("letter").Parse("an email body")),
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	// Run the mailer, one message should have been created with the content
@@ -531,7 +531,7 @@ func TestMessageContentInterpolated(t *testing.T) {
 			`issued by {{range .}}{{ .Data.validationMethod }}{{end}}`)),
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	// Run the mailer, one message should have been created with the content
@@ -589,7 +589,7 @@ func TestMessageContentInterpolatedMultiple(t *testing.T) {
 {{end}}Thanks`)),
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	// Run the mailer, one message should have been created with the content
@@ -759,7 +759,7 @@ func TestResolveEmails(t *testing.T) {
 		emailTemplate: tmpl,
 		targetRange:   interval{end: "\xFF"},
 		sleepInterval: 0,
-		clk:           newFakeClock(t),
+		clk:           clock.NewFake(),
 	}
 
 	addressesToRecipients, err := m.resolveAddresses()
@@ -778,15 +778,4 @@ func TestResolveEmails(t *testing.T) {
 			t.Errorf("missing entry in addressesToRecipients: %q", address)
 		}
 	}
-}
-
-func newFakeClock(t *testing.T) clock.FakeClock {
-	const fakeTimeFormat = "2006-01-02T15:04:05.999999999Z"
-	ft, err := time.Parse(fakeTimeFormat, fakeTimeFormat)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fc := clock.NewFake()
-	fc.Set(ft.UTC())
-	return fc
 }

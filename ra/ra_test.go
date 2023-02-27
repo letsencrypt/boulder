@@ -361,14 +361,17 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
-	ra := NewRegistrationAuthorityImpl(fc,
-		log,
-		stats,
-		1, testKeyPolicy, 100, true, 300*24*time.Hour, 7*24*time.Hour, nil, noopCAA{}, 0, ctp, nil, nil)
+	ra := NewRegistrationAuthorityImpl(
+		fc, log, stats,
+		1, testKeyPolicy, 100, true,
+		300*24*time.Hour, 7*24*time.Hour,
+		nil, noopCAA{},
+		0, 5*time.Minute,
+		ctp, nil, nil)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
-	ra.OCSP = ca
+	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
 	return va, sa, ra, fc, cleanUp
 }

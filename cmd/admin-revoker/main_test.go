@@ -99,7 +99,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 			core.SerialToString(entries[0].serial),
 			entries[0].regId,
 			42,
-			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format("2006-01-02 15:04:05"),
+			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "while inserting row into incident table")
@@ -403,10 +403,10 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 
 	_, err = c.ssa.AddPrecertificate(
 		context.Background(), &sapb.AddCertificateRequest{
-			Der:      rawCert,
-			RegID:    regId,
-			Issued:   time.Now().UnixNano(),
-			IssuerID: 1,
+			Der:          rawCert,
+			RegID:        regId,
+			Issued:       time.Now().UnixNano(),
+			IssuerNameID: 1,
 		},
 	)
 	test.AssertNotError(t, err, "Failed to add test precert")
@@ -474,6 +474,7 @@ func setup(t *testing.T) testCtx {
 		7*24*time.Hour,
 		nil,
 		nil,
+		0,
 		0,
 		nil,
 		&mockPurger{},

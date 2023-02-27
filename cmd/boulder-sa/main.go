@@ -8,7 +8,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -19,7 +18,6 @@ type Config struct {
 		DB          cmd.DBConfig
 		ReadOnlyDB  cmd.DBConfig
 		IncidentsDB cmd.DBConfig
-		Redis       *rocsp_config.RedisConfig
 		// TODO(#6285): Remove this field, as it is no longer used.
 		Issuers map[string]int
 

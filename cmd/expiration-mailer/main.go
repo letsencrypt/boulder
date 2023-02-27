@@ -224,7 +224,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 		TruncatedDNSNames  string
 		NumDNSNamesOmitted int
 	}{
-		ExpirationDate:     expDate.UTC().Format(time.RFC822Z),
+		ExpirationDate:     expDate.UTC().Format(time.DateOnly),
 		DaysToExpiration:   int(expiresIn.Hours() / 24),
 		DNSNames:           strings.Join(domains, "\n"),
 		TruncatedDNSNames:  strings.Join(truncatedDomains, "\n"),
@@ -504,7 +504,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
 
 		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
-			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04"))
+			left.Format(time.DateTime), right.Format(time.DateTime))
 
 		if len(certs) == 0 {
 			continue // nothing to do
@@ -640,8 +640,8 @@ func (ds durationSlice) Swap(a, b int) {
 
 type Config struct {
 	Mailer struct {
-		cmd.ServiceConfig
-		DB cmd.DBConfig
+		DebugAddr string
+		DB        cmd.DBConfig
 		cmd.SMTPConfig
 
 		// From is the "From" address for reminder messages.

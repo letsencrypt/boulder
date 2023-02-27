@@ -32,8 +32,8 @@ import (
 
 type Config struct {
 	OCSPResponder struct {
-		cmd.ServiceConfig
-		DB cmd.DBConfig
+		DebugAddr string
+		DB        cmd.DBConfig
 
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used

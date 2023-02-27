@@ -55,9 +55,8 @@ type certificateAuthorityImpl struct {
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
-	// TODO(#6448): Remove these.
+	// TODO(#6448): Remove this.
 	ocsp capb.OCSPGeneratorServer
-	crl  capb.CRLGeneratorServer
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -103,7 +102,6 @@ func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
 	ocsp capb.OCSPGeneratorServer,
-	crl capb.CRLGeneratorServer,
 	boulderIssuers []*issuance.Issuer,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
@@ -155,7 +153,6 @@ func NewCertificateAuthorityImpl(
 		sa:                 sa,
 		pa:                 pa,
 		ocsp:               ocsp,
-		crl:                crl,
 		issuers:            issuers,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
@@ -218,14 +215,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if err != nil {
 		return nil, err
 	}
-	issuerID := issuer.Cert.NameID()
+	issuerNameID := issuer.Cert.NameID()
 
 	req := &sapb.AddCertificateRequest{
-		Der:      precertDER,
-		RegID:    regID,
-		Ocsp:     ocspResp,
-		Issued:   nowNanos,
-		IssuerID: int64(issuerID),
+		Der:          precertDER,
+		RegID:        regID,
+		Ocsp:         ocspResp,
+		Issued:       nowNanos,
+		IssuerNameID: int64(issuerNameID),
 	}
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
@@ -235,14 +232,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(precertDER), issuerID, issueReq.RegistrationID, issueReq.OrderID, err)
+			serialHex, hex.EncodeToString(precertDER), issuerNameID, issueReq.RegistrationID, issueReq.OrderID, err)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
 				OCSPResp: ocspResp,
 				Precert:  true,
-				IssuerID: int64(issuerID),
+				IssuerID: int64(issuerNameID),
 			})
 		}
 		return nil, err
@@ -550,11 +547,11 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	issued := cert.NotBefore.Add(ca.backdate)
 	if orphan.Precert {
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:      orphan.DER,
-			RegID:    orphan.RegID,
-			Ocsp:     orphan.OCSPResp,
-			Issued:   issued.UnixNano(),
-			IssuerID: orphan.IssuerID,
+			Der:          orphan.DER,
+			RegID:        orphan.RegID,
+			Ocsp:         orphan.OCSPResp,
+			Issued:       issued.UnixNano(),
+			IssuerNameID: orphan.IssuerID,
 		})
 		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
@@ -580,20 +577,4 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	}
 	ca.adoptedOrphanCount.With(prometheus.Labels{"type": typ}).Inc()
 	return nil
-}
-
-// GenerateOCSP is simply a passthrough to ocspImpl.GenerateOCSP so that other
-// services which need to talk to the CA anyway can do so without configuring
-// two separate gRPC service backends.
-// TODO(#6448): Remove this passthrough to fully separate the services.
-func (ca *certificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
-	return ca.ocsp.GenerateOCSP(ctx, req)
-}
-
-// GenerateCRL is simply a passthrough to crlImpl.GenerateCRL so that other
-// services which need to talk to the CA anyway can do so without configuring
-// two separate gRPC service backends.
-// TODO(#6448): Remove this passthrough to fully separate the services.
-func (ca *certificateAuthorityImpl) GenerateCRL(stream capb.CertificateAuthority_GenerateCRLServer) error {
-	return ca.crl.GenerateCRL(stream)
 }
