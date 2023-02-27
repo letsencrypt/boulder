@@ -438,6 +438,11 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 		validOrder.Created = sa.clk.Now().AddDate(0, 0, 1).Unix()
 	}
 
+	// Order 10 is processing
+	if req.Id == 10 {
+		validOrder.Status = string(core.StatusProcessing)
+	}
+
 	return validOrder, nil
 }
 
