@@ -26,14 +26,6 @@ type Config struct {
 
 		IssuerDomain string
 
-		// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
-		// needed to resolve CAA addresses over multiple paths
-		CAADistributedResolver struct {
-			Timeout     cmd.ConfigDuration
-			MaxFailures int
-			Proxies     []string
-		}
-
 		// DNSTries is the number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.

@@ -20,7 +20,10 @@ import (
 
 type Config struct {
 	CRLUpdater struct {
-		cmd.ServiceConfig
+		DebugAddr string
+
+		// TLS client certificate, private key, and trusted root bundle.
+		TLS cmd.TLSConfig
 
 		SAService           *cmd.GRPCClientConfig
 		CRLGeneratorService *cmd.GRPCClientConfig
