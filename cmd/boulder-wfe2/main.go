@@ -31,7 +31,7 @@ import (
 
 type Config struct {
 	WFE struct {
-		cmd.ServiceConfig
+		DebugAddr        string
 		ListenAddress    string
 		TLSListenAddress string
 
