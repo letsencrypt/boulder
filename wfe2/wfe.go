@@ -76,8 +76,14 @@ const (
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
+)
 
+const (
 	headerRetryAfter = "Retry-After"
+	// Our 99th percentile finalize latency is 2.3s. Asking clients to wait 3s
+	// before polling the order to get an updated status means that >99% of
+	// clients will fetch the updated order object exactly once,.
+	orderRetryAfter = 3
 )
 
 var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
@@ -2115,11 +2121,8 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 
 	respObj := wfe.orderToOrderJSON(request, order)
 
-	// Our 99th percentile finalize latency is 2.3s. Asking clients to wait 3s
-	// before polling the order to get an updated status means that >99% of
-	// clients will fetch the updated order object exactly once,.
 	if respObj.Status == core.StatusProcessing {
-		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", 3))
+		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
 	}
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
@@ -2248,11 +2251,8 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 
 	respObj := wfe.orderToOrderJSON(request, updatedOrder)
 
-	// Our 99th percentile finalize latency is 2.3s. Asking clients to wait 3s
-	// before polling the order to get an updated status means that >99% of
-	// clients will fetch the updated order object exactly once,.
 	if respObj.Status == core.StatusProcessing {
-		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", 3))
+		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
 	}
 
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
