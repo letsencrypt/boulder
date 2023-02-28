@@ -15,8 +15,11 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
@@ -25,7 +28,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/grpc"
 )
 
 var usageString = `
@@ -49,7 +51,7 @@ type Config struct {
 	// Backdate specifies how to adjust a certificate's NotBefore date to get back
 	// to the original issued date. It should match the value used in
 	// `test/config/ca.json` for the CA "backdate" value.
-	Backdate cmd.ConfigDuration
+	Backdate config.Duration
 	// IssuerCerts is a list of paths to all intermediate certificates which may
 	// have been used to issue certificates in the last 90 days. These are used
 	// to form OCSP generation requests.

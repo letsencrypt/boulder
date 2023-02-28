@@ -10,11 +10,13 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/issuance"
-	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/rocsp"
 )
 
 // RedisConfig contains the configuration needed to act as a Redis client.
@@ -30,7 +32,7 @@ type RedisConfig struct {
 	// Servers based on a consistent hashing algorithm.
 	ShardAddrs map[string]string
 	// Timeout is a per-request timeout applied to all Redis requests.
-	Timeout cmd.ConfigDuration
+	Timeout config.Duration
 
 	// Enables read-only commands on replicas.
 	ReadOnly bool
@@ -49,22 +51,22 @@ type RedisConfig struct {
 	MaxRetries int
 	// Minimum backoff between each retry.
 	// Default is 8 milliseconds; -1 disables backoff.
-	MinRetryBackoff cmd.ConfigDuration
+	MinRetryBackoff config.Duration
 	// Maximum backoff between each retry.
 	// Default is 512 milliseconds; -1 disables backoff.
-	MaxRetryBackoff cmd.ConfigDuration
+	MaxRetryBackoff config.Duration
 
 	// Dial timeout for establishing new connections.
 	// Default is 5 seconds.
-	DialTimeout cmd.ConfigDuration
+	DialTimeout config.Duration
 	// Timeout for socket reads. If reached, commands will fail
 	// with a timeout instead of blocking. Use value -1 for no timeout and 0 for default.
 	// Default is 3 seconds.
-	ReadTimeout cmd.ConfigDuration
+	ReadTimeout config.Duration
 	// Timeout for socket writes. If reached, commands will fail
 	// with a timeout instead of blocking.
 	// Default is ReadTimeout.
-	WriteTimeout cmd.ConfigDuration
+	WriteTimeout config.Duration
 
 	// Maximum number of socket connections.
 	// Default is 5 connections per every CPU as reported by runtime.NumCPU.
@@ -77,20 +79,20 @@ type RedisConfig struct {
 	MinIdleConns int
 	// Connection age at which client retires (closes) the connection.
 	// Default is to not close aged connections.
-	MaxConnAge cmd.ConfigDuration
+	MaxConnAge config.Duration
 	// Amount of time client waits for connection if all connections
 	// are busy before returning an error.
 	// Default is ReadTimeout + 1 second.
-	PoolTimeout cmd.ConfigDuration
+	PoolTimeout config.Duration
 	// Amount of time after which client closes idle connections.
 	// Should be less than server's timeout.
 	// Default is 5 minutes. -1 disables idle timeout check.
-	IdleTimeout cmd.ConfigDuration
+	IdleTimeout config.Duration
 	// Frequency of idle checks made by idle connections reaper.
 	// Default is 1 minute. -1 disables idle connections reaper,
 	// but idle connections are still discarded by the client
 	// if IdleTimeout is set.
-	IdleCheckFrequency cmd.ConfigDuration
+	IdleCheckFrequency config.Duration
 }
 
 // MakeClient produces a read-write ROCSP client from a config.

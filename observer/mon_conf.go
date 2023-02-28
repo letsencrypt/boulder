@@ -4,17 +4,18 @@ import (
 	"errors"
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/observer/probers"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v3"
+
+	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/observer/probers"
 )
 
 // MonConf is exported to receive YAML configuration in `ObsConf`.
 type MonConf struct {
-	Period   cmd.ConfigDuration `yaml:"period"`
-	Kind     string             `yaml:"kind" validate:"required,oneof=DNS HTTP CRL TLS"`
-	Settings probers.Settings   `yaml:"settings" validate:"gt=0,dive"`
+	Period   config.Duration  `yaml:"period"`
+	Kind     string           `yaml:"kind" validate:"required,oneof=DNS HTTP CRL TLS"`
+	Settings probers.Settings `yaml:"settings" validate:"gt=0,dive"`
 }
 
 // validatePeriod ensures the received `Period` field is at least 1µs.

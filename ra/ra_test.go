@@ -29,9 +29,16 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	ctpkix "github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+	jose "gopkg.in/go-jose/go-jose.v2"
+
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy"
@@ -54,12 +61,6 @@ import (
 	isa "github.com/letsencrypt/boulder/test/inmem/sa"
 	"github.com/letsencrypt/boulder/test/vars"
 	vapb "github.com/letsencrypt/boulder/va/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
@@ -363,7 +364,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	ra := NewRegistrationAuthorityImpl(
 		fc, log, stats,
-		1, testKeyPolicy, 100, true,
+		1, testKeyPolicy, 100,
 		300*24*time.Hour, 7*24*time.Hour,
 		nil, noopCAA{},
 		0, 5*time.Minute,
@@ -374,12 +375,6 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 	ra.OCSP = &mocks.MockOCSPGenerator{}
 	ra.PA = pa
 	return va, sa, ra, fc, cleanUp
-}
-
-func TestReuseValidAuthzDefaultIsTrue(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-	test.Assert(t, ra.reuseValidAuthz, "ReuseValidAuthz should be true")
 }
 
 func TestValidateContacts(t *testing.T) {
@@ -628,11 +623,11 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	ra.rlPolicies = &dummyRateLimitConfig{
 		RegistrationsPerIPPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+			Window:    config.Duration{Duration: 24 * 90 * time.Hour},
 		},
 		RegistrationsPerIPRangePolicy: ratelimit.RateLimitPolicy{
 			Threshold: 2,
-			Window:    cmd.ConfigDuration{Duration: 24 * 90 * time.Hour},
+			Window:    config.Duration{Duration: 24 * 90 * time.Hour},
 		},
 	}
 
@@ -755,7 +750,6 @@ func TestPerformValidationExpired(t *testing.T) {
 func TestPerformValidationAlreadyValid(t *testing.T) {
 	va, _, ra, _, cleanUp := initAuthorities(t)
 	defer cleanUp()
-	ra.reuseValidAuthz = false
 
 	// Create a finalized authorization
 	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
@@ -788,12 +782,14 @@ func TestPerformValidationAlreadyValid(t *testing.T) {
 		Problems: nil,
 	}
 
-	// A subsequent call to perform validation should return the expected error
-	_, err = ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
+	// A subsequent call to perform validation should return nil due
+	// to being short-circuited because of valid authz reuse.
+	val, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
 		ChallengeIndex: int64(ResponseIndex),
 	})
-	test.AssertErrorIs(t, err, berrors.Malformed)
+	test.Assert(t, core.AcmeStatus(val.Status) == core.StatusValid, "Validation should have been valid")
+	test.AssertNotError(t, err, "Error was not nil, but should have been nil")
 }
 
 func TestPerformValidationSuccess(t *testing.T) {
@@ -955,7 +951,7 @@ func TestNewOrderRateLimiting(t *testing.T) {
 	ra.rlPolicies = &dummyRateLimitConfig{
 		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
+			Window:    config.Duration{Duration: rateLimitDuration},
 		},
 	}
 
@@ -1008,7 +1004,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	ra.rlPolicies = &dummyRateLimitConfig{
 		CertificatesPerNamePolicy: ratelimit.RateLimitPolicy{
 			Threshold: 10,
-			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
+			Window:    config.Duration{Duration: rateLimitDuration},
 			// Setting the Threshold to 0 skips applying the rate limit. Setting an
 			// override to 0 does the trick.
 			Overrides: map[string]int64{
@@ -1017,7 +1013,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 		},
 		NewOrdersPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 10,
-			Window:    cmd.ConfigDuration{Duration: rateLimitDuration},
+			Window:    config.Duration{Duration: rateLimitDuration},
 		},
 	}
 
@@ -1048,7 +1044,7 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	ra.rlPolicies = &dummyRateLimitConfig{
 		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 1 * time.Hour},
+			Window:    config.Duration{Duration: 1 * time.Hour},
 		},
 	}
 
@@ -1166,7 +1162,7 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 
 	rlp := ratelimit.RateLimitPolicy{
 		Threshold: 3,
-		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+		Window:    config.Duration{Duration: 23 * time.Hour},
 		Overrides: map[string]int64{
 			"bigissuer.com":     100,
 			"smallissuer.co.uk": 1,
@@ -1243,7 +1239,7 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	const dupeCertLimit = 3
 	rlp := ratelimit.RateLimitPolicy{
 		Threshold: dupeCertLimit,
-		Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+		Window:    config.Duration{Duration: 24 * time.Hour},
 	}
 
 	// Create a mock SA that has a count of already issued certificates for some
@@ -1482,7 +1478,7 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	// Simple policy that only allows 1 certificate per name.
 	certsPerNamePolicy := ratelimit.RateLimitPolicy{
 		Threshold: 1,
-		Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+		Window:    config.Duration{Duration: 24 * time.Hour},
 	}
 
 	// Create a mock SA that has both name counts and an FQDN set
@@ -1523,7 +1519,7 @@ func TestExactPublicSuffixCertLimit(t *testing.T) {
 	// Simple policy that only allows 2 certificates per name.
 	certsPerNamePolicy := ratelimit.RateLimitPolicy{
 		Threshold: 2,
-		Window:    cmd.ConfigDuration{Duration: 23 * time.Hour},
+		Window:    config.Duration{Duration: 23 * time.Hour},
 	}
 
 	// We use "dedyn.io" and "dynv6.net" domains for the test on the implicit
@@ -2153,7 +2149,7 @@ func TestPendingAuthorizationsUnlimited(t *testing.T) {
 	ra.rlPolicies = &dummyRateLimitConfig{
 		PendingAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+			Window:    config.Duration{Duration: 24 * time.Hour},
 			RegistrationOverrides: map[int64]int64{
 				13: -1,
 			},
@@ -2188,7 +2184,7 @@ func TestNewOrderCheckFailedAuthorizationsFirst(t *testing.T) {
 	ra.rlPolicies = &dummyRateLimitConfig{
 		InvalidAuthorizationsPerAccountPolicy: ratelimit.RateLimitPolicy{
 			Threshold: 1,
-			Window:    cmd.ConfigDuration{Duration: 24 * time.Hour},
+			Window:    config.Duration{Duration: 24 * time.Hour},
 		},
 	}
 
@@ -2312,35 +2308,6 @@ func TestNewOrderAuthzReuseSafety(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(order), 1)
 	// It should *not* be the bad authorization!
 	test.AssertNotEquals(t, order.V2Authorizations[0], int64(1))
-}
-
-func TestNewOrderAuthzReuseDisabled(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	ctx := context.Background()
-	names := []string{"zombo.com"}
-
-	// Use a mock SA that always returns a valid HTTP-01 authz for the name
-	// "zombo.com"
-	ra.SA = &mockSAUnsafeAuthzReuse{}
-
-	// Disable authz reuse
-	ra.reuseValidAuthz = false
-
-	// Create an initial request with regA and names
-	orderReq := &rapb.NewOrderRequest{
-		RegistrationID: Registration.Id,
-		Names:          names,
-	}
-
-	// Create an order for that request
-	order, err := ra.NewOrder(ctx, orderReq)
-	// It shouldn't fail
-	test.AssertNotError(t, err, "Adding an initial order for regA failed")
-	test.AssertEquals(t, numAuthorizations(order), 1)
-	// It should *not* be the bad authorization that indicates reuse!
-	test.AssertNotEquals(t, order.V2Authorizations[0], int64(2))
 }
 
 func TestNewOrderWildcard(t *testing.T) {
