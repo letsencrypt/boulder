@@ -95,7 +95,6 @@ type RegistrationAuthorityImpl struct {
 	rlPolicies                   ratelimit.Limits
 	maxContactsPerReg            int
 	maxNames                     int
-	reuseValidAuthz              bool
 	orderLifetime                time.Duration
 	finalizeTimeout              time.Duration
 	finalizeWG                   sync.WaitGroup
@@ -128,7 +127,6 @@ func NewRegistrationAuthorityImpl(
 	maxContactsPerReg int,
 	keyPolicy goodkey.KeyPolicy,
 	maxNames int,
-	reuseValidAuthz bool,
 	authorizationLifetime time.Duration,
 	pendingAuthorizationLifetime time.Duration,
 	pubc pubpb.PublisherClient,
@@ -248,28 +246,26 @@ func NewRegistrationAuthorityImpl(
 		maxContactsPerReg:            maxContactsPerReg,
 		keyPolicy:                    keyPolicy,
 		maxNames:                     maxNames,
-		// TODO(#2734): Remove reuseValidAuthz hardcoding.
-		reuseValidAuthz:             true,
-		publisher:                   pubc,
-		caa:                         caaClient,
-		orderLifetime:               orderLifetime,
-		finalizeTimeout:             finalizeTimeout,
-		ctpolicy:                    ctp,
-		ctpolicyResults:             ctpolicyResults,
-		purger:                      purger,
-		issuersByNameID:             issuersByNameID,
-		issuersByID:                 issuersByID,
-		namesPerCert:                namesPerCert,
-		rateLimitCounter:            rateLimitCounter,
-		newRegCounter:               newRegCounter,
-		reusedValidAuthzCounter:     reusedValidAuthzCounter,
-		recheckCAACounter:           recheckCAACounter,
-		newCertCounter:              newCertCounter,
-		revocationReasonCounter:     revocationReasonCounter,
-		recheckCAAUsedAuthzLifetime: recheckCAAUsedAuthzLifetime,
-		authzAges:                   authzAges,
-		orderAges:                   orderAges,
-		inflightFinalizes:           inflightFinalizes,
+		publisher:                    pubc,
+		caa:                          caaClient,
+		orderLifetime:                orderLifetime,
+		finalizeTimeout:              finalizeTimeout,
+		ctpolicy:                     ctp,
+		ctpolicyResults:              ctpolicyResults,
+		purger:                       purger,
+		issuersByNameID:              issuersByNameID,
+		issuersByID:                  issuersByID,
+		namesPerCert:                 namesPerCert,
+		rateLimitCounter:             rateLimitCounter,
+		newRegCounter:                newRegCounter,
+		reusedValidAuthzCounter:      reusedValidAuthzCounter,
+		recheckCAACounter:            recheckCAACounter,
+		newCertCounter:               newCertCounter,
+		revocationReasonCounter:      revocationReasonCounter,
+		recheckCAAUsedAuthzLifetime:  recheckCAAUsedAuthzLifetime,
+		authzAges:                    authzAges,
+		orderAges:                    orderAges,
+		inflightFinalizes:            inflightFinalizes,
 	}
 	return ra
 }
@@ -1734,12 +1730,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		return nil, berrors.MalformedError("challenge type %q no longer allowed", ch.Type)
 	}
 
-	// When configured with `reuseValidAuthz` we can expect some clients to try
-	// and update a challenge for an authorization that is already valid. In this
-	// case we don't need to process the challenge update. It wouldn't be helpful,
-	// the overall authorization is already good! We increment a stat for this
-	// case and return early.
-	if ra.reuseValidAuthz && authz.Status == core.StatusValid {
+	// We expect some clients to try and update a challenge for an authorization
+	// that is already valid. In this case we don't need to process the
+	// challenge update. It wouldn't be helpful, the overall authorization is
+	// already good! We return early for the valid authz reuse case.
+	if authz.Status == core.StatusValid {
 		return req.Authz, nil
 	}
 
@@ -2427,11 +2422,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// authorizations correspond to
 	nameToExistingAuthz := make(map[string]*corepb.Authorization, len(newOrder.Names))
 	for _, v := range existingAuthz.Authz {
-		// Don't reuse a valid authorization if the reuseValidAuthz flag is
-		// disabled.
-		if v.Authz.Status == string(core.StatusValid) && !ra.reuseValidAuthz {
-			continue
-		}
 		nameToExistingAuthz[v.Domain] = v.Authz
 	}
 

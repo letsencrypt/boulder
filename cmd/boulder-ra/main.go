@@ -45,13 +45,6 @@ type Config struct {
 
 		MaxNames int
 
-		// Controls behaviour of the RA when asked to create a new authz for
-		// a name/regID that already has a valid authz. False preserves historic
-		// behaviour and ignores the existing authz and creates a new one. True
-		// instructs the RA to reuse the previously created authz in lieu of
-		// creating another.
-		ReuseValidAuthz bool
-
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. Given a value of 300 days when used with a 90-day
 		// cert lifetime, this allows creation of certs that will cover a whole
@@ -255,7 +248,6 @@ func main() {
 		c.RA.MaxContactsPerRegistration,
 		kp,
 		c.RA.MaxNames,
-		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		pubc,

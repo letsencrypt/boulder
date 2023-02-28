@@ -469,7 +469,6 @@ func setup(t *testing.T) testCtx {
 		1,
 		goodkey.KeyPolicy{},
 		100,
-		true,
 		300*24*time.Hour,
 		7*24*time.Hour,
 		nil,
