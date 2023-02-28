@@ -215,14 +215,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if err != nil {
 		return nil, err
 	}
-	issuerID := issuer.Cert.NameID()
+	issuerNameID := issuer.Cert.NameID()
 
 	req := &sapb.AddCertificateRequest{
-		Der:      precertDER,
-		RegID:    regID,
-		Ocsp:     ocspResp,
-		Issued:   nowNanos,
-		IssuerID: int64(issuerID),
+		Der:          precertDER,
+		RegID:        regID,
+		Ocsp:         ocspResp,
+		Issued:       nowNanos,
+		IssuerNameID: int64(issuerNameID),
 	}
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
@@ -232,14 +232,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(precertDER), issuerID, issueReq.RegistrationID, issueReq.OrderID, err)
+			serialHex, hex.EncodeToString(precertDER), issuerNameID, issueReq.RegistrationID, issueReq.OrderID, err)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
 				OCSPResp: ocspResp,
 				Precert:  true,
-				IssuerID: int64(issuerID),
+				IssuerID: int64(issuerNameID),
 			})
 		}
 		return nil, err
@@ -547,11 +547,11 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	issued := cert.NotBefore.Add(ca.backdate)
 	if orphan.Precert {
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:      orphan.DER,
-			RegID:    orphan.RegID,
-			Ocsp:     orphan.OCSPResp,
-			Issued:   issued.UnixNano(),
-			IssuerID: orphan.IssuerID,
+			Der:          orphan.DER,
+			RegID:        orphan.RegID,
+			Ocsp:         orphan.OCSPResp,
+			Issued:       issued.UnixNano(),
+			IssuerNameID: orphan.IssuerID,
 		})
 		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)

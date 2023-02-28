@@ -210,7 +210,7 @@ message AddCertificateRequest {
   // the current time. The orphan-finder uses this parameter to add
   // certificates with the correct historic issued date
   int64 issued = 4;
-  int64 issuerID = 5;
+  int64 issuerNameID = 5; // https://pkg.go.dev/github.com/letsencrypt/boulder/issuance#IssuerNameID
 }
 
 message OrderRequest {

@@ -411,11 +411,10 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		Workers             int `validate:"required,min=1"`
-		ReportDirectoryPath string
-		UnexpiredOnly       bool
-		BadResultsOnly      bool
-		CheckPeriod         cmd.ConfigDuration
+		Workers        int `validate:"required,min=1"`
+		UnexpiredOnly  bool
+		BadResultsOnly bool
+		CheckPeriod    cmd.ConfigDuration
 
 		// AcceptableValidityDurations is a list of durations which are
 		// acceptable for certificates we issue.

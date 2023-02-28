@@ -874,10 +874,10 @@ func TestPreviousCertificateExists(t *testing.T) {
 
 	issued := sa.clk.Now()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		Issued:   issued.UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          certDER,
+		Issued:       issued.UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -1768,11 +1768,11 @@ func TestRevokeCertificate(t *testing.T) {
 	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   sa.clk.Now().UnixNano(),
-		IssuerID: 1,
+		Der:          certDER,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       sa.clk.Now().UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
@@ -1833,11 +1833,11 @@ func TestRevokeCertificateNoResponse(t *testing.T) {
 	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   sa.clk.Now().UnixNano(),
-		IssuerID: 1,
+		Der:          certDER,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       sa.clk.Now().UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
@@ -1871,11 +1871,11 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	issuedTime := fc.Now().UnixNano()
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   issuedTime,
-		IssuerID: 1,
+		Der:          certDER,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       issuedTime,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	fc.Add(1 * time.Hour)
@@ -1988,10 +1988,10 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 
 	// Add the certificate with the same names.
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		Issued:   issued.UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          certDER,
+		Issued:       issued.UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -2029,10 +2029,10 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	names = cert.DNSNames
 
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		Issued:   issued.UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          certDER,
+		Issued:       issued.UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -2836,11 +2836,11 @@ func TestGetRevokedCerts(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      eeCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   eeCert.NotBefore.UnixNano(),
-		IssuerID: 1,
+		Der:          eeCert.Raw,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       eeCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
 
@@ -2929,11 +2929,11 @@ func TestGetMaxExpiration(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      eeCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   eeCert.NotBefore.UnixNano(),
-		IssuerID: 1,
+		Der:          eeCert.Raw,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       eeCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
 

@@ -325,11 +325,11 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 		})
 	case precertOrphan:
 		_, err = opf.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-			Der:      parsed.certDER,
-			RegID:    parsed.regID,
-			Ocsp:     response,
-			Issued:   issuedDate.UnixNano(),
-			IssuerID: parsed.issuerID,
+			Der:          parsed.certDER,
+			RegID:        parsed.regID,
+			Ocsp:         response,
+			Issued:       issuedDate.UnixNano(),
+			IssuerNameID: parsed.issuerID,
 		})
 	default:
 		// Shouldn't happen but be defensive anyway

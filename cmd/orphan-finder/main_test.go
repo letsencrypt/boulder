@@ -61,7 +61,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 }
 
 func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
+	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerNameID) {
 		return nil, berrors.InternalServerError("Incomplete request")
 	}
 	parsed, err := x509.ParseCertificate(req.Der)
