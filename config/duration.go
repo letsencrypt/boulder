@@ -55,4 +55,3 @@ func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	d.Duration = dur
 	return nil
 }
-
