@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -48,11 +49,11 @@ type Config struct {
 		Path          string
 		ListenAddress string
 		// Deprecated and unused.
-		MaxAge cmd.ConfigDuration
+		MaxAge config.Duration
 
 		// When to timeout a request. This should be slightly lower than the
 		// upstream's timeout when making request to ocsp-responder.
-		Timeout cmd.ConfigDuration
+		Timeout config.Duration
 
 		// The worst-case freshness of a response during normal operations.
 		//
@@ -71,11 +72,11 @@ type Config struct {
 		// would be: OCSPMinTimeToExpiry + OldOCSPWindow.
 		//
 		// This has a default value of 61h.
-		ExpectedFreshness cmd.ConfigDuration
+		ExpectedFreshness config.Duration
 
 		// How often a response should be signed when using Redis/live-signing
 		// path. This has a default value of 60h.
-		LiveSigningPeriod cmd.ConfigDuration
+		LiveSigningPeriod config.Duration
 
 		// A limit on how many requests to the RA (and onwards to the CA) will
 		// be made to sign responses that are not fresh in the cache. This
@@ -97,7 +98,7 @@ type Config struct {
 		// 40 * 5 / 0.02 = 10,000 requests before the oldest request times out.
 		MaxSigningWaiters int
 
-		ShutdownStopTimeout cmd.ConfigDuration
+		ShutdownStopTimeout config.Duration
 
 		RequiredSerialPrefixes []string
 

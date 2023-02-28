@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -72,7 +73,7 @@ type Throughput struct {
 	// PurgeBatchInterval is the duration waited between dispatching an Akamai
 	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
 	// isn't provided it will default to 'defaultPurgeBatchInterval'.
-	PurgeBatchInterval cmd.ConfigDuration
+	PurgeBatchInterval config.Duration
 }
 
 func (t *Throughput) useOptimizedDefaults() {
@@ -144,7 +145,7 @@ type Config struct {
 		// PurgeRetryBackoff is the base duration that will be waited before
 		// attempting to purge a batch of URLs which previously failed to be
 		// purged.
-		PurgeRetryBackoff cmd.ConfigDuration
+		PurgeRetryBackoff config.Duration
 	}
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig

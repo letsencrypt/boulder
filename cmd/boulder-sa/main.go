@@ -5,7 +5,9 @@ import (
 	"os"
 
 	"github.com/honeycombio/beeline-go"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/sa"
@@ -27,7 +29,7 @@ type Config struct {
 		ParallelismPerRPC int
 		// LagFactor is how long to sleep before retrying a read request that may
 		// have failed solely due to replication lag.
-		LagFactor cmd.ConfigDuration
+		LagFactor config.Duration
 	}
 
 	Syslog  cmd.SyslogConfig

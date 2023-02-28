@@ -14,7 +14,13 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -22,10 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/mail"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 const blockedKeysGaugeLimit = 1000
@@ -402,12 +404,12 @@ type Config struct {
 		// Interval specifies the minimum duration bad-key-revoker
 		// should sleep between attempting to find blockedKeys rows to
 		// process when there is an error or no work to do.
-		Interval cmd.ConfigDuration
+		Interval config.Duration
 
 		// BackoffIntervalMax specifies a maximum duration the backoff
 		// algorithm will wait before retrying in the event of error
 		// or no work to do.
-		BackoffIntervalMax cmd.ConfigDuration
+		BackoffIntervalMax config.Duration
 
 		Mailer struct {
 			cmd.SMTPConfig

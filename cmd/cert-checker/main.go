@@ -24,6 +24,7 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -412,11 +413,11 @@ type Config struct {
 		Workers        int
 		UnexpiredOnly  bool
 		BadResultsOnly bool
-		CheckPeriod    cmd.ConfigDuration
+		CheckPeriod    config.Duration
 
 		// AcceptableValidityDurations is a list of durations which are
 		// acceptable for certificates we issue.
-		AcceptableValidityDurations []cmd.ConfigDuration
+		AcceptableValidityDurations []config.Duration
 
 		// GoodKey is an embedded config stanza for the goodkey library. If this
 		// is populated, the cert-checker will perform static checks against the

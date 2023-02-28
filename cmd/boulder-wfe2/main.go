@@ -14,7 +14,10 @@ import (
 
 	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
@@ -26,7 +29,6 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe2"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 type Config struct {
@@ -37,14 +39,14 @@ type Config struct {
 
 		// Timeout is the per-request overall timeout. This should be slightly
 		// lower than the upstream's timeout when making request to the WFE.
-		Timeout cmd.ConfigDuration
+		Timeout config.Duration
 
 		ServerCertificatePath string
 		ServerKeyPath         string
 
 		AllowOrigins []string
 
-		ShutdownStopTimeout cmd.ConfigDuration
+		ShutdownStopTimeout config.Duration
 
 		SubscriberAgreementURL string
 
@@ -131,7 +133,7 @@ type Config struct {
 		GoodKey goodkey.Config
 
 		// StaleTimeout determines how old should data be to be accessed via Boulder-specific GET-able APIs
-		StaleTimeout cmd.ConfigDuration
+		StaleTimeout config.Duration
 
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. The WFE uses this to find the creation date of
@@ -154,7 +156,7 @@ type Config struct {
 
 type CacheConfig struct {
 	Size int
-	TTL  cmd.ConfigDuration
+	TTL  config.Duration
 }
 
 // loadCertificateFile loads a PEM certificate from the certFile provided. It

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -175,7 +175,7 @@ type rateLimitConfig struct {
 // RateLimitPolicy describes a general limiting policy
 type RateLimitPolicy struct {
 	// How long to count items for
-	Window cmd.ConfigDuration `yaml:"window"`
+	Window config.Duration `yaml:"window"`
 	// The max number of items that can be present before triggering the rate
 	// limit. Zero means "no limit."
 	Threshold int64 `yaml:"threshold"`
