@@ -37,6 +37,7 @@ import (
 )
 
 const (
+	cmdName                  = "expiration-mailer"
 	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
 )
 
@@ -640,45 +641,48 @@ func (ds durationSlice) Swap(a, b int) {
 
 type Config struct {
 	Mailer struct {
-		DebugAddr string
+		DebugAddr string `validate:"required,hostname_port"`
 		DB        cmd.DBConfig
 		cmd.SMTPConfig
 
-		// From is the "From" address for reminder messages.
-		From string
+		// From is an RFC 5322 formatted "From" address for reminder messages,
+		// e.g. "Example <example@test.org>"
+		From string `validate:"required,endswith=>"`
 
-		// Subject is the Subject line of reminder messages.
-		// This is a Go template with a single variable: ExpirationSubject,
-		// which contains a list of affectd hostnames, possible truncated.
+		// Subject is the Subject line of reminder messages. This is a Go
+		// template with a single variable: ExpirationSubject, which contains
+		// a list of affected hostnames, possible truncated.
 		Subject string
 
 		// CertLimit is the maximum number of certificates to investigate in a
-		// single batch.
+		// single batch. Defaults to 100.
 		CertLimit int
 
 		// MailsPerAddressPerDay is the maximum number of emails we'll send to
 		// a single address in a single day. Defaults to 0 (unlimited).
 		// Note that this does not track sends across restarts of the process,
 		// so we may send more than this when we restart expiration-mailer.
-		// This is a best-effort limitation.
+		// This is a best-effort limitation. Defaults to math.MaxInt.
 		MailsPerAddressPerDay int
 
 		// UpdateChunkSize is the maximum number of rows to update in a single
 		// SQL UPDATE statement.
-		UpdateChunkSize int
+		UpdateChunkSize int `validate:"omitempty,max=65535"`
 
-		NagTimes []string
+		NagTimes []string `validate:"gt=0"`
 
 		// TODO(#6097): Remove this
 		NagCheckInterval string
 
-		// Path to a text/template email template
-		EmailTemplate string
+		// Path to a text/template email template with a .gotmpl or .txt file
+		// extension.
+		EmailTemplate string `validate:"required,endswith=gotmpl|endswith=txt"`
 
 		// How often to process a batch of certificates
 		Frequency cmd.ConfigDuration
 
-		// How many parallel goroutines should process each batch of emails
+		// ParallelSends is the number of parallel goroutines used to process
+		// each batch of emails. Defaults to 1.
 		ParallelSends uint
 
 		TLS       cmd.TLSConfig
@@ -786,12 +790,18 @@ func main() {
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	daemon := flag.Bool("daemon", false, "Run in daemon mode")
-
+	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -948,5 +958,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("expiration-mailer", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }
