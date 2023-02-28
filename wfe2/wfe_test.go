@@ -2657,9 +2657,12 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
 		},
 		{
-			Name:            "Good CSR, Ready Order",
-			Request:         signAndPost(signer, "1/8", "http://localhost/1/8", goodCertCSRPayload),
-			ExpectedHeaders: map[string]string{"Location": "http://localhost/acme/order/1/8"},
+			Name:    "Good CSR, Ready Order",
+			Request: signAndPost(signer, "1/8", "http://localhost/1/8", goodCertCSRPayload),
+			ExpectedHeaders: map[string]string{
+				"Location":    "http://localhost/acme/order/1/8",
+				"Retry-After": "3",
+			},
 			ExpectedBody: `
 {
   "status": "processing",
@@ -2830,6 +2833,7 @@ func TestGetOrder(t *testing.T) {
 		Name     string
 		Request  *http.Request
 		Response string
+		Headers  map[string]string
 		Endpoint string
 	}{
 		{
@@ -2898,6 +2902,12 @@ func TestGetOrder(t *testing.T) {
 			Request:  makePost(1, "1/9", ""),
 			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
+		{
+			Name:     "POST-as-GET processing order",
+			Request:  makePost(1, "1/10", ""),
+			Response: `{"status": "processing","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
+			Headers:  map[string]string{"Retry-After": "3"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2909,6 +2919,9 @@ func TestGetOrder(t *testing.T) {
 				wfe.GetOrder(ctx, newRequestEvent(), responseWriter, tc.Request)
 			}
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.Response)
+			for k, v := range tc.Headers {
+				test.AssertEquals(t, responseWriter.Header().Get(k), v)
+			}
 		})
 	}
 }
