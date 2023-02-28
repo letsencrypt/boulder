@@ -232,22 +232,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 	}
 }
 
-// GetCertificateStatus is a mock
-func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
-	// Serial ee == 238.crt
-	if req.Serial == "0000000000000000000000000000000000ee" {
-		return &corepb.CertificateStatus{
-			Status: string(core.OCSPStatusGood),
-		}, nil
-	} else if req.Serial == "0000000000000000000000000000000000b2" {
-		return &corepb.CertificateStatus{
-			Status: string(core.OCSPStatusRevoked),
-		}, nil
-	} else {
-		return nil, errors.New("No cert status")
-	}
-}
-
 // GetRevocationStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	return nil, nil
