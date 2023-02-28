@@ -3903,7 +3903,10 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	digest, err := core.KeyDigest(k.Public())
 	test.AssertNotError(t, err, "core.KeyDigest failed")
 
-	template := x509.Certificate{SerialNumber: big.NewInt(257)}
+	serial := "04eac294a0e61035d8254d5a04f61a37c802"
+	serialInt, err := core.StringToSerial(serial)
+	test.AssertNotError(t, err, "decoding serial number")
+	template := x509.Certificate{SerialNumber: serialInt}
 	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	cert, err := x509.ParseCertificate(der)
@@ -3941,6 +3944,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	// Revoking without an admin name should fail immediately.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
+		Serial:    serial,
 		Code:      ocsp.KeyCompromise,
 		AdminName: "",
 	})
@@ -3949,6 +3953,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	// Revoking for a forbidden reason should fail immediately.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
+		Serial:    serial,
 		Code:      ocsp.CertificateHold,
 		AdminName: "root",
 	})
@@ -3957,6 +3962,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	// Revoking a cert for an unspecified reason should work but not block the key.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
+		Serial:    serial,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
 	})
@@ -3981,6 +3987,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	mockSA.revoked = make(map[string]int64)
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
+		Serial:    serial,
 		Code:      ocsp.KeyCompromise,
 		AdminName: "root",
 	})
