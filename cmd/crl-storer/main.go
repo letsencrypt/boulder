@@ -148,6 +148,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("crl-storer", main)
+	cmd.RegisterCommand(cmdName, main)
 	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }

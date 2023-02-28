@@ -18,6 +18,8 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
+const cmdName = "crl-updater"
+
 type Config struct {
 	CRLUpdater struct {
 		DebugAddr string
@@ -32,13 +34,13 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. This
 		// controls the set of CRLs which will be published by this updater: it will
 		// publish one set of NumShards CRL shards for each issuer in this list.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"gt=0,dive,endswith=.pem"`
 
 		// NumShards is the number of shards into which each issuer's "full and
 		// complete" CRL will be split.
 		// WARNING: When this number is changed, the "JSON Array of CRL URLs" field
 		// in CCADB MUST be updated.
-		NumShards int
+		NumShards int `validate:"gt=0"`
 
 		// ShardWidth is the amount of time (width on a timeline) that a single
 		// shard should cover. Ideally, NumShards*ShardWidth should be an amount of
@@ -47,14 +49,14 @@ type Config struct {
 		// with more confusing mappings of serials to shards).
 		// WARNING: When this number is changed, revocation entries will move
 		// between shards.
-		ShardWidth cmd.ConfigDuration
+		ShardWidth cmd.ConfigDuration `validate:"-"`
 
 		// LookbackPeriod is how far back the updater should look for revoked expired
 		// certificates. We are required to include every revoked cert in at least
 		// one CRL, even if it is revoked seconds before it expires, so this must
 		// always be greater than the UpdatePeriod, and should be increased when
 		// recovering from an outage to ensure continuity of coverage.
-		LookbackPeriod cmd.ConfigDuration
+		LookbackPeriod cmd.ConfigDuration `validate:"-"`
 
 		// CertificateLifetime is the validity period (usually expressed in hours,
 		// like "2160h") of the longest-lived currently-unexpired certificate. For
@@ -65,7 +67,7 @@ type Config struct {
 		// the old validity period have expired.
 		// DEPRECATED: This config value is no longer used.
 		// TODO(#6438): Remove this value.
-		CertificateLifetime cmd.ConfigDuration
+		CertificateLifetime cmd.ConfigDuration `validate:"-"`
 
 		// UpdatePeriod controls how frequently the crl-updater runs and publishes
 		// new versions of every CRL shard. The Baseline Requirements, Section 4.9.7
@@ -85,7 +87,7 @@ type Config struct {
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
 		// by this updater.
-		MaxParallelism int
+		MaxParallelism int `validate:"min=0"`
 
 		Features map[string]bool
 	}
@@ -98,10 +100,17 @@ func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	runOnce := flag.Bool("runOnce", false, "If true, run once immediately and then exit")
+	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	if *validate {
+		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
+		cmd.FailOnError(err, "Failed to validate config file")
+		os.Exit(0)
 	}
 
 	var c Config
@@ -186,5 +195,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("crl-updater", main)
+	cmd.RegisterCommand(cmdName, main)
+	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }
