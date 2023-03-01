@@ -42,7 +42,8 @@ const (
 // PublicKeyAlgorithm. Lookup by NameID is useful for looking up the appropriate
 // issuer based on the issuer of a given (pre)certificate.
 type issuerMaps struct {
-	byAlg    map[x509.PublicKeyAlgorithm]*issuance.Issuer
+	// ByAlg is exported for ocsp/ocsp_test.go.
+	ByAlg    map[x509.PublicKeyAlgorithm]*issuance.Issuer
 	byNameID map[issuance.IssuerNameID]*issuance.Issuer
 }
 
@@ -51,9 +52,10 @@ type issuerMaps struct {
 type CertificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
 	capb.UnimplementedOCSPGeneratorServer
-	sa      sapb.StorageAuthorityCertificateClient
-	pa      core.PolicyAuthority
-	issuers issuerMaps
+	sa sapb.StorageAuthorityCertificateClient
+	pa core.PolicyAuthority
+	// Issuers is exported for ocsp/ocsp_test.go.
+	Issuers issuerMaps
 	// TODO(#6448): Remove this.
 	ocsp capb.OCSPGeneratorServer
 
@@ -152,7 +154,7 @@ func NewCertificateAuthorityImpl(
 		sa:                 sa,
 		pa:                 pa,
 		ocsp:               ocsp,
-		issuers:            issuers,
+		Issuers:            issuers,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
 		prefix:             serialPrefix,
@@ -294,7 +296,7 @@ func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		scts = append(scts, sct)
 	}
 
-	issuer, ok := ca.issuers.byNameID[issuance.GetIssuerNameID(precert)]
+	issuer, ok := ca.Issuers.byNameID[issuance.GetIssuerNameID(precert)]
 	if !ok {
 		return nil, berrors.InternalServerError("no issuer found for Issuer Name %s", precert.Issuer)
 	}
@@ -388,12 +390,12 @@ func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		if alg == x509.ECDSA && !features.Enabled(features.ECDSAForAll) && ca.ecdsaAllowList != nil && !ca.ecdsaAllowList.permitted(issueReq.RegistrationID) {
 			alg = x509.RSA
 		}
-		issuer, ok = ca.issuers.byAlg[alg]
+		issuer, ok = ca.Issuers.ByAlg[alg]
 		if !ok {
 			return nil, nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 		}
 	} else {
-		issuer, ok = ca.issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
+		issuer, ok = ca.Issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
 		if !ok {
 			return nil, nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
 		}
