@@ -86,10 +86,6 @@ type Config struct {
 		// program but we still want our certs to end up there.
 		InformationalCTLogs []ctconfig.LogDescription
 
-		// IssuerCertPath is the path to the intermediate used to issue certificates.
-		// It is used to generate OCSP URLs to purge at revocation time.
-		// TODO(#5162): DEPRECATED. Remove this field entirely.
-		IssuerCertPath string
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
 		// generate OCSP URLs to purge during revocation.
@@ -180,9 +176,6 @@ func main() {
 	apc := akamaipb.NewAkamaiPurgerClient(apConn)
 
 	issuerCertPaths := c.RA.IssuerCerts
-	if len(issuerCertPaths) == 0 {
-		issuerCertPaths = []string{c.RA.IssuerCertPath}
-	}
 	issuerCerts := make([]*issuance.Certificate, len(issuerCertPaths))
 	for i, issuerCertPath := range issuerCertPaths {
 		issuerCerts[i], err = issuance.LoadCertificate(issuerCertPath)
