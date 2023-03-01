@@ -13,6 +13,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -20,6 +21,7 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
+	"github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -273,9 +275,9 @@ func main() {
 
 	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
 	// no longer needs ocspi as an argument.
-	var ocspi ca.OCSPGenerator
+	var ocspi ocsp.OCSPGenerator
 	if !c.CA.DisableOCSPService {
-		ocspiReal, err := ca.NewOCSPImpl(
+		ocspiReal, err := ocsp.NewOCSPImpl(
 			boulderIssuers,
 			c.CA.LifespanOCSP.Duration,
 			c.CA.OCSPLogMaxLength,
@@ -299,16 +301,16 @@ func main() {
 			wg.Done()
 		}()
 		stopFns = append(stopFns, ocspStop)
-		ocspi = ca.OCSPGenerator(ocspiReal)
+		ocspi = ocsp.OCSPGenerator(ocspiReal)
 	} else {
-		ocspi = ca.NewDisabledOCSPImpl()
+		ocspi = ocsp.NewDisabledOCSPImpl()
 	}
 
 	// TODO(#6448): Remove this predeclaration when the separate CRL and OCSP
 	// servers listening on separate ports have been remove.
 	var crli capb.CRLGeneratorServer
 	if !c.CA.DisableCRLService {
-		crli, err = ca.NewCRLImpl(
+		crli, err = crl.NewCRLImpl(
 			boulderIssuers,
 			c.CA.LifespanCRL.Duration,
 			c.CA.CRLDPBase,

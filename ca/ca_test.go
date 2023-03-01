@@ -30,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/crl"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -37,6 +38,7 @@ import (
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -110,8 +112,8 @@ func mustRead(path string) []byte {
 
 type testCtx struct {
 	pa             core.PolicyAuthority
-	ocsp           *ocspImpl
-	crl            *crlImpl
+	ocsp           *ocsp.OcspImpl
+	crl            *crl.CrlImpl
 	certExpiry     time.Duration
 	certBackdate   time.Duration
 	serialPrefix   int
@@ -241,7 +243,7 @@ func setup(t *testing.T) *testCtx {
 		Help: "A counter of signature errors labelled by error type",
 	}, []string{"type"})
 
-	ocsp, err := NewOCSPImpl(
+	ocsp, err := ocsp.NewOCSPImpl(
 		boulderIssuers,
 		time.Hour,
 		0,
@@ -254,7 +256,7 @@ func setup(t *testing.T) *testCtx {
 	)
 	test.AssertNotError(t, err, "Failed to create ocsp impl")
 
-	crl, err := NewCRLImpl(
+	crl, err := crl.NewCRLImpl(
 		boulderIssuers,
 		time.Hour,
 		"http://c.boulder.test",
@@ -305,7 +307,7 @@ func TestFailNoSerialPrefix(t *testing.T) {
 }
 
 type TestCertificateIssuance struct {
-	ca      *certificateAuthorityImpl
+	ca      *CertificateAuthorityImpl
 	sa      *mockSA
 	req     *x509.CertificateRequest
 	certDER []byte
@@ -379,7 +381,7 @@ func makeECDSAAllowListBytes(regID int64) []byte {
 	return append(contents, regIDBytes...)
 }
 
-func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T) (*CertificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
@@ -523,7 +525,7 @@ func TestInvalidCSRs(t *testing.T) {
 	testCases := []struct {
 		name         string
 		csrPath      string
-		check        func(t *testing.T, ca *certificateAuthorityImpl, sa *mockSA)
+		check        func(t *testing.T, ca *CertificateAuthorityImpl, sa *mockSA)
 		errorMessage string
 		errorType    berrors.ErrorType
 	}{

@@ -17,7 +17,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -47,9 +46,9 @@ type issuerMaps struct {
 	byNameID map[issuance.IssuerNameID]*issuance.Issuer
 }
 
-// certificateAuthorityImpl represents a CA that signs certificates.
-// It can sign OCSP responses as well, but only via delegation to an ocspImpl.
-type certificateAuthorityImpl struct {
+// CertificateAuthorityImpl represents a CA that signs certificates.
+// It can sign OCSP responses as well, but only via delegation to an OcspImpl.
+type CertificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
 	capb.UnimplementedOCSPGeneratorServer
 	sa      sapb.StorageAuthorityCertificateClient
@@ -97,7 +96,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
 // from any number of issuance.Issuers according to their profiles, and can sign
-// OCSP (via delegation to an ocspImpl and its issuers).
+// OCSP (via delegation to an OcspImpl and its issuers).
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
@@ -115,8 +114,8 @@ func NewCertificateAuthorityImpl(
 	signatureCount *prometheus.CounterVec,
 	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
-) (*certificateAuthorityImpl, error) {
-	var ca *certificateAuthorityImpl
+) (*CertificateAuthorityImpl, error) {
+	var ca *CertificateAuthorityImpl
 	var err error
 
 	// TODO(briansmith): Make the backdate setting mandatory after the
@@ -149,7 +148,7 @@ func NewCertificateAuthorityImpl(
 		[]string{"type"})
 	stats.MustRegister(adoptedOrphanCount)
 
-	ca = &certificateAuthorityImpl{
+	ca = &CertificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
 		ocsp:               ocsp,
@@ -173,20 +172,14 @@ func NewCertificateAuthorityImpl(
 }
 
 // noteSignError is called after operations that may cause a PKCS11 signing error.
-func (ca *certificateAuthorityImpl) noteSignError(err error) {
+func (ca *CertificateAuthorityImpl) noteSignError(err error) {
 	var pkcs11Error *pkcs11.Error
 	if errors.As(err, &pkcs11Error) {
 		ca.signErrorCount.WithLabelValues("HSM").Inc()
 	}
 }
 
-var ocspStatusToCode = map[string]int{
-	"good":    ocsp.Good,
-	"revoked": ocsp.Revoked,
-	"unknown": ocsp.Unknown,
-}
-
-func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
+func (ca *CertificateAuthorityImpl) IssuePrecertificate(ctx context.Context, issueReq *capb.IssueCertificateRequest) (*capb.IssuePrecertificateResponse, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(issueReq, issueReq.Csr, issueReq.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete issue certificate request")
@@ -272,7 +265,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 // final certificate, but this is just a belt-and-suspenders measure, since
 // there could be race conditions where two goroutines are issuing for the same
 // serial number at the same time.
-func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
+func (ca *CertificateAuthorityImpl) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest) (*corepb.Certificate, error) {
 	// issueReq.orderID may be zero, for ACMEv1 requests.
 	if core.IsAnyNilOrZero(req, req.DER, req.SCTs, req.RegistrationID) {
 		return nil, berrors.InternalServerError("Incomplete cert for precertificate request")
@@ -348,7 +341,7 @@ type validity struct {
 	NotAfter  time.Time
 }
 
-func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int, validity, error) {
+func (ca *CertificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int, validity, error) {
 	// We want 136 bits of random number, plus an 8-bit instance id prefix.
 	const randBits = 136
 	serialBytes := make([]byte, randBits/8+1)
@@ -371,7 +364,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, *issuance.Issuer, error) {
+func (ca *CertificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, nil, err
@@ -457,7 +450,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	return certDER, ocspResp, issuer, nil
 }
 
-func (ca *certificateAuthorityImpl) storeCertificate(
+func (ca *CertificateAuthorityImpl) storeCertificate(
 	ctx context.Context,
 	regID int64,
 	orderID int64,
@@ -497,7 +490,7 @@ type orphanedCert struct {
 	IssuerID int64
 }
 
-func (ca *certificateAuthorityImpl) queueOrphan(o *orphanedCert) {
+func (ca *CertificateAuthorityImpl) queueOrphan(o *orphanedCert) {
 	if _, err := ca.orphanQueue.EnqueueObject(o); err != nil {
 		ca.log.AuditErrf("failed to queue orphan for integration: %s", err)
 	}
@@ -506,7 +499,7 @@ func (ca *certificateAuthorityImpl) queueOrphan(o *orphanedCert) {
 // OrphanIntegrationLoop runs a loop executing integrateOrphans and then waiting a minute.
 // It is split out into a separate function called directly by boulder-ca in order to make
 // testing the orphan queue functionality somewhat more simple.
-func (ca *certificateAuthorityImpl) OrphanIntegrationLoop() {
+func (ca *CertificateAuthorityImpl) OrphanIntegrationLoop() {
 	for {
 		err := ca.integrateOrphan()
 		if err != nil {
@@ -525,7 +518,7 @@ func (ca *certificateAuthorityImpl) OrphanIntegrationLoop() {
 // being lost if the CA is restarted between the item being dequeued and being added to
 // the database. It calculates the issuance time by subtracting the backdate period from
 // the notBefore time.
-func (ca *certificateAuthorityImpl) integrateOrphan() error {
+func (ca *CertificateAuthorityImpl) integrateOrphan() error {
 	item, err := ca.orphanQueue.Peek()
 	if err != nil {
 		if err == goque.ErrEmpty {

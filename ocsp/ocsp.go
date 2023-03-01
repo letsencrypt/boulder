@@ -1,4 +1,4 @@
-package ca
+package ocsp
 
 import (
 	"context"
@@ -26,8 +26,8 @@ type ocspIssuerMaps struct {
 	byNameID map[issuance.IssuerNameID]*issuance.Issuer
 }
 
-// ocspImpl provides a backing implementation for the OCSP gRPC service.
-type ocspImpl struct {
+// OcspImpl provides a backing implementation for the OCSP gRPC service.
+type OcspImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
 	issuers        ocspIssuerMaps
 	ocspLifetime   time.Duration
@@ -62,7 +62,7 @@ func NewOCSPImpl(
 	signatureCount *prometheus.CounterVec,
 	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
-) (*ocspImpl, error) {
+) (*OcspImpl, error) {
 	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		issuersByID[issuer.ID()] = issuer
@@ -75,7 +75,7 @@ func NewOCSPImpl(
 
 	issuerMaps := makeOCSPIssuerMaps(issuers)
 
-	oi := &ocspImpl{
+	oi := &OcspImpl{
 		issuers:        issuerMaps,
 		ocspLifetime:   ocspLifetime,
 		ocspLogQueue:   ocspLogQueue,
@@ -89,24 +89,30 @@ func NewOCSPImpl(
 
 // LogOCSPLoop collects OCSP generation log events into bundles, and logs
 // them periodically.
-func (oi *ocspImpl) LogOCSPLoop() {
+func (oi *OcspImpl) LogOCSPLoop() {
 	if oi.ocspLogQueue != nil {
 		oi.ocspLogQueue.loop()
 	}
 }
 
-// Stop asks this ocspImpl to shut down. It must be called after the
+// Stop asks this OcspImpl to shut down. It must be called after the
 // corresponding RPC service is shut down and there are no longer any inflight
 // RPCs. It will attempt to drain any logging queues (which may block), and will
 // return only when done.
-func (oi *ocspImpl) Stop() {
+func (oi *OcspImpl) Stop() {
 	if oi.ocspLogQueue != nil {
 		oi.ocspLogQueue.stop()
 	}
 }
 
+var ocspStatusToCode = map[string]int{
+	"good":    ocsp.Good,
+	"revoked": ocsp.Revoked,
+	"unknown": ocsp.Unknown,
+}
+
 // GenerateOCSP produces a new OCSP response and returns it
-func (oi *ocspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
+func (oi *OcspImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	// req.Status, req.Reason, and req.RevokedAt are often 0, for non-revoked certs.
 	if core.IsAnyNilOrZero(req, req.Serial, req.IssuerID) {
 		return nil, berrors.InternalServerError("Incomplete generate OCSP request")
@@ -296,7 +302,7 @@ func (oi *disabledOCSPImpl) LogOCSPLoop() {}
 // Stop is a no-op because there is no log loop to be stopped.
 func (oi *disabledOCSPImpl) Stop() {}
 
-// OCSPGenerator is an interface met by both the ocspImpl and disabledOCSPImpl
+// OCSPGenerator is an interface met by both the OcspImpl and disabledOCSPImpl
 // types. It exists only so that the caImpl can equivalently consume either
 // type, depending on whether or not the OCSP Generator service is disabled.
 // TODO(#6448): Remove this.
