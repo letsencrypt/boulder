@@ -17,31 +17,34 @@ configuration files.
 
 ### `-`
 This tag is used to ignore a struct or field. It can be useful if you have a
-struct that is nested in multiple structs but it's not always required. This is
-the same as saying a struct and all of its fields are optional. We use this tag
-for many config duration and password file struct valued fields which are
-optional.
+struct that is nested into various other structs but isn't always required. This
+is the same as saying a struct and all of its fields are optional. We use this
+tag for many config duration and password file struct valued fields which are
+optional in some configs but required in others.
 
 ### `omitempty`
 
-The validator will always validate the value of a field unless the field
-validation is also tagged with `omitempty`. When `omitempty` is present,
-validations will only run when one of the `required_` (`with`, `with_all`,
-`unless`, etc.) conditions is met.
+The validator will always run any present validations unless the field is also
+tagged with `omitempty`. Said another way, if a validation is present, and that
+validation cannot be satisfied by the zero-value of that field type, then that
+field is also (technically) required. However, when `omitempty` is present,
+validations will only run when the condition of a `required_` (`with`,
+`with_all`, `unless`, etc.) tag is met.
 
 ### `structonly`
 
 Very similar to `omitempty`, but used to control whether or not the validator
-will validate the value of the fields of a nest struct tagged with `structonly`.
-If `structonly` is present, the validator will only validate the value of the
-field if one of the `required_` conditions is met.
+will run validations present for the fields of a nested struct. When a nested
+struct is tagged with `structonly` the validations for its fields will only run
+when the condition of a `required_` (`with`, `with_all`, `unless`, etc.) tag is
+met.
 
 ### `nostructlevel`
 
-The same as `structonly`, but it will never run the validators on the nested
+The same as `structonly`, but it will never run the validations on the nested
 struct, even if one of the `required_` conditions is met. When this tag is
-present, the validator will only validate the value of the field itself is
-non-zero.
+present, the validator will only validate the value of the struct itself is
+non-nil.
 
 ### `required`
 
@@ -76,7 +79,8 @@ with `gt=0`.
 
 ### `len`
 
-Same as `gt` but it can also be used to validate the length of the strings.
+Same as `eq` (equal to) but can also be used to validate the length of the
+strings.
 
 ### `hostname_port`
 
