@@ -21,7 +21,6 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
@@ -101,10 +100,9 @@ type parsedLine struct {
 }
 
 var (
-	derOrphan        = regexp.MustCompile(`cert=\[([0-9a-f]+)\]`)
-	regOrphan        = regexp.MustCompile(`regID=\[(\d+)\]`)
-	issuerOrphan     = regexp.MustCompile(`issuerID=\[(\d+)\]`)
-	errAlreadyExists = fmt.Errorf("Certificate already exists in DB")
+	derOrphan    = regexp.MustCompile(`cert=\[([0-9a-f]+)\]`)
+	regOrphan    = regexp.MustCompile(`regID=\[(\d+)\]`)
+	issuerOrphan = regexp.MustCompile(`issuerID=\[(\d+)\]`)
 )
 
 // orphanTypeForCert returns precertOrphan if the certificate has the RFC 6962
@@ -122,37 +120,6 @@ func orphanTypeForCert(cert *x509.Certificate) orphanType {
 		}
 	}
 	return certOrphan
-}
-
-// checkDER parses the provided DER bytes and uses the resulting certificate's
-// serial to check if there is an existing precertificate or certificate for the
-// provided DER. If there is a matching precert/cert serial then
-// errAlreadyExists and the orphanType are returned. If there is no matching
-// precert/cert serial then the parsed certificate and orphanType are returned.
-func checkDER(sai sapb.StorageAuthorityCertificateClient, der []byte) (*x509.Certificate, orphanType, error) {
-	ctx := context.Background()
-	orphan, err := x509.ParseCertificate(der)
-	if err != nil {
-		return nil, unknownOrphan, fmt.Errorf("Failed to parse orphan DER: %s", err)
-	}
-	orphanSerial := core.SerialToString(orphan.SerialNumber)
-	orphanTyp := orphanTypeForCert(orphan)
-
-	switch orphanTyp {
-	case certOrphan:
-		_, err = sai.GetCertificate(ctx, &sapb.Serial{Serial: orphanSerial})
-	case precertOrphan:
-		_, err = sai.GetPrecertificate(ctx, &sapb.Serial{Serial: orphanSerial})
-	default:
-		err = errors.New("unknown orphan type")
-	}
-	if err == nil {
-		return nil, orphanTyp, errAlreadyExists
-	}
-	if errors.Is(err, berrors.NotFound) {
-		return orphan, orphanTyp, nil
-	}
-	return nil, orphanTyp, fmt.Errorf("Existing %s lookup failed: %s", orphanTyp, err)
 }
 
 func parseLogLine(line string) (parsedLine, error) {
@@ -293,17 +260,13 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 		return true, false, unknownOrphan
 	}
 
-	// Parse the DER, determine the orphan type, and ensure it doesn't already
-	// exist in the DB
-	cert, typ, err := checkDER(opf.sa, parsed.certDER)
+	cert, err := x509.ParseCertificate(parsed.certDER)
 	if err != nil {
-		logFunc := opf.logger.Errf
-		if err == errAlreadyExists {
-			logFunc = opf.logger.Infof
-		}
-		logFunc("%s, [%s]", err, line)
-		return true, false, typ
+		opf.logger.AuditErrf("parsing certificate: %s", err)
+		return true, false, unknownOrphan
 	}
+
+	typ = orphanTypeForCert(cert)
 
 	// generate an OCSP response
 	response, err := opf.generateOCSP(ctx, cert)
@@ -348,16 +311,16 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 	ctx := context.Background()
 	der, err := os.ReadFile(derPath)
-	cmd.FailOnError(err, "Failed to read DER file")
-	cert, typ, err := checkDER(opf.sa, der)
-	cmd.FailOnError(err, "Pre-AddCertificate checks failed")
+	cmd.FailOnError(err, "reading file")
+	cert, err := x509.ParseCertificate(der)
+	cmd.FailOnError(err, "parsing certificate")
 	// Because certificates are backdated we need to add the backdate duration
 	// to find the true issued time.
 	issuedDate := cert.NotBefore.Add(1 * opf.backdate)
 	response, err := opf.generateOCSP(ctx, cert)
 	cmd.FailOnError(err, "Generating OCSP")
 
-	switch typ {
+	switch orphanTypeForCert(cert) {
 	case certOrphan:
 		_, err = opf.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
