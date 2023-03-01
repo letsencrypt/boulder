@@ -3,7 +3,6 @@ package notmain
 import (
 	"flag"
 	"os"
-	"sync"
 
 	"github.com/beeker1121/goque"
 	"github.com/honeycombio/beeline-go"
@@ -31,7 +30,8 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		GRPCCA            *cmd.GRPCServerConfig
+		GRPCCA *cmd.GRPCServerConfig
+		// TODO(#6448): Remove these deprecated server configs.
 		GRPCOCSPGenerator *cmd.GRPCServerConfig
 		GRPCCRLGenerator  *cmd.GRPCServerConfig
 
@@ -150,10 +150,11 @@ func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []is
 
 func main() {
 	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
-	ocspAddr := flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
-	crlAddr := flag.String("crl-addr", "", "CRL gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	// TODO(#6448): Remove these deprecated ocsp and crl addr flags.
+	_ = flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
+	_ = flag.String("crl-addr", "", "CRL gRPC listen address override")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -169,13 +170,6 @@ func main() {
 
 	if *caAddr != "" {
 		c.CA.GRPCCA.Address = *caAddr
-	}
-	if *ocspAddr != "" {
-		c.CA.GRPCOCSPGenerator.Address = *ocspAddr
-	}
-	// TODO(#6161): Remove second conditional when we know it always exists.
-	if *crlAddr != "" && c.CA.GRPCCRLGenerator != nil {
-		c.CA.GRPCCRLGenerator.Address = *crlAddr
 	}
 	if *debugAddr != "" {
 		c.CA.DebugAddr = *debugAddr
@@ -268,14 +262,13 @@ func main() {
 
 	}
 
-	var wg sync.WaitGroup
-	stopFns := make([]func(), 0)
+	srv := bgrpc.NewServer(c.CA.GRPCCA)
 
 	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
 	// no longer needs ocspi as an argument.
 	var ocspi ca.OCSPGenerator
 	if !c.CA.DisableOCSPService {
-		ocspiReal, err := ca.NewOCSPImpl(
+		ocspi, err = ca.NewOCSPImpl(
 			boulderIssuers,
 			c.CA.LifespanOCSP.Duration,
 			c.CA.OCSPLogMaxLength,
@@ -287,28 +280,13 @@ func main() {
 			clk,
 		)
 		cmd.FailOnError(err, "Failed to create OCSP impl")
-		go ocspiReal.LogOCSPLoop()
+		go ocspi.LogOCSPLoop()
 
-		ocspStart, ocspStop, err := bgrpc.NewServer(c.CA.GRPCOCSPGenerator).Add(
-			&capb.OCSPGenerator_ServiceDesc, ocspiReal).Build(tlsConfig, scope, clk)
-		cmd.FailOnError(err, "Unable to setup CA OCSP gRPC server")
-
-		wg.Add(1)
-		go func() {
-			cmd.FailOnError(ocspStart(), "OCSPGenerator gRPC service failed")
-			wg.Done()
-		}()
-		stopFns = append(stopFns, ocspStop)
-		ocspi = ca.OCSPGenerator(ocspiReal)
-	} else {
-		ocspi = ca.NewDisabledOCSPImpl()
+		srv = srv.Add(&capb.OCSPGenerator_ServiceDesc, ocspi)
 	}
 
-	// TODO(#6448): Remove this predeclaration when the separate CRL and OCSP
-	// servers listening on separate ports have been remove.
-	var crli capb.CRLGeneratorServer
 	if !c.CA.DisableCRLService {
-		crli, err = ca.NewCRLImpl(
+		crli, err := ca.NewCRLImpl(
 			boulderIssuers,
 			c.CA.LifespanCRL.Duration,
 			c.CA.CRLDPBase,
@@ -317,16 +295,7 @@ func main() {
 		)
 		cmd.FailOnError(err, "Failed to create CRL impl")
 
-		crlStart, crlStop, err := bgrpc.NewServer(c.CA.GRPCCRLGenerator).Add(
-			&capb.CRLGenerator_ServiceDesc, crli).Build(tlsConfig, scope, clk)
-		cmd.FailOnError(err, "Unable to setup CA CRL gRPC server")
-
-		wg.Add(1)
-		go func() {
-			cmd.FailOnError(crlStart(), "CRLGenerator gRPC service failed")
-			wg.Done()
-		}()
-		stopFns = append(stopFns, crlStop)
+		srv = srv.Add(&capb.CRLGenerator_ServiceDesc, crli)
 	}
 
 	if !c.CA.DisableCertService {
@@ -353,39 +322,20 @@ func main() {
 			go cai.OrphanIntegrationLoop()
 		}
 
-		srv := bgrpc.NewServer(c.CA.GRPCCA)
-
-		// TODO(#6448): Move all of the impl construction inside these conditionals
-		// as well, once the separate CRL and OCSP servers above have been removed.
-		if !c.CA.DisableCertService {
-			srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
-		}
-		if !c.CA.DisableOCSPService {
-			srv = srv.Add(&capb.OCSPGenerator_ServiceDesc, ocspi)
-		}
-		if !c.CA.DisableCRLService {
-			srv = srv.Add(&capb.CRLGenerator_ServiceDesc, crli)
-		}
-		caStart, caStop, err := srv.Build(tlsConfig, scope, clk)
-		cmd.FailOnError(err, "Unable to setup CA gRPC server")
-
-		wg.Add(1)
-		go func() {
-			cmd.FailOnError(caStart(), "CA gRPC service failed")
-			wg.Done()
-		}()
-		stopFns = append(stopFns, caStop)
+		srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
 	}
+
+	start, stop, err := srv.Build(tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
 	go cmd.CatchSignals(logger, func() {
 		ecdsaAllowList.Stop()
-		for _, stopFn := range stopFns {
-			stopFn()
+		if ocspi != nil {
+			ocspi.Stop()
 		}
-		wg.Wait()
+		stop()
 	})
-
-	select {}
+	cmd.FailOnError(start(), "CA gRPC service failed")
 }
 
 func init() {
