@@ -671,9 +671,6 @@ type Config struct {
 
 		NagTimes []string
 
-		// TODO(#6097): Remove this
-		NagCheckInterval string
-
 		// Path to a text/template email template
 		EmailTemplate string
 
