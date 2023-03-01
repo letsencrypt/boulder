@@ -6,7 +6,6 @@
     "issuerCerts": [
       "/hierarchy/intermediate-cert-rsa-a.pem"
     ],
-    "maxAge": "10s",
     "timeout": "4.9s",
     "shutdownStopTimeout": "10s",
     "debugAddr": "localhost:8010"
