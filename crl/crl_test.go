@@ -1,7 +1,6 @@
 package crl
 
 import (
-	"context"
 	"crypto"
 	"crypto/x509"
 	"fmt"
@@ -11,14 +10,12 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
-	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
@@ -27,7 +24,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/ocsp"
 	"github.com/letsencrypt/boulder/policy"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -49,31 +45,6 @@ type testCtx struct {
 	logger         *blog.Mock
 }
 
-type mockSA struct {
-	certificate core.Certificate
-}
-
-func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	m.certificate.DER = req.Der
-	return nil, nil
-}
-
-func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, nil
-}
-
-func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError("cannot find the cert")
-}
-
-func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError("cannot find the precert")
-}
-
 // Useful key and certificate files.
 const caKeyFile = "../test/test-ca.key"
 const caCertFile = "../test/test-ca.pem"
@@ -84,7 +55,6 @@ var caCert *issuance.Certificate
 var caCert2 *issuance.Certificate
 var caLinter *linter.Linter
 var caLinter2 *linter.Linter
-var ctx = context.Background()
 
 func init() {
 	var err error
