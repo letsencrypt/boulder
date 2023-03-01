@@ -673,9 +673,6 @@ type Config struct {
 
 		NagTimes []string `validate:"gt=0"`
 
-		// TODO(#6097): Remove this
-		NagCheckInterval string
-
 		// Path to a text/template email template with a .gotmpl or .txt file
 		// extension.
 		EmailTemplate string `validate:"required,endswith=gotmpl|endswith=txt"`

@@ -53,8 +53,6 @@ type Config struct {
 		// ListenAddress is the address:port on which to listen for incoming
 		// OCSP requests. This has a default value of ":80".
 		ListenAddress string `validate:"omitempty,hostname_port"`
-		// Deprecated and unused.
-		MaxAge config.Duration `validate:"-"`
 
 		// When to timeout a request. This should be slightly lower than the
 		// upstream's timeout when making request to ocsp-responder.

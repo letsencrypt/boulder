@@ -146,10 +146,6 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 	return nil, berrors.NotFoundError("cannot find the cert")
 }
 
-func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError("cannot find the precert")
-}
-
 var caKey crypto.Signer
 var caCert *issuance.Certificate
 var caCert2 *issuance.Certificate

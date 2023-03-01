@@ -35,40 +35,6 @@
         }
       }
     },
-    "grpcOCSPGenerator": {
-      "maxConnectionAge": "30s",
-      "address": ":9096",
-      "services": {
-        "ca.OCSPGenerator": {
-          "clientNames": [
-            "ocsp-updater.boulder",
-            "orphan-finder.boulder",
-            "ra.boulder"
-          ]
-        },
-        "grpc.health.v1.Health": {
-          "clientNames": [
-            "health-checker.boulder"
-          ]
-        }
-      }
-    },
-    "grpcCRLGenerator": {
-      "maxConnectionAge": "30s",
-      "address": ":9106",
-      "services": {
-        "ca.CRLGenerator": {
-          "clientNames": [
-            "crl-updater.boulder"
-          ]
-        },
-        "grpc.health.v1.Health": {
-          "clientNames": [
-            "health-checker.boulder"
-          ]
-        }
-      }
-    },
     "saService": {
       "dnsAuthority": "10.55.55.10",
       "srvLookup": {
