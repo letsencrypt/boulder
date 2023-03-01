@@ -390,7 +390,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 type Config struct {
 	BadKeyRevoker struct {
 		DB        cmd.DBConfig
-		DebugAddr string `validate:"required,hostname_port"`
+		DebugAddr string `validate:"hostname_port"`
 
 		TLS       cmd.TLSConfig
 		RAService *cmd.GRPCClientConfig
@@ -399,7 +399,7 @@ type Config struct {
 		// a key hash that bad-key-revoker will attempt to revoke. If the number of certificates
 		// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
 		// progress until this is addressed.
-		MaximumRevocations int `validate:"required,gte=0"`
+		MaximumRevocations int `validate:"gte=0"`
 		// FindCertificatesBatchSize specifies the maximum number of serials to select from the
 		// keyHashToSerial table at once
 		FindCertificatesBatchSize int `validate:"required"`

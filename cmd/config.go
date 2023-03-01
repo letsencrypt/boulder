@@ -41,7 +41,7 @@ func (pc *PasswordConfig) Pass() (string, error) {
 // be embedded in other config structs.
 type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string `validate:"required,hostname_port"`
+	DebugAddr string `validate:"hostname_port"`
 	GRPC      *GRPCServerConfig
 	TLS       TLSConfig
 }
@@ -400,7 +400,7 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
-	Address string `json:"address" validate:"required,hostname_port"`
+	Address string `json:"address" validate:"hostname_port"`
 	// ClientNames is a list of allowed client certificate subject alternate names
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
