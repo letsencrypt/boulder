@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 )
 
 // LogShard describes a single shard of a temporally sharded
@@ -94,7 +94,7 @@ type CTConfig struct {
 	// Stagger is duration (e.g. "200ms") indicating how long to wait for a log
 	// from one operator group to accept a certificate before attempting
 	// submission to a log run by a different operator instead.
-	Stagger cmd.ConfigDuration
+	Stagger config.Duration
 	// LogListFile is a path to a JSON log list file. The file must match Chrome's
 	// schema: https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
 	LogListFile string

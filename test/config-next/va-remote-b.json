@@ -21,9 +21,6 @@
             "va.boulder"
           ]
         },
-        "va.CAA": {
-          "clientNames": []
-        },
         "grpc.health.v1.Health": {
           "clientNames": [
             "health-checker.boulder"

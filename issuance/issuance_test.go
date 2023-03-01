@@ -21,7 +21,9 @@ import (
 
 	ct "github.com/google/certificate-transparency-go"
 	"github.com/jmhodges/clock"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
@@ -38,8 +40,8 @@ func defaultProfileConfig() ProfileConfig {
 		Policies: []PolicyInformation{
 			{OID: "1.2.3"},
 		},
-		MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour},
-		MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
+		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
+		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
 }
 

@@ -47,20 +47,6 @@
         }
       }
     },
-    "redis": {
-      "username": "boulder-sa",
-      "passwordFile": "test/secrets/sa_redis_password",
-      "shardAddrs": {
-        "shard1": "10.33.33.2:4218",
-        "shard2": "10.33.33.3:4218"
-      },
-      "timeout": "5s",
-      "tls": {
-        "caCertFile": "test/redis-tls/minica.pem",
-        "certFile": "test/redis-tls/boulder/cert.pem",
-        "keyFile": "test/redis-tls/boulder/key.pem"
-      }
-    },
     "issuers": {
       ".hierarchy/intermediate-cert-ecdsa-a.pem": 1,
       ".hierarchy/intermediate-cert-ecdsa-b.pem": 2,

@@ -3,7 +3,6 @@ package cmd
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -11,12 +10,13 @@ import (
 	"net"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/honeycombio/beeline-go"
-	"github.com/letsencrypt/boulder/core"
 	"google.golang.org/grpc/resolver"
+
+	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/core"
 )
 
 // PasswordConfig contains a path to a file containing a password.
@@ -69,13 +69,13 @@ type DBConfig struct {
 	// ConnMaxLifetime sets the maximum amount of time a connection may
 	// be reused. Expired connections may be closed lazily before reuse.
 	// If d < 0, connections are not closed due to a connection's age.
-	ConnMaxLifetime ConfigDuration
+	ConnMaxLifetime config.Duration
 
 	// ConnMaxIdleTime sets the maximum amount of time a connection may
 	// be idle. Expired connections may be closed lazily before reuse.
 	// If d < 0, connections are not closed due to a connection's idle
 	// time.
-	ConnMaxIdleTime ConfigDuration
+	ConnMaxIdleTime config.Duration
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, loading it
@@ -196,56 +196,6 @@ type SyslogConfig struct {
 	SyslogLevel int
 }
 
-// ConfigDuration is just an alias for time.Duration that allows
-// serialization to YAML as well as JSON.
-type ConfigDuration struct {
-	time.Duration
-}
-
-// ErrDurationMustBeString is returned when a non-string value is
-// presented to be deserialized as a ConfigDuration
-var ErrDurationMustBeString = errors.New("cannot JSON unmarshal something other than a string into a ConfigDuration")
-
-// UnmarshalJSON parses a string into a ConfigDuration using
-// time.ParseDuration.  If the input does not unmarshal as a
-// string, then UnmarshalJSON returns ErrDurationMustBeString.
-func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
-	s := ""
-	err := json.Unmarshal(b, &s)
-	if err != nil {
-		var jsonUnmarshalTypeErr *json.UnmarshalTypeError
-		if errors.As(err, &jsonUnmarshalTypeErr) {
-			return ErrDurationMustBeString
-		}
-		return err
-	}
-	dd, err := time.ParseDuration(s)
-	d.Duration = dd
-	return err
-}
-
-// MarshalJSON returns the string form of the duration, as a byte array.
-func (d ConfigDuration) MarshalJSON() ([]byte, error) {
-	return []byte(d.Duration.String()), nil
-}
-
-// UnmarshalYAML uses the same format as JSON, but is called by the YAML
-// parser (vs. the JSON parser).
-func (d *ConfigDuration) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	err := unmarshal(&s)
-	if err != nil {
-		return err
-	}
-	dur, err := time.ParseDuration(s)
-	if err != nil {
-		return err
-	}
-
-	d.Duration = dur
-	return nil
-}
-
 // ServiceDomain contains the service and domain name the gRPC client will use
 // to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
@@ -351,7 +301,7 @@ type GRPCClientConfig struct {
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
 	HostOverride string
-	Timeout      ConfigDuration
+	Timeout      config.Duration
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will
@@ -466,7 +416,7 @@ type GRPCServerConfig struct {
 	// this controls how long it takes before a client learns about changes to its
 	// backends.
 	// https://pkg.go.dev/google.golang.org/grpc/keepalive#ServerParameters
-	MaxConnectionAge ConfigDuration
+	MaxConnectionAge config.Duration
 }
 
 // GRPCServiceConfig contains the information needed to configure a gRPC service.

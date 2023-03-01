@@ -415,7 +415,7 @@ func (s *State) Run(
 			curReqTotal := atomic.LoadInt64(&s.reqTotal)
 			fmt.Printf(
 				"%s Action rate: %d/s [expected: %d/s], Request rate: %d/s, Responses: [%s]\n",
-				time.Now().Format("2006-01-02 15:04:05"),
+				time.Now().Format(time.DateTime),
 				curTotal-lastTotal,
 				atomic.LoadInt64(&p.Rate),
 				curReqTotal-lastReqTotal,

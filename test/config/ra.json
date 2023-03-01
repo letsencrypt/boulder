@@ -5,7 +5,6 @@
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "maxNames": 100,
-    "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "goodkey": {
@@ -31,6 +30,11 @@
     },
     "caService": {
       "serverAddress": "ca.service.consul:9093",
+      "timeout": "15s",
+      "hostOverride": "ca.boulder"
+    },
+    "ocspService": {
+      "serverAddress": "ca.service.consul:9096",
       "timeout": "15s",
       "hostOverride": "ca.boulder"
     },

@@ -232,11 +232,6 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 	}
 }
 
-// GetPrecertificate is a mock
-func (sa *StorageAuthorityReadOnly) GetPrecertificate(_ context.Context, _ *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, nil
-}
-
 // GetCertificateStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	// Serial ee == 238.crt
@@ -436,6 +431,11 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 	// Order 9 is fresh
 	if req.Id == 9 {
 		validOrder.Created = sa.clk.Now().AddDate(0, 0, 1).Unix()
+	}
+
+	// Order 10 is processing
+	if req.Id == 10 {
+		validOrder.Status = string(core.StatusProcessing)
 	}
 
 	return validOrder, nil

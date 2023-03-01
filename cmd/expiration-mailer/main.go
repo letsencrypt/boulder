@@ -22,7 +22,10 @@ import (
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
@@ -33,7 +36,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -224,7 +226,7 @@ func (m *mailer) sendNags(conn bmail.Conn, contacts []string, certs []*x509.Cert
 		TruncatedDNSNames  string
 		NumDNSNamesOmitted int
 	}{
-		ExpirationDate:     expDate.UTC().Format(time.RFC822Z),
+		ExpirationDate:     expDate.UTC().Format(time.DateOnly),
 		DaysToExpiration:   int(expiresIn.Hours() / 24),
 		DNSNames:           strings.Join(domains, "\n"),
 		TruncatedDNSNames:  strings.Join(truncatedDomains, "\n"),
@@ -504,7 +506,7 @@ func (m *mailer) findExpiringCertificates(ctx context.Context) error {
 		m.stats.nagsAtCapacity.With(prometheus.Labels{"nag_group": expiresIn.String()}).Set(atCapacity)
 
 		m.log.Infof("Found %d certificates expiring between %s and %s", len(certs),
-			left.Format("2006-01-02 03:04"), right.Format("2006-01-02 03:04"))
+			left.Format(time.DateTime), right.Format(time.DateTime))
 
 		if len(certs) == 0 {
 			continue // nothing to do
@@ -640,8 +642,8 @@ func (ds durationSlice) Swap(a, b int) {
 
 type Config struct {
 	Mailer struct {
-		cmd.ServiceConfig
-		DB cmd.DBConfig
+		DebugAddr string
+		DB        cmd.DBConfig
 		cmd.SMTPConfig
 
 		// From is the "From" address for reminder messages.
@@ -676,7 +678,7 @@ type Config struct {
 		EmailTemplate string
 
 		// How often to process a batch of certificates
-		Frequency cmd.ConfigDuration
+		Frequency config.Duration
 
 		// How many parallel goroutines should process each batch of emails
 		ParallelSends uint

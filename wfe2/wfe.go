@@ -76,8 +76,14 @@ const (
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
+)
 
+const (
 	headerRetryAfter = "Retry-After"
+	// Our 99th percentile finalize latency is 2.3s. Asking clients to wait 3s
+	// before polling the order to get an updated status means that >99% of
+	// clients will fetch the updated order object exactly once,.
+	orderRetryAfter = 3
 )
 
 var errIncompleteGRPCResponse = errors.New("incomplete gRPC response message")
@@ -944,9 +950,8 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 		Method: "privkey",
 	})
 
-	// The RA will confirm that the authenticated account either originally
-	// issued the certificate, or has demonstrated control over all identifiers
-	// in the certificate.
+	// The RA assumes here that the WFE2 has validated the JWS as proving
+	// control of the private key corresponding to this certificate.
 	_, err := wfe.ra.RevokeCertByKey(ctx, &rapb.RevokeCertByKeyRequest{
 		Cert: cert.Raw,
 	})
@@ -2115,6 +2120,11 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 	}
 
 	respObj := wfe.orderToOrderJSON(request, order)
+
+	if respObj.Status == core.StatusProcessing {
+		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
+	}
+
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
@@ -2240,6 +2250,11 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	response.Header().Set("Location", orderURL)
 
 	respObj := wfe.orderToOrderJSON(request, updatedOrder)
+
+	if respObj.Status == core.StatusProcessing {
+		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
+	}
+
 	err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, respObj)
 	if err != nil {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Unable to write finalize order response"), err)
@@ -2340,8 +2355,9 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
-	// We use GetCertificate, not GetPrecertificate, because we don't intend to
-	// serve ARI for certs that never made it past the precert stage.
+	// It's okay to use GetCertificate (vs trying to get a precertificate),
+	// because we don't intend to serve ARI for certs that never made it past
+	// the precert stage.
 	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {

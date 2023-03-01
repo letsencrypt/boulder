@@ -93,6 +93,11 @@ func AssertErrorWraps(t *testing.T, err error, target interface{}) {
 // AssertErrorIs checks that err wraps the given error
 func AssertErrorIs(t *testing.T, err error, target error) {
 	t.Helper()
+
+	if err == nil {
+		t.Fatal("err was unexpectedly nil and should not have been")
+	}
+
 	if !errors.Is(err, target) {
 		t.Fatalf("error does not wrap expected error: %q !> %q", err.Error(), target.Error())
 	}

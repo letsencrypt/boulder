@@ -1,15 +1,16 @@
+// generate.go is a helper utility for integration tests.
 package main
 
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
 	"text/template"
 
 	"github.com/letsencrypt/boulder/cmd"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 // createSlot initializes a SoftHSM slot and token. SoftHSM chooses the highest empty
@@ -73,6 +74,8 @@ func genCert(path string) error {
 }
 
 func main() {
+	blog.Set(blog.StdoutLogger(6))
+
 	// If one of the output files already exists, assume this ran once
 	// already for the container and don't re-run.
 	outputFile := "/hierarchy/root-signing-pub-rsa.pem"
@@ -80,9 +83,9 @@ func main() {
 		fmt.Println("skipping certificate generation: already exists")
 		return
 	} else if err == nil && !loc.Mode().IsRegular() {
-		log.Fatalf("statting %q: not a regular file", outputFile)
+		cmd.Fail(fmt.Sprintf("statting %q: not a regular file", outputFile))
 	} else if err != nil && !os.IsNotExist(err) {
-		log.Fatalf("statting %q: %s", outputFile, err)
+		cmd.Fail(fmt.Sprintf("statting %q: %s", outputFile, err))
 	}
 	// Create SoftHSM slots for the root signing keys
 	rsaRootKeySlot, err := createSlot("root signing key (rsa)")

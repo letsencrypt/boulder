@@ -9,6 +9,7 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -18,13 +19,16 @@ import (
 
 type Config struct {
 	OCSPUpdater struct {
-		cmd.ServiceConfig
+		DebugAddr string
+
+		// TLS client certificate, private key, and trusted root bundle.
+		TLS        cmd.TLSConfig
 		DB         cmd.DBConfig
 		ReadOnlyDB cmd.DBConfig
 
 		// OldOCSPWindow controls how frequently ocsp-updater signs a batch
 		// of responses.
-		OldOCSPWindow cmd.ConfigDuration
+		OldOCSPWindow config.Duration
 		// OldOCSPBatchSize controls the maximum number of responses
 		// ocsp-updater will sign every OldOCSPWindow.
 		OldOCSPBatchSize int
@@ -33,7 +37,7 @@ type Config struct {
 		// This is related to to ExpectedFreshness in ocsp-responder's config,
 		// and both are related to the mandated refresh times in the BRs and
 		// root programs (minus a safety margin).
-		OCSPMinTimeToExpiry cmd.ConfigDuration
+		OCSPMinTimeToExpiry config.Duration
 
 		// ParallelGenerateOCSPRequests determines how many requests to the CA
 		// may be inflight at once.
@@ -41,7 +45,7 @@ type Config struct {
 
 		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
 		SignFailureBackoffFactor float64
-		SignFailureBackoffMax    cmd.ConfigDuration
+		SignFailureBackoffMax    config.Duration
 
 		// SerialSuffixShards is a whitespace-separated list of single hex
 		// digits. When searching for work to do, ocsp-updater will query

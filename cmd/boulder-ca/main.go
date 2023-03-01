@@ -12,6 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
@@ -44,10 +45,10 @@ type Config struct {
 		}
 
 		// How long issued certificates are valid for.
-		Expiry cmd.ConfigDuration
+		Expiry config.Duration
 
 		// How far back certificates should be backdated.
-		Backdate cmd.ConfigDuration
+		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
 		SerialPrefix int
@@ -58,12 +59,12 @@ type Config struct {
 		// LifespanOCSP is how long OCSP responses are valid for. It should be
 		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
 		// Section 4.9.10, it MUST NOT be more than 10 days.
-		LifespanOCSP cmd.ConfigDuration
+		LifespanOCSP config.Duration
 
 		// LifespanCRL is how long CRLs are valid for. It should be longer than the
 		// `period` field of the CRL Updater. Per the BRs, Section 4.9.7, it MUST
 		// NOT be more than 10 days.
-		LifespanCRL cmd.ConfigDuration
+		LifespanCRL config.Duration
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -84,7 +85,7 @@ type Config struct {
 		// means logging more often than necessary, which is inefficient in terms
 		// of bytes and log system resources.
 		// Recommended to be around 500ms.
-		OCSPLogPeriod cmd.ConfigDuration
+		OCSPLogPeriod config.Duration
 
 		// Path of a YAML file containing the list of int64 RegIDs
 		// allowed to request ECDSA issuance
@@ -303,8 +304,8 @@ func main() {
 		ocspi = ca.NewDisabledOCSPImpl()
 	}
 
-	// TODO(#6448): Remove this predeclaration when NewCertificateAuthorityImpl
-	// no longer needs crli as an argument.
+	// TODO(#6448): Remove this predeclaration when the separate CRL and OCSP
+	// servers listening on separate ports have been remove.
 	var crli capb.CRLGeneratorServer
 	if !c.CA.DisableCRLService {
 		crli, err = ca.NewCRLImpl(
@@ -326,8 +327,6 @@ func main() {
 			wg.Done()
 		}()
 		stopFns = append(stopFns, crlStop)
-	} else {
-		crli = ca.NewDisabledCRLImpl()
 	}
 
 	if !c.CA.DisableCertService {
@@ -335,7 +334,6 @@ func main() {
 			sa,
 			pa,
 			ocspi,
-			crli,
 			boulderIssuers,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,
