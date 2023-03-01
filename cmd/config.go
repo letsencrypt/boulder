@@ -58,13 +58,13 @@ type DBConfig struct {
 	// less than MaxIdleConns, then MaxIdleConns will be reduced to
 	// match the new MaxOpenConns limit. If n < 0, then there is no
 	// limit on the number of open connections.
-	MaxOpenConns int `validate:"required"`
+	MaxOpenConns int `validate:"min=-1"`
 
 	// MaxIdleConns sets the maximum number of connections in the idle
 	// connection pool. If MaxOpenConns is greater than 0 but less than
 	// MaxIdleConns, then MaxIdleConns will be reduced to match the
 	// MaxOpenConns limit. If n < 0, no idle connections are retained.
-	MaxIdleConns int
+	MaxIdleConns int `validate:"min=-1"`
 
 	// ConnMaxLifetime sets the maximum amount of time a connection may
 	// be reused. Expired connections may be closed lazily before reuse.
@@ -102,7 +102,7 @@ func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
 type SMTPConfig struct {
 	PasswordConfig
 	Server   string `validate:"required"`
-	Port     string `validate:"required"`
+	Port     string `validate:"required,numeric,min=1,max=65535"`
 	Username string `validate:"required"`
 }
 
