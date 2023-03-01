@@ -159,7 +159,7 @@ would be valid config for a map valued field (`map[string]string`) tagged with
 ```
 
 ```go
-foo map[string]string with validation tag "gt=0,dive,keys,eg=1|eq=2,endkeys,required"
+foo map[string]string `validate:"gt=0,dive,keys,eg=1|eq=2,endkeys,required"`
 ```
 
 - `gt=0` will be applied to the map itself
