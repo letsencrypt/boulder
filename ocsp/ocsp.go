@@ -303,9 +303,9 @@ func (oi *disabledOCSPImpl) LogOCSPLoop() {}
 func (oi *disabledOCSPImpl) Stop() {}
 
 // OCSPGenerator is an interface met by both the OcspImpl and disabledOCSPImpl
-// types. It exists only so that the caImpl can equivalently consume either
-// type, depending on whether or not the OCSP Generator service is disabled.
-// TODO(#6448): Remove this.
+// types. It exists only so that the CertificateAuthorityImpl can equivalently
+// consume either type, depending on whether or not the OCSP Generator service
+// is disabled. TODO(#6448): Remove this.
 type OCSPGenerator interface {
 	capb.OCSPGeneratorServer
 	LogOCSPLoop()
