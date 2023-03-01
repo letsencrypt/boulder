@@ -121,6 +121,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-sa", main)
+	cmd.RegisterCommand(cmdName, main)
 	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }

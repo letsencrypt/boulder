@@ -37,13 +37,12 @@ type Config struct {
 	WFE struct {
 		DebugAddr string `validate:"required,hostname_port"`
 
-		// ListenAddress is the address:port on which the WFE will listen for
-		// incoming HTTP requests. If none is provided the WFE will listen on
-		// 80 by default.
+		// ListenAddress is the address:port on which to listen for incoming
+		// HTTP requests. Defaults to ":80".
 		ListenAddress string `validate:"omitempty,hostname_port"`
 
-		//TLSListenAddress is the address:port on which the WFE will listen for
-		// incoming HTTPS requests. If none is provided the WFE will not listen
+		//TLSListenAddress is the address:port on which to listen for incoming
+		//HTTPS requests. If none is provided the WFE will not listen
 		// for HTTPS requests.
 		TLSListenAddress string `validate:"omitempty,hostname_port"`
 

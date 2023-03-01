@@ -635,6 +635,6 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("notify-mailer", main)
+	cmd.RegisterCommand(cmdName, main)
 	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
 }
