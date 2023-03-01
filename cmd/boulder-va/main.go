@@ -30,7 +30,7 @@ type Config struct {
 		// will be turned into 1.
 		DNSTries                  int
 		DNSResolver               string `validate:"required"`
-		DNSTimeout                string `validate:"required_without=Common.DNSTimeout"`
+		DNSTimeout                string `validate:"-"`
 		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`

@@ -75,7 +75,7 @@ type Throughput struct {
 	// PurgeBatchInterval is the duration waited between dispatching an Akamai
 	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
 	// isn't provided it will default to 'defaultPurgeBatchInterval'.
-	PurgeBatchInterval config.Duration
+	PurgeBatchInterval config.Duration `validate:"-"`
 }
 
 func (t *Throughput) useOptimizedDefaults() {
