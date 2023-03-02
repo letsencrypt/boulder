@@ -677,20 +677,23 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 //   - ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //   - Subject only contains CommonName & Names
 func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certificate, csr *x509.CertificateRequest) error {
-	csrNames := csrlib.NamesFromCSR(csr)
-
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
-	if parsedCertificate.Subject.CommonName != csrNames.CN {
-		return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
-	}
 
-	parsedNames := parsedCertificate.DNSNames
-	sort.Strings(parsedNames)
-	if !reflect.DeepEqual(parsedNames, csrNames.SANs) {
+	csrNames := csrlib.NamesFromCSR(csr)
+	if parsedCertificate.Subject.CommonName != "" {
+		// Only check that the issued common name matches the requested CN if there
+		// is an issued CN at all: this allows flexibility on whether we include
+		// the CN.
+		if parsedCertificate.Subject.CommonName != csrNames.CN {
+			return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
+		}
+	}
+	if !reflect.DeepEqual(parsedCertificate.DNSNames, csrNames.SANs) {
 		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
 	}
+
 	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
 		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
 	}
