@@ -41,8 +41,12 @@ type Config struct {
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
 
+	// TODO(#6716): Remove Config.Common once all instances of it have been
+	// removed from production config files.
 	Common struct {
-		DNSTimeout                string
+		// DEPRECATED: Use VA.DNSTimeout instead.
+		DNSTimeout string
+		// DEPRECATED: Use VA.DNSAllowLoopbackAddresses instead.
 		DNSAllowLoopbackAddresses bool
 	}
 }
