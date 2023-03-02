@@ -42,7 +42,7 @@ const (
 // PublicKeyAlgorithm. Lookup by NameID is useful for looking up the appropriate
 // issuer based on the issuer of a given (pre)certificate.
 type issuerMaps struct {
-	// ByAlg is exported for ocsp/ocsp_test.go.
+	// ByAlg is exported for //ocsp/ocsp_test.go.
 	ByAlg    map[x509.PublicKeyAlgorithm]*issuance.Issuer
 	byNameID map[issuance.IssuerNameID]*issuance.Issuer
 }
@@ -54,7 +54,7 @@ type CertificateAuthorityImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
 	sa sapb.StorageAuthorityCertificateClient
 	pa core.PolicyAuthority
-	// Issuers is exported for ocsp/ocsp_test.go.
+	// Issuers is exported for //ocsp/ocsp_test.go.
 	Issuers issuerMaps
 	// TODO(#6448): Remove this.
 	ocsp capb.OCSPGeneratorServer
