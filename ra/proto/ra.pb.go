@@ -358,7 +358,12 @@ type AdministrativelyRevokeCertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Cert         []byte `protobuf:"bytes,1,opt,name=cert,proto3" json:"cert,omitempty"`
+	// The `cert` field may be omitted. If it is omitted,
+	// the revocation reason (`code`) must not be keyCompromise,
+	// and purging the Akamai cache will not happen because the
+	// base URL for the certificate's OCSP server is not known.
+	Cert []byte `protobuf:"bytes,1,opt,name=cert,proto3" json:"cert,omitempty"`
+	// The `serial` field is required.
 	Serial       string `protobuf:"bytes,4,opt,name=serial,proto3" json:"serial,omitempty"`
 	Code         int64  `protobuf:"varint,2,opt,name=code,proto3" json:"code,omitempty"`
 	AdminName    string `protobuf:"bytes,3,opt,name=adminName,proto3" json:"adminName,omitempty"`

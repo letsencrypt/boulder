@@ -44,18 +44,22 @@ usage:
 
 
 descriptions:
-  list-reasons           List all revocation reason codes
-  serial-revoke          Revoke a single certificate by the hex serial number
-  batched-serial-revoke  Revokes all certificates contained in a file of hex serial numbers
-  incident-table-revoke  Revokes all certificates in the provided incident table
-  reg-revoke             Revoke all certificates associated with a registration ID
+  list-reasons           List all revocation reason codes.
+  serial-revoke          Revoke a single certificate by the hex serial number.
+  malformed-revoke       Revoke a single certificate by the hex serial number. Works even
+                         if the certificate cannot be parsed from the database.
+                         Note: This does not purge the Akamai cache.
+			 Note: This cannot be used to revoke for key compromise.
+  batched-serial-revoke  Revoke all certificates contained in a file of hex serial numbers.
+  incident-table-revoke  Revoke all certificates in the provided incident table.
+  reg-revoke             Revoke all certificates associated with a registration ID.
   private-key-block      Adds the SPKI hash, derived from the provided private key, to the
                          blocked keys table. <priv-key-path> is expected to be the path
-                         to a PEM formatted file containing an RSA or ECDSA private key
-  private-key-revoke     Revokes all certificates matching the SPKI hash derived from the
+                         to a PEM formatted file containing an RSA or ECDSA private key.
+  private-key-revoke     Revoke all certificates matching the SPKI hash derived from the
                          provided private key. Then adds the hash to the blocked keys
                          table. <priv-key-path> is expected to be the path to a PEM
-                         formatted file containing an RSA or ECDSA private key
+                         formatted file containing an RSA or ECDSA private key.
 
 flags:
   all:
@@ -138,6 +142,7 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 		}
 		req = &rapb.AdministrativelyRevokeCertificateRequest{
 			Cert:         cert.Raw,
+			Serial:       core.SerialToString(cert.SerialNumber),
 			Code:         int64(reasonCode),
 			AdminName:    u.Username,
 			SkipBlockKey: skipBlockKey,
