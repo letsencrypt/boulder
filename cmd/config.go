@@ -405,6 +405,8 @@ type GRPCServerConfig struct {
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	// DEPRECATED: Use the ClientNames field within each Service instead.
+	// TODO(#6698): Remove this field once all production configs have been
+	// migrated to using the service specific client names.
 	ClientNames []string `json:"clientNames"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
