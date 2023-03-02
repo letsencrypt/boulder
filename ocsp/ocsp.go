@@ -2,6 +2,7 @@ package ocsp
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,6 +23,7 @@ import (
 
 // TODO(#5152): Simplify this when we've fully deprecated old-style IssuerIDs.
 type ocspIssuerMaps struct {
+	byAlg    map[x509.PublicKeyAlgorithm]*issuance.Issuer
 	byID     map[issuance.IssuerID]*issuance.Issuer
 	byNameID map[issuance.IssuerNameID]*issuance.Issuer
 }
@@ -43,13 +45,21 @@ type OcspImpl struct {
 // that, if two issuers have the same nearly-unique ID, the *latter* one in
 // the input list "wins".
 func makeOCSPIssuerMaps(issuers []*issuance.Issuer) ocspIssuerMaps {
+	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*issuance.Issuer, 2)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
 		issuersByID[issuer.ID()] = issuer
 		issuersByNameID[issuer.Cert.NameID()] = issuer
+		for _, alg := range issuer.Algs() {
+			// TODO(#5259): Enforce that there is only one issuer for each algorithm,
+			// instead of taking the first issuer for each algorithm type.
+			if issuersByAlg[alg] == nil {
+				issuersByAlg[alg] = issuer
+			}
+		}
 	}
-	return ocspIssuerMaps{issuersByID, issuersByNameID}
+	return ocspIssuerMaps{issuersByAlg, issuersByID, issuersByNameID}
 }
 
 func NewOCSPImpl(
@@ -63,10 +73,6 @@ func NewOCSPImpl(
 	signErrorCount *prometheus.CounterVec,
 	clk clock.Clock,
 ) (*OcspImpl, error) {
-	issuersByID := make(map[issuance.IssuerID]*issuance.Issuer, len(issuers))
-	for _, issuer := range issuers {
-		issuersByID[issuer.ID()] = issuer
-	}
 
 	var ocspLogQueue *ocspLogQueue
 	if ocspLogMaxLength > 0 {
