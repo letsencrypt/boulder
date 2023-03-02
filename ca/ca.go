@@ -443,7 +443,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotBefore:         validity.NotBefore,
 		NotAfter:          validity.NotAfter,
 	}
-	if !features.Enabled(features.OmitCommonName) {
+	if features.Enabled(features.SetCommonName) {
 		req.CommonName = names.CN
 	}
 

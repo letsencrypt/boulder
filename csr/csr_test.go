@@ -219,7 +219,7 @@ func TestNamesFromCSR(t *testing.T) {
 }
 
 func TestNamesFromCSROmitCommonName(t *testing.T) {
-	features.Set(map[string]bool{features.OmitCommonName.String(): true})
+	features.Set(map[string]bool{features.SetCommonName.String(): false})
 	defer features.Reset()
 
 	tooLongString := strings.Repeat("a", maxCNLength+1)

@@ -67,11 +67,11 @@ const (
 	// of "orphaned" certs we have. However, it also requires clients to properly
 	// implement polling the Order object to wait for the cert URL to appear.
 	AsyncFinalize
-	// OmitCommonName causes the certificates issued to omit the commonName field
+	// SetCommonName causes the certificates issued to omit the commonName field
 	// from the certificate Subject, only setting the Subject Alternative Name
 	// extension. According to the BRs Section 7.1.4.2.2(a), the commonName field
 	// is Deprecated, and its inclusion is Discouraged but not (yet) prohibited.
-	OmitCommonName
+	SetCommonName
 )
 
 // List of features and their default value, protected by fMu
@@ -91,7 +91,7 @@ var features = map[FeatureFlag]bool{
 	CertCheckerChecksValidations:   false,
 	CertCheckerRequiresValidations: false,
 	AsyncFinalize:                  false,
-	OmitCommonName:                 false,
+	SetCommonName:                  true,
 }
 
 var fMu = new(sync.RWMutex)

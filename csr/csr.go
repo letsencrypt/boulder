@@ -75,7 +75,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(names.SANs) == 0 && names.CN == "" {
 		return invalidNoDNS
 	}
-	if names.CN == "" && !features.Enabled(features.OmitCommonName) {
+	if names.CN == "" && features.Enabled(features.SetCommonName) {
 		return invalidAllSANTooLong
 	}
 	if len(names.CN) > maxCNLength {
@@ -111,7 +111,7 @@ func NamesFromCSR(csr *x509.CertificateRequest) names {
 	}
 	sans = core.UniqueLowerNames(sans)
 
-	if features.Enabled(features.OmitCommonName) {
+	if !features.Enabled(features.SetCommonName) {
 		return names{SANs: sans}
 	}
 

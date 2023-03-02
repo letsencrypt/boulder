@@ -690,7 +690,10 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 			return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
 		}
 	}
-	if !reflect.DeepEqual(parsedCertificate.DNSNames, csrNames.SANs) {
+
+	parsedNames := parsedCertificate.DNSNames
+	sort.Strings(parsedNames)
+	if !reflect.DeepEqual(parsedNames, csrNames.SANs) {
 		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
 	}
 

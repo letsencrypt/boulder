@@ -40,12 +40,12 @@ func TestCommonName(t *testing.T) {
 	test.AssertSliceContains(t, cert.DNSNames, san1)
 	test.AssertSliceContains(t, cert.DNSNames, san2)
 
-	// Ensure that the CN is (or is not) set, per the OmitCommonName flag.
+	// Ensure that the CN is (or is not) set, per the SetCommonName flag.
 	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		// In config-next, the OmitCommonName flag is true.
+		// In config-next, the SetCommonName flag is false.
 		test.AssertEquals(t, cert.Subject.CommonName, "")
 	} else {
-		// In config, the OmitCommonName flag is false.
+		// In config, the SetCommonName flag is true.
 		test.AssertEquals(t, cert.Subject.CommonName, cn)
 	}
 }
