@@ -266,7 +266,7 @@ func TestOCSP(t *testing.T) {
 	ocspi := testCtx.ocsp
 
 	// Issue a certificate from the RSA issuer caCert, then check OCSP comes from the same issuer.
-	rsaIssuerID := ca.Issuers.ByAlg[x509.RSA].ID()
+	rsaIssuerID := ocspi.issuers.byAlg[x509.RSA].ID()
 	rsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: CNandSANCSR, RegistrationID: arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	rsaCert, err := x509.ParseCertificate(rsaCertPB.DER)
@@ -284,7 +284,7 @@ func TestOCSP(t *testing.T) {
 	test.AssertEquals(t, rsaOCSP.SerialNumber.Cmp(rsaCert.SerialNumber), 0)
 
 	// Issue a certificate from the ECDSA issuer caCert2, then check OCSP comes from the same issuer.
-	ecdsaIssuerID := ca.Issuers.ByAlg[x509.ECDSA].ID()
+	ecdsaIssuerID := ocspi.issuers.byAlg[x509.ECDSA].ID()
 	ecdsaCertPB, err := ca.IssuePrecertificate(ctx, &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID})
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	ecdsaCert, err := x509.ParseCertificate(ecdsaCertPB.DER)
