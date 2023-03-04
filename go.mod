@@ -11,7 +11,7 @@ require (
 	github.com/eggsampler/acme/v3 v3.3.0
 	github.com/go-gorp/gorp/v3 v3.1.0
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/go-sql-driver/mysql v1.6.0
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
@@ -88,3 +88,8 @@ require (
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
+
+// This version is required by parts of the honeycombio/beeline-go package
+// that we do not rely upon. It appears to introduce performance regressions
+// for us.
+exclude github.com/go-sql-driver/mysql v1.6.0
