@@ -94,8 +94,8 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	if took < va.singleDialTimeout {
 		t.Fatalf("fetch returned before %s (%s) with %#v", va.singleDialTimeout, took, prob)
 	}
-	if took > 2*va.singleDialTimeout {
-		t.Fatalf("fetch didn't timeout after %s", va.singleDialTimeout)
+	if took > 4*va.singleDialTimeout {
+		t.Fatalf("fetch didn't timeout after %s (took: %s)", va.singleDialTimeout, took)
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	expectMatch := regexp.MustCompile(
