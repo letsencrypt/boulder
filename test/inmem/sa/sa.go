@@ -41,10 +41,6 @@ func (sa SA) DeactivateRegistration(ctx context.Context, req *sapb.RegistrationI
 	return sa.Impl.DeactivateRegistration(ctx, req)
 }
 
-func (sa SA) NewAuthorizations2(ctx context.Context, req *sapb.AddPendingAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorization2IDs, error) {
-	return sa.Impl.NewAuthorizations2(ctx, req)
-}
-
 func (sa SA) GetAuthorization2(ctx context.Context, req *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
 	return sa.Impl.GetAuthorization2(ctx, req)
 }
@@ -75,10 +71,6 @@ func (sa SA) DeactivateAuthorization2(ctx context.Context, req *sapb.Authorizati
 
 func (sa SA) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.FinalizeAuthorization2(ctx, req)
-}
-
-func (sa SA) NewOrder(ctx context.Context, req *sapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
-	return sa.Impl.NewOrder(ctx, req)
 }
 
 func (sa SA) NewOrderAndAuthzs(ctx context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {

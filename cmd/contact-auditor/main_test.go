@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/cmd"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	blog "github.com/letsencrypt/boulder/log"
@@ -197,12 +196,12 @@ func setup(t *testing.T) testCtx {
 		os.Remove(file.Name())
 	}
 
-	db, err := sa.InitSqlDb(cmd.DBConfig{DBConnect: vars.DBConnSAMailer}, nil)
+	db, err := sa.NewDbMap(vars.DBConnSAMailer, sa.DbSettings{})
 	if err != nil {
 		t.Fatalf("Couldn't connect to the database: %s", err)
 	}
 
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, nil, clock.New(), log, metrics.NoopRegisterer, 1)
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, clock.New(), log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
 	}

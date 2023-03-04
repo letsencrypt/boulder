@@ -7,7 +7,7 @@
 
 The v2 SDK requires a minimum version of `Go 1.15`.
 
-Checkout out the [release notes](https://github.com/aws/aws-sdk-go-v2/blob/main/CHANGELOG.md) for information about the latest bug
+Check out the [release notes](https://github.com/aws/aws-sdk-go-v2/blob/main/CHANGELOG.md) for information about the latest bug
 fixes, updates, and features added to the SDK.
 
 Jump To:
@@ -87,7 +87,7 @@ func main() {
 ###### Compile and Execute
 ```sh
 $ go run .
-Table:
+Tables:
 tableOne
 tableTwo
 ```
@@ -97,9 +97,9 @@ tableTwo
 Please use these community resources for getting help. We use the GitHub issues
 for tracking bugs and feature requests.
 
-* Ask a question on [StackOverflow](http://stackoverflow.com/) and tag it with the [`aws-sdk-go`](http://stackoverflow.com/questions/tagged/aws-sdk-go) tag.
-* Open a support ticket with [AWS Support](http://docs.aws.amazon.com/awssupport/latest/user/getting-started.html).
+* Ask us a [question](https://github.com/aws/aws-sdk-go-v2/discussions/new?category=q-a) or open a [discussion](https://github.com/aws/aws-sdk-go-v2/discussions/new?category=general).
 * If you think you may have found a bug, please open an [issue](https://github.com/aws/aws-sdk-go-v2/issues/new/choose).
+* Open a support ticket with [AWS Support](http://docs.aws.amazon.com/awssupport/latest/user/getting-started.html).
 
 This SDK implements AWS service APIs. For general issues regarding the AWS services and their limitations, you may also take a look at the [Amazon Web Services Discussion Forums](https://forums.aws.amazon.com/).
 
@@ -107,7 +107,7 @@ This SDK implements AWS service APIs. For general issues regarding the AWS servi
 
 If you encounter a bug with the AWS SDK for Go we would like to hear about it.
 Search the [existing issues][Issues] and see
-if others are also experiencing the issue before opening a new issue. Please
+if others are also experiencing the same issue before opening a new issue. Please
 include the version of AWS SDK for Go, Go language, and OS you’re using. Please
 also include reproduction case when appropriate.
 

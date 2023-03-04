@@ -39,6 +39,7 @@ var RSAAlgorithmIDToDER = map[string][]byte{
 
 // CheckAlgorithmIDParamNotNULL parses an AlgorithmIdentifier with algorithm OID rsaEncryption to check the Param field is asn1.NULL
 // Expects DER-encoded AlgorithmIdentifier including tag and length.
+//nolint:cyclop
 func CheckAlgorithmIDParamNotNULL(algorithmIdentifier []byte, requiredAlgoID asn1.ObjectIdentifier) error {
 	expectedAlgoIDBytes, ok := RSAAlgorithmIDToDER[requiredAlgoID.String()]
 	if !ok {

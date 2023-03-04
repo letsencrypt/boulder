@@ -50,6 +50,7 @@ GRANT SELECT ON precertificates TO 'sa_ro'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'sa_ro'@'localhost';
 GRANT SELECT ON blockedKeys TO 'sa_ro'@'localhost';
 GRANT SELECT ON newOrdersRL TO 'sa_ro'@'localhost';
+GRANT SELECT ON incidents TO 'sa_ro'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
@@ -78,6 +79,7 @@ GRANT SELECT ON fqdnSets TO 'mailer'@'localhost';
 
 -- Cert checker
 GRANT SELECT ON certificates TO 'cert_checker'@'localhost';
+GRANT SELECT ON authz2 TO 'cert_checker'@'localhost';
 
 -- Bad Key Revoker
 GRANT SELECT,UPDATE ON blockedKeys TO 'badkeyrevoker'@'localhost';

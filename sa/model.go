@@ -1,6 +1,8 @@
 package sa
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -8,15 +10,18 @@ import (
 	"math"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -441,6 +446,66 @@ type authzModel struct {
 	ValidationRecord []byte     `db:"validationRecord"`
 }
 
+// SelectAuthzsMatchingIssuance looks for a set of authzs that would have
+// authorized a given issuance that is known to have occurred. The returned
+// authzs will all belong to the given regID, will have potentially been valid
+// at the time of issuance, and will have the appropriate identifier type and
+// value. This may return multiple authzs for the same identifier type and value.
+//
+// This returns "potentially" valid authzs because a client may have set an
+// authzs status to deactivated after issuance, so we return both valid and
+// deactivated authzs. It also uses a small amount of leeway (1s) to account
+// for possible clock skew.
+//
+// This function doesn't do anything special for authzs with an expiration in
+// the past. If the stored authz has a valid status, it is returned with a
+// valid status regardless of whether it is also expired.
+func SelectAuthzsMatchingIssuance(
+	s db.Selector,
+	regID int64,
+	issued time.Time,
+	dnsNames []string,
+) ([]*corepb.Authorization, error) {
+	query := fmt.Sprintf(`SELECT %s FROM authz2 WHERE
+			registrationID = ? AND
+			status IN (?, ?) AND
+			expires >= ? AND
+			attemptedAt <= ? AND
+			identifierType = ? AND
+			identifierValue IN (%s)`,
+		authzFields,
+		db.QuestionMarks(len(dnsNames)))
+	var args []any
+	args = append(args,
+		regID,
+		statusToUint[core.StatusValid],
+		statusToUint[core.StatusDeactivated],
+		issued.Add(-1*time.Second), // leeway for clock skew
+		issued.Add(1*time.Second),  // leeway for clock skew
+		identifierTypeToUint[string(identifier.DNS)],
+	)
+	for _, name := range dnsNames {
+		args = append(args, name)
+	}
+
+	var authzModels []authzModel
+	_, err := s.Select(&authzModels, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	var authzs []*corepb.Authorization
+	for _, model := range authzModels {
+		authz, err := modelToAuthzPB(model)
+		if err != nil {
+			return nil, err
+		}
+		authzs = append(authzs, authz)
+
+	}
+	return authzs, err
+}
+
 // hasMultipleNonPendingChallenges checks if a slice of challenges contains
 // more than one non-pending challenge
 func hasMultipleNonPendingChallenges(challenges []*corepb.Challenge) bool {
@@ -684,4 +749,308 @@ type crlEntryModel struct {
 	Status        core.OCSPStatus   `db:"status"`
 	RevokedReason revocation.Reason `db:"revokedReason"`
 	RevokedDate   time.Time         `db:"revokedDate"`
+}
+
+// HashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table.
+func HashNames(names []string) []byte {
+	names = core.UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hash[:]
+}
+
+// orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
+// from a new-order request, along with the corresponding orderID, the
+// registration ID, and the order expiry. This is used to find
+// existing orders for reuse.
+type orderFQDNSet struct {
+	ID             int64
+	SetHash        []byte
+	OrderID        int64
+	RegistrationID int64
+	Expires        time.Time
+}
+
+func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
+	return db.Insert(&core.FQDNSet{
+		SetHash: HashNames(names),
+		Serial:  serial,
+		Issued:  issued,
+		Expires: expires,
+	})
+}
+
+// addOrderFQDNSet creates a new OrderFQDNSet row using the provided
+// information. This function accepts a transaction so that the orderFqdnSet
+// addition can take place within the order addition transaction. The caller is
+// required to rollback the transaction if an error is returned.
+func addOrderFQDNSet(
+	db db.Inserter,
+	names []string,
+	orderID int64,
+	regID int64,
+	expires time.Time) error {
+	return db.Insert(&orderFQDNSet{
+		SetHash:        HashNames(names),
+		OrderID:        orderID,
+		RegistrationID: regID,
+		Expires:        expires,
+	})
+}
+
+// deleteOrderFQDNSet deletes a OrderFQDNSet row that matches the provided
+// orderID. This function accepts a transaction so that the deletion can
+// take place within the finalization transaction. The caller is required to
+// rollback the transaction if an error is returned.
+func deleteOrderFQDNSet(
+	db db.Execer,
+	orderID int64) error {
+
+	result, err := db.Exec(`
+	  DELETE FROM orderFqdnSets
+		WHERE orderID = ?`,
+		orderID)
+	if err != nil {
+		return err
+	}
+	rowsDeleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	// We always expect there to be an order FQDN set row for each
+	// pending/processing order that is being finalized. If there isn't one then
+	// something is amiss and should be raised as an internal server error
+	if rowsDeleted == 0 {
+		return berrors.InternalServerError("No orderFQDNSet exists to delete")
+	}
+	return nil
+}
+
+func addIssuedNames(queryer db.Queryer, cert *x509.Certificate, isRenewal bool) error {
+	if len(cert.DNSNames) == 0 {
+		return berrors.InternalServerError("certificate has no DNSNames")
+	}
+
+	multiInserter, err := db.NewMultiInserter("issuedNames", []string{"reversedName", "serial", "notBefore", "renewal"}, "")
+	if err != nil {
+		return err
+	}
+	for _, name := range cert.DNSNames {
+		err = multiInserter.Add([]interface{}{
+			ReverseName(name),
+			core.SerialToString(cert.SerialNumber),
+			cert.NotBefore,
+			isRenewal,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	_, err = multiInserter.Insert(queryer)
+	return err
+}
+
+func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
+	if cert.RawSubjectPublicKeyInfo == nil {
+		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
+	}
+	h := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	khm := &keyHashModel{
+		KeyHash:      h[:],
+		CertNotAfter: cert.NotAfter,
+		CertSerial:   core.SerialToString(cert.SerialNumber),
+	}
+	return db.Insert(khm)
+}
+
+var blockedKeysColumns = "keyHash, added, source, comment"
+
+// statusForOrder examines the status of a provided order's authorizations to
+// determine what the overall status of the order should be. In summary:
+//   - If the order has an error, the order is invalid
+//   - If any of the order's authorizations are in any state other than
+//     valid or pending, the order is invalid.
+//   - If any of the order's authorizations are pending, the order is pending.
+//   - If all of the order's authorizations are valid, and there is
+//     a certificate serial, the order is valid.
+//   - If all of the order's authorizations are valid, and we have began
+//     processing, but there is no certificate serial, the order is processing.
+//   - If all of the order's authorizations are valid, and we haven't begun
+//     processing, then the order is status ready.
+//
+// An error is returned for any other case. It assumes that the provided
+// database selector already has a context associated with it.
+func statusForOrder(s db.Selector, order *corepb.Order, now time.Time) (string, error) {
+	// Without any further work we know an order with an error is invalid
+	if order.Error != nil {
+		return string(core.StatusInvalid), nil
+	}
+
+	// If the order is expired the status is invalid and we don't need to get
+	// order authorizations. Its important to exit early in this case because an
+	// order that references an expired authorization will be itself have been
+	// expired (because we match the order expiry to the associated authz expiries
+	// in ra.NewOrder), and expired authorizations may be purged from the DB.
+	// Because of this purging fetching the authz's for an expired order may
+	// return fewer authz objects than expected, triggering a 500 error response.
+	orderExpiry := time.Unix(0, order.Expires)
+	if orderExpiry.Before(now) {
+		return string(core.StatusInvalid), nil
+	}
+
+	// Get the full Authorization objects for the order
+	authzValidityInfo, err := getAuthorizationStatuses(s, order.V2Authorizations)
+	// If there was an error getting the authorizations, return it immediately
+	if err != nil {
+		return "", err
+	}
+
+	// If getAuthorizationStatuses returned a different number of authorization
+	// objects than the order's slice of authorization IDs something has gone
+	// wrong worth raising an internal error about.
+	if len(authzValidityInfo) != len(order.V2Authorizations) {
+		return "", berrors.InternalServerError(
+			"getAuthorizationStatuses returned the wrong number of authorization statuses "+
+				"(%d vs expected %d) for order %d",
+			len(authzValidityInfo), len(order.V2Authorizations), order.Id)
+	}
+
+	// Keep a count of the authorizations seen
+	pendingAuthzs := 0
+	validAuthzs := 0
+	otherAuthzs := 0
+	expiredAuthzs := 0
+
+	// Loop over each of the order's authorization objects to examine the authz status
+	for _, info := range authzValidityInfo {
+		switch core.AcmeStatus(info.Status) {
+		case core.StatusPending:
+			pendingAuthzs++
+		case core.StatusValid:
+			validAuthzs++
+		case core.StatusInvalid:
+			otherAuthzs++
+		case core.StatusDeactivated:
+			otherAuthzs++
+		case core.StatusRevoked:
+			otherAuthzs++
+		default:
+			return "", berrors.InternalServerError(
+				"Order is in an invalid state. Authz has invalid status %s",
+				info.Status)
+		}
+		if info.Expires.Before(now) {
+			expiredAuthzs++
+		}
+	}
+
+	// An order is invalid if **any** of its authzs are invalid, deactivated,
+	// revoked, or expired, see https://tools.ietf.org/html/rfc8555#section-7.1.6
+	if otherAuthzs > 0 || expiredAuthzs > 0 {
+		return string(core.StatusInvalid), nil
+	}
+	// An order is pending if **any** of its authzs are pending
+	if pendingAuthzs > 0 {
+		return string(core.StatusPending), nil
+	}
+
+	// An order is fully authorized if it has valid authzs for each of the order
+	// names
+	fullyAuthorized := len(order.Names) == validAuthzs
+
+	// If the order isn't fully authorized we've encountered an internal error:
+	// Above we checked for any invalid or pending authzs and should have returned
+	// early. Somehow we made it this far but also don't have the correct number
+	// of valid authzs.
+	if !fullyAuthorized {
+		return "", berrors.InternalServerError(
+			"Order has the incorrect number of valid authorizations & no pending, " +
+				"deactivated or invalid authorizations")
+	}
+
+	// If the order is fully authorized and the certificate serial is set then the
+	// order is valid
+	if fullyAuthorized && order.CertificateSerial != "" {
+		return string(core.StatusValid), nil
+	}
+
+	// If the order is fully authorized, and we have began processing it, then the
+	// order is processing.
+	if fullyAuthorized && order.BeganProcessing {
+		return string(core.StatusProcessing), nil
+	}
+
+	if fullyAuthorized && !order.BeganProcessing {
+		return string(core.StatusReady), nil
+	}
+
+	return "", berrors.InternalServerError(
+		"Order %d is in an invalid state. No state known for this order's "+
+			"authorizations", order.Id)
+}
+
+type authzValidity struct {
+	Status  string
+	Expires time.Time
+}
+
+// getAuthorizationStatuses takes a sequence of authz IDs, and returns the
+// status and expiration date of each of them. It assumes that the provided
+// database selector already has a context associated with it.
+func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, error) {
+	var params []interface{}
+	for _, id := range ids {
+		params = append(params, id)
+	}
+	var validityInfo []struct {
+		Status  uint8
+		Expires time.Time
+	}
+	_, err := s.Select(
+		&validityInfo,
+		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)",
+			db.QuestionMarks(len(ids))),
+		params...,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	allAuthzValidity := make([]authzValidity, len(validityInfo))
+	for i, info := range validityInfo {
+		allAuthzValidity[i] = authzValidity{
+			Status:  string(uintToStatus[info.Status]),
+			Expires: info.Expires,
+		}
+	}
+	return allAuthzValidity, nil
+}
+
+// authzForOrder retrieves the authorization IDs for an order. It assumes that
+// the provided database selector already has a context associated with it.
+func authzForOrder(s db.Selector, orderID int64) ([]int64, error) {
+	var v2IDs []int64
+	_, err := s.Select(
+		&v2IDs,
+		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
+		orderID,
+	)
+	return v2IDs, err
+}
+
+// namesForOrder finds all of the requested names associated with an order. The
+// names are returned in their reversed form (see `sa.ReverseName`). It assumes
+// that the provided database selector already has a context associated with it.
+func namesForOrder(s db.Selector, orderID int64) ([]string, error) {
+	var reversedNames []string
+	_, err := s.Select(
+		&reversedNames,
+		`SELECT reversedName
+	   FROM requestedNames
+	   WHERE orderID = ?`,
+		orderID)
+	if err != nil {
+		return nil, err
+	}
+	return reversedNames, nil
 }

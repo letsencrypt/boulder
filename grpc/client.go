@@ -4,8 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"net"
-	"strings"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
@@ -15,8 +13,11 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
-	// Import for its init function, which causes clients to rely on the
-	// Health Service for load-balancing.
+	// 'grpc/health' is imported for its init function, which causes clients to
+	// rely on the Health Service for load-balancing.
+	// 'grpc/internal/resolver/dns' is imported for its init function, which
+	// registers the SRV resolver.
+	_ "github.com/letsencrypt/boulder/grpc/internal/resolver/dns"
 	"google.golang.org/grpc/balancer/roundrobin"
 	_ "google.golang.org/grpc/health"
 )
@@ -25,45 +26,38 @@ import (
 // a client certificate and validates the the server certificate based
 // on the provided *tls.Config.
 // It dials the remote service and returns a grpc.ClientConn if successful.
-func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientMetrics, clk clock.Clock, interceptors ...grpc.UnaryClientInterceptor) (*grpc.ClientConn, error) {
+func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (*grpc.ClientConn, error) {
 	if c == nil {
-		return nil, errors.New("nil gRPC client config provided. JSON config is probably missing a fooService section.")
-	}
-	if c.ServerIPAddresses != nil && c.ServerAddress != "" {
-		return nil, errors.New(
-			"both 'serverIPAddresses' and 'serverAddress' are set in gRPC client config provided. Only one should be set.",
-		)
+		return nil, errors.New("nil gRPC client config provided: JSON config is probably missing a fooService section")
 	}
 	if tlsConfig == nil {
 		return nil, errNilTLS
 	}
 
-	ci := clientInterceptor{c.Timeout.Duration, metrics, clk}
+	metrics, err := newClientMetrics(statsRegistry)
+	if err != nil {
+		return nil, err
+	}
 
-	unaryInterceptors := append(interceptors, []grpc.UnaryClientInterceptor{
-		ci.interceptUnary,
-		ci.metrics.grpcMetrics.UnaryClientInterceptor(),
+	cmi := clientMetadataInterceptor{c.Timeout.Duration, metrics, clk}
+
+	unaryInterceptors := []grpc.UnaryClientInterceptor{
+		cmi.Unary,
+		cmi.metrics.grpcMetrics.UnaryClientInterceptor(),
 		otelgrpc.UnaryClientInterceptor(),
-	}...)
+	}
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
-		ci.interceptStream,
-		ci.metrics.grpcMetrics.StreamClientInterceptor(),
+		cmi.Stream,
+		cmi.metrics.grpcMetrics.StreamClientInterceptor(),
 		otelgrpc.StreamClientInterceptor(),
 	}
 
-	var target string
-	var hostOverride string
-	if c.ServerAddress != "" {
-		var splitHostPortErr error
-		hostOverride, _, splitHostPortErr = net.SplitHostPort(c.ServerAddress)
-		if splitHostPortErr != nil {
-			return nil, splitHostPortErr
-		}
-		target = "dns:///" + c.ServerAddress
-	} else {
-		target = "static:///" + strings.Join(c.ServerIPAddresses, ",")
+	target, hostOverride, err := c.MakeTargetAndHostOverride()
+	if err != nil {
+		return nil, err
 	}
+
 	creds := bcreds.NewClientCredentials(tlsConfig.RootCAs, tlsConfig.Certificates, hostOverride)
 	return grpc.Dial(
 		target,
@@ -72,11 +66,6 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, metrics clientM
 		grpc.WithChainUnaryInterceptor(unaryInterceptors...),
 		grpc.WithChainStreamInterceptor(streamInterceptors...),
 	)
-
-}
-
-type registry interface {
-	MustRegister(...prometheus.Collector)
 }
 
 // clientMetrics is a struct type used to return registered metrics from
@@ -88,24 +77,40 @@ type clientMetrics struct {
 	inFlightRPCs *prometheus.GaugeVec
 }
 
-// NewClientMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
+// newClientMetrics constructs a *grpc_prometheus.ClientMetrics, registered with
 // the given registry, with timing histogram enabled. It must be called a
 // maximum of once per registry, or there will be conflicting names.
-func NewClientMetrics(stats registry) clientMetrics {
+func newClientMetrics(stats prometheus.Registerer) (clientMetrics, error) {
 	// Create the grpc prometheus client metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewClientMetrics()
 	grpcMetrics.EnableClientHandlingTimeHistogram()
-	stats.MustRegister(grpcMetrics)
+	err := stats.Register(grpcMetrics)
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			grpcMetrics = are.ExistingCollector.(*grpc_prometheus.ClientMetrics)
+		} else {
+			return clientMetrics{}, err
+		}
+	}
 
 	// Create a gauge to track in-flight RPCs and register it.
 	inFlightGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "grpc_in_flight",
 		Help: "Number of in-flight (sent, not yet completed) RPCs",
 	}, []string{"method", "service"})
-	stats.MustRegister(inFlightGauge)
+	err = stats.Register(inFlightGauge)
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			inFlightGauge = are.ExistingCollector.(*prometheus.GaugeVec)
+		} else {
+			return clientMetrics{}, err
+		}
+	}
 
 	return clientMetrics{
 		grpcMetrics:  grpcMetrics,
 		inFlightRPCs: inFlightGauge,
-	}
+	}, nil
 }

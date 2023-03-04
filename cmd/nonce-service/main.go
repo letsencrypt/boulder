@@ -1,12 +1,9 @@
 package notmain
 
 import (
-	"context"
 	"flag"
-
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/protobuf/types/known/emptypb"
+	"fmt"
+	"net"
 
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -18,8 +15,30 @@ type Config struct {
 	NonceService struct {
 		cmd.ServiceConfig
 
-		MaxUsed     int
+		MaxUsed int
+		// TODO(#6610): Remove once we've moved to derivable prefixes by
+		// default.
 		NoncePrefix string
+
+		// UseDerivablePrefix indicates whether to use a nonce prefix derived
+		// from the gRPC listening address. If this is false, the nonce prefix
+		// will be the value of the NoncePrefix field. If this is true, the
+		// NoncePrefixKey field is required.
+		//
+		// TODO(#6610): Remove once we've moved to derivable prefixes by
+		// default.
+		UseDerivablePrefix bool
+
+		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
+		// instance. It should contain 256 bits (32 bytes) of random data to be
+		// suitable as an HMAC-SHA256 key (e.g. the output of `openssl rand -hex
+		// 32`). In a multi-DC deployment this value should be the same across
+		// all boulder-wfe and nonce-service instances. This is only used if
+		// UseDerivablePrefix is true.
+		//
+		// TODO(#6610): Edit this comment once we've moved to derivable prefixes
+		// by default.
+		NoncePrefixKey cmd.PasswordConfig
 
 		Syslog        cmd.SyslogConfig
 		OpenTelemetry cmd.OpenTelemetryConfig
@@ -27,27 +46,23 @@ type Config struct {
 	}
 }
 
-type nonceServer struct {
-	noncepb.UnimplementedNonceServiceServer
-	inner *nonce.NonceService
-}
-
-func (ns *nonceServer) Redeem(ctx context.Context, msg *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	return &noncepb.ValidMessage{Valid: ns.inner.Valid(msg.Nonce)}, nil
-}
-
-func (ns *nonceServer) Nonce(_ context.Context, _ *emptypb.Empty) (*noncepb.NonceMessage, error) {
-	nonce, err := ns.inner.Nonce()
+func derivePrefix(key string, grpcAddr string) (string, error) {
+	host, port, err := net.SplitHostPort(grpcAddr)
 	if err != nil {
-		return nil, err
+		return "", fmt.Errorf("parsing gRPC listen address: %w", err)
 	}
-	return &noncepb.NonceMessage{Nonce: nonce}, nil
+	if host != "" && port != "" {
+		hostIP := net.ParseIP(host)
+		if hostIP == nil {
+			return "", fmt.Errorf("parsing IP from gRPC listen address: %w", err)
+		}
+	}
+	return nonce.DerivePrefix(grpcAddr, key), nil
 }
 
 func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
-	prefixOverride := flag.String("prefix", "", "Override the configured nonce prefix")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
 
@@ -61,8 +76,22 @@ func main() {
 	if *debugAddr != "" {
 		c.NonceService.DebugAddr = *debugAddr
 	}
-	if *prefixOverride != "" {
-		c.NonceService.NoncePrefix = *prefixOverride
+
+	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
+	if c.NonceService.NoncePrefix != "" && c.NonceService.UseDerivablePrefix {
+		cmd.Fail("Cannot set both 'noncePrefix' and 'useDerivablePrefix'")
+	}
+
+	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
+	if c.NonceService.UseDerivablePrefix && c.NonceService.NoncePrefixKey.PasswordFile == "" {
+		cmd.Fail("Cannot set 'noncePrefixKey' without 'useDerivablePrefix'")
+	}
+
+	if c.NonceService.UseDerivablePrefix && c.NonceService.NoncePrefixKey.PasswordFile != "" {
+		key, err := c.NonceService.NoncePrefixKey.Pass()
+		cmd.FailOnError(err, "Failed to load 'noncePrefixKey' file.")
+		c.NonceService.NoncePrefix, err = derivePrefix(key, c.NonceService.GRPC.Address)
+		cmd.FailOnError(err, "Failed to derive nonce prefix")
 	}
 
 	scope, logger, shutdown := cmd.StatsAndLogging("nonce-service", c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
@@ -76,22 +105,13 @@ func main() {
 	tlsConfig, err := c.NonceService.TLS.Load()
 	cmd.FailOnError(err, "tlsConfig config")
 
-	nonceServer := &nonceServer{inner: ns}
-
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, l, err := bgrpc.NewServer(c.NonceService.GRPC, tlsConfig, serverMetrics, cmd.Clock())
+	nonceServer := nonce.NewServer(ns)
+	start, stop, err := bgrpc.NewServer(c.NonceService.GRPC).Add(
+		&noncepb.NonceService_ServiceDesc, nonceServer).Build(tlsConfig, scope, cmd.Clock())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
-	noncepb.RegisterNonceServiceServer(grpcSrv, nonceServer)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
-	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
-	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-	cmd.FailOnError(err, "Nonce service gRPC server failed")
+	go cmd.CatchSignals(logger, stop)
+	cmd.FailOnError(start(), "Nonce service gRPC server failed")
 }
 
 func init() {

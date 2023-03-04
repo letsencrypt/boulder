@@ -1,15 +1,12 @@
 {
   "ocspResponder": {
-    "db": {
-      "dbConnectFile": "test/secrets/ocsp_responder_dburl",
-      "maxOpenConns": 10
-    },
     "redis": {
       "username": "ocsp-responder",
       "passwordFile": "test/secrets/ocsp_responder_redis_password",
-      "addrs": [
-        "10.33.33.7:4218"
-      ],
+      "shardAddrs": {
+        "shard1": "10.33.33.2:4218",
+        "shard2": "10.33.33.3:4218"
+      },
       "timeout": "5s",
       "poolSize": 100,
       "routeRandomly": true,
@@ -21,19 +18,26 @@
     },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ocsp-responder.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/ocsp-responder.service.consul/key.pem"
+      "certFile": "test/grpc-creds/ocsp-responder.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
     },
     "raService": {
-      "serverAddress": "ra.service.consul:9094",
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "ra",
+        "domain": "service.consul"
+      },
+      "hostOverride": "ra.boulder",
       "timeout": "15s"
     },
     "saService": {
-      "serverIPAddresses": [
-        "10.77.77.77:9095",
-        "10.88.88.88:9095"
-      ],
-      "timeout": "15s"
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "sa",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "sa.boulder"
     },
     "logSampleRate": 1,
     "path": "/",
@@ -43,17 +47,14 @@
       "/hierarchy/intermediate-cert-rsa-b.pem",
       "/hierarchy/intermediate-cert-ecdsa-a.pem"
     ],
-    "expectedFreshness": "61h",
     "liveSigningPeriod": "60h",
     "timeout": "4.9s",
+    "maxInflightSignings": 2,
+    "maxSigningWaiters": 1,
     "shutdownStopTimeout": "10s",
     "debugAddr": ":8005",
     "requiredSerialPrefixes": ["ff"],
-    "features": {
-      "ROCSPStage1": true,
-      "ROCSPStage2": true,
-      "ROCSPStage3": true
-    }
+    "features": {}
   },
 
   "syslog": {

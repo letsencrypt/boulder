@@ -21,7 +21,8 @@ import (
 
 // A Logger logs messages with explicit priority levels. It is
 // implemented by a logging back-end as provided by New() or
-// NewMock().
+// NewMock(). Any additions to this interface with format strings should be
+// added to the govet configuration in .golangci.yml
 type Logger interface {
 	Err(msg string)
 	Errf(format string, a ...interface{})
@@ -29,6 +30,7 @@ type Logger interface {
 	Warningf(format string, a ...interface{})
 	Info(msg string)
 	Infof(format string, a ...interface{})
+	InfoObject(string, interface{})
 	Debug(msg string)
 	Debugf(format string, a ...interface{})
 	AuditPanic()
@@ -250,7 +252,7 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 
 		if _, err := fmt.Fprintf(output, "%s%s %s %d %s %s%s\n",
 			color,
-			w.clk.Now().Format("2006-01-02T15:04:05.999999+07:00"),
+			w.clk.Now().UTC().Format("2006-01-02T15:04:05.000000+00:00Z"),
 			w.prefix,
 			int(level),
 			path.Base(os.Args[0]),
@@ -314,6 +316,17 @@ func (log *impl) Infof(format string, a ...interface{}) {
 	log.Info(fmt.Sprintf(format, a...))
 }
 
+// InfoObject logs an INFO level JSON-serialized object message.
+func (log *impl) InfoObject(msg string, obj interface{}) {
+	jsonObj, err := json.Marshal(obj)
+	if err != nil {
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
+		return
+	}
+
+	log.Infof("%s JSON=%s", msg, jsonObj)
+}
+
 // Debug level messages pass through normally.
 func (log *impl) Debug(msg string) {
 	log.w.logAtLevel(syslog.LOG_DEBUG, msg)
@@ -341,7 +354,7 @@ func (log *impl) AuditInfof(format string, a ...interface{}) {
 func (log *impl) AuditObject(msg string, obj interface{}) {
 	jsonObj, err := json.Marshal(obj)
 	if err != nil {
-		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object could not be serialized to JSON. Raw: %+v", obj))
+		log.auditAtLevel(syslog.LOG_ERR, fmt.Sprintf("Object for msg %q could not be serialized to JSON. Raw: %+v", msg, obj))
 		return
 	}
 

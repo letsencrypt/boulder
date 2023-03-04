@@ -5,8 +5,8 @@ import (
 	"net/url"
 
 	"github.com/letsencrypt/boulder/observer/probers"
+	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v3"
 )
 
 // HTTPConf is exported to receive YAML configuration.
@@ -14,6 +14,7 @@ type HTTPConf struct {
 	URL       string `yaml:"url"`
 	RCodes    []int  `yaml:"rcodes"`
 	UserAgent string `yaml:"useragent"`
+	Insecure  bool   `yaml:"insecure"`
 }
 
 // Kind returns a name that uniquely identifies the `Kind` of `Configurer`.
@@ -25,7 +26,7 @@ func (c HTTPConf) Kind() string {
 // HTTPConf object.
 func (c HTTPConf) UnmarshalSettings(settings []byte) (probers.Configurer, error) {
 	var conf HTTPConf
-	err := yaml.Unmarshal(settings, &conf)
+	err := strictyaml.Unmarshal(settings, &conf)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +81,7 @@ func (c HTTPConf) MakeProber(_ map[string]prometheus.Collector) (probers.Prober,
 	if c.UserAgent == "" {
 		c.UserAgent = "letsencrypt/boulder-observer-http-client"
 	}
-	return HTTPProbe{c.URL, c.RCodes, c.UserAgent}, nil
+	return HTTPProbe{c.URL, c.RCodes, c.UserAgent, c.Insecure}, nil
 }
 
 // Instrument is a no-op to implement the `Configurer` interface.

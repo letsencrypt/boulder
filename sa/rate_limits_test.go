@@ -32,7 +32,7 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 		{aprilFirst, []string{"otherdomain.dyndns.org"}},
 	}
 
-	// For each hour in a week, add an enry for a certificate that has
+	// For each hour in a week, add an entry for a certificate that has
 	// progressively more names.
 	var manyNames []string
 	for i := 0; i < 7*24; i++ {
@@ -78,12 +78,18 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 				Earliest: aprilFirst.Add(-1 * time.Second).UnixNano(),
 				Latest:   aprilFirst.Add(aWeek).UnixNano(),
 			}
-			count, err := sa.countCertificatesByName(sa.dbMap, tc.domainName, timeRange)
+			count, earliest, err := sa.countCertificatesByName(sa.dbMap, tc.domainName, timeRange)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if count != tc.expected {
 				t.Errorf("Expected count of %d for %q, got %d", tc.expected, tc.domainName, count)
+			}
+			if earliest.IsZero() {
+				// The count should always be zero if earliest is nil.
+				test.AssertEquals(t, count, int64(0))
+			} else {
+				test.AssertEquals(t, earliest, aprilFirst)
 			}
 		})
 	}

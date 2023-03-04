@@ -5,7 +5,6 @@
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "maxNames": 100,
-    "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "goodkey": {
@@ -14,6 +13,7 @@
       "fermatRounds": 100
     },
     "orderLifetime": "168h",
+    "finalizeTimeout": "30s",
     "issuerCerts": [
       "/hierarchy/intermediate-cert-rsa-a.pem",
       "/hierarchy/intermediate-cert-rsa-b.pem",
@@ -21,51 +21,86 @@
     ],
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/ra.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/ra.service.consul/key.pem"
+      "certFile": "test/grpc-creds/ra.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/ra.boulder/key.pem"
     },
     "vaService": {
-      "serverAddress": "va.service.consul:9092",
-      "timeout": "20s"
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "va",
+        "domain": "service.consul"
+      },
+      "timeout": "20s",
+      "hostOverride": "va.boulder"
     },
     "caService": {
-      "serverAddress": "ca.service.consul:9093",
-      "timeout": "15s"
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "ca",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "ca.boulder"
+    },
+    "ocspService": {
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "ca",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "ca.boulder"
     },
     "publisherService": {
-      "serverAddress": "publisher.service.consul:9091",
-      "timeout": "300s"
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "publisher",
+        "domain": "service.consul"
+      },
+      "timeout": "300s",
+      "hostOverride": "publisher.boulder"
     },
     "saService": {
-      "serverIPAddresses": [
-        "10.77.77.77:9095",
-        "10.88.88.88:9095"
-      ],
-      "timeout": "15s"
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "sa",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "sa.boulder"
     },
     "akamaiPurgerService": {
-      "serverAddress": "akamai-purger.service.consul:9099",
-      "timeout": "15s"
+      "dnsAuthority": "10.55.55.10",
+      "srvLookup": {
+        "service": "akamai-purger",
+        "domain": "service.consul"
+      },
+      "timeout": "15s",
+      "hostOverride": "akamai-purger.boulder"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9094",
-      "clientNames": [
-        "admin-revoker.service.consul",
-        "bad-key-revoker.service.consul",
-        "health-checker.service.consul",
-        "ocsp-responder.service.consul",
-        "wfe.service.consul"
-      ]
+      "services": {
+        "ra.RegistrationAuthority": {
+          "clientNames": [
+            "admin-revoker.boulder",
+            "bad-key-revoker.boulder",
+            "ocsp-responder.boulder",
+            "wfe.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "features": {
       "StoreRevokerInfo": true,
-      "RestrictRSAKeySizes": true,
-      "StreamlineOrderAndAuthzs": true,
-      "AllowReRevocation": true,
-      "MozRevocationReasons": true,
-      "SHA1CSRs": false,
-      "RejectDuplicateCSRExtensions": true
+      "ROCSPStage7": true,
+      "AsyncFinalize": true
     },
     "ctLogs": {
       "stagger": "500ms",

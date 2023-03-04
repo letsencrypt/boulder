@@ -12,21 +12,17 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/akamai"
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
 const (
-	// TODO(#6003) remove entirely.
-	DeprecatedQueueEntriesPerBatch = 33
-
 	// akamaiBytesPerResponse is the total bytes of all 3 URLs associated with a
 	// single OCSP response cached by Akamai. Each response is composed of 3
 	// URLs; the POST Cache Key URL is 61 bytes and the encoded and unencoded
@@ -76,7 +72,7 @@ type Throughput struct {
 	// PurgeBatchInterval is the duration waited between dispatching an Akamai
 	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
 	// isn't provided it will default to 'defaultPurgeBatchInterval'.
-	PurgeBatchInterval cmd.ConfigDuration
+	PurgeBatchInterval config.Duration
 }
 
 func (t *Throughput) useOptimizedDefaults() {
@@ -94,8 +90,7 @@ func (t *Throughput) useOptimizedDefaults() {
 // https://techdocs.akamai.com/purge-cache/reference/rate-limiting
 func (t *Throughput) validate() error {
 	if t.PurgeBatchInterval.Duration == 0 {
-		// TODO(#6003) remove /'purgeInterval'.
-		return errors.New("'purgeBatchInterval'/'purgeInterval' must be > 0 nanoseconds")
+		return errors.New("'purgeBatchInterval' must be > 0")
 	}
 	if t.QueueEntriesPerBatch <= 0 {
 		return errors.New("'queueEntriesPerBatch' must be > 0")
@@ -128,12 +123,6 @@ type Config struct {
 	AkamaiPurger struct {
 		cmd.ServiceConfig
 
-		// PurgeInterval is the duration waited between dispatching an Akamai
-		// purge request containing 'DepracatedQueueEntriesPerBatch' * 3 URLs.
-		// Deprecated: TODO(#6003) this field is can be removed in favor of the
-		// `Throughput.PurgeBatchInterval`.
-		PurgeInterval cmd.ConfigDuration
-
 		// MaxQueueSize is the maximum size of the purger stack. If this value
 		// isn't provided it will default to `defaultQueueSize`.
 		MaxQueueSize int
@@ -155,17 +144,11 @@ type Config struct {
 		// PurgeRetryBackoff is the base duration that will be waited before
 		// attempting to purge a batch of URLs which previously failed to be
 		// purged.
-		PurgeRetryBackoff cmd.ConfigDuration
+		PurgeRetryBackoff config.Duration
 	}
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 	Beeline       cmd.BeelineConfig
-}
-
-// TODO(#6003) remove entirely.
-func (c *Config) useDeprecatedSettings() {
-	c.AkamaiPurger.Throughput.PurgeBatchInterval = c.AkamaiPurger.PurgeInterval
-	c.AkamaiPurger.Throughput.QueueEntriesPerBatch = DeprecatedQueueEntriesPerBatch
 }
 
 // cachePurgeClient is testing interface.
@@ -316,21 +299,8 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	// TODO(#6003) This block satisfies our deployability guidelines and can be
-	// removed entirely once the 'purgeInterval' key has been removed from all
-	// staging and production configuration.
-	usingDeprecatedThroughput := apc.PurgeInterval.Duration != 0
-	usingNewThroughput := apc.Throughput != Throughput{}
-	if usingDeprecatedThroughput && usingNewThroughput {
-		cmd.Fail("Config cannot specify both 'throughput': {...} AND 'purgeInterval'")
-	}
-	if usingDeprecatedThroughput && !usingNewThroughput {
-		c.useDeprecatedSettings()
-	}
-
-	// When the operator hasn't specified any throughput settings, use the
-	// optimized defaults. TODO(#6003) remove 'usingDeprecatedThroughput'.
-	if !usingDeprecatedThroughput && !usingNewThroughput {
+	// Unless otherwise specified, use optimized throughput settings.
+	if (apc.Throughput == Throughput{}) {
 		apc.Throughput.useOptimizedDefaults()
 	}
 	cmd.FailOnError(apc.Throughput.validate(), "")
@@ -433,18 +403,12 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		stopped <- true
 	}()
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-
-	grpcSrv, l, err := bgrpc.NewServer(c.AkamaiPurger.GRPC, tlsConfig, serverMetrics, clk)
+	start, stopFn, err := bgrpc.NewServer(c.AkamaiPurger.GRPC).Add(
+		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
 
-	akamaipb.RegisterAkamaiPurgerServer(grpcSrv, ap)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
-
 	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
+		stopFn()
 
 		// Stop the ticker and signal that we want to shutdown by writing to the
 		// stop channel. We wait 15 seconds for any remaining URLs to be emptied
@@ -457,8 +421,7 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		case <-stopped:
 		}
 	})
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-	cmd.FailOnError(err, "akamai-purger gRPC service failed")
+	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
 
 	// When we get a SIGTERM, we will exit from grpcSrv.Serve as soon as all
 	// extant RPCs have been processed, but we want the process to stick around

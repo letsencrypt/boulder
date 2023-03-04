@@ -13,7 +13,13 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/emptypb"
+
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -21,10 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/mail"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/sa"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 const blockedKeysGaugeLimit = 1000
@@ -148,13 +150,18 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 		initialID = batch[len(batch)-1].ID
 		for _, serial := range batch {
 			var unrevokedCert unrevokedCertificate
+			// NOTE: This has a `LIMIT 1` because the certificateStatus and precertificates
+			// tables do not have a UNIQUE KEY on serial (for partitioning reasons). So it's
+			// possible we could get multiple results for a single serial number, but they
+			// would be duplicates.
 			err = bkr.dbMap.SelectOne(
 				&unrevokedCert,
 				`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
 				FROM certificateStatus AS cs
 				JOIN precertificates AS c
 				ON cs.serial = c.serial
-				WHERE cs.serial = ?`,
+				WHERE cs.serial = ?
+				LIMIT 1`,
 				serial.CertSerial,
 			)
 			if err != nil {
@@ -256,6 +263,7 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[s
 			}
 			_, err := bkr.raClient.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 				Cert:      cert.DER,
+				Serial:    cert.Serial,
 				Code:      int64(ocsp.KeyCompromise),
 				AdminName: "bad-key-revoker",
 			})
@@ -396,12 +404,12 @@ type Config struct {
 		// Interval specifies the minimum duration bad-key-revoker
 		// should sleep between attempting to find blockedKeys rows to
 		// process when there is an error or no work to do.
-		Interval cmd.ConfigDuration
+		Interval config.Duration
 
 		// BackoffIntervalMax specifies a maximum duration the backoff
 		// algorithm will wait before retrying in the event of error
 		// or no work to do.
-		BackoffIntervalMax cmd.ConfigDuration
+		BackoffIntervalMax config.Duration
 
 		Mailer struct {
 			cmd.SMTPConfig
@@ -446,8 +454,7 @@ func main() {
 	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	clientMetrics := bgrpc.NewClientMetrics(scope)
-	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, clientMetrics, clk)
+	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to RA")
 	rac := rapb.NewRegistrationAuthorityClient(conn)
 

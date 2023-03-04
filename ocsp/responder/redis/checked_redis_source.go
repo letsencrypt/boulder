@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 
 	"github.com/go-gorp/gorp/v3"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
+	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/ocsp/responder"
 	"github.com/letsencrypt/boulder/sa"
@@ -41,16 +43,26 @@ type rocspSourceInterface interface {
 type checkedRedisSource struct {
 	base    rocspSourceInterface
 	dbMap   dbSelector
-	sac     sapb.StorageAuthorityClient
+	sac     sapb.StorageAuthorityReadOnlyClient
 	counter *prometheus.CounterVec
 	log     blog.Logger
 }
 
 // NewCheckedRedisSource builds a source that queries both the DB and Redis, and confirms
 // the value in Redis matches the DB.
-func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.StorageAuthorityClient, stats prometheus.Registerer, log blog.Logger) (*checkedRedisSource, error) {
+func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) (*checkedRedisSource, error) {
 	if base == nil {
 		return nil, errors.New("base was nil")
+	}
+
+	// We have to use reflect here because these arguments are interfaces, and
+	// thus checking for nil the normal way doesn't work reliably, because they
+	// may be non-nil interfaces whose inner value is still nil, i.e. "boxed nil".
+	// But using reflect here is okay, because we only expect this constructor to
+	// be called once per process.
+	if (reflect.TypeOf(sac) == nil || reflect.ValueOf(sac).IsNil()) &&
+		(reflect.TypeOf(dbMap) == nil || reflect.ValueOf(dbMap).IsNil()) {
+		return nil, errors.New("either SA gRPC or direct DB connection must be provided")
 	}
 
 	return newCheckedRedisSource(base, dbMap, sac, stats, log), nil
@@ -58,7 +70,7 @@ func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.Storage
 
 // newCheckRedisSource is an internal-only constructor that takes a private interface as a parameter.
 // We call this from tests and from NewCheckedRedisSource.
-func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, sac sapb.StorageAuthorityClient, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
+func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "checked_rocsp_responses",
 		Help: "Count of OCSP requests/responses from checkedRedisSource, by result",
@@ -102,7 +114,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 	if dbErr != nil {
 		// If the DB says "not found", the certificate either doesn't exist or has
 		// expired and been removed from the DB. We don't need to check the Redis error.
-		if db.IsNoRows(dbErr) {
+		if db.IsNoRows(dbErr) || errors.Is(dbErr, berrors.NotFound) {
 			src.counter.WithLabelValues("not_found").Inc()
 			return nil, responder.ErrNotFound
 		}

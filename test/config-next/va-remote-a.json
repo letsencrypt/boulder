@@ -2,11 +2,6 @@
   "va": {
     "userAgent": "boulder-remote-a",
     "debugAddr": ":8011",
-    "portConfig": {
-      "httpPort": 5002,
-      "httpsPort": 5001,
-      "tlsPort": 5001
-    },
     "dnsTries": 3,
     "dnsResolver": "service.consul",
     "dnsTimeout": "1s",
@@ -14,16 +9,24 @@
     "issuerDomain": "happy-hacker-ca.invalid",
     "tls": {
       "caCertfile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/rva.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/rva.service.consul/key.pem"
+      "certFile": "test/grpc-creds/rva.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/rva.boulder/key.pem"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9097",
-      "clientNames": [
-        "health-checker.service.consul",
-        "va.service.consul"
-      ]
+      "services": {
+        "va.VA": {
+          "clientNames": [
+            "va.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
+      }
     },
     "features": {
       "CAAValidationMethods": true,

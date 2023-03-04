@@ -54,9 +54,9 @@ type certificateAuthorityImpl struct {
 	capb.UnimplementedOCSPGeneratorServer
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
-	ocsp    *ocspImpl
-	crl     *crlImpl
 	issuers issuerMaps
+	// TODO(#6448): Remove this.
+	ocsp capb.OCSPGeneratorServer
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -101,8 +101,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
-	ocsp *ocspImpl,
-	crl *crlImpl,
+	ocsp capb.OCSPGeneratorServer,
 	boulderIssuers []*issuance.Issuer,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
@@ -154,7 +153,6 @@ func NewCertificateAuthorityImpl(
 		sa:                 sa,
 		pa:                 pa,
 		ocsp:               ocsp,
-		crl:                crl,
 		issuers:            issuers,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
@@ -217,14 +215,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	if err != nil {
 		return nil, err
 	}
-	issuerID := issuer.Cert.NameID()
+	issuerNameID := issuer.Cert.NameID()
 
 	req := &sapb.AddCertificateRequest{
-		Der:      precertDER,
-		RegID:    regID,
-		Ocsp:     ocspResp.Response,
-		Issued:   nowNanos,
-		IssuerID: int64(issuerID),
+		Der:          precertDER,
+		RegID:        regID,
+		Ocsp:         ocspResp,
+		Issued:       nowNanos,
+		IssuerNameID: int64(issuerNameID),
 	}
 
 	_, err = ca.sa.AddPrecertificate(ctx, req)
@@ -234,14 +232,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
 		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(precertDER), issuerID, issueReq.RegistrationID, issueReq.OrderID, err)
+			serialHex, hex.EncodeToString(precertDER), issuerNameID, issueReq.RegistrationID, issueReq.OrderID, err)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
-				OCSPResp: ocspResp.Response,
+				OCSPResp: ocspResp,
 				Precert:  true,
-				IssuerID: int64(issuerID),
+				IssuerID: int64(issuerNameID),
 			})
 		}
 		return nil, err
@@ -373,7 +371,7 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *capb.OCSPResponse, *issuance.Issuer, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
 		return nil, nil, nil, err
@@ -416,16 +414,20 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 
 	serialHex := core.SerialToString(serialBigInt)
 
-	// Generate ocsp response before issuing precertificate
-	ocspResp, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:   serialHex,
-		IssuerID: int64(issuer.Cert.NameID()),
-		Status:   string(core.OCSPStatusGood),
-	})
-	if err != nil {
-		err = berrors.InternalServerError(err.Error())
-		ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
-		return nil, nil, nil, err
+	var ocspResp []byte
+	if !features.Enabled(features.ROCSPStage7) {
+		// Generate ocsp response before issuing precertificate
+		ocspRespPB, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
+			Serial:   serialHex,
+			IssuerID: int64(issuer.Cert.NameID()),
+			Status:   string(core.OCSPStatusGood),
+		})
+		if err != nil {
+			err = berrors.InternalServerError(err.Error())
+			ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
+			return nil, nil, nil, err
+		}
+		ocspResp = ocspRespPB.Response
 	}
 
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
@@ -473,8 +475,8 @@ func (ca *certificateAuthorityImpl) storeCertificate(
 		err = berrors.InternalServerError(err.Error())
 		// Note: This log line is parsed by cmd/orphan-finder. If you make any
 		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s] cert=[%s] err=[%v], regID=[%d], orderID=[%d]",
-			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), err, regID, orderID)
+		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
+			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), issuerID, regID, orderID, err)
 		if ca.orphanQueue != nil {
 			ca.queueOrphan(&orphanedCert{
 				DER:      certDER,
@@ -545,11 +547,11 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	issued := cert.NotBefore.Add(ca.backdate)
 	if orphan.Precert {
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:      orphan.DER,
-			RegID:    orphan.RegID,
-			Ocsp:     orphan.OCSPResp,
-			Issued:   issued.UnixNano(),
-			IssuerID: orphan.IssuerID,
+			Der:          orphan.DER,
+			RegID:        orphan.RegID,
+			Ocsp:         orphan.OCSPResp,
+			Issued:       issued.UnixNano(),
+			IssuerNameID: orphan.IssuerID,
 		})
 		if err != nil && !errors.Is(err, berrors.Duplicate) {
 			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
@@ -575,18 +577,4 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 	}
 	ca.adoptedOrphanCount.With(prometheus.Labels{"type": typ}).Inc()
 	return nil
-}
-
-// GenerateOCSP is simply a passthrough to ocspImpl.GenerateOCSP so that other
-// services which need to talk to the CA anyway can do so without configuring
-// two separate gRPC service backends.
-func (ca *certificateAuthorityImpl) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
-	return ca.ocsp.GenerateOCSP(ctx, req)
-}
-
-// GenerateCRL is simply a passthrough to crlImpl.GenerateCRL so that other
-// services which need to talk to the CA anyway can do so without configuring
-// two separate gRPC service backends.
-func (ca *certificateAuthorityImpl) GenerateCRL(stream capb.CertificateAuthority_GenerateCRLServer) error {
-	return ca.crl.GenerateCRL(stream)
 }

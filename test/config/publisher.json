@@ -25,15 +25,15 @@
       "maxConnectionAge": "30s",
       "address": ":9091",
       "clientNames": [
-        "health-checker.service.consul",
-        "ocsp-updater.service.consul",
-        "ra.service.consul"
+        "health-checker.boulder",
+        "ocsp-updater.boulder",
+        "ra.boulder"
       ]
     },
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/publisher.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/publisher.service.consul/key.pem"
+      "certFile": "test/grpc-creds/publisher.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/publisher.boulder/key.pem"
     },
     "features": {
     }

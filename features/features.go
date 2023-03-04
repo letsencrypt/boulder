@@ -13,13 +13,7 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
-	PrecertificateRevocation
-	StripDefaultSchemePort
-	NonCFSSLSigner
-	StoreIssuerInfo
-	StreamlineOrderAndAuthzs
-	V1DisableNewValidations
-	ExpirationMailerDontLookTwice
+	StoreRevokerInfo
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -32,91 +26,47 @@ const (
 	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
 	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
-	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
-	// resources.
-	MandatoryPOSTAsGET
-	// Allow creation of new registrations in ACMEv1.
-	AllowV1Registration
-	// StoreRevokerInfo enables storage of the revoker and a bool indicating if the row
-	// was checked for extant unrevoked certificates in the blockedKeys table.
-	StoreRevokerInfo
-	// RestrictRSAKeySizes enables restriction of acceptable RSA public key moduli to
-	// the common sizes (2048, 3072, and 4096 bits).
-	RestrictRSAKeySizes
-	// FasterNewOrdersRateLimit enables use of a separate table for counting the
-	// new orders rate limit.
-	FasterNewOrdersRateLimit
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
 	// ServeRenewalInfo exposes the renewalInfo endpoint in the directory and for
 	// GET requests. WARNING: This feature is a draft and highly unstable.
 	ServeRenewalInfo
-	// GetAuthzReadOnly causes the SA to use its read-only database connection
-	// (which is generally pointed at a replica rather than the primary db) when
-	// querying the authz2 table.
-	GetAuthzReadOnly
-	// GetAuthzUseIndex causes the SA to use to add a USE INDEX hint when it
-	// queries the authz2 table.
-	GetAuthzUseIndex
-	// Check the failed authorization limit before doing authz reuse.
-	CheckFailedAuthorizationsFirst
-	// AllowReRevocation causes the RA to allow the revocation reason of an
-	// already-revoked certificate to be updated to `keyCompromise` from any
-	// other reason if that compromise is demonstrated by making the second
-	// revocation request signed by the certificate keypair.
-	AllowReRevocation
-	// MozRevocationReasons causes the RA to enforce the following upcoming
-	// Mozilla policies regarding revocation:
-	// - A subscriber can request that their certificate be revoked with reason
-	//   keyCompromise, even without demonstrating that compromise at the time.
-	//   However, the cert's pubkey will not be added to the blocked keys list.
-	// - When an applicant other than the original subscriber requests that a
-	//   certificate be revoked (by demonstrating control over all names in it),
-	//   the cert will be revoked with reason cessationOfOperation, regardless of
-	//   what revocation reason they request.
-	// - When anyone requests that a certificate be revoked by signing the request
-	//   with the certificate's keypair, the cert will be revoked with reason
-	//   keyCompromise, regardless of what revocation reason they request.
-	MozRevocationReasons
-	// OldTLSOutbound allows the VA to negotiate TLS 1.0 and TLS 1.1 during
-	// HTTPS redirects. When it is set to false, the VA will only connect to
-	// HTTPS servers that support TLS 1.2 or above.
-	OldTLSOutbound
-	// OldTLSInbound controls whether the WFE rejects inbound requests using
-	// TLS 1.0 and TLS 1.1. Because WFE does not terminate TLS in production,
-	// we rely on the TLS-Version header (set by our reverse proxy).
-	OldTLSInbound
-	// SHA1CSRs controls whether the /acme/finalize endpoint rejects CSRs that
-	// are self-signed using SHA1.
-	SHA1CSRs
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
-	// RejectDuplicateCSRExtensions enables verification that submitted CSRs do
-	// not contain duplicate extensions. This behavior will be on by default in
-	// go1.19.
-	RejectDuplicateCSRExtensions
 
-	// ROCSPStage1 enables querying Redis, live-signing response, and storing
-	// to Redis, but doesn't serve responses from Redis.
-	ROCSPStage1
-	// ROCSPStage2 enables querying Redis, live-signing a response, and storing
-	// to Redis, and does serve responses from Redis when appropriate (when
-	// they are fresh, and agree with MariaDB's status for the certificate).
-	ROCSPStage2
-	// ROCSPStage3 enables querying Redis, live-signing a response, and serving
-	// from Redis, without any fallback to serving bytes from MariaDB. In this
-	// mode we still make a parallel request to MariaDB to cross-check the
-	// _status_ of the response. If that request indicates a different status
-	// than what's stored in Redis, we'll trigger a fresh signing and serve and
-	// store the result.
-	ROCSPStage3
 	// ROCSPStage6 disables writing full OCSP Responses to MariaDB during
 	// (pre)certificate issuance and during revocation. Because Stage 4 involved
 	// disabling ocsp-updater, this means that no ocsp response bytes will be
 	// written to the database anymore.
 	ROCSPStage6
+	// ROCSPStage7 disables generating OCSP responses during issuance and
+	// revocation. This affects codepaths in both the RA (revocation) and the CA
+	// (precert "birth certificates").
+	ROCSPStage7
+
+	// ExpirationMailerUsesJoin enables using a JOIN query in expiration-mailer
+	// rather than a SELECT from certificateStatus followed by thousands of
+	// one-row SELECTs from certificates.
+	ExpirationMailerUsesJoin
+
+	// CertCheckerChecksValidations enables an extra query for each certificate
+	// checked, to find the relevant authzs. Since this query might be
+	// expensive, we gate it behind a feature flag.
+	CertCheckerChecksValidations
+
+	// CertCheckerRequiresValidations causes cert-checker to fail if the
+	// query enabled by CertCheckerChecksValidations didn't find corresponding
+	// authorizations.
+	CertCheckerRequiresValidations
+
+	// AsyncFinalize enables the RA to return approximately immediately from
+	// requests to finalize orders. This allows us to take longer getting SCTs,
+	// issuing certs, and updating the database; it indirectly reduces the number
+	// of "orphaned" certs we have. However, it also requires clients to properly
+	// implement polling the Order object to wait for the cert URL to appear.
+	AsyncFinalize
 )
 
 // List of features and their default value, protected by fMu
@@ -126,34 +76,16 @@ var features = map[FeatureFlag]bool{
 	CAAAccountURI:                  false,
 	EnforceMultiVA:                 false,
 	MultiVAFullResults:             false,
-	MandatoryPOSTAsGET:             false,
-	AllowV1Registration:            true,
-	V1DisableNewValidations:        false,
-	PrecertificateRevocation:       false,
-	StripDefaultSchemePort:         false,
-	StoreIssuerInfo:                false,
 	StoreRevokerInfo:               false,
-	RestrictRSAKeySizes:            false,
-	FasterNewOrdersRateLimit:       false,
-	NonCFSSLSigner:                 false,
 	ECDSAForAll:                    false,
-	StreamlineOrderAndAuthzs:       false,
 	ServeRenewalInfo:               false,
-	GetAuthzReadOnly:               false,
-	GetAuthzUseIndex:               false,
-	CheckFailedAuthorizationsFirst: false,
-	AllowReRevocation:              false,
-	MozRevocationReasons:           false,
-	OldTLSOutbound:                 true,
-	OldTLSInbound:                  true,
-	SHA1CSRs:                       true,
 	AllowUnrecognizedFeatures:      false,
-	ExpirationMailerDontLookTwice:  false,
-	RejectDuplicateCSRExtensions:   false,
-	ROCSPStage1:                    false,
-	ROCSPStage2:                    false,
-	ROCSPStage3:                    false,
 	ROCSPStage6:                    false,
+	ROCSPStage7:                    false,
+	ExpirationMailerUsesJoin:       false,
+	CertCheckerChecksValidations:   false,
+	CertCheckerRequiresValidations: false,
+	AsyncFinalize:                  false,
 }
 
 var fMu = new(sync.RWMutex)

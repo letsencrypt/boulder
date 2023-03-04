@@ -9,8 +9,6 @@ import "core/proto/core.proto";
 service CertificateAuthority {
   rpc IssuePrecertificate(IssueCertificateRequest) returns (IssuePrecertificateResponse) {}
   rpc IssueCertificateForPrecertificate(IssueCertificateForPrecertificateRequest) returns (core.Certificate) {}
-  rpc GenerateOCSP(GenerateOCSPRequest) returns (OCSPResponse) {}
-  rpc GenerateCRL(stream GenerateCRLRequest) returns (stream GenerateCRLResponse) {}
 }
 
 message IssueCertificateRequest {

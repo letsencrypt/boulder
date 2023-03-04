@@ -5,9 +5,6 @@ import (
 	"os"
 	"time"
 
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -24,23 +21,11 @@ type Config struct {
 
 		IssuerDomain string
 
-		PortConfig cmd.PortConfig
-
-		// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
-		// needed to resolve CAA addresses over multiple paths
-		CAADistributedResolver struct {
-			Timeout     cmd.ConfigDuration
-			MaxFailures int
-			Proxies     []string
-		}
-
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
-		DNSTries    int
-		DNSResolver string
-		// Deprecated, replaced by singular DNSResolver above.
-		DNSResolvers              []string
+		DNSTries                  int
+		DNSResolver               string
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
@@ -56,8 +41,12 @@ type Config struct {
 	OpenTelemetry cmd.OpenTelemetryConfig
 	Beeline       cmd.BeelineConfig
 
+	// TODO(#6716): Remove Config.Common once all instances of it have been
+	// removed from production config files.
 	Common struct {
-		DNSTimeout                string
+		// DEPRECATED: Use VA.DNSTimeout instead.
+		DNSTimeout string
+		// DEPRECATED: Use VA.DNSAllowLoopbackAddresses instead.
 		DNSAllowLoopbackAddresses bool
 	}
 }
@@ -91,21 +80,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	pc := &cmd.PortConfig{
-		HTTPPort:  80,
-		HTTPSPort: 443,
-		TLSPort:   443,
-	}
-	if c.VA.PortConfig.HTTPPort != 0 {
-		pc.HTTPPort = c.VA.PortConfig.HTTPPort
-	}
-	if c.VA.PortConfig.HTTPSPort != 0 {
-		pc.HTTPSPort = c.VA.PortConfig.HTTPSPort
-	}
-	if c.VA.PortConfig.TLSPort != 0 {
-		pc.TLSPort = c.VA.PortConfig.TLSPort
-	}
-
 	var dnsTimeout time.Duration
 	if c.VA.DNSTimeout != "" {
 		dnsTimeout, err = time.ParseDuration(c.VA.DNSTimeout)
@@ -120,13 +94,11 @@ func main() {
 	clk := cmd.Clock()
 
 	var servers bdns.ServerProvider
-	if c.VA.DNSResolver != "" {
-		servers, err = bdns.StartDynamicProvider(c.VA.DNSResolver, 60*time.Second)
-		cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
-	} else {
-		servers, err = bdns.NewStaticProvider(c.VA.DNSResolvers)
-		cmd.FailOnError(err, "Couldn't parse static DNS server(s)")
+	if c.VA.DNSResolver == "" {
+		cmd.Fail("Config key 'dnsresolver' is required")
 	}
+	servers, err = bdns.StartDynamicProvider(c.VA.DNSResolver, 60*time.Second)
+	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 
 	var resolver bdns.Client
 	if !(c.VA.DNSAllowLoopbackAddresses || c.Common.DNSAllowLoopbackAddresses) {
@@ -150,12 +122,11 @@ func main() {
 	tlsConfig, err := c.VA.TLS.Load()
 	cmd.FailOnError(err, "tlsConfig config")
 
-	clientMetrics := bgrpc.NewClientMetrics(scope)
 	var remotes []va.RemoteVA
 	if len(c.VA.RemoteVAs) > 0 {
 		for _, rva := range c.VA.RemoteVAs {
 			rva := rva
-			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, clientMetrics, clk)
+			vaConn, err := bgrpc.ClientSetup(&rva, tlsConfig, scope, clk)
 			cmd.FailOnError(err, "Unable to create remote VA client")
 			remotes = append(
 				remotes,
@@ -168,7 +139,6 @@ func main() {
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(
-		pc,
 		resolver,
 		remotes,
 		c.VA.MaxRemoteValidationFailures,
@@ -180,24 +150,17 @@ func main() {
 		c.VA.AccountURIPrefixes)
 	cmd.FailOnError(err, "Unable to create VA server")
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, l, err := bgrpc.NewServer(c.VA.GRPC, tlsConfig, serverMetrics, clk)
+	start, stop, err := bgrpc.NewServer(c.VA.GRPC).Add(
+		&vapb.VA_ServiceDesc, vai).Add(
+		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
-	vapb.RegisterVAServer(grpcSrv, vai)
-	cmd.FailOnError(err, "Unable to register VA gRPC server")
-	vapb.RegisterCAAServer(grpcSrv, vai)
-	cmd.FailOnError(err, "Unable to register CAA gRPC server")
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
 	go cmd.CatchSignals(logger, func() {
 		servers.Stop()
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
+		stop()
 	})
 
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(l))
-	cmd.FailOnError(err, "VA gRPC service failed")
+	cmd.FailOnError(start(), "VA gRPC service failed")
 }
 
 func init() {

@@ -35,6 +35,6 @@ except KeyboardInterrupt:
     print("\nstopping servers.")
 except OSError as v:
     # Ignore EINTR, which happens when we get SIGTERM or SIGINT (i.e. when
-    # someone hits Ctrl-C after running docker-compose up or start.py.
+    # someone hits Ctrl-C after running `docker compose up` or start.py.
     if v.errno != errno.EINTR:
         raise

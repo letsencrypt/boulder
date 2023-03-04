@@ -28,7 +28,6 @@ import (
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/ra"
-	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -39,11 +38,11 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type mockCA struct {
+type mockOCSPA struct {
 	mocks.MockCA
 }
 
-func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
+func (ca *mockOCSPA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{Response: []byte("fakeocspbytes")}, nil
 }
 
@@ -100,7 +99,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 			core.SerialToString(entries[0].serial),
 			entries[0].regId,
 			42,
-			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format("2006-01-02 15:04:05"),
+			testCtx.revoker.clk.Now().Add(-time.Hour*24*7).Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "while inserting row into incident table")
@@ -404,10 +403,10 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 
 	_, err = c.ssa.AddPrecertificate(
 		context.Background(), &sapb.AddCertificateRequest{
-			Der:      rawCert,
-			RegID:    regId,
-			Issued:   time.Now().UnixNano(),
-			IssuerID: 1,
+			Der:          rawCert,
+			RegID:        regId,
+			Issued:       time.Now().UnixNano(),
+			IssuerNameID: 1,
 		},
 	)
 	test.AssertNotError(t, err, "Failed to add test precert")
@@ -447,11 +446,8 @@ func setup(t *testing.T) testCtx {
 	}
 	incidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidents, sa.DbSettings{})
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
-	rocspIssuers, err := rocsp_config.LoadIssuers(map[string]int{
-		"../../test/hierarchy/int-r3.cert.pem": 102,
-	})
-	test.AssertNotError(t, err, "error loading issuers")
-	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, rocspIssuers, fc, log, metrics.NoopRegisterer, 1)
+
+	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -473,18 +469,18 @@ func setup(t *testing.T) testCtx {
 		1,
 		goodkey.KeyPolicy{},
 		100,
-		true,
 		300*24*time.Hour,
 		7*24*time.Hour,
 		nil,
 		nil,
+		0,
 		0,
 		nil,
 		&mockPurger{},
 		[]*issuance.Certificate{issuer},
 	)
 	ra.SA = isa.SA{Impl: ssa}
-	ra.CA = &mockCA{}
+	ra.OCSP = &mockOCSPA{}
 	rac := ira.RA{Impl: ra}
 
 	return testCtx{

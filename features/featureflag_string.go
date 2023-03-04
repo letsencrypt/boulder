@@ -9,43 +9,25 @@ func _() {
 	// Re-run the stringer command to generate them again.
 	var x [1]struct{}
 	_ = x[unused-0]
-	_ = x[PrecertificateRevocation-1]
-	_ = x[StripDefaultSchemePort-2]
-	_ = x[NonCFSSLSigner-3]
-	_ = x[StoreIssuerInfo-4]
-	_ = x[StreamlineOrderAndAuthzs-5]
-	_ = x[V1DisableNewValidations-6]
-	_ = x[ExpirationMailerDontLookTwice-7]
-	_ = x[CAAValidationMethods-8]
-	_ = x[CAAAccountURI-9]
-	_ = x[EnforceMultiVA-10]
-	_ = x[MultiVAFullResults-11]
-	_ = x[MandatoryPOSTAsGET-12]
-	_ = x[AllowV1Registration-13]
-	_ = x[StoreRevokerInfo-14]
-	_ = x[RestrictRSAKeySizes-15]
-	_ = x[FasterNewOrdersRateLimit-16]
-	_ = x[ECDSAForAll-17]
-	_ = x[ServeRenewalInfo-18]
-	_ = x[GetAuthzReadOnly-19]
-	_ = x[GetAuthzUseIndex-20]
-	_ = x[CheckFailedAuthorizationsFirst-21]
-	_ = x[AllowReRevocation-22]
-	_ = x[MozRevocationReasons-23]
-	_ = x[OldTLSOutbound-24]
-	_ = x[OldTLSInbound-25]
-	_ = x[SHA1CSRs-26]
-	_ = x[AllowUnrecognizedFeatures-27]
-	_ = x[RejectDuplicateCSRExtensions-28]
-	_ = x[ROCSPStage1-29]
-	_ = x[ROCSPStage2-30]
-	_ = x[ROCSPStage3-31]
-	_ = x[ROCSPStage6-32]
+	_ = x[StoreRevokerInfo-1]
+	_ = x[CAAValidationMethods-2]
+	_ = x[CAAAccountURI-3]
+	_ = x[EnforceMultiVA-4]
+	_ = x[MultiVAFullResults-5]
+	_ = x[ECDSAForAll-6]
+	_ = x[ServeRenewalInfo-7]
+	_ = x[AllowUnrecognizedFeatures-8]
+	_ = x[ROCSPStage6-9]
+	_ = x[ROCSPStage7-10]
+	_ = x[ExpirationMailerUsesJoin-11]
+	_ = x[CertCheckerChecksValidations-12]
+	_ = x[CertCheckerRequiresValidations-13]
+	_ = x[AsyncFinalize-14]
 }
 
-const _FeatureFlag_name = "unusedPrecertificateRevocationStripDefaultSchemePortNonCFSSLSignerStoreIssuerInfoStreamlineOrderAndAuthzsV1DisableNewValidationsExpirationMailerDontLookTwiceCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsMandatoryPOSTAsGETAllowV1RegistrationStoreRevokerInfoRestrictRSAKeySizesFasterNewOrdersRateLimitECDSAForAllServeRenewalInfoGetAuthzReadOnlyGetAuthzUseIndexCheckFailedAuthorizationsFirstAllowReRevocationMozRevocationReasonsOldTLSOutboundOldTLSInboundSHA1CSRsAllowUnrecognizedFeaturesRejectDuplicateCSRExtensionsROCSPStage1ROCSPStage2ROCSPStage3ROCSPStage6"
+const _FeatureFlag_name = "unusedStoreRevokerInfoCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage6ROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalize"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 30, 52, 66, 81, 105, 128, 157, 177, 190, 204, 222, 240, 259, 275, 294, 318, 329, 345, 361, 377, 407, 424, 444, 458, 471, 479, 504, 532, 543, 554, 565, 576}
+var _FeatureFlag_index = [...]uint16{0, 6, 22, 42, 55, 69, 87, 98, 114, 139, 150, 161, 185, 213, 243, 256}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

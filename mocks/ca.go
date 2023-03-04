@@ -44,12 +44,16 @@ func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *ca
 	}, nil
 }
 
+type MockOCSPGenerator struct{}
+
 // GenerateOCSP is a mock
-func (ca *MockCA) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
+func (ca *MockOCSPGenerator) GenerateOCSP(ctx context.Context, req *capb.GenerateOCSPRequest, _ ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return nil, nil
 }
 
+type MockCRLGenerator struct{}
+
 // GenerateCRL is a mock
-func (ca *MockCA) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (capb.CertificateAuthority_GenerateCRLClient, error) {
+func (ca *MockCRLGenerator) GenerateCRL(ctx context.Context, opts ...grpc.CallOption) (capb.CRLGenerator_GenerateCRLClient, error) {
 	return nil, nil
 }

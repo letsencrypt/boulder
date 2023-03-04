@@ -40,9 +40,8 @@ type RequestEvent struct {
 	Contacts       []string `json:",omitempty"`
 	UserAgent      string   `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
-	Origin  string                 `json:",omitempty"`
-	Payload string                 `json:",omitempty"`
-	Extra   map[string]interface{} `json:",omitempty"`
+	Origin string                 `json:",omitempty"`
+	Extra  map[string]interface{} `json:",omitempty"`
 
 	// For endpoints that create objects, the ID of the newly created object.
 	Created string `json:",omitempty"`
@@ -50,8 +49,12 @@ type RequestEvent struct {
 	// For challenge and authorization GETs and POSTs:
 	// the status of the authorization at the time the request began.
 	Status string `json:",omitempty"`
-	// The DNS name, if applicable
+	// The DNS name, if there is a single relevant name, for instance
+	// in an authorization or challenge request.
 	DNSName string `json:",omitempty"`
+	// The set of DNS names, if there are potentially multiple relevant
+	// names, for instance in a new-order, finalize, or revoke request.
+	DNSNames []string `json:",omitempty"`
 
 	// For challenge POSTs, the challenge type.
 	ChallengeType string `json:",omitempty"`
@@ -124,13 +127,18 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	logEvent := &RequestEvent{
 		RealIP:    realIP,
 		Method:    r.Method,
-		TLS:       r.Header.Get("TLS-Version"),
 		UserAgent: r.Header.Get("User-Agent"),
 		Origin:    r.Header.Get("Origin"),
 		Extra:     make(map[string]interface{}),
 	}
 
+	// We specifically override the default r.Context() because we would prefer
+	// for clients to not be able to cancel our operations in arbitrary places.
+	// Instead we start a new context, and apply timeouts in our various RPCs.
+	// TODO(go1.22?): Use context.Detach()
 	span := trace.SpanFromContext(r.Context())
+	ctx := trace.ContextWithSpan(context.Background(), span)
+	r = r.WithContext(ctx)
 	span.SetAttributes(
 		attribute.String("real_ip", logEvent.RealIP),
 		attribute.String("method", logEvent.Method),
@@ -145,10 +153,9 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//
 	// The main reason we want to strip these ports out is so that when this header
 	// is sent to the /directory endpoint we don't reply with directory URLs that
-	// also contain these ports, which would then in turn end up being sent in the JWS
-	// signature 'url' header, which we don't support.
+	// also contain these ports.
 	//
-	// We unconditionally strip :443 even when r.TLS is nil because the WFE/WFE2
+	// We unconditionally strip :443 even when r.TLS is nil because the WFE2
 	// may be deployed HTTP-only behind another service that terminates HTTPS on
 	// its behalf.
 	r.Host = strings.TrimSuffix(r.Host, ":443")

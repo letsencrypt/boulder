@@ -13,39 +13,38 @@
       "maxOpenConns": 100
     },
     "ParallelismPerRPC": 20,
+    "lagFactor": "200ms",
     "debugAddr": ":8003",
     "tls": {
       "caCertFile": "test/grpc-creds/minica.pem",
-      "certFile": "test/grpc-creds/sa.service.consul/cert.pem",
-      "keyFile": "test/grpc-creds/sa.service.consul/key.pem"
+      "certFile": "test/grpc-creds/sa.boulder/cert.pem",
+      "keyFile": "test/grpc-creds/sa.boulder/key.pem"
     },
     "grpc": {
       "maxConnectionAge": "30s",
       "address": ":9095",
-      "clientNames": [
-        "admin-revoker.service.consul",
-        "ca.service.consul",
-        "crl-updater.service.consul",
-        "expiration-mailer.service.consul",
-        "health-checker.service.consul",
-        "ocsp-responder.service.consul",
-        "orphan-finder.service.consul",
-        "ra.service.consul",
-        "sa.service.consul",
-        "wfe.service.consul"
-      ]
-    },
-    "redis": {
-      "username": "boulder-sa",
-      "passwordFile": "test/secrets/sa_redis_password",
-      "addrs": [
-        "10.33.33.7:4218"
-      ],
-      "timeout": "5s",
-      "tls": {
-        "caCertFile": "test/redis-tls/minica.pem",
-        "certFile": "test/redis-tls/boulder/cert.pem",
-        "keyFile": "test/redis-tls/boulder/key.pem"
+      "services": {
+        "sa.StorageAuthority": {
+          "clientNames": [
+            "admin-revoker.boulder",
+            "ca.boulder",
+            "expiration-mailer.boulder",
+            "orphan-finder.boulder",
+            "ra.boulder"
+          ]
+        },
+        "sa.StorageAuthorityReadOnly": {
+          "clientNames": [
+            "crl-updater.boulder",
+            "ocsp-responder.boulder",
+            "wfe.boulder"
+          ]
+        },
+        "grpc.health.v1.Health": {
+          "clientNames": [
+            "health-checker.boulder"
+          ]
+        }
       }
     },
     "issuers": {
@@ -55,10 +54,7 @@
       ".hierarchy/intermediate-cert-rsa-b.pem": 4
     },
     "features": {
-      "FasterNewOrdersRateLimit": true,
       "StoreRevokerInfo": true,
-      "GetAuthzReadOnly": true,
-      "GetAuthzUseIndex": true,
       "ROCSPStage6": true
     }
   },

@@ -25,7 +25,7 @@ func TestCAALogChecker(t *testing.T) {
 	test.AssertEquals(t, len(result.Order.Authorizations), 1)
 
 	// Should be no specific output, since everything is good
-	cmd := exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", "/var/log/boulder-va.log")
+	cmd := exec.Command("bin/boulder", "caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", "/var/log/boulder-va.log")
 	stdErr := new(bytes.Buffer)
 	cmd.Stderr = stdErr
 	out, err := cmd.Output()
@@ -41,7 +41,7 @@ func TestCAALogChecker(t *testing.T) {
 	tmp, err := os.CreateTemp(os.TempDir(), "boulder-va-empty")
 	test.AssertNotError(t, err, "failed to create temporary file")
 	defer os.Remove(tmp.Name())
-	cmd = exec.Command("bin/caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", tmp.Name())
+	cmd = exec.Command("bin/boulder", "caa-log-checker", "-ra-log", "/var/log/boulder-ra.log", "-va-logs", tmp.Name())
 	stdErr = new(bytes.Buffer)
 	cmd.Stderr = stdErr
 	out, err = cmd.Output()

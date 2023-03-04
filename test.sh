@@ -98,7 +98,7 @@ USAGE="$(cat -- <<-EOM
 Usage:
 Boulder test suite CLI, intended to be run inside of a Docker container:
 
-  docker-compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
+  docker compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
 
 With no options passed, runs standard battery of tests (lint, unit, and integration)
 
@@ -111,7 +111,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
     -s, --start-py                        Adds start to the list of tests to run
     -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
-    -m, --make-artifacts                  Adds make-artifacts to the list of tests to run
     -o, --list-integration-tests          Outputs a list of the available integration tests
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
 
@@ -128,7 +127,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts lueciosvgmnhp:f:-: OPT; do
+while getopts lueciosvgnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -145,7 +144,6 @@ while getopts lueciosvgmnhp:f:-: OPT; do
     s | start-py )                   RUN+=("start") ;;
     v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
-    m | make-artifacts )             RUN+=("make-artifacts") ;;
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
@@ -154,7 +152,7 @@ while getopts lueciosvgmnhp:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run. Order doesn't matter. Note: gomod-vendor 
+# The list of segments to run. Order doesn't matter. Note: gomod-vendor
 # is specifically left out of the defaults, because we don't want to run
 # it locally (it could delete local state).
 if [ -z "${RUN[@]+x}" ]
@@ -211,20 +209,15 @@ print_heading "Starting..."
 #
 STAGE="lints"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  # TODO(#6275): Remove this conditional and globally re-enable this test.
-  if [[ $(go version) == *go1.19* ]] ; then
-    print_heading "Skipping Lints"
-  else
-    print_heading "Running Lints"
-    golangci-lint run --timeout 9m ./...
-    python3 test/grafana/lint.py
-    # Check for common spelling errors using codespell.
-    # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
-    # words should be all lowercase).
-    run_and_expect_silence codespell \
-      --ignore-words=.codespell.ignore.txt \
-      --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
-  fi
+  print_heading "Running Lints"
+  golangci-lint run --timeout 9m ./...
+  python3 test/grafana/lint.py
+  # Check for common spelling errors using codespell.
+  # Update .codespell.ignore.txt if you find false positives (NOTE: ignored
+  # words should be all lowercase).
+  run_and_expect_silence codespell \
+    --ignore-words=.codespell.ignore.txt \
+    --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
 fi
 
 #
@@ -246,7 +239,7 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
-# `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
+# `docker compose up` works, since that just runs start.py (via entrypoint.sh).
 STAGE="start"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
@@ -276,30 +269,19 @@ fi
 # so will fail if imports are not available in $GOPATH.
 STAGE="generate"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  # TODO(#6275): Remove this conditional and globally re-enable this test.
-  if [[ $(go version) == *go1.19* ]] ; then
-    print_heading "Skipping Generate"
-  else
-    print_heading "Running Generate"
-    # Additionally, we need to run go install before go generate because the stringer command
-    # (using in ./grpc/) checks imports, and depends on the presence of a built .a
-    # file to determine an import really exists. See
-    # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
-    # Without this, we get error messages like:
-    #   stringer: checking package: grpc/bcodes.go:6:2: could not import
-    #     github.com/letsencrypt/boulder/probs (can't find import:
-    #     github.com/letsencrypt/boulder/probs)
-    go install ./probs
-    go install ./vendor/google.golang.org/grpc/codes
-    run_and_expect_silence go generate ./...
-    run_and_expect_silence git diff --exit-code .
-  fi
-fi
-
-STAGE="make-artifacts"
-if [[ "${RUN[@]}" =~ "$STAGE" ]]; then
-  print_heading "Running Make Artifacts"
-  make deb rpm tar
+  print_heading "Running Generate"
+  # Additionally, we need to run go install before go generate because the stringer command
+  # (using in ./grpc/) checks imports, and depends on the presence of a built .a
+  # file to determine an import really exists. See
+  # https://golang.org/src/go/internal/gcimporter/gcimporter.go#L30
+  # Without this, we get error messages like:
+  #   stringer: checking package: grpc/bcodes.go:6:2: could not import
+  #     github.com/letsencrypt/boulder/probs (can't find import:
+  #     github.com/letsencrypt/boulder/probs)
+  go install ./probs
+  go install ./vendor/google.golang.org/grpc/codes
+  run_and_expect_silence go generate ./...
+  run_and_expect_silence git diff --exit-code .
 fi
 
 # Because set -e stops execution in the instance of a command or pipeline

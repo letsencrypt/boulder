@@ -5,17 +5,16 @@ import (
 	"os"
 	"time"
 
-	"google.golang.org/grpc/health"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
-
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/policy"
@@ -38,17 +37,11 @@ type Config struct {
 		SAService           *cmd.GRPCClientConfig
 		VAService           *cmd.GRPCClientConfig
 		CAService           *cmd.GRPCClientConfig
+		OCSPService         *cmd.GRPCClientConfig
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
 		MaxNames int
-
-		// Controls behaviour of the RA when asked to create a new authz for
-		// a name/regID that already has a valid authz. False preserves historic
-		// behaviour and ignores the existing authz and creates a new one. True
-		// instructs the RA to reuse the previously created authz in lieu of
-		// creating another.
-		ReuseValidAuthz bool
 
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. Given a value of 300 days when used with a 90-day
@@ -64,16 +57,18 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		OrderLifetime cmd.ConfigDuration
+		// OrderLifetime is how far in the future an Order's expiration date should
+		// be set when it is first created.
+		OrderLifetime config.Duration
 
-		// CTLogGroups contains groupings of CT logs which we want SCTs from.
-		// When we retrieve SCTs we will submit the certificate to each log
-		// in a group and the first SCT returned will be used. This allows
-		// us to comply with Chrome CT policy which requires one SCT from a
-		// Google log and one SCT from any other log included in their policy.
-		// DEPRECATED: Use CTLogs instead.
-		// TODO(#5938): Remove this.
-		CTLogGroups2 []ctconfig.CTGroup
+		// FinalizeTimeout is how long the RA is willing to wait for the Order
+		// finalization process to take. This config parameter only has an effect
+		// if the AsyncFinalization feature flag is enabled. Any systems which
+		// manage the shutdown of an RA must be willing to wait at least this long
+		// after sending the shutdown signal, to allow background goroutines to
+		// complete.
+		FinalizeTimeout config.Duration
+
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we
 		// will submit the cert to one randomly-chosen log from each group, and use
@@ -89,10 +84,6 @@ type Config struct {
 		// program but we still want our certs to end up there.
 		InformationalCTLogs []ctconfig.LogDescription
 
-		// IssuerCertPath is the path to the intermediate used to issue certificates.
-		// It is used to generate OCSP URLs to purge at revocation time.
-		// TODO(#5162): DEPRECATED. Remove this field entirely.
-		IssuerCertPath string
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
 		// generate OCSP URLs to purge during revocation.
@@ -153,33 +144,33 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
-	clientMetrics := bgrpc.NewClientMetrics(scope)
 
-	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, clientMetrics, clk)
+	vaConn, err := bgrpc.ClientSetup(c.RA.VAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create VA client")
 	vac := vapb.NewVAClient(vaConn)
 	caaClient := vapb.NewCAAClient(vaConn)
 
-	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, clientMetrics, clk)
+	caConn, err := bgrpc.ClientSetup(c.RA.CAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create CA client")
 	cac := capb.NewCertificateAuthorityClient(caConn)
 
-	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, clientMetrics, clk)
+	ocspConn, err := bgrpc.ClientSetup(c.RA.OCSPService, tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Unable to create CA OCSP client")
+	ocspc := capb.NewOCSPGeneratorClient(ocspConn)
+
+	saConn, err := bgrpc.ClientSetup(c.RA.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sac := sapb.NewStorageAuthorityClient(saConn)
 
-	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, clientMetrics, clk)
+	conn, err := bgrpc.ClientSetup(c.RA.PublisherService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to Publisher")
 	pubc := pubpb.NewPublisherClient(conn)
 
-	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, clientMetrics, clk)
+	apConn, err := bgrpc.ClientSetup(c.RA.AkamaiPurgerService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to create a Akamai Purger client")
 	apc := akamaipb.NewAkamaiPurgerClient(apConn)
 
 	issuerCertPaths := c.RA.IssuerCerts
-	if len(issuerCertPaths) == 0 {
-		issuerCertPaths = []string{c.RA.IssuerCertPath}
-	}
 	issuerCerts := make([]*issuance.Certificate, len(issuerCertPaths))
 	for i, issuerCertPath := range issuerCertPaths {
 		issuerCerts[i], err = issuance.LoadCertificate(issuerCertPath)
@@ -191,40 +182,23 @@ func main() {
 	// our CPS 4.4.2, which declares we will always include at least two SCTs.
 	// Exit early if no groups are configured.
 	var ctp *ctpolicy.CTPolicy
-	if len(c.RA.CTLogGroups2) != 0 && len(c.RA.CTLogs.SCTLogs) != 0 {
-		cmd.Fail("Configure only CTLogGroups2 or CTLogs, not both")
-	} else if len(c.RA.CTLogGroups2) > 0 {
-		for _, g := range c.RA.CTLogGroups2 {
-			// Exit early if any of the log groups specify no logs
-			if len(g.Logs) == 0 {
-				cmd.Fail("Encountered empty CT log group")
-			}
-			for _, l := range g.Logs {
-				if l.TemporalSet != nil {
-					err := l.Setup()
-					cmd.FailOnError(err, "Failed to setup a temporal log set")
-				}
-			}
-		}
-
-		ctp = ctpolicy.New(pubc, c.RA.CTLogGroups2, c.RA.InformationalCTLogs, nil, nil, nil, c.RA.CTLogs.Stagger.Duration, logger, scope)
-	} else if len(c.RA.CTLogs.SCTLogs) > 0 {
-		allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
-		cmd.FailOnError(err, "Failed to parse log list")
-
-		sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance)
-		cmd.FailOnError(err, "Failed to load SCT logs")
-
-		infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational)
-		cmd.FailOnError(err, "Failed to load informational logs")
-
-		finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
-		cmd.FailOnError(err, "Failed to load final logs")
-
-		ctp = ctpolicy.New(pubc, nil, nil, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
-	} else {
-		cmd.Fail("Must configure either CTLogGroups2 or CTLogs")
+	if len(c.RA.CTLogs.SCTLogs) <= 0 {
+		cmd.Fail("Must configure CTLogs")
 	}
+
+	allLogs, err := loglist.New(c.RA.CTLogs.LogListFile)
+	cmd.FailOnError(err, "Failed to parse log list")
+
+	sctLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.SCTLogs, loglist.Issuance)
+	cmd.FailOnError(err, "Failed to load SCT logs")
+
+	infoLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.InfoLogs, loglist.Informational)
+	cmd.FailOnError(err, "Failed to load informational logs")
+
+	finalLogs, err := allLogs.SubsetForPurpose(c.RA.CTLogs.FinalLogs, loglist.Informational)
+	cmd.FailOnError(err, "Failed to load final logs")
+
+	ctp = ctpolicy.New(pubc, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
 	// or completed validation MUST be obtained no more than 398 days prior
@@ -244,7 +218,11 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
+	if features.Enabled(features.AsyncFinalize) && c.RA.FinalizeTimeout.Duration == 0 {
+		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
+	}
+
+	kp, err := sagoodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {
@@ -258,12 +236,12 @@ func main() {
 		c.RA.MaxContactsPerRegistration,
 		kp,
 		c.RA.MaxNames,
-		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		pubc,
 		caaClient,
 		c.RA.OrderLifetime.Duration,
+		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		apc,
 		issuerCerts,
@@ -275,22 +253,18 @@ func main() {
 
 	rai.VA = vac
 	rai.CA = cac
+	rai.OCSP = ocspc
 	rai.SA = sac
 
-	serverMetrics := bgrpc.NewServerMetrics(scope)
-	grpcSrv, listener, err := bgrpc.NewServer(c.RA.GRPC, tlsConfig, serverMetrics, clk)
+	start, stop, err := bgrpc.NewServer(c.RA.GRPC).Add(
+		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
-	rapb.RegisterRegistrationAuthorityServer(grpcSrv, rai)
-	hs := health.NewServer()
-	healthpb.RegisterHealthServer(grpcSrv, hs)
 
 	go cmd.CatchSignals(logger, func() {
-		hs.Shutdown()
-		grpcSrv.GracefulStop()
+		stop()
+		rai.DrainFinalize()
 	})
-
-	err = cmd.FilterShutdownErrors(grpcSrv.Serve(listener))
-	cmd.FailOnError(err, "RA gRPC service failed")
+	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 
 func init() {

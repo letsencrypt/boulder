@@ -7,6 +7,7 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -16,20 +17,16 @@ import (
 
 type Config struct {
 	OCSPUpdater struct {
-		cmd.ServiceConfig
+		DebugAddr string
+
+		// TLS client certificate, private key, and trusted root bundle.
+		TLS        cmd.TLSConfig
 		DB         cmd.DBConfig
 		ReadOnlyDB cmd.DBConfig
 
-		// Issuers is a map from filenames to short issuer IDs.
-		// Each filename must contain an issuer certificate. The short issuer
-		// IDs are arbitrarily assigned and must be consistent across OCSP
-		// components. For production we'll use the number part of the CN, i.e.
-		// E1 -> 1, R3 -> 3, etc.
-		Issuers map[string]int
-
 		// OldOCSPWindow controls how frequently ocsp-updater signs a batch
 		// of responses.
-		OldOCSPWindow cmd.ConfigDuration
+		OldOCSPWindow config.Duration
 		// OldOCSPBatchSize controls the maximum number of responses
 		// ocsp-updater will sign every OldOCSPWindow.
 		OldOCSPBatchSize int
@@ -38,7 +35,7 @@ type Config struct {
 		// This is related to to ExpectedFreshness in ocsp-responder's config,
 		// and both are related to the mandated refresh times in the BRs and
 		// root programs (minus a safety margin).
-		OCSPMinTimeToExpiry cmd.ConfigDuration
+		OCSPMinTimeToExpiry config.Duration
 
 		// ParallelGenerateOCSPRequests determines how many requests to the CA
 		// may be inflight at once.
@@ -46,7 +43,7 @@ type Config struct {
 
 		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
 		SignFailureBackoffFactor float64
-		SignFailureBackoffMax    cmd.ConfigDuration
+		SignFailureBackoffMax    config.Duration
 
 		// SerialSuffixShards is a whitespace-separated list of single hex
 		// digits. When searching for work to do, ocsp-updater will query
@@ -79,12 +76,11 @@ func main() {
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	stats, logger, shutdown := cmd.StatsAndLogging("ocsp-updater", c.Syslog, c.OpenTelemetry, conf.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging("ocsp-updater", c.Syslog, c.OpenTelemetry, conf.DebugAddr)
 	defer shutdown()
-	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	readWriteDb, err := sa.InitWrappedDb(conf.DB, stats, logger)
+	readWriteDb, err := sa.InitWrappedDb(conf.DB, scope, logger)
 	cmd.FailOnError(err, "Failed to initialize database client")
 
 	var readOnlyDb *db.WrappedMap
@@ -92,7 +88,7 @@ func main() {
 	if readOnlyDbDSN == "" {
 		readOnlyDb = readWriteDb
 	} else {
-		readOnlyDb, err = sa.InitWrappedDb(conf.ReadOnlyDB, stats, logger)
+		readOnlyDb, err = sa.InitWrappedDb(conf.ReadOnlyDB, scope, logger)
 		cmd.FailOnError(err, "Failed to initialize read-only database client")
 	}
 
@@ -100,8 +96,8 @@ func main() {
 
 	tlsConfig, err := c.OCSPUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
-	clientMetrics := bgrpc.NewClientMetrics(stats)
-	caConn, err := bgrpc.ClientSetup(c.OCSPUpdater.OCSPGeneratorService, tlsConfig, clientMetrics, clk)
+
+	caConn, err := bgrpc.ClientSetup(c.OCSPUpdater.OCSPGeneratorService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CA")
 	ogc := capb.NewOCSPGeneratorClient(caConn)
 
@@ -111,7 +107,7 @@ func main() {
 	}
 
 	updater, err := ocsp_updater.New(
-		stats,
+		scope,
 		clk,
 		readWriteDb,
 		readOnlyDb,

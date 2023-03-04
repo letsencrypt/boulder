@@ -22,16 +22,6 @@ func TestThroughput_validate(t *testing.T) {
 		fields  fields
 		wantErr bool
 	}{
-		// TODO(#6003) This test case can be removed entirely. It was added to
-		// prove that this change met our deployability guidelines. The existing
-		// test/config couldn't modified to reflect production without adding 10
-		// seconds of wait to verify_akamai_purge() in test/helpers.py.
-		{"production configuration prior to this change",
-			fields{
-				QueueEntriesPerBatch: DeprecatedQueueEntriesPerBatch,
-				PurgeBatchInterval:   10 * time.Second},
-			false,
-		},
 		{"optimized defaults, should succeed",
 			fields{
 				QueueEntriesPerBatch: defaultEntriesPerBatch,

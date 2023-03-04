@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func makeClient() (*rocsp.WritingClient, clock.Clock) {
+func makeClient() (*rocsp.RWClient, clock.Clock) {
 	CACertFile := "../../test/redis-tls/minica.pem"
 	CertFile := "../../test/redis-tls/boulder/cert.pem"
 	KeyFile := "../../test/redis-tls/boulder/key.pem"
@@ -36,8 +36,11 @@ func makeClient() (*rocsp.WritingClient, clock.Clock) {
 		panic(err)
 	}
 
-	rdb := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs:     []string{"10.33.33.2:4218"},
+	rdb := redis.NewRing(&redis.RingOptions{
+		Addrs: map[string]string{
+			"shard1": "10.33.33.2:4218",
+			"shard2": "10.33.33.3:4218",
+		},
 		Username:  "unittest-rw",
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
 		TLSConfig: tlsConfig2,

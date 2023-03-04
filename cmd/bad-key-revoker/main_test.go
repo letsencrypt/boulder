@@ -131,7 +131,9 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	}
 
 	_, err := dbMap.Exec(
-		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
+		`INSERT IGNORE INTO keyHashToSerial
+	     (keyHash, certNotAfter, certSerial) VALUES
+		 (?, ?, ?)`,
 		keyHash,
 		fc.Now().Add(expiresOffset),
 		serial,
@@ -209,6 +211,8 @@ func TestFindUnrevoked(t *testing.T) {
 
 	hashA := randHash(t)
 	// insert valid, unexpired
+	insertCert(t, dbMap, fc, hashA, "ff", regID, Unexpired, Unrevoked)
+	// insert valid, unexpired, duplicate
 	insertCert(t, dbMap, fc, hashA, "ff", regID, Unexpired, Unrevoked)
 	// insert valid, expired
 	insertCert(t, dbMap, fc, hashA, "ee", regID, Expired, Unrevoked)

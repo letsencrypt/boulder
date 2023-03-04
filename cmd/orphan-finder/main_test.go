@@ -7,8 +7,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +35,7 @@ type mockSA struct {
 	clk             clock.FakeClock
 }
 
-func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*sapb.AddCertificateResponse, error) {
+func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	parsed, err := x509.ParseCertificate(req.Der)
 	if err != nil {
 		return nil, err
@@ -49,11 +51,15 @@ func (m *mockSA) AddCertificate(ctx context.Context, req *sapb.AddCertificateReq
 }
 
 func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, errors.New("unimplemented")
+}
+
+func (m *mockSA) findCertificate(serial string) (*corepb.Certificate, error) {
 	if len(m.certificates) == 0 {
 		return nil, berrors.NotFoundError("no certs stored")
 	}
 	for _, cert := range m.certificates {
-		if cert.Serial == req.Serial {
+		if cert.Serial == serial {
 			return cert, nil
 		}
 	}
@@ -61,7 +67,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 }
 
 func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerID) {
+	if core.IsAnyNilOrZero(req.Der, req.Issued, req.RegID, req.IssuerNameID) {
 		return nil, berrors.InternalServerError("Incomplete request")
 	}
 	parsed, err := x509.ParseCertificate(req.Der)
@@ -82,12 +88,12 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 	return &emptypb.Empty{}, nil
 }
 
-func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+func (m *mockSA) findPrecertificate(serial string) (*corepb.Certificate, error) {
 	if len(m.precertificates) == 0 {
 		return nil, berrors.NotFoundError("no precerts stored")
 	}
 	for _, precert := range m.precertificates {
-		if precert.Serial == req.Serial {
+		if precert.Serial == serial {
 			return bgrpc.CertToPB(precert), nil
 		}
 	}
@@ -98,9 +104,9 @@ func (m *mockSA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ..
 	return &emptypb.Empty{}, nil
 }
 
-type mockCA struct{}
+type mockOCSPA struct{}
 
-func (ca *mockCA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
+func (ca *mockOCSPA) GenerateOCSP(context.Context, *capb.GenerateOCSPRequest, ...grpc.CallOption) (*capb.OCSPResponse, error) {
 	return &capb.OCSPResponse{
 		Response: []byte("HI"),
 	}, nil
@@ -127,7 +133,7 @@ func TestParseLine(t *testing.T) {
 
 	opf := &orphanFinder{
 		sa:       &mockSA{},
-		ca:       &mockCA{},
+		ca:       &mockOCSPA{},
 		logger:   blog.UseMock(),
 		issuers:  map[issuance.IssuerNameID]*issuance.Certificate{issuer.NameID(): issuer},
 		backdate: time.Hour,
@@ -181,15 +187,6 @@ func TestParseLine(t *testing.T) {
 			ExpectNoErrors: true,
 		},
 		{
-			Name:        "Already inserted cert in line",
-			LogLine:     logLine(certOrphan, certStr, "1", "1001", "0"),
-			ExpectFound: true,
-			// ExpectAdded is false because we have already added this cert in the
-			// previous "Valid cert in line" test case.
-			ExpectAdded:    false,
-			ExpectNoErrors: true,
-		},
-		{
 			Name:           "Empty precert in line",
 			LogLine:        logLine(precertOrphan, "", "1", "1337", "0"),
 			ExpectFound:    true,
@@ -210,15 +207,6 @@ func TestParseLine(t *testing.T) {
 			ExpectAdded:    true,
 			ExpectAddedDER: precertStr,
 			ExpectRegID:    9999,
-			ExpectNoErrors: true,
-		},
-		{
-			Name:        "Already inserted precert in line",
-			LogLine:     logLine(precertOrphan, precertStr, "1", "1001", "0"),
-			ExpectFound: true,
-			// ExpectAdded is false because we have already added this cert in the
-			// previous "Valid cert in line" test case.
-			ExpectAdded:    false,
 			ExpectNoErrors: true,
 		},
 		{
@@ -249,9 +237,10 @@ func TestParseLine(t *testing.T) {
 			ctx := context.Background()
 			opf.logger.(*blog.Mock).Clear()
 			found, added, typ := opf.storeLogLine(ctx, tc.LogLine)
+			logs := opf.logger.(*blog.Mock).GetAllMatching("ERR:")
+			fmt.Printf("%s\n", strings.Join(logs, "\n"))
 			test.AssertEquals(t, found, tc.ExpectFound)
 			test.AssertEquals(t, added, tc.ExpectAdded)
-			logs := opf.logger.(*blog.Mock).GetAllMatching("ERR:")
 			if tc.ExpectNoErrors {
 				test.AssertEquals(t, len(logs), 0)
 			}
@@ -267,10 +256,10 @@ func TestParseLine(t *testing.T) {
 				var storedCert *corepb.Certificate
 				switch typ {
 				case precertOrphan:
-					storedCert, err = opf.sa.GetPrecertificate(ctx, &sapb.Serial{Serial: testCertSerial})
+					storedCert, err = opf.sa.(*mockSA).findPrecertificate(testCertSerial)
 					test.AssertNotError(t, err, "Error getting test precert serial from SA")
 				case certOrphan:
-					storedCert, err = opf.sa.GetCertificate(ctx, &sapb.Serial{Serial: testCertSerial})
+					storedCert, err = opf.sa.(*mockSA).findCertificate(testCertSerial)
 					test.AssertNotError(t, err, "Error getting test cert serial from SA")
 				default:
 					t.Fatalf("unknown orphan type returned: %s", typ)
@@ -289,7 +278,7 @@ func TestNotOrphan(t *testing.T) {
 	ctx := context.Background()
 	opf := &orphanFinder{
 		sa:       &mockSA{},
-		ca:       &mockCA{},
+		ca:       &mockOCSPA{},
 		logger:   blog.UseMock(),
 		backdate: time.Hour,
 	}

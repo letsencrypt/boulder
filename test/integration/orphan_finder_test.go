@@ -23,8 +23,8 @@ import (
 	"github.com/letsencrypt/pkcs11key/v4"
 )
 
-var template = `[AUDIT] Failed RPC to store at SA, orphaning precertificate: serial=[%x] cert=[%x] err=[sa.StorageAuthority.AddCertificate timed out after 5000 ms], issuerID=[1], regID=[1], orderID=[1]
-[AUDIT] Failed RPC to store at SA, orphaning certificate: serial=[%x] cert=[%x] err=[sa.StorageAuthority.AddCertificate timed out after 5000 ms], issuerID=[1], regID=[1], orderID=[1]`
+var template = `[AUDIT] Failed RPC to store at SA, orphaning precertificate: serial=[%x], cert=[%x], issuerID=[1], regID=[1], orderID=[1], err=[sa.StorageAuthority.AddPrecertificate timed out after 5000 ms]
+[AUDIT] Failed RPC to store at SA, orphaning certificate: serial=[%x], cert=[%x], issuerID=[1], regID=[1], orderID=[1], err=[sa.StorageAuthority.AddCertificate timed out after 5000 ms]`
 
 // TestOrphanFinder runs the orphan-finder with an example input file. This must
 // be run after other tests so the account ID 1 exists (since the inserted
@@ -43,7 +43,7 @@ func TestOrphanFinder(t *testing.T) {
 	io.WriteString(f, fmt.Sprintf(template, precert.SerialNumber.Bytes(),
 		precert.Raw, cert.SerialNumber.Bytes(), cert.Raw))
 	f.Close()
-	cmd := exec.Command("./bin/orphan-finder", "parse-ca-log",
+	cmd := exec.Command("./bin/boulder", "orphan-finder", "parse-ca-log",
 		"--config", "./"+os.Getenv("BOULDER_CONFIG_DIR")+"/orphan-finder.json",
 		"--log-file", f.Name())
 	out, err := cmd.Output()

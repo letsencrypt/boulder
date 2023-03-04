@@ -12,8 +12,11 @@ package errors
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/letsencrypt/boulder/identifier"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // ErrorType provides a coarse category for BoulderErrors.
@@ -56,6 +59,10 @@ type BoulderError struct {
 	Type      ErrorType
 	Detail    string
 	SubErrors []SubBoulderError
+
+	// RetryAfter the duration a client should wait before retrying the request
+	// which resulted in this error.
+	RetryAfter time.Duration
 }
 
 // SubBoulderError represents sub-errors specific to an identifier that are
@@ -73,13 +80,62 @@ func (be *BoulderError) Unwrap() error {
 	return be.Type
 }
 
+// GRPCStatus implements the interface implicitly defined by gRPC's
+// status.FromError, which uses this function to detect if the error produced
+// by the gRPC server implementation code is a gRPC status.Status. Implementing
+// this means that BoulderErrors serialized in gRPC response metadata can be
+// accompanied by a gRPC status other than "UNKNOWN".
+func (be *BoulderError) GRPCStatus() *status.Status {
+	var c codes.Code
+	switch be.Type {
+	case InternalServer:
+		c = codes.Internal
+	case Malformed:
+		c = codes.InvalidArgument
+	case Unauthorized:
+		c = codes.PermissionDenied
+	case NotFound:
+		c = codes.NotFound
+	case RateLimit:
+		c = codes.Unknown
+	case RejectedIdentifier:
+		c = codes.InvalidArgument
+	case InvalidEmail:
+		c = codes.InvalidArgument
+	case ConnectionFailure:
+		c = codes.Unavailable
+	case CAA:
+		c = codes.FailedPrecondition
+	case MissingSCTs:
+		c = codes.Internal
+	case Duplicate:
+		c = codes.AlreadyExists
+	case OrderNotReady:
+		c = codes.FailedPrecondition
+	case DNS:
+		c = codes.Unknown
+	case BadPublicKey:
+		c = codes.InvalidArgument
+	case BadCSR:
+		c = codes.InvalidArgument
+	case AlreadyRevoked:
+		c = codes.AlreadyExists
+	case BadRevocationReason:
+		c = codes.InvalidArgument
+	default:
+		c = codes.Unknown
+	}
+	return status.New(c, be.Error())
+}
+
 // WithSubErrors returns a new BoulderError instance created by adding the
 // provided subErrs to the existing BoulderError.
 func (be *BoulderError) WithSubErrors(subErrs []SubBoulderError) *BoulderError {
 	return &BoulderError{
-		Type:      be.Type,
-		Detail:    be.Detail,
-		SubErrors: append(be.SubErrors, subErrs...),
+		Type:       be.Type,
+		Detail:     be.Detail,
+		SubErrors:  append(be.SubErrors, subErrs...),
+		RetryAfter: be.RetryAfter,
 	}
 }
 
@@ -107,31 +163,35 @@ func NotFoundError(msg string, args ...interface{}) error {
 	return New(NotFound, msg, args...)
 }
 
-func RateLimitError(msg string, args ...interface{}) error {
+func RateLimitError(retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
-		Type:   RateLimit,
-		Detail: fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/", args...),
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/rate-limits/", args...),
+		RetryAfter: retryAfter,
 	}
 }
 
-func DuplicateCertificateError(msg string, args ...interface{}) error {
+func DuplicateCertificateError(retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
-		Type:   RateLimit,
-		Detail: fmt.Sprintf(msg+": see https://letsencrypt.org/docs/duplicate-certificate-limit/", args...),
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/duplicate-certificate-limit/", args...),
+		RetryAfter: retryAfter,
 	}
 }
 
-func FailedValidationError(msg string, args ...interface{}) error {
+func FailedValidationError(retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
-		Type:   RateLimit,
-		Detail: fmt.Sprintf(msg+": see https://letsencrypt.org/docs/failed-validation-limit/", args...),
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/failed-validation-limit/", args...),
+		RetryAfter: retryAfter,
 	}
 }
 
-func RegistrationsPerIPError(msg string, args ...interface{}) error {
+func RegistrationsPerIPError(retryAfter time.Duration, msg string, args ...interface{}) error {
 	return &BoulderError{
-		Type:   RateLimit,
-		Detail: fmt.Sprintf(msg+": see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/", args...),
+		Type:       RateLimit,
+		Detail:     fmt.Sprintf(msg+": see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/", args...),
+		RetryAfter: retryAfter,
 	}
 }
 

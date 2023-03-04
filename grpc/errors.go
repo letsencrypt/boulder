@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
@@ -20,12 +20,13 @@ import (
 // context. errors.BoulderError error types are encoded using the grpc/metadata
 // in the context.Context for the RPC which is considered to be the 'proper'
 // method of encoding custom error types (grpc/grpc#4543 and grpc/grpc-go#478)
-func wrapError(ctx context.Context, err error) error {
-	if err == nil {
+func wrapError(ctx context.Context, appErr error) error {
+	if appErr == nil {
 		return nil
 	}
+
 	var berr *berrors.BoulderError
-	if errors.As(err, &berr) {
+	if errors.As(appErr, &berr) {
 		pairs := []string{
 			"errortype", strconv.Itoa(int(berr.Type)),
 		}
@@ -38,20 +39,25 @@ func wrapError(ctx context.Context, err error) error {
 			jsonSubErrs, err := json.Marshal(berr.SubErrors)
 			if err != nil {
 				return berrors.InternalServerError(
-					"error marshaling json SubErrors, orig error %q",
-					err)
+					"error marshaling json SubErrors, orig error %q", err)
 			}
-			pairs = append(pairs, "suberrors")
-			pairs = append(pairs, string(jsonSubErrs))
+			pairs = append(pairs, "suberrors", string(jsonSubErrs))
 		}
 
-		// Ignoring the error return here is safe because if setting the metadata
-		// fails, we'll still return an error, but it will be interpreted on the
-		// other side as an InternalServerError instead of a more specific one.
-		_ = grpc.SetTrailer(ctx, metadata.Pairs(pairs...))
-		return status.Errorf(codes.Unknown, err.Error())
+		// If there is a RetryAfter value then extend the metadata pairs to
+		// include the value.
+		if berr.RetryAfter != 0 {
+			pairs = append(pairs, "retryafter", berr.RetryAfter.String())
+		}
+
+		err := grpc.SetTrailer(ctx, metadata.Pairs(pairs...))
+		if err != nil {
+			return berrors.InternalServerError(
+				"error setting gRPC error metadata, orig error %q", appErr)
+		}
 	}
-	return status.Errorf(codes.Unknown, err.Error())
+
+	return appErr
 }
 
 // unwrapError unwraps errors returned from gRPC client calls which were wrapped
@@ -63,59 +69,75 @@ func unwrapError(err error, md metadata.MD) error {
 		return nil
 	}
 
-	unwrappedErr := status.Convert(err).Message()
-
 	errTypeStrs, ok := md["errortype"]
 	if !ok {
 		return err
 	}
+
+	inErrMsg := status.Convert(err).Message()
 	if len(errTypeStrs) != 1 {
 		return berrors.InternalServerError(
-			"multiple errorType metadata, wrapped error %q",
-			unwrappedErr,
+			"multiple 'errortype' metadata, wrapped error %q",
+			inErrMsg,
 		)
 	}
 
-	errType, decErr := strconv.Atoi(errTypeStrs[0])
+	inErrType, decErr := strconv.Atoi(errTypeStrs[0])
 	if decErr != nil {
 		return berrors.InternalServerError(
 			"failed to decode error type, decoding error %q, wrapped error %q",
 			decErr,
-			unwrappedErr,
+			inErrMsg,
 		)
 	}
-	outErr := berrors.New(berrors.ErrorType(errType), unwrappedErr)
-
-	subErrsJSON, ok := md["suberrors"]
-	if !ok {
-		return outErr
-	}
-	if len(subErrsJSON) != 1 {
-		return berrors.InternalServerError(
-			"multiple suberrors metadata, wrapped error %q",
-			unwrappedErr,
-		)
-	}
-
-	var suberrs []berrors.SubBoulderError
-	err2 := json.Unmarshal([]byte(subErrsJSON[0]), &suberrs)
-	if err2 != nil {
-		return berrors.InternalServerError(
-			"error unmarshaling suberrs JSON %q, wrapped error %q",
-			subErrsJSON[0],
-			unwrappedErr,
-		)
-	}
-
-	var berr *berrors.BoulderError
-	if errors.As(outErr, &berr) {
-		outErr = berr.WithSubErrors(suberrs)
-	} else {
+	inErr := berrors.New(berrors.ErrorType(inErrType), inErrMsg)
+	var outErr *berrors.BoulderError
+	if !errors.As(inErr, &outErr) {
 		return fmt.Errorf(
-			"expected type of outErr to be %T got %T: %q",
-			berr, outErr,
-			outErr.Error(),
+			"expected type of inErr to be %T got %T: %q",
+			outErr,
+			inErr,
+			inErr.Error(),
 		)
+	}
+
+	subErrorsVal, ok := md["suberrors"]
+	if ok {
+		if len(subErrorsVal) != 1 {
+			return berrors.InternalServerError(
+				"multiple 'suberrors' in metadata, wrapped error %q",
+				inErrMsg,
+			)
+		}
+
+		unmarshalErr := json.Unmarshal([]byte(subErrorsVal[0]), &outErr.SubErrors)
+		if unmarshalErr != nil {
+			return berrors.InternalServerError(
+				"JSON unmarshaling 'suberrors' %q, wrapped error %q: %s",
+				subErrorsVal[0],
+				inErrMsg,
+				unmarshalErr,
+			)
+		}
+	}
+
+	retryAfterVal, ok := md["retryafter"]
+	if ok {
+		if len(retryAfterVal) != 1 {
+			return berrors.InternalServerError(
+				"multiple 'retryafter' in metadata, wrapped error %q",
+				inErrMsg,
+			)
+		}
+		var parseErr error
+		outErr.RetryAfter, parseErr = time.ParseDuration(retryAfterVal[0])
+		if parseErr != nil {
+			return berrors.InternalServerError(
+				"parsing 'retryafter' as int64, wrapped error %q, parsing error: %s",
+				inErrMsg,
+				parseErr,
+			)
+		}
 	}
 	return outErr
 }

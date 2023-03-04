@@ -157,10 +157,14 @@ var hashToString = map[crypto.Hash]string{
 	crypto.SHA512: "SHA512",
 }
 
-func (rs Responder) sampledError(format string, a ...interface{}) {
-	if rs.sampleRate > 0 && rand.Intn(rs.sampleRate) == 0 {
-		rs.log.Errf(format, a...)
+func SampledError(log blog.Logger, sampleRate int, format string, a ...interface{}) {
+	if sampleRate > 0 && rand.Intn(sampleRate) == 0 {
+		log.Errf(format, a...)
 	}
+}
+
+func (rs Responder) sampledError(format string, a ...interface{}) {
+	SampledError(rs.log, rs.sampleRate, format, a...)
 }
 
 // A Responder can process both GET and POST requests. The mapping from an OCSP
@@ -182,7 +186,11 @@ func (rs Responder) sampledError(format string, a ...interface{}) {
 // strings of repeated '/' into a single '/', which will break the base64
 // encoding.
 func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Request) {
-	ctx := request.Context()
+	// We specifically ignore request.Context() because we would prefer for clients
+	// to not be able to cancel our operations in arbitrary places. Instead we
+	// start a new context, and apply timeouts in our various RPCs.
+	// TODO(go1.22?): Use context.Detach()
+	ctx := context.Background()
 
 	if rs.timeout != 0 {
 		var cancel func()

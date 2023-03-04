@@ -3,16 +3,21 @@ package updater
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
@@ -21,15 +26,15 @@ import (
 )
 
 type crlUpdater struct {
-	issuers           map[issuance.IssuerNameID]*issuance.Certificate
-	numShards         int
-	lookbackPeriod    time.Duration
-	lookforwardPeriod time.Duration
-	updatePeriod      time.Duration
-	updateOffset      time.Duration
-	maxParallelism    int
+	issuers        map[issuance.IssuerNameID]*issuance.Certificate
+	numShards      int
+	shardWidth     time.Duration
+	lookbackPeriod time.Duration
+	updatePeriod   time.Duration
+	updateOffset   time.Duration
+	maxParallelism int
 
-	sa sapb.StorageAuthorityClient
+	sa sapb.StorageAuthorityReadOnlyClient
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
 
@@ -43,11 +48,12 @@ type crlUpdater struct {
 func NewUpdater(
 	issuers []*issuance.Certificate,
 	numShards int,
-	certLifetime time.Duration,
+	shardWidth time.Duration,
+	lookbackPeriod time.Duration,
 	updatePeriod time.Duration,
 	updateOffset time.Duration,
 	maxParallelism int,
-	sa sapb.StorageAuthorityClient,
+	sa sapb.StorageAuthorityReadOnlyClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
 	stats prometheus.Registerer,
@@ -71,24 +77,8 @@ func NewUpdater(
 		return nil, fmt.Errorf("update offset must be less than period: %s !< %s", updateOffset, updatePeriod)
 	}
 
-	// Set the lookback period to be significantly greater than the update period.
-	// This guarantees that a certificate which was revoked very shortly before it
-	// expired will still appear on at least one CRL, as required by RFC 5280
-	// Section 3.3.
-	lookbackPeriod := 4 * updatePeriod
-
-	// Set the lookforward period to be greater than the lifetime of the longest
-	// currently-valid certificate. Ensure it overshoots by more than the width
-	// of one shard. See comment on getShardBoundaries for details.
-	tentativeShardWidth := (lookbackPeriod + certLifetime).Nanoseconds() / int64(numShards)
-	lookforwardPeriod := certLifetime + time.Duration(4*tentativeShardWidth)
-
-	// Ensure that the total window (lookback + lookforward) is evenly divisible
-	// by the number of shards, to make shard boundary calculations easy.
-	window := lookbackPeriod + lookforwardPeriod
-	offset := window.Nanoseconds() % int64(numShards)
-	if offset != 0 {
-		lookforwardPeriod += time.Duration(int64(numShards) - offset)
+	if lookbackPeriod < 2*updatePeriod {
+		return nil, fmt.Errorf("lookbackPeriod must be at least 2x updatePeriod: %s !< 2 * %s", lookbackPeriod, updatePeriod)
 	}
 
 	if maxParallelism <= 0 {
@@ -111,8 +101,8 @@ func NewUpdater(
 	return &crlUpdater{
 		issuersByNameID,
 		numShards,
+		shardWidth,
 		lookbackPeriod,
-		lookforwardPeriod,
 		updatePeriod,
 		updateOffset,
 		maxParallelism,
@@ -167,8 +157,8 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
 				cu.log.AuditErrf(
-					"Generating CRLs failed: number=[%d] err=[%s]",
-					crl.Number(atTime), err)
+					"Generating CRLs failed: number=[%s] err=[%s]",
+					(*big.Int)(crl.Number(atTime)), err)
 			}
 		case <-ctx.Done():
 			ticker.Stop()
@@ -201,7 +191,7 @@ func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 		if err != nil {
 			cu.log.AuditErrf(
 				"Generating CRLs for issuer failed: number=[%d] issuer=[%s] err=[%s]",
-				crl.Number(atTime), cu.issuers[id].Subject.CommonName, err)
+				(*big.Int)(crl.Number(atTime)), cu.issuers[id].Subject.CommonName, err)
 			errIssuers = append(errIssuers, cu.issuers[id].Subject.CommonName)
 		}
 	}
@@ -228,6 +218,11 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 	}()
 	cu.log.Debugf("Ticking issuer %d at time %s", issuerNameID, atTime)
 
+	shardMap, err := cu.getShardMappings(ctx, atTime)
+	if err != nil {
+		return fmt.Errorf("computing shardmap: %w", err)
+	}
+
 	type shardResult struct {
 		shardIdx int
 		err      error
@@ -241,7 +236,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 			default:
 				out <- shardResult{
 					shardIdx: idx,
-					err:      cu.tickShard(ctx, atTime, issuerNameID, idx),
+					err:      cu.tickShard(ctx, atTime, issuerNameID, idx, shardMap[idx]),
 				}
 			}
 		}
@@ -264,7 +259,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 		if res.err != nil {
 			cu.log.AuditErrf(
 				"Generating CRL failed: id=[%s] err=[%s]",
-				crl.Id(issuerNameID, crl.Number(atTime), res.shardIdx), err)
+				crl.Id(issuerNameID, crl.Number(atTime), res.shardIdx), res.err)
 			errShards = append(errShards, res.shardIdx)
 		}
 	}
@@ -280,9 +275,11 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 // the list of revoked certs in that shard from the SA, gets the CA to sign the
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int) (err error) {
+func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
 
 	start := cu.clk.Now()
 	defer func() {
@@ -294,20 +291,40 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Observe(cu.clk.Since(start).Seconds())
 		cu.updatedCounter.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName, result).Inc()
 	}()
-	cu.log.Debugf("Ticking shard %d of issuer %d at time %s", shardIdx, issuerNameID, atTime)
 
-	expiresAfter, expiresBefore := cu.getShardBoundaries(atTime, shardIdx)
+	cu.log.Infof(
+		"Generating CRL shard: id=[%s] numChunks=[%d]", crlID, len(chunks))
 
-	saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
-		IssuerNameID:  int64(issuerNameID),
-		ExpiresAfter:  expiresAfter.UnixNano(),
-		ExpiresBefore: expiresBefore.UnixNano(),
-		RevokedBefore: atTime.UnixNano(),
-	})
-	if err != nil {
-		return fmt.Errorf("connecting to SA: %w", err)
+	// Get the full list of CRL Entries for this shard from the SA.
+	var crlEntries []*proto.CRLEntry
+	for _, chunk := range chunks {
+		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
+			IssuerNameID:  int64(issuerNameID),
+			ExpiresAfter:  chunk.start.UnixNano(),
+			ExpiresBefore: chunk.end.UnixNano(),
+			RevokedBefore: atTime.UnixNano(),
+		})
+		if err != nil {
+			return fmt.Errorf("connecting to SA: %w", err)
+		}
+
+		for {
+			entry, err := saStream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return fmt.Errorf("retrieving entry from SA: %w", err)
+			}
+			crlEntries = append(crlEntries, entry)
+		}
+
+		cu.log.Infof(
+			"Queried SA for CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s] numEntries=[%d]",
+			crlID, chunk.start, chunk.end, len(crlEntries))
 	}
 
+	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
 	if err != nil {
 		return fmt.Errorf("connecting to CA: %w", err)
@@ -326,15 +343,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("sending CA metadata: %w", err)
 	}
 
-	for {
-		entry, err := saStream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("retrieving entry from SA: %w", err)
-		}
-
+	for _, entry := range crlEntries {
 		err = caStream.Send(&capb.GenerateCRLRequest{
 			Payload: &capb.GenerateCRLRequest_Entry{
 				Entry: entry,
@@ -345,14 +354,30 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		}
 	}
 
-	// It's okay to close the CA send stream before we start reading from the
-	// receive stream, because we know that the CA has to hold the entire tbsCRL
-	// in memory before it can sign it and start returning the real CRL.
 	err = caStream.CloseSend()
 	if err != nil {
 		return fmt.Errorf("closing CA request stream: %w", err)
 	}
 
+	// Receive the full bytes of the signed CRL from the CA.
+	crlLen := 0
+	crlHash := sha256.New()
+	var crlChunks [][]byte
+	for {
+		out, err := caStream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("receiving CRL bytes: %w", err)
+		}
+
+		crlLen += len(out.Chunk)
+		crlHash.Write(out.Chunk)
+		crlChunks = append(crlChunks, out.Chunk)
+	}
+
+	// Send the full bytes of the signed CRL to the Storer.
 	csStream, err := cu.cs.UploadCRL(ctx)
 	if err != nil {
 		return fmt.Errorf("connecting to CRLStorer: %w", err)
@@ -371,28 +396,15 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("sending CRLStorer metadata: %w", err)
 	}
 
-	crlLen := 0
-	crlHash := sha256.New()
-	for {
-		out, err := caStream.Recv()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("receiving CRL bytes: %w", err)
-		}
-
+	for _, chunk := range crlChunks {
 		err = csStream.Send(&cspb.UploadCRLRequest{
 			Payload: &cspb.UploadCRLRequest_CrlChunk{
-				CrlChunk: out.Chunk,
+				CrlChunk: chunk,
 			},
 		})
 		if err != nil {
 			return fmt.Errorf("uploading CRL bytes: %w", err)
 		}
-
-		crlLen += len(out.Chunk)
-		crlHash.Write(out.Chunk)
 	}
 
 	_, err = csStream.CloseAndRecv()
@@ -402,83 +414,129 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
-		crl.Id(issuerNameID, crl.Number(atTime), shardIdx), crlLen, crlHash.Sum(nil))
+		crlID, crlLen, crlHash.Sum(nil))
 	return nil
 }
 
-// getShardBoundaries computes the start (inclusive) and end (exclusive) times
-// for a given integer-indexed CRL shard. The idea here is that shards should be
-// stable. Picture a timeline, divided into chunks. Number those chunks from 0
-// to cu.numShards, then repeat the cycle when you run out of numbers:
-//
-//	   chunk:  5     0     1     2     3     4     5     0     1     2     3
-//	...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//	                         ^  ^-atTime                         ^
-//	   atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
-//
-// The width of each chunk is determined by dividing the total time window we
-// care about (lookbackPeriod+lookforwardPeriod) by the number of shards we
-// want (numShards).
-//
-// Even as "now" (atTime) moves forward, and the total window of expiration
-// times that we care about moves forward, the boundaries of each chunk remain
-// stable:
-//
-//	   chunk:  5     0     1     2     3     4     5     0     1     2     3
-//	...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//	                                 ^  ^-atTime                         ^
-//	           atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
-//
-// However, note that at essentially all times the window includes parts of two
-// different instances of the chunk which appears at its ends. For example,
-// in the second diagram above, the window includes almost all of the middle
-// chunk labeled "3", but also includes just a little bit of the rightmost chunk
-// also labeled "3".
-//
-// In order to handle this case, this function always treats the *leftmost*
-// (i.e. earliest) chunk with the given ID that has *any* overlap with the
-// current window as the current shard. It returns the boundaries of this chunk
-// as the boundaries of the desired shard. In the diagram below, even though
-// there is another chunk with ID "1" near the right-hand edge of the window,
-// that chunk is ignored.
-//
-//	   shard:           |  1  |  2  |  3  |  4  |  5  |  0  |
-//	...-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
-//	                         ^  ^-atTime                         ^
-//	   atTime-lookbackPeriod-┘          atTime+lookforwardPeriod-┘
-//
-// This means that the lookforwardPeriod MUST be configured large enough that
-// there is a buffer of at least one whole chunk width between the actual
-// furthest-future expiration (generally atTime+90d) and the right-hand edge of
-// the window (atTime+lookforwardPeriod).
-func (cu *crlUpdater) getShardBoundaries(atTime time.Time, shardIdx int) (time.Time, time.Time) {
-	// Ensure that the given shard index falls within the space of acceptable indices.
-	shardIdx = shardIdx % cu.numShards
+// anchorTime is used as a universal starting point against which other times
+// can be compared. This time must be less than 290 years (2^63-1 nanoseconds)
+// in the past, to ensure that Go's time.Duration can represent that difference.
+// The significance of 2015-06-04 11:04:38 UTC is left as an exercise to the
+// reader.
+func anchorTime() time.Time {
+	return time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC)
+}
 
-	// Compute the width of the full window.
-	windowWidth := cu.lookbackPeriod + cu.lookforwardPeriod
-	// Compute the amount of time between the left-hand edge of the most recent
-	// "0" chunk and the current time.
-	atTimeOffset := time.Duration(atTime.Sub(time.Time{}).Nanoseconds() % windowWidth.Nanoseconds())
-	// Compute the left-hand edge of the most recent "0" chunk.
-	zeroStart := atTime.Add(-atTimeOffset)
+// chunk represents a fixed slice of time during which some certificates
+// presumably expired or will expire. Its non-unique index indicates which shard
+// it will be mapped to. The start boundary is inclusive, the end boundary is
+// exclusive.
+type chunk struct {
+	start time.Time
+	end   time.Time
+	idx   int
+}
 
-	// Compute the width of a single shard.
-	shardWidth := time.Duration(windowWidth.Nanoseconds() / int64(cu.numShards))
-	// Compute the amount of time between the left-hand edge of the most recent
-	// "0" chunk and the left-hand edge of the desired chunk.
-	shardOffset := time.Duration(int64(shardIdx) * shardWidth.Nanoseconds())
-	// Compute the left-hand edge of the most recent chunk with the given index.
-	shardStart := zeroStart.Add(shardOffset)
-	// Compute the right-hand edge of the most recent chunk with the given index.
-	shardEnd := shardStart.Add(shardWidth)
+// shardMap is a mapping of shard indices to the set of chunks which should be
+// included in that shard. Under most circumstances there is a one-to-one
+// mapping, but certain configuration (such as having very narrow shards, or
+// having a very long lookback period) can result in more than one chunk being
+// mapped to a single shard.
+type shardMap [][]chunk
 
-	// But the shard boundaries we just computed might be for a chunk that is
-	// completely behind the left-hand edge of our current window. If they are,
-	// bump them forward by one window width to bring them inside our window.
-	if shardEnd.Before(atTime.Add(-cu.lookbackPeriod)) {
-		shardStart = shardStart.Add(windowWidth)
-		shardEnd = shardEnd.Add(windowWidth)
+// getShardMappings determines which chunks are currently relevant, based on
+// the current time, the configured lookbackPeriod, and the farthest-future
+// certificate expiration in the database. It then maps all of those chunks to
+// their corresponding shards, and returns that mapping.
+//
+// The idea here is that shards should be stable. Picture a timeline, divided
+// into chunks. Number those chunks from 0 (starting at the anchor time) up to
+// numShards, then repeat the cycle when you run out of numbers:
+//
+//	chunk:  0     1     2     3     4     0     1     2     3     4     0
+//	     |-----|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
+//	     ^-anchorTime
+//
+// The total time window we care about goes from atTime-lookbackPeriod, forward
+// through the time of the farthest-future notAfter date found in the database.
+// The lookbackPeriod must be larger than the updatePeriod, to ensure that any
+// certificates which were both revoked *and* expired since the last time we
+// issued CRLs get included in this generation. Because these times are likely
+// to fall in the middle of chunks, we include the whole chunks surrounding
+// those times in our output CRLs:
+//
+//	included chunk:     4     0     1     2     3     4     0     1
+//	      ...--|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
+//	atTime-lookbackPeriod-^   ^-atTime                lastExpiry-^
+//
+// Because this total period of time may include multiple chunks with the same
+// number, we then coalesce these chunks into a single shard. Ideally, this
+// will never happen: it should only happen if the lookbackPeriod is very
+// large, or if the shardWidth is small compared to the lastExpiry (such that
+// numShards * shardWidth is less than lastExpiry - atTime). In this example,
+// shards 0, 1, and 4 all get the contents of two chunks mapped to them, while
+// shards 2 and 3 get only one chunk each.
+//
+//	included chunk:     4     0     1     2     3     4     0     1
+//	      ...--|-----|-----|-----|-----|-----|-----|-----|-----|-----|-----...
+//	                    │     │     │     │     │     │     │     │
+//	shard 0: <────────────────┘─────────────────────────────┘     │
+//	shard 1: <──────────────────────┘─────────────────────────────┘
+//	shard 2: <────────────────────────────┘     │     │
+//	shard 3: <──────────────────────────────────┘     │
+//	shard 4: <──────────┘─────────────────────────────┘
+//
+// Under this scheme, the shard to which any given certificate will be mapped is
+// a function of only three things: that certificate's notAfter timestamp, the
+// chunk width, and the number of shards.
+func (cu *crlUpdater) getShardMappings(ctx context.Context, atTime time.Time) (shardMap, error) {
+	res := make(shardMap, cu.numShards)
+
+	// Get the farthest-future expiration timestamp to ensure we cover everything.
+	lastExpiry, err := cu.sa.GetMaxExpiration(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, err
 	}
-	return shardStart, shardEnd
+
+	// Find the id number and boundaries of the earliest chunk we care about.
+	first := atTime.Add(-cu.lookbackPeriod)
+	c, err := cu.getChunkAtTime(first)
+	if err != nil {
+		return nil, err
+	}
+
+	// Iterate over chunks until we get completely beyond the farthest-future
+	// expiration.
+	for c.start.Before(lastExpiry.AsTime()) {
+		res[c.idx] = append(res[c.idx], c)
+		c = chunk{
+			start: c.end,
+			end:   c.end.Add(cu.shardWidth),
+			idx:   (c.idx + 1) % cu.numShards,
+		}
+	}
+
+	return res, nil
+}
+
+// getChunkAtTime returns the chunk whose boundaries contain the given time.
+// It is broken out solely for the purpose of unit testing.
+func (cu *crlUpdater) getChunkAtTime(atTime time.Time) (chunk, error) {
+	// Compute the amount of time between the current time and the anchor time.
+	timeSinceAnchor := atTime.Sub(anchorTime())
+	if timeSinceAnchor == time.Duration(math.MaxInt64) || timeSinceAnchor < 0 {
+		return chunk{}, errors.New("shard boundary math broken: anchor time too far away")
+	}
+
+	// Determine how many full chunks fit within that time, and from that the
+	// index number of the desired chunk.
+	chunksSinceAnchor := timeSinceAnchor.Nanoseconds() / cu.shardWidth.Nanoseconds()
+	chunkIdx := int(chunksSinceAnchor) % cu.numShards
+
+	// Determine the boundaries of the chunk.
+	timeSinceChunk := time.Duration(timeSinceAnchor.Nanoseconds() % cu.shardWidth.Nanoseconds())
+	left := atTime.Add(-timeSinceChunk)
+	right := left.Add(cu.shardWidth)
+
+	return chunk{left, right, chunkIdx}, nil
 }

@@ -23,7 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"google.golang.org/grpc"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 )
 
 // sigAlgForKey uses `signatureAlgorithmForKey` but fails immediately using the
@@ -73,33 +73,39 @@ func pubKeyForKey(t *testing.T, privKey interface{}) interface{} {
 	return nil
 }
 
-// signRequestEmbed creates a JWS for a given request body with an embedded JWK
+// requestSigner offers methods to sign requests that will be accepted by a
+// specific WFE in unittests. It is only valid for the lifetime of a single
+// unittest.
+type requestSigner struct {
+	t            *testing.T
+	nonceService jose.NonceSource
+}
+
+// embeddedJWK creates a JWS for a given request body with an embedded JWK
 // corresponding to the private key provided. The URL and nonce extra headers
 // are set based on the additional arguments. A computed JWS, the corresponding
 // embedded JWK and the JWS in serialized string form are returned.
-func signRequestEmbed(
-	t *testing.T,
+func (rs requestSigner) embeddedJWK(
 	privateKey interface{},
 	url string,
-	req string,
-	nonceService jose.NonceSource) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
+	req string) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
 	var publicKey interface{}
 	if privateKey == nil {
-		signer := loadKey(t, []byte(test1KeyPrivatePEM))
+		signer := loadKey(rs.t, []byte(test1KeyPrivatePEM))
 		privateKey = signer
 		publicKey = signer.Public()
 	} else {
-		publicKey = pubKeyForKey(t, privateKey)
+		publicKey = pubKeyForKey(rs.t, privateKey)
 	}
 
 	signerKey := jose.SigningKey{
 		Key:       privateKey,
-		Algorithm: sigAlgForKey(t, publicKey),
+		Algorithm: sigAlgForKey(rs.t, publicKey),
 	}
 
 	opts := &jose.SignerOptions{
-		NonceSource: nonceService,
+		NonceSource: rs.nonceService,
 		EmbedJWK:    true,
 	}
 	if url != "" {
@@ -109,14 +115,14 @@ func signRequestEmbed(
 	}
 
 	signer, err := jose.NewSigner(signerKey, opts)
-	test.AssertNotError(t, err, "Failed to make signer")
+	test.AssertNotError(rs.t, err, "Failed to make signer")
 
 	jws, err := signer.Sign([]byte(req))
-	test.AssertNotError(t, err, "Failed to sign req")
+	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
 	parsedJWS, err := jose.ParseSigned(body)
-	test.AssertNotError(t, err, "Failed to parse generated JWS")
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, parsedJWS.Signatures[0].Header.JSONWebKey, body
 }
@@ -125,21 +131,19 @@ func signRequestEmbed(
 // based on the ID number provided. The URL and nonce extra headers
 // are set based on the additional arguments. A computed JWS, the corresponding
 // embedded JWK and the JWS in serialized string form are returned.
-func signRequestKeyID(
-	t *testing.T,
+func (rs requestSigner) byKeyID(
 	keyID int64,
 	privateKey interface{},
 	url string,
-	req string,
-	nonceService jose.NonceSource) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
+	req string) (*jose.JSONWebSignature, *jose.JSONWebKey, string) {
 	// if no key is provided default to test1KeyPrivatePEM
 	if privateKey == nil {
-		privateKey = loadKey(t, []byte(test1KeyPrivatePEM))
+		privateKey = loadKey(rs.t, []byte(test1KeyPrivatePEM))
 	}
 
 	jwk := &jose.JSONWebKey{
 		Key:       privateKey,
-		Algorithm: keyAlgForKey(t, privateKey),
+		Algorithm: keyAlgForKey(rs.t, privateKey),
 		KeyID:     fmt.Sprintf("http://localhost/acme/acct/%d", keyID),
 	}
 
@@ -149,22 +153,82 @@ func signRequestKeyID(
 	}
 
 	opts := &jose.SignerOptions{
-		NonceSource: nonceService,
+		NonceSource: rs.nonceService,
 		ExtraHeaders: map[jose.HeaderKey]interface{}{
 			"url": url,
 		},
 	}
 
 	signer, err := jose.NewSigner(signerKey, opts)
-	test.AssertNotError(t, err, "Failed to make signer")
+	test.AssertNotError(rs.t, err, "Failed to make signer")
 	jws, err := signer.Sign([]byte(req))
-	test.AssertNotError(t, err, "Failed to sign req")
+	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
 	parsedJWS, err := jose.ParseSigned(body)
-	test.AssertNotError(t, err, "Failed to parse generated JWS")
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, jwk, body
+}
+
+// missingNonce returns an otherwise well-signed request that is missing its
+// nonce.
+func (rs requestSigner) missingNonce() *jose.JSONWebSignature {
+	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
+	jwk := &jose.JSONWebKey{
+		Key:       privateKey,
+		Algorithm: keyAlgForKey(rs.t, privateKey),
+		KeyID:     "http://localhost/acme/acct/1",
+	}
+	signerKey := jose.SigningKey{
+		Key:       jwk,
+		Algorithm: jose.RS256,
+	}
+
+	opts := &jose.SignerOptions{
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": "https://example.com/acme/foo",
+		},
+	}
+
+	signer, err := jose.NewSigner(signerKey, opts)
+	test.AssertNotError(rs.t, err, "Failed to make signer")
+	jws, err := signer.Sign([]byte(""))
+	test.AssertNotError(rs.t, err, "Failed to sign req")
+
+	return jws
+}
+
+// invalidNonce returns an otherwise well-signed request with an invalid nonce.
+func (rs requestSigner) invalidNonce() *jose.JSONWebSignature {
+	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
+	jwk := &jose.JSONWebKey{
+		Key:       privateKey,
+		Algorithm: keyAlgForKey(rs.t, privateKey),
+		KeyID:     "http://localhost/acme/acct/1",
+	}
+	signerKey := jose.SigningKey{
+		Key:       jwk,
+		Algorithm: jose.RS256,
+	}
+
+	opts := &jose.SignerOptions{
+		NonceSource: badNonceProvider{},
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": "https://example.com/acme/foo",
+		},
+	}
+
+	signer, err := jose.NewSigner(signerKey, opts)
+	test.AssertNotError(rs.t, err, "Failed to make signer")
+	jws, err := signer.Sign([]byte(""))
+	test.AssertNotError(rs.t, err, "Failed to sign req")
+
+	body := jws.FullSerialize()
+	parsedJWS, err := jose.ParseSigned(body)
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
+
+	return parsedJWS
 }
 
 func TestRejectsNone(t *testing.T) {
@@ -372,7 +436,7 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 }
 
 func TestValidPOSTRequest(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, _ := setupWFE(t)
 
 	dummyContentLength := []string{"pretty long, idk, maybe a nibble or two?"}
 
@@ -462,10 +526,10 @@ func TestValidPOSTRequest(t *testing.T) {
 }
 
 func TestEnforceJWSAuthType(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	testKeyIDJWS, _, _ := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
-	testEmbeddedJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	testKeyIDJWS, _, _ := signer.byKeyID(1, nil, "", "")
+	testEmbeddedJWS, _, _ := signer.embeddedJWK(nil, "", "")
 
 	// A hand crafted JWS that has both a Key ID and an embedded JWK
 	conflictJWSBody := `
@@ -568,17 +632,9 @@ func (badNonceProvider) Nonce() (string, error) {
 }
 
 func TestValidNonce(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	// signRequestEmbed with a `nil` nonce.NonceService will result in the
-	// JWS not having a protected nonce header.
-	missingNonceJWS, _, _ := signRequestEmbed(t, nil, "", "", nil)
-
-	// signRequestEmbed with a badNonceProvider will result in the JWS
-	// having an invalid nonce
-	invalidNonceJWS, _, _ := signRequestEmbed(t, nil, "", "", badNonceProvider{})
-
-	goodJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	goodJWS, _, _ := signer.embeddedJWK(nil, "", "")
 
 	testCases := []struct {
 		Name           string
@@ -588,7 +644,7 @@ func TestValidNonce(t *testing.T) {
 	}{
 		{
 			Name: "No nonce in JWS",
-			JWS:  missingNonceJWS,
+			JWS:  signer.missingNonce(),
 			ExpectedResult: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
 				Detail:     "JWS has no anti-replay nonce",
@@ -598,7 +654,7 @@ func TestValidNonce(t *testing.T) {
 		},
 		{
 			Name: "Invalid nonce in JWS",
-			JWS:  invalidNonceJWS,
+			JWS:  signer.invalidNonce(),
 			ExpectedResult: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
 				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
@@ -630,58 +686,56 @@ func TestValidNonce(t *testing.T) {
 	}
 }
 
-func signExtraHeaders(
-	t *testing.T,
-	headers map[jose.HeaderKey]interface{},
-	nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKey := loadKey(t, []byte(test1KeyPrivatePEM))
+func (rs requestSigner) signExtraHeaders(
+	headers map[jose.HeaderKey]interface{}) (*jose.JSONWebSignature, string) {
+	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
 
 	signerKey := jose.SigningKey{
 		Key:       privateKey,
-		Algorithm: sigAlgForKey(t, privateKey.Public()),
+		Algorithm: sigAlgForKey(rs.t, privateKey.Public()),
 	}
 
 	opts := &jose.SignerOptions{
-		NonceSource:  nonceService,
+		NonceSource:  rs.nonceService,
 		EmbedJWK:     true,
 		ExtraHeaders: headers,
 	}
 
 	signer, err := jose.NewSigner(signerKey, opts)
-	test.AssertNotError(t, err, "Failed to make signer")
+	test.AssertNotError(rs.t, err, "Failed to make signer")
 
 	jws, err := signer.Sign([]byte(""))
-	test.AssertNotError(t, err, "Failed to sign req")
+	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
 	parsedJWS, err := jose.ParseSigned(body)
-	test.AssertNotError(t, err, "Failed to parse generated JWS")
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, body
 }
 
 func TestValidPOSTURL(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
 	// A JWS and HTTP request with no extra headers
-	noHeadersJWS, noHeadersJWSBody := signExtraHeaders(t, nil, wfe.nonceService)
+	noHeadersJWS, noHeadersJWSBody := signer.signExtraHeaders(nil)
 	noHeadersRequest := makePostRequestWithPath("test-path", noHeadersJWSBody)
 
 	// A JWS and HTTP request with extra headers, but no "url" extra header
 	noURLHeaders := map[jose.HeaderKey]interface{}{
 		"nifty": "swell",
 	}
-	noURLHeaderJWS, noURLHeaderJWSBody := signExtraHeaders(t, noURLHeaders, wfe.nonceService)
+	noURLHeaderJWS, noURLHeaderJWSBody := signer.signExtraHeaders(noURLHeaders)
 	noURLHeaderRequest := makePostRequestWithPath("test-path", noURLHeaderJWSBody)
 
 	// A JWS and HTTP request with a mismatched HTTP URL to JWS "url" header
 	wrongURLHeaders := map[jose.HeaderKey]interface{}{
 		"url": "foobar",
 	}
-	wrongURLHeaderJWS, wrongURLHeaderJWSBody := signExtraHeaders(t, wrongURLHeaders, wfe.nonceService)
+	wrongURLHeaderJWS, wrongURLHeaderJWSBody := signer.signExtraHeaders(wrongURLHeaders)
 	wrongURLHeaderRequest := makePostRequestWithPath("test-path", wrongURLHeaderJWSBody)
 
-	correctURLHeaderJWS, _, correctURLHeaderJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", wfe.nonceService)
+	correctURLHeaderJWS, _, correctURLHeaderJWSBody := signer.embeddedJWK(nil, "http://localhost/test-path", "")
 	correctURLHeaderRequest := makePostRequestWithPath("test-path", correctURLHeaderJWSBody)
 
 	testCases := []struct {
@@ -750,44 +804,44 @@ func TestValidPOSTURL(t *testing.T) {
 	}
 }
 
-func multiSigJWS(t *testing.T, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKeyA := loadKey(t, []byte(test1KeyPrivatePEM))
-	privateKeyB := loadKey(t, []byte(test2KeyPrivatePEM))
+func (rs requestSigner) multiSigJWS() (*jose.JSONWebSignature, string) {
+	privateKeyA := loadKey(rs.t, []byte(test1KeyPrivatePEM))
+	privateKeyB := loadKey(rs.t, []byte(test2KeyPrivatePEM))
 
 	signerKeyA := jose.SigningKey{
 		Key:       privateKeyA,
-		Algorithm: sigAlgForKey(t, privateKeyA.Public()),
+		Algorithm: sigAlgForKey(rs.t, privateKeyA.Public()),
 	}
 
 	signerKeyB := jose.SigningKey{
 		Key:       privateKeyB,
-		Algorithm: sigAlgForKey(t, privateKeyB.Public()),
+		Algorithm: sigAlgForKey(rs.t, privateKeyB.Public()),
 	}
 
 	opts := &jose.SignerOptions{
-		NonceSource: nonceService,
+		NonceSource: rs.nonceService,
 		EmbedJWK:    true,
 	}
 
 	signer, err := jose.NewMultiSigner([]jose.SigningKey{signerKeyA, signerKeyB}, opts)
-	test.AssertNotError(t, err, "Failed to make multi signer")
+	test.AssertNotError(rs.t, err, "Failed to make multi signer")
 
 	jws, err := signer.Sign([]byte(""))
-	test.AssertNotError(t, err, "Failed to sign req")
+	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
 	parsedJWS, err := jose.ParseSigned(body)
-	test.AssertNotError(t, err, "Failed to parse generated JWS")
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, body
 }
 
 func TestParseJWSRequest(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	_, tooManySigsJWSBody := multiSigJWS(t, wfe.nonceService)
+	_, tooManySigsJWSBody := signer.multiSigJWS()
 
-	_, _, validJWSBody := signRequestEmbed(t, nil, "http://localhost/test-path", "", wfe.nonceService)
+	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test-path", "")
 	validJWSRequest := makePostRequestWithPath("test-path", validJWSBody)
 
 	missingSigsJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ"}`
@@ -917,10 +971,10 @@ func TestParseJWSRequest(t *testing.T) {
 }
 
 func TestExtractJWK(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	keyIDJWS, _, _ := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
-	goodJWS, goodJWK, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
+	keyIDJWS, _, _ := signer.byKeyID(1, nil, "", "")
+	goodJWS, goodJWK, _ := signer.embeddedJWK(nil, "", "")
 
 	testCases := []struct {
 		Name            string
@@ -958,8 +1012,8 @@ func TestExtractJWK(t *testing.T) {
 	}
 }
 
-func signRequestSpecifyKeyID(t *testing.T, keyID string, nonceService jose.NonceSource) (*jose.JSONWebSignature, string) {
-	privateKey := loadKey(t, []byte(test1KeyPrivatePEM))
+func (rs requestSigner) specifyKeyID(keyID string) (*jose.JSONWebSignature, string) {
+	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
 
 	if keyID == "" {
 		keyID = "this is an invalid non-numeric key ID"
@@ -977,43 +1031,43 @@ func signRequestSpecifyKeyID(t *testing.T, keyID string, nonceService jose.Nonce
 	}
 
 	opts := &jose.SignerOptions{
-		NonceSource: nonceService,
+		NonceSource: rs.nonceService,
 		ExtraHeaders: map[jose.HeaderKey]interface{}{
 			"url": "http://localhost",
 		},
 	}
 
 	signer, err := jose.NewSigner(signerKey, opts)
-	test.AssertNotError(t, err, "Failed to make signer")
+	test.AssertNotError(rs.t, err, "Failed to make signer")
 
 	jws, err := signer.Sign([]byte(""))
-	test.AssertNotError(t, err, "Failed to sign req")
+	test.AssertNotError(rs.t, err, "Failed to sign req")
 
 	body := jws.FullSerialize()
 	parsedJWS, err := jose.ParseSigned(body)
-	test.AssertNotError(t, err, "Failed to parse generated JWS")
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
 
 	return parsedJWS, body
 }
 
 func TestLookupJWK(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	embeddedJWS, _, embeddedJWSBody := signRequestEmbed(t, nil, "", "", wfe.nonceService)
-	invalidKeyIDJWS, invalidKeyIDJWSBody := signRequestSpecifyKeyID(t, "https://acme-99.lettuceencrypt.org/acme/reg/1", wfe.nonceService)
+	embeddedJWS, _, embeddedJWSBody := signer.embeddedJWK(nil, "", "")
+	invalidKeyIDJWS, invalidKeyIDJWSBody := signer.specifyKeyID("https://acme-99.lettuceencrypt.org/acme/reg/1")
 	// ID 100 is mocked to return a non-missing error from sa.GetRegistration
-	errorIDJWS, _, errorIDJWSBody := signRequestKeyID(t, 100, nil, "", "", wfe.nonceService)
+	errorIDJWS, _, errorIDJWSBody := signer.byKeyID(100, nil, "", "")
 	// ID 102 is mocked to return an account does not exist error from sa.GetRegistration
-	missingIDJWS, _, missingIDJWSBody := signRequestKeyID(t, 102, nil, "", "", wfe.nonceService)
+	missingIDJWS, _, missingIDJWSBody := signer.byKeyID(102, nil, "", "")
 	// ID 3 is mocked to return a deactivated account from sa.GetRegistration
-	deactivatedIDJWS, _, deactivatedIDJWSBody := signRequestKeyID(t, 3, nil, "", "", wfe.nonceService)
+	deactivatedIDJWS, _, deactivatedIDJWSBody := signer.byKeyID(3, nil, "", "")
 
 	wfe.LegacyKeyIDPrefix = "https://acme-v00.lettuceencrypt.org/acme/reg/"
-	legacyKeyIDJWS, legacyKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"1", wfe.nonceService)
+	legacyKeyIDJWS, legacyKeyIDJWSBody := signer.specifyKeyID(wfe.LegacyKeyIDPrefix + "1")
 
-	nonNumericKeyIDJWS, nonNumericKeyIDJWSBody := signRequestSpecifyKeyID(t, wfe.LegacyKeyIDPrefix+"abcd", wfe.nonceService)
+	nonNumericKeyIDJWS, nonNumericKeyIDJWSBody := signer.specifyKeyID(wfe.LegacyKeyIDPrefix + "abcd")
 
-	validJWS, validKey, validJWSBody := signRequestKeyID(t, 1, nil, "", "", wfe.nonceService)
+	validJWS, validKey, validJWSBody := signer.byKeyID(1, nil, "", "")
 	validAccountPB, _ := wfe.sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
@@ -1135,11 +1189,11 @@ func TestLookupJWK(t *testing.T) {
 }
 
 func TestValidJWSForKey(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
 	payload := `{ "test": "payload" }`
 	testURL := "http://localhost/test"
-	goodJWS, goodJWK, _ := signRequestEmbed(t, nil, testURL, payload, wfe.nonceService)
+	goodJWS, goodJWK, _ := signer.embeddedJWK(nil, testURL, payload)
 
 	// badSigJWSBody is a JWS that has had the payload changed by 1 byte to break the signature
 	badSigJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`
@@ -1159,18 +1213,14 @@ func TestValidJWSForKey(t *testing.T) {
 		},
 	}
 
-	// invalidNonceJWS uses the badNonceProvider from TestValidNonce to check
-	// that JWS with a bad nonce value are rejected
-	invalidNonceJWS, _, _ := signRequestEmbed(t, nil, "", "", badNonceProvider{})
-
 	// A JWS and HTTP request with a mismatched HTTP URL to JWS "url" header
 	wrongURLHeaders := map[jose.HeaderKey]interface{}{
 		"url": "foobar",
 	}
-	wrongURLHeaderJWS, _ := signExtraHeaders(t, wrongURLHeaders, wfe.nonceService)
+	wrongURLHeaderJWS, _ := signer.signExtraHeaders(wrongURLHeaders)
 
 	// badJSONJWS has a valid signature over a body that is not valid JSON
-	badJSONJWS, _, _ := signRequestEmbed(t, nil, testURL, `{`, wfe.nonceService)
+	badJSONJWS, _, _ := signer.embeddedJWK(nil, testURL, `{`)
 
 	testCases := []struct {
 		Name            string
@@ -1193,7 +1243,7 @@ func TestValidJWSForKey(t *testing.T) {
 		},
 		{
 			Name: "JWS with an invalid nonce",
-			JWS:  invalidNonceJWS,
+			JWS:  signer.invalidNonce(),
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
@@ -1245,14 +1295,12 @@ func TestValidJWSForKey(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			inputLogEvent := newRequestEvent()
 			request := makePostRequestWithPath("test", tc.Body)
-			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request, inputLogEvent)
+			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request)
 
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, inputLogEvent.Payload, payload)
 				test.AssertEquals(t, string(outPayload), payload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
@@ -1266,20 +1314,20 @@ func TestValidJWSForKey(t *testing.T) {
 }
 
 func TestValidPOSTForAccount(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	validJWS, _, validJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	validJWS, _, validJWSBody := signer.byKeyID(1, nil, "http://localhost/test", `{"test":"passed"}`)
 	validAccountPB, _ := wfe.sa.GetRegistration(context.Background(), &sapb.RegistrationID{Id: 1})
 	validAccount, _ := bgrpc.PbToRegistration(validAccountPB)
 
 	// ID 102 is mocked to return missing
-	_, _, missingJWSBody := signRequestKeyID(t, 102, nil, "http://localhost/test", "{}", wfe.nonceService)
+	_, _, missingJWSBody := signer.byKeyID(102, nil, "http://localhost/test", "{}")
 
 	// ID 3 is mocked to return deactivated
 	key3 := loadKey(t, []byte(test3KeyPrivatePEM))
-	_, _, deactivatedJWSBody := signRequestKeyID(t, 3, key3, "http://localhost/test", "{}", wfe.nonceService)
+	_, _, deactivatedJWSBody := signer.byKeyID(3, key3, "http://localhost/test", "{}")
 
-	_, _, embeddedJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	_, _, embeddedJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
 
 	testCases := []struct {
 		Name            string
@@ -1347,7 +1395,6 @@ func TestValidPOSTForAccount(t *testing.T) {
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAcct)
 				test.AssertMarshaledEquals(t, jws, tc.ExpectedJWS)
@@ -1367,13 +1414,13 @@ func TestValidPOSTForAccount(t *testing.T) {
 // processing except the empty body test we do not duplicate the
 // `TestValidPOSTForAccount` testcases here.
 func TestValidPOSTAsGETForAccount(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
 	// an invalid POST-as-GET request contains a non-empty payload. In this case
 	// we test with the empty JSON payload ("{}")
-	_, _, invalidPayloadRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "{}", wfe.nonceService)
+	_, _, invalidPayloadRequest := signer.byKeyID(1, nil, "http://localhost/test", "{}")
 	// a valid POST-as-GET request contains an empty payload.
-	_, _, validRequest := signRequestKeyID(t, 1, nil, "http://localhost/test", "", wfe.nonceService)
+	_, _, validRequest := signer.byKeyID(1, nil, "http://localhost/test", "")
 
 	testCases := []struct {
 		Name             string
@@ -1387,7 +1434,6 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
 			ExpectedLogEvent: web.RequestEvent{
 				Contacts: []string{"mailto:person@mail.com"},
-				Payload:  "{}",
 			},
 		},
 		{
@@ -1416,7 +1462,7 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 }
 
 type mockSADifferentStoredKey struct {
-	sapb.StorageAuthorityGetterClient
+	sapb.StorageAuthorityReadOnlyClient
 }
 
 // mockSADifferentStoredKey has a GetRegistration that will always return an
@@ -1429,14 +1475,14 @@ func (sa mockSADifferentStoredKey) GetRegistration(_ context.Context, _ *sapb.Re
 }
 
 func TestValidPOSTForAccountSwappedKey(t *testing.T) {
-	wfe, fc := setupWFE(t)
-	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthority(fc)}
+	wfe, fc, signer := setupWFE(t)
+	wfe.sa = &mockSADifferentStoredKey{mocks.NewStorageAuthorityReadOnly(fc)}
 	wfe.accountGetter = wfe.sa
 	event := newRequestEvent()
 
 	payload := `{"resource":"ima-payload"}`
 	// Sign a request using test1key
-	_, _, body := signRequestKeyID(t, 1, nil, "http://localhost:4001/test", payload, wfe.nonceService)
+	_, _, body := signer.byKeyID(1, nil, "http://localhost:4001/test", payload)
 	request := makePostRequestWithPath("test", body)
 
 	// Ensure that ValidPOSTForAccount produces an error since the
@@ -1449,11 +1495,11 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 }
 
 func TestValidSelfAuthenticatedPOST(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	_, validKey, validJWSBody := signRequestEmbed(t, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	_, validKey, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
 
-	_, _, keyIDJWSBody := signRequestKeyID(t, 1, nil, "http://localhost/test", `{"test":"passed"}`, wfe.nonceService)
+	_, _, keyIDJWSBody := signer.byKeyID(1, nil, "http://localhost/test", `{"test":"passed"}`)
 
 	testCases := []struct {
 		Name            string
@@ -1494,15 +1540,13 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			inputLogEvent := newRequestEvent()
-			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request, inputLogEvent)
+			outPayload, jwk, prob := wfe.validSelfAuthenticatedPOST(context.Background(), tc.Request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				inThumb, _ := tc.ExpectedJWK.Thumbprint(crypto.SHA256)
 				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
 				test.AssertDeepEquals(t, inThumb, outThumb)
-				test.AssertEquals(t, inputLogEvent.Payload, tc.ExpectedPayload)
 				test.AssertEquals(t, string(outPayload), tc.ExpectedPayload)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
@@ -1516,11 +1560,11 @@ func TestValidSelfAuthenticatedPOST(t *testing.T) {
 }
 
 func TestMatchJWSURLs(t *testing.T) {
-	wfe, _ := setupWFE(t)
+	wfe, _, signer := setupWFE(t)
 
-	noURLJWS, _, _ := signRequestEmbed(t, nil, "", "", wfe.nonceService)
-	urlAJWS, _, _ := signRequestEmbed(t, nil, "example.com", "", wfe.nonceService)
-	urlBJWS, _, _ := signRequestEmbed(t, nil, "example.org", "", wfe.nonceService)
+	noURLJWS, _, _ := signer.embeddedJWK(nil, "", "")
+	urlAJWS, _, _ := signer.embeddedJWK(nil, "example.com", "")
+	urlBJWS, _, _ := signer.embeddedJWK(nil, "example.org", "")
 
 	testCases := []struct {
 		Name            string

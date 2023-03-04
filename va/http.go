@@ -16,7 +16,6 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/iana"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -310,8 +309,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	// Check that the request host isn't a bare IP address. We only follow
 	// redirects to hostnames.
 	if net.ParseIP(reqHost) != nil {
-		return "", 0, berrors.ConnectionFailureError(
-			"Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
+		return "", 0, berrors.ConnectionFailureError("Invalid host in redirect target %q. Only domain names are supported, not IP addresses", reqHost)
 	}
 
 	// Often folks will misconfigure their webserver to send an HTTP redirect
@@ -331,8 +329,7 @@ func (va *ValidationAuthorityImpl) extractRequestTarget(req *http.Request) (stri
 	}
 
 	if _, err := iana.ExtractSuffix(reqHost); err != nil {
-		return "", 0, berrors.ConnectionFailureError(
-			"Invalid hostname in redirect target, must end in IANA registered TLD")
+		return "", 0, berrors.ConnectionFailureError("Invalid hostname in redirect target, must end in IANA registered TLD")
 	}
 
 	return reqHost, reqPort, nil
@@ -499,7 +496,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// addresses explicitly, not following redirects to ports != [80,443], etc)
 	records := []core.ValidationRecord{baseRecord}
 	numRedirects := 0
-	var oldTLS bool
 	processRedirect := func(req *http.Request, via []*http.Request) error {
 		va.log.Debugf("processing a HTTP redirect from the server to %q", req.URL.String())
 		// Only process up to maxRedirect redirects
@@ -509,9 +505,11 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 		numRedirects++
 		va.metrics.http01Redirects.Inc()
 
-		// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
 		if req.Response.TLS != nil && req.Response.TLS.Version < tls.VersionTLS12 {
-			oldTLS = true
+			return berrors.ConnectionFailureError(
+				"validation attempt was redirected to an HTTPS server that doesn't " +
+					"support TLSv1.2 or better. See " +
+					"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144")
 		}
 
 		// If the response contains an HTTP 303 or any other forbidden redirect,
@@ -630,21 +628,6 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 			records[len(records)-1].URL, httpResponse.StatusCode))
 	}
 
-	// TODO(#6011): Remove once TLS 1.0 and 1.1 support is gone.
-	if httpResponse.TLS != nil && httpResponse.TLS.Version < tls.VersionTLS12 {
-		oldTLS = true
-		if !features.Enabled(features.OldTLSOutbound) {
-			return nil, records, berrors.MalformedError(
-				"validation attempt was redirected to an HTTPS server that doesn't " +
-					"support TLSv1.2 or better. See " +
-					"https://community.letsencrypt.org/t/rejecting-sha-1-csrs-and-validation-using-tls-1-0-1-1-urls/175144")
-		}
-	}
-
-	if oldTLS {
-		records[len(records)-1].OldTLS = true
-	}
-
 	// At this point we've made a successful request (be it from a retry or
 	// otherwise) and can read and process the response body.
 	body, err := io.ReadAll(&io.LimitedReader{R: httpResponse.Body, N: maxResponseSize})
@@ -660,7 +643,7 @@ func (va *ValidationAuthorityImpl) processHTTPValidation(
 	// resulting payload is the same size as maxResponseSize fail
 	if len(body) >= maxResponseSize {
 		return nil, records, newIPError(target, berrors.UnauthorizedError("Invalid response from %s: %q",
-			records[len(records)-1].URL, replaceInvalidUTF8(body)))
+			records[len(records)-1].URL, body))
 	}
 	return body, records, nil
 }

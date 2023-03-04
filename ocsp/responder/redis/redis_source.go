@@ -49,7 +49,7 @@ type redisSource struct {
 // NewRedisSource returns a responder.Source which will look up OCSP responses in a
 // Redis table.
 func NewRedisSource(
-	client *rocsp.WritingClient,
+	client *rocsp.RWClient,
 	signer responder.Source,
 	liveSigningPeriod time.Duration,
 	clk clock.Clock,
@@ -106,10 +106,11 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 	if err != nil {
 		if errors.Is(err, rocsp.ErrRedisNotFound) {
 			src.counter.WithLabelValues("not_found").Inc()
-			return src.signAndSave(ctx, req, causeNotFound)
+		} else {
+			src.counter.WithLabelValues("lookup_error").Inc()
+			responder.SampledError(src.log, 1000, "looking for cached response: %s", err)
 		}
-		src.counter.WithLabelValues("lookup_error").Inc()
-		return nil, err
+		return src.signAndSave(ctx, req, causeNotFound)
 	}
 
 	resp, err := ocsp.ParseResponse(respBytes, nil)
@@ -154,7 +155,7 @@ const (
 func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	resp, err := src.signer.Response(ctx, req)
 	if err != nil {
-		if errors.Is(err, rocsp.ErrRedisNotFound) {
+		if errors.Is(err, responder.ErrNotFound) {
 			src.signAndSaveCounter.WithLabelValues(string(cause), "certificate_not_found").Inc()
 			return nil, responder.ErrNotFound
 		}

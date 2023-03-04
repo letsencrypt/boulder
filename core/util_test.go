@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test"
 )
@@ -57,7 +57,7 @@ func TestSerialUtils(t *testing.T) {
 }
 
 func TestBuildID(t *testing.T) {
-	test.AssertEquals(t, "Unspecified", GetBuildID())
+	test.AssertEquals(t, Unspecified, GetBuildID())
 }
 
 const JWK1JSON = `{

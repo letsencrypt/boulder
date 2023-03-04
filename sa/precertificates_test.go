@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -115,11 +114,11 @@ func TestAddPrecertificate(t *testing.T) {
 	regID := reg.Id
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    regID,
-		Ocsp:     ocspResp,
-		Issued:   issuedTime.UnixNano(),
-		IssuerID: 1,
+		Der:          testCert.Raw,
+		RegID:        regID,
+		Ocsp:         ocspResp,
+		Issued:       issuedTime.UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
 
@@ -159,10 +158,10 @@ func TestAddPrecertificateNoOCSP(t *testing.T) {
 	regID := reg.Id
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    regID,
-		Issued:   issuedTime.UnixNano(),
-		IssuerID: 1,
+		Der:          testCert.Raw,
+		RegID:        regID,
+		Issued:       issuedTime.UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
 }
@@ -176,18 +175,18 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 	_, testCert := test.ThrowAwayCert(t, 1)
 
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		Issued:   clk.Now().UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          testCert.Raw,
+		Issued:       clk.Now().UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test certificate")
 
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		Issued:   clk.Now().UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          testCert.Raw,
+		Issued:       clk.Now().UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
 }
@@ -210,7 +209,7 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 		RegID:  regID,
 		Ocsp:   ocspResp,
 		Issued: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
-		// Leaving out IssuerID
+		// Leaving out IssuerNameID
 	})
 
 	test.AssertError(t, err, "Adding precert with no issuer did not fail")
@@ -223,11 +222,11 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 
 	serial, testCert := test.ThrowAwayCert(t, 1)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     []byte{1, 2, 3},
-		Issued:   testCert.NotBefore.UnixNano(),
-		IssuerID: 1,
+		Der:          testCert.Raw,
+		RegID:        reg.Id,
+		Ocsp:         []byte{1, 2, 3},
+		Issued:       testCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add precert")
 
@@ -239,41 +238,4 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	test.AssertEquals(t, keyHashes[0].CertNotAfter, testCert.NotAfter)
 	spkiHash := sha256.Sum256(testCert.RawSubjectPublicKeyInfo)
 	test.Assert(t, bytes.Equal(keyHashes[0].KeyHash, spkiHash[:]), "spki hash mismatch")
-}
-
-func TestAddPrecertificateStatusFail(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
-	defer cleanUp()
-
-	reg := createWorkingRegistration(t, sa)
-
-	serial, testCert := test.ThrowAwayCert(t, 1)
-
-	// Insert an entry for the same serial, so that the normal insert as part of
-	// AddPrecertificate will fail due to the unique key constraint on serial.
-	err := sa.dbMap.Insert(
-		&core.CertificateStatus{
-			Serial:                serial,
-			Status:                core.OCSPStatusGood,
-			OCSPLastUpdated:       sa.clk.Now(),
-			RevokedDate:           time.Time{},
-			RevokedReason:         0,
-			LastExpirationNagSent: time.Time{},
-			OCSPResponse:          []byte{1, 2, 3},
-			NotAfter:              testCert.NotAfter,
-			IsExpired:             false,
-			IssuerID:              1,
-		},
-	)
-	test.AssertNotError(t, err, "failed to insert fake status row")
-
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     []byte{4, 5, 6},
-		Issued:   testCert.NotBefore.UnixNano(),
-		IssuerID: 1,
-	})
-	test.AssertError(t, err, "adding precert should fail when inserting ocsp fails")
-	test.AssertContains(t, err.Error(), "failed to insert *core.CertificateStatus")
 }

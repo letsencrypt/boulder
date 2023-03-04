@@ -64,6 +64,14 @@ type Executor interface {
 	Query(string, ...interface{}) (*sql.Rows, error)
 }
 
+// Queryer offers the Query method. Note that this is not read-only (i.e. not
+// Selector), since a Query can be `INSERT`, `UPDATE`, etc. The difference
+// between Query and Exec is that Query can return rows. So for instance it is
+// suitable for inserting rows and getting back ids.
+type Queryer interface {
+	Query(string, ...interface{}) (*sql.Rows, error)
+}
+
 // Transaction extends an Executor and adds Rollback, Commit, and WithContext.
 type Transaction interface {
 	Executor
