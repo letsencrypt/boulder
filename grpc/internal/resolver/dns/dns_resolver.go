@@ -33,8 +33,10 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/grpc/internal/backoff"
+	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/serviceconfig"
 )
 
 var logger = grpclog.Component("srv")
@@ -47,7 +49,8 @@ var (
 )
 
 func init() {
-	resolver.Register(NewBuilder())
+	resolver.Register(NewDefaultSRVBuilder())
+	resolver.Register(NewNonceSRVBuilder())
 }
 
 const defaultDNSSvrPort = "53"
@@ -88,37 +91,55 @@ var customAuthorityResolver = func(authority string) (*net.Resolver, error) {
 	}, nil
 }
 
-// NewBuilder creates a dnsBuilder which is used to factory DNS resolvers.
-func NewBuilder() resolver.Builder {
-	return &dnsBuilder{}
+// NewDefaultSRVBuilder creates a srvBuilder which is used to factory SRV DNS
+// resolvers.
+func NewDefaultSRVBuilder() resolver.Builder {
+	return &srvBuilder{scheme: "srv"}
 }
 
-type dnsBuilder struct{}
+// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS resolvers
+// with a custom grpc.Balancer use by nonce-service clients.
+func NewNonceSRVBuilder() resolver.Builder {
+	return &srvBuilder{scheme: noncebalancer.SRVResolverScheme, balancer: noncebalancer.Name}
+}
+
+type srvBuilder struct {
+	scheme   string
+	balancer string
+}
 
 // Build creates and starts a DNS resolver that watches the name resolution of the target.
-func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
-	service, domain, err := parseServiceDomain(target.Endpoint)
-	if err != nil {
-		return nil, err
+func (b *srvBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
+	var names []name
+	for _, i := range strings.Split(target.Endpoint, ",") {
+		service, domain, err := parseServiceDomain(i)
+		if err != nil {
+			return nil, err
+		}
+		names = append(names, name{service: service, domain: domain})
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &dnsResolver{
-		service: service,
-		domain:  domain,
-		ctx:     ctx,
-		cancel:  cancel,
-		cc:      cc,
-		rn:      make(chan struct{}, 1),
+		names:  names,
+		ctx:    ctx,
+		cancel: cancel,
+		cc:     cc,
+		rn:     make(chan struct{}, 1),
 	}
 
 	if target.Authority == "" {
 		d.resolver = defaultResolver
 	} else {
+		var err error
 		d.resolver, err = customAuthorityResolver(target.Authority)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if b.balancer != "" {
+		d.serviceConfig = cc.ParseServiceConfig(fmt.Sprintf(`{"loadBalancingConfig": [{"%s":{}}]}`, b.balancer))
 	}
 
 	d.wg.Add(1)
@@ -126,9 +147,9 @@ func (b *dnsBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts 
 	return d, nil
 }
 
-// Scheme returns the naming scheme of this resolver builder, which is "srv".
-func (b *dnsBuilder) Scheme() string {
-	return "srv"
+// Scheme returns the naming scheme of this resolver builder.
+func (b *srvBuilder) Scheme() string {
+	return b.scheme
 }
 
 type netResolver interface {
@@ -136,10 +157,14 @@ type netResolver interface {
 	LookupSRV(ctx context.Context, service, proto, name string) (cname string, addrs []*net.SRV, err error)
 }
 
+type name struct {
+	service string
+	domain  string
+}
+
 // dnsResolver watches for the name resolution update for a non-IP target.
 type dnsResolver struct {
-	service  string
-	domain   string
+	names    []name
 	resolver netResolver
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -152,7 +177,8 @@ type dnsResolver struct {
 	// If Close() doesn't wait for watcher() goroutine finishes, race detector sometimes
 	// will warns lookup (READ the lookup function pointers) inside watcher() goroutine
 	// has data race with replaceNetFunc (WRITE the lookup function pointers).
-	wg sync.WaitGroup
+	wg            sync.WaitGroup
+	serviceConfig *serviceconfig.ParseResult
 }
 
 // ResolveNow invoke an immediate resolution of the target that this dnsResolver watches.
@@ -178,6 +204,9 @@ func (d *dnsResolver) watcher() {
 			// Report error to the underlying grpc.ClientConn.
 			d.cc.ReportError(err)
 		} else {
+			if d.serviceConfig != nil {
+				state.ServiceConfig = d.serviceConfig
+			}
 			err = d.cc.UpdateState(*state)
 		}
 
@@ -209,29 +238,31 @@ func (d *dnsResolver) watcher() {
 
 func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
 	var newAddrs []resolver.Address
-	_, srvs, err := d.resolver.LookupSRV(d.ctx, d.service, "tcp", d.domain)
-	if err != nil {
-		err = handleDNSError(err, "SRV") // may become nil
-		return nil, err
-	}
-	for _, s := range srvs {
-		backendAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
+	for _, n := range d.names {
+		_, srvs, err := d.resolver.LookupSRV(d.ctx, n.service, "tcp", n.domain)
 		if err != nil {
-			err = handleDNSError(err, "A") // may become nil
-			if err == nil {
-				// If there are other SRV records, look them up and ignore this
-				// one that does not exist.
-				continue
-			}
+			err = handleDNSError(err, "SRV") // may become nil
 			return nil, err
 		}
-		for _, a := range backendAddrs {
-			ip, ok := formatIP(a)
-			if !ok {
-				return nil, fmt.Errorf("srv: error parsing A record IP address %v", a)
+		for _, s := range srvs {
+			backendAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
+			if err != nil {
+				err = handleDNSError(err, "A") // may become nil
+				if err == nil {
+					// If there are other SRV records, look them up and ignore this
+					// one that does not exist.
+					continue
+				}
+				return nil, err
 			}
-			addr := ip + ":" + strconv.Itoa(int(s.Port))
-			newAddrs = append(newAddrs, resolver.Address{Addr: addr, ServerName: s.Target})
+			for _, a := range backendAddrs {
+				ip, ok := formatIP(a)
+				if !ok {
+					return nil, fmt.Errorf("srv: error parsing A record IP address %v", a)
+				}
+				addr := ip + ":" + strconv.Itoa(int(s.Port))
+				newAddrs = append(newAddrs, resolver.Address{Addr: addr, ServerName: s.Target})
+			}
 		}
 	}
 	return newAddrs, nil

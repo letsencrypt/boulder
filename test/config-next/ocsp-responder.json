@@ -1,15 +1,11 @@
 {
   "ocspResponder": {
-    "db": {
-      "dbConnectFile": "test/secrets/ocsp_responder_dburl",
-      "maxOpenConns": 10
-    },
     "redis": {
       "username": "ocsp-responder",
       "passwordFile": "test/secrets/ocsp_responder_redis_password",
       "shardAddrs": {
-        "shard1": "10.33.33.8:4218",
-        "shard2": "10.33.33.9:4218"
+        "shard1": "10.33.33.2:4218",
+        "shard2": "10.33.33.3:4218"
       },
       "timeout": "5s",
       "poolSize": 100,
@@ -26,6 +22,7 @@
       "keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
     },
     "raService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ra",
         "domain": "service.consul"
@@ -34,6 +31,7 @@
       "timeout": "15s"
     },
     "saService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "sa",
         "domain": "service.consul"

@@ -67,7 +67,7 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 // all of the services added to the builder. It also exposes a health check
 // service. It returns two functions, start() and stop(), which should be used
 // to start and gracefully stop the server.
-func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, interceptors ...grpc.UnaryServerInterceptor) (func() error, func(), error) {
+func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, func(), error) {
 	// Add the health service to all servers.
 	healthSrv := health.NewServer()
 	sb = sb.Add(&healthpb.Health_ServiceDesc, healthSrv)
@@ -96,6 +96,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// Collect all names which should be allowed to connect to the server at all.
 	// This is the names which are allowlisted at the server level, plus the union
 	// of all names which are allowlisted for any individual service.
+	// TODO(#6698): Remove the first portion of this.
 	acceptedSANs := make(map[string]struct{})
 	for _, name := range sb.cfg.ClientNames {
 		acceptedSANs[name] = struct{}{}
@@ -127,12 +128,12 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 
 	mi := newServerMetadataInterceptor(metrics, clk)
 
-	unaryInterceptors := append([]grpc.UnaryServerInterceptor{
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		mi.metrics.grpcMetrics.UnaryServerInterceptor(),
 		ai.Unary,
 		mi.Unary,
 		hnygrpc.UnaryServerInterceptor(),
-	}, interceptors...)
+	}
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		mi.metrics.grpcMetrics.StreamServerInterceptor(),

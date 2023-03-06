@@ -11,9 +11,11 @@ import (
 	"github.com/letsencrypt/boulder/ca"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/linter"
@@ -40,10 +42,10 @@ type Config struct {
 		}
 
 		// How long issued certificates are valid for.
-		Expiry cmd.ConfigDuration
+		Expiry config.Duration
 
 		// How far back certificates should be backdated.
-		Backdate cmd.ConfigDuration
+		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
 		SerialPrefix int
@@ -54,12 +56,12 @@ type Config struct {
 		// LifespanOCSP is how long OCSP responses are valid for. It should be
 		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
 		// Section 4.9.10, it MUST NOT be more than 10 days.
-		LifespanOCSP cmd.ConfigDuration
+		LifespanOCSP config.Duration
 
 		// LifespanCRL is how long CRLs are valid for. It should be longer than the
 		// `period` field of the CRL Updater. Per the BRs, Section 4.9.7, it MUST
 		// NOT be more than 10 days.
-		LifespanCRL cmd.ConfigDuration
+		LifespanCRL config.Duration
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -80,7 +82,7 @@ type Config struct {
 		// means logging more often than necessary, which is inefficient in terms
 		// of bytes and log system resources.
 		// Recommended to be around 500ms.
-		OCSPLogPeriod cmd.ConfigDuration
+		OCSPLogPeriod config.Duration
 
 		// Path of a YAML file containing the list of int64 RegIDs
 		// allowed to request ECDSA issuance
@@ -147,6 +149,9 @@ func main() {
 	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
+	// TODO(#6448): Remove these deprecated ocsp and crl addr flags.
+	_ = flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
+	_ = flag.String("crl-addr", "", "CRL gRPC listen address override")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
@@ -227,7 +232,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
 	sa := sapb.NewStorageAuthorityClient(conn)
 
-	kp, err := goodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
+	kp, err := sagoodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var orphanQueue *goque.Queue
@@ -258,7 +263,7 @@ func main() {
 
 	var ocspi ca.OCSPGenerator
 	if !c.CA.DisableOCSPService {
-		ocspi, err := ca.NewOCSPImpl(
+		ocspi, err = ca.NewOCSPImpl(
 			boulderIssuers,
 			c.CA.LifespanOCSP.Duration,
 			c.CA.OCSPLogMaxLength,

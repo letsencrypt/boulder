@@ -86,6 +86,9 @@ func main() {
 	}
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
+		// The gosec linter complains that timeouts cannot be set here. That's fine,
+		// because this is test-only code.
+		////nolint:gosec
 		err := http.ListenAndServe(*listenAddress, nil)
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)

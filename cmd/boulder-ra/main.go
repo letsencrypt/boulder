@@ -6,14 +6,17 @@ import (
 	"time"
 
 	"github.com/honeycombio/beeline-go"
+
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	"github.com/letsencrypt/boulder/ctpolicy/ctconfig"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/policy"
@@ -42,13 +45,6 @@ type Config struct {
 
 		MaxNames int
 
-		// Controls behaviour of the RA when asked to create a new authz for
-		// a name/regID that already has a valid authz. False preserves historic
-		// behaviour and ignores the existing authz and creates a new one. True
-		// instructs the RA to reuse the previously created authz in lieu of
-		// creating another.
-		ReuseValidAuthz bool
-
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. Given a value of 300 days when used with a 90-day
 		// cert lifetime, this allows creation of certs that will cover a whole
@@ -63,7 +59,17 @@ type Config struct {
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
 
-		OrderLifetime cmd.ConfigDuration
+		// OrderLifetime is how far in the future an Order's expiration date should
+		// be set when it is first created.
+		OrderLifetime config.Duration
+
+		// FinalizeTimeout is how long the RA is willing to wait for the Order
+		// finalization process to take. This config parameter only has an effect
+		// if the AsyncFinalization feature flag is enabled. Any systems which
+		// manage the shutdown of an RA must be willing to wait at least this long
+		// after sending the shutdown signal, to allow background goroutines to
+		// complete.
+		FinalizeTimeout config.Duration
 
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we
@@ -80,10 +86,6 @@ type Config struct {
 		// program but we still want our certs to end up there.
 		InformationalCTLogs []ctconfig.LogDescription
 
-		// IssuerCertPath is the path to the intermediate used to issue certificates.
-		// It is used to generate OCSP URLs to purge at revocation time.
-		// TODO(#5162): DEPRECATED. Remove this field entirely.
-		IssuerCertPath string
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
 		// generate OCSP URLs to purge during revocation.
@@ -174,9 +176,6 @@ func main() {
 	apc := akamaipb.NewAkamaiPurgerClient(apConn)
 
 	issuerCertPaths := c.RA.IssuerCerts
-	if len(issuerCertPaths) == 0 {
-		issuerCertPaths = []string{c.RA.IssuerCertPath}
-	}
 	issuerCerts := make([]*issuance.Certificate, len(issuerCertPaths))
 	for i, issuerCertPath := range issuerCertPaths {
 		issuerCerts[i], err = issuance.LoadCertificate(issuerCertPath)
@@ -224,7 +223,11 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.RA.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
-	kp, err := goodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
+	if features.Enabled(features.AsyncFinalize) && c.RA.FinalizeTimeout.Duration == 0 {
+		cmd.Fail("finalizeTimeout must be supplied when AsyncFinalize feature is enabled")
+	}
+
+	kp, err := sagoodkey.NewKeyPolicy(&c.RA.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	if c.RA.MaxNames == 0 {
@@ -238,12 +241,12 @@ func main() {
 		c.RA.MaxContactsPerRegistration,
 		kp,
 		c.RA.MaxNames,
-		c.RA.ReuseValidAuthz,
 		authorizationLifetime,
 		pendingAuthorizationLifetime,
 		pubc,
 		caaClient,
 		c.RA.OrderLifetime.Duration,
+		c.RA.FinalizeTimeout.Duration,
 		ctp,
 		apc,
 		issuerCerts,
@@ -262,7 +265,10 @@ func main() {
 		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
+	go cmd.CatchSignals(logger, func() {
+		stop()
+		rai.DrainFinalize()
+	})
 	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 

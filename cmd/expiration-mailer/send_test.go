@@ -50,7 +50,7 @@ func TestSendEarliestCertInfo(t *testing.T) {
 		Subject: "Testing: Let's Encrypt certificate expiration notice for domain \"example-a.com\" (and 2 more)",
 		Body: fmt.Sprintf(`hi, cert for DNS names %s is going to expire in 2 days (%s)`,
 			domains,
-			rawCertB.NotAfter.Format(time.RFC822Z)),
+			rawCertB.NotAfter.Format(time.DateOnly)),
 	}
 	expected.To = "one@example.com"
 	test.AssertEquals(t, expected, ctx.mc.Messages[0])

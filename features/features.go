@@ -13,28 +13,6 @@ type FeatureFlag int
 const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
-	PrecertificateRevocation
-	StripDefaultSchemePort
-	NonCFSSLSigner
-	StoreIssuerInfo
-	StreamlineOrderAndAuthzs
-	V1DisableNewValidations
-	ExpirationMailerDontLookTwice
-	OldTLSInbound
-	OldTLSOutbound
-	ROCSPStage1
-	ROCSPStage2
-	ROCSPStage3
-	GetAuthzReadOnly
-	GetAuthzUseIndex
-	CheckFailedAuthorizationsFirst
-	FasterNewOrdersRateLimit
-	AllowV1Registration
-	RestrictRSAKeySizes
-	AllowReRevocation
-	MozRevocationReasons
-	SHA1CSRs
-	RejectDuplicateCSRExtensions
 	StoreRevokerInfo
 
 	//   Currently in-use features
@@ -48,9 +26,6 @@ const (
 	// MultiVAFullResults will cause the main VA to wait for all of the remote VA
 	// results, not just the threshold required to make a decision.
 	MultiVAFullResults
-	// MandatoryPOSTAsGET forbids legacy unauthenticated GET requests for ACME
-	// resources.
-	MandatoryPOSTAsGET
 	// ECDSAForAll enables all accounts, regardless of their presence in the CA's
 	// ecdsaAllowedAccounts config value, to get issuance from ECDSA issuers.
 	ECDSAForAll
@@ -75,6 +50,23 @@ const (
 	// rather than a SELECT from certificateStatus followed by thousands of
 	// one-row SELECTs from certificates.
 	ExpirationMailerUsesJoin
+
+	// CertCheckerChecksValidations enables an extra query for each certificate
+	// checked, to find the relevant authzs. Since this query might be
+	// expensive, we gate it behind a feature flag.
+	CertCheckerChecksValidations
+
+	// CertCheckerRequiresValidations causes cert-checker to fail if the
+	// query enabled by CertCheckerChecksValidations didn't find corresponding
+	// authorizations.
+	CertCheckerRequiresValidations
+
+	// AsyncFinalize enables the RA to return approximately immediately from
+	// requests to finalize orders. This allows us to take longer getting SCTs,
+	// issuing certs, and updating the database; it indirectly reduces the number
+	// of "orphaned" certs we have. However, it also requires clients to properly
+	// implement polling the Order object to wait for the cert URL to appear.
+	AsyncFinalize
 )
 
 // List of features and their default value, protected by fMu
@@ -84,36 +76,16 @@ var features = map[FeatureFlag]bool{
 	CAAAccountURI:                  false,
 	EnforceMultiVA:                 false,
 	MultiVAFullResults:             false,
-	MandatoryPOSTAsGET:             false,
-	AllowV1Registration:            true,
-	V1DisableNewValidations:        false,
-	PrecertificateRevocation:       false,
-	StripDefaultSchemePort:         false,
-	StoreIssuerInfo:                false,
 	StoreRevokerInfo:               false,
-	RestrictRSAKeySizes:            false,
-	FasterNewOrdersRateLimit:       false,
-	NonCFSSLSigner:                 false,
 	ECDSAForAll:                    false,
-	StreamlineOrderAndAuthzs:       false,
 	ServeRenewalInfo:               false,
-	GetAuthzReadOnly:               false,
-	GetAuthzUseIndex:               false,
-	CheckFailedAuthorizationsFirst: false,
-	AllowReRevocation:              false,
-	MozRevocationReasons:           false,
-	OldTLSOutbound:                 true,
-	OldTLSInbound:                  true,
-	SHA1CSRs:                       true,
 	AllowUnrecognizedFeatures:      false,
-	ExpirationMailerDontLookTwice:  false,
-	RejectDuplicateCSRExtensions:   false,
-	ROCSPStage1:                    false,
-	ROCSPStage2:                    false,
-	ROCSPStage3:                    false,
 	ROCSPStage6:                    false,
 	ROCSPStage7:                    false,
 	ExpirationMailerUsesJoin:       false,
+	CertCheckerChecksValidations:   false,
+	CertCheckerRequiresValidations: false,
+	AsyncFinalize:                  false,
 }
 
 var fMu = new(sync.RWMutex)

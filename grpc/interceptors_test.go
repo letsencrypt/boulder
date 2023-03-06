@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,7 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
@@ -28,7 +26,6 @@ import (
 
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -90,19 +87,6 @@ func TestClientInterceptor(t *testing.T) {
 	test.AssertError(t, err, "ci.intercept didn't fail when handler returned a error")
 }
 
-func TestCancelTo408Interceptor(t *testing.T) {
-	err := CancelTo408Interceptor(context.Background(), "-service-test", nil, nil, nil, testInvoker)
-	test.AssertNotError(t, err, "CancelTo408Interceptor returned an error when it shouldn't")
-
-	err = CancelTo408Interceptor(context.Background(), "-service-requesterCanceledTest", nil, nil, nil, testInvoker)
-	test.AssertError(t, err, "CancelTo408Interceptor didn't return an error when it should")
-
-	var probDetails *probs.ProblemDetails
-	test.AssertErrorWraps(t, err, &probDetails)
-	test.AssertEquals(t, probDetails.Type, probs.MalformedProblem)
-	test.AssertEquals(t, probDetails.HTTPStatus, http.StatusRequestTimeout)
-}
-
 // TestFailFastFalse sends a gRPC request to a backend that is
 // unavailable, and ensures that the request doesn't error out until the
 // timeout is reached, i.e. that FailFast is set to false.
@@ -151,7 +135,7 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 		spent := int64(time.Since(start) / time.Nanosecond)
 		return &test_proto.Time{Time: spent}, nil
 	case <-ctx.Done():
-		return nil, status.Errorf(codes.DeadlineExceeded, "the chiller overslept")
+		return nil, errors.New("unique error indicating that the server's shortened context timed itself out")
 	}
 }
 
@@ -197,7 +181,7 @@ func TestTimeouts(t *testing.T) {
 		timeout             time.Duration
 		expectedErrorPrefix string
 	}{
-		{250 * time.Millisecond, "rpc error: code = Unknown desc = rpc error: code = DeadlineExceeded desc = the chiller overslept"},
+		{250 * time.Millisecond, "rpc error: code = Unknown desc = unique error indicating that the server's shortened context timed itself out"},
 		{100 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
 		{10 * time.Millisecond, "Chiller.Chill timed out after 0 ms"},
 	}
@@ -376,28 +360,6 @@ func TestInFlightRPCStat(t *testing.T) {
 
 	// Check the gauge value again
 	test.AssertMetricWithLabelsEquals(t, ci.metrics.inFlightRPCs, labels, 0)
-}
-
-func TestNoCancelInterceptor(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	ctx, cancel2 := context.WithDeadline(ctx, time.Now().Add(time.Second))
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		select {
-		case <-ctx.Done():
-			return nil, errors.New("oh no canceled")
-		case <-time.After(50 * time.Millisecond):
-		}
-		return nil, nil
-	}
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		cancel()
-		cancel2()
-	}()
-	_, err := NoCancelInterceptor(ctx, nil, nil, handler)
-	if err != nil {
-		t.Error(err)
-	}
 }
 
 func TestServiceAuthChecker(t *testing.T) {

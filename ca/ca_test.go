@@ -27,7 +27,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
-	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -146,10 +146,6 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 	return nil, berrors.NotFoundError("cannot find the cert")
 }
 
-func (m *mockSA) GetPrecertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, berrors.NotFoundError("cannot find the precert")
-}
-
 var caKey crypto.Signer
 var caCert *issuance.Certificate
 var caCert2 *issuance.Certificate
@@ -194,8 +190,8 @@ func setup(t *testing.T) *testCtx {
 				Policies: []issuance.PolicyInformation{
 					{OID: "2.23.140.1.2.1"},
 				},
-				MaxValidityPeriod:   cmd.ConfigDuration{Duration: time.Hour * 8760},
-				MaxValidityBackdate: cmd.ConfigDuration{Duration: time.Hour},
+				MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},
+				MaxValidityBackdate: config.Duration{Duration: time.Hour},
 			},
 			issuance.IssuerConfig{
 				UseForECDSALeaves: ecdsa,
@@ -1003,7 +999,7 @@ func TestOrphanQueue(t *testing.T) {
 
 	qsa := &queueSA{fail: true}
 	testCtx := setup(t)
-	fakeNow, err := time.Parse("Mon Jan 2 15:04:05 2006", "Mon Jan 2 15:04:05 2006")
+	fakeNow, err := time.Parse(time.ANSIC, "Mon Jan 2 15:04:05 2006")
 	if err != nil {
 		t.Fatal(err)
 	}

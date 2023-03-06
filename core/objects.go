@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ocsp"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
@@ -337,9 +337,6 @@ type Authorization struct {
 	// slice and the order of these challenges may not be predictable.
 	Challenges []Challenge `json:"challenges,omitempty" db:"-"`
 
-	// This field is deprecated. It's filled in by WFE for the ACMEv1 API.
-	Combinations [][]int `json:"combinations,omitempty" db:"combinations"`
-
 	// Wildcard is a Boulder-specific Authorization field that indicates the
 	// authorization was created as a result of an order containing a name with
 	// a `*.`wildcard prefix. This will help convey to users that an
@@ -363,16 +360,16 @@ func (authz *Authorization) FindChallengeByStringID(id string) int {
 // SolvedBy will look through the Authorizations challenges, returning the type
 // of the *first* challenge it finds with Status: valid, or an error if no
 // challenge is valid.
-func (authz *Authorization) SolvedBy() (*AcmeChallenge, error) {
+func (authz *Authorization) SolvedBy() (AcmeChallenge, error) {
 	if len(authz.Challenges) == 0 {
-		return nil, fmt.Errorf("Authorization has no challenges")
+		return "", fmt.Errorf("Authorization has no challenges")
 	}
 	for _, chal := range authz.Challenges {
 		if chal.Status == StatusValid {
-			return &chal.Type, nil
+			return chal.Type, nil
 		}
 	}
-	return nil, fmt.Errorf("Authorization not solved by any challenge")
+	return "", fmt.Errorf("Authorization not solved by any challenge")
 }
 
 // JSONBuffer fields get encoded and decoded JOSE-style, in base64url encoding
@@ -453,9 +450,12 @@ type CertificateStatus struct {
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 
-	// TODO(#5152): Change this to an issuance.Issuer(Name)ID after it no longer
-	// has to support both IssuerNameIDs and IssuerIDs.
-	IssuerID int64
+	// Note: this is not an issuance.IssuerNameID because that would create an
+	// import cycle between core and issuance.
+	// Note2: This field used to be called `issuerID`. We keep the old name in
+	// the DB, but update the Go field name to be clear which type of ID this
+	// is.
+	IssuerNameID int64 `db:"issuerID"`
 }
 
 // FQDNSet contains the SHA256 hash of the lowercased, comma joined dNSNames

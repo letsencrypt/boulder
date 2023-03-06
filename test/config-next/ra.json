@@ -5,7 +5,6 @@
     "debugAddr": ":8002",
     "hostnamePolicyFile": "test/hostname-policy.yaml",
     "maxNames": 100,
-    "reuseValidAuthz": true,
     "authorizationLifetimeDays": 30,
     "pendingAuthorizationLifetimeDays": 7,
     "goodkey": {
@@ -14,6 +13,7 @@
       "fermatRounds": 100
     },
     "orderLifetime": "168h",
+    "finalizeTimeout": "30s",
     "issuerCerts": [
       "/hierarchy/intermediate-cert-rsa-a.pem",
       "/hierarchy/intermediate-cert-rsa-b.pem",
@@ -25,6 +25,7 @@
       "keyFile": "test/grpc-creds/ra.boulder/key.pem"
     },
     "vaService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "va",
         "domain": "service.consul"
@@ -33,6 +34,7 @@
       "hostOverride": "va.boulder"
     },
     "caService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ca",
         "domain": "service.consul"
@@ -41,6 +43,7 @@
       "hostOverride": "ca.boulder"
     },
     "ocspService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "ca",
         "domain": "service.consul"
@@ -49,6 +52,7 @@
       "hostOverride": "ca.boulder"
     },
     "publisherService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "publisher",
         "domain": "service.consul"
@@ -57,6 +61,7 @@
       "hostOverride": "publisher.boulder"
     },
     "saService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "sa",
         "domain": "service.consul"
@@ -65,6 +70,7 @@
       "hostOverride": "sa.boulder"
     },
     "akamaiPurgerService": {
+      "dnsAuthority": "10.55.55.10",
       "srvLookup": {
         "service": "akamai-purger",
         "domain": "service.consul"
@@ -93,8 +99,8 @@
     },
     "features": {
       "StoreRevokerInfo": true,
-      "StreamlineOrderAndAuthzs": true,
-      "ROCSPStage7": true
+      "ROCSPStage7": true,
+      "AsyncFinalize": true
     },
     "ctLogs": {
       "stagger": "500ms",

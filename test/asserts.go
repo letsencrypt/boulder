@@ -49,6 +49,22 @@ func AssertNotNil(t *testing.T, obj interface{}, message string) {
 	}
 }
 
+// AssertBoxedNil checks that an inner object is nil. This is intentional for
+// testing purposes only.
+func AssertBoxedNil(t *testing.T, obj interface{}, message string) {
+	t.Helper()
+	typ := reflect.TypeOf(obj).Kind()
+	switch typ {
+	// .IsNil() only works on chan, func, interface, map, pointer, and slice.
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if !reflect.ValueOf(obj).IsNil() {
+			t.Fatal(message)
+		}
+	default:
+		t.Fatalf("Cannot check type \"%s\". Needs to be of type chan, func, interface, map, pointer, or slice.", typ)
+	}
+}
+
 // AssertNotError checks that err is nil
 func AssertNotError(t *testing.T, err error, message string) {
 	t.Helper()
@@ -77,6 +93,11 @@ func AssertErrorWraps(t *testing.T, err error, target interface{}) {
 // AssertErrorIs checks that err wraps the given error
 func AssertErrorIs(t *testing.T, err error, target error) {
 	t.Helper()
+
+	if err == nil {
+		t.Fatal("err was unexpectedly nil and should not have been")
+	}
+
 	if !errors.Is(err, target) {
 		t.Fatalf("error does not wrap expected error: %q !> %q", err.Error(), target.Error())
 	}

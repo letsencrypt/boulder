@@ -31,8 +31,8 @@ func makeClient() (*RWClient, clock.Clock) {
 
 	rdb := redis.NewRing(&redis.RingOptions{
 		Addrs: map[string]string{
-			"shard1": "10.33.33.8:4218",
-			"shard2": "10.33.33.9:4218",
+			"shard1": "10.33.33.2:4218",
+			"shard2": "10.33.33.3:4218",
 		},
 		Username:  "unittest-rw",
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
@@ -43,10 +43,6 @@ func makeClient() (*RWClient, clock.Clock) {
 }
 
 func TestSetAndGet(t *testing.T) {
-	// TODO(#6517) remove this block.
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config" {
-		t.Skip("Skipping test in config mode")
-	}
 	client, _ := makeClient()
 	fmt.Println(client.Ping(context.Background()))
 

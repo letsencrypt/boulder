@@ -39,7 +39,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/square/go-jose.v2"
+	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 var log = blog.UseMock()
@@ -72,7 +72,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, fc, log)
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, 0, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -224,6 +224,39 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 
 	_, err = sa.UpdateRegistration(ctx, &corepb.Registration{Id: 100, Key: jwkJSON, InitialIP: []byte("foo")})
 	test.AssertErrorIs(t, err, berrors.NotFound)
+}
+
+func TestReplicationLagRetries(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// First, set the lagFactor to 0. Neither selecting a real registration nor
+	// selecting a nonexistent registration should cause the clock to advance.
+	sa.lagFactor = 0
+	start := clk.Now()
+
+	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "selecting extant registration")
+	test.AssertEquals(t, clk.Now(), start)
+
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
+	test.AssertError(t, err, "selecting nonexistent registration")
+	test.AssertEquals(t, clk.Now(), start)
+
+	// Now, set the lagFactor to 1. Trying to select a nonexistent registration
+	// should cause the clock to advance when GetRegistration sleeps and retries.
+	sa.lagFactor = 1
+	start = clk.Now()
+
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
+	test.AssertNotError(t, err, "selecting extant registration")
+	test.AssertEquals(t, clk.Now(), start)
+
+	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
+	test.AssertError(t, err, "selecting nonexistent registration")
+	test.AssertEquals(t, clk.Now(), start.Add(1))
 }
 
 func TestAddCertificate(t *testing.T) {
@@ -732,7 +765,7 @@ func TestAddIssuedNames(t *testing.T) {
 	expectedSerial := "000000000000000000000000000000000001"
 	notBefore := time.Date(2018, 2, 14, 12, 0, 0, 0, time.UTC)
 	placeholdersPerName := "(?,?,?,?)"
-	baseQuery := "INSERT INTO issuedNames (reversedName, serial, notBefore, renewal) VALUES"
+	baseQuery := "INSERT INTO issuedNames (reversedName,serial,notBefore,renewal) VALUES"
 
 	testCases := []struct {
 		Name         string
@@ -820,7 +853,7 @@ func TestAddIssuedNames(t *testing.T) {
 			for i := 0; i < len(tc.IssuedNames)-1; i++ {
 				expectedPlaceholders = fmt.Sprintf("%s,%s", expectedPlaceholders, placeholdersPerName)
 			}
-			expectedQuery := fmt.Sprintf("%s %s;", baseQuery, expectedPlaceholders)
+			expectedQuery := fmt.Sprintf("%s %s", baseQuery, expectedPlaceholders)
 			test.AssertEquals(t, e.query, expectedQuery)
 			if !reflect.DeepEqual(e.args, tc.ExpectedArgs) {
 				t.Errorf("Wrong args: got\n%#v, expected\n%#v", e.args, tc.ExpectedArgs)
@@ -841,10 +874,10 @@ func TestPreviousCertificateExists(t *testing.T) {
 
 	issued := sa.clk.Now()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		Issued:   issued.UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          certDER,
+		Issued:       issued.UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -989,6 +1022,99 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 4)
 	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
+}
+
+// TestNewOrderAndAuthzs_NonNilInnerOrder verifies that a nil
+// sapb.NewOrderAndAuthzsRequest NewOrder object returns an error.
+func TestNewOrderAndAuthzs_NonNilInnerOrder(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	_, err = sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewAuthzs: []*corepb.Authorization{
+			{
+				Identifier:     "a.com",
+				RegistrationID: reg.Id,
+				Expires:        fc.Now().Add(2 * time.Hour).UnixNano(),
+				Status:         "pending",
+				Challenges:     []*corepb.Challenge{{Token: core.NewToken()}},
+			},
+		},
+	})
+	test.AssertErrorIs(t, err, errIncompleteRequest)
+}
+
+func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
+	sa, fc, cleanup := initSA(t)
+	defer cleanup()
+
+	// Create a test registration to reference.
+	key, _ := jose.JSONWebKey{Key: &rsa.PublicKey{N: big.NewInt(1), E: 1}}.MarshalJSON()
+	initialIP, _ := net.ParseIP("17.17.17.17").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       key,
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, "Couldn't create test registration")
+
+	expires := fc.Now().Add(time.Hour).UnixNano()
+	domain := "a.com"
+
+	// Create an authz that does not yet exist in the database with some invalid
+	// data smuggled in.
+	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
+		NewAuthzs: []*corepb.Authorization{
+			{
+				Identifier:     domain,
+				RegistrationID: reg.Id,
+				Expires:        expires,
+				Status:         string(core.StatusPending),
+				Challenges: []*corepb.Challenge{
+					{
+						Status: "real fake garbage data",
+						Token:  core.NewToken(),
+					},
+				},
+			},
+		},
+		NewOrder: &sapb.NewOrderRequest{
+			RegistrationID: reg.Id,
+			Expires:        expires,
+			Names:          []string{domain},
+		},
+	})
+	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
+
+	// Safely get the authz for the order we created above.
+	obj, err := sa.dbReadOnlyMap.Get(authzModel{}, order.V2Authorizations[0])
+	test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
+
+	// To access the data stored in obj at compile time, we type assert obj
+	// into a pointer to an authzModel.
+	am, ok := obj.(*authzModel)
+	test.Assert(t, ok, "Could not type assert obj into authzModel")
+
+	// If we're making a brand new authz, it should have the pending status
+	// regardless of what incorrect status value was passed in during construction.
+	test.AssertEquals(t, am.Status, statusUint(core.StatusPending))
+
+	// Testing for the existence of these boxed nils is a definite break from
+	// our paradigm of avoiding passing around boxed nils whenever possible.
+	// However, the existence of these boxed nils in relation to this test is
+	// actually expected. If these tests fail, then a possible SA refactor or RA
+	// bug placed incorrect data into brand new authz input fields.
+	test.AssertBoxedNil(t, am.Attempted, "am.Attempted should be nil")
+	test.AssertBoxedNil(t, am.AttemptedAt, "am.AttemptedAt should be nil")
+	test.AssertBoxedNil(t, am.ValidationError, "am.ValidationError should be nil")
+	test.AssertBoxedNil(t, am.ValidationRecord, "am.ValidationRecord should be nil")
 }
 
 func TestSetOrderProcessing(t *testing.T) {
@@ -1642,11 +1768,11 @@ func TestRevokeCertificate(t *testing.T) {
 	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   sa.clk.Now().UnixNano(),
-		IssuerID: 1,
+		Der:          certDER,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       sa.clk.Now().UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
@@ -1707,11 +1833,11 @@ func TestRevokeCertificateNoResponse(t *testing.T) {
 	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   sa.clk.Now().UnixNano(),
-		IssuerID: 1,
+		Der:          certDER,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       sa.clk.Now().UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
@@ -1745,11 +1871,11 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	issuedTime := fc.Now().UnixNano()
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   issuedTime,
-		IssuerID: 1,
+		Der:          certDER,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       issuedTime,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	fc.Add(1 * time.Hour)
@@ -1862,10 +1988,10 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 
 	// Add the certificate with the same names.
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		Issued:   issued.UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          certDER,
+		Issued:       issued.UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -1903,10 +2029,10 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	names = cert.DNSNames
 
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		Issued:   issued.UnixNano(),
-		RegID:    reg.Id,
-		IssuerID: 1,
+		Der:          certDER,
+		Issued:       issued.UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
@@ -2521,7 +2647,7 @@ func TestIncidentsForSerial(t *testing.T) {
 			affectedCertA.Serial,
 			affectedCertA.RegistrationID,
 			affectedCertA.OrderID,
-			affectedCertA.LastNoticeSent.Format("2006-01-02 15:04:05"),
+			affectedCertA.LastNoticeSent.Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "Error while inserting row for '1338' into incident table")
@@ -2544,7 +2670,7 @@ func TestIncidentsForSerial(t *testing.T) {
 			affectedCertB.Serial,
 			affectedCertB.RegistrationID,
 			affectedCertB.OrderID,
-			affectedCertB.LastNoticeSent.Format("2006-01-02 15:04:05"),
+			affectedCertB.LastNoticeSent.Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "Error while inserting row for '1337' into incident table")
@@ -2651,7 +2777,7 @@ func TestSerialsForIncident(t *testing.T) {
 				i,
 				randInt(),
 				randInt(),
-				sa.clk.Now().Add(time.Hour*24*7).Format("2006-01-02 15:04:05"),
+				sa.clk.Now().Add(time.Hour*24*7).Format(time.DateTime),
 			),
 		)
 		test.AssertNotError(t, err, fmt.Sprintf("Error while inserting row for '%s' into incident table", i))
@@ -2710,11 +2836,11 @@ func TestGetRevokedCerts(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      eeCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   eeCert.NotBefore.UnixNano(),
-		IssuerID: 1,
+		Der:          eeCert.Raw,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       eeCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
 
@@ -2803,11 +2929,11 @@ func TestGetMaxExpiration(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      eeCert.Raw,
-		RegID:    reg.Id,
-		Ocsp:     nil,
-		Issued:   eeCert.NotBefore.UnixNano(),
-		IssuerID: 1,
+		Der:          eeCert.Raw,
+		RegID:        reg.Id,
+		Ocsp:         nil,
+		Issued:       eeCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
 

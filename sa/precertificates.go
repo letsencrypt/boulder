@@ -9,11 +9,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/core"
-	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
-	bgrpc "github.com/letsencrypt/boulder/grpc"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -72,7 +70,7 @@ func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb
 // certificate multiple times. Calling code needs to first insert the cert's
 // serial into the Serials table to ensure uniqueness.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
-	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 || req.IssuerID == 0 {
+	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 || req.IssuerNameID == 0 {
 		return nil, errIncompleteRequest
 	}
 	parsed, err := x509.ParseCertificate(req.Der)
@@ -116,7 +114,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			LastExpirationNagSent: time.Time{},
 			NotAfter:              parsed.NotAfter,
 			IsExpired:             false,
-			IssuerID:              req.IssuerID,
+			IssuerNameID:          req.IssuerNameID,
 		}
 		if !features.Enabled(features.ROCSPStage6) {
 			cs.OCSPResponse = req.Ocsp
@@ -156,26 +154,4 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 	}
 
 	return &emptypb.Empty{}, nil
-}
-
-// GetPrecertificate takes a serial number and returns the corresponding
-// precertificate, or error if it does not exist.
-func (ssa *SQLStorageAuthority) GetPrecertificate(ctx context.Context, req *sapb.Serial) (*corepb.Certificate, error) {
-	if req == nil || req.Serial == "" {
-		return nil, errIncompleteRequest
-	}
-	if !core.ValidSerial(req.Serial) {
-		return nil, fmt.Errorf("Invalid precertificate serial %q", req.Serial)
-	}
-	cert, err := SelectPrecertificate(ssa.dbMap.WithContext(ctx), req.Serial)
-	if err != nil {
-		if db.IsNoRows(err) {
-			return nil, berrors.NotFoundError(
-				"precertificate with serial %q not found",
-				req.Serial)
-		}
-		return nil, err
-	}
-
-	return bgrpc.CertToPB(cert), nil
 }

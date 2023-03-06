@@ -22,16 +22,6 @@ type Config struct {
 
 		IssuerDomain string
 
-		PortConfig cmd.PortConfig
-
-		// CAADistributedResolverConfig specifies the HTTP client setup and interfaces
-		// needed to resolve CAA addresses over multiple paths
-		CAADistributedResolver struct {
-			Timeout     cmd.ConfigDuration
-			MaxFailures int
-			Proxies     []string
-		}
-
 		// The number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
@@ -51,8 +41,12 @@ type Config struct {
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
 
+	// TODO(#6716): Remove Config.Common once all instances of it have been
+	// removed from production config files.
 	Common struct {
-		DNSTimeout                string
+		// DEPRECATED: Use VA.DNSTimeout instead.
+		DNSTimeout string
+		// DEPRECATED: Use VA.DNSAllowLoopbackAddresses instead.
 		DNSAllowLoopbackAddresses bool
 	}
 }
@@ -89,21 +83,6 @@ func main() {
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.VA.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
-
-	pc := &cmd.PortConfig{
-		HTTPPort:  80,
-		HTTPSPort: 443,
-		TLSPort:   443,
-	}
-	if c.VA.PortConfig.HTTPPort != 0 {
-		pc.HTTPPort = c.VA.PortConfig.HTTPPort
-	}
-	if c.VA.PortConfig.HTTPSPort != 0 {
-		pc.HTTPSPort = c.VA.PortConfig.HTTPSPort
-	}
-	if c.VA.PortConfig.TLSPort != 0 {
-		pc.TLSPort = c.VA.PortConfig.TLSPort
-	}
 
 	var dnsTimeout time.Duration
 	if c.VA.DNSTimeout != "" {
@@ -164,7 +143,6 @@ func main() {
 	}
 
 	vai, err := va.NewValidationAuthorityImpl(
-		pc,
 		resolver,
 		remotes,
 		c.VA.MaxRemoteValidationFailures,

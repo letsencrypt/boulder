@@ -98,7 +98,7 @@ USAGE="$(cat -- <<-EOM
 Usage:
 Boulder test suite CLI, intended to be run inside of a Docker container:
 
-  docker-compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
+  docker compose run --use-aliases boulder ./$(basename "${0}") [OPTION]...
 
 With no options passed, runs standard battery of tests (lint, unit, and integration)
 
@@ -111,7 +111,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
     -s, --start-py                        Adds start to the list of tests to run
     -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
-    -m, --make-artifacts                  Adds make-artifacts to the list of tests to run
     -o, --list-integration-tests          Outputs a list of the available integration tests
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
 
@@ -128,7 +127,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts lueciosvgmnhp:f:-: OPT; do
+while getopts lueciosvgnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -145,7 +144,6 @@ while getopts lueciosvgmnhp:f:-: OPT; do
     s | start-py )                   RUN+=("start") ;;
     v | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
-    m | make-artifacts )             RUN+=("make-artifacts") ;;
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
     ??* )                            exit_msg "Illegal option --$OPT" ;;  # bad long option
@@ -154,7 +152,7 @@ while getopts lueciosvgmnhp:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run. Order doesn't matter. Note: gomod-vendor 
+# The list of segments to run. Order doesn't matter. Note: gomod-vendor
 # is specifically left out of the defaults, because we don't want to run
 # it locally (it could delete local state).
 if [ -z "${RUN[@]+x}" ]
@@ -241,7 +239,7 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
-# `docker-compose up` works, since that just runs start.py (via entrypoint.sh).
+# `docker compose up` works, since that just runs start.py (via entrypoint.sh).
 STAGE="start"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
@@ -284,12 +282,6 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   go install ./vendor/google.golang.org/grpc/codes
   run_and_expect_silence go generate ./...
   run_and_expect_silence git diff --exit-code .
-fi
-
-STAGE="make-artifacts"
-if [[ "${RUN[@]}" =~ "$STAGE" ]]; then
-  print_heading "Running Make Artifacts"
-  make deb rpm tar
 fi
 
 # Because set -e stops execution in the instance of a command or pipeline
