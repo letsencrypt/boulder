@@ -15,6 +15,10 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core/proto"
@@ -42,6 +46,7 @@ type crlUpdater struct {
 	updatedCounter *prometheus.CounterVec
 
 	log blog.Logger
+	tracer trace.Tracer
 	clk clock.Clock
 }
 
@@ -98,6 +103,8 @@ func NewUpdater(
 	}, []string{"issuer", "result"})
 	stats.MustRegister(updatedCounter)
 
+	tracer := otel.GetTracerProvider().Tracer("github.com/letsencrypt/crl/updater")
+
 	return &crlUpdater{
 		issuersByNameID,
 		numShards,
@@ -112,6 +119,7 @@ func NewUpdater(
 		tickHistogram,
 		updatedCounter,
 		log,
+		tracer,
 		clk,
 	}, nil
 }
@@ -172,12 +180,18 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 // encounters an error. All errors encountered are returned as a single combined
 // error at the end.
 func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
+	var span trace.Span
+	ctx, span = cu.tracer.Start(ctx, "crlUpdaterTick")
+
 	defer func() {
 		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
 			result = "failed"
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 		}
+		span.End()
 		cu.tickHistogram.WithLabelValues("all", result).Observe(cu.clk.Since(atTime).Seconds())
 	}()
 	cu.log.Debugf("Ticking at time %s", atTime)
@@ -208,12 +222,20 @@ func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 // are returned as a single combined error at the end.
 func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) (err error) {
 	start := cu.clk.Now()
+	var span trace.Span
+	ctx, span = cu.tracer.Start(ctx, "tickIssuer")
+	span.SetAttributes(attribute.Int64("issuer.id", int64(issuerNameID)),
+	                   attribute.String("issuer.cn", cu.issuers[issuerNameID].Subject.CommonName))
 	defer func() {
 		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
 		if err != nil {
 			result = "failed"
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
 		}
+		span.End()
+
 		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
 	}()
 	cu.log.Debugf("Ticking issuer %d at time %s", issuerNameID, atTime)
@@ -296,9 +318,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		"Generating CRL shard: id=[%s] numChunks=[%d]", crlID, len(chunks))
 
 	// Get the full list of CRL Entries for this shard from the SA.
+	// Put it in a span so it's easier to collapse when viewing
+	shardCtx, shardSpan := cu.tracer.Start(ctx, "getAllRevokedForShard")
+	defer shardSpan.End() // TODO: set error values on these.
 	var crlEntries []*proto.CRLEntry
 	for _, chunk := range chunks {
-		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
+		saStream, err := cu.sa.GetRevokedCerts(shardCtx, &sapb.GetRevokedCertsRequest{
 			IssuerNameID:  int64(issuerNameID),
 			ExpiresAfter:  chunk.start.UnixNano(),
 			ExpiresBefore: chunk.end.UnixNano(),
@@ -323,6 +348,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 			"Queried SA for CRL shard: id=[%s] expiresAfter=[%s] expiresBefore=[%s] numEntries=[%d]",
 			crlID, chunk.start, chunk.end, len(crlEntries))
 	}
+	shardSpan.End()
 
 	// Send the full list of CRL Entries to the CA.
 	caStream, err := cu.ca.GenerateCRL(ctx)
