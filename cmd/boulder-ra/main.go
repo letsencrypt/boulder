@@ -91,7 +91,7 @@ type Config struct {
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
 		// generate OCSP URLs to purge during revocation.
-		IssuerCerts []string `validate:"gt=0,dive,endswith=.pem"`
+		IssuerCerts []string `validate:"min=1,dive,endswith=.pem"`
 
 		Features map[string]bool
 	}

@@ -111,7 +111,7 @@ type SMTPConfig struct {
 // it should offer.
 type PAConfig struct {
 	DBConfig   `validate:"-"`
-	Challenges map[core.AcmeChallenge]bool `validate:"gt=0,dive,keys,oneof=http-01 dns-01 tls-alpn-01,endkeys,required"`
+	Challenges map[core.AcmeChallenge]bool `validate:"min=1,dive,keys,oneof=http-01 dns-01 tls-alpn-01,endkeys,required"`
 }
 
 // CheckChallenges checks whether the list of challenges in the PA config
@@ -427,7 +427,7 @@ type GRPCServiceConfig struct {
 	// SANs. The upstream listening server will reject connections from clients
 	// which do not appear in this list, and the server interceptor will reject
 	// RPC calls for this service from clients which are not listed here.
-	ClientNames []string `json:"clientNames" validate:"gt=0,dive,hostname,required"`
+	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
 }
 
 // BeelineConfig provides config options for the Honeycomb beeline-go library,

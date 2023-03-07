@@ -30,7 +30,7 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. These will
 		// be used to validate the CRLs received by this service before uploading
 		// them.
-		IssuerCerts []string `validate:"gt=0,dive,endswith=.pem"`
+		IssuerCerts []string `validate:"min=1,dive,endswith=.pem"`
 
 		// S3Endpoint is the URL at which the S3-API-compatible object storage
 		// service can be reached. This can be used to point to a non-Amazon storage

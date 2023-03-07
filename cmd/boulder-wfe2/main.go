@@ -78,7 +78,7 @@ type Config struct {
 		// DEPRECATED: See RedeemNonceService, below.
 		// TODO (#6610) Remove this after all configs have migrated to
 		// `RedeemNonceService`.
-		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,gt=0"`
+		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,min=1"`
 
 		// RedeemNonceService is a gRPC config which contains a list of SRV
 		// names used to lookup nonce-service instances used exclusively for
@@ -98,13 +98,13 @@ type Config struct {
 		// slice of filenames.
 		// DEPRECATED: See Chains, below.
 		// TODO(5164): Remove this after all configs have migrated to `Chains`.
-		CertificateChains map[string][]string `validate:"required_without=Chains,omitempty,dive,keys,url,endkeys,gt=0,dive,endswith=.pem"`
+		CertificateChains map[string][]string `validate:"required_without=Chains,omitempty,dive,keys,url,endkeys,min=1,dive,endswith=.pem"`
 
 		// AlternateCertificateChains maps AIA issuer URLs to an optional alternate
 		// certificate chain, represented by an ordered slice of certificate filenames.
 		// DEPRECATED: See Chains, below.
 		// TODO(5164): Remove this after all configs have migrated to `Chains`.
-		AlternateCertificateChains map[string][]string `validate:"excluded_without=CertificateChains,omitempty,dive,keys,url,endkeys,gt=0,dive,endswith=.pem"`
+		AlternateCertificateChains map[string][]string `validate:"excluded_without=CertificateChains,omitempty,dive,keys,url,endkeys,min=1,dive,endswith=.pem"`
 
 		// Chains is a list of lists of certificate filenames. Each inner list is
 		// a chain (starting with the issuing intermediate, followed by one or
@@ -117,7 +117,7 @@ type Config struct {
 		// NOTE: This config field deprecates the CertificateChains and
 		// AlternateCertificateChains fields. If it is present, those fields are
 		// ignored. They will be removed in a future release.
-		Chains [][]string `validate:"required_without_all=CertificateChains AlternateCertificateChains,omitempty,gt=0,dive,gt=0,min=2,max=3,dive,endswith=.pem"`
+		Chains [][]string `validate:"required_without_all=CertificateChains AlternateCertificateChains,omitempty,min=1,dive,min=1,min=2,max=3,dive,endswith=.pem"`
 
 		Features map[string]bool
 

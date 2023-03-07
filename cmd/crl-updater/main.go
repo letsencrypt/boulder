@@ -35,13 +35,13 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. This
 		// controls the set of CRLs which will be published by this updater: it will
 		// publish one set of NumShards CRL shards for each issuer in this list.
-		IssuerCerts []string `validate:"gt=0,dive,endswith=.pem"`
+		IssuerCerts []string `validate:"min=1,dive,endswith=.pem"`
 
 		// NumShards is the number of shards into which each issuer's "full and
 		// complete" CRL will be split.
 		// WARNING: When this number is changed, the "JSON Array of CRL URLs" field
 		// in CCADB MUST be updated.
-		NumShards int `validate:"gt=0"`
+		NumShards int `validate:"min=1"`
 
 		// ShardWidth is the amount of time (width on a timeline) that a single
 		// shard should cover. Ideally, NumShards*ShardWidth should be an amount of

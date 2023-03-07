@@ -671,7 +671,7 @@ type Config struct {
 		// SQL UPDATE statement.
 		UpdateChunkSize int `validate:"omitempty,max=65535"`
 
-		NagTimes []string `validate:"gt=0"`
+		NagTimes []string `validate:"min=1"`
 
 		// Path to a text/template email template with a .gotmpl or .txt file
 		// extension.

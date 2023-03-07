@@ -30,7 +30,7 @@ type RedisConfig struct {
 	// ShardAddrs is a map of shard names to IP address:port pairs. The go-redis
 	// `Ring` client will shard reads and writes across the provided Redis
 	// Servers based on a consistent hashing algorithm.
-	ShardAddrs map[string]string `validate:"gt=0,dive,hostname_port"`
+	ShardAddrs map[string]string `validate:"min=1,dive,hostname_port"`
 	// Timeout is a per-request timeout applied to all Redis requests.
 	Timeout config.Duration `validate:"-"`
 

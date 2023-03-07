@@ -50,7 +50,7 @@ type ProfileConfig struct {
 // PolicyInformation describes a policy
 type PolicyInformation struct {
 	OID        string            `validator:"required"`
-	Qualifiers []PolicyQualifier `validator:"gt=0,dive"`
+	Qualifiers []PolicyQualifier `validator:"min=1,dive"`
 }
 
 // PolicyQualifier describes a policy qualifier

@@ -46,7 +46,7 @@ type Config struct {
 
 		// The list of issuer certificates, against which OCSP requests/responses
 		// are checked to ensure we're not responding for anyone else's certs.
-		IssuerCerts []string `validate:"gt=0,dive,endswith=.pem"`
+		IssuerCerts []string `validate:"min=1,dive,endswith=.pem"`
 
 		Path string
 
