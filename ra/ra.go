@@ -2163,7 +2163,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	if req == nil || req.AdminName == "" {
 		return nil, errIncompleteGRPCRequest
 	}
-	if req.Cert == nil && req.Serial == "" {
+	if req.Serial == "" {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -2179,8 +2179,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return nil, fmt.Errorf("cannot revoke for reason %d", reasonCode)
 	}
 
-	// If we don't have a real cert, we create a fake cert (containing just the
-	// serial number, which is all we need) and look up the IssuerID from the db.
+	// If we weren't passed a cert in the request, find IssuerID from the db.
 	// We could instead look up and parse the certificate itself, but we avoid
 	// that in case we are administratively revoking the certificate because it is
 	// so badly malformed that it can't be parsed.
@@ -2188,18 +2187,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	var issuerID int64 // TODO(#5152) make this an issuance.IssuerNameID
 	var err error
 	if req.Cert == nil {
-		serial, err := core.StringToSerial(req.Serial)
-		if err != nil {
-			return nil, err
-		}
-
-		cert = &x509.Certificate{
-			SerialNumber: serial,
-		}
-
 		status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
 		if err != nil {
-			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", serial, err)
+			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", req.Serial, err)
 		}
 		issuerID = status.IssuerID
 	} else {
@@ -2214,7 +2204,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		ID:           core.NewToken(),
 		Method:       "key",
 		AdminName:    req.AdminName,
-		SerialNumber: core.SerialToString(cert.SerialNumber),
+		SerialNumber: req.Serial,
 	}
 
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
@@ -2227,10 +2217,16 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		ra.log.AuditObject("Revocation request:", logEvent)
 	}()
 
-	err = ra.revokeCertificate(ctx, cert.SerialNumber, issuerID, revocation.Reason(req.Code))
+	var serialInt *big.Int
+	serialInt, err = core.StringToSerial(req.Serial)
+	if err != nil {
+		return nil, err
+	}
+
+	err = ra.revokeCertificate(ctx, serialInt, issuerID, revocation.Reason(req.Code))
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
-			err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, issuerID)
+			err = ra.updateRevocationForKeyCompromise(ctx, serialInt, issuerID)
 			if err != nil {
 				return nil, err
 			}
@@ -2239,6 +2235,9 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	if req.Code == ocsp.KeyCompromise && !req.SkipBlockKey {
+		if cert == nil {
+			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
+		}
 		var digest core.Sha256Digest
 		digest, err = core.KeyDigest(cert.PublicKey)
 		if err != nil {
@@ -2255,9 +2254,11 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		}
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert, issuerID)
-	if err != nil {
-		return nil, err
+	if cert != nil {
+		err = ra.purgeOCSPCache(ctx, cert, issuerID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &emptypb.Empty{}, nil
