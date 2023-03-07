@@ -151,7 +151,7 @@ foo [][]string `validate:"gt=0,dive,gt=1,dive,oneof=bar baz"`
 ### `keys` and `endkeys`
 These tags are used to validate the keys of a map. For instance, the following
 would be valid config for a map valued field (`map[string]string`) tagged with
-`gt=0,dive,keys,eg=1|eq=2,endkeys,required`.
+`gt=0,dive,keys,eq=1|eq=2,endkeys,required`.
 
 ```json
 {
@@ -163,11 +163,11 @@ would be valid config for a map valued field (`map[string]string`) tagged with
 ```
 
 ```go
-foo map[string]string `validate:"gt=0,dive,keys,eg=1|eq=2,endkeys,required"`
+foo map[string]string `validate:"gt=0,dive,keys,eq=1|eq=2,endkeys,required"`
 ```
 
 - `gt=0` will be applied to the map itself
-- `eg=1|eq=2` will be applied to the map keys
+- `eq=1|eq=2` will be applied to the map keys
 - `required` will be applied to map values
 
 
