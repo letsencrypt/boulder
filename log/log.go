@@ -274,8 +274,8 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interf
 }
 
 func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...interface{}) {
-	text := fmt.Sprintf("%s %s", auditTag, fmt.Sprintf(msg, a...))
-	log.w.logAtLevel(level, text)
+	msg = fmt.Sprintf("%s %s", auditTag, msg)
+	log.w.logAtLevel(level, msg, a...)
 }
 
 // AuditPanic catches panicking executables. This method should be added
@@ -352,14 +352,12 @@ func (log *impl) Debugf(format string, a ...interface{}) {
 // audit tag, for special handling at the upstream system logger.
 func (log *impl) AuditInfo(msg string) {
 	log.AuditInfof(msg)
-
 }
 
 // AuditInfof sends an INFO-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
 func (log *impl) AuditInfof(format string, a ...interface{}) {
 	log.auditAtLevel(syslog.LOG_INFO, format, a...)
-
 }
 
 // AuditObject sends an INFO-severity JSON-serialized object message that is prefixed
@@ -377,7 +375,6 @@ func (log *impl) AuditObject(msg string, obj interface{}) {
 // AuditErr can format an error for auditing; it does so at ERR level.
 func (log *impl) AuditErr(msg string) {
 	log.AuditErrf(msg)
-
 }
 
 // AuditErrf can format an error for auditing; it does so at ERR level.
