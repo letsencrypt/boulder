@@ -68,7 +68,6 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockClient{}}
 	// NOTE(@jsha): The only method I've found so far to trigger a connect timeout
 	// is to connect to an unrouteable IP address. This usually generates
