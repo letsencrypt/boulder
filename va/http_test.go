@@ -92,7 +92,7 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < va.singleDialTimeout {
-		t.Fatalf("fetch returned before %s (%s) with %#v", va.singleDialTimeout, took, prob)
+		t.Fatalf("fetch returned before %s (took: %s) with %#v", va.singleDialTimeout, took, prob)
 	}
 	if took > 2*va.singleDialTimeout {
 		t.Fatalf("fetch didn't timeout after %s (took: %s)", va.singleDialTimeout, took)
