@@ -189,13 +189,14 @@ func checkSummed(msg string) string {
 func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...interface{}) {
 	var err error
 
-	// Since messages are delimited by newlines, we have to escape any internal or
-	// trailing newlines before generating the checksum or outputting the message.
-	msg = strings.Replace(msg, "\n", "\\n", -1)
-
+	// Apply conditional formatting for f functions
 	if a != nil {
 		msg = fmt.Sprintf(msg, a...)
 	}
+
+	// Since messages are delimited by newlines, we have to escape any internal or
+	// trailing newlines before generating the checksum or outputting the message.
+	msg = strings.Replace(msg, "\n", "\\n", -1)
 
 	w.Lock()
 	defer w.Unlock()
@@ -236,11 +237,12 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interf
 			output = w.stderr
 		}
 
-		msg = strings.Replace(msg, "\n", "\\n", -1)
-
+		// Apply conditional formatting for f functions
 		if a != nil {
 			msg = fmt.Sprintf(msg, a...)
 		}
+
+		msg = strings.Replace(msg, "\n", "\\n", -1)
 
 		var color string
 		var reset string
