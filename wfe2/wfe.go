@@ -792,7 +792,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 // or revocation reason don't pass simple static checks. Also populates some
 // metadata fields on the given logEvent.
 func (wfe *WebFrontEndImpl) parseRevocation(
-	ctx context.Context, jwsBody []byte, logEvent *web.RequestEvent) (*x509.Certificate, revocation.Reason, *probs.ProblemDetails) {
+	jwsBody []byte, logEvent *web.RequestEvent) (*x509.Certificate, revocation.Reason, *probs.ProblemDetails) {
 	// Read the revoke request from the JWS payload
 	var revokeRequest struct {
 		CertificateDER core.JSONBuffer    `json:"certificate"`
@@ -874,7 +874,7 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 		return prob
 	}
 
-	cert, reason, prob := wfe.parseRevocation(ctx, jwsBody, logEvent)
+	cert, reason, prob := wfe.parseRevocation(jwsBody, logEvent)
 	if prob != nil {
 		return prob
 	}
@@ -919,7 +919,7 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 		return prob
 	}
 
-	cert, reason, prob := wfe.parseRevocation(ctx, jwsBody, logEvent)
+	cert, reason, prob := wfe.parseRevocation(jwsBody, logEvent)
 	if prob != nil {
 		return prob
 	}
