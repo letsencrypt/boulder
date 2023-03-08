@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -282,7 +281,7 @@ func mux(responderPath string, source responder.Source, timeout time.Duration, s
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return hnynethttp.WrapHandler(measured_http.New(&ocspMux{h}, cmd.Clock(), stats))
+	return measured_http.New(&ocspMux{h}, cmd.Clock(), stats)
 }
 
 func init() {

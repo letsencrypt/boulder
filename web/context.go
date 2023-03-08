@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	blog "github.com/letsencrypt/boulder/log"
 )
 
@@ -136,10 +135,6 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// TODO(go1.22?): Use context.Detach()
 	ctx := context.Background()
 	r = r.WithContext(ctx)
-	beeline.AddFieldToTrace(ctx, "real_ip", logEvent.RealIP)
-	beeline.AddFieldToTrace(ctx, "method", logEvent.Method)
-	beeline.AddFieldToTrace(ctx, "user_agent", logEvent.UserAgent)
-	beeline.AddFieldToTrace(ctx, "origin", logEvent.Origin)
 
 	// Some clients will send a HTTP Host header that includes the default port
 	// for the scheme that they are using. Previously when we were fronted by
@@ -160,16 +155,13 @@ func (th *TopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	begin := time.Now()
 	rwws := &responseWriterWithStatus{w, 0}
 	defer func() {
-		beeline.AddFieldToTrace(ctx, "internal_errors", logEvent.InternalErrors)
 		logEvent.Code = rwws.code
 		if logEvent.Code == 0 {
 			// If we haven't explicitly set a status code golang will set it
 			// to 200 itself when writing to the wire
 			logEvent.Code = http.StatusOK
 		}
-		beeline.AddFieldToTrace(ctx, "code", logEvent.Code)
 		logEvent.Latency = time.Since(begin).Seconds()
-		beeline.AddFieldToTrace(ctx, "latency", logEvent.Latency)
 		th.logEvent(logEvent)
 	}()
 	th.wfe.ServeHTTP(logEvent, rwws, r)
