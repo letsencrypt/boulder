@@ -38,34 +38,6 @@ import (
 )
 
 func main() {
-	if os.Args[1] == "validate" {
-		if len(os.Args[1:]) == 1 {
-			fmt.Fprintf(os.Stderr, "Call with --help to list usage.\n")
-			os.Exit(1)
-		}
-		os.Args = os.Args[1:]
-		list := flag.Bool("list", false, "List available components to validate configuration for.")
-		component := flag.String("component", "", "The name of the component to validate configuration for.")
-		configFile := flag.String("config", "", "The path to the configuration file to validate.")
-		flag.Parse()
-
-		if *list {
-			for _, c := range cmd.AvailableConfigs() {
-				fmt.Println(c)
-			}
-			return
-		}
-		if *component != "" && *configFile == "" {
-			fmt.Fprintf(os.Stderr, "Must provide a configuration file to validate.\n")
-			os.Exit(1)
-		}
-		err := cmd.ReadAndValidateConfigFile(*component, *configFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error validating configuration: %s", err)
-			os.Exit(1)
-		}
-		return
-	}
 	cmd.LookupCommand(path.Base(os.Args[0]))()
 }
 
@@ -88,6 +60,32 @@ func init() {
 			if c != "boulder" && c != "--list" {
 				fmt.Println(c)
 			}
+		}
+	}, nil)
+	cmd.RegisterCommand("validate", func() {
+		if len(os.Args) <= 1 {
+			fmt.Fprintf(os.Stderr, "Call with --help to list usage.\n")
+			os.Exit(1)
+		}
+		list := flag.Bool("list", false, "List available components to validate configuration for.")
+		component := flag.String("component", "", "The name of the component to validate configuration for.")
+		configFile := flag.String("config", "", "The path to the configuration file to validate.")
+		flag.Parse()
+
+		if *list {
+			for _, c := range cmd.AvailableConfigs() {
+				fmt.Println(c)
+			}
+			return
+		}
+		if *component != "" && *configFile == "" {
+			fmt.Fprintf(os.Stderr, "Must provide a configuration file to validate.\n")
+			os.Exit(1)
+		}
+		err := cmd.ReadAndValidateConfigFile(*component, *configFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error validating configuration: %s", err)
+			os.Exit(1)
 		}
 	}, nil)
 }
