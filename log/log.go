@@ -62,7 +62,7 @@ const auditTag = "[AUDIT]"
 // and also writes to stdout/stderr. It is safe for concurrent use.
 func New(log *syslog.Writer, stdoutLogLevel int, syslogLogLevel int) (Logger, error) {
 	if log == nil {
-		return nil, errors.New("Attempted to use a nil System Logger.")
+		return nil, errors.New("Attempted to use a nil System Logger")
 	}
 	return &impl{
 		&bothWriter{
@@ -125,7 +125,7 @@ func initialize() {
 // first time.
 func Set(logger Logger) (err error) {
 	if _Singleton.log != nil {
-		err = errors.New("You may not call Set after it has already been implicitly or explicitly set.")
+		err = errors.New("You may not call Set after it has already been implicitly or explicitly set")
 		_Singleton.log.Warning(err.Error())
 	} else {
 		_Singleton.log = logger
@@ -148,7 +148,7 @@ func Get() Logger {
 }
 
 type writer interface {
-	logAtLevel(syslog.Priority, string)
+	logAtLevel(syslog.Priority, string, ...interface{})
 }
 
 // bothWriter implements writer and writes to both syslog and stdout.
@@ -186,8 +186,13 @@ func checkSummed(msg string) string {
 
 // logAtLevel logs the provided message at the appropriate level, writing to
 // both stdout and the Logger
-func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
+func (w *bothWriter) logAtLevel(level syslog.Priority, msg string, a ...interface{}) {
 	var err error
+
+	// Apply conditional formatting for f functions
+	if a != nil {
+		msg = fmt.Sprintf(msg, a...)
+	}
 
 	// Since messages are delimited by newlines, we have to escape any internal or
 	// trailing newlines before generating the checksum or outputting the message.
@@ -225,11 +230,16 @@ func (w *bothWriter) logAtLevel(level syslog.Priority, msg string) {
 }
 
 // logAtLevel logs the provided message to stdout, or stderr if it is at Warning or Error level.
-func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
+func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interface{}) {
 	if int(level) <= w.level {
 		output := w.stdout
 		if int(level) <= int(syslog.LOG_WARNING) {
 			output = w.stderr
+		}
+
+		// Apply conditional formatting for f functions
+		if a != nil {
+			msg = fmt.Sprintf(msg, a...)
 		}
 
 		msg = strings.Replace(msg, "\n", "\\n", -1)
@@ -267,9 +277,9 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 	}
 }
 
-func (log *impl) auditAtLevel(level syslog.Priority, msg string) {
-	text := fmt.Sprintf("%s %s", auditTag, msg)
-	log.w.logAtLevel(level, text)
+func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...interface{}) {
+	msg = fmt.Sprintf("%s %s", auditTag, msg)
+	log.w.logAtLevel(level, msg, a...)
 }
 
 // AuditPanic catches panicking executables. This method should be added
@@ -291,33 +301,33 @@ func (log *impl) AuditPanic() {
 // Err level messages are always marked with the audit tag, for special handling
 // at the upstream system logger.
 func (log *impl) Err(msg string) {
-	log.auditAtLevel(syslog.LOG_ERR, msg)
+	log.Errf(msg)
 }
 
 // Errf level messages are always marked with the audit tag, for special handling
 // at the upstream system logger.
 func (log *impl) Errf(format string, a ...interface{}) {
-	log.Err(fmt.Sprintf(format, a...))
+	log.auditAtLevel(syslog.LOG_ERR, format, a...)
 }
 
 // Warning level messages pass through normally.
 func (log *impl) Warning(msg string) {
-	log.w.logAtLevel(syslog.LOG_WARNING, msg)
+	log.Warningf(msg)
 }
 
 // Warningf level messages pass through normally.
 func (log *impl) Warningf(format string, a ...interface{}) {
-	log.Warning(fmt.Sprintf(format, a...))
+	log.w.logAtLevel(syslog.LOG_WARNING, format, a...)
 }
 
 // Info level messages pass through normally.
 func (log *impl) Info(msg string) {
-	log.w.logAtLevel(syslog.LOG_INFO, msg)
+	log.Infof(msg)
 }
 
 // Infof level messages pass through normally.
 func (log *impl) Infof(format string, a ...interface{}) {
-	log.Info(fmt.Sprintf(format, a...))
+	log.w.logAtLevel(syslog.LOG_INFO, format, a...)
 }
 
 // InfoObject logs an INFO level JSON-serialized object message.
@@ -333,24 +343,25 @@ func (log *impl) InfoObject(msg string, obj interface{}) {
 
 // Debug level messages pass through normally.
 func (log *impl) Debug(msg string) {
-	log.w.logAtLevel(syslog.LOG_DEBUG, msg)
+	log.Debugf(msg)
+
 }
 
 // Debugf level messages pass through normally.
 func (log *impl) Debugf(format string, a ...interface{}) {
-	log.Debug(fmt.Sprintf(format, a...))
+	log.w.logAtLevel(syslog.LOG_DEBUG, format, a...)
 }
 
 // AuditInfo sends an INFO-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
 func (log *impl) AuditInfo(msg string) {
-	log.auditAtLevel(syslog.LOG_INFO, msg)
+	log.AuditInfof(msg)
 }
 
 // AuditInfof sends an INFO-severity message that is prefixed with the
 // audit tag, for special handling at the upstream system logger.
 func (log *impl) AuditInfof(format string, a ...interface{}) {
-	log.AuditInfo(fmt.Sprintf(format, a...))
+	log.auditAtLevel(syslog.LOG_INFO, format, a...)
 }
 
 // AuditObject sends an INFO-severity JSON-serialized object message that is prefixed
@@ -367,10 +378,10 @@ func (log *impl) AuditObject(msg string, obj interface{}) {
 
 // AuditErr can format an error for auditing; it does so at ERR level.
 func (log *impl) AuditErr(msg string) {
-	log.auditAtLevel(syslog.LOG_ERR, msg)
+	log.AuditErrf(msg)
 }
 
 // AuditErrf can format an error for auditing; it does so at ERR level.
 func (log *impl) AuditErrf(format string, a ...interface{}) {
-	log.AuditErr(fmt.Sprintf(format, a...))
+	log.auditAtLevel(syslog.LOG_ERR, format, a...)
 }
