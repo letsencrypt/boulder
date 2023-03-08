@@ -2,11 +2,6 @@
   "syslog": {
     "stdoutLevel": 7
   },
-  "beeline": {
-      "mute": true,
-      "serviceName": "Test",
-      "writeKey": {"passwordFile": "test/secrets/honeycomb_fake_password"}
-  },
   "debugAddr": ":8016",
   "files": [
     "/var/log/akamai-purger.log",
