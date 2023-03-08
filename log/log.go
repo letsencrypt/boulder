@@ -239,9 +239,13 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string) {
 
 		const red = "\033[31m\033[1m"
 		const yellow = "\033[33m"
+		const gray = "\033[37m\033[2m"
 
 		if w.isatty {
-			if int(level) == int(syslog.LOG_WARNING) {
+			if int(level) == int(syslog.LOG_DEBUG) {
+				color = gray
+				reset = "\033[0m"
+			} else if int(level) == int(syslog.LOG_WARNING) {
 				color = yellow
 				reset = "\033[0m"
 			} else if int(level) <= int(syslog.LOG_ERR) {
