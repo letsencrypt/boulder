@@ -29,16 +29,12 @@ func RegisterCommand(name string, f func(), cv *ConfigValidator) {
 	defer registry.Unlock()
 
 	if registry.commands == nil {
-		// Initialize the commands map.
 		registry.commands = make(map[string]func())
 	}
 
 	if registry.commands[name] != nil {
-		// This should never happen.
 		panic(fmt.Sprintf("command %q was registered twice", name))
 	}
-
-	// Register the command.
 	registry.commands[name] = f
 
 	if cv == nil {
@@ -46,17 +42,12 @@ func RegisterCommand(name string, f func(), cv *ConfigValidator) {
 	}
 
 	if registry.configs == nil {
-		fmt.Println("init configs")
-		// Initialize the configs map.
 		registry.configs = make(map[string]*ConfigValidator)
 	}
 
 	if registry.configs[name] != nil {
-		// This should never happen.
 		panic(fmt.Sprintf("config %q was registered twice", name))
 	}
-
-	// Register the config validator.
 	registry.configs[name] = cv
 }
 

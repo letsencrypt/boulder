@@ -237,11 +237,9 @@ func main() {
 	grpcAddr := daemonFlags.String("addr", "", "gRPC listen address override")
 	debugAddr := daemonFlags.String("debug-addr", "", "Debug server address override")
 	configFile := daemonFlags.String("config", "", "File path to the configuration file for this service")
-	// validate := flagSet.Bool("validate", false, "Validate the config file and exit")
 
 	manualFlags := flag.NewFlagSet("manual", flag.ExitOnError)
 	manualConfigFile := manualFlags.String("config", "", "File path to the configuration file for this service")
-	// manualValidate := flagSet.Bool("validate", false, "Validate the config file and exit")
 	tag := manualFlags.String("tag", "", "Single cache tag to purge")
 	tagFile := manualFlags.String("tag-file", "", "File containing cache tags to purge, one per line")
 

@@ -64,7 +64,6 @@ descriptions:
 flags:
   all:
     -config              File path to the configuration file for this service (required)
-	-validate            Validate the configuration file and exit
 
   private-key-block | private-key-revoke:
     -dry-run             true (default): only queries for affected certificates. false: will
@@ -503,7 +502,6 @@ func main() {
 	command := os.Args[1]
 	flagSet := flag.NewFlagSet(command, flag.ContinueOnError)
 	configFile := flagSet.String("config", "", "File path to the configuration file for this service")
-	// validate := flagSet.Bool("validate", false, "Validate the config file and exit")
 	dryRun := flagSet.Bool(
 		"dry-run",
 		true,
