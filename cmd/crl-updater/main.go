@@ -6,8 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
-
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -123,11 +121,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLUpdater.IssuerCerts))
 	for _, filepath := range c.CRLUpdater.IssuerCerts {

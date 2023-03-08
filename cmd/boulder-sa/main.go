@@ -4,8 +4,6 @@ import (
 	"flag"
 	"os"
 
-	"github.com/honeycombio/beeline-go"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -59,11 +57,6 @@ func main() {
 	if *debugAddr != "" {
 		c.SA.DebugAddr = *debugAddr
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
 	defer logger.AuditPanic()
