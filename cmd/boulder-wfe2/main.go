@@ -31,8 +31,6 @@ import (
 	"github.com/letsencrypt/boulder/wfe2"
 )
 
-const cmdName = "boulder-wfe2"
-
 type Config struct {
 	WFE struct {
 		DebugAddr string `validate:"required,hostname_port"`
@@ -41,9 +39,9 @@ type Config struct {
 		// HTTP requests. Defaults to ":80".
 		ListenAddress string `validate:"omitempty,hostname_port"`
 
-		//TLSListenAddress is the address:port on which to listen for incoming
-		//HTTPS requests. If none is provided the WFE will not listen
-		// for HTTPS requests.
+		// TLSListenAddress is the address:port on which to listen for incoming
+		// HTTPS requests. If none is provided the WFE will not listen for HTTPS
+		// requests.
 		TLSListenAddress string `validate:"omitempty,hostname_port"`
 
 		// Timeout is the per-request overall timeout. This should be slightly
@@ -395,17 +393,10 @@ func (ew errorWriter) Write(p []byte) (n int, err error) {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -588,6 +579,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("boulder-wfe2", main, &cmd.ConfigValidator{Config: &Config{}})
 }

@@ -222,5 +222,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("log-validator", main)
+	cmd.RegisterCommand("log-validator", main, nil)
 }

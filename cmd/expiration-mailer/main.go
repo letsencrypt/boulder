@@ -38,10 +38,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const (
-	cmdName                  = "expiration-mailer"
-	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
-)
+const defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
 
 type regStore interface {
 	GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error)
@@ -789,18 +786,11 @@ func main() {
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	daemon := flag.Bool("daemon", false, "Run in daemon mode")
-	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -957,6 +947,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("expiration-mailer", main, &cmd.ConfigValidator{Config: &Config{}})
 }

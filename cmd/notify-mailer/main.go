@@ -26,8 +26,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-const cmdName = "notify-mailer"
-
 type mailer struct {
 	clk           clock.Clock
 	log           blog.Logger
@@ -521,7 +519,6 @@ func main() {
 	reconnBase := flag.Duration("reconnectBase", 1*time.Second, "Base sleep duration between reconnect attempts")
 	reconnMax := flag.Duration("reconnectMax", 5*60*time.Second, "Max sleep duration between reconnect attempts after exponential backoff")
 	configFile := flag.String("config", "", "File containing a JSON config.")
-	validate := flag.Bool("validate", false, "Validate the config file and exit.")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageIntro)
@@ -537,21 +534,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
-	}
-
 	if *from == "" || *subject == "" || *bodyFile == "" || *recipientListFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	configData, err := os.ReadFile(*configFile)
@@ -635,6 +620,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("notify-mailer", main, &cmd.ConfigValidator{Config: &Config{}})
 }

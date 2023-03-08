@@ -339,7 +339,7 @@ func ReadAndValidateConfigFile(name, filename string) error {
 // representation of a config and validates the config using the struct tags
 // defined in the config struct.
 func ValidateJSONConfigByName(name string, in io.Reader) error {
-	c := LookupConfig(name)
+	c := lookupConfig(name)
 	if c == nil {
 		return fmt.Errorf("no config found for %q", name)
 	}
@@ -378,7 +378,7 @@ func ValidateJSONConfigByName(name string, in io.Reader) error {
 // representation of a config and validates the config using the struct tags
 // defined in the config struct.
 func ValidateYAMLConfigByName(name string, in io.Reader) error {
-	c := LookupConfig(name)
+	c := lookupConfig(name)
 	if c == nil {
 		return fmt.Errorf("no config found for %q", name)
 	}

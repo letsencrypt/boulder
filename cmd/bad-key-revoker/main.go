@@ -31,7 +31,6 @@ import (
 )
 
 const (
-	cmdName               = "bad-key-revoker"
 	blockedKeysGaugeLimit = 1000
 )
 
@@ -433,18 +432,11 @@ type Config struct {
 
 func main() {
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the config file and exit")
-	flag.Parse()
+	// flag.Parse()
 
 	if *configPath == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configPath)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var config Config
@@ -580,6 +572,5 @@ func (bkr *badKeyRevoker) backoffReset() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("bad-key-revoker", main, &cmd.ConfigValidator{Config: &Config{}})
 }

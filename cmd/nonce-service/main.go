@@ -14,8 +14,6 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
-const cmdName = "nonce-service"
-
 type Config struct {
 	NonceService struct {
 		cmd.ServiceConfig
@@ -68,18 +66,11 @@ func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -135,6 +126,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("nonce-service", main, &cmd.ConfigValidator{Config: &Config{}})
 }

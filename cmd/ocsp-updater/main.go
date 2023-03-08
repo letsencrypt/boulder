@@ -18,8 +18,6 @@ import (
 	"github.com/letsencrypt/validator/v10"
 )
 
-const cmdName = "ocsp-updater"
-
 type Config struct {
 	OCSPUpdater struct {
 		DebugAddr  string `validate:"required,hostname_port"`
@@ -64,17 +62,10 @@ type Config struct {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -151,8 +142,7 @@ func SuffixShardsVal(fl validator.FieldLevel) bool {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{
+	cmd.RegisterCommand("ocsp-updater", main, &cmd.ConfigValidator{
 		Config: &Config{},
 		Validators: map[string]validator.Func{
 			"suffixshards": SuffixShardsVal,

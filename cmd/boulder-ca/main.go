@@ -23,8 +23,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const cmdName = "boulder-ca"
-
 type Config struct {
 	CA struct {
 		cmd.ServiceConfig
@@ -153,7 +151,6 @@ func main() {
 	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	// TODO(#6448): Remove these deprecated ocsp and crl addr flags.
 	_ = flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
 	_ = flag.String("crl-addr", "", "CRL gRPC listen address override")
@@ -161,12 +158,6 @@ func main() {
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -347,6 +338,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("boulder-ca", main, &cmd.ConfigValidator{Config: &Config{}})
 }

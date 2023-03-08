@@ -16,22 +16,47 @@ type ConfigValidator struct {
 var registry struct {
 	sync.Mutex
 	commands map[string]func()
-	config   map[string]*ConfigValidator
+	configs  map[string]*ConfigValidator
 }
 
-// Register a boulder subcommand to be run when the binary name matches `name`.
-func RegisterCommand(name string, f func()) {
+// Register a subcommand and its corresponding config validator. The provided
+// func() is called when the subcommand is invoked on the command line. The
+// ConfigValidator is optional and used to validate the config file for the
+// subcommand.
+func RegisterCommand(name string, f func(), cv *ConfigValidator) {
 	registry.Lock()
 	defer registry.Unlock()
 
 	if registry.commands == nil {
+		// Initialize the commands map.
 		registry.commands = make(map[string]func())
 	}
 
 	if registry.commands[name] != nil {
+		// This should never happen.
 		panic(fmt.Sprintf("command %q was registered twice", name))
 	}
+
+	// Register the command.
 	registry.commands[name] = f
+
+	if cv == nil {
+		return
+	}
+
+	if registry.configs == nil {
+		fmt.Println("init configs")
+		// Initialize the configs map.
+		registry.configs = make(map[string]*ConfigValidator)
+	}
+
+	if registry.configs[name] != nil {
+		// This should never happen.
+		panic(fmt.Sprintf("config %q was registered twice", name))
+	}
+
+	// Register the config validator.
+	registry.configs[name] = cv
 }
 
 func LookupCommand(name string) func() {
@@ -51,32 +76,17 @@ func AvailableCommands() []string {
 	return avail
 }
 
-// Register a boulder config struct.
-func RegisterConfig(name string, f *ConfigValidator) {
+func lookupConfig(name string) *ConfigValidator {
 	registry.Lock()
 	defer registry.Unlock()
-
-	if registry.config == nil {
-		registry.config = make(map[string]*ConfigValidator)
-	}
-
-	if registry.config[name] != nil {
-		panic(fmt.Sprintf("config %q was registered twice", name))
-	}
-	registry.config[name] = f
-}
-
-func LookupConfig(name string) *ConfigValidator {
-	registry.Lock()
-	defer registry.Unlock()
-	return registry.config[name]
+	return registry.configs[name]
 }
 
 func AvailableConfigs() []string {
 	registry.Lock()
 	defer registry.Unlock()
 	var avail []string
-	for name := range registry.config {
+	for name := range registry.configs {
 		avail = append(avail, name)
 	}
 	sort.Strings(avail)

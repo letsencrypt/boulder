@@ -408,5 +408,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("orphan-finder", main)
+	cmd.RegisterCommand("orphan-finder", main, nil)
 }

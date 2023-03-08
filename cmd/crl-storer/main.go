@@ -21,8 +21,6 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-const cmdName = "crl-storer"
-
 type Config struct {
 	CRLStorer struct {
 		cmd.ServiceConfig
@@ -72,17 +70,10 @@ func (log awsLogger) Logf(c awsl.Classification, format string, v ...interface{}
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -148,6 +139,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("crl-storer", main, &cmd.ConfigValidator{Config: &Config{}})
 }

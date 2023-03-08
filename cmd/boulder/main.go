@@ -53,12 +53,12 @@ func init() {
 		}
 		os.Args = os.Args[1:]
 		subcommand()
-	})
+	}, nil)
 	cmd.RegisterCommand("--list", func() {
 		for _, c := range cmd.AvailableCommands() {
 			if c != "boulder" && c != "--list" {
 				fmt.Println(c)
 			}
 		}
-	})
+	}, nil)
 }

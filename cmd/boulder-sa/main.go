@@ -14,13 +14,11 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const cmdName = "boulder-sa"
-
 type Config struct {
 	SA struct {
 		cmd.ServiceConfig
 		DB          cmd.DBConfig
-		ReadOnlyDB  cmd.DBConfig
+		ReadOnlyDB  cmd.DBConfig `validate:"-"`
 		IncidentsDB cmd.DBConfig `validate:"-"`
 		// TODO(#6285): Remove this field, as it is no longer used.
 		Issuers map[string]int
@@ -42,17 +40,10 @@ func main() {
 	grpcAddr := flag.String("addr", "", "gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -121,6 +112,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("boulder-sa", main, &cmd.ConfigValidator{Config: &Config{}})
 }

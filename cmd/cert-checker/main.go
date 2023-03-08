@@ -38,8 +38,6 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-const cmdName = "cert-checker"
-
 // For defense-in-depth in addition to using the PA & its hostnamePolicy to
 // check domain names we also perform a check against the regex's from the
 // forbiddenDomains array
@@ -443,17 +441,10 @@ type Config struct {
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	validate := flag.Bool("validate", false, "Validate the configuration file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var config Config
@@ -567,6 +558,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("cert-checker", main, &cmd.ConfigValidator{Config: &Config{}})
 }

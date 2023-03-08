@@ -42,7 +42,7 @@ type ProfileConfig struct {
 	AllowSCTList    bool
 	AllowCommonName bool
 
-	Policies            []PolicyInformation `validator:"required"`
+	Policies            []PolicyInformation `validator:"min=1,dive"`
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
 }

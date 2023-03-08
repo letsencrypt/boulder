@@ -19,8 +19,6 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const cmdName = "crl-updater"
-
 type Config struct {
 	CRLUpdater struct {
 		DebugAddr string
@@ -101,17 +99,10 @@ func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	runOnce := flag.Bool("runOnce", false, "If true, run once immediately and then exit")
-	validate := flag.Bool("validate", false, "Validate the config file and exit")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
 		os.Exit(1)
-	}
-
-	if *validate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -196,6 +187,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("crl-updater", main, &cmd.ConfigValidator{Config: &Config{}})
 }

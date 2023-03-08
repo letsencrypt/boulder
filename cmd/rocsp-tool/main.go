@@ -64,7 +64,7 @@ type ProcessingSpeed struct {
 }
 
 func init() {
-	cmd.RegisterCommand("rocsp-tool", main)
+	cmd.RegisterCommand("rocsp-tool", main, nil)
 }
 
 func main() {

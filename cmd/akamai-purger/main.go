@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	cmdName = "akamai-purger"
-
 	// akamaiBytesPerResponse is the total bytes of all 3 URLs associated with a
 	// single OCSP response cached by Akamai. Each response is composed of 3
 	// URLs; the POST Cache Key URL is 61 bytes and the encoded and unencoded
@@ -239,11 +237,11 @@ func main() {
 	grpcAddr := daemonFlags.String("addr", "", "gRPC listen address override")
 	debugAddr := daemonFlags.String("debug-addr", "", "Debug server address override")
 	configFile := daemonFlags.String("config", "", "File path to the configuration file for this service")
-	validate := daemonFlags.Bool("validate", false, "Validate the configuration file and exit")
+	// validate := flagSet.Bool("validate", false, "Validate the config file and exit")
 
 	manualFlags := flag.NewFlagSet("manual", flag.ExitOnError)
 	manualConfigFile := manualFlags.String("config", "", "File path to the configuration file for this service")
-	manualValidate := manualFlags.Bool("validate", false, "Validate the configuration file and exit")
+	// manualValidate := flagSet.Bool("validate", false, "Validate the config file and exit")
 	tag := manualFlags.String("tag", "", "Single cache tag to purge")
 	tagFile := manualFlags.String("tag-file", "", "File containing cache tags to purge, one per line")
 
@@ -282,12 +280,6 @@ func main() {
 			daemonFlags.Usage()
 			os.Exit(1)
 		}
-	}
-
-	if *validate || *manualValidate {
-		err := cmd.ReadAndValidateConfigFile(cmdName, *configFile)
-		cmd.FailOnError(err, "Failed to validate config file")
-		os.Exit(0)
 	}
 
 	var c Config
@@ -445,6 +437,5 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 }
 
 func init() {
-	cmd.RegisterCommand(cmdName, main)
-	cmd.RegisterConfig(cmdName, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("akamai-purger", main, &cmd.ConfigValidator{Config: &Config{}})
 }
