@@ -229,6 +229,7 @@ func NewRegistrationAuthorityImpl(
 		Name: "inflight_finalizes",
 		Help: "Gauge of the number of current asynchronous finalize goroutines",
 	})
+	stats.MustRegister(inflightFinalizes)
 
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
