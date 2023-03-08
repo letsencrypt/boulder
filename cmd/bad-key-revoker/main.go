@@ -432,13 +432,12 @@ type Config struct {
 
 func main() {
 	configPath := flag.String("config", "", "File path to the configuration file for this service")
-	// flag.Parse()
+	flag.Parse()
 
 	if *configPath == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
-
 	var config Config
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
