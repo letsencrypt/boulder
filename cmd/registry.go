@@ -68,12 +68,11 @@ func AvailableCommands() []string {
 	return avail
 }
 
-func lookupConfig(name string) *ConfigValidator {
+func lookupConfig(name string) (*ConfigValidator, error) {
 	registry.Lock()
 	defer registry.Unlock()
 	if registry.configs[name] == nil {
-		// No config validator was registered for this command.
-		return nil
+		return nil, fmt.Errorf("no config validator found for %q", name)
 	}
 
 	// Create a new copy of the config struct so that we can validate it
@@ -81,10 +80,11 @@ func lookupConfig(name string) *ConfigValidator {
 	copy := reflect.New(reflect.ValueOf(
 		registry.configs[name].Config).Elem().Type(),
 	).Interface()
+
 	return &ConfigValidator{
 		Config:     copy,
 		Validators: registry.configs[name].Validators,
-	}
+	}, nil
 }
 
 func AvailableConfigs() []string {

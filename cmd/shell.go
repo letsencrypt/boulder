@@ -339,24 +339,24 @@ func ReadAndValidateConfigFile(name, filename string) error {
 // representation of a config and validates the config using the struct tags
 // defined in the config struct.
 func ValidateJSONConfigByName(name string, in io.Reader) error {
-	c := lookupConfig(name)
-	if c == nil {
-		return fmt.Errorf("no config found for %q", name)
+	cv, err := lookupConfig(name)
+	if err != nil {
+		return err
 	}
 
 	// Initialize the validator and load any custom tags.
 	validate := validator.New()
-	if c.Validators != nil {
-		for tag, v := range c.Validators {
+	if cv.Validators != nil {
+		for tag, v := range cv.Validators {
 			validate.RegisterValidation(tag, v)
 		}
 	}
 
-	err := decodeJSONStrict(in, c.Config)
+	err = decodeJSONStrict(in, cv.Config)
 	if err != nil {
 		return err
 	}
-	err = validate.Struct(c.Config)
+	err = validate.Struct(cv.Config)
 	if err != nil {
 		errs, ok := err.(validator.ValidationErrors)
 		if !ok {
@@ -378,15 +378,15 @@ func ValidateJSONConfigByName(name string, in io.Reader) error {
 // representation of a config and validates the config using the struct tags
 // defined in the config struct.
 func ValidateYAMLConfigByName(name string, in io.Reader) error {
-	c := lookupConfig(name)
-	if c == nil {
-		return fmt.Errorf("no config found for %q", name)
+	cv, err := lookupConfig(name)
+	if err != nil {
+		return err
 	}
 
 	// Initialize the validator and load any custom tags.
 	validate := validator.New()
-	if c.Validators != nil {
-		for tag, v := range c.Validators {
+	if cv.Validators != nil {
+		for tag, v := range cv.Validators {
 			validate.RegisterValidation(tag, v)
 		}
 	}
@@ -395,11 +395,11 @@ func ValidateYAMLConfigByName(name string, in io.Reader) error {
 	if err != nil {
 		return err
 	}
-	err = strictyaml.Unmarshal(inBytes, c.Config)
+	err = strictyaml.Unmarshal(inBytes, cv.Config)
 	if err != nil {
 		return err
 	}
-	err = validate.Struct(c.Config)
+	err = validate.Struct(cv.Config)
 	if err != nil {
 		errs, ok := err.(validator.ValidationErrors)
 		if !ok {
