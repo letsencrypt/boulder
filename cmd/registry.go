@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"sync"
 
@@ -79,7 +80,20 @@ func AvailableCommands() []string {
 func lookupConfig(name string) *ConfigValidator {
 	registry.Lock()
 	defer registry.Unlock()
-	return registry.configs[name]
+	if registry.configs[name] == nil {
+		// No config validator was registered for this command.
+		return nil
+	}
+
+	// Create a new copy of the config struct so that we can validate it
+	// multiple times without mutating the registry's copy.
+	copy := reflect.New(reflect.ValueOf(
+		registry.configs[name].Config).Elem().Type(),
+	).Interface()
+	return &ConfigValidator{
+		Config:     copy,
+		Validators: registry.configs[name].Validators,
+	}
 }
 
 func AvailableConfigs() []string {
