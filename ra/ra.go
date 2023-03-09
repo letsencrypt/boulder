@@ -674,33 +674,33 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 //   - ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //   - Subject only contains CommonName & Names
 func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certificate, csr *x509.CertificateRequest) error {
-	// Check issued certificate matches what was expected from the CSR
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		hostNames = append(hostNames, csr.Subject.CommonName)
-	}
-	hostNames = core.UniqueLowerNames(hostNames)
-
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
-	if parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
-		return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
+
+	csrNames := csrlib.NamesFromCSR(csr)
+	if parsedCertificate.Subject.CommonName != "" {
+		// Only check that the issued common name matches the requested CN if there
+		// is an issued CN at all: this allows flexibility on whether we include
+		// the CN.
+		if parsedCertificate.Subject.CommonName != csrNames.CN {
+			return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
+		}
 	}
-	// Sort both slices of names before comparison.
+
 	parsedNames := parsedCertificate.DNSNames
 	sort.Strings(parsedNames)
-	sort.Strings(hostNames)
-	if !reflect.DeepEqual(parsedNames, hostNames) {
+	if !reflect.DeepEqual(parsedNames, csrNames.SANs) {
 		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
 	}
+
 	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
 		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
 	}
 	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
 		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
 	}
+
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
 		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
 		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
@@ -1119,7 +1119,7 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
-	csrNames := core.UniqueLowerNames(csr.DNSNames)
+	csrNames := csrlib.NamesFromCSR(csr).SANs
 	orderNames := core.UniqueLowerNames(req.Order.Names)
 
 	// Immediately reject the request if the number of names differ

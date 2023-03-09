@@ -49,7 +49,7 @@
         "allowMustStaple": true,
         "allowCTPoison": true,
         "allowSCTList": true,
-        "allowCommonName": true,
+        "allowCommonName": false,
         "policies": [
           {
             "oid": "2.23.140.1.2.1"
@@ -124,7 +124,8 @@
     "ecdsaAllowListFilename": "test/config-next/ecdsaAllowList.yml",
     "ctLogListFile": "test/ct-test-srv/log_list.json",
     "features": {
-      "ROCSPStage7": true
+      "ROCSPStage7": true,
+      "SetCommonName": false
     }
   },
 
