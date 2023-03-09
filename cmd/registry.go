@@ -20,10 +20,10 @@ var registry struct {
 	configs  map[string]*ConfigValidator
 }
 
-// Register a subcommand and its corresponding config validator. The provided
-// func() is called when the subcommand is invoked on the command line. The
-// ConfigValidator is optional and used to validate the config file for the
-// subcommand.
+// RegisterCommand registers a subcommand and its corresponding config
+// validator. The provided func() is called when the subcommand is invoked on
+// the command line. The ConfigValidator is optional and used to validate the
+// config file for the subcommand.
 func RegisterCommand(name string, f func(), cv *ConfigValidator) {
 	registry.Lock()
 	defer registry.Unlock()
