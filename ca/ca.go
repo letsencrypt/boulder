@@ -131,6 +131,10 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
+	if len(boulderIssuers) == 0 {
+		return nil, errors.New("must have at least one issuer")
+	}
+
 	issuers := makeIssuerMaps(boulderIssuers)
 
 	orphanCount := prometheus.NewCounterVec(
