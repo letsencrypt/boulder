@@ -132,8 +132,7 @@ func NewCertificateAuthorityImpl(
 	}
 
 	if len(boulderIssuers) == 0 {
-		err := errors.New("must have at least one issuer.")
-		return nil, err
+		return nil, errors.New("must have at least one issuer")
 	}
 
 	issuers := makeIssuerMaps(boulderIssuers)
