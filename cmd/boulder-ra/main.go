@@ -43,7 +43,7 @@ type Config struct {
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
-		MaxNames int `validator:"required,min=1"`
+		MaxNames int `validate:"required,min=1"`
 
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. Given a value of 300 days when used with a 90-day

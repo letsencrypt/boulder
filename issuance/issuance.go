@@ -42,31 +42,31 @@ type ProfileConfig struct {
 	AllowSCTList    bool
 	AllowCommonName bool
 
-	Policies            []PolicyInformation `validator:"min=1,dive"`
+	Policies            []PolicyInformation `validate:"omitempty,dive"`
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
 }
 
 // PolicyInformation describes a policy
 type PolicyInformation struct {
-	OID        string            `validator:"required"`
-	Qualifiers []PolicyQualifier `validator:"min=1,dive"`
+	OID        string            `validate:"required_with=Qualifiers"`
+	Qualifiers []PolicyQualifier `validate:"required_with=OID,dive"`
 }
 
 // PolicyQualifier describes a policy qualifier
 type PolicyQualifier struct {
-	Type  string `validator:"required"`
-	Value string `validator:"required"`
+	Type  string `validate:"required"`
+	Value string `validate:"required"`
 }
 
 // IssuerConfig describes the constraints on and URLs used by a single issuer.
 type IssuerConfig struct {
-	UseForRSALeaves   bool `validator:"required_unless=UseForECDSALeaves true"`
-	UseForECDSALeaves bool `validator:"required_unless=UseForRSALeaves true"`
+	UseForRSALeaves   bool `validate:"required_unless=UseForECDSALeaves true"`
+	UseForECDSALeaves bool `validate:"required_unless=UseForRSALeaves true"`
 
-	IssuerURL string `validator:"required,url"`
-	OCSPURL   string `validator:"required,url"`
-	CRLURL    string `validator:"required,url"`
+	IssuerURL string `validate:"required,url"`
+	OCSPURL   string `validate:"required,url"`
+	CRLURL    string `validate:"required,url"`
 
 	Location IssuerLoc
 }
@@ -76,13 +76,13 @@ type IssuerConfig struct {
 // Only one of File, ConfigFile, or PKCS11 should be set.
 type IssuerLoc struct {
 	// A file from which a private key will be read and parsed.
-	File string `validator:"required"`
+	File string `validate:"required"`
 	// A file from which a pkcs11key.Config will be read and parsed, if File is not set.
-	ConfigFile string `validator:"required"`
+	ConfigFile string `validate:"required"`
 	// An in-memory pkcs11key.Config, which will be used if ConfigFile is not set.
 	PKCS11 *pkcs11key.Config
 	// A file from which a certificate will be read and parsed.
-	CertFile string `validator:"required"`
+	CertFile string `validate:"required"`
 	// Number of sessions to open with the HSM. For maximum performance,
 	// this should be equal to the number of cores in the HSM. Defaults to 1.
 	NumSessions int

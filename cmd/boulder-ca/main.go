@@ -50,10 +50,10 @@ type Config struct {
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int `validator:"required,min=1,max=255"`
+		SerialPrefix int `validate:"required,min=1,max=255"`
 
 		// The maximum number of subjectAltNames in a single certificate
-		MaxNames int `validator:"required,min=1,max=100"`
+		MaxNames int `validate:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. It should be
 		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
@@ -93,12 +93,12 @@ type Config struct {
 		// CTLogListFile is the path to a JSON file on disk containing the set of
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
-		CTLogListFile string `validator:"required,endswith=.json"`
+		CTLogListFile string `validate:"omitempty,endswith=.json"`
 
 		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
 		// across all issuers and shards. It must use the http:// scheme, and must
 		// not end with a slash. Example: "http://prod.c.lencr.org".
-		CRLDPBase string `validator:"required,url,startswith=http://,endsnotwith=/"`
+		CRLDPBase string `validate:"required,url,startswith=http://,endsnotwith=/"`
 
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.

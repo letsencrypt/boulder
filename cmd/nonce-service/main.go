@@ -30,7 +30,7 @@ type Config struct {
 		//
 		// TODO(#6610): Remove once we've moved to derivable prefixes by
 		// default.
-		UseDerivablePrefix bool `validator:"excluded_with=NoncePrefix"`
+		UseDerivablePrefix bool `validate:"excluded_with=NoncePrefix"`
 
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
 		// instance. It should contain 256 bits (32 bytes) of random data to be

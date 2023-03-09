@@ -319,9 +319,10 @@ func ReadConfigFile(filename string, out interface{}) error {
 
 // ReadAndValidateConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a configuration of
-// a boulder component. Any config keys in the JSON file which do not correspond
-// to expected keys in the config struct will result in errors. It also
-// validates the config using the struct tags defined in the config struct.
+// a boulder component specified by name (e.g. boulder-ca, bad-key-revoker,
+// etc.). Any config keys in the JSON file which do not correspond to expected
+// keys in the config struct will result in errors. It also validates the config
+// using the struct tags defined in the config struct.
 func ReadAndValidateConfigFile(name, filename string) error {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -330,15 +331,16 @@ func ReadAndValidateConfigFile(name, filename string) error {
 	defer file.Close()
 	if name == "boulder-observer" {
 		// Only the boulder-observer uses YAML config files.
-		return ValidateYAMLConfigByName(name, file)
+		return ValidateYAMLConfigByComponent(name, file)
 	}
-	return ValidateJSONConfigByName(name, file)
+	return ValidateJSONConfigForComponent(name, file)
 }
 
-// ValidateJSONConfigByName takes a config name and an io.Reader containing a JSON
-// representation of a config and validates the config using the struct tags
-// defined in the config struct.
-func ValidateJSONConfigByName(name string, in io.Reader) error {
+// ValidateJSONConfigForComponent takes a component name (e.g. boulder-ca
+// bad-key-revoker, etc.) and an io.Reader containing a JSON representation of a
+// config and validates the config using the struct tags defined in the config
+// struct.
+func ValidateJSONConfigForComponent(name string, in io.Reader) error {
 	cv, err := lookupConfig(name)
 	if err != nil {
 		return err
@@ -374,10 +376,11 @@ func ValidateJSONConfigByName(name string, in io.Reader) error {
 	return nil
 }
 
-// ValidateYAMLConfigByName takes a config name and an io.Reader containing a YAML
-// representation of a config and validates the config using the struct tags
-// defined in the config struct.
-func ValidateYAMLConfigByName(name string, in io.Reader) error {
+// ValidateYAMLConfigByComponent takes a component name (e.g. boulder-ca
+// bad-key-revoker, etc.) and an io.Reader containing a YAML representation of a
+// config and validates the config using the struct tags defined in the config
+// struct.
+func ValidateYAMLConfigByComponent(name string, in io.Reader) error {
 	cv, err := lookupConfig(name)
 	if err != nil {
 		return err
