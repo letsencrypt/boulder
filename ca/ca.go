@@ -132,7 +132,7 @@ func NewCertificateAuthorityImpl(
 	}
 
 	if len(boulderIssuers) == 0 {
-		err := errors.New("No issuers found, must have at least one issuer.")
+		err := errors.New("no issuers found, must have at least one issuer.")
 		return nil, err
 	}
 

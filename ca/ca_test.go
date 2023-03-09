@@ -443,7 +443,7 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.signErrorCount,
 		testCtx.fc)
 	test.AssertError(t, err, "No issuers found during CA construction.")
-	test.AssertEquals(t, err.Error(), "No issuers found, must have at least one issuer.")
+	test.AssertEquals(t, err.Error(), "no issuers found, must have at least one issuer.")
 }
 
 // Test issuing when multiple issuers are present.
