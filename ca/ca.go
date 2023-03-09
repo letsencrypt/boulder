@@ -79,7 +79,11 @@ type certificateAuthorityImpl struct {
 // nearly-unique identifiers of those issuers to the issuers themselves. Note
 // that, if two issuers have the same nearly-unique ID, the *latter* one in
 // the input list "wins".
-func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
+func makeIssuerMaps(issuers []*issuance.Issuer) (issuerMaps, error) {
+	if len(issuers) == 0 {
+		err := errors.New("No issuers found, must have at least one issuer.")
+		return issuerMaps{}, err
+	}
 	issuersByAlg := make(map[x509.PublicKeyAlgorithm]*issuance.Issuer, 2)
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Issuer, len(issuers))
 	for _, issuer := range issuers {
@@ -92,7 +96,7 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 		}
 		issuersByNameID[issuer.Cert.NameID()] = issuer
 	}
-	return issuerMaps{issuersByAlg, issuersByNameID}
+	return issuerMaps{issuersByAlg, issuersByNameID}, nil
 }
 
 // NewCertificateAuthorityImpl creates a CA instance that can sign certificates
@@ -131,7 +135,10 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
-	issuers := makeIssuerMaps(boulderIssuers)
+	issuers, err := makeIssuerMaps(boulderIssuers)
+	if err != nil {
+		return nil, err
+	}
 
 	orphanCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
