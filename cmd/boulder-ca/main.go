@@ -39,7 +39,7 @@ type Config struct {
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
 			Profile      issuance.ProfileConfig
-			Issuers      []issuance.IssuerConfig
+			Issuers      []issuance.IssuerConfig `validate:"min=1,dive"`
 			IgnoredLints []string
 		}
 

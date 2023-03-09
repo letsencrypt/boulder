@@ -49,8 +49,8 @@ type ProfileConfig struct {
 
 // PolicyInformation describes a policy
 type PolicyInformation struct {
-	OID        string            `validate:"required_with=Qualifiers"`
-	Qualifiers []PolicyQualifier `validate:"required_with=OID,dive"`
+	OID        string
+	Qualifiers []PolicyQualifier `validate:"excluded_without=OID,dive"`
 }
 
 // PolicyQualifier describes a policy qualifier
@@ -61,12 +61,12 @@ type PolicyQualifier struct {
 
 // IssuerConfig describes the constraints on and URLs used by a single issuer.
 type IssuerConfig struct {
-	UseForRSALeaves   bool `validate:"required_unless=UseForECDSALeaves true"`
-	UseForECDSALeaves bool `validate:"required_unless=UseForRSALeaves true"`
+	UseForRSALeaves   bool
+	UseForECDSALeaves bool
 
 	IssuerURL string `validate:"required,url"`
 	OCSPURL   string `validate:"required,url"`
-	CRLURL    string `validate:"required,url"`
+	CRLURL    string `validate:"omitempty,url"`
 
 	Location IssuerLoc
 }
@@ -76,13 +76,13 @@ type IssuerConfig struct {
 // Only one of File, ConfigFile, or PKCS11 should be set.
 type IssuerLoc struct {
 	// A file from which a private key will be read and parsed.
-	File string `validate:"required"`
+	File string `validate:"required_without=ConfigFile"`
 	// A file from which a pkcs11key.Config will be read and parsed, if File is not set.
 	ConfigFile string `validate:"required"`
 	// An in-memory pkcs11key.Config, which will be used if ConfigFile is not set.
 	PKCS11 *pkcs11key.Config
 	// A file from which a certificate will be read and parsed.
-	CertFile string `validate:"required"`
+	CertFile string `validate:"required,endswith=.pem"`
 	// Number of sessions to open with the HSM. For maximum performance,
 	// this should be equal to the number of cores in the HSM. Defaults to 1.
 	NumSessions int

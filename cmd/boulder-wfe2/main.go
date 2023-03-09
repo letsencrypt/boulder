@@ -76,7 +76,7 @@ type Config struct {
 		// DEPRECATED: See RedeemNonceService, below.
 		// TODO (#6610) Remove this after all configs have migrated to
 		// `RedeemNonceService`.
-		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,min=1"`
+		RedeemNonceServices map[string]cmd.GRPCClientConfig `validate:"required_without=RedeemNonceService,omitempty,min=1,dive"`
 
 		// RedeemNonceService is a gRPC config which contains a list of SRV
 		// names used to lookup nonce-service instances used exclusively for
