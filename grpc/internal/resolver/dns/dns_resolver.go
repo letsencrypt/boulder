@@ -111,7 +111,7 @@ type srvBuilder struct {
 // Build creates and starts a DNS resolver that watches the name resolution of the target.
 func (b *srvBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
 	var names []name
-	for _, i := range strings.Split(target.Endpoint, ",") {
+	for _, i := range strings.Split(target.Endpoint(), ",") {
 		service, domain, err := parseServiceDomain(i)
 		if err != nil {
 			return nil, err
