@@ -30,9 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 )
 
-const (
-	blockedKeysGaugeLimit = 1000
-)
+const blockedKeysGaugeLimit = 1000
 
 var keysToProcess = prometheus.NewGauge(prometheus.GaugeOpts{
 	Name: "bad_keys_to_process",

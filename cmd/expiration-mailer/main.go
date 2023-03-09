@@ -38,7 +38,9 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
-const defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
+const (
+	defaultExpirationSubject = "Let's Encrypt certificate expiration notice for domain {{.ExpirationSubject}}"
+)
 
 type regStore interface {
 	GetRegistration(ctx context.Context, req *sapb.RegistrationID, _ ...grpc.CallOption) (*corepb.Registration, error)
