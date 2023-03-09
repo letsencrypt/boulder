@@ -528,13 +528,7 @@ func main() {
 
 	// Validate required args.
 	flag.Parse()
-
-	if *configFile == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	if *from == "" || *subject == "" || *bodyFile == "" || *recipientListFile == "" {
+	if *from == "" || *subject == "" || *bodyFile == "" || *configFile == "" || *recipientListFile == "" {
 		flag.Usage()
 		os.Exit(1)
 	}
