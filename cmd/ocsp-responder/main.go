@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -283,7 +284,7 @@ func mux(responderPath string, source responder.Source, timeout time.Duration, s
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return measured_http.New(&ocspMux{h}, cmd.Clock(), stats)
+	return otelhttp.NewHandler(measured_http.New(&ocspMux{h}, cmd.Clock(), stats), "server")
 }
 
 func init() {
