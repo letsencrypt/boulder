@@ -78,9 +78,9 @@ type IssuerLoc struct {
 	// A file from which a private key will be read and parsed.
 	File string `validate:"required_without=ConfigFile"`
 	// A file from which a pkcs11key.Config will be read and parsed, if File is not set.
-	ConfigFile string `validate:"required"`
+	ConfigFile string `validate:"required_without=PKCS11,endswith=.json"`
 	// An in-memory pkcs11key.Config, which will be used if ConfigFile is not set.
-	PKCS11 *pkcs11key.Config
+	PKCS11 *pkcs11key.Config `validate:"required_without=ConfigFile"`
 	// A file from which a certificate will be read and parsed.
 	CertFile string `validate:"required,endswith=.pem"`
 	// Number of sessions to open with the HSM. For maximum performance,
