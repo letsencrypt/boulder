@@ -128,9 +128,9 @@ func (tl tailLogger) Println(v ...interface{}) {
 }
 
 type Config struct {
-	Files []string
+	Files []string `validate:"min=1,dive,endswith=.log"`
 
-	DebugAddr string
+	DebugAddr string `validate:"required,hostname_port"`
 	Syslog    cmd.SyslogConfig
 	Beeline   cmd.BeelineConfig
 }
@@ -222,5 +222,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("log-validator", main, nil)
+	cmd.RegisterCommand("log-validator", main, &cmd.ConfigValidator{Config: &Config{}})
 }
