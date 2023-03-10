@@ -428,8 +428,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 
 	// Endpoint for draft-aaron-ari
 	if features.Enabled(features.ServeRenewalInfo) {
-		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET")
-		wfe.HandleFunc(m, renewalInfoPath, wfe.UpdateRenewal, "POST")
+		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 	}
 
 	// Non-ACME endpoints
@@ -2275,6 +2274,11 @@ type certID struct {
 func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	if !features.Enabled(features.ServeRenewalInfo) {
 		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
+		return
+	}
+
+	if request.Method == http.MethodPost {
+		wfe.UpdateRenewal(ctx, logEvent, response, request)
 		return
 	}
 
