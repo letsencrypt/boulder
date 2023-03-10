@@ -10,7 +10,6 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestValidNonce(t *testing.T) {
@@ -142,16 +141,74 @@ func TestNoncePrefixing(t *testing.T) {
 	test.Assert(t, !ns.Valid(n[6:]), "Valid nonce without prefix accepted")
 }
 
-type malleableNonceClient struct {
-	redeem func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error)
+/*
+// TODO(PHIL)
+// PHIL PHIL PHIL PHIL
+
+// mockSANearExpiredAuthz is a mock SA that always returns an authz near expiry
+// to test orders expiry calculations
+type mockSANearExpiredAuthz struct {
+	mocks.StorageAuthority
+	expiry time.Time
 }
 
-func (mnc *malleableNonceClient) Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return mnc.redeem(ctx, in, opts...)
+// GetAuthorizations2 is a mock that always returns a valid authorization for
+// "zombo.com" very near to expiry
+func (msa *mockSANearExpiredAuthz) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+	authzs := map[string]*core.Authorization{
+		"zombo.com": {
+			// A static fake ID we can check for in a unit test
+			ID:             "1",
+			Identifier:     identifier.DNSIdentifier("zombo.com"),
+			RegistrationID: req.RegistrationID,
+			Expires:        &msa.expiry,
+			Status:         "valid",
+			Challenges: []core.Challenge{
+				{
+					Type:   core.ChallengeTypeHTTP01,
+					Status: core.StatusValid,
+				},
+			},
+		},
+	}
+	return authzMapToPB(authzs)
 }
 
-func (mnc *malleableNonceClient) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	return nil, errors.New("unimplemented")
+# --------------------------------------------------------
+// getCertErrorSA always returns an error for GetCertificate
+type getCertErrorSA struct {
+	mockSA
+}
+
+func (m *getCertErrorSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	return nil, fmt.Errorf("i don't like it")
+}
+*/
+
+type ValidRedeemer struct {
+	redeem func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error)
+}
+
+func (vr *ValidRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
+	return vr.redeem(ctx, in)
+}
+
+type InvalidRedeemer struct {
+	redeem func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error)
+}
+
+func (ivr *InvalidRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
+	//return ivr.redeem(ctx, in)
+	return &noncepb.ValidMessage{Valid: false}, nil
+}
+
+type BrokenRedeemer struct {
+	redeem func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error)
+}
+
+func (br *BrokenRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
+	//return br.redeem(ctx, in)
+	return nil, errors.New("broken redeemer!")
 }
 
 func TestRemoteRedeem(t *testing.T) {
@@ -164,12 +221,12 @@ func TestRemoteRedeem(t *testing.T) {
 
 	prefixMap := map[string]Redeemer{
 		"abcd": &malleableNonceClient{
-			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+			redeem: func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
 				return nil, errors.New("wrong one!")
 			},
 		},
 		"wxyz": &malleableNonceClient{
-			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+			redeem: func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
 				return &noncepb.ValidMessage{Valid: false}, nil
 			},
 		},
