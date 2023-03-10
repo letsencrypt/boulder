@@ -97,9 +97,9 @@ func ProblemDetailsToStatusCode(prob *ProblemDetails) int {
 		return http.StatusBadRequest
 	case ServerInternalProblem:
 		return http.StatusInternalServerError
-	case
-		UnauthorizedProblem,
-		CAAProblem:
+	case UnauthorizedProblem:
+		return http.StatusUnauthorized
+	case CAAProblem:
 		return http.StatusForbidden
 	case RateLimitedProblem:
 		return statusTooManyRequests
@@ -220,7 +220,7 @@ func Unauthorized(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       UnauthorizedProblem,
 		Detail:     detail,
-		HTTPStatus: http.StatusForbidden,
+		HTTPStatus: http.StatusUnauthorized,
 	}
 }
 
