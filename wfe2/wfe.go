@@ -429,6 +429,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// Endpoint for draft-aaron-ari
 	if features.Enabled(features.ServeRenewalInfo) {
 		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET")
+		wfe.HandleFunc(m, renewalInfoPath, wfe.UpdateRenewal, "POST")
 	}
 
 	// Non-ACME endpoints
@@ -2306,10 +2307,6 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// We can do all of our processing based just on the serial, because Boulder
 	// does not re-use the same serial across multiple issuers.
 	serial := core.SerialToString(id.SerialNumber)
-	if !core.ValidSerial(serial) {
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
-		return
-	}
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
@@ -2375,6 +2372,71 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	sendRI(core.RenewalInfoSimple(
 		time.Unix(0, cert.Issued).UTC(),
 		time.Unix(0, cert.Expires).UTC()))
+}
+
+// UpdateRenewal is used by the client to inform the server that they have
+// replaced the certificate in question, so it can be safely revoked. All
+// requests must be authenticated to the account which ordered the cert.
+func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	if !features.Enabled(features.ServeRenewalInfo) {
+		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
+		return
+	}
+
+	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	addRequesterHeader(response, logEvent.Requester)
+	if prob != nil {
+		// validPOSTForAccount handles its own setting of logEvent.Errors
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	var updateRenewalRequest struct {
+		CertID   string `json:"certID"`
+		Replaced bool   `json:"replaced"`
+	}
+	err := json.Unmarshal(body, &updateRenewalRequest)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Unable to unmarshal RenewalInfo POST request body"), err)
+		return
+	}
+
+	der, err := base64.RawURLEncoding.DecodeString(updateRenewalRequest.CertID)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("certID was not base64url-encoded"), nil)
+		return
+	}
+
+	var id certID
+	rest, err := asn1.Unmarshal(der, &id)
+	if err != nil || len(rest) != 0 {
+		wfe.sendError(response, logEvent, probs.Malformed("certID was not a DER-encoded CertID sequence"), nil)
+		return
+	}
+
+	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
+		wfe.sendError(response, logEvent, probs.Malformed("certID used hash algorithm other than SHA-256"), nil)
+		return
+	}
+
+	serial := core.SerialToString(id.SerialNumber)
+	logEvent.Extra["RequestedSerial"] = serial
+	beeline.AddFieldToTrace(ctx, "request.serial", serial)
+
+	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		return
+	}
+
+	if acct.ID != metadata.RegistrationID {
+		wfe.sendError(response, logEvent, probs.Unauthorized("Account ID doesn't match ID for certificate"), nil)
+		return
+	}
+
+	// TODO(#6732): Write the replaced status to persistent storage.
+
+	response.WriteHeader(http.StatusOK)
 }
 
 func extractRequesterIP(req *http.Request) (net.IP, error) {
