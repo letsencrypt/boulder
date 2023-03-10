@@ -141,73 +141,21 @@ func TestNoncePrefixing(t *testing.T) {
 	test.Assert(t, !ns.Valid(n[6:]), "Valid nonce without prefix accepted")
 }
 
-/*
-// TODO(PHIL)
-// PHIL PHIL PHIL PHIL
+type validRedeemer struct{}
 
-// mockSANearExpiredAuthz is a mock SA that always returns an authz near expiry
-// to test orders expiry calculations
-type mockSANearExpiredAuthz struct {
-	mocks.StorageAuthority
-	expiry time.Time
+func (vr *validRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return &noncepb.ValidMessage{Valid: true}, nil
 }
 
-// GetAuthorizations2 is a mock that always returns a valid authorization for
-// "zombo.com" very near to expiry
-func (msa *mockSANearExpiredAuthz) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
-	authzs := map[string]*core.Authorization{
-		"zombo.com": {
-			// A static fake ID we can check for in a unit test
-			ID:             "1",
-			Identifier:     identifier.DNSIdentifier("zombo.com"),
-			RegistrationID: req.RegistrationID,
-			Expires:        &msa.expiry,
-			Status:         "valid",
-			Challenges: []core.Challenge{
-				{
-					Type:   core.ChallengeTypeHTTP01,
-					Status: core.StatusValid,
-				},
-			},
-		},
-	}
-	return authzMapToPB(authzs)
-}
+type invalidRedeemer struct{}
 
-# --------------------------------------------------------
-// getCertErrorSA always returns an error for GetCertificate
-type getCertErrorSA struct {
-	mockSA
-}
-
-func (m *getCertErrorSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.Certificate, error) {
-	return nil, fmt.Errorf("i don't like it")
-}
-*/
-
-type ValidRedeemer struct {
-	redeem func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error)
-}
-
-func (vr *ValidRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	return vr.redeem(ctx, in)
-}
-
-type InvalidRedeemer struct {
-	redeem func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error)
-}
-
-func (ivr *InvalidRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	//return ivr.redeem(ctx, in)
+func (ivr *invalidRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
 	return &noncepb.ValidMessage{Valid: false}, nil
 }
 
-type BrokenRedeemer struct {
-	redeem func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error)
-}
+type brokenRedeemer struct{}
 
-func (br *BrokenRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-	//return br.redeem(ctx, in)
+func (br *brokenRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
 	return nil, errors.New("broken redeemer!")
 }
 
@@ -220,16 +168,8 @@ func TestRemoteRedeem(t *testing.T) {
 	test.Assert(t, !valid, "RemoteRedeem accepted an empty nonce")
 
 	prefixMap := map[string]Redeemer{
-		"abcd": &malleableNonceClient{
-			redeem: func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-				return nil, errors.New("wrong one!")
-			},
-		},
-		"wxyz": &malleableNonceClient{
-			redeem: func(ctx context.Context, in *noncepb.NonceMessage) (*noncepb.ValidMessage, error) {
-				return &noncepb.ValidMessage{Valid: false}, nil
-			},
-		},
+		"abcd": &brokenRedeemer{},
+		"wxyz": &invalidRedeemer{},
 	}
 	// Attempt to redeem a nonce with a prefix not in the prefix map, expect return false, nil
 	valid, err = RemoteRedeem(context.Background(), prefixMap, "asddCQEC")
@@ -249,11 +189,7 @@ func TestRemoteRedeem(t *testing.T) {
 
 	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
 	// expect false, nil
-	prefixMap["wxyz"] = &malleableNonceClient{
-		redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-			return &noncepb.ValidMessage{Valid: true}, nil
-		},
-	}
+	prefixMap["wxyz"] = &validRedeemer{}
 	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, valid, "RemoteRedeem didn't honor remote result")
