@@ -2291,20 +2291,20 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// the base64url-encoded DER CertID sequence.
 	der, err := base64.RawURLEncoding.DecodeString(request.URL.Path)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded or had padding"), err)
 		return
 	}
 
 	var id certID
 	rest, err := asn1.Unmarshal(der, &id)
 	if err != nil || len(rest) != 0 {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence"), err)
 		return
 	}
 
 	// Verify that the hash algorithm is SHA-256, so people don't use SHA-1 here.
 	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		wfe.sendError(response, logEvent, probs.Malformed("Request used hash algorithm other than SHA-256"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Request used hash algorithm other than SHA-256"), err)
 		return
 	}
 
@@ -2407,34 +2407,36 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.Req
 
 	der, err := base64.RawURLEncoding.DecodeString(updateRenewalRequest.CertID)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("certID was not base64url-encoded"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("CertID was not base64url-encoded or had padding"), err)
 		return
 	}
 
 	var id certID
 	rest, err := asn1.Unmarshal(der, &id)
 	if err != nil || len(rest) != 0 {
-		wfe.sendError(response, logEvent, probs.Malformed("certID was not a DER-encoded CertID sequence"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("CertID was not a DER-encoded CertID sequence"), err)
 		return
 	}
 
 	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		wfe.sendError(response, logEvent, probs.Malformed("certID used hash algorithm other than SHA-256"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("CertID used hash algorithm other than SHA-256"), err)
 		return
 	}
 
+	// We can do all of our processing based just on the serial, because Boulder
+	// does not re-use the same serial across multiple issuers.
 	serial := core.SerialToString(id.SerialNumber)
 	logEvent.Extra["RequestedSerial"] = serial
 	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
 	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
 		return
 	}
 
 	if acct.ID != metadata.RegistrationID {
-		wfe.sendError(response, logEvent, probs.Unauthorized("Account ID doesn't match ID for certificate"), nil)
+		wfe.sendError(response, logEvent, probs.Unauthorized("Account ID doesn't match ID for certificate"), err)
 		return
 	}
 

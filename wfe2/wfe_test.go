@@ -3459,12 +3459,14 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
+	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
+	test.AssertNotError(t, err, "setting feature flag")
+	defer features.Reset()
+
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
 	}
-	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
-	defer features.Reset()
 
 	// Load the certificate and its issuer.
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -3586,12 +3588,14 @@ func TestIncidentARI(t *testing.T) {
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
+	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
+	test.AssertNotError(t, err, "setting feature flag")
+	defer features.Reset()
+
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
 	}
-	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
-	defer features.Reset()
 
 	idBytes, err := asn1.Marshal(certID{
 		pkix.AlgorithmIdentifier{ // SHA256
@@ -3628,7 +3632,6 @@ type mockSAWithSerialMetadata struct {
 
 // GetSerialMetadata returns fake metadata if it recognizes the given serial.
 func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
-	fmt.Printf("%s, %s", req.Serial, sa.serial)
 	if req.Serial != sa.serial {
 		return nil, berrors.NotFoundError("metadata for certificate with serial %q not found", req.Serial)
 	}
@@ -3644,7 +3647,8 @@ func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sa
 func TestUpdateARI(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
-	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
+	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
+	test.AssertNotError(t, err, "setting feature flag")
 	defer features.Reset()
 
 	makePost := func(regID int64, body string) *http.Request {
@@ -3686,7 +3690,7 @@ func TestUpdateARI(t *testing.T) {
 
 	// Non-sha256 hash algorithm should result in an error.
 	idBytes, err := asn1.Marshal(certID{
-		pkix.AlgorithmIdentifier{ // SHA256
+		pkix.AlgorithmIdentifier{ // definitely not SHA256
 			Algorithm:  asn1.ObjectIdentifier{1, 2, 3, 4, 5},
 			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
 		},
