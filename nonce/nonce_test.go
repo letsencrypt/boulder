@@ -181,14 +181,14 @@ func TestRemoteRedeem(t *testing.T) {
 	_, err = RemoteRedeem(context.Background(), prefixMap, "abcdbeef")
 	test.AssertError(t, err, "RemoteRedeem didn't return error when remote did")
 
-	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns valid
-	// expect true, nil
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
+	// expect false, nil
 	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, !valid, "RemoteRedeem didn't honor remote result")
 
-	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
-	// expect false, nil
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns valid
+	// expect true, nil
 	prefixMap["wxyz"] = &validRedeemer{}
 	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
