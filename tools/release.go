@@ -100,7 +100,8 @@ func hotfix() {
 
 	// Confirm that the release tag we're cherry-picking onto actually exists and
 	// is a tag.
-	runOrDie(exec.Command("git", "rev-parse", "--verify", fmt.Sprintf("%s^{tag}", onto)))
+	committish := fmt.Sprintf("%s^{tag}", onto)
+	runOrDie(exec.Command("git", "rev-parse", "--verify", committish))
 
 	// Check out the tag that is our starting point. This will put us into a
 	// "detached HEAD" state, but that's okay, because we're going to explicitly
@@ -145,9 +146,10 @@ func hotfix() {
 	// commits. This branch may or may not exist already, and it doesn't matter:
 	// when we push to it, it will either be updated or created, as appropriate.
 	branch := semver.MajorMinor(onto)
+	refspec := fmt.Sprintf("HEAD:%s", branch)
 
 	if push {
-		runOrDie(exec.Command("git", "push", "origin", fmt.Sprintf("HEAD:%s", branch), version))
+		runOrDie(exec.Command("git", "push", "origin", refspec, version))
 	} else {
 		fmt.Printf("created tag %s on branch %s, exiting\n", version, branch)
 	}
