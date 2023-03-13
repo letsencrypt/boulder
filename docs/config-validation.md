@@ -34,12 +34,17 @@ configuration files.
 
 ### `required`
 
-This only validates that the value is not the data type's default zero value.
-For numbers ensures value is not zero. For strings ensures value is not "". For
-slices, maps, pointers, interfaces, channels and functions ensures the value is
-not nil. Note, this does not validate slices, maps, etc., as they are not nil.
-For these fields you should use `min=1` to validate the supplied values are not
-empty.
+The required tag means that the field is not allowed to take its zero value, or
+equivalently, is not allowed to be omitted. Note that this does not validate
+that slices or maps have contents, it simply guarantees that they are not nil.
+For fields of those types, you should use min=1 or similar to ensure they are
+not empty.
+
+There are also "conditional" required tags, such as `required_with`,
+`required_with_all`, `required_without`, `required_without_all`, and
+`required_unless`. These behave exactly like the basic required tag, but only if
+their conditional (usually the presence or absence of one or more other named
+fields) is met.
 
 ### `omitempty`
 
