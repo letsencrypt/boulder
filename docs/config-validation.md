@@ -5,15 +5,25 @@ at https://github.com/letsencrypt/validator.
 
 ## Usage
 
-The `validate` subcommand has been added to the `boulder` binary. You can check
-the usage with `boulder validate -h`.
+A `validate` subcommand has been included in the `boulder` binary. You can check
+the usage with `boulder validate -help`.
 
-To find a list of supported `boulder` components you can run `boulder validate
--list`.
+Use the following syntax to validate a config file:
+```shell
+boulder validate -component <component> -config <config file>
+```
 
-To validate a config file you can run `boulder validate -component <component>
--config <config file>`. For instance, to validate the `boulder-ca` config file
-you can run `boulder validate -component ca -config test/config/ca.json`.
+For instance, to validate the `boulder-ca` config file you can run:
+
+```shell
+boulder validate -component boulder-ca -config test/config/ca.json`
+```
+
+For a complete list of `boulder` components which support config validation you
+can run:
+```shell
+boulder validate -list`
+```
 
 ## Struct Tag Tips
 
