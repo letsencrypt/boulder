@@ -26,7 +26,7 @@ import (
 
 type Config struct {
 	ROCSPTool struct {
-		DebugAddr string
+		DebugAddr string `validate:"required,hostname_port"`
 		Redis     rocsp_config.RedisConfig
 
 		// If using load-from-db, this provides credentials to connect to the DB
@@ -64,7 +64,7 @@ type ProcessingSpeed struct {
 }
 
 func init() {
-	cmd.RegisterCommand("rocsp-tool", main, nil)
+	cmd.RegisterCommand("rocsp-tool", main, &cmd.ConfigValidator{Config: &Config{}})
 }
 
 func main() {
