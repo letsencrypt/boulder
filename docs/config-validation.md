@@ -1,12 +1,19 @@
 # Configuration Validation
 
-We use a fork of
-[github.com/go-playground/validator](https://github.com/go-playground/validator)
-to enable validation of our configuration files using struct tags. The validator
-is configured to validate the configuration file at component startup if the
-`-validate` command line flag is set. If the supplied configuration file is
-valid, the component will exit with a zero exit code, otherwise it will exit
-with a non-zero exit code and print the validation errors to stderr.
+We use a fork of https://github.com/go-playground/validator which can be found
+at https://github.com/letsencrypt/validator. 
+
+## Usage
+
+The `validate` subcommand has been added to the `boulder` binary. You can check
+the usage with `boulder validate -h`.
+
+To find a list of supported `boulder` components you can run `boulder validate
+-list`.
+
+To validate a config file you can run `boulder validate -component <component>
+-config <config file>`. For instance, to validate the `boulder-ca` config file
+you can run `boulder validate -component ca -config test/config/ca.json`.
 
 ## Struct Tag Tips
 
@@ -21,48 +28,44 @@ This only validates that the value is not the data types default zero value. For
 numbers ensures value is not zero. For strings ensures value is not "". For
 slices, maps, pointers, interfaces, channels and functions ensures the value is
 not nil. Note, this does not validate slices, maps, etc., as they are not nil.
-For these fields you should use `min=1` or `gte=1` to validate the supplied
-values are not empty.
+For these fields you should use `min=1` to validate the supplied values are not
+empty.
 
 ### `omitempty`
 
-The validator will always run any present validations unless the field is also
-tagged with `omitempty`. Said another way, if a validation is present, and that
-validation cannot be satisfied by the zero-value of that field type, then that
-field is also (technically) required. However, when `omitempty` is present,
-validations will only run when the condition of a `required_` (`with`,
-`with_all`, `unless`, etc.) tag is met.
+The omitempty tag allows a field to be empty, or equivalently, to take its zero
+value. If the field is omitted, none of the other validation tags on the field
+will be enforced. This can be useful for tags like validate="omitempty,url", for
+a field which is optional, but must be a URL if it is present.
+
+The omitempty tag can be "overruled" by the various conditional required tags.
+For example, a field with tag `validate="omitempty,url,required_with=Foo"` is
+allowed to be empty when field Foo is not present, but if field Foo is present,
+then this field must be present and must be a URL.
 
 ### `-`
-This tag is used to ignore a struct or field. It can be useful if you have a
-struct that is nested into various other structs but isn't always required. This
-is the same as saying a struct and all of its fields are optional. We use this
-tag for many config duration and password file struct valued fields which are
-optional in some configs but required in others.
+Normally, config validation descends into all struct-type fields, recursively
+validating their fields all the way down. Sometimes this can pose a problem,
+when a nested struct declares one of its fields as required, but a parent struct
+wants to treat the whole nested struct as optional. The "-" tag tells the
+validation not to recurse, marking the tagged field as optional, and therefore
+making all of its sub-fields optional as well. We use this tag for many config
+duration and password file struct valued fields which are optional in some
+configs but required in others.
 
 ### `structonly`
 
-Very similar to `omitempty`, but used to control whether or not the validator
-will run validations present for the fields of a nested struct. When a nested
-struct is tagged with `structonly` the validations for its fields will only run
-when the condition of a `required_` (`with`, `with_all`, `unless`, etc.) tag is
-met.
+The structonly tag allows a struct valued field to be empty, or equivalently, to
+take its zero value, if it's not "overruled" by various conditional tags. If the
+field is omitted the recursive validation of the structs fields will be skipped.
+This can be useful for tags like `validate:"required_without=Foo,structonly"`
+for a struct valued field which is only required, and thus should only be
+validated, if field `Foo` is not present.
 
-### `nostructlevel`
+### `min=1`, `gte=1`
 
-The same as `structonly`, but it will never run the validations on the nested
-struct, even if one of the `required_` conditions is met. When this tag is
-present, the validator will only validate the value of the struct itself is
-non-nil.
-
-### `min=1`, `gte=1`, `gt=0`
-
-These validate that the value is greater than zero. On its face you might assume
-that these would only validate integers, but when specified on a slice or map it
-will validate that the length of the slice or map is greater than zero.
-
-Note: we encourage the use of `min=1` or `gte=1` over `gt=0` because it's more
-readable.
+These validate that the value of integer valued field is greater than zero and
+that the length of the slice or map is greater than zero.
 
 For instance, the following would be valid config for a slice valued field
 tagged with `required`.
@@ -76,7 +79,7 @@ But, only the following would be valid config for a slice valued field tagged
 with `min=1`.
 ```json
 {
-  "foo": ["bar", ...],
+  "foo": ["bar"],
 }
 ```
 
@@ -105,10 +108,7 @@ with `min=1,dive,oneof=bar baz`.
 
 ```json
 {
-  "foo": [
-    "bar",
-    "baz",
-  ],
+  "foo": ["bar", "baz"],
 }
 ```
 
@@ -120,13 +120,13 @@ to the value of each string in the slice.
 
 We can also use `dive` to validate the values of a map. For instance, the
 following would be valid config for a map valued field (`map[string]string`)
-tagged with `min=1,dive,oneof=bar baz`.
+tagged with `min=1,dive,oneof=one two`.
 
 ```json
 {
   "foo": {
-    "bar": "baz",
-    "baz": "bar"
+    "bar": "one",
+    "baz": "two"
   },
 }
 ```
@@ -139,24 +139,14 @@ baz`.
 ```json
 {
   "foo": [
-    [
-      "bar",
-      "baz",
-    ],
-    [
-      "baz",
-      "bar",
-    ],
+    ["bar", "baz"],
+    ["baz", "bar"],
   ],
 }
 ```
 
-```go
-foo [][]string `validate:"min=1,dive,gt=1,dive,oneof=bar baz"`
-```
-
 - `min=1` will be applied to the outer slice (`[]`).
-- `gt=1` will be applied to inner slice (`[]string`).
+- `min=2` will be applied to inner slice (`[]string`).
 - `oneof=bar baz` will be applied to each string in the inner slice.
 
 ### `keys` and `endkeys`
@@ -173,19 +163,6 @@ would be valid config for a map valued field (`map[string]string`) tagged with
 }
 ```
 
-```go
-foo map[string]string `validate:"min=1,dive,keys,eq=1|eq=2,endkeys,required"`
-```
-
 - `min=1` will be applied to the map itself
 - `eq=1|eq=2` will be applied to the map keys
 - `required` will be applied to map values
-
-
-## Package
-
-Our fork of
-[github.com/go-playground/validator](https://github.com/go-playground/validator)
-can be found at https://github.com/letsencrypt/validator. This fork removes a
-number of dependencies that we don't need. It may eventually diverge further
-from the upstream validator but for now it is a simple fork.
