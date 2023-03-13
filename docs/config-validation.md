@@ -34,8 +34,8 @@ configuration files.
 
 ### `required`
 
-This only validates that the value is not the data types default zero value. For
-numbers ensures value is not zero. For strings ensures value is not "". For
+This only validates that the value is not the data type's default zero value.
+For numbers ensures value is not zero. For strings ensures value is not "". For
 slices, maps, pointers, interfaces, channels and functions ensures the value is
 not nil. Note, this does not validate slices, maps, etc., as they are not nil.
 For these fields you should use `min=1` to validate the supplied values are not

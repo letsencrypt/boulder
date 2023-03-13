@@ -13,57 +13,59 @@ import (
 // validation tagged Config struct at init time can be used to successfully
 // validate their corresponding test configuration files.
 func TestConfigValidation(t *testing.T) {
-	// The list of components to test. Each component is a pair of at lease one
-	// `test/config` file path and a `cmd` package name.
-	components := make(map[string][]string)
-
 	configPath := "../../test/config"
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		configPath = "../../test/config-next"
 	}
 
-	// For each component, add a list of paths to the `test/config` directory.
-	// The paths should be relative to the `test/config` directory.
+	// Each component is a set of `cmd` package name and a list of paths to
+	// configuration files to validate.
+	components := make(map[string][]string)
+
+	// For each component, add the paths to the configuration files to validate.
+	// By default we assume that the configuration file is named after the
+	// component. However, there are some exceptions to this rule. We've added
+	// special cases for these components.
 	for _, cmdName := range cmd.AvailableConfigs() {
-		var configPaths []string
+		var fileNames []string
 		switch cmdName {
 		case "boulder-publisher":
-			configPaths = []string{fmt.Sprintf("%s/publisher.json", configPath)}
+			fileNames = []string{"publisher.json"}
 		case "boulder-wfe2":
-			configPaths = []string{fmt.Sprintf("%s/wfe2.json", configPath)}
+			fileNames = []string{"wfe2.json"}
 		case "boulder-va":
-			configPaths = []string{fmt.Sprintf("%s/va.json", configPath)}
+			fileNames = []string{"va.json"}
 		case "boulder-remoteva":
-			configPaths = []string{
-				fmt.Sprintf("%s/va-remote-a.json", configPath),
-				fmt.Sprintf("%s/va-remote-b.json", configPath),
+			fileNames = []string{
+				"va-remote-a.json",
+				"va-remote-b.json",
 			}
 		case "boulder-ra":
-			configPaths = []string{fmt.Sprintf("%s/ra.json", configPath)}
+			fileNames = []string{"ra.json"}
 		case "nonce-service":
-			configPaths = []string{
-				fmt.Sprintf("%s/nonce-a.json", configPath),
-				fmt.Sprintf("%s/nonce-b.json", configPath),
+			fileNames = []string{
+				"nonce-a.json",
+				"nonce-b.json",
 			}
 		case "boulder-ca":
-			configPaths = []string{
-				fmt.Sprintf("%s/ca-a.json", configPath),
-				fmt.Sprintf("%s/ca-b.json", configPath)}
+			fileNames = []string{
+				"ca-a.json",
+				"ca-b.json"}
 		case "boulder-sa":
-			configPaths = []string{fmt.Sprintf("%s/sa.json", configPath)}
+			fileNames = []string{"sa.json"}
 		case "boulder-observer":
-			configPaths = []string{fmt.Sprintf("%s/observer.yml", configPath)}
+			fileNames = []string{"observer.yml"}
 
 		default:
-			configPaths = []string{fmt.Sprintf("%s/%s.json", configPath, cmdName)}
+			fileNames = []string{cmdName + ".json"}
 		}
-		components[cmdName] = append(components[cmdName], configPaths...)
+		components[cmdName] = append(components[cmdName], fileNames...)
 	}
-
+	t.Parallel()
 	for cmdName, paths := range components {
 		for _, path := range paths {
 			t.Run(path, func(t *testing.T) {
-				err := cmd.ReadAndValidateConfigFile(cmdName, path)
+				err := cmd.ReadAndValidateConfigFile(cmdName, fmt.Sprintf("%s/%s", configPath, path))
 				test.AssertNotError(t, err, fmt.Sprintf("Failed to validate config file %q", path))
 			})
 		}
