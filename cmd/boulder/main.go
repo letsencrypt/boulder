@@ -57,7 +57,7 @@ func init() {
 	}, nil)
 	cmd.RegisterCommand("--list", func() {
 		for _, c := range cmd.AvailableCommands() {
-			if c != "boulder" && c != "--list" {
+			if c != "boulder" && c != "--list" && c != "validate" {
 				fmt.Println(c)
 			}
 		}
@@ -78,7 +78,7 @@ func init() {
 			}
 			return
 		}
-		if *component != "" && *configFile == "" {
+		if *component == "" || *configFile == "" {
 			fmt.Fprintf(os.Stderr, "Must provide a configuration file to validate.\n")
 			os.Exit(1)
 		}
