@@ -1,8 +1,9 @@
 package subscriber
 
 import (
-	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/json"
+	"fmt"
 
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
@@ -32,7 +33,17 @@ func (l *isrgDomainValidated) CheckApplies(c *x509.Certificate) bool {
 	return util.IsSubscriberCert(c) && !c.IsCA
 }
 
-func getExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) bool {
+type Extension struct {
+	Id       asn1.ObjectIdentifier
+	Critical bool `asn1:"optional"`
+	Value    []byte
+}
+
+type Extensions struct {
+	Extensions []Extension
+}
+
+func getExtWithOID(exts []Extension, oid asn1.ObjectIdentifier) bool {
 	for _, ext := range exts {
 		if ext.Id.Equal(oid) {
 			return true
@@ -42,8 +53,15 @@ func getExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) bool {
 }
 
 func (l *isrgDomainValidated) Execute(c *x509.Certificate) *lint.LintResult {
-	isrgDVOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44947, 1, 1, 1}
-	if !getExtWithOID(c.Extensions, isrgDVOID) {
+	isrgDVOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44947, 1, 1, 3}
+
+	targetStruct := Extensions{}
+	origStruct, _ := json.Marshal(c.Extensions)
+	err := json.Unmarshal(origStruct, &targetStruct)
+	if err != nil {
+		fmt.Println("something is wrong!")
+	}
+	if !getExtWithOID(targetStruct.Extensions, isrgDVOID) {
 		return &lint.LintResult{
 			Status:  lint.Error,
 			Details: "Certificate does not contain ISRG Domain Validated OID",
