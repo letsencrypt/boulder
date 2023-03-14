@@ -421,6 +421,31 @@ func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificate
 	test.AssertEquals(t, i.cert.NotAfter.Add(time.Second).Sub(i.cert.NotBefore), i.ca.validityPeriod)
 }
 
+// Test failure mode when no issuers are present.
+func TestNoIssuers(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	_, err := NewCertificateAuthorityImpl(
+		sa,
+		testCtx.pa,
+		testCtx.ocsp,
+		nil, // No issuers
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		nil,
+		testCtx.logger,
+		testCtx.stats,
+		testCtx.signatureCount,
+		testCtx.signErrorCount,
+		testCtx.fc)
+	test.AssertError(t, err, "No issuers found during CA construction.")
+	test.AssertEquals(t, err.Error(), "must have at least one issuer")
+}
+
 // Test issuing when multiple issuers are present.
 func TestMultipleIssuers(t *testing.T) {
 	testCtx := setup(t)

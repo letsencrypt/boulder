@@ -609,6 +609,51 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment)
 }
 
+func TestIssueCommonName(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	linter, err := linter.New(
+		issuerCert.Certificate,
+		issuerSigner,
+		[]string{
+			"w_ct_sct_policy_count_unsatisfied",
+			"e_scts_from_same_operator",
+			"n_subject_common_name_included",
+		},
+	)
+	test.AssertNotError(t, err, "failed to create linter")
+	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
+	test.AssertNotError(t, err, "NewIssuer failed")
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
+	ir := &IssuanceRequest{
+		PublicKey:  pk.Public(),
+		Serial:     []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		CommonName: "example.com",
+		DNSNames:   []string{"example.com", "www.example.com"},
+		NotBefore:  fc.Now(),
+		NotAfter:   fc.Now().Add(time.Hour - time.Second),
+	}
+
+	certBytes, err := signer.Issue(ir)
+	test.AssertNotError(t, err, "Issue failed")
+	cert, err := x509.ParseCertificate(certBytes)
+	test.AssertNotError(t, err, "failed to parse certificate")
+	test.AssertEquals(t, cert.Subject.CommonName, "example.com")
+
+	signer.Profile.allowCommonName = false
+	_, err = signer.Issue(ir)
+	test.AssertError(t, err, "Issue should have failed")
+
+	ir.CommonName = ""
+	certBytes, err = signer.Issue(ir)
+	test.AssertNotError(t, err, "Issue failed")
+	cert, err = x509.ParseCertificate(certBytes)
+	test.AssertNotError(t, err, "failed to parse certificate")
+	test.AssertEquals(t, cert.Subject.CommonName, "")
+	test.AssertDeepEquals(t, cert.DNSNames, []string{"example.com", "www.example.com"})
+}
+
 func TestIssueCTPoison(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())

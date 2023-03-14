@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -229,6 +228,7 @@ func NewRegistrationAuthorityImpl(
 		Name: "inflight_finalizes",
 		Help: "Gauge of the number of current asynchronous finalize goroutines",
 	})
+	stats.MustRegister(inflightFinalizes)
 
 	issuersByNameID := make(map[issuance.IssuerNameID]*issuance.Certificate)
 	issuersByID := make(map[issuance.IssuerID]*issuance.Certificate)
@@ -673,33 +673,33 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 //   - ExtKeyUsage only contains ExtKeyUsageServerAuth & ExtKeyUsageClientAuth
 //   - Subject only contains CommonName & Names
 func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certificate, csr *x509.CertificateRequest) error {
-	// Check issued certificate matches what was expected from the CSR
-	hostNames := make([]string, len(csr.DNSNames))
-	copy(hostNames, csr.DNSNames)
-	if len(csr.Subject.CommonName) > 0 {
-		hostNames = append(hostNames, csr.Subject.CommonName)
-	}
-	hostNames = core.UniqueLowerNames(hostNames)
-
 	if !core.KeyDigestEquals(parsedCertificate.PublicKey, csr.PublicKey) {
 		return berrors.InternalServerError("generated certificate public key doesn't match CSR public key")
 	}
-	if parsedCertificate.Subject.CommonName != strings.ToLower(csr.Subject.CommonName) {
-		return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
+
+	csrNames := csrlib.NamesFromCSR(csr)
+	if parsedCertificate.Subject.CommonName != "" {
+		// Only check that the issued common name matches the requested CN if there
+		// is an issued CN at all: this allows flexibility on whether we include
+		// the CN.
+		if parsedCertificate.Subject.CommonName != csrNames.CN {
+			return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
+		}
 	}
-	// Sort both slices of names before comparison.
+
 	parsedNames := parsedCertificate.DNSNames
 	sort.Strings(parsedNames)
-	sort.Strings(hostNames)
-	if !reflect.DeepEqual(parsedNames, hostNames) {
+	if !reflect.DeepEqual(parsedNames, csrNames.SANs) {
 		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
 	}
+
 	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
 		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
 	}
 	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
 		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
 	}
+
 	if len(parsedCertificate.Subject.Country) > 0 || len(parsedCertificate.Subject.Organization) > 0 ||
 		len(parsedCertificate.Subject.OrganizationalUnit) > 0 || len(parsedCertificate.Subject.Locality) > 0 ||
 		len(parsedCertificate.Subject.Province) > 0 || len(parsedCertificate.Subject.StreetAddress) > 0 ||
@@ -1014,10 +1014,6 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		Requester:   req.Order.RegistrationID,
 		RequestTime: ra.clk.Now(),
 	}
-	beeline.AddFieldToTrace(ctx, "issuance.id", logEvent.ID)
-	beeline.AddFieldToTrace(ctx, "order.id", req.Order.Id)
-	beeline.AddFieldToTrace(ctx, "acct.id", req.Order.RegistrationID)
-
 	csr, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
 		return nil, err
@@ -1113,12 +1109,9 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, err
 	}
 
-	beeline.AddFieldToTrace(ctx, "csr.cn", csr.Subject.CommonName)
-	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
-
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
-	csrNames := core.UniqueLowerNames(csr.DNSNames)
+	csrNames := csrlib.NamesFromCSR(csr).SANs
 	orderNames := core.UniqueLowerNames(req.Order.Names)
 
 	// Immediately reject the request if the number of names differ
@@ -1208,8 +1201,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		order.Status = string(core.StatusInvalid)
 
 		logEvent.Error = err.Error()
-		beeline.AddFieldToTrace(ctx, "issuance.error", err)
-
 		result = "error"
 	} else {
 		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
@@ -1222,15 +1213,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		ra.newCertCounter.Inc()
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
-		beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(cert.SerialNumber))
 		logEvent.CommonName = cert.Subject.CommonName
-		beeline.AddFieldToTrace(ctx, "cert.common_name", cert.Subject.CommonName)
 		logEvent.Names = cert.DNSNames
-		beeline.AddFieldToTrace(ctx, "cert.dns_names", cert.DNSNames)
 		logEvent.NotBefore = cert.NotBefore
-		beeline.AddFieldToTrace(ctx, "cert.not_before", cert.NotBefore)
 		logEvent.NotAfter = cert.NotAfter
-		beeline.AddFieldToTrace(ctx, "cert.not_after", cert.NotAfter)
 
 		result = "successful"
 	}
