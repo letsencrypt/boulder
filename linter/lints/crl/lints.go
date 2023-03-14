@@ -1,19 +1,18 @@
 package crl
 
 import (
-	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
 	"fmt"
 	"net/url"
 	"time"
 
+	"github.com/letsencrypt/boulder/crl/crl_x509"
+	blints "github.com/letsencrypt/boulder/linter/lints"
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 )
 
 const (
@@ -48,17 +47,6 @@ func init() {
 		"hasMozReasonCodes":              hasMozReasonCodes,
 		"hasValidTimestamps":             hasValidTimestamps,
 	}
-}
-
-// getExtWithOID is a helper for several lints in this file. It returns the
-// extension with the given OID if it exists, or nil otherwise.
-func getExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) *pkix.Extension {
-	for _, ext := range exts {
-		if ext.Id.Equal(oid) {
-			return &ext
-		}
-	}
-	return nil
 }
 
 // LintCRL examines the given lint CRL, runs it through all of our checks, and
@@ -188,7 +176,7 @@ func hasNumber(crl *crl_x509.RevocationList) *lint.LintResult {
 	}
 
 	crlNumberOID := asn1.ObjectIdentifier{2, 5, 29, 20} // id-ce-cRLNumber
-	ext := getExtWithOID(crl.Extensions, crlNumberOID)
+	ext := blints.GetExtWithOID(crl.Extensions, crlNumberOID)
 	if ext != nil && ext.Critical {
 		return &lint.LintResult{
 			Status:  lint.Error,
@@ -211,7 +199,7 @@ func hasNumber(crl *crl_x509.RevocationList) *lint.LintResult {
 // requirements we don't want to deal with.
 func isNotDelta(crl *crl_x509.RevocationList) *lint.LintResult {
 	deltaCRLIndicatorOID := asn1.ObjectIdentifier{2, 5, 29, 27} // id-ce-deltaCRLIndicator
-	if getExtWithOID(crl.Extensions, deltaCRLIndicatorOID) != nil {
+	if blints.GetExtWithOID(crl.Extensions, deltaCRLIndicatorOID) != nil {
 		return &lint.LintResult{
 			Status:  lint.Notice,
 			Details: "CRL is a Delta CRL",
@@ -226,7 +214,7 @@ func isNotDelta(crl *crl_x509.RevocationList) *lint.LintResult {
 // of the other fields. (RFC 5280, Section 5.2.5).
 func checkIDP(crl *crl_x509.RevocationList) *lint.LintResult {
 	idpOID := asn1.ObjectIdentifier{2, 5, 29, 28} // id-ce-issuingDistributionPoint
-	idpe := getExtWithOID(crl.Extensions, idpOID)
+	idpe := blints.GetExtWithOID(crl.Extensions, idpOID)
 	if idpe == nil {
 		return &lint.LintResult{
 			Status:  lint.Warn,
@@ -348,7 +336,7 @@ func checkIDP(crl *crl_x509.RevocationList) *lint.LintResult {
 // we don't want to deal with.
 func hasNoFreshest(crl *crl_x509.RevocationList) *lint.LintResult {
 	freshestOID := asn1.ObjectIdentifier{2, 5, 29, 46} // id-ce-freshestCRL
-	if getExtWithOID(crl.Extensions, freshestOID) != nil {
+	if blints.GetExtWithOID(crl.Extensions, freshestOID) != nil {
 		return &lint.LintResult{
 			Status:  lint.Notice,
 			Details: "CRL has a Freshest CRL url",
@@ -362,7 +350,7 @@ func hasNoFreshest(crl *crl_x509.RevocationList) *lint.LintResult {
 // AIAs come with extra requirements we don't want to deal with.
 func hasNoAIA(crl *crl_x509.RevocationList) *lint.LintResult {
 	aiaOID := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 1} // id-pe-authorityInfoAccess
-	if getExtWithOID(crl.Extensions, aiaOID) != nil {
+	if blints.GetExtWithOID(crl.Extensions, aiaOID) != nil {
 		return &lint.LintResult{
 			Status:  lint.Notice,
 			Details: "CRL has an Authority Information Access url",
@@ -379,7 +367,7 @@ func hasNoAIA(crl *crl_x509.RevocationList) *lint.LintResult {
 func hasNoCertIssuers(crl *crl_x509.RevocationList) *lint.LintResult {
 	certIssuerOID := asn1.ObjectIdentifier{2, 5, 29, 29} // id-ce-certificateIssuer
 	for _, entry := range crl.RevokedCertificates {
-		if getExtWithOID(entry.Extensions, certIssuerOID) != nil {
+		if blints.GetExtWithOID(entry.Extensions, certIssuerOID) != nil {
 			return &lint.LintResult{
 				Status:  lint.Notice,
 				Details: "CRL has an entry with a Certificate Issuer extension",
