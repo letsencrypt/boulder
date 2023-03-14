@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
@@ -1015,10 +1014,6 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		Requester:   req.Order.RegistrationID,
 		RequestTime: ra.clk.Now(),
 	}
-	beeline.AddFieldToTrace(ctx, "issuance.id", logEvent.ID)
-	beeline.AddFieldToTrace(ctx, "order.id", req.Order.Id)
-	beeline.AddFieldToTrace(ctx, "acct.id", req.Order.RegistrationID)
-
 	csr, err := ra.validateFinalizeRequest(ctx, req, &logEvent)
 	if err != nil {
 		return nil, err
@@ -1114,9 +1109,6 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 		return nil, err
 	}
 
-	beeline.AddFieldToTrace(ctx, "csr.cn", csr.Subject.CommonName)
-	beeline.AddFieldToTrace(ctx, "csr.dnsnames", csr.DNSNames)
-
 	// Dedupe, lowercase and sort both the names from the CSR and the names in the
 	// order.
 	csrNames := csrlib.NamesFromCSR(csr).SANs
@@ -1209,8 +1201,6 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		order.Status = string(core.StatusInvalid)
 
 		logEvent.Error = err.Error()
-		beeline.AddFieldToTrace(ctx, "issuance.error", err)
-
 		result = "error"
 	} else {
 		order.CertificateSerial = core.SerialToString(cert.SerialNumber)
@@ -1223,15 +1213,10 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		ra.newCertCounter.Inc()
 
 		logEvent.SerialNumber = core.SerialToString(cert.SerialNumber)
-		beeline.AddFieldToTrace(ctx, "cert.serial", core.SerialToString(cert.SerialNumber))
 		logEvent.CommonName = cert.Subject.CommonName
-		beeline.AddFieldToTrace(ctx, "cert.common_name", cert.Subject.CommonName)
 		logEvent.Names = cert.DNSNames
-		beeline.AddFieldToTrace(ctx, "cert.dns_names", cert.DNSNames)
 		logEvent.NotBefore = cert.NotBefore
-		beeline.AddFieldToTrace(ctx, "cert.not_before", cert.NotBefore)
 		logEvent.NotAfter = cert.NotAfter
-		beeline.AddFieldToTrace(ctx, "cert.not_after", cert.NotAfter)
 
 		result = "successful"
 	}

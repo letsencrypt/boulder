@@ -126,18 +126,6 @@ github.com/dgryski/go-rendezvous
 # github.com/eggsampler/acme/v3 v3.3.0
 ## explicit; go 1.11
 github.com/eggsampler/acme/v3
-# github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a
-## explicit
-github.com/facebookgo/clock
-# github.com/facebookgo/limitgroup v0.0.0-20150612190941-6abd8d71ec01
-## explicit
-github.com/facebookgo/limitgroup
-# github.com/facebookgo/muster v0.0.0-20150708232844-fd3d7953fd52
-## explicit
-github.com/facebookgo/muster
-# github.com/felixge/httpsnoop v1.0.3
-## explicit; go 1.13
-github.com/felixge/httpsnoop
 # github.com/go-gorp/gorp/v3 v3.1.0
 ## explicit; go 1.18
 github.com/go-gorp/gorp/v3
@@ -181,22 +169,6 @@ github.com/google/certificate-transparency-go/x509/pkix
 # github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 ## explicit
 github.com/grpc-ecosystem/go-grpc-prometheus
-# github.com/honeycombio/beeline-go v1.10.0
-## explicit; go 1.16
-github.com/honeycombio/beeline-go
-github.com/honeycombio/beeline-go/client
-github.com/honeycombio/beeline-go/propagation
-github.com/honeycombio/beeline-go/sample
-github.com/honeycombio/beeline-go/timer
-github.com/honeycombio/beeline-go/trace
-github.com/honeycombio/beeline-go/wrappers/common
-github.com/honeycombio/beeline-go/wrappers/config
-github.com/honeycombio/beeline-go/wrappers/hnygrpc
-github.com/honeycombio/beeline-go/wrappers/hnynethttp
-# github.com/honeycombio/libhoney-go v1.16.0
-## explicit; go 1.14
-github.com/honeycombio/libhoney-go
-github.com/honeycombio/libhoney-go/transmission
 # github.com/hpcloud/tail v1.0.0
 ## explicit
 github.com/hpcloud/tail
@@ -207,15 +179,6 @@ github.com/hpcloud/tail/winfile
 # github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 ## explicit
 github.com/jmhodges/clock
-# github.com/klauspost/compress v1.15.7
-## explicit; go 1.16
-github.com/klauspost/compress
-github.com/klauspost/compress/fse
-github.com/klauspost/compress/huff0
-github.com/klauspost/compress/internal/cpuinfo
-github.com/klauspost/compress/internal/snapref
-github.com/klauspost/compress/zstd
-github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/letsencrypt/challtestsrv v1.2.1
 ## explicit; go 1.13
 github.com/letsencrypt/challtestsrv
@@ -270,15 +233,6 @@ github.com/syndtr/goleveldb/leveldb/util
 # github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 ## explicit
 github.com/titanous/rocacheck
-# github.com/vmihailenco/msgpack/v5 v5.3.5
-## explicit; go 1.11
-github.com/vmihailenco/msgpack/v5
-github.com/vmihailenco/msgpack/v5/msgpcode
-# github.com/vmihailenco/tagparser/v2 v2.0.0
-## explicit; go 1.15
-github.com/vmihailenco/tagparser/v2
-github.com/vmihailenco/tagparser/v2/internal
-github.com/vmihailenco/tagparser/v2/internal/parser
 # github.com/weppos/publicsuffix-go v0.30.0
 ## explicit; go 1.16
 github.com/weppos/publicsuffix-go/publicsuffix
@@ -461,9 +415,6 @@ google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/emptypb
 google.golang.org/protobuf/types/known/timestamppb
-# gopkg.in/alexcesaro/statsd.v2 v2.0.0
-## explicit
-gopkg.in/alexcesaro/statsd.v2
 # gopkg.in/fsnotify.v1 v1.4.7
 ## explicit
 gopkg.in/fsnotify.v1

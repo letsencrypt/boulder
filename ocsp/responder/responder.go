@@ -45,7 +45,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -201,10 +200,7 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		Path:     request.URL.Path,
 		Received: time.Now(),
 	}
-	beeline.AddFieldToTrace(ctx, "real_ip", request.RemoteAddr)
-	beeline.AddFieldToTrace(ctx, "method", request.Method)
-	beeline.AddFieldToTrace(ctx, "user_agent", request.UserAgent())
-	beeline.AddFieldToTrace(ctx, "path", request.URL.Path)
+
 	defer func() {
 		le.Headers = response.Header()
 		le.Took = time.Since(le.Received)
@@ -295,13 +291,9 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	le.Serial = fmt.Sprintf("%x", ocspRequest.SerialNumber.Bytes())
-	beeline.AddFieldToTrace(ctx, "request.serial", core.SerialToString(ocspRequest.SerialNumber))
 	le.IssuerKeyHash = fmt.Sprintf("%x", ocspRequest.IssuerKeyHash)
-	beeline.AddFieldToTrace(ctx, "ocsp.issuer_key_hash", ocspRequest.IssuerKeyHash)
 	le.IssuerNameHash = fmt.Sprintf("%x", ocspRequest.IssuerNameHash)
-	beeline.AddFieldToTrace(ctx, "ocsp.issuer_name_hash", ocspRequest.IssuerNameHash)
 	le.HashAlg = hashToString[ocspRequest.HashAlgorithm]
-	beeline.AddFieldToTrace(ctx, "ocsp.hash_alg", hashToString[ocspRequest.HashAlgorithm])
 
 	// Look up OCSP response from source
 	ocspResponse, err := rs.Source.Response(ctx, ocspRequest)

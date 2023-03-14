@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -94,39 +93,6 @@ func TestTLSConfigLoad(t *testing.T) {
 			if matched, _ := regexp.MatchString(tc.want, err.Error()); !matched {
 				t.Errorf("got error %q, wanted %q", err, tc.want)
 			}
-		})
-	}
-}
-
-func TestSampler(t *testing.T) {
-	testCases := []struct {
-		samplerate uint32
-		span       map[string]interface{}
-		sampled    bool
-		rate       int
-	}{
-		// At sample rate 1, both of these should get sampled.
-		{1, map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
-		{1, map[string]interface{}{"trace.trace_id": ""}, true, 1},
-		// At sample rate 0, it should behave the same as sample rate 1.
-		{0, map[string]interface{}{"trace.trace_id": "foo"}, true, 1},
-		{0, map[string]interface{}{"trace.trace_id": ""}, true, 1},
-		// At sample rate 2, only one of these should be sampled.
-		{2, map[string]interface{}{"trace.trace_id": "foo"}, true, 2},
-		{2, map[string]interface{}{"trace.trace_id": ""}, false, 2},
-		// At sample rate 100, neither of these should be sampled.
-		{100, map[string]interface{}{"trace.trace_id": "foo"}, false, 100},
-		{100, map[string]interface{}{"trace.trace_id": ""}, false, 100},
-		// A missing or non-string trace_id should result in sampling.
-		{100, map[string]interface{}{}, true, 1},
-		{100, map[string]interface{}{"trace.trace_id": 123}, true, 1},
-	}
-	for _, tc := range testCases {
-		t.Run(fmt.Sprintf("Rate(%d) Span(%s)", tc.samplerate, tc.span), func(t *testing.T) {
-			s := makeSampler(tc.samplerate)
-			b, i := s(tc.span)
-			test.AssertEquals(t, b, tc.sampled)
-			test.AssertEquals(t, i, tc.rate)
 		})
 	}
 }

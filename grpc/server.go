@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
@@ -132,14 +131,12 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		mi.metrics.grpcMetrics.UnaryServerInterceptor(),
 		ai.Unary,
 		mi.Unary,
-		hnygrpc.UnaryServerInterceptor(),
 	}
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		mi.metrics.grpcMetrics.StreamServerInterceptor(),
 		ai.Stream,
 		mi.Stream,
-		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
 
 	options := []grpc.ServerOption{

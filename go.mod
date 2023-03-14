@@ -15,7 +15,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.0.22-0.20181127102053-c25855a82c75
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/honeycombio/beeline-go v1.10.0
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
 	github.com/letsencrypt/challtestsrv v1.2.1
@@ -58,26 +57,17 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a // indirect
-	github.com/facebookgo/limitgroup v0.0.0-20150612190941-6abd8d71ec01 // indirect
-	github.com/facebookgo/muster v0.0.0-20150708232844-fd3d7953fd52 // indirect
-	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
-	github.com/honeycombio/libhoney-go v1.16.0 // indirect
-	github.com/klauspost/compress v1.15.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/pelletier/go-toml v1.9.3 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
-	gopkg.in/alexcesaro/statsd.v2 v2.0.0 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
