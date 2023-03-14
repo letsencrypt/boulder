@@ -53,7 +53,7 @@ func getExtWithOID(exts []Extension, oid asn1.ObjectIdentifier) bool {
 }
 
 func (l *isrgDomainValidated) Execute(c *x509.Certificate) *lint.LintResult {
-	isrgDVOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44947, 1, 1, 3}
+	isrgDVOID := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 44947, 1, 1, 1}
 
 	targetStruct := Extensions{}
 	origStruct, _ := json.Marshal(c.Extensions)
