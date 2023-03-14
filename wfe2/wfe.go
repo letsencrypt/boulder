@@ -2407,19 +2407,19 @@ func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.Req
 
 	der, err := base64.RawURLEncoding.DecodeString(updateRenewalRequest.CertID)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("CertID was not base64url-encoded or had padding"), err)
+		wfe.sendError(response, logEvent, probs.Malformed("certID was not base64url-encoded or contained padding"), err)
 		return
 	}
 
 	var id certID
 	rest, err := asn1.Unmarshal(der, &id)
 	if err != nil || len(rest) != 0 {
-		wfe.sendError(response, logEvent, probs.Malformed("CertID was not a DER-encoded CertID sequence"), err)
+		wfe.sendError(response, logEvent, probs.Malformed("certID was not a DER-encoded CertID ASN.1 sequence"), err)
 		return
 	}
 
 	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		wfe.sendError(response, logEvent, probs.Malformed("CertID used hash algorithm other than SHA-256"), err)
+		wfe.sendError(response, logEvent, probs.Malformed("Decoded CertID used a hashAlgorithm other than SHA-256"), err)
 		return
 	}
 
