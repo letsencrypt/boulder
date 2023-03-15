@@ -163,7 +163,7 @@ func TestVerifyCSR(t *testing.T) {
 	}
 }
 
-func TestNormalizeCSR(t *testing.T) {
+func TestNamesFromCSR(t *testing.T) {
 	tooLongString := strings.Repeat("a", maxCNLength+1)
 
 	cases := []struct {
@@ -209,11 +209,64 @@ func TestNormalizeCSR(t *testing.T) {
 			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
 		},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			normalizeCSR(c.csr)
-			test.AssertEquals(t, c.expectedCN, c.csr.Subject.CommonName)
-			test.AssertDeepEquals(t, c.expectedNames, c.csr.DNSNames)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			names := NamesFromCSR(tc.csr)
+			test.AssertEquals(t, names.CN, tc.expectedCN)
+			test.AssertDeepEquals(t, names.SANs, tc.expectedNames)
+		})
+	}
+}
+
+func TestNamesFromCSROmitCommonName(t *testing.T) {
+	features.Set(map[string]bool{features.SetCommonName.String(): false})
+	defer features.Reset()
+
+	tooLongString := strings.Repeat("a", maxCNLength+1)
+
+	cases := []struct {
+		name          string
+		csr           *x509.CertificateRequest
+		expectedNames []string
+	}{
+		{
+			"no explicit CN",
+			&x509.CertificateRequest{DNSNames: []string{"a.com"}},
+			[]string{"a.com"},
+		},
+		{
+			"explicit uppercase CN",
+			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "A.com"}, DNSNames: []string{"a.com"}},
+			[]string{"a.com"},
+		},
+		{
+			"no explicit CN, too long leading SANs",
+			&x509.CertificateRequest{DNSNames: []string{
+				tooLongString + ".a.com",
+				tooLongString + ".b.com",
+				"a.com",
+				"b.com",
+			}},
+			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
+		},
+		{
+			"explicit CN, too long leading SANs",
+			&x509.CertificateRequest{
+				Subject: pkix.Name{CommonName: "A.com"},
+				DNSNames: []string{
+					tooLongString + ".a.com",
+					tooLongString + ".b.com",
+					"a.com",
+					"b.com",
+				}},
+			[]string{"a.com", tooLongString + ".a.com", tooLongString + ".b.com", "b.com"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			names := NamesFromCSR(tc.csr)
+			test.AssertEquals(t, names.CN, "")
+			test.AssertDeepEquals(t, names.SANs, tc.expectedNames)
 		})
 	}
 }

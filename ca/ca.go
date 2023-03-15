@@ -131,6 +131,10 @@ func NewCertificateAuthorityImpl(
 		return nil, err
 	}
 
+	if len(boulderIssuers) == 0 {
+		return nil, errors.New("must have at least one issuer")
+	}
+
 	issuers := makeIssuerMaps(boulderIssuers)
 
 	orphanCount := prometheus.NewCounterVec(
@@ -433,16 +437,21 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
 
-	certDER, err := issuer.Issue(&issuance.IssuanceRequest{
+	names := csrlib.NamesFromCSR(csr)
+	req := &issuance.IssuanceRequest{
 		PublicKey:         csr.PublicKey,
 		Serial:            serialBigInt.Bytes(),
-		CommonName:        csr.Subject.CommonName,
-		DNSNames:          csr.DNSNames,
+		DNSNames:          names.SANs,
 		IncludeCTPoison:   true,
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
 		NotBefore:         validity.NotBefore,
 		NotAfter:          validity.NotAfter,
-	})
+	}
+	if features.Enabled(features.SetCommonName) {
+		req.CommonName = names.CN
+	}
+
+	certDER, err := issuer.Issue(req)
 	if err != nil {
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",

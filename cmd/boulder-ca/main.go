@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/beeker1121/goque"
-	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/ca"
@@ -178,11 +177,6 @@ func main() {
 	if c.CA.MaxNames == 0 {
 		cmd.Fail("Error in CA config: MaxNames must not be 0")
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CA.DebugAddr)
 	defer logger.AuditPanic()
