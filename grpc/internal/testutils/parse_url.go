@@ -1,6 +1,6 @@
 /*
  *
- * Copyright 2018 gRPC authors.
+ * Copyright 2023 gRPC authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,19 @@
  *
  */
 
-package grpc
+package testutils
 
-// Version is the current grpc version.
-const Version = "1.53.0"
+import (
+	"fmt"
+	"net/url"
+)
+
+// MustParseURL attempts to parse the provided target using url.Parse()
+// and panics if parsing fails.
+func MustParseURL(target string) *url.URL {
+	u, err := url.Parse(target)
+	if err != nil {
+		panic(fmt.Sprintf("Error parsing target(%s): %v", target, err))
+	}
+	return u
+}
