@@ -3459,12 +3459,14 @@ func TestARI(t *testing.T) {
 	msa := newMockSAWithCert(t, wfe.sa)
 	wfe.sa = msa
 
+	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
+	test.AssertNotError(t, err, "setting feature flag")
+	defer features.Reset()
+
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
 	}
-	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
-	defer features.Reset()
 
 	// Load the certificate and its issuer.
 	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
@@ -3586,12 +3588,14 @@ func TestIncidentARI(t *testing.T) {
 	expectSerialString := core.SerialToString(big.NewInt(12345))
 	wfe.sa = newMockSAWithIncident(wfe.sa, []string{expectSerialString})
 
+	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
+	test.AssertNotError(t, err, "setting feature flag")
+	defer features.Reset()
+
 	makeGet := func(path, endpoint string) (*http.Request, *web.RequestEvent) {
 		return &http.Request{URL: &url.URL{Path: path}, Method: "GET"},
 			&web.RequestEvent{Endpoint: endpoint, Extra: map[string]interface{}{}}
 	}
-	_ = features.Set(map[string]bool{"ServeRenewalInfo": true})
-	defer features.Reset()
 
 	idBytes, err := asn1.Marshal(certID{
 		pkix.AlgorithmIdentifier{ // SHA256
@@ -3618,6 +3622,157 @@ func TestIncidentARI(t *testing.T) {
 	test.AssertEquals(t, ri.SuggestedWindow.End.After(ri.SuggestedWindow.Start), true)
 	// The end of the window should also be in the past.
 	test.AssertEquals(t, ri.SuggestedWindow.End.Before(wfe.clk.Now()), true)
+}
+
+type mockSAWithSerialMetadata struct {
+	sapb.StorageAuthorityReadOnlyClient
+	serial string
+	regID  int64
+}
+
+// GetSerialMetadata returns fake metadata if it recognizes the given serial.
+func (sa *mockSAWithSerialMetadata) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	if req.Serial != sa.serial {
+		return nil, berrors.NotFoundError("metadata for certificate with serial %q not found", req.Serial)
+	}
+
+	return &sapb.SerialMetadata{
+		Serial:         sa.serial,
+		RegistrationID: sa.regID,
+	}, nil
+}
+
+// TestUpdateARI tests that requests for real certs issued to the correct regID
+// are accepted, while all others result in errors.
+func TestUpdateARI(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+
+	err := features.Set(map[string]bool{"ServeRenewalInfo": true})
+	test.AssertNotError(t, err, "setting feature flag")
+	defer features.Reset()
+
+	makePost := func(regID int64, body string) *http.Request {
+		signedURL := fmt.Sprintf("http://localhost%s", renewalInfoPath)
+		_, _, jwsBody := signer.byKeyID(regID, nil, signedURL, body)
+		return makePostRequestWithPath(renewalInfoPath, jwsBody)
+	}
+
+	type jsonReq struct {
+		CertID   string `json:"certID"`
+		Replaced bool   `json:"replaced"`
+	}
+
+	// Load a cert, its issuer, and use OCSP to compute issuer name/key hashes.
+	cert, err := core.LoadCert("../test/hierarchy/ee-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test certificate")
+	issuer, err := core.LoadCert("../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "failed to load test issuer")
+	ocspReqBytes, err := ocsp.CreateRequest(cert, issuer, &ocsp.RequestOptions{Hash: crypto.SHA256})
+	test.AssertNotError(t, err, "failed to create ocsp request")
+	ocspReq, err := ocsp.ParseRequest(ocspReqBytes)
+	test.AssertNotError(t, err, "failed to parse ocsp request")
+
+	// Set up the mock SA.
+	msa := mockSAWithSerialMetadata{wfe.sa, core.SerialToString(cert.SerialNumber), 1}
+	wfe.sa = &msa
+
+	// An empty POST should result in an error.
+	req := makePost(1, "")
+	responseWriter := httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+
+	// Non-certID base64 should result in an error.
+	req = makePost(1, "aGVsbG8gd29ybGQK") // $ echo "hello world" | base64
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+
+	// Non-sha256 hash algorithm should result in an error.
+	idBytes, err := asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // definitely not SHA256
+			Algorithm:  asn1.ObjectIdentifier{1, 2, 3, 4, 5},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		cert.SerialNumber,
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+	body, err := json.Marshal(jsonReq{
+		CertID:   base64.RawURLEncoding.EncodeToString(idBytes),
+		Replaced: true,
+	})
+	test.AssertNotError(t, err, "failed to marshal request body")
+	req = makePost(1, string(body))
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusBadRequest)
+
+	// Unrecognized serial should result in an error.
+	idBytes, err = asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		big.NewInt(12345),
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+	body, err = json.Marshal(jsonReq{
+		CertID:   base64.RawURLEncoding.EncodeToString(idBytes),
+		Replaced: true,
+	})
+	test.AssertNotError(t, err, "failed to marshal request body")
+	req = makePost(1, string(body))
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
+
+	// Recognized serial but owned by the wrong account should result in an error.
+	msa.regID = 2
+	idBytes, err = asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		cert.SerialNumber,
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+	body, err = json.Marshal(jsonReq{
+		CertID:   base64.RawURLEncoding.EncodeToString(idBytes),
+		Replaced: true,
+	})
+	test.AssertNotError(t, err, "failed to marshal request body")
+	req = makePost(1, string(body))
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusForbidden)
+
+	// Recognized serial and owned by the right account should work.
+	msa.regID = 1
+	idBytes, err = asn1.Marshal(certID{
+		pkix.AlgorithmIdentifier{ // SHA256
+			Algorithm:  asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1},
+			Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+		},
+		ocspReq.IssuerNameHash,
+		ocspReq.IssuerKeyHash,
+		cert.SerialNumber,
+	})
+	test.AssertNotError(t, err, "failed to marshal certID")
+	body, err = json.Marshal(jsonReq{
+		CertID:   base64.RawURLEncoding.EncodeToString(idBytes),
+		Replaced: true,
+	})
+	test.AssertNotError(t, err, "failed to marshal request body")
+	req = makePost(1, string(body))
+	responseWriter = httptest.NewRecorder()
+	wfe.UpdateRenewal(ctx, newRequestEvent(), responseWriter, req)
+	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 }
 
 func TestOldTLSInbound(t *testing.T) {
