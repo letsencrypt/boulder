@@ -2127,6 +2127,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		}
 		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
 		if err != nil {
+			// TODO(#5979): Check this error when it can't simply be due to a full queue.
+			_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 			return nil, err
 		}
 	}
@@ -2214,6 +2216,11 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
 			err = ra.updateRevocationForKeyCompromise(ctx, serialInt, issuerID)
 			if err != nil {
+				// TODO(#5979): Check this error when it can't simply be due to
+				// a full queue.
+				if cert != nil {
+					_ = ra.purgeOCSPCache(ctx, cert, issuerID)
+				}
 				return nil, err
 			}
 		}
