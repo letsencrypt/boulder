@@ -7,7 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.18.12
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.30.5
 	github.com/aws/smithy-go v1.13.5
-	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
+	github.com/beeker1121/goque v2.1.0+incompatible
 	github.com/eggsampler/acme/v3 v3.3.0
 	github.com/go-gorp/gorp/v3 v3.1.0
 	github.com/go-redis/redis/v8 v8.11.5
@@ -63,6 +63,7 @@ require (
 	github.com/pelletier/go-toml v1.9.3 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
+	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
