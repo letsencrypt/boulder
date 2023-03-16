@@ -47,18 +47,15 @@ mysql_variables=
     # Keep 90% of configured connections open
     free_connections_pct=90
     connection_warming=true
-    # If SQL queries are marked to log, log them here
-    eventslog_filename="/test/proxysql/events.log"
+    # If mysql_query_rules are marked log=1, they will be logged here. If unset,
+    # no queries are logged.
+    # eventslog_filename="/test/proxysql/events.log"
     eventslog_filesize=104857600
     eventslog_default_log=1
     # The audit logs, if unset, are not logged. If set, every connection gets
-    # logged, along with a bunch of other stuff. Given Boulder's connection
-    # strategies, this is super noisy, and unless we need it, it's probably best
-    # to remain commented out. Logrotate will rotate it if seen, though.
-    #
-    auditlog_filename="/test/proxysql/audit.log"
+    # logged. Given Boulder's connection strategy, this can be noisy.
+    # auditlog_filename="/test/proxysql/audit.log"
     auditlog_filesize=104857600
-    set_query_lock_on_hostgroup=false
 }
 
 mysql_servers =
@@ -95,8 +92,11 @@ mysql_query_rules=
     {
         rule_id=1
         active=1
+        # Log all queries.
         match_digest="."
-        log=1
+        # Set log=1 to log all queries to the eventslog_filename under
+        # mysql_variables.
+        log=0
         apply=0
     },
     {
