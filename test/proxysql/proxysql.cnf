@@ -50,6 +50,7 @@ mysql_variables=
     # If SQL queries are marked to log, log them here
     eventslog_filename="/test/proxysql/events.log"
     eventslog_filesize=104857600
+    eventslog_default_log=1
     # The audit logs, if unset, are not logged. If set, every connection gets
     # logged, along with a bunch of other stuff. Given Boulder's connection
     # strategies, this is super noisy, and unless we need it, it's probably best
@@ -91,6 +92,13 @@ mysql_users =
 
 mysql_query_rules=
 (
+    {
+        rule_id=1
+        active=1
+        match_digest="."
+        log=1
+        apply=0
+    },
     {
         rule_id=10
         username="sa"

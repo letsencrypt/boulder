@@ -70,6 +70,7 @@ services:
       - ./test/:/test/:cached
     ports:
       - "6080:6080" # DASHBOARD
+      - "6032:6032" # ADMIN
     depends_on:
       - bmysql
     networks:
