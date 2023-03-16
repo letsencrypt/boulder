@@ -71,7 +71,7 @@ Then set `log=1` for `rule_id=1` in the `mysql_query_rules` section, like so:
 
 ## Sending ProxySQL logs to a file
 
-Replace the `entrypoint:` under `bproxsql` in `docker-compose.yml` with
+Replace the `entrypoint:` under `bproxysql` in `docker-compose.yml` with
 `./test/proxysql/entrypoint.sh`. This is necessary because if you attempt to run
 ProxySQL in the background (by removing the `-f` flag) Docker will simply kill
 the container.
