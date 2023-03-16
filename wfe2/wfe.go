@@ -2002,7 +2002,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			hasValidCNLen = true
 		}
 	}
-	if !hasValidCNLen {
+	if !hasValidCNLen && features.Enabled(features.RequireCommonName) {
 		wfe.sendError(response, logEvent,
 			probs.RejectedIdentifier("NewOrder request did not include a SAN short enough to fit in CN"),
 			nil)

@@ -94,8 +94,8 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 	test.AssertNotError(t, err, "creating random cert key")
 
 	// Put together some names.
-	san1 := fmt.Sprintf("thisdomainnameismorethan64characterslongforthesakeoftesting-%s", random_domain())
-	san2 := fmt.Sprintf("thisdomainnameismorethan64characterslongforthesakeoftesting-%s", random_domain())
+	san1 := fmt.Sprintf("thisdomainnameis.morethan64characterslong.forthesakeoftesting.%s", random_domain())
+	san2 := fmt.Sprintf("thisdomainnameis.morethan64characterslong.forthesakeoftesting.%s", random_domain())
 
 	// Issue a cert using a CSR with no CN set.
 	ir, err := authAndIssue(client, key, []string{san1, san2}, false)
