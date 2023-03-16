@@ -19,8 +19,9 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 	jose "gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -259,6 +260,9 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+			span := trace.SpanFromContext(ctx)
+			span.SetName(pattern)
+
 			logEvent.Endpoint = pattern
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
