@@ -252,8 +252,7 @@ Web PKI and the CA/Browser forum's baseline requirements. In our experience
 often Boulder is not the right fit for organizations that are evaluating it for
 production usage. In most cases a centrally managed PKI that doesn't require
 domain-authorization with ACME is a better choice. For this environment we
-recommend evaluating [cfssl](https://github.com/cloudflare/cfssl) or a project
-other than Boulder.
+recommend evaluating a project other than Boulder.
 
 We offer a brief [deployment and implementation
 guide](https://github.com/letsencrypt/boulder/wiki/Deployment-&-Implementation-Guide)
