@@ -175,7 +175,8 @@ func AssertByteEquals(t *testing.T, one []byte, two []byte) {
 	}
 }
 
-// AssertContains determines whether needle can be found in haystack
+// AssertContains determines whether needle can be found in haystack.
+// A nil check on haystack should be performed prior to calling AssertContains.
 func AssertContains(t *testing.T, haystack string, needle string) {
 	t.Helper()
 	if !strings.Contains(haystack, needle) {
@@ -183,7 +184,7 @@ func AssertContains(t *testing.T, haystack string, needle string) {
 	}
 }
 
-// AssertNotContains determines if needle is not found in haystack
+// AssertNotContains determines if needle is not found in haystack.
 func AssertNotContains(t *testing.T, haystack string, needle string) {
 	t.Helper()
 	if strings.Contains(haystack, needle) {
