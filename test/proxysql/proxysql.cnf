@@ -5,7 +5,7 @@ admin_variables=
 {
     # https://proxysql.com/documentation/global-variables/admin-variables Note
     # that while admin variables are documented with an 'admin-' prefix, they
-    # are specied in the configuration with the prefix stripped.
+    # are specified in the configuration with the prefix stripped.
     mysql_ifaces="0.0.0.0:6032"
     # admin:admin is only used for local connections. For remote connections,
     # use radmin:radmin

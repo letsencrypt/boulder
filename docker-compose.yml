@@ -68,9 +68,6 @@ services:
     entrypoint: proxysql -f --idle-threads -c /test/proxysql/proxysql.cnf --initial
     volumes:
       - ./test/:/test/:cached
-    ports:
-      - "6080:6080" # WEB INTERFACE
-      - "6032:6032" # ADMIN SQL INTERFACE
     depends_on:
       - bmysql
     networks:
