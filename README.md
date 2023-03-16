@@ -58,20 +58,10 @@ Subscriber server <- VA <----+               |
 ```
 
 Internally, the logic of the system is based around five types of objects:
-accounts, authorizations, challenges, orders (for ACME v2) and certificates,
-mapping directly to the resources of the same name in ACME.
-
-We run two Web Front Ends, one for each ACME API version. Only the front end
-components differentiate between API version. Requests from ACME clients
-result in new objects and changes to objects. The Storage Authority maintains
-persistent copies of the current set of objects.
-
-Objects are also passed from one component to another on change events. For
-example, when a client provides a successful response to a validation
-challenge, it results in a change to the corresponding validation object. The
-Validation Authority forwards the new validation object to the Storage
-Authority for storage, and to the Registration Authority for any updates to a
-related Authorization object.
+accounts, authorizations, challenges, orders and certificates, mapping directly
+to the resources of the same name in ACME. Requests from ACME clients result in
+new objects and changes to objects. The Storage Authority maintains persistent
+copies of the current set of objects.
 
 Boulder uses gRPC for inter-component communication. For components that you
 want to be remote, it is necessary to instantiate a "client" and "server" for
@@ -181,6 +171,10 @@ And edit docker-compose.yml to change the `FAKE_DNS` environment variable to
 match. This will cause Boulder's stubbed-out DNS resolver (`sd-test-srv`) to
 respond to all A queries with the address in `FAKE_DNS`.
 
+If you use a host-based firewall (e.g. `ufw` or `iptables`) make sure you allow
+connections from the Docker instance to your host on the required validation
+ports to your ACME client.
+
 Alternatively, you can override the docker-compose.yml default with an
 environmental variable using -e (replace 172.17.0.1 with the host IPv4
 address found in the command above)
@@ -208,16 +202,6 @@ Run integration tests (omit `--filter <REGEX>` to run all):
 ```shell
 docker compose run --use-aliases boulder python3 test/integration-test.py --chisel --gotest --filter <REGEX>
 ```
-
-Boulder's default VA configuration (`test/config/va.json`) is configured to
-connect to port 5002 to validate HTTP-01 challenges and port 5001 to validate
-TLS-ALPN-01 challenges. If you want to solve challenges with a client running
-on your host you should make sure it uses these ports to respond to
-validation requests, or update the VA configuration's `portConfig` to use
-ports 80 and 443 to match how the VA operates in production and staging
-environments. If you use a host-based firewall (e.g. `ufw` or `iptables`)
-make sure you allow connections from the Docker instance to your host on the
-required ports.
 
 ### Working with Certbot
 
@@ -259,10 +243,7 @@ resolved to your localhost. To return an answer other than `127.0.0.1` change
 the Boulder `FAKE_DNS` environment variable to another IP address.
 
 Most often you will want to configure `FAKE_DNS` to point to your host
-machine where you run an ACME client. Remember to also configure the ACME
-client to use ports 5002 and 5001 instead of 80 and 443 for HTTP-01 and
-TLS-ALPN-01 challenge servers (or customize the Boulder VA configuration to
-match your port choices).
+machine where you run an ACME client.
 
 ### Production
 
@@ -271,8 +252,7 @@ Web PKI and the CA/Browser forum's baseline requirements. In our experience
 often Boulder is not the right fit for organizations that are evaluating it for
 production usage. In most cases a centrally managed PKI that doesn't require
 domain-authorization with ACME is a better choice. For this environment we
-recommend evaluating [cfssl](https://github.com/cloudflare/cfssl) or a project
-other than Boulder.
+recommend evaluating a project other than Boulder.
 
 We offer a brief [deployment and implementation
 guide](https://github.com/letsencrypt/boulder/wiki/Deployment-&-Implementation-Guide)
