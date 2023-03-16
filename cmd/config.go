@@ -439,30 +439,30 @@ type BeelineConfig struct {
 	Mute        bool
 }
 
-// OpenTelemetryConfig provides config options for the OpenTelemetry library
-// The configuration parameters are documented here:
-// https://github.com/open-telemetry/opentelemetry-go/tree/main/exporters/otlp/otlptrace#configuration
+// OpenTelemetryConfig configures tracing via OpenTelemetry.
+// To enable tracing, set a nonzero SampleRatio and configure an Endpoint
 type OpenTelemetryConfig struct {
-	// Endpoint to connect to with the OTLP protocol
-	OTLPEndpoint string
+	// Endpoint to connect to with the OTLP protocol over gRPC.
+	// It should be of the form "localhost:4317"
+	//
+	// It always connects over plaintext, and so is only intended to connect
+	// to a local OpenTelemetry collector. This should not be used over an
+	// insecure network.
+	Endpoint string
 
 	// SampleRatio is the ratio of new traces to head sample.
+	// This only affects new traces with no parent with its own sampling decision.
 	// Set to something between 0 and 1, where 1 is sampling all traces.
 	// See otel trace.TraceIDRatioBased for details.
 	SampleRatio float64
 
-	// If true, disable the parent sampler.  Should be true anywhere untrusted
-	// requests are accepted, like the WFE and OCSP Responder.  The default
-	// value of false is the best practice elsewhere.  If true, the SampleRatio
-	// parameter will be used for all new spans.
+	// If true, disable the parent sampler.
+	// On external-facing services like the WFE, setting this true will
+	// ensure that any external API users don't influence our own sampling
+	// decisions.
 	DisableParentSampler bool
 
 	// StdoutExporter prints traces to stdout if this is true.
 	// Useful in test or dev environments without an OTLP endpoint available
 	StdoutExporter bool
-
-	// We will probably want more configuration parameters
-	// Note that the oltptrace exporter also supports using environment
-	// variables for configuration, but are overridden by the values that are
-	// present here.
 }
