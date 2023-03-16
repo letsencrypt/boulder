@@ -14,7 +14,6 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-
 	blog "github.com/letsencrypt/boulder/log"
 )
 
