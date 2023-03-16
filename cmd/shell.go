@@ -323,10 +323,10 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 		opts = append(opts, trace.WithBatcher(exporter))
 	}
 
-	if config.OTLPEndpoint != "" {
+	if config.Endpoint != "" {
 		exporter, err := otlptracegrpc.New(context.Background(),
-			otlptracegrpc.WithInsecure(), // TODO: We might want secure (TLS/authed) grpc for non-localhost connections!
-			otlptracegrpc.WithEndpoint(config.OTLPEndpoint))
+			otlptracegrpc.WithInsecure(),
+			otlptracegrpc.WithEndpoint(config.Endpoint))
 		if err != nil {
 			FailOnError(err, "Could not create OpenTelemetry OTLP exporter")
 		}
