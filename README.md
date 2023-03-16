@@ -58,20 +58,10 @@ Subscriber server <- VA <----+               |
 ```
 
 Internally, the logic of the system is based around five types of objects:
-accounts, authorizations, challenges, orders (for ACME v2) and certificates,
-mapping directly to the resources of the same name in ACME.
-
-We run two Web Front Ends, one for each ACME API version. Only the front end
-components differentiate between API version. Requests from ACME clients
-result in new objects and changes to objects. The Storage Authority maintains
-persistent copies of the current set of objects.
-
-Objects are also passed from one component to another on change events. For
-example, when a client provides a successful response to a validation
-challenge, it results in a change to the corresponding validation object. The
-Validation Authority forwards the new validation object to the Storage
-Authority for storage, and to the Registration Authority for any updates to a
-related Authorization object.
+accounts, authorizations, challenges, orders and certificates, mapping directly
+to the resources of the same name in ACME. Requests from ACME clients result in
+new objects and changes to objects. The Storage Authority maintains persistent
+copies of the current set of objects.
 
 Boulder uses gRPC for inter-component communication. For components that you
 want to be remote, it is necessary to instantiate a "client" and "server" for
