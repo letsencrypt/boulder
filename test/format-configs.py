@@ -11,5 +11,5 @@ else:
     with open(cfg, "r") as fr:
       j = json.load(fr)
     with open(cfg, "w") as fw:
-      json.dump(j, fw, indent=4)
+      json.dump(j, fw, indent="\t")
       fw.write("\n")
