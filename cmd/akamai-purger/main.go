@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -293,11 +292,6 @@ func main() {
 	if *debugAddr != "" {
 		apc.DebugAddr = *debugAddr
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, apc.DebugAddr)
 	defer logger.AuditPanic()

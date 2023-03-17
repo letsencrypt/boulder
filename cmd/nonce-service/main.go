@@ -6,8 +6,6 @@ import (
 	"net"
 	"os"
 
-	"github.com/honeycombio/beeline-go"
-
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
@@ -100,11 +98,6 @@ func main() {
 		c.NonceService.NoncePrefix, err = derivePrefix(key, c.NonceService.GRPC.Address)
 		cmd.FailOnError(err, "Failed to derive nonce prefix")
 	}
-
-	bc, err := c.NonceService.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
 	defer logger.AuditPanic()

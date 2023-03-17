@@ -7,7 +7,6 @@ import (
 	"runtime"
 
 	ct "github.com/google/certificate-transparency-go"
-	"github.com/honeycombio/beeline-go"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -65,11 +64,6 @@ func main() {
 	if c.Publisher.UserAgent == "" {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
 	defer logger.AuditPanic()

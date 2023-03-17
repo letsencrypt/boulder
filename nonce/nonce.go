@@ -360,7 +360,7 @@ type Getter interface {
 	Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error)
 }
 
-// Getter is an interface for an RPC client that can redeem a nonce.
+// Redeemer is an interface for an RPC client that can redeem a nonce.
 type Redeemer interface {
 	Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error)
 }

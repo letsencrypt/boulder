@@ -56,8 +56,8 @@ var levelName = map[syslog.Priority]string{
 	syslog.LOG_DEBUG:   "DEBUG",
 }
 
-func (w *mockWriter) logAtLevel(p syslog.Priority, msg string) {
-	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], msg)
+func (w *mockWriter) logAtLevel(p syslog.Priority, msg string, a ...interface{}) {
+	w.msgChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
 }
 
 // newMockWriter returns a new mockWriter
@@ -143,8 +143,8 @@ func newWaitingMockWriter() *waitingMockWriter {
 	}
 }
 
-func (m *waitingMockWriter) logAtLevel(p syslog.Priority, msg string) {
-	m.logChan <- fmt.Sprintf("%s: %s", levelName[p&7], msg)
+func (m *waitingMockWriter) logAtLevel(p syslog.Priority, msg string, a ...interface{}) {
+	m.logChan <- fmt.Sprintf("%s: %s", levelName[p&7], fmt.Sprintf(msg, a...))
 }
 
 // WaitForMatch returns the first log line matching a regex. It accepts a
