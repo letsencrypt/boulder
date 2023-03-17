@@ -2,9 +2,12 @@
 
 import glob
 import json
+import sys
 
-for cfg in glob.glob("test/config*/*json"):
-    print(cfg)
+if len(sys.argv) != 2:
+  print("This program reformats JSON.  It takes a glob pattern as input")
+else:
+  for cfg in glob.glob(sys.argv[1]):
     with open(cfg, "r") as fr:
       j = json.load(fr)
     with open(cfg, "w") as fw:
