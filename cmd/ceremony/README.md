@@ -46,7 +46,7 @@ This tool always generates key pairs such that the public and private key are bo
     | --- | --- |
     | `public-key-path` | Path to store generated PEM public key. |
     | `certificate-path` | Path to store signed PEM certificate. |
-- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format).
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#certificate-profile-format).
 
 Example:
 
@@ -95,7 +95,7 @@ This config generates a ECDSA P-384 key in the HSM with the object label `root s
     | Field | Description |
     | --- | --- |
     | `certificate-path` | Path to store signed PEM certificate. |
-- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format).
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#certificate-profile-format).
 
 Example:
 
@@ -152,7 +152,7 @@ Note: Intermediate certificates always include the extended key usages id-kp-ser
     | Field | Description |
     | --- | --- |
     | `csr-path` | Path to store PEM CSR for cross-signing, optional. |
-- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). Should only include Subject related fields `common-name`, `organization`, `country`.
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#certificate-profile-format). Should only include Subject related fields `common-name`, `organization`, `country`.
 
 Example:
 
@@ -193,7 +193,7 @@ This config generates a CSR signed by a key in the HSM, identified by the object
     | Field | Description |
     | --- | --- |
     | `certificate-path` | Path to store signed PEM certificate. |
-- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). The key-usages, ocsp-url, and crl-url fields must not be set.
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#certificate-profile-format). The key-usages, ocsp-url, and crl-url fields must not be set.
 
 When generating an OCSP signing certificate the key usages field will be set to just Digital Signature and an EKU extension will be included with the id-kp-OCSPSigning usage. Additionally an id-pkix-ocsp-nocheck extension will be included in the certificate.
 
@@ -241,7 +241,7 @@ This config generates a delegated OCSP signing certificate signed by a key in th
     | Field | Description |
     | --- | --- |
     | `certificate-path` | Path to store signed PEM certificate. |
-- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#Certificate-profile-format). The key-usages, ocsp-url, and crl-url fields must not be set.
+- `certificate-profile`: object containing profile for certificate to generate. Fields are documented [below](#certificate-profile-format). The key-usages, ocsp-url, and crl-url fields must not be set.
 
 When generating a CRL signing certificate the key usages field will be set to just CRL Sign.
 

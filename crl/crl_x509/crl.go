@@ -281,7 +281,6 @@ func ParseRevocationList(der []byte) (*RevocationList, error) {
 			if err != nil {
 				return nil, err
 			}
-			// NOTE: The block does not exist in upstream.
 			if ext.Id.Equal(oidExtensionAuthorityKeyId) {
 				rl.AuthorityKeyId = ext.Value
 			} else if ext.Id.Equal(oidExtensionCRLNumber) {

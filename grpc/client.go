@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	"github.com/honeycombio/beeline-go/wrappers/hnygrpc"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
@@ -44,13 +43,11 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
 		cmi.Unary,
 		cmi.metrics.grpcMetrics.UnaryClientInterceptor(),
-		hnygrpc.UnaryClientInterceptor(),
 	}
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
 		cmi.Stream,
 		cmi.metrics.grpcMetrics.StreamClientInterceptor(),
-		// TODO(#6361): Get a tracing interceptor that works for gRPC streams.
 	}
 
 	target, hostOverride, err := c.MakeTargetAndHostOverride()

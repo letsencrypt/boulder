@@ -10,7 +10,6 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestValidNonce(t *testing.T) {
@@ -142,16 +141,22 @@ func TestNoncePrefixing(t *testing.T) {
 	test.Assert(t, !ns.Valid(n[6:]), "Valid nonce without prefix accepted")
 }
 
-type malleableNonceClient struct {
-	redeem func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error)
+type validRedeemer struct{}
+
+func (vr *validRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return &noncepb.ValidMessage{Valid: true}, nil
 }
 
-func (mnc *malleableNonceClient) Redeem(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-	return mnc.redeem(ctx, in, opts...)
+type invalidRedeemer struct{}
+
+func (ivr *invalidRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return &noncepb.ValidMessage{Valid: false}, nil
 }
 
-func (mnc *malleableNonceClient) Nonce(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*noncepb.NonceMessage, error) {
-	return nil, errors.New("unimplemented")
+type brokenRedeemer struct{}
+
+func (br *brokenRedeemer) Redeem(ctx context.Context, in *noncepb.NonceMessage, _ ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return nil, errors.New("broken redeemer!")
 }
 
 func TestRemoteRedeem(t *testing.T) {
@@ -163,16 +168,8 @@ func TestRemoteRedeem(t *testing.T) {
 	test.Assert(t, !valid, "RemoteRedeem accepted an empty nonce")
 
 	prefixMap := map[string]Redeemer{
-		"abcd": &malleableNonceClient{
-			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-				return nil, errors.New("wrong one!")
-			},
-		},
-		"wxyz": &malleableNonceClient{
-			redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-				return &noncepb.ValidMessage{Valid: false}, nil
-			},
-		},
+		"abcd": &brokenRedeemer{},
+		"wxyz": &invalidRedeemer{},
 	}
 	// Attempt to redeem a nonce with a prefix not in the prefix map, expect return false, nil
 	valid, err = RemoteRedeem(context.Background(), prefixMap, "asddCQEC")
@@ -184,19 +181,15 @@ func TestRemoteRedeem(t *testing.T) {
 	_, err = RemoteRedeem(context.Background(), prefixMap, "abcdbeef")
 	test.AssertError(t, err, "RemoteRedeem didn't return error when remote did")
 
-	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns valid
-	// expect true, nil
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
+	// expect false, nil
 	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, !valid, "RemoteRedeem didn't honor remote result")
 
-	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns invalid
-	// expect false, nil
-	prefixMap["wxyz"] = &malleableNonceClient{
-		redeem: func(ctx context.Context, in *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
-			return &noncepb.ValidMessage{Valid: true}, nil
-		},
-	}
+	// Attempt to redeem a nonce with a prefix in the prefix map, remote returns valid
+	// expect true, nil
+	prefixMap["wxyz"] = &validRedeemer{}
 	valid, err = RemoteRedeem(context.Background(), prefixMap, "wxyzdead")
 	test.AssertNotError(t, err, "RemoteRedeem failed")
 	test.Assert(t, valid, "RemoteRedeem didn't honor remote result")

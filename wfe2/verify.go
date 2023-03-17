@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/go-jose/go-jose.v2"
 
@@ -493,10 +492,8 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	// Update the logEvent with the account information and return the JWK
 	logEvent.Requester = account.Id
-	beeline.AddFieldToTrace(ctx, "acct.id", account.Id)
 	if account.Contact != nil {
 		logEvent.Contacts = account.Contact
-		beeline.AddFieldToTrace(ctx, "contacts", account.Contact)
 	}
 
 	acct, err := grpc.PbToRegistration(account)
@@ -631,7 +628,6 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 	// method "POST-as-GET" to the logEvent's Method, replacing the
 	// http.MethodPost value.
 	logEvent.Method = "POST-as-GET"
-	beeline.AddFieldToTrace(ctx, "method", "POST-as-GET")
 	return reg, prob
 }
 
