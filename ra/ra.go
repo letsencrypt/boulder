@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
+	"golang.org/x/exp/slices"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -679,11 +680,11 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 
 	csrNames := csrlib.NamesFromCSR(csr)
 	if parsedCertificate.Subject.CommonName != "" {
-		// Only check that the issued common name matches the requested CN if there
+		// Only check that the issued common name matches one of the SANs if there
 		// is an issued CN at all: this allows flexibility on whether we include
 		// the CN.
-		if parsedCertificate.Subject.CommonName != csrNames.CN {
-			return berrors.InternalServerError("generated certificate CommonName doesn't match CSR CommonName")
+		if !slices.Contains(csrNames.SANs, parsedCertificate.Subject.CommonName) {
+			return berrors.InternalServerError("generated certificate CommonName doesn't match any CSR name")
 		}
 	}
 
