@@ -40,5 +40,9 @@
     "writeKey": {
       "passwordFile": "test/secrets/honeycomb_fake_password"
     }
+  },
+  "opentelemetry": {
+    "endpoint": "jaeger:4317",
+    "sampleratio": 1
   }
 }

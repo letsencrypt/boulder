@@ -22,7 +22,6 @@
     "features": {
     }
   },
-
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 6

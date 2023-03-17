@@ -24,17 +24,21 @@
       "http://boulder.service.consul:4001/acme/acct/"
     ]
   },
-
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 4
   },
   "beeline": {
-      "mute": true,
-      "serviceName": "Test",
-      "writeKey": {"passwordFile": "test/secrets/honeycomb_fake_password"}
+    "mute": true,
+    "serviceName": "Test",
+    "writeKey": {
+      "passwordFile": "test/secrets/honeycomb_fake_password"
+    }
   },
-
+  "opentelemetry": {
+    "endpoint": "jaeger:4317",
+    "sampleratio": 1
+  },
   "common": {
     "dnsTimeout": "1s",
     "dnsAllowLoopbackAddresses": true

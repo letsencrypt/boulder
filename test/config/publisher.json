@@ -38,14 +38,19 @@
     "features": {
     }
   },
-
   "syslog": {
     "stdoutlevel": 6,
     "sysloglevel": 6
   },
   "beeline": {
-      "mute": true,
-      "serviceName": "Test",
-      "writeKey": {"passwordFile": "test/secrets/honeycomb_fake_password"}
+    "mute": true,
+    "serviceName": "Test",
+    "writeKey": {
+      "passwordFile": "test/secrets/honeycomb_fake_password"
+    }
+  },
+  "opentelemetry": {
+    "endpoint": "jaeger:4317",
+    "sampleratio": 1
   }
 }
