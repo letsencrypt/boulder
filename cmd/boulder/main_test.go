@@ -13,7 +13,7 @@ import (
 // validation tagged Config struct at init time can be used to successfully
 // validate their corresponding test configuration files.
 func TestConfigValidation(t *testing.T) {
-	configPath := "../../test"
+	configPath := "../../test/config"
 	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
 		configPath = "../../test/config-next"
 	}
