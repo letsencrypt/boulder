@@ -9,7 +9,9 @@
         "beeline": {
             "mute": true,
             "serviceName": "Test",
-            "writeKey": {"passwordFile": "test/secrets/honeycomb_fake_password"}
+            "writeKey": {
+                "passwordFile": "test/secrets/honeycomb_fake_password"
+            }
         },
         "debugAddr": ":8111",
         "grpc": {
