@@ -12,9 +12,5 @@
   "syslog": {
     "stdoutLevel": 7,
     "syslogLevel": 7
-  },
-  "opentelemetry": {
-    "endpoint": "jaeger:4317",
-    "sampleratio": 1
   }
 }
