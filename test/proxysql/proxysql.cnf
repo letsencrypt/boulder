@@ -84,7 +84,7 @@ mysql_users =
     { username = "ocsp_update_ro" },
     { username = "test_setup" },
     { username = "badkeyrevoker" },
-
+    { username = "incidents_sa" },
 )
 
 mysql_query_rules=
