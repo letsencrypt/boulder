@@ -431,7 +431,7 @@ type Config struct {
 		// CTLogListFile is the path to a JSON file on disk containing the set of
 		// all logs trusted by Chrome. The file must match the v3 log list schema:
 		// https://www.gstatic.com/ct/log_list/v3/log_list_schema.json
-		CTLogListFile string `validate:"omitempty,endswith=.json"`
+		CTLogListFile string
 
 		Features map[string]bool
 	}

@@ -647,7 +647,7 @@ type Config struct {
 
 		// From is an RFC 5322 formatted "From" address for reminder messages,
 		// e.g. "Example <example@test.org>"
-		From string `validate:"required,endswith=>"`
+		From string `validate:"required"`
 
 		// Subject is the Subject line of reminder messages. This is a Go
 		// template with a single variable: ExpirationSubject, which contains
@@ -673,7 +673,7 @@ type Config struct {
 
 		// Path to a text/template email template with a .gotmpl or .txt file
 		// extension.
-		EmailTemplate string `validate:"required,endswith=gotmpl|endswith=txt"`
+		EmailTemplate string `validate:"required"`
 
 		// How often to process a batch of certificates
 		Frequency config.Duration

@@ -31,7 +31,7 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. This
 		// controls the set of CRLs which will be published by this updater: it will
 		// publish one set of NumShards CRL shards for each issuer in this list.
-		IssuerCerts []string `validate:"min=1,dive,endswith=.pem"`
+		IssuerCerts []string `validate:"min=1,dive,required"`
 
 		// NumShards is the number of shards into which each issuer's "full and
 		// complete" CRL will be split.

@@ -46,7 +46,7 @@ func RegisterCommand(name string, f func(), cv *ConfigValidator) {
 	}
 
 	if registry.configs[name] != nil {
-		panic(fmt.Sprintf("config %q was registered twice", name))
+		panic(fmt.Sprintf("config validator for command %q was registered twice", name))
 	}
 	registry.configs[name] = cv
 }

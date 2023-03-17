@@ -127,7 +127,7 @@ func (tl tailLogger) Println(v ...interface{}) {
 }
 
 type Config struct {
-	Files []string `validate:"min=1,dive,endswith=.log"`
+	Files []string `validate:"min=1,dive,required"`
 
 	DebugAddr string `validate:"required,hostname_port"`
 	Syslog    cmd.SyslogConfig

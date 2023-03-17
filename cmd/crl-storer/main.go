@@ -27,24 +27,24 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. These will
 		// be used to validate the CRLs received by this service before uploading
 		// them.
-		IssuerCerts []string `validate:"min=1,dive,endswith=.pem"`
+		IssuerCerts []string `validate:"min=1,dive,required"`
 
 		// S3Endpoint is the URL at which the S3-API-compatible object storage
 		// service can be reached. This can be used to point to a non-Amazon storage
 		// service, or to point to a fake service for testing. It should be left
 		// blank by default.
-		S3Endpoint string `validate:"omitempty,url"`
+		S3Endpoint string
 		// S3Bucket is the AWS Bucket that uploads should go to. Must be created
 		// (and have appropriate permissions set) beforehand.
 		S3Bucket string
 		// AWSConfigFile is the path to a file on disk containing an AWS config.
 		// The format of the configuration file is specified at
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
-		AWSConfigFile string `validate:"omitempty,endswith=.ini"`
+		AWSConfigFile string
 		// AWSCredsFile is the path to a file on disk containing AWS credentials.
 		// The format of the credentials file is specified at
 		// https://docs.aws.amazon.com/sdkref/latest/guide/file-format.html.
-		AWSCredsFile string `validate:"omitempty,endswith=.ini"`
+		AWSCredsFile string
 
 		Features map[string]bool
 	}
