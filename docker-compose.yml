@@ -62,9 +62,10 @@ services:
   
   bproxysql:
     image: proxysql/proxysql:2.4.4
-    # The --initial flag force resets the ProxySQL database on startup. This is
-    # needed because the default ProxySQL ignores new configuration if the
-    # database already exists.
+    # The --initial flag force resets the ProxySQL database on startup. By
+    # default, ProxySQL ignores new configuration if the database already
+    # exists. Without this flag, new configuration wouldn't be applied until you
+    # ran `docker-compose down`.
     entrypoint: proxysql -f --idle-threads -c /test/proxysql/proxysql.cnf --initial
     volumes:
       - ./test/:/test/:cached
