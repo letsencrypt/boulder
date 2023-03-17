@@ -218,8 +218,8 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   run_and_expect_silence codespell \
     --ignore-words=.codespell.ignore.txt \
     --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
-  # Check test configs are formatted consistently
-  find test/config test/config-next -name \*.json -exec sh -c 'python3 -m json.tool "$1" "$1.tmp" && mv "$1.tmp" "$1"' shell {} \;
+  # Check test JSON configs are formatted consistently
+  ./test/format-configs.py
   run_and_expect_silence git diff --exit-code .
 fi
 
