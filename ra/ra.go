@@ -2220,8 +2220,11 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(err, berrors.AlreadyRevoked) {
-		// TODO(#5979): Check this error when it can't simply be due to a full queue.
-		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		// TODO(#5979): Check this error when it can't simply be due to a full
+		// queue.
+		if cert != nil {
+			_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		}
 	}
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
