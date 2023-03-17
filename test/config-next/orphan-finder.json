@@ -35,7 +35,10 @@
     "timeout": "15s",
     "hostOverride": "sa.boulder"
   },
-
+  "opentelemetry": {
+    "endpoint": "jaeger:4317",
+    "sampleratio": 1
+  },
   "features": {
     "ROCSPStage7": true
   }
