@@ -25,7 +25,7 @@ func runOrDie(cmd *exec.Cmd) string {
 	fmt.Println(cmd.String())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Print(string(out))
+		fmt.Println(string(out))
 		fmt.Println(err)
 		os.Exit(1)
 	}
@@ -65,7 +65,7 @@ func release() {
 	// Show the result of the tagging operation, including the tag message and
 	// signature, and the commit hash and message, but not the diff.
 	show := runOrDie(exec.Command("git", "show", "-s", version))
-	fmt.Print(show)
+	fmt.Println(show)
 
 	if push {
 		runOrDie(exec.Command("git", "push", "origin", version))
@@ -140,7 +140,7 @@ func hotfix() {
 	// Show the result of the tagging operation, including the tag message and
 	// signature, and the commit hash and message, but not the diff.
 	show := runOrDie(exec.Command("git", "show", "-s", version))
-	fmt.Print(show)
+	fmt.Println(show)
 
 	// Compute the name of the release branch that will contain the cherry-picked
 	// commits. This branch may or may not exist already, and it doesn't matter:
