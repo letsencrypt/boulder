@@ -114,7 +114,7 @@ type Config struct {
 		// NOTE: This config field deprecates the CertificateChains and
 		// AlternateCertificateChains fields. If it is present, those fields are
 		// ignored. They will be removed in a future release.
-		Chains [][]string `validate:"required_without_all=CertificateChains AlternateCertificateChains,omitempty,min=1,dive,min=2,dive,required"`
+		Chains [][]string `validate:"required_without=CertificateChains,omitempty,min=1,dive,min=2,dive,required"`
 
 		Features map[string]bool
 

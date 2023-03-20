@@ -59,6 +59,7 @@ allowed to be empty when field Foo is not present, but if field Foo is present,
 then this field must be present and must be a URL.
 
 ### `-`
+
 Normally, config validation descends into all struct-type fields, recursively
 validating their fields all the way down. Sometimes this can pose a problem,
 when a nested struct declares one of its fields as required, but a parent struct
@@ -117,6 +118,7 @@ This tag is compatible with IPv4 addresses, but not IPv6 addresses. We should
 consider fixing this in our fork of the validator.
 
 ### `dive`
+
 This tag is used to validate the values of a slice or map. For instance, the
 following would be valid config for a slice valued field (`[]string`) tagged
 with `min=1,dive,oneof=bar baz`.
@@ -165,6 +167,7 @@ baz`.
 - `oneof=bar baz` will be applied to each string in the inner slice.
 
 ### `keys` and `endkeys`
+
 These tags are used to validate the keys of a map. For instance, the following
 would be valid config for a map valued field (`map[string]string`) tagged with
 `min=1,dive,keys,eq=1|eq=2,endkeys,required`.

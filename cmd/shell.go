@@ -22,14 +22,15 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
-	"github.com/letsencrypt/boulder/core"
-	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/validator/v10"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc/grpclog"
+
+	"github.com/letsencrypt/boulder/core"
+	blog "github.com/letsencrypt/boulder/log"
 )
 
 func command() string {
@@ -331,7 +332,7 @@ func ReadAndValidateConfigFile(name, filename string) error {
 	defer file.Close()
 	if name == "boulder-observer" {
 		// Only the boulder-observer uses YAML config files.
-		return ValidateYAMLConfigByComponent(name, file)
+		return ValidateYAMLConfigForComponent(name, file)
 	}
 	return ValidateJSONConfigForComponent(name, file)
 }
@@ -339,7 +340,7 @@ func ReadAndValidateConfigFile(name, filename string) error {
 // ValidateJSONConfigForComponent takes a component name (e.g. boulder-ca
 // bad-key-revoker, etc.) and an io.Reader containing a JSON representation of a
 // config and validates the config using the struct tags defined in the config
-// struct.
+// struct. This is exported for use in SRE CI tooling.
 func ValidateJSONConfigForComponent(name string, in io.Reader) error {
 	cv, err := lookupConfig(name)
 	if err != nil {
@@ -376,11 +377,11 @@ func ValidateJSONConfigForComponent(name string, in io.Reader) error {
 	return nil
 }
 
-// ValidateYAMLConfigByComponent takes a component name (e.g. boulder-ca
+// ValidateYAMLConfigForComponent takes a component name (e.g. boulder-ca
 // bad-key-revoker, etc.) and an io.Reader containing a YAML representation of a
 // config and validates the config using the struct tags defined in the config
-// struct.
-func ValidateYAMLConfigByComponent(name string, in io.Reader) error {
+// struct. This is exported for use in SRE CI tooling.
+func ValidateYAMLConfigForComponent(name string, in io.Reader) error {
 	cv, err := lookupConfig(name)
 	if err != nil {
 		return err

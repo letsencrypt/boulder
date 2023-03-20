@@ -29,34 +29,33 @@ func TestConfigValidation(t *testing.T) {
 	for _, cmdName := range cmd.AvailableConfigs() {
 		var fileNames []string
 		switch cmdName {
-		case "boulder-publisher":
-			fileNames = []string{"publisher.json"}
-		case "boulder-wfe2":
-			fileNames = []string{"wfe2.json"}
-		case "boulder-va":
-			fileNames = []string{"va.json"}
-		case "boulder-remoteva":
-			fileNames = []string{
-				"va-remote-a.json",
-				"va-remote-b.json",
-			}
-		case "boulder-ra":
-			fileNames = []string{"ra.json"}
-		case "nonce-service":
-			fileNames = []string{
-				"nonce-a.json",
-				"nonce-b.json",
-			}
 		case "boulder-ca":
 			fileNames = []string{
 				"ca-a.json",
 				"ca-b.json",
 			}
-		case "boulder-sa":
-			fileNames = []string{"sa.json"}
 		case "boulder-observer":
 			fileNames = []string{"observer.yml"}
-
+		case "boulder-publisher":
+			fileNames = []string{"publisher.json"}
+		case "boulder-ra":
+			fileNames = []string{"ra.json"}
+		case "boulder-remoteva":
+			fileNames = []string{
+				"va-remote-a.json",
+				"va-remote-b.json",
+			}
+		case "boulder-sa":
+			fileNames = []string{"sa.json"}
+		case "boulder-va":
+			fileNames = []string{"va.json"}
+		case "boulder-wfe2":
+			fileNames = []string{"wfe2.json"}
+		case "nonce-service":
+			fileNames = []string{
+				"nonce-a.json",
+				"nonce-b.json",
+			}
 		default:
 			fileNames = []string{cmdName + ".json"}
 		}

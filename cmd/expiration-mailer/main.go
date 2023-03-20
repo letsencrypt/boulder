@@ -651,19 +651,19 @@ type Config struct {
 
 		// Subject is the Subject line of reminder messages. This is a Go
 		// template with a single variable: ExpirationSubject, which contains
-		// a list of affected hostnames, possible truncated.
+		// a list of affected hostnames, possibly truncated.
 		Subject string
 
 		// CertLimit is the maximum number of certificates to investigate in a
 		// single batch. Defaults to 100.
-		CertLimit int
+		CertLimit int `validate:"min=0"`
 
 		// MailsPerAddressPerDay is the maximum number of emails we'll send to
 		// a single address in a single day. Defaults to 0 (unlimited).
 		// Note that this does not track sends across restarts of the process,
 		// so we may send more than this when we restart expiration-mailer.
 		// This is a best-effort limitation. Defaults to math.MaxInt.
-		MailsPerAddressPerDay int
+		MailsPerAddressPerDay int `validate:"min=0"`
 
 		// UpdateChunkSize is the maximum number of rows to update in a single
 		// SQL UPDATE statement.

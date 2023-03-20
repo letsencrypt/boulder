@@ -98,7 +98,7 @@ type Config struct {
 		// 40 * 5 / 0.02 = 10,000 requests before the oldest request times out.
 		MaxSigningWaiters int `validate:"min=0"`
 
-		ShutdownStopTimeout config.Duration `validate:"-"`
+		ShutdownStopTimeout config.Duration
 
 		RequiredSerialPrefixes []string `validate:"omitempty,dive,hexadecimal"`
 

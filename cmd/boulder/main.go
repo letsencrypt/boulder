@@ -55,6 +55,7 @@ func init() {
 		os.Args = os.Args[1:]
 		subcommand()
 	}, nil)
+	// TODO(6763): Move this inside of main().
 	cmd.RegisterCommand("--list", func() {
 		for _, c := range cmd.AvailableCommands() {
 			if c != "boulder" && c != "--list" && c != "validate" {
@@ -62,6 +63,7 @@ func init() {
 			}
 		}
 	}, nil)
+	// TODO(6763): Move this inside of main().
 	cmd.RegisterCommand("validate", func() {
 		if len(os.Args) <= 1 {
 			fmt.Fprintf(os.Stderr, "Call with --help to list usage.\n")
