@@ -105,7 +105,10 @@ type names struct {
 // Alternative Names from the CSR. It guarantees that the SANs include the CN.
 // It also enforces various conditions on the CN, based on feature flags.
 func NamesFromCSR(csr *x509.CertificateRequest) names {
-	sans := csr.DNSNames
+	// Produce a new "sans" slice with the same memory address as csr.DNSNames
+	// but force a new allocation so that we don't accidently mutate the
+	// underlying csr.DNSNames array.
+	sans := csr.DNSNames[0:len(csr.DNSNames):len(csr.DNSNames)]
 	if csr.Subject.CommonName != "" {
 		sans = append(sans, csr.Subject.CommonName)
 	}
