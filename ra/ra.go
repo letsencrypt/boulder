@@ -2043,8 +2043,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	// TODO(#5979): Check this error when it can't simply be due to a full queue.
-	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	if err != nil {
+		return nil, err
+	}
 
 	return &emptypb.Empty{}, nil
 }
@@ -2118,8 +2120,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
-		// TODO(#5979): Check this error when it can't simply be due to a full queue.
-		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		err := ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Finally check the error from revocation itself. If it was an AlreadyRevoked
@@ -2138,8 +2142,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		}
 	}
 
-	// TODO(#5979): Check this error when it can't simply be due to a full queue.
-	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	if err != nil {
+		return nil, err
+	}
 
 	return &emptypb.Empty{}, nil
 }
@@ -2220,10 +2226,11 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(err, berrors.AlreadyRevoked) {
-		// TODO(#5979): Check this error when it can't simply be due to a full
-		// queue.
 		if cert != nil {
-			_ = ra.purgeOCSPCache(ctx, cert, issuerID)
+			err := ra.purgeOCSPCache(ctx, cert, issuerID)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err != nil {
@@ -2257,7 +2264,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	if cert != nil {
-		err = ra.purgeOCSPCache(ctx, cert, issuerID)
+		err := ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
 			return nil, err
 		}
