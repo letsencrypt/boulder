@@ -2087,21 +2087,14 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 	// We revoke the cert before adding it to the blocked keys list, to avoid a
 	// race between this and the bad-key-revoker. But we don't check the error
-	// on from this operation until after we add it to the blocked keys list,
-	// since that add needs to happen no matter what.
+	// from this operation until after we add the key to the blocked keys list,
+	// since that addition needs to happen no matter what.
 	revokeErr := ra.revokeCertificate(
 		ctx,
 		cert.SerialNumber,
 		int64(issuerID),
 		revocation.Reason(ocsp.KeyCompromise),
 	)
-
-	// Perform an Akamai cache purge to handle occurrences of a client
-	// successfully revoking a certificate, but the initial cache purge failing.
-	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
-		// TODO(#5979): Check this error when it can't simply be due to a full queue.
-		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-	}
 
 	// Now add the public key to the blocked keys list, and report the error if
 	// there is one. It's okay to error out here because failing to add the key
@@ -2120,6 +2113,13 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Perform an Akamai cache purge to handle occurrences of a client
+	// successfully revoking a certificate, but the initial cache purge failing.
+	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
+		// TODO(#5979): Check this error when it can't simply be due to a full queue.
+		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 	}
 
 	// Finally check the error from revocation itself. If it was an AlreadyRevoked
@@ -2223,7 +2223,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		// TODO(#5979): Check this error when it can't simply be due to a full
 		// queue.
 		if cert != nil {
-			_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+			_ = ra.purgeOCSPCache(ctx, cert, issuerID)
 		}
 	}
 	if err != nil {

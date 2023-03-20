@@ -3957,7 +3957,8 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
 	})
-	test.AssertError(t, err, "already revoked")
+	test.AssertError(t, err, "Should be revoked")
+	test.AssertContains(t, err.Error(), "already revoked")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
