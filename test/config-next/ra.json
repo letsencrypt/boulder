@@ -101,7 +101,7 @@
 			"StoreRevokerInfo": true,
 			"ROCSPStage7": true,
 			"AsyncFinalize": true,
-      "RequireCommonName": false
+			"RequireCommonName": false
 		},
 		"ctLogs": {
 			"stagger": "500ms",
