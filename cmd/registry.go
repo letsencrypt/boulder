@@ -90,7 +90,9 @@ func LookupConfigValidator(name string) (*ConfigValidator, error) {
 	}, nil
 }
 
-func AvailableConfigs() []string {
+// AvailableConfigValidators returns a list of Boulder component names for which
+// a *ConfigValidator has been registered.
+func AvailableConfigValidators() []string {
 	registry.Lock()
 	defer registry.Unlock()
 	var avail []string

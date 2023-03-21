@@ -26,7 +26,7 @@ func TestConfigValidation(t *testing.T) {
 	// By default we assume that the configuration file is named after the
 	// component. However, there are some exceptions to this rule. We've added
 	// special cases for these components.
-	for _, cmdName := range cmd.AvailableConfigs() {
+	for _, cmdName := range cmd.AvailableConfigValidators() {
 		var fileNames []string
 		switch cmdName {
 		case "boulder-ca":
@@ -34,8 +34,6 @@ func TestConfigValidation(t *testing.T) {
 				"ca-a.json",
 				"ca-b.json",
 			}
-		case "boulder-foo":
-			continue
 		case "boulder-observer":
 			fileNames = []string{"observer.yml"}
 		case "boulder-publisher":

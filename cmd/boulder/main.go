@@ -56,9 +56,9 @@ func readAndValidateConfigFile(name, filename string) error {
 	defer file.Close()
 	if name == "boulder-observer" {
 		// Only the boulder-observer uses YAML config files.
-		return cmd.ValidateYAMLConfigForComponent(cv, file)
+		return cmd.ValidateYAMLConfig(cv, file)
 	}
-	return cmd.ValidateJSONConfigForComponent(cv, file)
+	return cmd.ValidateJSONConfig(cv, file)
 }
 
 func main() {
@@ -99,7 +99,7 @@ func init() {
 		flag.Parse()
 
 		if *list {
-			for _, c := range cmd.AvailableConfigs() {
+			for _, c := range cmd.AvailableConfigValidators() {
 				fmt.Println(c)
 			}
 			return

@@ -318,12 +318,13 @@ func ReadConfigFile(filename string, out interface{}) error {
 	return decodeJSONStrict(file, out)
 }
 
-// ValidateJSONConfigForComponent takes a *ConfigValidator and an io.Reader
-// containing a JSON representation of a config. The JSON data is unmarshaled
-// into the *ConfigValidator's inner Config and then validated according to the
-// 'validate' tags for on each field. This is exported for use in SRE CI
-// tooling.
-func ValidateJSONConfigForComponent(cv *ConfigValidator, in io.Reader) error {
+// ValidateJSONConfig takes a *ConfigValidator and an io.Reader containing a
+// JSON representation of a config. The JSON data is unmarshaled into the
+// *ConfigValidator's inner Config and then validated according to the
+// 'validate' tags for on each field. Callers can use cmd.LookupConfigValidator
+// to get a *ConfigValidator for a given Boulder component. This is exported for
+// use in SRE CI tooling.
+func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 	if cv == nil {
 		return errors.New("config validator cannot be nil")
 	}
@@ -358,12 +359,13 @@ func ValidateJSONConfigForComponent(cv *ConfigValidator, in io.Reader) error {
 	return nil
 }
 
-// ValidateYAMLConfigForComponent takes a *ConfigValidator and an io.Reader
-// containing a YAML representation of a config. The YAML data is unmarshaled
-// into the *ConfigValidator's inner Config and then validated according to the
-// 'validate' tags for on each field. This is exported for use in SRE CI
-// tooling.
-func ValidateYAMLConfigForComponent(cv *ConfigValidator, in io.Reader) error {
+// ValidateYAMLConfig takes a *ConfigValidator and an io.Reader containing a
+// YAML representation of a config. The YAML data is unmarshaled into the
+// *ConfigValidator's inner Config and then validated according to the
+// 'validate' tags for on each field. Callers can use cmd.LookupConfigValidator
+// to get a *ConfigValidator for a given Boulder component. This is exported for
+// use in SRE CI tooling.
+func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	if cv == nil {
 		return errors.New("config validator cannot be nil")
 	}

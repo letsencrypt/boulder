@@ -204,7 +204,7 @@ func TestFailedConfigValidation(t *testing.T) {
 	cf, err := loadConfigFile(t, "testdata/1_missing_endswith.json")
 	test.AssertNotError(t, err, "Failed to open config file")
 	defer cf.Close()
-	err = ValidateJSONConfigForComponent(&ConfigValidator{&FooConfig{}, nil}, cf)
+	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'endswith'")
 
@@ -212,7 +212,7 @@ func TestFailedConfigValidation(t *testing.T) {
 	cf, err = loadConfigFile(t, "testdata/1_missing_endswith.yaml")
 	test.AssertNotError(t, err, "Failed to open config file")
 	defer cf.Close()
-	err = ValidateYAMLConfigForComponent(&ConfigValidator{&FooConfig{}, nil}, cf)
+	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'endswith'")
 
@@ -220,7 +220,7 @@ func TestFailedConfigValidation(t *testing.T) {
 	cf, err = loadConfigFile(t, "testdata/2_missing_required.json")
 	test.AssertNotError(t, err, "Failed to open config file")
 	defer cf.Close()
-	err = ValidateJSONConfigForComponent(&ConfigValidator{&FooConfig{}, nil}, cf)
+	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'required'")
 
@@ -228,7 +228,7 @@ func TestFailedConfigValidation(t *testing.T) {
 	cf, err = loadConfigFile(t, "testdata/2_missing_required.yaml")
 	test.AssertNotError(t, err, "Failed to open config file")
 	defer cf.Close()
-	err = ValidateYAMLConfigForComponent(&ConfigValidator{&FooConfig{}, nil}, cf)
+	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'required'")
 }
