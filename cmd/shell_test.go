@@ -185,12 +185,12 @@ func Test_newVersionCollector(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"goVersion": runtime.Version()}, 1)
 }
 
-func loadConfigFile(t *testing.T, path string) (*os.File, error) {
+func loadConfigFile(t *testing.T, path string) *os.File {
 	cf, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		t.Fatal(err)
 	}
-	return cf, nil
+	return cf
 }
 
 func TestFailedConfigValidation(t *testing.T) {
@@ -201,32 +201,28 @@ func TestFailedConfigValidation(t *testing.T) {
 	}
 
 	// Violates 'endswith' tag JSON.
-	cf, err := loadConfigFile(t, "testdata/1_missing_endswith.json")
-	test.AssertNotError(t, err, "Failed to open config file")
+	cf := loadConfigFile(t, "testdata/1_missing_endswith.json")
 	defer cf.Close()
-	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	err := ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'endswith'")
 
 	// Violates 'endswith' tag YAML.
-	cf, err = loadConfigFile(t, "testdata/1_missing_endswith.yaml")
-	test.AssertNotError(t, err, "Failed to open config file")
+	cf = loadConfigFile(t, "testdata/1_missing_endswith.yaml")
 	defer cf.Close()
 	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'endswith'")
 
 	// Violates 'required' tag JSON.
-	cf, err = loadConfigFile(t, "testdata/2_missing_required.json")
-	test.AssertNotError(t, err, "Failed to open config file")
+	cf = loadConfigFile(t, "testdata/2_missing_required.json")
 	defer cf.Close()
 	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'required'")
 
 	// Violates 'required' tag YAML.
-	cf, err = loadConfigFile(t, "testdata/2_missing_required.yaml")
-	test.AssertNotError(t, err, "Failed to open config file")
+	cf = loadConfigFile(t, "testdata/2_missing_required.yaml")
 	defer cf.Close()
 	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
