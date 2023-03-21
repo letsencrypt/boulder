@@ -149,8 +149,7 @@ type Config struct {
 		AccountCache *CacheConfig
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 type CacheConfig struct {

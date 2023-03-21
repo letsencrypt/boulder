@@ -689,8 +689,7 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func initStats(stats prometheus.Registerer) mailerStats {

@@ -49,8 +49,7 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 // awsLogger implements the github.com/aws/smithy-go/logging.Logger interface.

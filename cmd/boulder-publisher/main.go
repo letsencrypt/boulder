@@ -33,8 +33,7 @@ type Config struct {
 		Chains [][]string
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {

@@ -37,8 +37,7 @@ type Config struct {
 		AccountURIPrefixes []string
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 
 	// TODO(#6716): Remove Config.Common once all instances of it have been
 	// removed from production config files.

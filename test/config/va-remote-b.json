@@ -28,13 +28,6 @@
 		"stdoutlevel": 6,
 		"sysloglevel": 4
 	},
-	"beeline": {
-		"mute": true,
-		"serviceName": "Test",
-		"writeKey": {
-			"passwordFile": "test/secrets/honeycomb_fake_password"
-		}
-	},
 	"common": {
 		"dnsTimeout": "1s",
 		"dnsAllowLoopbackAddresses": true
