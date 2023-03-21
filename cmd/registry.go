@@ -68,7 +68,10 @@ func AvailableCommands() []string {
 	return avail
 }
 
-func lookupConfig(name string) (*ConfigValidator, error) {
+// LookupConfigValidator constructs an instance of the *ConfigValidator for the
+// given Boulder component name. If no *ConfigValidator was registered, an error
+// is returned.
+func LookupConfigValidator(name string) (*ConfigValidator, error) {
 	registry.Lock()
 	defer registry.Unlock()
 	if registry.configs[name] == nil {

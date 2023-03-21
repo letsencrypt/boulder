@@ -44,6 +44,11 @@ import (
 // keys in the config struct will result in errors. It also validates the config
 // using the struct tags defined in the config struct.
 func readAndValidateConfigFile(name, filename string) error {
+	cv, err := cmd.LookupConfigValidator(name)
+	if err != nil {
+		return err
+	}
+
 	file, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -51,9 +56,9 @@ func readAndValidateConfigFile(name, filename string) error {
 	defer file.Close()
 	if name == "boulder-observer" {
 		// Only the boulder-observer uses YAML config files.
-		return cmd.ValidateYAMLConfigForComponent(name, file)
+		return cmd.ValidateYAMLConfigForComponent(cv, file)
 	}
-	return cmd.ValidateJSONConfigForComponent(name, file)
+	return cmd.ValidateJSONConfigForComponent(cv, file)
 }
 
 func main() {

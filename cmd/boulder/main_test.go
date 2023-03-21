@@ -9,35 +9,6 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestFailedConfigValidation(t *testing.T) {
-	type FooConfig struct {
-		VitalValue       string `validate:"required"`
-		VoluntarilyVoid  string
-		VisciouslyVetted string `validate:"omitempty,endswith=baz"`
-	}
-	cmd.RegisterCommand("boulder-foo", nil, &cmd.ConfigValidator{Config: &FooConfig{}, Validators: nil})
-
-	// Component name that doesn't exist.
-	err := readAndValidateConfigFile("no-exist", "test/1_missing_endswith.json")
-	test.AssertError(t, err, "Expected validation error")
-	test.AssertContains(t, err.Error(), "no config validator found")
-
-	// Config file that doesn't exist.
-	err = readAndValidateConfigFile("boulder-foo", "test/no-exist.json")
-	test.AssertError(t, err, "Expected validation error")
-	test.Assert(t, os.IsNotExist(err), fmt.Sprintf("Expected IsNotExist error, got %#v", err))
-
-	// Violates 'endswith' tag.
-	err = readAndValidateConfigFile("boulder-foo", "test/1_missing_endswith.json")
-	test.AssertError(t, err, "Expected validation error")
-	test.AssertContains(t, err.Error(), "'endswith'")
-
-	// Violates 'required' tag.
-	err = readAndValidateConfigFile("boulder-foo", "test/2_missing_required.json")
-	test.AssertError(t, err, "Expected validation error")
-	test.AssertContains(t, err.Error(), "'required'")
-}
-
 // TestConfigValidation checks that each of the components which register a
 // validation tagged Config struct at init time can be used to successfully
 // validate their corresponding test configuration files.

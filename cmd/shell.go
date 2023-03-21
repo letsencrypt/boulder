@@ -318,14 +318,14 @@ func ReadConfigFile(filename string, out interface{}) error {
 	return decodeJSONStrict(file, out)
 }
 
-// ValidateJSONConfigForComponent takes a component name (e.g. boulder-ca
-// bad-key-revoker, etc.) and an io.Reader containing a JSON representation of a
-// config and validates the config using the struct tags defined in the config
-// struct. This is exported for use in SRE CI tooling.
-func ValidateJSONConfigForComponent(name string, in io.Reader) error {
-	cv, err := lookupConfig(name)
-	if err != nil {
-		return err
+// ValidateJSONConfigForComponent takes a *ConfigValidator and an io.Reader
+// containing a JSON representation of a config. The JSON data is unmarshaled
+// into the *ConfigValidator's inner Config and then validated according to the
+// 'validate' tags for on each field. This is exported for use in SRE CI
+// tooling.
+func ValidateJSONConfigForComponent(cv *ConfigValidator, in io.Reader) error {
+	if cv == nil {
+		return errors.New("config validator cannot be nil")
 	}
 
 	// Initialize the validator and load any custom tags.
@@ -336,7 +336,7 @@ func ValidateJSONConfigForComponent(name string, in io.Reader) error {
 		}
 	}
 
-	err = decodeJSONStrict(in, cv.Config)
+	err := decodeJSONStrict(in, cv.Config)
 	if err != nil {
 		return err
 	}
@@ -358,14 +358,14 @@ func ValidateJSONConfigForComponent(name string, in io.Reader) error {
 	return nil
 }
 
-// ValidateYAMLConfigForComponent takes a component name (e.g. boulder-ca
-// bad-key-revoker, etc.) and an io.Reader containing a YAML representation of a
-// config and validates the config using the struct tags defined in the config
-// struct. This is exported for use in SRE CI tooling.
-func ValidateYAMLConfigForComponent(name string, in io.Reader) error {
-	cv, err := lookupConfig(name)
-	if err != nil {
-		return err
+// ValidateYAMLConfigForComponent takes a *ConfigValidator and an io.Reader
+// containing a YAML representation of a config. The YAML data is unmarshaled
+// into the *ConfigValidator's inner Config and then validated according to the
+// 'validate' tags for on each field. This is exported for use in SRE CI
+// tooling.
+func ValidateYAMLConfigForComponent(cv *ConfigValidator, in io.Reader) error {
+	if cv == nil {
+		return errors.New("config validator cannot be nil")
 	}
 
 	// Initialize the validator and load any custom tags.

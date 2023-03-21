@@ -667,7 +667,7 @@ type Config struct {
 
 		// UpdateChunkSize is the maximum number of rows to update in a single
 		// SQL UPDATE statement.
-		UpdateChunkSize int `validate:"omitempty,max=65535"`
+		UpdateChunkSize int `validate:"min=0,max=65535"`
 
 		NagTimes []string `validate:"min=1,dive,required"`
 
