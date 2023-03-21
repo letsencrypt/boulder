@@ -37,6 +37,25 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
+// readAndValidateConfigFile takes a file path as an argument and attempts to
+// unmarshal the content of the file into a struct containing a configuration of
+// a boulder component specified by name (e.g. boulder-ca, bad-key-revoker,
+// etc.). Any config keys in the JSON file which do not correspond to expected
+// keys in the config struct will result in errors. It also validates the config
+// using the struct tags defined in the config struct.
+func readAndValidateConfigFile(name, filename string) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if name == "boulder-observer" {
+		// Only the boulder-observer uses YAML config files.
+		return cmd.ValidateYAMLConfigForComponent(name, file)
+	}
+	return cmd.ValidateJSONConfigForComponent(name, file)
+}
+
 func main() {
 	cmd.LookupCommand(path.Base(os.Args[0]))()
 }
@@ -55,7 +74,7 @@ func init() {
 		os.Args = os.Args[1:]
 		subcommand()
 	}, nil)
-	// TODO(6763): Move this inside of main().
+	// TODO(#6763): Move this inside of main().
 	cmd.RegisterCommand("--list", func() {
 		for _, c := range cmd.AvailableCommands() {
 			if c != "boulder" && c != "--list" && c != "validate" {
@@ -63,7 +82,7 @@ func init() {
 			}
 		}
 	}, nil)
-	// TODO(6763): Move this inside of main().
+	// TODO(#6763): Move this inside of main().
 	cmd.RegisterCommand("validate", func() {
 		if len(os.Args) <= 1 {
 			fmt.Fprintf(os.Stderr, "Call with --help to list usage.\n")
@@ -84,7 +103,7 @@ func init() {
 			fmt.Fprintf(os.Stderr, "Must provide a configuration file to validate.\n")
 			os.Exit(1)
 		}
-		err := cmd.ReadAndValidateConfigFile(*component, *configFile)
+		err := readAndValidateConfigFile(*component, *configFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error validating configuration: %s", err)
 			os.Exit(1)

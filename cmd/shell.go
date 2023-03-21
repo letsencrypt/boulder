@@ -318,25 +318,6 @@ func ReadConfigFile(filename string, out interface{}) error {
 	return decodeJSONStrict(file, out)
 }
 
-// ReadAndValidateConfigFile takes a file path as an argument and attempts to
-// unmarshal the content of the file into a struct containing a configuration of
-// a boulder component specified by name (e.g. boulder-ca, bad-key-revoker,
-// etc.). Any config keys in the JSON file which do not correspond to expected
-// keys in the config struct will result in errors. It also validates the config
-// using the struct tags defined in the config struct.
-func ReadAndValidateConfigFile(name, filename string) error {
-	file, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if name == "boulder-observer" {
-		// Only the boulder-observer uses YAML config files.
-		return ValidateYAMLConfigForComponent(name, file)
-	}
-	return ValidateJSONConfigForComponent(name, file)
-}
-
 // ValidateJSONConfigForComponent takes a component name (e.g. boulder-ca
 // bad-key-revoker, etc.) and an io.Reader containing a JSON representation of a
 // config and validates the config using the struct tags defined in the config
