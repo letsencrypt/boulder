@@ -323,11 +323,11 @@ func main() {
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
 	go cmd.CatchSignals(logger, func() {
+		stop()
 		ecdsaAllowList.Stop()
 		if ocspi != nil {
 			ocspi.Stop()
 		}
-		stop()
 	})
 	cmd.FailOnError(start(), "CA gRPC service failed")
 }

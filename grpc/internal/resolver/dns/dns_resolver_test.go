@@ -225,7 +225,7 @@ func testDNSResolver(t *testing.T) {
 	for _, a := range tests {
 		b := NewDefaultSRVBuilder()
 		cc := &testClientConn{target: a.target}
-		r, err := b.Build(resolver.Target{Endpoint: a.target}, cc, resolver.BuildOptions{})
+		r, err := b.Build(resolver.Target{URL: *testutils.MustParseURL(fmt.Sprintf("scheme:///%s", a.target))}, cc, resolver.BuildOptions{})
 		if err != nil {
 			t.Fatalf("%v\n", err)
 		}
@@ -270,7 +270,7 @@ func TestDNSResolverExponentialBackoff(t *testing.T) {
 	cc := &testClientConn{target: target}
 	// Cause ClientConn to return an error.
 	cc.updateStateErr = balancer.ErrBadResolverState
-	r, err := b.Build(resolver.Target{Endpoint: target}, cc, resolver.BuildOptions{})
+	r, err := b.Build(resolver.Target{URL: *testutils.MustParseURL(fmt.Sprintf("scheme:///%s", target))}, cc, resolver.BuildOptions{})
 	if err != nil {
 		t.Fatalf("Error building resolver for target %v: %v", target, err)
 	}
@@ -397,7 +397,7 @@ func testDNSResolveNow(t *testing.T) {
 	for _, a := range tests {
 		b := NewDefaultSRVBuilder()
 		cc := &testClientConn{target: a.target}
-		r, err := b.Build(resolver.Target{Endpoint: a.target}, cc, resolver.BuildOptions{})
+		r, err := b.Build(resolver.Target{URL: *testutils.MustParseURL(fmt.Sprintf("scheme:///%s", a.target))}, cc, resolver.BuildOptions{})
 		if err != nil {
 			t.Fatalf("%v\n", err)
 		}
@@ -448,7 +448,7 @@ func TestDNSResolverRetry(t *testing.T) {
 	b := NewDefaultSRVBuilder()
 	target := "foo.ipv4.single.fake"
 	cc := &testClientConn{target: target}
-	r, err := b.Build(resolver.Target{Endpoint: target}, cc, resolver.BuildOptions{})
+	r, err := b.Build(resolver.Target{URL: *testutils.MustParseURL(fmt.Sprintf("scheme:///%s", target))}, cc, resolver.BuildOptions{})
 	if err != nil {
 		t.Fatalf("%v\n", err)
 	}
@@ -586,9 +586,14 @@ func TestCustomAuthority(t *testing.T) {
 			}
 		}
 
+		mockEndpointTarget := "foo.bar.com"
 		b := NewDefaultSRVBuilder()
-		cc := &testClientConn{target: "foo.bar.com", errChan: make(chan error, 1)}
-		r, err := b.Build(resolver.Target{Endpoint: "foo.bar.com", Authority: a.authority}, cc, resolver.BuildOptions{})
+		cc := &testClientConn{target: mockEndpointTarget, errChan: make(chan error, 1)}
+		target := resolver.Target{
+			Authority: a.authority,
+			URL:       *testutils.MustParseURL(fmt.Sprintf("scheme://%s/%s", a.authority, mockEndpointTarget)),
+		}
+		r, err := b.Build(target, cc, resolver.BuildOptions{})
 
 		if err == nil {
 			r.Close()
@@ -643,7 +648,7 @@ func TestRateLimitedResolve(t *testing.T) {
 	b := NewDefaultSRVBuilder()
 	cc := &testClientConn{target: target}
 
-	r, err := b.Build(resolver.Target{Endpoint: target}, cc, resolver.BuildOptions{})
+	r, err := b.Build(resolver.Target{URL: *testutils.MustParseURL(fmt.Sprintf("scheme:///%s", target))}, cc, resolver.BuildOptions{})
 	if err != nil {
 		t.Fatalf("resolver.Build() returned error: %v\n", err)
 	}
@@ -752,7 +757,7 @@ func TestReportError(t *testing.T) {
 	cc := &testClientConn{target: target, errChan: make(chan error)}
 	totalTimesCalledError := 0
 	b := NewDefaultSRVBuilder()
-	r, err := b.Build(resolver.Target{Endpoint: target}, cc, resolver.BuildOptions{})
+	r, err := b.Build(resolver.Target{URL: *testutils.MustParseURL(fmt.Sprintf("scheme:///%s", target))}, cc, resolver.BuildOptions{})
 	if err != nil {
 		t.Fatalf("Error building resolver for target %v: %v", target, err)
 	}

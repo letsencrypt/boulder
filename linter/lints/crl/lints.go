@@ -275,7 +275,6 @@ func checkIDP(crl *crl_x509.RevocationList) *lint.LintResult {
 		}
 	}
 
-	fmt.Printf("%x\n", dpName)
 	uriBytes := make([]byte, 0)
 	if !dpName.ReadASN1Bytes(&uriBytes, cryptobyte_asn1.Tag(6).ContextSpecific()) {
 		return &lint.LintResult{

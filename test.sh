@@ -218,6 +218,9 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   run_and_expect_silence codespell \
     --ignore-words=.codespell.ignore.txt \
     --skip=.git,.gocache,go.sum,go.mod,vendor,bin,*.pyc,*.pem,*.der,*.resp,*.req,*.csr,.codespell.ignore.txt,.*.swp
+  # Check test JSON configs are formatted consistently
+  ./test/format-configs.py 'test/config*/*.json'
+  run_and_expect_silence git diff --exit-code .
 fi
 
 #
@@ -258,6 +261,8 @@ fi
 # vendor/ really exist in the remote repo and match what we have.
 STAGE="gomod-vendor"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
+  print_heading "Running Go Mod Tidy"
+  go mod tidy
   print_heading "Running Go Mod Vendor"
   go mod vendor
   run_and_expect_silence git diff --exit-code .

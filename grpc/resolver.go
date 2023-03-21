@@ -23,7 +23,7 @@ func newStaticBuilder() resolver.Builder {
 // which implements the `resolver.Resolver` interface.
 func (sb *staticBuilder) Build(target resolver.Target, cc resolver.ClientConn, _ resolver.BuildOptions) (resolver.Resolver, error) {
 	var resolverAddrs []resolver.Address
-	for _, address := range strings.Split(target.Endpoint, ",") {
+	for _, address := range strings.Split(target.Endpoint(), ",") {
 		parsedAddress, err := parseResolverIPAddress(address)
 		if err != nil {
 			return nil, err
