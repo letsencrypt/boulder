@@ -107,7 +107,10 @@ type names struct {
 // a CN, then it also attempts to promote a SAN to the CN (if any is short
 // enough to fit).
 func NamesFromCSR(csr *x509.CertificateRequest) names {
-	sans := csr.DNSNames
+	// Produce a new "sans" slice with the same memory address as csr.DNSNames
+	// but force a new allocation if an append happens so that we don't
+	// accidentally mutate the underlying csr.DNSNames array.
+	sans := csr.DNSNames[0:len(csr.DNSNames):len(csr.DNSNames)]
 	if csr.Subject.CommonName != "" {
 		sans = append(sans, csr.Subject.CommonName)
 	}
