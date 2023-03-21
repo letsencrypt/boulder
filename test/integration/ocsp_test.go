@@ -41,7 +41,7 @@ func TestOCSPBadSerialPrefix(t *testing.T) {
 	t.Parallel()
 	domain := random_domain()
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
-	res, err := authAndIssue(nil, nil, []string{domain})
+	res, err := authAndIssue(nil, nil, []string{domain}, true)
 	if err != nil || len(res.certs) < 1 {
 		t.Fatal("Failed to issue dummy cert for OCSP testing")
 	}
@@ -75,7 +75,7 @@ func TestOCSPRejectedPrecertificate(t *testing.T) {
 	}
 
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
-	_, err = authAndIssue(nil, nil, []string{domain})
+	_, err = authAndIssue(nil, nil, []string{domain}, true)
 	if err != nil {
 		if !strings.Contains(err.Error(), "urn:ietf:params:acme:error:serverInternal") ||
 			!strings.Contains(err.Error(), "SCT embedding") {

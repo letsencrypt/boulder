@@ -75,7 +75,7 @@ func VerifyCSR(ctx context.Context, csr *x509.CertificateRequest, maxNames int, 
 	if len(names.SANs) == 0 && names.CN == "" {
 		return invalidNoDNS
 	}
-	if names.CN == "" && features.Enabled(features.SetCommonName) {
+	if names.CN == "" && features.Enabled(features.RequireCommonName) {
 		return invalidAllSANTooLong
 	}
 	if len(names.CN) > maxCNLength {
@@ -102,18 +102,16 @@ type names struct {
 }
 
 // NamesFromCSR deduplicates and lower-cases the Subject Common Name and Subject
-// Alternative Names from the CSR. It guarantees that the SANs include the CN.
-// It also enforces various conditions on the CN, based on feature flags.
+// Alternative Names from the CSR. If the CSR contains a CN, then it preserves
+// it and guarantees that the SANs also include it. If the CSR does not contain
+// a CN, then it also attempts to promote a SAN to the CN (if any is short
+// enough to fit).
 func NamesFromCSR(csr *x509.CertificateRequest) names {
 	sans := csr.DNSNames
 	if csr.Subject.CommonName != "" {
 		sans = append(sans, csr.Subject.CommonName)
 	}
 	sans = core.UniqueLowerNames(sans)
-
-	if !features.Enabled(features.SetCommonName) {
-		return names{SANs: sans}
-	}
 
 	if csr.Subject.CommonName != "" {
 		return names{SANs: sans, CN: strings.ToLower(csr.Subject.CommonName)}

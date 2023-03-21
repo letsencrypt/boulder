@@ -24,7 +24,7 @@ func TestTooBigOrderError(t *testing.T) {
 		domains = append(domains, fmt.Sprintf("%d.example.com", i))
 	}
 
-	_, err := authAndIssue(nil, nil, domains)
+	_, err := authAndIssue(nil, nil, domains, true)
 	test.AssertError(t, err, "authAndIssue failed")
 
 	var prob acme.Problem

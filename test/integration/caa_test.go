@@ -19,7 +19,7 @@ func TestCAALogChecker(t *testing.T) {
 	test.AssertNotError(t, err, "makeClient failed")
 
 	domains := []string{random_domain()}
-	result, err := authAndIssue(c, nil, domains)
+	result, err := authAndIssue(c, nil, domains, true)
 	test.AssertNotError(t, err, "authAndIssue failed")
 	test.AssertEquals(t, result.Order.Status, "valid")
 	test.AssertEquals(t, len(result.Order.Authorizations), 1)
