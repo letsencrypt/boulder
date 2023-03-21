@@ -30,7 +30,7 @@ type Config struct {
 		// Chains is a list of lists of certificate filenames. Each inner list is
 		// a chain, starting with the issuing intermediate, followed by one or
 		// more additional certificates, up to and including a root.
-		Chains [][]string
+		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
 	Syslog  cmd.SyslogConfig
@@ -102,5 +102,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-publisher", main)
+	cmd.RegisterCommand("boulder-publisher", main, &cmd.ConfigValidator{Config: &Config{}})
 }

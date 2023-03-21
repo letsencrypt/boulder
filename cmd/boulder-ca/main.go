@@ -26,7 +26,6 @@ type Config struct {
 	CA struct {
 		cmd.ServiceConfig
 
-		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
 		GRPCCA *cmd.GRPCServerConfig
@@ -39,7 +38,7 @@ type Config struct {
 		// Issuance contains all information necessary to load and initialize issuers.
 		Issuance struct {
 			Profile      issuance.ProfileConfig
-			Issuers      []issuance.IssuerConfig
+			Issuers      []issuance.IssuerConfig `validate:"min=1,dive"`
 			IgnoredLints []string
 		}
 
@@ -50,10 +49,10 @@ type Config struct {
 		Backdate config.Duration
 
 		// What digits we should prepend to serials after randomly generating them.
-		SerialPrefix int
+		SerialPrefix int `validate:"required,min=1,max=255"`
 
 		// The maximum number of subjectAltNames in a single certificate
-		MaxNames int
+		MaxNames int `validate:"required,min=1,max=100"`
 
 		// LifespanOCSP is how long OCSP responses are valid for. It should be
 		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
@@ -98,7 +97,7 @@ type Config struct {
 		// CRLDPBase is the piece of the CRL Distribution Point URI which is common
 		// across all issuers and shards. It must use the http:// scheme, and must
 		// not end with a slash. Example: "http://prod.c.lencr.org".
-		CRLDPBase string
+		CRLDPBase string `validate:"required,url,startswith=http://,endsnotwith=/"`
 
 		// DisableCertService causes the CertificateAuthority gRPC service to not
 		// start, preventing any certificates or precertificates from being issued.
@@ -333,5 +332,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-ca", main)
+	cmd.RegisterCommand("boulder-ca", main, &cmd.ConfigValidator{Config: &Config{}})
 }

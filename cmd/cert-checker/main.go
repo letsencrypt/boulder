@@ -410,7 +410,7 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		Workers        int
+		Workers        int `validate:"required,min=1"`
 		UnexpiredOnly  bool
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
@@ -558,5 +558,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("cert-checker", main)
+	cmd.RegisterCommand("cert-checker", main, &cmd.ConfigValidator{Config: &Config{}})
 }

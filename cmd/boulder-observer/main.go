@@ -36,5 +36,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-observer", main)
+	cmd.RegisterCommand("boulder-observer", main, &cmd.ConfigValidator{Config: &observer.ObsConf{}})
 }

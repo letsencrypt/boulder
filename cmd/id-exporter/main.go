@@ -296,5 +296,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("id-exporter", main)
+	cmd.RegisterCommand("id-exporter", main, &cmd.ConfigValidator{Config: &Config{}})
 }

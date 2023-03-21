@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
@@ -18,7 +19,7 @@ type Config struct {
 		MaxUsed int
 		// TODO(#6610): Remove once we've moved to derivable prefixes by
 		// default.
-		NoncePrefix string
+		NoncePrefix string `validate:"excluded_with=UseDerivablePrefix,omitempty,len=4"`
 
 		// UseDerivablePrefix indicates whether to use a nonce prefix derived
 		// from the gRPC listening address. If this is false, the nonce prefix
@@ -27,7 +28,7 @@ type Config struct {
 		//
 		// TODO(#6610): Remove once we've moved to derivable prefixes by
 		// default.
-		UseDerivablePrefix bool
+		UseDerivablePrefix bool `validate:"excluded_with=NoncePrefix"`
 
 		// NoncePrefixKey is a secret used for deriving the prefix of each nonce
 		// instance. It should contain 256 bits (32 bytes) of random data to be
@@ -38,7 +39,7 @@ type Config struct {
 		//
 		// TODO(#6610): Edit this comment once we've moved to derivable prefixes
 		// by default.
-		NoncePrefixKey cmd.PasswordConfig
+		NoncePrefixKey cmd.PasswordConfig `validate:"excluded_with=NoncePrefix,structonly"`
 
 		Syslog  cmd.SyslogConfig
 		Beeline cmd.BeelineConfig
@@ -64,6 +65,11 @@ func main() {
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
+
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	var c Config
 	err := cmd.ReadConfigFile(*configFile, &c)
@@ -113,5 +119,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("nonce-service", main)
+	cmd.RegisterCommand("nonce-service", main, &cmd.ConfigValidator{Config: &Config{}})
 }

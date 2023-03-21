@@ -18,7 +18,7 @@ import (
 
 // PasswordConfig contains a path to a file containing a password.
 type PasswordConfig struct {
-	PasswordFile string
+	PasswordFile string `validate:"required"`
 }
 
 // Pass returns a password, extracted from the PasswordConfig's PasswordFile
@@ -38,7 +38,7 @@ func (pc *PasswordConfig) Pass() (string, error) {
 // be embedded in other config structs.
 type ServiceConfig struct {
 	// DebugAddr is the address to run the /debug handlers on.
-	DebugAddr string
+	DebugAddr string `validate:"hostname_port"`
 	GRPC      *GRPCServerConfig
 	TLS       TLSConfig
 }
@@ -48,31 +48,31 @@ type ServiceConfig struct {
 // which we want to keep out of configs.
 type DBConfig struct {
 	// A file containing a connect URL for the DB.
-	DBConnectFile string
+	DBConnectFile string `validate:"required"`
 
 	// MaxOpenConns sets the maximum number of open connections to the
 	// database. If MaxIdleConns is greater than 0 and MaxOpenConns is
 	// less than MaxIdleConns, then MaxIdleConns will be reduced to
 	// match the new MaxOpenConns limit. If n < 0, then there is no
 	// limit on the number of open connections.
-	MaxOpenConns int
+	MaxOpenConns int `validate:"min=-1"`
 
 	// MaxIdleConns sets the maximum number of connections in the idle
 	// connection pool. If MaxOpenConns is greater than 0 but less than
 	// MaxIdleConns, then MaxIdleConns will be reduced to match the
 	// MaxOpenConns limit. If n < 0, no idle connections are retained.
-	MaxIdleConns int
+	MaxIdleConns int `validate:"min=-1"`
 
 	// ConnMaxLifetime sets the maximum amount of time a connection may
 	// be reused. Expired connections may be closed lazily before reuse.
 	// If d < 0, connections are not closed due to a connection's age.
-	ConnMaxLifetime config.Duration
+	ConnMaxLifetime config.Duration `validate:"-"`
 
 	// ConnMaxIdleTime sets the maximum amount of time a connection may
 	// be idle. Expired connections may be closed lazily before reuse.
 	// If d < 0, connections are not closed due to a connection's idle
 	// time.
-	ConnMaxIdleTime config.Duration
+	ConnMaxIdleTime config.Duration `validate:"-"`
 }
 
 // URL returns the DBConnect URL represented by this DBConfig object, loading it
@@ -98,17 +98,17 @@ func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
 
 type SMTPConfig struct {
 	PasswordConfig
-	Server   string
-	Port     string
-	Username string
+	Server   string `validate:"required"`
+	Port     string `validate:"required,numeric,min=1,max=65535"`
+	Username string `validate:"required"`
 }
 
 // PAConfig specifies how a policy authority should connect to its
 // database, what policies it should enforce, and what challenges
 // it should offer.
 type PAConfig struct {
-	DBConfig
-	Challenges map[core.AcmeChallenge]bool
+	DBConfig   `validate:"-"`
+	Challenges map[core.AcmeChallenge]bool `validate:"omitempty,dive,keys,oneof=http-01 dns-01 tls-alpn-01,endkeys"`
 }
 
 // CheckChallenges checks whether the list of challenges in the PA config
@@ -128,14 +128,14 @@ func (pc PAConfig) CheckChallenges() error {
 // HostnamePolicyConfig specifies a file from which to load a policy regarding
 // what hostnames to issue for.
 type HostnamePolicyConfig struct {
-	HostnamePolicyFile string
+	HostnamePolicyFile string `validate:"required"`
 }
 
 // TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
-	CertFile   *string
-	KeyFile    *string
-	CACertFile *string
+	CertFile   *string `validate:"required"`
+	KeyFile    *string `validate:"required"`
+	CACertFile *string `validate:"required"`
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
@@ -187,17 +187,17 @@ type SyslogConfig struct {
 	// When absent or zero, this causes no logs to be emitted on stdout/stderr.
 	// Errors and warnings will be emitted on stderr if the configured level
 	// allows.
-	StdoutLevel int
+	StdoutLevel int `validate:"min=-1,max=7"`
 	// When absent or zero, this defaults to logging all messages of level 6
 	// or below. To disable syslog logging entirely, set this to -1.
-	SyslogLevel int
+	SyslogLevel int `validate:"min=-1,max=7"`
 }
 
 // ServiceDomain contains the service and domain name the gRPC client will use
 // to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
-	Service string
-	Domain  string
+	Service string `validate:"required"`
+	Domain  string `validate:"required"`
 }
 
 // GRPCClientConfig contains the information necessary to setup a gRPC client
@@ -213,7 +213,7 @@ type GRPCClientConfig struct {
 	// hostname the gRPC client will resolve it via the system DNS. If the
 	// address contains a port, the client will use it directly, otherwise port
 	// 53 is used.
-	DNSAuthority string
+	DNSAuthority string `validate:"required_with=SRVLookup SRVLookups,omitempty,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name the gRPC client will use
 	// to construct a SRV DNS query to lookup backends. For example: if the
@@ -246,7 +246,7 @@ type GRPCClientConfig struct {
 	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
 	// 1 1 8080 0a585858.addr.dc1.consul.
 	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
-	SRVLookup *ServiceDomain
+	SRVLookup *ServiceDomain `validate:"required_without_all=SRVLookups ServerAddress ServerIPAddresses"`
 
 	// SRVLookups allows you to pass multiple SRV records to the gRPC client.
 	// The gRPC client will resolves each SRV record and use the results to
@@ -254,13 +254,13 @@ type GRPCClientConfig struct {
 	// documentation for the SRVLookup field. Note: while you can pass multiple
 	// targets to the gRPC client using this field, all of the targets will use
 	// the same HostOverride and TLS configuration.
-	SRVLookups []*ServiceDomain
+	SRVLookups []*ServiceDomain `validate:"required_without_all=SRVLookup ServerAddress ServerIPAddresses"`
 
 	// SRVResolver is an optional override to indicate that a specific
 	// implementation of the SRV resolver should be used. The default is 'srv'
 	// For more details, see the documentation in:
 	// grpc/internal/resolver/dns/dns_resolver.go.
-	SRVResolver string
+	SRVResolver string `validate:"excluded_with=ServerAddress ServerIPAddresses,isdefault|oneof=srv nonce-srv"`
 
 	// ServerAddress is a single <hostname|IPv4|[IPv6]>:<port> or `:<port>` that
 	// the gRPC client will, if necessary, resolve via DNS and then connect to.
@@ -286,18 +286,18 @@ type GRPCClientConfig struct {
 	// $ dig A @10.55.55.10 foo.service.consul +short
 	// 10.77.77.77
 	// 10.88.88.88
-	ServerAddress string
+	ServerAddress string `validate:"required_without_all=ServerIPAddresses SRVLookup SRVLookups,omitempty,hostname_port"`
 
 	// ServerIPAddresses is a comma separated list of IP addresses, in the
 	// format `<IPv4|[IPv6]>:<port>` or `:<port>`, that the gRPC client will
 	// connect to. If the addresses provided are ["10.77.77.77", "10.88.88.88"]
 	// then the iPAddress' to be authenticated in the server certificate would
 	// be '10.77.77.77' and '10.88.88.88'.
-	ServerIPAddresses []string
+	ServerIPAddresses []string `validate:"required_without_all=ServerAddress SRVLookup SRVLookups,omitempty,dive,hostname_port"`
 
 	// HostOverride is an optional override for the dNSName the client will
 	// verify in the certificate presented by the server.
-	HostOverride string
+	HostOverride string `validate:"excluded_with=ServerIPAddresses,omitempty,hostname"`
 	Timeout      config.Duration
 }
 
@@ -397,25 +397,25 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
-	Address string `json:"address"`
+	Address string `json:"address" validate:"hostname_port"`
 	// ClientNames is a list of allowed client certificate subject alternate names
 	// (SANs). The server will reject clients that do not present a certificate
 	// with a SAN present on the `ClientNames` list.
 	// DEPRECATED: Use the ClientNames field within each Service instead.
 	// TODO(#6698): Remove this field once all production configs have been
 	// migrated to using the service specific client names.
-	ClientNames []string `json:"clientNames"`
+	ClientNames []string `json:"clientNames" validate:"required_without=Services,dive,hostname"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
 	// the package names set in those files (e.g. "ca.CertificateAuthority").
-	Services map[string]GRPCServiceConfig `json:"services"`
+	Services map[string]GRPCServiceConfig `json:"services" validate:"required_without=ClientNames,dive,required"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
 	// backends.
 	// https://pkg.go.dev/google.golang.org/grpc/keepalive#ServerParameters
-	MaxConnectionAge config.Duration
+	MaxConnectionAge config.Duration `validate:"required"`
 }
 
 // GRPCServiceConfig contains the information needed to configure a gRPC service.
@@ -424,7 +424,7 @@ type GRPCServiceConfig struct {
 	// SANs. The upstream listening server will reject connections from clients
 	// which do not appear in this list, and the server interceptor will reject
 	// RPC calls for this service from clients which are not listed here.
-	ClientNames []string `json:"clientNames"`
+	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
 }
 
 // BeelineConfig was used to configure the Beeline tracing library
@@ -432,7 +432,7 @@ type GRPCServiceConfig struct {
 // Deprecated: Beeline has been removed, and its configuration will be removed
 // in a future Boulder release.
 type BeelineConfig struct {
-	WriteKey    PasswordConfig
+	WriteKey    PasswordConfig `validate:"-"`
 	Dataset     string
 	ServiceName string
 	SampleRate  uint32

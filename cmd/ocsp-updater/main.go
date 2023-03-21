@@ -13,13 +13,12 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	ocsp_updater "github.com/letsencrypt/boulder/ocsp/updater"
 	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/validator/v10"
 )
 
 type Config struct {
 	OCSPUpdater struct {
-		DebugAddr string
-
-		// TLS client certificate, private key, and trusted root bundle.
+		DebugAddr  string `validate:"required,hostname_port"`
 		TLS        cmd.TLSConfig
 		DB         cmd.DBConfig
 		ReadOnlyDB cmd.DBConfig
@@ -29,7 +28,7 @@ type Config struct {
 		OldOCSPWindow config.Duration
 		// OldOCSPBatchSize controls the maximum number of responses
 		// ocsp-updater will sign every OldOCSPWindow.
-		OldOCSPBatchSize int
+		OldOCSPBatchSize int `validate:"required"`
 
 		// The worst-case freshness of a response during normal operations.
 		// This is related to to ExpectedFreshness in ocsp-responder's config,
@@ -39,16 +38,16 @@ type Config struct {
 
 		// ParallelGenerateOCSPRequests determines how many requests to the CA
 		// may be inflight at once.
-		ParallelGenerateOCSPRequests int
+		ParallelGenerateOCSPRequests int `validate:"required"`
 
 		// TODO(#5933): Replace this with a unifed RetryBackoffConfig
-		SignFailureBackoffFactor float64
+		SignFailureBackoffFactor float64 `validate:"required"`
 		SignFailureBackoffMax    config.Duration
 
 		// SerialSuffixShards is a whitespace-separated list of single hex
 		// digits. When searching for work to do, ocsp-updater will query
 		// for only those certificates end in one of the specified hex digits.
-		SerialSuffixShards string
+		SerialSuffixShards string `validate:"suffixshards"`
 
 		OCSPGeneratorService *cmd.GRPCClientConfig
 
@@ -128,6 +127,18 @@ func main() {
 	}
 }
 
+// SuffixShardsVal implements validator.Func to validate the SerialSuffixShards
+// field of the Config struct.
+func SuffixShardsVal(fl validator.FieldLevel) bool {
+	err := ocsp_updater.SerialSuffixShardsValid(strings.Fields(fl.Field().String()))
+	return (err == nil)
+}
+
 func init() {
-	cmd.RegisterCommand("ocsp-updater", main)
+	cmd.RegisterCommand("ocsp-updater", main, &cmd.ConfigValidator{
+		Config: &Config{},
+		Validators: map[string]validator.Func{
+			"suffixshards": SuffixShardsVal,
+		},
+	})
 }

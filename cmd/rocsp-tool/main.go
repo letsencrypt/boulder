@@ -26,7 +26,7 @@ import (
 
 type Config struct {
 	ROCSPTool struct {
-		DebugAddr string
+		DebugAddr string `validate:"required,hostname_port"`
 		Redis     rocsp_config.RedisConfig
 
 		// If using load-from-db, this provides credentials to connect to the DB
@@ -53,18 +53,18 @@ type ProcessingSpeed struct {
 	// If using load-from-db, this limits how many items per second we
 	// scan from the DB. We might go slower than this depending on how fast
 	// we read rows from the DB, but we won't go faster. Defaults to 2000.
-	RowsPerSecond int
+	RowsPerSecond int `validate:"min=0"`
 	// If using load-from-db, this controls how many parallel requests to
 	// boulder-ca for OCSP signing we can make. Defaults to 100.
-	ParallelSigns int
+	ParallelSigns int `validate:"min=0"`
 	// If using load-from-db, the LIMIT on our scanning queries. We have to
 	// apply a limit because MariaDB will cut off our response at some
 	// threshold of total bytes transferred (1 GB by default). Defaults to 10000.
-	ScanBatchSize int
+	ScanBatchSize int `validate:"min=0"`
 }
 
 func init() {
-	cmd.RegisterCommand("rocsp-tool", main)
+	cmd.RegisterCommand("rocsp-tool", main, &cmd.ConfigValidator{Config: &Config{}})
 }
 
 func main() {

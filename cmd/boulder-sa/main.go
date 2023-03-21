@@ -16,18 +16,18 @@ type Config struct {
 	SA struct {
 		cmd.ServiceConfig
 		DB          cmd.DBConfig
-		ReadOnlyDB  cmd.DBConfig
-		IncidentsDB cmd.DBConfig
+		ReadOnlyDB  cmd.DBConfig `validate:"-"`
+		IncidentsDB cmd.DBConfig `validate:"-"`
 		// TODO(#6285): Remove this field, as it is no longer used.
 		Issuers map[string]int
 
 		Features map[string]bool
 
 		// Max simultaneous SQL queries caused by a single RPC.
-		ParallelismPerRPC int
+		ParallelismPerRPC int `validate:"omitempty,min=1"`
 		// LagFactor is how long to sleep before retrying a read request that may
 		// have failed solely due to replication lag.
-		LagFactor config.Duration
+		LagFactor config.Duration `validate:"-"`
 	}
 
 	Syslog  cmd.SyslogConfig
@@ -105,5 +105,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-sa", main)
+	cmd.RegisterCommand("boulder-sa", main, &cmd.ConfigValidator{Config: &Config{}})
 }

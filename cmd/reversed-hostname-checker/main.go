@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	cmd.RegisterCommand("reversed-hostname-checker", main)
+	cmd.RegisterCommand("reversed-hostname-checker", main, nil)
 }
 
 func main() {

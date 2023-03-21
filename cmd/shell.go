@@ -4,8 +4,10 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"expvar"
 	"fmt"
+	"io"
 	"log"
 	"log/syslog"
 	"net/http"
@@ -18,13 +20,14 @@ import (
 	"syscall"
 	"time"
 
-	"google.golang.org/grpc/grpclog"
-
 	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
+	"github.com/letsencrypt/boulder/strictyaml"
+	"github.com/letsencrypt/validator/v10"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"google.golang.org/grpc/grpclog"
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
@@ -293,6 +296,13 @@ func FailOnError(err error, msg string) {
 	}
 }
 
+func decodeJSONStrict(in io.Reader, out interface{}) error {
+	decoder := json.NewDecoder(in)
+	decoder.DisallowUnknownFields()
+
+	return decoder.Decode(out)
+}
+
 // ReadConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a
 // configuration of a boulder component. Any config keys in the JSON
@@ -305,9 +315,93 @@ func ReadConfigFile(filename string, out interface{}) error {
 	}
 	defer file.Close()
 
-	decoder := json.NewDecoder(file)
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(out)
+	return decodeJSONStrict(file, out)
+}
+
+// ValidateJSONConfig takes a *ConfigValidator and an io.Reader containing a
+// JSON representation of a config. The JSON data is unmarshaled into the
+// *ConfigValidator's inner Config and then validated according to the
+// 'validate' tags for on each field. Callers can use cmd.LookupConfigValidator
+// to get a *ConfigValidator for a given Boulder component. This is exported for
+// use in SRE CI tooling.
+func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
+	if cv == nil {
+		return errors.New("config validator cannot be nil")
+	}
+
+	// Initialize the validator and load any custom tags.
+	validate := validator.New()
+	if cv.Validators != nil {
+		for tag, v := range cv.Validators {
+			validate.RegisterValidation(tag, v)
+		}
+	}
+
+	err := decodeJSONStrict(in, cv.Config)
+	if err != nil {
+		return err
+	}
+	err = validate.Struct(cv.Config)
+	if err != nil {
+		errs, ok := err.(validator.ValidationErrors)
+		if !ok {
+			// This should never happen.
+			return err
+		}
+		if len(errs) > 0 {
+			allErrs := []string{}
+			for _, e := range errs {
+				allErrs = append(allErrs, e.Error())
+			}
+			return errors.New(strings.Join(allErrs, ", "))
+		}
+	}
+	return nil
+}
+
+// ValidateYAMLConfig takes a *ConfigValidator and an io.Reader containing a
+// YAML representation of a config. The YAML data is unmarshaled into the
+// *ConfigValidator's inner Config and then validated according to the
+// 'validate' tags for on each field. Callers can use cmd.LookupConfigValidator
+// to get a *ConfigValidator for a given Boulder component. This is exported for
+// use in SRE CI tooling.
+func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
+	if cv == nil {
+		return errors.New("config validator cannot be nil")
+	}
+
+	// Initialize the validator and load any custom tags.
+	validate := validator.New()
+	if cv.Validators != nil {
+		for tag, v := range cv.Validators {
+			validate.RegisterValidation(tag, v)
+		}
+	}
+
+	inBytes, err := io.ReadAll(in)
+	if err != nil {
+		return err
+	}
+	err = strictyaml.Unmarshal(inBytes, cv.Config)
+	if err != nil {
+		return err
+	}
+	err = validate.Struct(cv.Config)
+	if err != nil {
+		errs, ok := err.(validator.ValidationErrors)
+		if !ok {
+			// This should never happen.
+			return err
+		}
+		if len(errs) > 0 {
+			allErrs := []string{}
+			for _, e := range errs {
+				allErrs = append(allErrs, e.Error())
+			}
+			return errors.New(strings.Join(allErrs, ", "))
+		}
+	}
+	return nil
 }
 
 // VersionString produces a friendly Application version string.

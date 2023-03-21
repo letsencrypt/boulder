@@ -614,5 +614,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("notify-mailer", main)
+	cmd.RegisterCommand("notify-mailer", main, &cmd.ConfigValidator{Config: &Config{}})
 }

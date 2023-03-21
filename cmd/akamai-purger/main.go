@@ -72,7 +72,7 @@ type Throughput struct {
 	// PurgeBatchInterval is the duration waited between dispatching an Akamai
 	// purge request containing 'QueueEntriesPerBatch' * 3 URLs. If this value
 	// isn't provided it will default to 'defaultPurgeBatchInterval'.
-	PurgeBatchInterval config.Duration
+	PurgeBatchInterval config.Duration `validate:"-"`
 }
 
 func (t *Throughput) useOptimizedDefaults() {
@@ -127,11 +127,11 @@ type Config struct {
 		// isn't provided it will default to `defaultQueueSize`.
 		MaxQueueSize int
 
-		BaseURL      string
-		ClientToken  string
-		ClientSecret string
-		AccessToken  string
-		V3Network    string
+		BaseURL      string `validate:"required,url"`
+		ClientToken  string `validate:"required"`
+		ClientSecret string `validate:"required"`
+		AccessToken  string `validate:"required"`
+		V3Network    string `validate:"required,oneof=staging production"`
 
 		// Throughput is a container for all throughput related akamai-purger
 		// settings.
@@ -144,7 +144,7 @@ type Config struct {
 		// PurgeRetryBackoff is the base duration that will be waited before
 		// attempting to purge a batch of URLs which previously failed to be
 		// purged.
-		PurgeRetryBackoff config.Duration
+		PurgeRetryBackoff config.Duration `validate:"-"`
 	}
 	Syslog  cmd.SyslogConfig
 	Beeline cmd.BeelineConfig
@@ -429,5 +429,5 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 }
 
 func init() {
-	cmd.RegisterCommand("akamai-purger", main)
+	cmd.RegisterCommand("akamai-purger", main, &cmd.ConfigValidator{Config: &Config{}})
 }

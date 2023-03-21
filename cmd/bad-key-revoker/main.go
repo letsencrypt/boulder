@@ -387,7 +387,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 type Config struct {
 	BadKeyRevoker struct {
 		DB        cmd.DBConfig
-		DebugAddr string
+		DebugAddr string `validate:"hostname_port"`
 
 		TLS       cmd.TLSConfig
 		RAService *cmd.GRPCClientConfig
@@ -396,20 +396,20 @@ type Config struct {
 		// a key hash that bad-key-revoker will attempt to revoke. If the number of certificates
 		// is higher than MaximumRevocations bad-key-revoker will error out and refuse to
 		// progress until this is addressed.
-		MaximumRevocations int
+		MaximumRevocations int `validate:"gte=0"`
 		// FindCertificatesBatchSize specifies the maximum number of serials to select from the
 		// keyHashToSerial table at once
-		FindCertificatesBatchSize int
+		FindCertificatesBatchSize int `validate:"required"`
 
 		// Interval specifies the minimum duration bad-key-revoker
 		// should sleep between attempting to find blockedKeys rows to
 		// process when there is an error or no work to do.
-		Interval config.Duration
+		Interval config.Duration `validate:"-"`
 
 		// BackoffIntervalMax specifies a maximum duration the backoff
 		// algorithm will wait before retrying in the event of error
 		// or no work to do.
-		BackoffIntervalMax config.Duration
+		BackoffIntervalMax config.Duration `validate:"-"`
 
 		Mailer struct {
 			cmd.SMTPConfig
@@ -417,9 +417,9 @@ type Config struct {
 			// during the SMTP connection (as opposed to the gRPC connections).
 			SMTPTrustedRootFile string
 
-			From          string
-			EmailSubject  string
-			EmailTemplate string
+			From          string `validate:"required"`
+			EmailSubject  string `validate:"required"`
+			EmailTemplate string `validate:"required"`
 		}
 	}
 
@@ -563,5 +563,5 @@ func (bkr *badKeyRevoker) backoffReset() {
 }
 
 func init() {
-	cmd.RegisterCommand("bad-key-revoker", main)
+	cmd.RegisterCommand("bad-key-revoker", main, &cmd.ConfigValidator{Config: &Config{}})
 }
