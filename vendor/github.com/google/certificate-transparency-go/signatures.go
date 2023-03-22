@@ -1,4 +1,4 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
+// Copyright 2015 Google LLC. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ func NewSignatureVerifier(pk crypto.PublicKey) (*SignatureVerifier, error) {
 
 		}
 	default:
-		return nil, fmt.Errorf("Unsupported public key type %v", pkType)
+		return nil, fmt.Errorf("unsupported public key type %v", pkType)
 	}
 
 	return &SignatureVerifier{PubKey: pk}, nil
