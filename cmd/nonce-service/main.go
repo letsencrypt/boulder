@@ -41,8 +41,7 @@ type Config struct {
 		// by default.
 		NoncePrefixKey cmd.PasswordConfig `validate:"excluded_with=NoncePrefix,structonly"`
 
-		Syslog  cmd.SyslogConfig
-		Beeline cmd.BeelineConfig
+		Syslog cmd.SyslogConfig
 	}
 }
 

@@ -146,8 +146,7 @@ type Config struct {
 		// purged.
 		PurgeRetryBackoff config.Duration `validate:"-"`
 	}
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 // cachePurgeClient is testing interface.

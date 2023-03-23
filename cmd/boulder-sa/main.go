@@ -30,8 +30,7 @@ type Config struct {
 		LagFactor config.Duration `validate:"-"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {

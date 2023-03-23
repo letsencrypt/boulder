@@ -6,13 +6,6 @@
 			"stdoutLevel": 6,
 			"syslogLevel": 6
 		},
-		"beeline": {
-			"mute": true,
-			"serviceName": "Test",
-			"writeKey": {
-				"passwordFile": "test/secrets/honeycomb_fake_password"
-			}
-		},
 		"debugAddr": ":8111",
 		"grpc": {
 			"maxConnectionAge": "30s",

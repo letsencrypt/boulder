@@ -125,8 +125,7 @@ type Config struct {
 		LogSampleRate int `validate:"min=0"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {

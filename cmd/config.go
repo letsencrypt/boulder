@@ -426,15 +426,3 @@ type GRPCServiceConfig struct {
 	// RPC calls for this service from clients which are not listed here.
 	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
 }
-
-// BeelineConfig was used to configure the Beeline tracing library
-//
-// Deprecated: Beeline has been removed, and its configuration will be removed
-// in a future Boulder release.
-type BeelineConfig struct {
-	WriteKey    PasswordConfig `validate:"-"`
-	Dataset     string
-	ServiceName string
-	SampleRate  uint32
-	Mute        bool
-}

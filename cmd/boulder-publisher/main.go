@@ -33,8 +33,7 @@ type Config struct {
 		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {

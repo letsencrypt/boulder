@@ -131,7 +131,6 @@ type Config struct {
 
 	DebugAddr string `validate:"required,hostname_port"`
 	Syslog    cmd.SyslogConfig
-	Beeline   cmd.BeelineConfig
 }
 
 func main() {
