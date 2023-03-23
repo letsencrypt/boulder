@@ -17,7 +17,6 @@
 		"/var/log/crl-storer.log",
 		"/var/log/crl-updater.log",
 		"/var/log/nonce-service.log",
-		"/var/log/ocsp-responder.log",
-		"/var/log/ocsp-updater.log"
+		"/var/log/ocsp-responder.log"
 	]
 }
