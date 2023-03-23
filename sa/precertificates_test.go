@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"fmt"
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -110,13 +110,11 @@ func TestAddPrecertificate(t *testing.T) {
 	serial, testCert := test.ThrowAwayCert(t, 1)
 
 	// Add the cert as a precertificate
-	ocspResp := []byte{0, 0, 1}
 	regID := reg.Id
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        regID,
-		Ocsp:         ocspResp,
 		Issued:       issuedTime.UnixNano(),
 		IssuerNameID: 1,
 	})
@@ -125,11 +123,7 @@ func TestAddPrecertificate(t *testing.T) {
 	// It should have the expected certificate status
 	certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "Couldn't get status for test cert")
-	test.Assert(
-		t,
-		bytes.Equal(certStatus.OcspResponse, ocspResp),
-		fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OcspResponse, ocspResp),
-	)
+	test.AssertEquals(t, certStatus.Status, string(core.OCSPStatusGood))
 	test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
 
 	// It should show up in the issued names table
@@ -202,12 +196,10 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 	_, testCert := test.ThrowAwayCert(t, 1)
 
 	// Add the cert as a precertificate
-	ocspResp := []byte{0, 0, 1}
 	regID := reg.Id
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
 		RegID:  regID,
-		Ocsp:   ocspResp,
 		Issued: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
 		// Leaving out IssuerNameID
 	})

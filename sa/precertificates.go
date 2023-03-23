@@ -11,7 +11,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
@@ -115,9 +114,6 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			NotAfter:              parsed.NotAfter,
 			IsExpired:             false,
 			IssuerNameID:          req.IssuerNameID,
-		}
-		if !features.Enabled(features.ROCSPStage6) {
-			cs.OCSPResponse = req.Ocsp
 		}
 		err = ssa.dbMap.WithContext(ctx).Insert(cs)
 		if err != nil {

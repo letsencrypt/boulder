@@ -54,8 +54,7 @@
 			".hierarchy/intermediate-cert-rsa-b.pem": 4
 		},
 		"features": {
-			"StoreRevokerInfo": true,
-			"ROCSPStage6": true
+			"StoreRevokerInfo": true
 		}
 	},
 	"syslog": {
