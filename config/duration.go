@@ -9,7 +9,7 @@ import (
 // Duration is just an alias for time.Duration that allows
 // serialization to YAML as well as JSON.
 type Duration struct {
-	time.Duration
+	time.Duration `validate:"required"`
 }
 
 // ErrDurationMustBeString is returned when a non-string value is

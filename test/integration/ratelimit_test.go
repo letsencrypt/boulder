@@ -14,12 +14,12 @@ func TestDuplicateFQDNRateLimit(t *testing.T) {
 	domain := random_domain()
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
-	_, err := authAndIssue(nil, nil, []string{domain})
+	_, err := authAndIssue(nil, nil, []string{domain}, true)
 	test.AssertNotError(t, err, "Failed to issue first certificate")
 
-	_, err = authAndIssue(nil, nil, []string{domain})
+	_, err = authAndIssue(nil, nil, []string{domain}, true)
 	test.AssertNotError(t, err, "Failed to issue second certificate")
 
-	_, err = authAndIssue(nil, nil, []string{domain})
+	_, err = authAndIssue(nil, nil, []string{domain}, true)
 	test.AssertError(t, err, "Somehow managed to issue third certificate")
 }

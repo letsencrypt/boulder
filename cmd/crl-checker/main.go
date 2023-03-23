@@ -138,5 +138,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("crl-checker", main)
+	cmd.RegisterCommand("crl-checker", main, nil)
 }

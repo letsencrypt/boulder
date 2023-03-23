@@ -52,7 +52,7 @@ func TestARI(t *testing.T) {
 
 	// Issue a cert.
 	name := random_domain()
-	ir, err := authAndIssue(client, key, []string{name})
+	ir, err := authAndIssue(client, key, []string{name}, true)
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
@@ -104,7 +104,7 @@ func TestARI(t *testing.T) {
 	name = random_domain()
 	err = ctAddRejectHost(name)
 	test.AssertNotError(t, err, "failed to add ct-test-srv reject host")
-	_, err = authAndIssue(client, key, []string{name})
+	_, err = authAndIssue(client, key, []string{name}, true)
 	test.AssertError(t, err, "expected error from authAndIssue, was nil")
 	cert, err = ctFindRejection([]string{name})
 	test.AssertNotError(t, err, "failed to find rejected precert")

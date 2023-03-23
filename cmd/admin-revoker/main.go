@@ -625,5 +625,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("admin-revoker", main)
+	cmd.RegisterCommand("admin-revoker", main, &cmd.ConfigValidator{Config: &Config{}})
 }

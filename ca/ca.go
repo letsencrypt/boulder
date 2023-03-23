@@ -442,13 +442,11 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		PublicKey:         csr.PublicKey,
 		Serial:            serialBigInt.Bytes(),
 		DNSNames:          names.SANs,
+		CommonName:        names.CN,
 		IncludeCTPoison:   true,
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
 		NotBefore:         validity.NotBefore,
 		NotAfter:          validity.NotAfter,
-	}
-	if features.Enabled(features.SetCommonName) {
-		req.CommonName = names.CN
 	}
 
 	certDER, err := issuer.Issue(req)

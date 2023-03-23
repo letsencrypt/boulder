@@ -159,6 +159,11 @@ func main() {
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
 
+	if *configFile == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	// Load config from JSON.
 	configData, err := os.ReadFile(*configFile)
 	cmd.FailOnError(err, fmt.Sprintf("Error reading config file: %q", *configFile))
@@ -201,5 +206,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("contact-auditor", main)
+	cmd.RegisterCommand("contact-auditor", main, &cmd.ConfigValidator{Config: &Config{}})
 }

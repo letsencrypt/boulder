@@ -50,6 +50,19 @@ func (c *failCounter) Value() int {
 	return c.count
 }
 
+func SerialSuffixShardsValid(serialSuffixes []string) error {
+	for _, s := range serialSuffixes {
+		if len(s) != 1 || strings.ToLower(s) != s {
+			return fmt.Errorf("serial suffixes must all be one lowercase character, got %q, expected %q", s, strings.ToLower(s))
+		}
+		c := s[0]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return errors.New("valid range for suffixes is [0-9a-f]")
+		}
+	}
+	return nil
+}
+
 // OCSPUpdater contains the useful objects for the Updater
 type OCSPUpdater struct {
 	log blog.Logger
@@ -110,14 +123,10 @@ func New(
 		// Default to 1
 		parallelGenerateOCSPRequests = 1
 	}
-	for _, s := range serialSuffixes {
-		if len(s) != 1 || strings.ToLower(s) != s {
-			return nil, fmt.Errorf("serial suffixes must all be one lowercase character, got %q, expected %q", s, strings.ToLower(s))
-		}
-		c := s[0]
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return nil, errors.New("valid range for suffixes is [0-9a-f]")
-		}
+
+	err := SerialSuffixShardsValid(serialSuffixes)
+	if err != nil {
+		return nil, err
 	}
 
 	var queryBody strings.Builder

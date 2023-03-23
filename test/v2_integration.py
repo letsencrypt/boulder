@@ -1189,6 +1189,8 @@ def test_new_order_policy_errs():
         raise(Exception("Expected problem, got no error"))
 
 def test_long_san_no_cn():
+    if CONFIG_NEXT:
+        return
     try:
         chisel2.auth_and_issue(["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
         # if we get to this raise the auth_and_issue call didn't fail, so fail the test

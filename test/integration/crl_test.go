@@ -43,7 +43,7 @@ func TestCRLPipeline(t *testing.T) {
 	configFile := path.Join(configDir, "crl-updater.json")
 
 	// Issue a test certificate and save its serial number.
-	res, err := authAndIssue(client, nil, []string{random_domain()})
+	res, err := authAndIssue(client, nil, []string{random_domain()}, true)
 	test.AssertNotError(t, err, "failed to create test certificate")
 	cert := res.certs[0]
 	serial := core.SerialToString(cert.SerialNumber)
