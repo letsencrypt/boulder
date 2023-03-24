@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/observer"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
@@ -33,7 +34,13 @@ func main() {
 
 	// Start the `Observer` daemon.
 	observer.Start()
-	defer observer.Stop()
+
+	go cmd.CatchSignals(log.Get(), func() {
+		observer.Stop()
+	})
+
+	// Run forever
+	select {}
 }
 
 func init() {

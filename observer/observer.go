@@ -15,12 +15,11 @@ type Observer struct {
 	shutdown func()
 }
 
-// Start spins off a goroutine for each monitor and then runs forever.
+// Start spins off a goroutine for each monitor.
 func (o Observer) Start() {
 	for _, mon := range o.monitors {
 		go mon.start(o.logger)
 	}
-	select {}
 }
 
 func (o Observer) Stop() {
