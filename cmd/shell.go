@@ -290,8 +290,8 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	return registry
 }
 
-// newOpenTelemetry sets up our OpenTelemtry tracing
-// It returns an object that should be called to shutdown the tracer
+// newOpenTelemetry sets up our OpenTelemetry tracing
+// It returns a graceful shutdown function to be deferred.
 func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 	r, err := resource.Merge(
 		resource.Default(),
