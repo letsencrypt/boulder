@@ -161,16 +161,18 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
-// StatsAndLogging constructs a prometheus registerer and an AuditLogger based
-// on its config parameters, and return them both. It also spawns off an HTTP
-// server on the provided port to report the stats and provide pprof profiling
-// handlers. NewLogger and newStatsRegistry will panic on errors.
-// Also sets the constructed AuditLogger as the default logger, and configures
-// the mysql and grpc packages to use our logger.
-// This must be called before any gRPC code is called, because gRPC's SetLogger
-// doesn't use any locking.
-// Also it sets up OpenTelemetry tracing.  It returns a shutdown function that
-// should be called at process shutdown, probably in a defer.
+// StatsAndLogging sets up an AuditLogger, Prometheus Registerer, and
+// OpenTelemetry tracing.  It returns the Registerer and AuditLogger, along
+// with a shutdown function to be called at process shutdown.
+//
+// It spawns off an HTTP server on the provided port to report the stats and
+// provide pprof profiling handlers.
+//
+// The constructed AuditLogger as the default logger, and configures the mysql
+// and grpc packages to use our logger. This must be called before any gRPC code
+// is called, because gRPC's SetLogger doesn't use any locking.
+//
+// This function does not return an error, and will panic on problems.
 func StatsAndLogging(serviceName string, logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func()) {
 	logger := NewLogger(logConf)
 
@@ -334,16 +336,15 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 		opts = append(opts, trace.WithBatcher(exporter))
 	}
 
-	tp := trace.NewTracerProvider(opts...)
-	otel.SetTracerProvider(tp)
+	tracerProvider := trace.NewTracerProvider(opts...)
+	otel.SetTracerProvider(tracerProvider)
 
-	tc := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
-	otel.SetTextMapPropagator(tc)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
 	return func() {
-		err := tp.Shutdown(context.Background())
+		err := tracerProvider.Shutdown(context.Background())
 		if err != nil {
-			blog.Get().AuditErrf("Error while shutting down Opentelemetry: %v", err)
+			blog.Get().AuditErrf("Error while shutting down OpenTelemetry: %v", err)
 		}
 	}
 }
