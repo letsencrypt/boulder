@@ -96,6 +96,7 @@ func main() {
 	}
 	servers, err = bdns.StartDynamicProvider(c.VA.DNSResolver, 60*time.Second)
 	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
+	defer servers.Stop()
 
 	var resolver bdns.Client
 	if !(c.VA.DNSAllowLoopbackAddresses || c.Common.DNSAllowLoopbackAddresses) {
@@ -152,11 +153,7 @@ func main() {
 		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 
-	go cmd.CatchSignals(logger, func() {
-		servers.Stop()
-		stop()
-	})
-
+	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "VA gRPC service failed")
 }
 

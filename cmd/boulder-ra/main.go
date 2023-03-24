@@ -243,6 +243,7 @@ func main() {
 		apc,
 		issuerCerts,
 	)
+	defer rai.DrainFinalize()
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
@@ -257,10 +258,7 @@ func main() {
 		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 
-	go cmd.CatchSignals(logger, func() {
-		stop()
-		rai.DrainFinalize()
-	})
+	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 
