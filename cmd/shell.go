@@ -163,7 +163,7 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 
 // StatsAndLogging sets up an AuditLogger, Prometheus Registerer, and
 // OpenTelemetry tracing.  It returns the Registerer and AuditLogger, along
-// with a shutdown function to be called at process shutdown.
+// with a graceful shutdown function to be deferred.
 //
 // It spawns off an HTTP server on the provided port to report the stats and
 // provide pprof profiling handlers.
