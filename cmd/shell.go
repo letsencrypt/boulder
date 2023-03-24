@@ -322,11 +322,13 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 		if err != nil {
 			FailOnError(err, "Could not create OpenTelemetry stdout exporter")
 		}
+
 		opts = append(opts, trace.WithBatcher(exporter))
 	}
 
 	if config.Endpoint != "" {
-		exporter, err := otlptracegrpc.New(context.Background(),
+		exporter, err := otlptracegrpc.New(
+			context.Background(),
 			otlptracegrpc.WithInsecure(),
 			otlptracegrpc.WithEndpoint(config.Endpoint))
 		if err != nil {
@@ -338,7 +340,6 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 
 	tracerProvider := trace.NewTracerProvider(opts...)
 	otel.SetTracerProvider(tracerProvider)
-
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
 	return func() {
