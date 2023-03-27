@@ -2043,10 +2043,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-	if err != nil {
-		return nil, err
-	}
+	// Don't propagate purger errors to the client.
+	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
 }
@@ -2120,10 +2118,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
-		err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-		if err != nil {
-			return nil, err
-		}
+		// Don't propagate purger errors to the client.
+		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 	}
 
 	// Finally check the error from revocation itself. If it was an AlreadyRevoked
@@ -2142,10 +2138,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		}
 	}
 
-	err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-	if err != nil {
-		return nil, err
-	}
+	// Don't propagate purger errors to the client.
+	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
 }
@@ -2232,6 +2226,8 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(err, berrors.AlreadyRevoked) {
 		if cert != nil {
+			// An administrator will most likely want to know why a purge error
+			// failed so keep it in this scenario.
 			err = ra.purgeOCSPCache(ctx, cert, issuerID)
 			if err != nil {
 				return nil, err
@@ -2269,6 +2265,8 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	if cert != nil {
+		// An administrator will most likely want to know why a purge error
+		// failed so keep it in this scenario.
 		err = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
 			return nil, err
