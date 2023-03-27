@@ -2120,7 +2120,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
-		err := ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		err = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 		if err != nil {
 			return nil, err
 		}
@@ -2146,6 +2146,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	if err != nil {
 		return nil, err
 	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (ra *RegistrationAuthorityImpl) revokeCertByKeyInner(ctx context.Context, req *rapb.RevokeCertByKeyRequest) (*emptypb.Empty, error) {
 
 	return &emptypb.Empty{}, nil
 }
@@ -2227,7 +2232,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(err, berrors.AlreadyRevoked) {
 		if cert != nil {
-			err := ra.purgeOCSPCache(ctx, cert, issuerID)
+			err = ra.purgeOCSPCache(ctx, cert, issuerID)
 			if err != nil {
 				return nil, err
 			}
@@ -2264,7 +2269,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	if cert != nil {
-		err := ra.purgeOCSPCache(ctx, cert, issuerID)
+		err = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
 			return nil, err
 		}
