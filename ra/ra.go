@@ -2050,8 +2050,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	return &emptypb.Empty{}, nil
 }
 
-// addToBlockedKey initiates a GRPC call to have the hash of a specified public
-// key added to the blockedKeys table.
+// addToBlockedKeys initiates a GRPC call to have the Base64-encoded SHA256
+// digest of a provided public key added to the blockedKeys table.
 func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key crypto.PublicKey, src string, comment string) (*emptypb.Empty, error) {
 	var digest core.Sha256Digest
 	digest, err := core.KeyDigest(key)
