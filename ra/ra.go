@@ -2,6 +2,7 @@ package ra
 
 import (
 	"context"
+	"crypto"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -2049,6 +2050,28 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	return &emptypb.Empty{}, nil
 }
 
+// addToBlockedKey initiates a GRPC call to have the hash of a specified public
+// key added to the blockedKeys table.
+func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key crypto.PublicKey, src string, comment string) (*emptypb.Empty, error) {
+	var digest core.Sha256Digest
+	digest, err := core.KeyDigest(key)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
+		KeyHash: digest[:],
+		Added:   ra.clk.Now().UnixNano(),
+		Source:  src,
+		Comment: comment,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 // RevokeCertByKey revokes the certificate in question. It always uses
 // reason code 1 (keyCompromise). It ensures that they public key is added to
 // the blocked keys list, even if revocation otherwise fails. It attempts to
@@ -2101,22 +2124,13 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	// to the blocked keys list is a worse failure than failing to revoke in the
 	// first place, because it means that bad-key-revoker won't revoke the cert
 	// anyway.
-	var digest core.Sha256Digest
-	digest, err = core.KeyDigest(cert.PublicKey)
-	if err != nil {
-		return nil, err
-	}
-	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
-		KeyHash: digest[:],
-		Added:   ra.clk.Now().UnixNano(),
-		Source:  "API",
-	})
+	_, err = ra.addToBlockedKeys(ctx, cert.PublicKey, "API", "")
 	if err != nil {
 		return nil, err
 	}
 
 	// Perform an Akamai cache purge to handle occurrences of a client
-	// successfully revoking a certificate, but the initial cache purge failing.
+	// previously revoking a certificate, but the initial cache purge failing.
 	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
 		// Don't propagate purger errors to the client.
 		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
@@ -2247,17 +2261,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if cert == nil {
 			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
 		}
-		var digest core.Sha256Digest
-		digest, err = core.KeyDigest(cert.PublicKey)
-		if err != nil {
-			return nil, err
-		}
-		_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
-			KeyHash: digest[:],
-			Added:   ra.clk.Now().UnixNano(),
-			Source:  "admin-revoker",
-			Comment: fmt.Sprintf("revoked by %s", req.AdminName),
-		})
+		_, err = ra.addToBlockedKeys(ctx, cert.PublicKey, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 		if err != nil {
 			return nil, err
 		}
