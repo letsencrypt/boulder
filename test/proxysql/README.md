@@ -30,7 +30,7 @@ You will need to bind the port in `docker-compose.yml`, like so:
 ## Accessing the Admin Web Interface
 
 You can access the ProxySQL web UI at https://127.0.0.1:6080. The default
-username and password are `stats` / `stats`.
+username/ password are `stats`/ `stats`.
 
 ### MacOS
 
