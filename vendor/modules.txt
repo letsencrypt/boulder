@@ -186,8 +186,8 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/jmhodges/clock v0.0.0-20160418191101-880ee4c33548
-## explicit
+# github.com/jmhodges/clock v1.2.0
+## explicit; go 1.17
 github.com/jmhodges/clock
 # github.com/letsencrypt/challtestsrv v1.2.1
 ## explicit; go 1.13
