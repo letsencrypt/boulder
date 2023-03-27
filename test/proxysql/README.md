@@ -54,24 +54,24 @@ like so:
 eventslog_filename="/test/proxysql/events.log"
 ```
 
-Then set `log=1` for `rule_id=1` in the `mysql_query_rules` section, like so:
+Then set `log = 1;` for `rule_id = 1;` in the `mysql_query_rules` section, like so:
 
-```ini
+```
 {
-    rule_id=1
-    active=1
+    rule_id = 1;
+    active = 1;
     # Log all queries.
-    match_digest="."
+    match_digest = ".";
     # Set log=1 to log all queries to the eventslog_filename under
     # mysql_variables.
-    log=1
-    apply=0
+    log = 1;
+    apply = 0;
 },
 ```
 
 ## Sending ProxySQL logs to a file
 
 Replace the `entrypoint:` under `bproxysql` in `docker-compose.yml` with
-`./test/proxysql/entrypoint.sh`. This is necessary because if you attempt to run
+`/test/proxysql/entrypoint.sh`. This is necessary because if you attempt to run
 ProxySQL in the background (by removing the `-f` flag) Docker will simply kill
 the container.
