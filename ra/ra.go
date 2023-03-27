@@ -2119,26 +2119,28 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		revocation.Reason(ocsp.KeyCompromise),
 	)
 
-	// Now add the public key to the blocked keys list, and report the error if
-	// there is one. It's okay to error out here because failing to add the key
-	// to the blocked keys list is a worse failure than failing to revoke in the
-	// first place, because it means that bad-key-revoker won't revoke the cert
-	// anyway.
+	// Now add the public key to the blocked keys list, and report the
+	// error if there is one. It's okay to error out here because failing to add
+	// the key to the blocked keys list is a worse failure than failing to
+	// revoke in the first place, because it means that bad-key-revoker won't
+	// revoke the cert anyway.
 	_, err = ra.addToBlockedKeys(ctx, cert.PublicKey, "API", "")
 	if err != nil {
 		return nil, err
 	}
 
 	// Perform an Akamai cache purge to handle occurrences of a client
-	// previously revoking a certificate, but the initial cache purge failing.
+	// previously successfully revoking a certificate, but their cache purge had
+	// unexpectedly failed. This will allow them to re-attempt revocation and
+	// purge the Akamai cache.
 	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
 		// Don't propagate purger errors to the client.
 		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 	}
 
-	// Finally check the error from revocation itself. If it was an AlreadyRevoked
-	// error, try to re-revoke the cert, in case it is revoked for a reason other
-	// than keyCompromise.
+	// Finally check the error from revocation itself. If it was an
+	// AlreadyRevoked error, try to re-revoke the cert, in case it is revoked
+	// for a reason other than keyCompromise.
 	err = revokeErr
 	if err != nil {
 		// Error out if the error was anything other than AlreadyRevoked. Otherwise
@@ -2154,11 +2156,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 	// Don't propagate purger errors to the client.
 	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-
-	return &emptypb.Empty{}, nil
-}
-
-func (ra *RegistrationAuthorityImpl) revokeCertByKeyInner(ctx context.Context, req *rapb.RevokeCertByKeyRequest) (*emptypb.Empty, error) {
 
 	return &emptypb.Empty{}, nil
 }
