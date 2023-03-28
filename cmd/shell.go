@@ -38,6 +38,8 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/strictyaml"
+	"github.com/letsencrypt/validator/v10"
 )
 
 func command() string {
