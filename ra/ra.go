@@ -2059,6 +2059,11 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 		return err
 	}
 
+	// Add the public key to the blocked keys list, and report the
+	// error if there is one. It's okay to error out here because failing to add
+	// the key to the blocked keys list is a worse failure than failing to
+	// revoke in the first place, because it means that bad-key-revoker won't
+	// revoke the cert anyway.
 	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash: digest[:],
 		Added:   ra.clk.Now().UnixNano(),
@@ -2119,12 +2124,10 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		revocation.Reason(ocsp.KeyCompromise),
 	)
 
-	// Now add the public key to the blocked keys list, and report the
-	// error if there is one. It's okay to error out here because failing to add
-	// the key to the blocked keys list is a worse failure than failing to
-	// revoke in the first place, because it means that bad-key-revoker won't
-	// revoke the cert anyway.
-	_, err = ra.addToBlockedKeys(ctx, cert.PublicKey, "API", "")
+	// Failing to add the key to the blocked keys list is a worse failure than
+	// failing to revoke in the first place, because it means that
+	// bad-key-revoker won't revoke the cert anyway.
+	err = ra.addToBlockedKeys(ctx, cert.PublicKey, "API", "")
 	if err != nil {
 		return nil, err
 	}
@@ -2258,7 +2261,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if cert == nil {
 			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
 		}
-		_, err = ra.addToBlockedKeys(ctx, cert.PublicKey, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
+		err = ra.addToBlockedKeys(ctx, cert.PublicKey, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 		if err != nil {
 			return nil, err
 		}
