@@ -16,7 +16,7 @@ type Observer struct {
 }
 
 // Start spins off a goroutine for each monitor.
-func (o Observer) Start() {
+func (o Observer) Start() error {
 	for _, mon := range o.monitors {
 		go mon.start(o.logger)
 	}
