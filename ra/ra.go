@@ -2052,11 +2052,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 
 // addToBlockedKeys initiates a GRPC call to have the Base64-encoded SHA256
 // digest of a provided public key added to the blockedKeys table.
-func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key crypto.PublicKey, src string, comment string) (*emptypb.Empty, error) {
+func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key crypto.PublicKey, src string, comment string) error {
 	var digest core.Sha256Digest
 	digest, err := core.KeyDigest(key)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
@@ -2066,10 +2066,10 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 		Comment: comment,
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return &emptypb.Empty{}, nil
+	return nil
 }
 
 // RevokeCertByKey revokes the certificate in question. It always uses
