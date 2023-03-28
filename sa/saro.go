@@ -120,7 +120,6 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 	if err != nil {
 		if db.IsNoRows(err) {
 			if ssa.lagFactor != 0 {
-				fmt.Println("got here 1")
 				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "fail").Inc()
 			}
 			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
@@ -128,7 +127,6 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		return nil, err
 	}
 	if lagRetry {
-		fmt.Println("got here 2")
 		ssa.lagFactorCounter.WithLabelValues("GetRegistration", "pass").Inc()
 	}
 
