@@ -33,14 +33,11 @@ func main() {
 	}
 
 	// Start the `Observer` daemon.
-	observer.Start()
-
 	go cmd.CatchSignals(log.Get(), func() {
 		observer.Stop()
 	})
 
-	// Run forever
-	select {}
+	cmd.FailOnError(observer.Start(), "Boulder Observer daemon failed")
 }
 
 func init() {
