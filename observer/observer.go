@@ -20,6 +20,7 @@ func (o Observer) Start() {
 	for _, mon := range o.monitors {
 		go mon.start(o.logger)
 	}
+	select {}
 }
 
 func (o Observer) Stop() {
