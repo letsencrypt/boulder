@@ -54,8 +54,7 @@ type Config struct {
 		// The maximum number of subjectAltNames in a single certificate
 		MaxNames int `validate:"required,min=1,max=100"`
 
-		// LifespanOCSP is how long OCSP responses are valid for. It should be
-		// longer than the minTimeToExpiry field for the OCSP Updater. Per the BRs,
+		// LifespanOCSP is how long OCSP responses are valid for. Per the BRs,
 		// Section 4.9.10, it MUST NOT be more than 10 days.
 		LifespanOCSP config.Duration
 
