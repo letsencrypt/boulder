@@ -54,8 +54,8 @@ var (
 }`
 )
 
-// initSA constructs a SQLStorageAuthority and a clean up function
-// that should be defer'ed to the end of the test.
+// initSA constructs a SQLStorageAuthority and a clean up function that should
+// be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	t.Helper()
 	features.Reset()
@@ -265,8 +265,8 @@ func TestReplicationLagRetries(t *testing.T) {
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start.Add(1))
 	// With lagFactor is enabled i.e. "time > 0 ", then we should enter the
-	// retry codepath for a nonexistent and as a result the metric should
-	// increment.
+	// retry codepath for a nonexistent registration ID and as a result the
+	// metric should increment.
 	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "fail"}, 1)
 }
 
