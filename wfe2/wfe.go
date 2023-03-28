@@ -1856,7 +1856,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	updatedAcctPb, err := wfe.ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
-			// It is possible that between checking for the existing key, and preforming the update
+			// It is possible that between checking for the existing key, and performing the update
 			// a parallel update or new account request happened and claimed the key. In this case
 			// just retrieve the account again, and return an error as we would above with a Location
 			// header
