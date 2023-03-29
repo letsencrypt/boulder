@@ -117,7 +117,6 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
 		lagRetry = true
 	}
-
 	if err != nil {
 		if db.IsNoRows(err) {
 			if ssa.lagFactor != 0 {
