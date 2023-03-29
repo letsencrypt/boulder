@@ -779,7 +779,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		obj, err = ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
-		if err != nil {
+		if obj == nil || err != nil {
 			if db.IsNoRows(err) {
 				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "fail").Inc()
 			}
