@@ -2243,6 +2243,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			// An administrator will most likely want to know why a purge failed.
 			err = ra.purgeOCSPCache(ctx, cert, issuerID)
 			if err != nil {
+				err = fmt.Errorf("OCSP cache purge for already revoked serial %v failed: %w", serialInt, err)
 				return nil, err
 			}
 		}
@@ -2271,6 +2272,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		// An administrator will most likely want to know why a purge failed.
 		err = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
+			err = fmt.Errorf("OCSP cache purge for serial %v failed: %w", serialInt, err)
 			return nil, err
 		}
 	}
