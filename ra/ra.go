@@ -2059,11 +2059,7 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 		return err
 	}
 
-	// Add the public key to the blocked keys list, and report the
-	// error if there is one. It's okay to error out here because failing to add
-	// the key to the blocked keys list is a worse failure than failing to
-	// revoke in the first place, because it means that bad-key-revoker won't
-	// revoke the cert anyway.
+	// Add the public key to the blocked keys list.
 	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash: digest[:],
 		Added:   ra.clk.Now().UnixNano(),
@@ -2134,8 +2130,8 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// previously successfully revoking a certificate, but their cache purge had
-	// unexpectedly failed. This will allow them to re-attempt revocation and
-	// purge the Akamai cache.
+	// unexpectedly failed. Clients can re-attempt revocation and purge the
+	// Akamai cache.
 	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
 		// Don't propagate purger errors to the client.
 		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
@@ -2240,7 +2236,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(err, berrors.AlreadyRevoked) {
 		if cert != nil {
-			// An administrator will most likely want to know why a purge failed.
 			err = ra.purgeOCSPCache(ctx, cert, issuerID)
 			if err != nil {
 				err = fmt.Errorf("OCSP cache purge for already revoked serial %v failed: %w", serialInt, err)
@@ -2269,7 +2264,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	if cert != nil {
-		// An administrator will most likely want to know why a purge failed.
 		err = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
 			err = fmt.Errorf("OCSP cache purge for serial %v failed: %w", serialInt, err)
