@@ -241,14 +241,14 @@ func TestReplicationLagRetries(t *testing.T) {
 	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "selecting extant registration")
 	test.AssertEquals(t, clk.Now(), start)
-	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "fail"}, 0)
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start)
 	// With lagFactor disabled, we should never enter the retry codepath, as a
 	// result the metric should not increment.
-	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "fail"}, 0)
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	// Now, set the lagFactor to 1. Trying to select a nonexistent registration
 	// should cause the clock to advance when GetRegistration sleeps and retries.
@@ -259,14 +259,14 @@ func TestReplicationLagRetries(t *testing.T) {
 	test.AssertNotError(t, err, "selecting extant registration")
 	test.AssertEquals(t, clk.Now(), start)
 	// lagFactor is enabled, but the registration exists.
-	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "fail"}, 0)
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start.Add(1))
 	// With lagFactor enabled, we should enter the retry codepath and as a result
 	// the metric should increment.
-	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "fail"}, 1)
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 1)
 }
 
 func TestAddCertificate(t *testing.T) {

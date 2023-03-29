@@ -64,7 +64,8 @@ type SQLStorageAuthorityRO struct {
 	// lagFactorCounter is a Prometheus counter that tracks the number of times
 	// we've retried a query inside of GetRegistration, GetOrder, and
 	// GetAuthorization2 due to replication lag. It is labeled by method name
-	// and whether the retry succeeded or failed.
+	// and whether data from the retry attempt was found, notfound, or some
+	// other error was encountered.
 	lagFactorCounter *prometheus.CounterVec
 }
 
@@ -116,10 +117,13 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
-				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "fail").Inc()
+				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "notfound").Inc()
+			} else {
+				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "other").Inc()
 			}
+		} else {
+			ssa.lagFactorCounter.WithLabelValues("GetRegistration", "found").Inc()
 		}
-		ssa.lagFactorCounter.WithLabelValues("GetRegistration", "pass").Inc()
 	}
 	if err != nil {
 		if db.IsNoRows(err) {
@@ -679,10 +683,13 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		output, err = db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
 		if err != nil {
 			if db.IsNoRows(err) || errors.Is(err, berrors.NotFound) {
-				ssa.lagFactorCounter.WithLabelValues("GetOrder", "fail").Inc()
+				ssa.lagFactorCounter.WithLabelValues("GetOrder", "notfound").Inc()
+			} else {
+				ssa.lagFactorCounter.WithLabelValues("GetOrder", "other").Inc()
 			}
+		} else {
+			ssa.lagFactorCounter.WithLabelValues("GetOrder", "found").Inc()
 		}
-		ssa.lagFactorCounter.WithLabelValues("GetOrder", "pass").Inc()
 	}
 	if err != nil {
 		return nil, err
@@ -781,10 +788,13 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		obj, err = ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
-				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "fail").Inc()
+				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()
+			} else {
+				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "other").Inc()
 			}
+		} else {
+			ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "found").Inc()
 		}
-		ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "pass").Inc()
 	}
 	if err != nil {
 		return nil, err
