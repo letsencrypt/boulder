@@ -108,26 +108,24 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 
 	const query = "WHERE id = ?"
 	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
-	var lagRetry = false
 	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetRegistration is often called to validate a JWK belonging to a brand
 		// new account whose registrations table row hasn't propagated to the read
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
-		lagRetry = true
+		if err != nil {
+			if db.IsNoRows(err) {
+				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "fail").Inc()
+			}
+		}
+		ssa.lagFactorCounter.WithLabelValues("GetRegistration", "pass").Inc()
 	}
 	if err != nil {
 		if db.IsNoRows(err) {
-			if ssa.lagFactor != 0 {
-				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "fail").Inc()
-			}
 			return nil, berrors.NotFoundError("registration with ID '%d' not found", req.Id)
 		}
 		return nil, err
-	}
-	if lagRetry {
-		ssa.lagFactorCounter.WithLabelValues("GetRegistration", "pass").Inc()
 	}
 
 	return registrationModelToPb(model)
@@ -672,7 +670,6 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		return order, nil
 	}
 
-	var lagRetry = false
 	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
 	if (db.IsNoRows(err) || errors.Is(err, berrors.NotFound)) && ssa.lagFactor != 0 {
 		// GetOrder is often called shortly after a new order is created, sometimes
@@ -680,16 +677,15 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		output, err = db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
-		lagRetry = true
+		if err != nil {
+			if db.IsNoRows(err) || errors.Is(err, berrors.NotFound) {
+				ssa.lagFactorCounter.WithLabelValues("GetOrder", "fail").Inc()
+			}
+		}
+		ssa.lagFactorCounter.WithLabelValues("GetOrder", "pass").Inc()
 	}
 	if err != nil {
-		if ssa.lagFactor != 0 {
-			ssa.lagFactorCounter.WithLabelValues("GetOrder", "fail").Inc()
-		}
 		return nil, err
-	}
-	if lagRetry {
-		ssa.lagFactorCounter.WithLabelValues("GetOrder", "pass").Inc()
 	}
 
 	order, ok := output.(*corepb.Order)
@@ -777,7 +773,6 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		return nil, errIncompleteRequest
 	}
 
-	var lagRetry = false
 	obj, err := ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
 	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetAuthorization2 is often called shortly after a new order is created,
@@ -785,19 +780,18 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		obj, err = ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
-		lagRetry = true
+		if err != nil {
+			if db.IsNoRows(err) {
+				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "fail").Inc()
+			}
+		}
+		ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "pass").Inc()
 	}
 	if err != nil {
-		if ssa.lagFactor != 0 {
-			ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "fail").Inc()
-		}
 		return nil, err
 	}
 	if obj == nil {
 		return nil, berrors.NotFoundError("authorization %d not found", req.Id)
-	}
-	if lagRetry {
-		ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "pass").Inc()
 	}
 	return modelToAuthzPB(*(obj.(*authzModel)))
 }
