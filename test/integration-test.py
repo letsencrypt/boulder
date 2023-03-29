@@ -165,7 +165,7 @@ def check_slow_queries():
         \G
     """
     output = subprocess.check_output(
-      ["mysql", "-h", "boulder-mysql", "-e", query],
+      ["mysql", "-h", "boulder-proxysql", "-e", query],
       stderr=subprocess.STDOUT).decode()
     if len(output) > 0:
         print(output)

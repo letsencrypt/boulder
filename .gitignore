@@ -39,3 +39,6 @@ tags
 .vscode/*
 .hierarchy/
 .softhsm-tokens/
+
+# ProxySQL log files
+test/proxysql/*.log*
