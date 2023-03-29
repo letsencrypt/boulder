@@ -246,8 +246,8 @@ func TestReplicationLagRetries(t *testing.T) {
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start)
-	// If lagFactor is turned off i.e. "0", then we should never enter the retry
-	// codepath and as a result the metric should not increment.
+	// With lagFactor disabled, we should never enter the retry codepath, as a
+	// result the metric should not increment.
 	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "fail"}, 0)
 
 	// Now, set the lagFactor to 1. Trying to select a nonexistent registration
