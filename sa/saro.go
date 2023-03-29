@@ -772,7 +772,6 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-
 	obj, err := ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
 	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetAuthorization2 is often called shortly after a new order is created,
