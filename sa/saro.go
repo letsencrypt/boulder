@@ -61,9 +61,10 @@ type SQLStorageAuthorityRO struct {
 	clk clock.Clock
 	log blog.Logger
 
-	// lagFactorCounter is a CounterVec for the number of times a database
-	// connection retry happens in the GetRegistration, GetOrder, and
-	// GetAuthorization2 methods.
+	// lagFactorCounter is a Prometheus counter that tracks the number of times
+	// we've retried a query inside of GetRegistration, GetOrder, and
+	// GetAuthorization2 due to replication lag. It is labeled by method name
+	// and whether the retry succeeded or failed.
 	lagFactorCounter *prometheus.CounterVec
 }
 
