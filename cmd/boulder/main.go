@@ -110,7 +110,7 @@ func init() {
 		}
 		err := readAndValidateConfigFile(*component, *configFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error validating configuration: %s", err)
+			fmt.Fprintf(os.Stderr, "Error validating configuration: %s\n", err)
 			os.Exit(1)
 		}
 	}, nil)
