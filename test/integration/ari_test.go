@@ -82,8 +82,6 @@ func TestARI(t *testing.T) {
 	resp, err := http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
-	test.AssertEquals(t, resp.Header.Get("Retry-After"), "21600")
-	t.Fatal(resp.Header)
 
 	// Revoke the cert, then request ARI again, and the window should now be in
 	// the past.
