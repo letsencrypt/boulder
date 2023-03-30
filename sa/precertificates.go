@@ -35,7 +35,7 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 // GetSerialMetadata returns metadata stored alongside the serial number,
 // such as the RegID whose certificate request created that serial, and when
 // the certificate with that serial will expire.
-func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
+func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
 	if req == nil || req.Serial == "" {
 		return nil, errIncompleteRequest
 	}
@@ -63,6 +63,10 @@ func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb
 		Created:        recordedSerial.Created.UnixNano(),
 		Expires:        recordedSerial.Expires.UnixNano(),
 	}, nil
+}
+
+func (ssa *SQLStorageAuthority) GetSerialMetadata(ctx context.Context, req *sapb.Serial) (*sapb.SerialMetadata, error) {
+	return ssa.SQLStorageAuthorityRO.GetSerialMetadata(ctx, req)
 }
 
 // AddPrecertificate writes a record of a precertificate generation to the DB.

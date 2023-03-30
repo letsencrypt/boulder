@@ -54,6 +54,11 @@ var (
 }`
 )
 
+func TestImplementation(t *testing.T) {
+	test.AssertImplements(t, &SQLStorageAuthority{}, sapb.UnimplementedStorageAuthorityServer{})
+	test.AssertImplements(t, &SQLStorageAuthorityRO{}, sapb.UnimplementedStorageAuthorityReadOnlyServer{})
+}
+
 // initSA constructs a SQLStorageAuthority and a clean up function that should
 // be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
