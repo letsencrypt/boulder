@@ -67,8 +67,10 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 
 // Build creates a gRPC server that uses the provided *tls.Config and exposes
 // all of the services added to the builder. It also exposes a health check
-// service. It returns two functions, start() and stop(), which should be used
-// to start and gracefully stop the server.
+// service. It returns one functions, start(), which should be used to start
+// the server. It spawns a goroutine which will listen for OS signals and
+// gracefully stop the server if one is caught, causing the start() function to
+// exit.
 func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
 	// Add the health service to all servers.
 	healthSrv := health.NewServer()
