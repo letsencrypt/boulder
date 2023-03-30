@@ -82,7 +82,7 @@ func init() {
 	// TODO(#6763): Move this inside of main().
 	cmd.RegisterCommand("--list", func() {
 		for _, c := range cmd.AvailableCommands() {
-			if c != "boulder" && c != "--list" && c != "validate" {
+			if c != "boulder" && c != "--list" {
 				fmt.Println(c)
 			}
 		}
