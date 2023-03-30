@@ -254,11 +254,10 @@ func main() {
 	rai.OCSP = ocspc
 	rai.SA = sac
 
-	start, stop, err := bgrpc.NewServer(c.RA.GRPC).Add(
+	start, err := bgrpc.NewServer(c.RA.GRPC).Add(
 		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 

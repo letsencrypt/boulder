@@ -123,11 +123,10 @@ func main() {
 	csi, err := storer.New(issuers, s3client, c.CRLStorer.S3Bucket, scope, logger, clk)
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
-	start, stop, err := bgrpc.NewServer(c.CRLStorer.GRPC).Add(
+	start, err := bgrpc.NewServer(c.CRLStorer.GRPC).Add(
 		&cspb.CRLStorer_ServiceDesc, csi).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup CRLStorer gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "CRLStorer gRPC service failed")
 }
 
