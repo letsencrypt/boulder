@@ -87,7 +87,7 @@ func NewSQLStorageAuthority(
 	stats prometheus.Registerer,
 ) (*SQLStorageAuthority, error) {
 	ssaro, err := NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, parallelismPerRPC, lagFactor, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, stats, parallelismPerRPC, lagFactor, clk, logger)
 	if err != nil {
 		return nil, err
 	}

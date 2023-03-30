@@ -36,6 +36,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -53,8 +54,8 @@ var (
 }`
 )
 
-// initSA constructs a SQLStorageAuthority and a clean up function
-// that should be defer'ed to the end of the test.
+// initSA constructs a SQLStorageAuthority and a clean up function that should
+// be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	t.Helper()
 	features.Reset()
@@ -72,7 +73,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, 0, fc, log)
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 1, 0, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -240,10 +241,14 @@ func TestReplicationLagRetries(t *testing.T) {
 	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "selecting extant registration")
 	test.AssertEquals(t, clk.Now(), start)
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start)
+	// With lagFactor disabled, we should never enter the retry codepath, as a
+	// result the metric should not increment.
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	// Now, set the lagFactor to 1. Trying to select a nonexistent registration
 	// should cause the clock to advance when GetRegistration sleeps and retries.
@@ -253,10 +258,15 @@ func TestReplicationLagRetries(t *testing.T) {
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "selecting extant registration")
 	test.AssertEquals(t, clk.Now(), start)
+	// lagFactor is enabled, but the registration exists.
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start.Add(1))
+	// With lagFactor enabled, we should enter the retry codepath and as a result
+	// the metric should increment.
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 1)
 }
 
 func TestAddCertificate(t *testing.T) {
