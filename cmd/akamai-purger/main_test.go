@@ -12,7 +12,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestImplementationCRL(t *testing.T) {
+func TestImplementation(t *testing.T) {
 	test.AssertImplements(t, &akamaiPurger{}, akamaipb.UnimplementedAkamaiPurgerServer{})
 }
 

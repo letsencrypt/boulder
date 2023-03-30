@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func TestImplementationCRL(t *testing.T) {
+func TestImplementation(t *testing.T) {
 	test.AssertImplements(t, &Server{}, noncepb.UnimplementedNonceServiceServer{})
 }
 

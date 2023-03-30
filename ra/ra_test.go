@@ -63,7 +63,7 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
-func TestImplementationCRL(t *testing.T) {
+func TestImplementation(t *testing.T) {
 	test.AssertImplements(t, &RegistrationAuthorityImpl{}, rapb.UnimplementedRegistrationAuthorityServer{})
 }
 
