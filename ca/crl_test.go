@@ -14,7 +14,7 @@ import (
 )
 
 func TestImplementationCRL(t *testing.T) {
-	test.AssertImplements(t, &crlImpl{}, capb.UnimplementedCRLGeneratorServer{})
+	test.AssertImplementsGRPCServer(t, &crlImpl{}, capb.UnimplementedCRLGeneratorServer{})
 }
 
 type mockGenerateCRLBidiStream struct {

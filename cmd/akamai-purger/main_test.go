@@ -13,7 +13,7 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &akamaiPurger{}, akamaipb.UnimplementedAkamaiPurgerServer{})
+	test.AssertImplementsGRPCServer(t, &akamaiPurger{}, akamaipb.UnimplementedAkamaiPurgerServer{})
 }
 
 func TestThroughput_validate(t *testing.T) {

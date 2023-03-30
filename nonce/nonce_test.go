@@ -13,7 +13,7 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &Server{}, noncepb.UnimplementedNonceServiceServer{})
+	test.AssertImplementsGRPCServer(t, &Server{}, noncepb.UnimplementedNonceServiceServer{})
 }
 
 func TestValidNonce(t *testing.T) {

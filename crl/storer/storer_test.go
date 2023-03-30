@@ -26,7 +26,7 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &crlStorer{}, cspb.UnimplementedCRLStorerServer{})
+	test.AssertImplementsGRPCServer(t, &crlStorer{}, cspb.UnimplementedCRLStorerServer{})
 }
 
 type fakeUploadCRLServerStream struct {

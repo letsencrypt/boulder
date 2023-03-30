@@ -34,7 +34,7 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &Impl{}, pubpb.UnimplementedPublisherServer{})
+	test.AssertImplementsGRPCServer(t, &Impl{}, pubpb.UnimplementedPublisherServer{})
 }
 
 var log = blog.UseMock()

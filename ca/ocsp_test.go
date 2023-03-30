@@ -16,7 +16,7 @@ import (
 )
 
 func TestImplementationOCSP(t *testing.T) {
-	test.AssertImplements(t, &ocspImpl{}, capb.UnimplementedOCSPGeneratorServer{})
+	test.AssertImplementsGRPCServer(t, &ocspImpl{}, capb.UnimplementedOCSPGeneratorServer{})
 }
 
 func serial(t *testing.T) []byte {

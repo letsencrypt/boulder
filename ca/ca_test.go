@@ -43,7 +43,7 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &certificateAuthorityImpl{}, capb.UnimplementedCertificateAuthorityServer{})
+	test.AssertImplementsGRPCServer(t, &certificateAuthorityImpl{}, capb.UnimplementedCertificateAuthorityServer{})
 }
 
 var (

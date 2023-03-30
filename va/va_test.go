@@ -34,8 +34,8 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &ValidationAuthorityImpl{}, vapb.UnimplementedVAServer{})
-	test.AssertImplements(t, &ValidationAuthorityImpl{}, vapb.UnimplementedCAAServer{})
+	test.AssertImplementsGRPCServer(t, &ValidationAuthorityImpl{}, vapb.UnimplementedVAServer{})
+	test.AssertImplementsGRPCServer(t, &ValidationAuthorityImpl{}, vapb.UnimplementedCAAServer{})
 }
 
 var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"

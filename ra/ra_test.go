@@ -64,7 +64,7 @@ import (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &RegistrationAuthorityImpl{}, rapb.UnimplementedRegistrationAuthorityServer{})
+	test.AssertImplementsGRPCServer(t, &RegistrationAuthorityImpl{}, rapb.UnimplementedRegistrationAuthorityServer{})
 }
 
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
