@@ -2,6 +2,7 @@ package ra
 
 import (
 	"context"
+	"crypto"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -2044,10 +2045,33 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
-	// TODO(#5979): Check this error when it can't simply be due to a full queue.
+	// Don't propagate purger errors to the client.
 	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
+}
+
+// addToBlockedKeys initiates a GRPC call to have the Base64-encoded SHA256
+// digest of a provided public key added to the blockedKeys table.
+func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key crypto.PublicKey, src string, comment string) error {
+	var digest core.Sha256Digest
+	digest, err := core.KeyDigest(key)
+	if err != nil {
+		return err
+	}
+
+	// Add the public key to the blocked keys list.
+	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
+		KeyHash: digest[:],
+		Added:   ra.clk.Now().UnixNano(),
+		Source:  src,
+		Comment: comment,
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // RevokeCertByKey revokes the certificate in question. It always uses
@@ -2087,9 +2111,9 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	}()
 
 	// We revoke the cert before adding it to the blocked keys list, to avoid a
-	// race between this and the bad-key-revoker. But we don't check the error on
-	// from this operation until after we add to the blocked keys list, since that
-	// add needs to happen no matter what.
+	// race between this and the bad-key-revoker. But we don't check the error
+	// from this operation until after we add the key to the blocked keys list,
+	// since that addition needs to happen no matter what.
 	revokeErr := ra.revokeCertificate(
 		ctx,
 		cert.SerialNumber,
@@ -2097,28 +2121,26 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		revocation.Reason(ocsp.KeyCompromise),
 	)
 
-	// Now add the public key to the blocked keys list, and report the error if
-	// there is one. It's okay to error out here because failing to add the key
-	// to the blocked keys list is a worse failure than failing to revoke in the
-	// first place, because it means that bad-key-revoker won't revoke the cert
-	// anyway.
-	var digest core.Sha256Digest
-	digest, err = core.KeyDigest(cert.PublicKey)
-	if err != nil {
-		return nil, err
-	}
-	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
-		KeyHash: digest[:],
-		Added:   ra.clk.Now().UnixNano(),
-		Source:  "API",
-	})
+	// Failing to add the key to the blocked keys list is a worse failure than
+	// failing to revoke in the first place, because it means that
+	// bad-key-revoker won't revoke the cert anyway.
+	err = ra.addToBlockedKeys(ctx, cert.PublicKey, "API", "")
 	if err != nil {
 		return nil, err
 	}
 
-	// Finally check the error from revocation itself. If it was an AlreadyRevoked
-	// error, try to re-revoke the cert, in case it is revoked for a reason other
-	// than keyCompromise.
+	// Perform an Akamai cache purge to handle occurrences of a client
+	// previously successfully revoking a certificate, but their cache purge had
+	// unexpectedly failed. Clients can re-attempt revocation and purge the
+	// Akamai cache.
+	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
+		// Don't propagate purger errors to the client.
+		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+	}
+
+	// Finally check the error from revocation itself. If it was an
+	// AlreadyRevoked error, try to re-revoke the cert, in case it is revoked
+	// for a reason other than keyCompromise.
 	err = revokeErr
 	if err != nil {
 		// Error out if the error was anything other than AlreadyRevoked. Otherwise
@@ -2132,7 +2154,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		}
 	}
 
-	// TODO(#5979): Check this error when it can't simply be due to a full queue.
+	// Don't propagate purger errors to the client.
 	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 
 	return &emptypb.Empty{}, nil
@@ -2211,6 +2233,17 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 
 	err = ra.revokeCertificate(ctx, serialInt, issuerID, revocation.Reason(req.Code))
+	// Perform an Akamai cache purge to handle occurrences of a client
+	// successfully revoking a certificate, but the initial cache purge failing.
+	if errors.Is(err, berrors.AlreadyRevoked) {
+		if cert != nil {
+			err = ra.purgeOCSPCache(ctx, cert, issuerID)
+			if err != nil {
+				err = fmt.Errorf("OCSP cache purge for already revoked serial %v failed: %w", serialInt, err)
+				return nil, err
+			}
+		}
+	}
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
 			err = ra.updateRevocationForKeyCompromise(ctx, serialInt, issuerID)
@@ -2225,17 +2258,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		if cert == nil {
 			return nil, errors.New("revoking for key compromise requires providing the certificate's DER")
 		}
-		var digest core.Sha256Digest
-		digest, err = core.KeyDigest(cert.PublicKey)
-		if err != nil {
-			return nil, err
-		}
-		_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
-			KeyHash: digest[:],
-			Added:   ra.clk.Now().UnixNano(),
-			Source:  "admin-revoker",
-			Comment: fmt.Sprintf("revoked by %s", req.AdminName),
-		})
+		err = ra.addToBlockedKeys(ctx, cert.PublicKey, "admin-revoker", fmt.Sprintf("revoked by %s", req.AdminName))
 		if err != nil {
 			return nil, err
 		}
@@ -2244,6 +2267,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	if cert != nil {
 		err = ra.purgeOCSPCache(ctx, cert, issuerID)
 		if err != nil {
+			err = fmt.Errorf("OCSP cache purge for serial %v failed: %w", serialInt, err)
 			return nil, err
 		}
 	}
