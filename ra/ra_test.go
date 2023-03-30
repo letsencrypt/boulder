@@ -63,6 +63,10 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
+func TestImplementationCRL(t *testing.T) {
+	test.AssertImplements(t, &RegistrationAuthorityImpl{}, rapb.UnimplementedRegistrationAuthorityServer{})
+}
+
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
 	t.Helper()
 

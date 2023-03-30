@@ -25,6 +25,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestImplementation(t *testing.T) {
+	test.AssertImplements(t, &crlStorer{}, cspb.UnimplementedCRLStorerServer{})
+}
+
 type fakeUploadCRLServerStream struct {
 	grpc.ServerStream
 	input <-chan *cspb.UploadCRLRequest
