@@ -282,11 +282,11 @@ func AssertImplements(t *testing.T, impl any, unimpl any) {
 		if ok {
 			// If the lookup worked, then we know this is a method which we were
 			// supposed to implement, but didn't. Oops.
-			t.Fatalf("%s does not implement method %s", implType.Name(), method.Name)
+			t.Errorf("%s does not implement method %s", implType.Name(), method.Name)
 		} else {
 			// If the lookup failed, then we have accidentally implemented some other
 			// method with a non-pointer receiver. We probably didn't mean to do that.
-			t.Fatalf("%s.%s has non-pointer receiver", implType.Name(), method.Name)
+			t.Errorf("%s.%s has non-pointer receiver", implType.Name(), method.Name)
 		}
 	}
 }
