@@ -39,6 +39,7 @@ services:
       - 4003:4003 # OCSP
     depends_on:
       - bmysql
+      - bproxysql
       - bredis_1
       - bredis_2
       - bconsul
@@ -61,6 +62,22 @@ services:
     command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
     logging:
       driver: none
+  
+  bproxysql:
+    image: proxysql/proxysql:2.4.4
+    # The --initial flag force resets the ProxySQL database on startup. By
+    # default, ProxySQL ignores new configuration if the database already
+    # exists. Without this flag, new configuration wouldn't be applied until you
+    # ran `docker compose down`.
+    entrypoint: proxysql -f --idle-threads -c /test/proxysql/proxysql.cnf --initial
+    volumes:
+      - ./test/:/test/:cached
+    depends_on:
+      - bmysql
+    networks:
+      bluenet:
+        aliases:
+          - boulder-proxysql
 
   bredis_1:
     image: redis:6.2.7

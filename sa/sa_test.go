@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
@@ -36,6 +37,7 @@ import (
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -53,8 +55,13 @@ var (
 }`
 )
 
-// initSA constructs a SQLStorageAuthority and a clean up function
-// that should be defer'ed to the end of the test.
+func TestImplementation(t *testing.T) {
+	test.AssertImplements(t, &SQLStorageAuthority{}, sapb.UnimplementedStorageAuthorityServer{})
+	test.AssertImplements(t, &SQLStorageAuthorityRO{}, sapb.UnimplementedStorageAuthorityReadOnlyServer{})
+}
+
+// initSA constructs a SQLStorageAuthority and a clean up function that should
+// be defer'ed to the end of the test.
 func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	t.Helper()
 	features.Reset()
@@ -72,7 +79,7 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	fc := clock.NewFake()
 	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
 
-	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, 1, 0, fc, log)
+	saro, err := NewSQLStorageAuthorityRO(dbMap, dbIncidentsMap, metrics.NoopRegisterer, 1, 0, fc, log)
 	if err != nil {
 		t.Fatalf("Failed to create SA: %s", err)
 	}
@@ -240,10 +247,14 @@ func TestReplicationLagRetries(t *testing.T) {
 	_, err := sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "selecting extant registration")
 	test.AssertEquals(t, clk.Now(), start)
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start)
+	// With lagFactor disabled, we should never enter the retry codepath, as a
+	// result the metric should not increment.
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	// Now, set the lagFactor to 1. Trying to select a nonexistent registration
 	// should cause the clock to advance when GetRegistration sleeps and retries.
@@ -253,10 +264,241 @@ func TestReplicationLagRetries(t *testing.T) {
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id})
 	test.AssertNotError(t, err, "selecting extant registration")
 	test.AssertEquals(t, clk.Now(), start)
+	// lagFactor is enabled, but the registration exists.
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 0)
 
 	_, err = sa.GetRegistration(ctx, &sapb.RegistrationID{Id: reg.Id + 1})
 	test.AssertError(t, err, "selecting nonexistent registration")
 	test.AssertEquals(t, clk.Now(), start.Add(1))
+	// With lagFactor enabled, we should enter the retry codepath and as a result
+	// the metric should increment.
+	test.AssertMetricWithLabelsEquals(t, sa.lagFactorCounter, prometheus.Labels{"method": "GetRegistration", "result": "notfound"}, 1)
+}
+
+// findIssuedName is a small helper test function to directly query the
+// issuedNames table for a given name to find a serial (or return an err).
+func findIssuedName(dbMap db.OneSelector, name string) (string, error) {
+	var issuedNamesSerial string
+	err := dbMap.SelectOne(
+		&issuedNamesSerial,
+		`SELECT serial FROM issuedNames
+		WHERE reversedName = ?
+		ORDER BY notBefore DESC
+		LIMIT 1`,
+		ReverseName(name))
+	return issuedNamesSerial, err
+}
+
+func TestAddSerial(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+	serial, testCert := test.ThrowAwayCert(t, 1)
+
+	_, err := sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		RegID:   reg.Id,
+		Created: testCert.NotBefore.UnixNano(),
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without serial should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		Created: testCert.NotBefore.UnixNano(),
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without regid should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without created should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: testCert.NotBefore.UnixNano(),
+	})
+	test.AssertError(t, err, "adding without expires should fail")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: testCert.NotBefore.UnixNano(),
+		Expires: testCert.NotAfter.UnixNano(),
+	})
+	test.AssertNotError(t, err, "adding serial should have succeeded")
+}
+
+func TestGetSerialMetadata(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+	serial, _ := test.ThrowAwayCert(t, 1)
+
+	_, err := sa.GetSerialMetadata(context.Background(), &sapb.Serial{Serial: serial})
+	test.AssertError(t, err, "getting nonexistent serial should have failed")
+
+	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: clk.Now().UnixNano(),
+		Expires: clk.Now().Add(time.Hour).UnixNano(),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
+
+	m, err := sa.GetSerialMetadata(context.Background(), &sapb.Serial{Serial: serial})
+
+	test.AssertNotError(t, err, "getting serial should have succeeded")
+	test.AssertEquals(t, m.Serial, serial)
+	test.AssertEquals(t, m.RegistrationID, reg.Id)
+	test.AssertEquals(t, time.Unix(0, m.Created).UTC(), clk.Now())
+	test.AssertEquals(t, time.Unix(0, m.Expires).UTC(), clk.Now().Add(time.Hour))
+}
+
+func TestAddPrecertificate(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Create a throw-away self signed certificate with a random name and
+	// serial number
+	serial, testCert := test.ThrowAwayCert(t, 1)
+
+	// Add the cert as a precertificate
+	ocspResp := []byte{0, 0, 1}
+	regID := reg.Id
+	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
+		RegID:        regID,
+		Ocsp:         ocspResp,
+		Issued:       issuedTime.UnixNano(),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test cert")
+
+	// It should have the expected certificate status
+	certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
+	test.AssertNotError(t, err, "Couldn't get status for test cert")
+	test.Assert(
+		t,
+		bytes.Equal(certStatus.OcspResponse, ocspResp),
+		fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OcspResponse, ocspResp),
+	)
+	test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
+
+	// It should show up in the issued names table
+	issuedNamesSerial, err := findIssuedName(sa.dbMap, testCert.DNSNames[0])
+	test.AssertNotError(t, err, "expected no err querying issuedNames for precert")
+	test.AssertEquals(t, issuedNamesSerial, serial)
+
+	// We should also be able to call AddCertificate with the same cert
+	// without it being an error. The duplicate err on inserting to
+	// issuedNames should be ignored.
+	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  regID,
+		Issued: issuedTime.UnixNano(),
+	})
+	test.AssertNotError(t, err, "unexpected err adding final cert after precert")
+}
+
+func TestAddPrecertificateNoOCSP(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	regID := reg.Id
+	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
+		RegID:        regID,
+		Issued:       issuedTime.UnixNano(),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test cert")
+}
+
+func TestAddPreCertificateDuplicate(t *testing.T) {
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
+		Issued:       clk.Now().UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add test certificate")
+
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
+		Issued:       clk.Now().UnixNano(),
+		RegID:        reg.Id,
+		IssuerNameID: 1,
+	})
+	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
+}
+
+func TestAddPrecertificateIncomplete(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	reg := createWorkingRegistration(t, sa)
+
+	// Create a throw-away self signed certificate with a random name and
+	// serial number
+	_, testCert := test.ThrowAwayCert(t, 1)
+
+	// Add the cert as a precertificate
+	ocspResp := []byte{0, 0, 1}
+	regID := reg.Id
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    testCert.Raw,
+		RegID:  regID,
+		Ocsp:   ocspResp,
+		Issued: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
+		// Leaving out IssuerNameID
+	})
+
+	test.AssertError(t, err, "Adding precert with no issuer did not fail")
+}
+
+func TestAddPrecertificateKeyHash(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	reg := createWorkingRegistration(t, sa)
+
+	serial, testCert := test.ThrowAwayCert(t, 1)
+	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          testCert.Raw,
+		RegID:        reg.Id,
+		Ocsp:         []byte{1, 2, 3},
+		Issued:       testCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "failed to add precert")
+
+	var keyHashes []keyHashModel
+	_, err = sa.dbMap.Select(&keyHashes, "SELECT * FROM keyHashToSerial")
+	test.AssertNotError(t, err, "failed to retrieve rows from keyHashToSerial")
+	test.AssertEquals(t, len(keyHashes), 1)
+	test.AssertEquals(t, keyHashes[0].CertSerial, serial)
+	test.AssertEquals(t, keyHashes[0].CertNotAfter, testCert.NotAfter)
+	spkiHash := sha256.Sum256(testCert.RawSubjectPublicKeyInfo)
+	test.Assert(t, bytes.Equal(keyHashes[0].KeyHash, spkiHash[:]), "spki hash mismatch")
 }
 
 func TestAddCertificate(t *testing.T) {

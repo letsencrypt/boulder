@@ -12,7 +12,7 @@ that simply fetch a resource (certificate, order, authorization, or challenge).
 
 ## [Section 6.6](https://tools.ietf.org/html/rfc8555#section-6.6)
 
-Boulder does not provide a `Retry-After` header when a user hits a rate-limit, nor does it provide `Link` headers to further documentation on rate-limiting.
+For all rate-limits, Boulder includes a `Link` header to additional documentation on rate-limiting. Only rate-limits on `duplicate certificates` and `certificates per registered domain` are accompanied by a `Retry-After` header.
 
 ## [Section 6.7](https://tools.ietf.org/html/rfc8555#section-6.7)
 

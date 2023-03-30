@@ -3950,6 +3950,19 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
 
+	// Duplicate administrative revocation of a serial for an unspecified reason
+	// should fail and not block the key
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Serial:    core.SerialToString(cert.SerialNumber),
+		Code:      ocsp.Unspecified,
+		AdminName: "root",
+	})
+	test.AssertError(t, err, "Should be revoked")
+	test.AssertContains(t, err.Error(), "already revoked")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
+
 	// Revoking a cert for key compromise should work and block the key.
 	mockSA.revoked = make(map[string]int64)
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{

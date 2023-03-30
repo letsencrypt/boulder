@@ -135,4 +135,7 @@ func TestARI(t *testing.T) {
 	resp, err = http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, resp.StatusCode, http.StatusNotFound)
+
+	// TODO(#6781): Test the ARI POST path as soon as it's supported in the acme
+	// client we use here.
 }

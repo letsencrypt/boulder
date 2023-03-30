@@ -82,7 +82,7 @@ func init() {
 	// TODO(#6763): Move this inside of main().
 	cmd.RegisterCommand("--list", func() {
 		for _, c := range cmd.AvailableCommands() {
-			if c != "boulder" && c != "--list" && c != "validate" {
+			if c != "boulder" && c != "--list" {
 				fmt.Println(c)
 			}
 		}
@@ -110,7 +110,7 @@ func init() {
 		}
 		err := readAndValidateConfigFile(*component, *configFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error validating configuration: %s", err)
+			fmt.Fprintf(os.Stderr, "Error validating configuration: %s\n", err)
 			os.Exit(1)
 		}
 	}, nil)

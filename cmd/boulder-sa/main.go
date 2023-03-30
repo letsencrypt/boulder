@@ -87,7 +87,7 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	saroi, err := sa.NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, parallel, c.SA.LagFactor.Duration, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.Duration, clk, logger)
 	cmd.FailOnError(err, "Failed to create read-only SA impl")
 
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
