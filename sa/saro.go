@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	jose "gopkg.in/go-jose/go-jose.v2"
@@ -59,6 +60,13 @@ type SQLStorageAuthorityRO struct {
 
 	clk clock.Clock
 	log blog.Logger
+
+	// lagFactorCounter is a Prometheus counter that tracks the number of times
+	// we've retried a query inside of GetRegistration, GetOrder, and
+	// GetAuthorization2 due to replication lag. It is labeled by method name
+	// and whether data from the retry attempt was found, notfound, or some
+	// other error was encountered.
+	lagFactorCounter *prometheus.CounterVec
 }
 
 // NewSQLStorageAuthorityRO provides persistence using a SQL backend for
@@ -66,11 +74,18 @@ type SQLStorageAuthorityRO struct {
 func NewSQLStorageAuthorityRO(
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
+	stats prometheus.Registerer,
 	parallelismPerRPC int,
 	lagFactor time.Duration,
 	clk clock.Clock,
 	logger blog.Logger,
 ) (*SQLStorageAuthorityRO, error) {
+	lagFactorCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "sa_lag_factor",
+		Help: "A counter of SA lagFactor checks labelled by method and pass/fail",
+	}, []string{"method", "result"})
+	stats.MustRegister(lagFactorCounter)
+
 	ssaro := &SQLStorageAuthorityRO{
 		dbReadOnlyMap:     dbReadOnlyMap,
 		dbIncidentsMap:    dbIncidentsMap,
@@ -78,6 +93,7 @@ func NewSQLStorageAuthorityRO(
 		lagFactor:         lagFactor,
 		clk:               clk,
 		log:               logger,
+		lagFactorCounter:  lagFactorCounter,
 	}
 
 	ssaro.countCertificatesByName = ssaro.countCertificates
@@ -99,6 +115,15 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
+		if err != nil {
+			if db.IsNoRows(err) {
+				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "notfound").Inc()
+			} else {
+				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "other").Inc()
+			}
+		} else {
+			ssa.lagFactorCounter.WithLabelValues("GetRegistration", "found").Inc()
+		}
 	}
 	if err != nil {
 		if db.IsNoRows(err) {
@@ -648,6 +673,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 
 		return order, nil
 	}
+
 	output, err := db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
 	if (db.IsNoRows(err) || errors.Is(err, berrors.NotFound)) && ssa.lagFactor != 0 {
 		// GetOrder is often called shortly after a new order is created, sometimes
@@ -655,6 +681,15 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		output, err = db.WithTransaction(ctx, ssa.dbReadOnlyMap, txn)
+		if err != nil {
+			if db.IsNoRows(err) || errors.Is(err, berrors.NotFound) {
+				ssa.lagFactorCounter.WithLabelValues("GetOrder", "notfound").Inc()
+			} else {
+				ssa.lagFactorCounter.WithLabelValues("GetOrder", "other").Inc()
+			}
+		} else {
+			ssa.lagFactorCounter.WithLabelValues("GetOrder", "found").Inc()
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -751,6 +786,15 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
 		obj, err = ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
+		if err != nil {
+			if db.IsNoRows(err) {
+				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()
+			} else {
+				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "other").Inc()
+			}
+		} else {
+			ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "found").Inc()
+		}
 	}
 	if err != nil {
 		return nil, err
