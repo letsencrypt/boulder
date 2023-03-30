@@ -159,6 +159,114 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 	return &emptypb.Empty{}, nil
 }
 
+// AddSerial writes a record of a serial number generation to the DB.
+func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error) {
+	if req.Serial == "" || req.RegID == 0 || req.Created == 0 || req.Expires == 0 {
+		return nil, errIncompleteRequest
+	}
+	err := ssa.dbMap.WithContext(ctx).Insert(&recordedSerialModel{
+		Serial:         req.Serial,
+		RegistrationID: req.RegID,
+		Created:        time.Unix(0, req.Created),
+		Expires:        time.Unix(0, req.Expires),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// AddPrecertificate writes a record of a precertificate generation to the DB.
+// Note: this is not idempotent: it does not protect against inserting the same
+// certificate multiple times. Calling code needs to first insert the cert's
+// serial into the Serials table to ensure uniqueness.
+func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 || req.IssuerNameID == 0 {
+		return nil, errIncompleteRequest
+	}
+	parsed, err := x509.ParseCertificate(req.Der)
+	if err != nil {
+		return nil, err
+	}
+	serialHex := core.SerialToString(parsed.SerialNumber)
+
+	preCertModel := &precertificateModel{
+		Serial:         serialHex,
+		RegistrationID: req.RegID,
+		DER:            req.Der,
+		Issued:         time.Unix(0, req.Issued),
+		Expires:        parsed.NotAfter,
+	}
+
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		// Select to see if precert exists
+		var row struct {
+			Count int64
+		}
+		err := txWithCtx.SelectOne(&row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=?", serialHex)
+		if err != nil {
+			return nil, err
+		}
+		if row.Count > 0 {
+			return nil, berrors.DuplicateError("cannot add a duplicate cert")
+		}
+
+		err = txWithCtx.Insert(preCertModel)
+		if err != nil {
+			return nil, err
+		}
+
+		cs := &core.CertificateStatus{
+			Serial:                serialHex,
+			Status:                core.OCSPStatusGood,
+			OCSPLastUpdated:       ssa.clk.Now(),
+			RevokedDate:           time.Time{},
+			RevokedReason:         0,
+			LastExpirationNagSent: time.Time{},
+			NotAfter:              parsed.NotAfter,
+			IsExpired:             false,
+			IssuerNameID:          req.IssuerNameID,
+		}
+		if !features.Enabled(features.ROCSPStage6) {
+			cs.OCSPResponse = req.Ocsp
+		}
+		err = ssa.dbMap.WithContext(ctx).Insert(cs)
+		if err != nil {
+			return nil, err
+		}
+
+		// NOTE(@cpu): When we collect up names to check if an FQDN set exists (e.g.
+		// that it is a renewal) we use just the DNSNames from the certificate and
+		// ignore the Subject Common Name (if any). This is a safe assumption because
+		// if a certificate we issued were to have a Subj. CN not present as a SAN it
+		// would be a misissuance and miscalculating whether the cert is a renewal or
+		// not for the purpose of rate limiting is the least of our troubles.
+		isRenewal, err := ssa.checkFQDNSetExists(
+			txWithCtx.SelectOne,
+			parsed.DNSNames)
+		if err != nil {
+			return nil, err
+		}
+
+		err = addIssuedNames(txWithCtx, parsed, isRenewal)
+		if err != nil {
+			return nil, err
+		}
+
+		err = addKeyHash(txWithCtx, parsed)
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, nil
+	})
+	if overallError != nil {
+		return nil, overallError
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 // AddCertificate stores an issued certificate, returning an error if it is a
 // duplicate or if any other failure occurs.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
