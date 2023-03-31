@@ -194,6 +194,52 @@ func adjustMySQLConfig(conf *mysql.Config) {
 		}
 	}
 
+	// TODO(Phil)
+	checkQuoting := func(map[string]string) {
+
+		mariaDBStringTypes := [
+			"bind_address",
+			"character_set_client",
+			"character_set_connection",
+			"character_set_database",
+			"character_set_filesystem",
+			"character_set_results",
+			"character_set_server",
+			"character_set_system",
+			"collation_connection",
+			"collation_database",
+			"collation_server",
+			"debug_sync",
+			"enforce_storage_engine",
+			"external_user",
+			"ft_boolean_syntax",
+			"hostname",
+			"ignore_db_dirs",
+			"init_connect",
+			"lc_time_names",
+			"license",
+			"log",
+			"old_mode",
+			"optimizer_switch",
+			"proxy_user",
+			"session_track_system_variables",
+			"shared_memory_base_name",
+			"sql_mode",
+			"system_time_zone",
+			"time_zone",
+			"version",
+			"version_comment",
+			"version_compile_machine",
+			"version_compile_os",
+			"version_malloc_library",
+			"version_source_revision",
+		]
+
+		mariaDBEnumTypes := [
+			""
+		]
+	}
+
 	setDefault("sql_mode", "'STRICT_ALL_TABLES'")
 
 	// If a read timeout is set, we set max_statement_time to 95% of that, and
