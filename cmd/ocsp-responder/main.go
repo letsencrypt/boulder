@@ -54,25 +54,6 @@ type Config struct {
 		// upstream's timeout when making request to ocsp-responder.
 		Timeout config.Duration `validate:"-"`
 
-		// The worst-case freshness of a response during normal operations.
-		//
-		// This controls behavior when both Redis and MariaDB backends are
-		// configured. If a MariaDB response is older than this, ocsp-responder
-		// will try to serve a fresher response from Redis, waiting for a Redis
-		// response if necessary.
-		//
-		// This is related to OCSPMinTimeToExpiry in ocsp-updater's config,
-		// and both are related to the mandated refresh times in the BRs and
-		// root programs (minus a safety margin).
-		//
-		// This should be configured slightly higher than ocsp-updater's
-		// OCSPMinTimeToExpiry, to account for the time taken to sign
-		// responses once they pass that threshold. For instance, a good value
-		// would be: OCSPMinTimeToExpiry + OldOCSPWindow.
-		//
-		// This has a default value of 61h.
-		ExpectedFreshness config.Duration `validate:"-"`
-
 		// How often a response should be signed when using Redis/live-signing
 		// path. This has a default value of 60h.
 		LiveSigningPeriod config.Duration `validate:"-"`
@@ -123,6 +104,11 @@ type Config struct {
 		// LogSampleRate sets how frequently error logs should be emitted. This
 		// avoids flooding the logs during outages. 1 out of N log lines will be emitted.
 		LogSampleRate int `validate:"min=0"`
+
+		// Deprecated: ExpectedFreshness is no longer used now that we do not read
+		// OCSP Response bytes from the database.
+		// TODO(#6775): Remove this.
+		ExpectedFreshness config.Duration `validate:"-"`
 	}
 
 	Syslog cmd.SyslogConfig

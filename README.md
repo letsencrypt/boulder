@@ -30,8 +30,8 @@ Boulder is divided into the following main components:
 4. Certificate Authority
 5. Storage Authority
 6. Publisher
-7. OCSP Updater
-8. OCSP Responder
+7. OCSP Responder
+8. CRL Updater
 
 This component model lets us separate the function of the CA by security
 context. The Web Front End, Validation Authority, OCSP Responder and
@@ -43,18 +43,14 @@ Registration Authority. All components talk to the SA for storage, so most
 lines indicating SA RPCs are not shown here.
 
 ```text
-                             +--------- OCSP Updater
-                             |               |
-                             v               |
-                            CA -> Publisher  |
-                             ^               |
-                             |               v
+                            CA ---------> Publisher
+                             ^
+                             |
        Subscriber -> WFE --> RA --> SA --> MariaDB
                              |               ^
 Subscriber server <- VA <----+               |
                                              |
-          Browser ------------------>  OCSP Responder
-
+          Browser -------------------> OCSP Responder
 ```
 
 Internally, the logic of the system is based around five types of objects:

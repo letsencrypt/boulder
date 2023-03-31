@@ -10,8 +10,6 @@ CREATE USER IF NOT EXISTS 'revoker'@'localhost';
 CREATE USER IF NOT EXISTS 'importer'@'localhost';
 CREATE USER IF NOT EXISTS 'mailer'@'localhost';
 CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
-CREATE USER IF NOT EXISTS 'ocsp_update'@'localhost';
-CREATE USER IF NOT EXISTS 'ocsp_update_ro'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'badkeyrevoker'@'localhost';
 CREATE USER IF NOT EXISTS 'proxysql'@'localhost';
@@ -55,15 +53,6 @@ GRANT SELECT ON incidents TO 'sa_ro'@'localhost';
 
 -- OCSP Responder
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
-
--- OCSP Generator Tool (Updater)
-GRANT SELECT ON certificates TO 'ocsp_update'@'localhost';
-GRANT SELECT,UPDATE ON certificateStatus TO 'ocsp_update'@'localhost';
-GRANT SELECT ON precertificates TO 'ocsp_update'@'localhost';
-
-GRANT SELECT ON certificates TO 'ocsp_update_ro'@'localhost';
-GRANT SELECT ON certificateStatus TO 'ocsp_update_ro'@'localhost';
-GRANT SELECT ON precertificates TO 'ocsp_update_ro'@'localhost';
 
 -- Revoker Tool
 GRANT SELECT ON registrations TO 'revoker'@'localhost';

@@ -18,7 +18,6 @@
 				},
 				"ca.OCSPGenerator": {
 					"clientNames": [
-						"ocsp-updater.boulder",
 						"orphan-finder.boulder",
 						"ra.boulder"
 					]
