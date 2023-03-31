@@ -120,7 +120,7 @@ func main() {
 	)
 	cmd.FailOnError(err, "Failed to create updater")
 
-	go cmd.CatchSignals(logger, nil)
+	go cmd.CatchSignals(nil)
 	for {
 		updater.Tick()
 	}

@@ -118,7 +118,7 @@ func main() {
 			"HTTPOneAddrs, TLSALPNOneAddrs or DNSAddrs\n")
 	}
 
-	go cmd.CatchSignals(nil, nil)
+	go cmd.CatchSignals(nil)
 
 	err = s.Run(
 		config.HTTPOneAddrs,

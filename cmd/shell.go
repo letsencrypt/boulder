@@ -409,9 +409,8 @@ func VersionString() string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
-// CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
-// method before exiting
-func CatchSignals(logger blog.Logger, callback func()) {
+// Deprecated: use WaitForSignal instead.
+func CatchSignals(callback func()) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
 	signal.Notify(sigChan, syscall.SIGINT)

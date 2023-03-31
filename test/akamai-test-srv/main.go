@@ -96,5 +96,5 @@ func main() {
 	// because this is test-only code.
 	////nolint:gosec
 	go log.Fatal(http.ListenAndServe(*listenAddr, nil))
-	cmd.CatchSignals(nil, nil)
+	cmd.CatchSignals(nil)
 }

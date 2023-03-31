@@ -199,7 +199,7 @@ func main() {
 		tailers = append(tailers, t)
 	}
 
-	cmd.CatchSignals(logger, func() {
+	cmd.CatchSignals(func() {
 		for _, t := range tailers {
 			// The tail module seems to have a race condition that will generate
 			// errors like this on shutdown:

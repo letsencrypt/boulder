@@ -233,7 +233,7 @@ func main() {
 		}
 	}()
 
-	go cmd.CatchSignals(nil, nil)
+	go cmd.CatchSignals(nil)
 
 	err = srv.serveSMTP(l)
 	if err != nil {

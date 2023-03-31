@@ -915,7 +915,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go cmd.CatchSignals(logger, func() {
+	go cmd.CatchSignals(func() {
 		cancel()
 		select {} // wait for the `findExpiringCertificates` calls below to exit
 	})

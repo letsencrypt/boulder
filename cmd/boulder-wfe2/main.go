@@ -556,7 +556,7 @@ func main() {
 	}
 
 	done := make(chan bool)
-	go cmd.CatchSignals(logger, func() {
+	go cmd.CatchSignals(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
