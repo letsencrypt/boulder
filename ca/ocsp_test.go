@@ -15,6 +15,10 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
+func TestImplementationOCSP(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &ocspImpl{}, capb.UnimplementedOCSPGeneratorServer{})
+}
+
 func serial(t *testing.T) []byte {
 	serial, err := hex.DecodeString("aabbccddeeffaabbccddeeff000102030405")
 	if err != nil {

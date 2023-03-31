@@ -56,8 +56,8 @@ var (
 )
 
 func TestImplementation(t *testing.T) {
-	test.AssertImplements(t, &SQLStorageAuthority{}, sapb.UnimplementedStorageAuthorityServer{})
-	test.AssertImplements(t, &SQLStorageAuthorityRO{}, sapb.UnimplementedStorageAuthorityReadOnlyServer{})
+	test.AssertImplementsGRPCServer(t, &SQLStorageAuthority{}, sapb.UnimplementedStorageAuthorityServer{})
+	test.AssertImplementsGRPCServer(t, &SQLStorageAuthorityRO{}, sapb.UnimplementedStorageAuthorityReadOnlyServer{})
 }
 
 // initSA constructs a SQLStorageAuthority and a clean up function that should
