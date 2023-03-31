@@ -598,16 +598,22 @@ type IssuanceRequest struct {
 	SCTList           []ct.SignedCertificateTimestamp
 }
 
-// Issue generates a certificate from the provided issuance request and
-// signs it. Before signing the certificate with the issuer's private
-// key, it is signed using a throwaway key so that it can be linted using
-// zlint. If the linting fails, an error is returned and the certificate
-// is not signed using the issuer's key.
-func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
+// And IssuanceToken represents an assertion that Issuer.Lint has generated
+// a linting certificate for a given input and run the linter over it with no
+// errors. It can be used to issue a real certificate (once).
+type IssuanceToken struct {
+	template *x509.Certificate
+	pubKey   any
+}
+
+// Lint generates a linting certificate, runs the linter over it, and if successful
+// returns both the linting certificate (which can be stored) and an IssuanceToken
+// (which can be used to issue a real certificate).
+func (i *Issuer) Lint(req *IssuanceRequest) ([]byte, *IssuanceToken, error) {
 	// check request is valid according to the issuance profile
 	err := i.Profile.requestValid(i.Clk, req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// generate template from the issuance profile
@@ -623,7 +629,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	template.AuthorityKeyId = i.Cert.SubjectKeyId
 	skid, err := generateSKID(req.PublicKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	template.SubjectKeyId = skid
 	switch req.PublicKey.(type) {
@@ -638,7 +644,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	} else if req.SCTList != nil {
 		sctListExt, err := generateSCTListExt(req.SCTList)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	}
@@ -649,12 +655,36 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	err = i.Linter.Check(template, req.PublicKey)
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
+		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
-	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, req.PublicKey, i.Signer)
+	return lintCertBytes, &IssuanceToken{template, req.PublicKey}, nil
+}
+
+func (i *Issuer) IssueAfterLint(token *IssuanceToken) ([]byte, error) {
+	if token.template == nil {
+		return nil, errors.New("already issued")
+	}
+	template := token.template
+	token.template = nil
+
+	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, token.pubKey, i.Signer)
+}
+
+// Issue generates a certificate from the provided issuance request and
+// signs it. Before signing the certificate with the issuer's private
+// key, it is signed using a throwaway key so that it can be linted using
+// zlint. If the linting fails, an error is returned and the certificate
+// is not signed using the issuer's key.
+func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
+	_, token, err := i.Lint(req)
+	if err != nil {
+		return nil, err
+	}
+
+	return i.IssueAfterLint(token)
 }
 
 func ContainsMustStaple(extensions []pkix.Extension) bool {
