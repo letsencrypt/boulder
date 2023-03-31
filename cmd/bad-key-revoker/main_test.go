@@ -81,7 +81,7 @@ func TestSelectUncheckedRows(t *testing.T) {
 
 func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, addrs ...string) int64 {
 	t.Helper()
-	jwkHash := make([]byte, 2)
+	jwkHash := make([]byte, 32)
 	_, err := rand.Read(jwkHash)
 	test.AssertNotError(t, err, "failed to read rand")
 	contactStr := "[]"
