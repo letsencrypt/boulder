@@ -535,9 +535,6 @@ func main() {
 		}
 	}()
 
-	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
-	// because that field inherits its value from ReadTimeout.
-	////nolint:gosec
 	tlsSrv := http.Server{
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
