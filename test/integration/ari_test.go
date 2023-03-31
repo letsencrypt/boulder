@@ -16,7 +16,6 @@ import (
 	"math/big"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -36,10 +35,6 @@ type certID struct {
 
 func TestARI(t *testing.T) {
 	t.Parallel()
-	// This test is gated on the ServeRenewalInfo feature flag.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		return
-	}
 
 	// Create an account.
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
@@ -82,6 +77,7 @@ func TestARI(t *testing.T) {
 	resp, err := http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+	test.AssertEquals(t, resp.Header.Get("Retry-After"), "21600")
 
 	// Revoke the cert, then request ARI again, and the window should now be in
 	// the past.

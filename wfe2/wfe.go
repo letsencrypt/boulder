@@ -2293,17 +2293,13 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	serial := core.SerialToString(id.SerialNumber)
 	logEvent.Extra["RequestedSerial"] = serial
 
-	setDefaultRetryAfterHeader := func(response http.ResponseWriter) {
-		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
-	}
-
 	sendRI := func(ri core.RenewalInfo) {
+		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 			return
 		}
-		setDefaultRetryAfterHeader(response)
 	}
 
 	// Check if the serial is part of an ongoing/active incident, in which case
