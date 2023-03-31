@@ -93,12 +93,6 @@ mysql_users =
 		username = "cert_checker";
 	},
 	{
-		username = "ocsp_update";
-	},
-	{
-		username = "ocsp_update_ro";
-	},
-	{
 		username = "test_setup";
 	},
 	{
@@ -126,16 +120,6 @@ mysql_query_rules =
 		rule_id = 11;
 		username = "sa_ro";
 		timeout = 4900;
-	},
-	{
-		rule_id = 14;
-		username = "ocsp_update";
-		timeout = 600000;
-	},
-	{
-		rule_id = 15;
-		username = "ocsp_update_ro";
-		timeout = 60000;
 	},
 	{
 		rule_id = 16;
