@@ -215,7 +215,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Couldn't bind %q for SMTP: %s", *listenSMTP, err)
 	}
-	defer l.Close()
+	go cmd.CatchSignals(func() {
+		cmd.FailOnError(l.Close(), "shutting down listener")
+	})
 
 	srv := mailSrv{
 		closeFirst: *closeFirst,
@@ -232,8 +234,6 @@ func main() {
 			log.Fatalln("Couldn't start HTTP server", err)
 		}
 	}()
-
-	go cmd.CatchSignals(nil)
 
 	err = srv.serveSMTP(l)
 	if err != nil {
