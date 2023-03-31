@@ -421,9 +421,10 @@ func CatchSignals(callback func()) {
 }
 
 // WaitForSignal blocks until a SIGTERM, SIGINT, or SIGHUP is received. It then
-// returns, allowing execution to resume (generally allowing a main() function
+// returns, allowing execution to resume, generally allowing a main() function
 // to return and trigger and deferred cleanup functions. This function is
-// intended to be called directly from the main goroutine.
+// intended to be called directly from the main goroutine, while a gRPC or HTTP
+// server runs in a background goroutine.
 func WaitForSignal() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
