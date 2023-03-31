@@ -12,6 +12,7 @@ CREATE USER IF NOT EXISTS 'mailer'@'localhost';
 CREATE USER IF NOT EXISTS 'cert_checker'@'localhost';
 CREATE USER IF NOT EXISTS 'test_setup'@'localhost';
 CREATE USER IF NOT EXISTS 'badkeyrevoker'@'localhost';
+CREATE USER IF NOT EXISTS 'proxysql'@'localhost';
 
 -- Storage Authority
 GRANT SELECT,INSERT ON certificates TO 'sa'@'localhost';
@@ -76,6 +77,9 @@ GRANT SELECT ON keyHashToSerial TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON certificateStatus TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON precertificates TO 'badkeyrevoker'@'localhost';
 GRANT SELECT ON registrations TO 'badkeyrevoker'@'localhost';
+
+-- ProxySQL --
+GRANT ALL PRIVILEGES ON monitor TO 'proxysql'@'localhost';
 
 -- Test setup and teardown
 GRANT ALL PRIVILEGES ON * to 'test_setup'@'localhost';

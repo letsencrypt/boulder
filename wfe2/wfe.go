@@ -1856,7 +1856,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	updatedAcctPb, err := wfe.ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
-			// It is possible that between checking for the existing key, and preforming the update
+			// It is possible that between checking for the existing key, and performing the update
 			// a parallel update or new account request happened and claimed the key. In this case
 			// just retrieve the account again, and return an error as we would above with a Location
 			// header
@@ -2293,17 +2293,13 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	serial := core.SerialToString(id.SerialNumber)
 	logEvent.Extra["RequestedSerial"] = serial
 
-	setDefaultRetryAfterHeader := func(response http.ResponseWriter) {
-		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
-	}
-
 	sendRI := func(ri core.RenewalInfo) {
+		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 			return
 		}
-		setDefaultRetryAfterHeader(response)
 	}
 
 	// Check if the serial is part of an ongoing/active incident, in which case

@@ -59,7 +59,7 @@ func TestDbSettings(t *testing.T) {
 		ConnMaxLifetime: 100,
 		ConnMaxIdleTime: 100,
 	}
-	_, err := NewDbMap("sa@tcp(boulder-mysql:3306)/boulder_sa_integration", dbSettings)
+	_, err := NewDbMap("sa@tcp(boulder-proxysql:6033)/boulder_sa_integration", dbSettings)
 	if err != nil {
 		t.Errorf("connecting to DB: %s", err)
 	}
@@ -78,8 +78,8 @@ func TestDbSettings(t *testing.T) {
 }
 
 func TestNewDbMap(t *testing.T) {
-	const mysqlConnectURL = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
-	const expected = "policy:password@tcp(boulder-mysql:3306)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=%27STRICT_ALL_TABLES%27"
+	const mysqlConnectURL = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms"
+	const expected = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?clientFoundRows=true&parseTime=true&readTimeout=800ms&writeTimeout=800ms&long_query_time=0.6400000000000001&max_statement_time=0.76&sql_mode=%27STRICT_ALL_TABLES%27"
 	oldSQLOpen := sqlOpen
 	defer func() {
 		sqlOpen = oldSQLOpen

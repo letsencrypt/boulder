@@ -33,6 +33,11 @@ import (
 	"gopkg.in/go-jose/go-jose.v2"
 )
 
+func TestImplementation(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &ValidationAuthorityImpl{}, vapb.UnimplementedVAServer{})
+	test.AssertImplementsGRPCServer(t, &ValidationAuthorityImpl{}, vapb.UnimplementedCAAServer{})
+}
+
 var expectedToken = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0"
 var expectedKeyAuthorization = "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI"
 
