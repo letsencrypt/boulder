@@ -552,20 +552,19 @@ func main() {
 		}()
 	}
 
-	done := make(chan bool)
-	go cmd.CatchSignals(func() {
+	// When main is ready to exit (because it has received a shutdown signal),
+	// gracefully shutdown the servers. Calling these shutdown functions causes
+	// ListenAndServe() to immediately return, cleaning up the server goroutines
+	// as well, then waits for any lingering connection-handing goroutines to
+	// finish and clean themselves up.
+	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
-		_ = srv.Shutdown(ctx)
-		_ = tlsSrv.Shutdown(ctx)
-		done <- true
-	})
+		srv.Shutdown(ctx)
+		tlsSrv.Shutdown(ctx)
+	}()
 
-	// https://godoc.org/net/http#Server.Shutdown:
-	// When Shutdown is called, Serve, ListenAndServe, and ListenAndServeTLS
-	// immediately return ErrServerClosed. Make sure the program doesn't exit and
-	// waits instead for Shutdown to return.
-	<-done
+	cmd.WaitForSignal()
 }
 
 func init() {
