@@ -423,3 +423,14 @@ func CatchSignals(callback func()) {
 
 	os.Exit(0)
 }
+
+// WaitForSignal blocks until a SIGTERM, SIGINT, or SIGHUP is received. It then
+// returns, allowing execution to resume (generally allowing a main() function
+// to return and trigger and deferred cleanup functions.
+func WaitForSignal() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+	<-sigChan
+}
