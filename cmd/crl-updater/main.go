@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"time"
@@ -169,11 +170,13 @@ func main() {
 
 	if *runOnce {
 		err = u.Tick(ctx, clk.Now())
-		cmd.FailOnError(err, "")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "")
+		}
 	} else {
 		err = u.Run(ctx)
-		if err != nil {
-			logger.Err(err.Error())
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "")
 		}
 	}
 }
