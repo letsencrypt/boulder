@@ -2,7 +2,7 @@
 	"rocspTool": {
 		"debugAddr": ":9101",
 		"redis": {
-			"username": "ocsp-updater",
+			"username": "rocsp-tool",
 			"passwordFile": "test/secrets/rocsp_tool_password",
 			"shardAddrs": {
 				"shard1": "10.33.33.2:4218",

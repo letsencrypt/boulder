@@ -51,11 +51,10 @@ type issuerMaps struct {
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
-	capb.UnimplementedOCSPGeneratorServer
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
-	// TODO(#6448): Remove this.
+	// TODO(#6285): Remove this.
 	ocsp capb.OCSPGeneratorServer
 
 	// This is temporary, and will be used for testing and slow roll-out

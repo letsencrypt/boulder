@@ -1,4 +1,4 @@
-// Copyright 2014 Google Inc. All Rights Reserved.
+// Copyright 2014 Google LLC. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -117,35 +117,6 @@ func (c *LogClient) AddChain(ctx context.Context, chain []ct.ASN1Cert) (*ct.Sign
 // AddPreChain adds the (DER represented) Precertificate |chain| to the log.
 func (c *LogClient) AddPreChain(ctx context.Context, chain []ct.ASN1Cert) (*ct.SignedCertificateTimestamp, error) {
 	return c.addChainWithRetry(ctx, ct.PrecertLogEntryType, ct.AddPreChainPath, chain)
-}
-
-// AddJSON submits arbitrary data to to XJSON server.
-func (c *LogClient) AddJSON(ctx context.Context, data interface{}) (*ct.SignedCertificateTimestamp, error) {
-	req := ct.AddJSONRequest{Data: data}
-	var resp ct.AddChainResponse
-	httpRsp, body, err := c.PostAndParse(ctx, ct.AddJSONPath, &req, &resp)
-	if err != nil {
-		return nil, err
-	}
-	var ds ct.DigitallySigned
-	if rest, err := tls.Unmarshal(resp.Signature, &ds); err != nil {
-		return nil, RspError{Err: err, StatusCode: httpRsp.StatusCode, Body: body}
-	} else if len(rest) > 0 {
-		return nil, RspError{
-			Err:        fmt.Errorf("trailing data (%d bytes) after DigitallySigned", len(rest)),
-			StatusCode: httpRsp.StatusCode,
-			Body:       body,
-		}
-	}
-	var logID ct.LogID
-	copy(logID.KeyID[:], resp.ID)
-	return &ct.SignedCertificateTimestamp{
-		SCTVersion: resp.SCTVersion,
-		LogID:      logID,
-		Timestamp:  resp.Timestamp,
-		Extensions: ct.CTExtensions(resp.Extensions),
-		Signature:  ds,
-	}, nil
 }
 
 // GetSTH retrieves the current STH from the log.

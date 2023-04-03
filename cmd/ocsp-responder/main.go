@@ -107,6 +107,7 @@ type Config struct {
 
 		// Deprecated: ExpectedFreshness is no longer used now that we do not read
 		// OCSP Response bytes from the database.
+		// TODO(#6775): Remove this.
 		ExpectedFreshness config.Duration `validate:"-"`
 	}
 
