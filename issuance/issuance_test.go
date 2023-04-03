@@ -644,7 +644,7 @@ func TestIssueCommonName(t *testing.T) {
 	}
 
 	lintCertBytes, issuanceToken, err := signer.Prepare(ir)
-	test.AssertNotError(t, err, "Prepare faild")
+	test.AssertNotError(t, err, "Prepare failed")
 	_, err = x509.ParseCertificate(lintCertBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
 	certBytes, err := signer.Issue(issuanceToken)
