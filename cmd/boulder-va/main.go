@@ -153,7 +153,10 @@ func main() {
 		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 
-	cmd.FailOnError(start(), "VA gRPC service failed")
+	err = start()
+	if err != nil {
+		logger.AuditErrf("VA gRPC service failed: %s", err)
+	}
 }
 
 func init() {

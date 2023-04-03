@@ -113,7 +113,10 @@ func main() {
 		&noncepb.NonceService_ServiceDesc, nonceServer).Build(tlsConfig, scope, cmd.Clock())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
 
-	cmd.FailOnError(start(), "Nonce service gRPC server failed")
+	err = start()
+	if err != nil {
+		logger.AuditErrf("NonceService gRPC service failed: %s", err)
+	}
 }
 
 func init() {

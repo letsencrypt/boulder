@@ -258,7 +258,10 @@ func main() {
 		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 
-	cmd.FailOnError(start(), "RA gRPC service failed")
+	err = start()
+	if err != nil {
+		logger.AuditErrf("RA gRPC service failed: %s", err)
+	}
 }
 
 func init() {

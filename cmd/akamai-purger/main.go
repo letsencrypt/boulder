@@ -419,7 +419,10 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
 
-	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
+	err = start()
+	if err != nil {
+		logger.AuditErrf("AkamaiPurger gRPC service failed: %s", err)
+	}
 }
 
 func init() {

@@ -127,7 +127,10 @@ func main() {
 		&cspb.CRLStorer_ServiceDesc, csi).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup CRLStorer gRPC server")
 
-	cmd.FailOnError(start(), "CRLStorer gRPC service failed")
+	err = start()
+	if err != nil {
+		logger.AuditErrf("CRLStorer gRPC service failed: %s", err)
+	}
 }
 
 func init() {
