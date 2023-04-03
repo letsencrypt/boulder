@@ -249,6 +249,8 @@ func main() {
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA)
 
+	// TODO(#6285): Remove this predeclaration when NewCertificateAuthorityImpl
+	// no longer needs ocspi as an argument.
 	var ocspi ca.OCSPGenerator
 	if !c.CA.DisableOCSPService {
 		ocspi, err = ca.NewOCSPImpl(
