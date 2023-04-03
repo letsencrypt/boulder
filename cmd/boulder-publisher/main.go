@@ -96,10 +96,7 @@ func main() {
 		&pubpb.Publisher_ServiceDesc, pubi).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 
-	err = start()
-	if err != nil {
-		logger.AuditErrf("Publisher gRPC service failed: %s", err)
-	}
+	cmd.FailOnError(start(), "Publisher gRPC service failed")
 }
 
 func init() {

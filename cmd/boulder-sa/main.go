@@ -99,10 +99,7 @@ func main() {
 		tls, scope, clk)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 
-	err = start()
-	if err != nil {
-		logger.AuditErrf("SA gRPC service failed: %s", err)
-	}
+	cmd.FailOnError(start(), "SA gRPC service failed")
 }
 
 func init() {

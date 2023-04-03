@@ -321,10 +321,7 @@ func main() {
 	start, err := srv.Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
-	err = start()
-	if err != nil {
-		logger.AuditErrf("CA gRPC service failed: %s", err)
-	}
+	cmd.FailOnError(start(), "CA gRPC service failed")
 }
 
 func init() {
