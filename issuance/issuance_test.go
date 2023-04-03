@@ -871,3 +871,34 @@ func TestLoadChain_InvalidSig(t *testing.T) {
 	test.Assert(t, strings.Contains(err.Error(), "signature from \"CN=happy hacker fake CA\""),
 		fmt.Sprintf("Expected error to mention subject, got: %s", err))
 }
+
+func TestIssuanceToken(t *testing.T) {
+	fc := clock.NewFake()
+	linter, err := linter.New(issuerCert.Certificate, issuerSigner, []string{})
+	test.AssertNotError(t, err, "failed to create linter")
+	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
+	test.AssertNotError(t, err, "NewIssuer failed")
+
+	_, err = signer.Issue(&issuanceToken{})
+	test.AssertError(t, err, "expected issuance with a zero token to fail")
+
+	_, err = signer.Issue(nil)
+	test.AssertError(t, err, "expected issuance with a nil token to fail")
+
+	pk, err := rsa.GenerateKey(rand.Reader, 2048)
+	test.AssertNotError(t, err, "failed to generate test key")
+	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
+		PublicKey: pk.Public(),
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	test.AssertNotError(t, err, "expected Prepare to suceed")
+	_, err = signer.Issue(issuanceToken)
+	test.AssertNotError(t, err, "expected first issuance to succeed")
+
+	_, err = signer.Issue(issuanceToken)
+	test.AssertError(t, err, "expected second issuance with the same issuance token to fail")
+	test.AssertContains(t, err.Error(), "issuance token already issued")
+}
