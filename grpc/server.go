@@ -164,7 +164,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	}
 
 	start := func() error {
-		return server.Serve(listener)
+		return filterShutdownErrors(server.Serve(listener))
 	}
 	stop := func() {
 		healthSrv.Shutdown()
