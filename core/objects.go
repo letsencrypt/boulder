@@ -433,13 +433,6 @@ type CertificateStatus struct {
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
-	// The encoded and signed OCSP response.
-	//
-	// Deprecated: We are phasing out storing OCSP Response bytes in the database,
-	// so CertificateStatus objects should not be expected to have a populated
-	// OCSPResponse field anymore.
-	OCSPResponse []byte `db:"ocspResponse"`
-
 	// NotAfter and IsExpired are convenience columns which allow expensive
 	// queries to quickly filter out certificates that we don't need to care about
 	// anymore. These are particularly useful for the expiration mailer and CRL
