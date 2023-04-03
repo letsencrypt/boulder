@@ -604,8 +604,9 @@ func TestIssueRSA(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Prepare failed")
 	_, err = x509.ParseCertificate(lintCertBytes)
-	test.AssertNotError(t, err, "failed to parse certificate")
+	test.AssertNotError(t, err, "failed to parse lint certificate")
 	certBytes, err := signer.Issue(issuanceToken)
+	test.AssertNotError(t, err, "failed to parse certificate")
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
 	err = cert.CheckSignatureFrom(issuerCert.Certificate)
@@ -643,6 +644,7 @@ func TestIssueCommonName(t *testing.T) {
 	}
 
 	lintCertBytes, issuanceToken, err := signer.Prepare(ir)
+	test.AssertNotError(t, err, "Prepare faild")
 	_, err = x509.ParseCertificate(lintCertBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
 	certBytes, err := signer.Issue(issuanceToken)
@@ -659,6 +661,7 @@ func TestIssueCommonName(t *testing.T) {
 	_, issuanceToken, err = signer.Prepare(ir)
 	test.AssertNotError(t, err, "Prepare failed")
 	certBytes, err = signer.Issue(issuanceToken)
+	test.AssertNotError(t, err, "Issue failed")
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
 	test.AssertEquals(t, cert.Subject.CommonName, "")
@@ -894,7 +897,7 @@ func TestIssuanceToken(t *testing.T) {
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
-	test.AssertNotError(t, err, "expected Prepare to suceed")
+	test.AssertNotError(t, err, "expected Prepare to succeed")
 	_, err = signer.Issue(issuanceToken)
 	test.AssertNotError(t, err, "expected first issuance to succeed")
 
