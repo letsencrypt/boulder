@@ -145,9 +145,6 @@ func main() {
 	caAddr := flag.String("ca-addr", "", "CA gRPC listen address override")
 	debugAddr := flag.String("debug-addr", "", "Debug server address override")
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
-	// TODO(#6448): Remove these deprecated ocsp and crl addr flags.
-	_ = flag.String("ocsp-addr", "", "OCSP gRPC listen address override")
-	_ = flag.String("crl-addr", "", "CRL gRPC listen address override")
 	flag.Parse()
 	if *configFile == "" {
 		flag.Usage()
