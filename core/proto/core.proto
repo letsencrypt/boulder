@@ -52,7 +52,6 @@ message CertificateStatus {
   int64 revokedDate = 5;
   int64 revokedReason = 6;
   int64 lastExpirationNagSent = 7;
-  bytes ocspResponse = 8;
   int64 notAfter = 9;
   bool isExpired = 10;
   int64 issuerID = 11;
