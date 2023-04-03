@@ -670,6 +670,9 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 // previous call to Prepare(). Call this at most once per token. Calls after
 // the first will receive an error.
 func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
+	if token == nil {
+		return nil, errors.New("nil issuanceToken")
+	}
 	token.Lock()
 	defer token.Unlock()
 	if token.template == nil {
