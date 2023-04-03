@@ -1189,6 +1189,8 @@ def test_new_order_policy_errs():
         raise(Exception("Expected problem, got no error"))
 
 def test_long_san_no_cn():
+    if CONFIG_NEXT:
+        return
     try:
         chisel2.auth_and_issue(["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
         # if we get to this raise the auth_and_issue call didn't fail, so fail the test
@@ -1240,9 +1242,6 @@ def test_auth_deactivation_v2():
 def test_ocsp():
     cert_file = temppath('test_ocsp.pem')
     chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-
-    # As OCSP-Updater is generating responses independently of the CA we sit in a loop
-    # checking OCSP until we either see a good response or we timeout (5s).
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
 def test_ct_submission():

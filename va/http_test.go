@@ -68,16 +68,17 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), ctxTimeout)
 	defer cancel()
 
-	started := time.Now()
-
 	va.dnsClient = dnsMockReturnsUnroutable{&bdns.MockClient{}}
 	// NOTE(@jsha): The only method I've found so far to trigger a connect timeout
 	// is to connect to an unrouteable IP address. This usually generates
 	// a connection timeout, but will rarely return "Network unreachable" instead.
 	// If we get that, just retry until we get something other than "Network unreachable".
 	var prob *probs.ProblemDetails
+	var took time.Duration
 	for i := 0; i < 20; i++ {
+		started := time.Now()
 		_, _, prob = va.fetchHTTP(ctx, "unroutable.invalid", "/.well-known/acme-challenge/whatever")
+		took = time.Since(started)
 		if prob != nil && strings.Contains(prob.Detail, "Network unreachable") {
 			continue
 		} else {
@@ -87,15 +88,14 @@ func TestPreresolvedDialerTimeout(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("Connection should've timed out")
 	}
-	took := time.Since(started)
 
 	// Check that the HTTP connection doesn't return too fast, and times
 	// out after the expected time
 	if took < va.singleDialTimeout {
-		t.Fatalf("fetch returned before %s (%s) with %#v", va.singleDialTimeout, took, prob)
+		t.Fatalf("fetch returned before %s (took: %s) with %#v", va.singleDialTimeout, took, prob)
 	}
 	if took > 2*va.singleDialTimeout {
-		t.Fatalf("fetch didn't timeout after %s", va.singleDialTimeout)
+		t.Fatalf("fetch didn't timeout after %s (took: %s)", va.singleDialTimeout, took)
 	}
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 	expectMatch := regexp.MustCompile(

@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -22,15 +21,15 @@ type Config struct {
 
 		IssuerDomain string
 
-		// The number of times to try a DNS query (that has a temporary error)
+		// DNSTries is the number of times to try a DNS query (that has a temporary error)
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries                  int
-		DNSResolver               string
+		DNSResolver               string `validate:"required"`
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
-		RemoteVAs                   []cmd.GRPCClientConfig
+		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
 		MaxRemoteValidationFailures int
 
 		Features map[string]bool
@@ -38,8 +37,7 @@ type Config struct {
 		AccountURIPrefixes []string
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 
 	// TODO(#6716): Remove Config.Common once all instances of it have been
 	// removed from production config files.
@@ -74,11 +72,6 @@ func main() {
 	if *debugAddr != "" {
 		c.VA.DebugAddr = *debugAddr
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.VA.DebugAddr)
 	defer logger.AuditPanic()
@@ -168,8 +161,8 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-va", main)
+	cmd.RegisterCommand("boulder-va", main, &cmd.ConfigValidator{Config: &Config{}})
 	// We register under two different names, because it's convenient for the
 	// remote VAs to show up under a different program name when looking at logs.
-	cmd.RegisterCommand("boulder-remoteva", main)
+	cmd.RegisterCommand("boulder-remoteva", main, &cmd.ConfigValidator{Config: &Config{}})
 }

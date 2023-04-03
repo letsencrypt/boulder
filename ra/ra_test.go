@@ -63,6 +63,10 @@ import (
 	vapb "github.com/letsencrypt/boulder/va/proto"
 )
 
+func TestImplementation(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &RegistrationAuthorityImpl{}, rapb.UnimplementedRegistrationAuthorityServer{})
+}
+
 func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, domain string, exp time.Time) *corepb.Authorization {
 	t.Helper()
 
@@ -3946,6 +3950,19 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 		AdminName: "root",
 	})
 	test.AssertNotError(t, err, "AdministrativelyRevokeCertificate failed")
+	test.AssertEquals(t, len(mockSA.blocked), 0)
+	test.AssertMetricWithLabelsEquals(
+		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)
+
+	// Duplicate administrative revocation of a serial for an unspecified reason
+	// should fail and not block the key
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Serial:    core.SerialToString(cert.SerialNumber),
+		Code:      ocsp.Unspecified,
+		AdminName: "root",
+	})
+	test.AssertError(t, err, "Should be revoked")
+	test.AssertContains(t, err.Error(), "already revoked")
 	test.AssertEquals(t, len(mockSA.blocked), 0)
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "unspecified"}, 2)

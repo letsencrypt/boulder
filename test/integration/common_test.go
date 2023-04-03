@@ -94,7 +94,7 @@ type issuanceResult struct {
 	certs []*x509.Certificate
 }
 
-func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string) (*issuanceResult, error) {
+func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResult, error) {
 	var err error
 	if c == nil {
 		c, err = makeClient()
@@ -135,7 +135,7 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string) (*issua
 		delHTTP01Response(chal.Token)
 	}
 
-	csr, err := makeCSR(csrKey, domains)
+	csr, err := makeCSR(csrKey, domains, cn)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string) (*issua
 	return &issuanceResult{order, certs}, nil
 }
 
-func makeCSR(k *ecdsa.PrivateKey, domains []string) (*x509.CertificateRequest, error) {
+func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateRequest, error) {
 	var err error
 	if k == nil {
 		k, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -160,13 +160,17 @@ func makeCSR(k *ecdsa.PrivateKey, domains []string) (*x509.CertificateRequest, e
 		}
 	}
 
-	csrDer, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{
+	tmpl := &x509.CertificateRequest{
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 		PublicKeyAlgorithm: x509.ECDSA,
 		PublicKey:          k.Public(),
-		Subject:            pkix.Name{CommonName: domains[0]},
 		DNSNames:           domains,
-	}, k)
+	}
+	if cn {
+		tmpl.Subject = pkix.Name{CommonName: domains[0]}
+	}
+
+	csrDer, err := x509.CreateCertificateRequest(rand.Reader, tmpl, k)
 	if err != nil {
 		return nil, fmt.Errorf("making csr: %s", err)
 	}

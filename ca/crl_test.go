@@ -13,6 +13,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestImplementationCRL(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &crlImpl{}, capb.UnimplementedCRLGeneratorServer{})
+}
+
 type mockGenerateCRLBidiStream struct {
 	grpc.ServerStream
 	input  <-chan *capb.GenerateCRLRequest

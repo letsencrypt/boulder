@@ -5,8 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
-
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
@@ -32,7 +30,7 @@ type Config struct {
 		cmd.ServiceConfig
 		cmd.HostnamePolicyConfig
 
-		RateLimitPoliciesFilename string
+		RateLimitPoliciesFilename string `validate:"required"`
 
 		MaxContactsPerRegistration int
 
@@ -43,18 +41,18 @@ type Config struct {
 		PublisherService    *cmd.GRPCClientConfig
 		AkamaiPurgerService *cmd.GRPCClientConfig
 
-		MaxNames int
+		MaxNames int `validate:"required,min=1"`
 
 		// AuthorizationLifetimeDays defines how long authorizations will be
 		// considered valid for. Given a value of 300 days when used with a 90-day
 		// cert lifetime, this allows creation of certs that will cover a whole
 		// year, plus a grace period of a month.
-		AuthorizationLifetimeDays int
+		AuthorizationLifetimeDays int `validate:"required,min=1,max=397"`
 
 		// PendingAuthorizationLifetimeDays defines how long authorizations may be in
 		// the pending state. If you can't respond to a challenge this quickly, then
 		// you need to request a new challenge.
-		PendingAuthorizationLifetimeDays int
+		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
@@ -69,7 +67,7 @@ type Config struct {
 		// manage the shutdown of an RA must be willing to wait at least this long
 		// after sending the shutdown signal, to allow background goroutines to
 		// complete.
-		FinalizeTimeout config.Duration
+		FinalizeTimeout config.Duration `validate:"-"`
 
 		// CTLogs contains groupings of CT logs organized by what organization
 		// operates them. When we submit precerts to logs in order to get SCTs, we
@@ -89,15 +87,14 @@ type Config struct {
 		// IssuerCerts are paths to all intermediate certificates which may have
 		// been used to issue certificates in the last 90 days. These are used to
 		// generate OCSP URLs to purge during revocation.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"min=1,dive,required"`
 
 		Features map[string]bool
 	}
 
 	PA cmd.PAConfig
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {
@@ -123,11 +120,6 @@ func main() {
 	if *debugAddr != "" {
 		c.RA.DebugAddr = *debugAddr
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.RA.DebugAddr)
 	defer logger.AuditPanic()
@@ -273,5 +265,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-ra", main)
+	cmd.RegisterCommand("boulder-ra", main, &cmd.ConfigValidator{Config: &Config{}})
 }

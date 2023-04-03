@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	awsl "github.com/aws/smithy-go/logging"
-	"github.com/honeycombio/beeline-go"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/crl/storer"
@@ -28,7 +27,7 @@ type Config struct {
 		// IssuerCerts is a list of paths to issuer certificates on disk. These will
 		// be used to validate the CRLs received by this service before uploading
 		// them.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"min=1,dive,required"`
 
 		// S3Endpoint is the URL at which the S3-API-compatible object storage
 		// service can be reached. This can be used to point to a non-Amazon storage
@@ -50,8 +49,7 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 // awsLogger implements the github.com/aws/smithy-go/logging.Logger interface.
@@ -90,11 +88,6 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLStorer.IssuerCerts))
 	for _, filepath := range c.CRLStorer.IssuerCerts {
@@ -139,5 +132,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("crl-storer", main)
+	cmd.RegisterCommand("crl-storer", main, &cmd.ConfigValidator{Config: &Config{}})
 }

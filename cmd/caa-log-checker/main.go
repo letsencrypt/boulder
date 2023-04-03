@@ -257,5 +257,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("caa-log-checker", main)
+	cmd.RegisterCommand("caa-log-checker", main, nil)
 }

@@ -7,7 +7,6 @@ import (
 	"runtime"
 
 	ct "github.com/google/certificate-transparency-go"
-	"github.com/honeycombio/beeline-go"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/features"
@@ -31,11 +30,10 @@ type Config struct {
 		// Chains is a list of lists of certificate filenames. Each inner list is
 		// a chain, starting with the issuing intermediate, followed by one or
 		// more additional certificates, up to and including a root.
-		Chains [][]string
+		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {
@@ -65,11 +63,6 @@ func main() {
 	if c.Publisher.UserAgent == "" {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
 	defer logger.AuditPanic()
@@ -108,5 +101,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-publisher", main)
+	cmd.RegisterCommand("boulder-publisher", main, &cmd.ConfigValidator{Config: &Config{}})
 }

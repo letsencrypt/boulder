@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
 	"github.com/hpcloud/tail"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -128,11 +127,10 @@ func (tl tailLogger) Println(v ...interface{}) {
 }
 
 type Config struct {
-	Files []string
+	Files []string `validate:"min=1,dive,required"`
 
-	DebugAddr string
+	DebugAddr string `validate:"required,hostname_port"`
 	Syslog    cmd.SyslogConfig
-	Beeline   cmd.BeelineConfig
 }
 
 func main() {
@@ -151,11 +149,6 @@ func main() {
 	var config Config
 	err = json.Unmarshal(configBytes, &config)
 	cmd.FailOnError(err, "failed to parse config file")
-
-	bc, err := config.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	stats, logger := cmd.StatsAndLogging(config.Syslog, config.DebugAddr)
 	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -222,5 +215,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("log-validator", main)
+	cmd.RegisterCommand("log-validator", main, &cmd.ConfigValidator{Config: &Config{}})
 }

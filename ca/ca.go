@@ -51,7 +51,6 @@ type issuerMaps struct {
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
-	capb.UnimplementedOCSPGeneratorServer
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
@@ -129,6 +128,10 @@ func NewCertificateAuthorityImpl(
 	if serialPrefix <= 0 || serialPrefix >= 256 {
 		err = errors.New("Must have a positive non-zero serial prefix less than 256 for CA.")
 		return nil, err
+	}
+
+	if len(boulderIssuers) == 0 {
+		return nil, errors.New("must have at least one issuer")
 	}
 
 	issuers := makeIssuerMaps(boulderIssuers)
@@ -433,16 +436,19 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
 
-	certDER, err := issuer.Issue(&issuance.IssuanceRequest{
+	names := csrlib.NamesFromCSR(csr)
+	req := &issuance.IssuanceRequest{
 		PublicKey:         csr.PublicKey,
 		Serial:            serialBigInt.Bytes(),
-		CommonName:        csr.Subject.CommonName,
-		DNSNames:          csr.DNSNames,
+		DNSNames:          names.SANs,
+		CommonName:        names.CN,
 		IncludeCTPoison:   true,
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
 		NotBefore:         validity.NotBefore,
 		NotAfter:          validity.NotAfter,
-	})
+	}
+
+	certDER, err := issuer.Issue(req)
 	if err != nil {
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",

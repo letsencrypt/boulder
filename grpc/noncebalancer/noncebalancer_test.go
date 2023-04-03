@@ -124,3 +124,7 @@ func (s *subConn) UpdateAddresses(addrs []resolver.Address) {
 }
 
 func (s *subConn) Connect() {}
+
+func (s *subConn) GetOrBuildProducer(balancer.ProducerBuilder) (p balancer.Producer, close func()) {
+	panic("unimplemented")
+}

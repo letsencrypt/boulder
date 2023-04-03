@@ -42,6 +42,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestImplementation(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &certificateAuthorityImpl{}, capb.UnimplementedCertificateAuthorityServer{})
+}
+
 var (
 	// * Random public key
 	// * CN = not-example.com
@@ -419,6 +423,31 @@ func issueCertificateSubTestIssuePrecertificate(t *testing.T, i *TestCertificate
 func issueCertificateSubTestValidityUsesCAClock(t *testing.T, i *TestCertificateIssuance) {
 	test.AssertEquals(t, i.cert.NotBefore, i.ca.clk.Now().Add(-1*i.ca.backdate))
 	test.AssertEquals(t, i.cert.NotAfter.Add(time.Second).Sub(i.cert.NotBefore), i.ca.validityPeriod)
+}
+
+// Test failure mode when no issuers are present.
+func TestNoIssuers(t *testing.T) {
+	testCtx := setup(t)
+	sa := &mockSA{}
+	_, err := NewCertificateAuthorityImpl(
+		sa,
+		testCtx.pa,
+		testCtx.ocsp,
+		nil, // No issuers
+		nil,
+		testCtx.certExpiry,
+		testCtx.certBackdate,
+		testCtx.serialPrefix,
+		testCtx.maxNames,
+		testCtx.keyPolicy,
+		nil,
+		testCtx.logger,
+		testCtx.stats,
+		testCtx.signatureCount,
+		testCtx.signErrorCount,
+		testCtx.fc)
+	test.AssertError(t, err, "No issuers found during CA construction.")
+	test.AssertEquals(t, err.Error(), "must have at least one issuer")
 }
 
 // Test issuing when multiple issuers are present.

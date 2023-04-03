@@ -16,7 +16,6 @@ import (
 	"math/big"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -36,10 +35,6 @@ type certID struct {
 
 func TestARI(t *testing.T) {
 	t.Parallel()
-	// This test is gated on the ServeRenewalInfo feature flag.
-	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
-		return
-	}
 
 	// Create an account.
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
@@ -52,7 +47,7 @@ func TestARI(t *testing.T) {
 
 	// Issue a cert.
 	name := random_domain()
-	ir, err := authAndIssue(client, key, []string{name})
+	ir, err := authAndIssue(client, key, []string{name}, true)
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
@@ -82,6 +77,7 @@ func TestARI(t *testing.T) {
 	resp, err := http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, resp.StatusCode, http.StatusOK)
+	test.AssertEquals(t, resp.Header.Get("Retry-After"), "21600")
 
 	// Revoke the cert, then request ARI again, and the window should now be in
 	// the past.
@@ -104,7 +100,7 @@ func TestARI(t *testing.T) {
 	name = random_domain()
 	err = ctAddRejectHost(name)
 	test.AssertNotError(t, err, "failed to add ct-test-srv reject host")
-	_, err = authAndIssue(client, key, []string{name})
+	_, err = authAndIssue(client, key, []string{name}, true)
 	test.AssertError(t, err, "expected error from authAndIssue, was nil")
 	cert, err = ctFindRejection([]string{name})
 	test.AssertNotError(t, err, "failed to find rejected precert")
@@ -135,4 +131,7 @@ func TestARI(t *testing.T) {
 	resp, err = http.Get(url)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 	test.AssertEquals(t, resp.StatusCode, http.StatusNotFound)
+
+	// TODO(#6781): Test the ARI POST path as soon as it's supported in the acme
+	// client we use here.
 }

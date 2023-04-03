@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
-	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -33,48 +31,32 @@ import (
 
 type Config struct {
 	OCSPResponder struct {
-		DebugAddr string
-		DB        cmd.DBConfig
+		DebugAddr string       `validate:"hostname_port"`
+		DB        cmd.DBConfig `validate:"required_without_all=Source SAService,structonly"`
 
 		// Source indicates the source of pre-signed OCSP responses to be used. It
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
 		// If DBConfig has non-empty fields, it takes precedence over this.
-		Source string
+		Source string `validate:"required_without_all=DB.DBConnectFile SAService"`
 
 		// The list of issuer certificates, against which OCSP requests/responses
 		// are checked to ensure we're not responding for anyone else's certs.
-		IssuerCerts []string
+		IssuerCerts []string `validate:"min=1,dive,required"`
 
-		Path          string
-		ListenAddress string
+		Path string
+
+		// ListenAddress is the address:port on which to listen for incoming
+		// OCSP requests. This has a default value of ":80".
+		ListenAddress string `validate:"omitempty,hostname_port"`
 
 		// When to timeout a request. This should be slightly lower than the
 		// upstream's timeout when making request to ocsp-responder.
-		Timeout config.Duration
-
-		// The worst-case freshness of a response during normal operations.
-		//
-		// This controls behavior when both Redis and MariaDB backends are
-		// configured. If a MariaDB response is older than this, ocsp-responder
-		// will try to serve a fresher response from Redis, waiting for a Redis
-		// response if necessary.
-		//
-		// This is related to OCSPMinTimeToExpiry in ocsp-updater's config,
-		// and both are related to the mandated refresh times in the BRs and
-		// root programs (minus a safety margin).
-		//
-		// This should be configured slightly higher than ocsp-updater's
-		// OCSPMinTimeToExpiry, to account for the time taken to sign
-		// responses once they pass that threshold. For instance, a good value
-		// would be: OCSPMinTimeToExpiry + OldOCSPWindow.
-		//
-		// This has a default value of 61h.
-		ExpectedFreshness config.Duration
+		Timeout config.Duration `validate:"-"`
 
 		// How often a response should be signed when using Redis/live-signing
 		// path. This has a default value of 60h.
-		LiveSigningPeriod config.Duration
+		LiveSigningPeriod config.Duration `validate:"-"`
 
 		// A limit on how many requests to the RA (and onwards to the CA) will
 		// be made to sign responses that are not fresh in the cache. This
@@ -82,7 +64,8 @@ type Config struct {
 		// (HSM signing capacity) / (number of ocsp-responders).
 		// Requests that would exceed this limit will block until capacity is
 		// available and eventually serve an HTTP 500 Internal Server Error.
-		MaxInflightSignings int
+		// This has a default value of 1000.
+		MaxInflightSignings int `validate:"min=0"`
 
 		// A limit on how many goroutines can be waiting for a signing slot at
 		// a time. When this limit is exceeded, additional signing requests
@@ -94,11 +77,11 @@ type Config struct {
 		// instance, if the timeout is 5 seconds, and a signing takes 20ms,
 		// and we have MaxInflightSignings = 40, we can expect to process
 		// 40 * 5 / 0.02 = 10,000 requests before the oldest request times out.
-		MaxSigningWaiters int
+		MaxSigningWaiters int `validate:"min=0"`
 
 		ShutdownStopTimeout config.Duration
 
-		RequiredSerialPrefixes []string
+		RequiredSerialPrefixes []string `validate:"omitempty,dive,hexadecimal"`
 
 		Features map[string]bool
 
@@ -116,20 +99,25 @@ type Config struct {
 		// SAService configures how to communicate with the SA to look up
 		// certificate status metadata used to confirm/deny that the response from
 		// Redis is up-to-date.
-		SAService *cmd.GRPCClientConfig
+		SAService *cmd.GRPCClientConfig `validate:"required_without_all=DB.DBConnectFile Source"`
 
 		// LogSampleRate sets how frequently error logs should be emitted. This
 		// avoids flooding the logs during outages. 1 out of N log lines will be emitted.
-		LogSampleRate int
+		LogSampleRate int `validate:"min=0"`
+
+		// Deprecated: ExpectedFreshness is no longer used now that we do not read
+		// OCSP Response bytes from the database.
+		// TODO(#6775): Remove this.
+		ExpectedFreshness config.Duration `validate:"-"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {
 	configFile := flag.String("config", "", "File path to the configuration file for this service")
 	flag.Parse()
+
 	if *configFile == "" {
 		fmt.Fprintf(os.Stderr, `Usage of %s:
 Config JSON should contain either a DBConnectFile or a Source value containing a file: URL.
@@ -145,11 +133,6 @@ as generated by Boulder's ceremony command.
 	cmd.FailOnError(err, "Reading JSON config file into config structure")
 	err = features.Set(c.OCSPResponder.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.OCSPResponder.DebugAddr)
 	defer logger.AuditPanic()
@@ -288,9 +271,9 @@ func mux(responderPath string, source responder.Source, timeout time.Duration, s
 		}
 		stripPrefix.ServeHTTP(w, r)
 	})
-	return hnynethttp.WrapHandler(measured_http.New(&ocspMux{h}, cmd.Clock(), stats))
+	return measured_http.New(&ocspMux{h}, cmd.Clock(), stats)
 }
 
 func init() {
-	cmd.RegisterCommand("ocsp-responder", main)
+	cmd.RegisterCommand("ocsp-responder", main, &cmd.ConfigValidator{Config: &Config{}})
 }

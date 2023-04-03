@@ -837,5 +837,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("ceremony", main)
+	cmd.RegisterCommand("ceremony", main, nil)
 }

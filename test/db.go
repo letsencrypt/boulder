@@ -40,7 +40,7 @@ func ResetIncidentsTestDatabase(t testing.TB) func() {
 }
 
 func resetTestDatabase(t testing.TB, dbPrefix string) func() {
-	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-mysql:3306)/%s_sa_test", dbPrefix))
+	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-proxysql:6033)/%s_sa_test", dbPrefix))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}

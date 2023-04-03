@@ -406,47 +406,44 @@ type Certificate struct {
 }
 
 // CertificateStatus structs are internal to the server. They represent the
-// latest data about the status of the certificate, required for OCSP updating
-// and for validating that the subscriber has accepted the certificate.
+// latest data about the status of the certificate, required for generating new
+// OCSP responses and determining if a certificate has been revoked.
 type CertificateStatus struct {
 	ID int64 `db:"id"`
 
 	Serial string `db:"serial"`
 
 	// status: 'good' or 'revoked'. Note that good, expired certificates remain
-	//   with status 'good' but don't necessarily get fresh OCSP responses.
+	// with status 'good' but don't necessarily get fresh OCSP responses.
 	Status OCSPStatus `db:"status"`
 
 	// ocspLastUpdated: The date and time of the last time we generated an OCSP
-	//   response. If we have never generated one, this has the zero value of
-	//   time.Time, i.e. Jan 1 1970.
+	// response. If we have never generated one, this has the zero value of
+	// time.Time, i.e. Jan 1 1970.
 	OCSPLastUpdated time.Time `db:"ocspLastUpdated"`
 
 	// revokedDate: If status is 'revoked', this is the date and time it was
-	//   revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
+	// revoked. Otherwise it has the zero value of time.Time, i.e. Jan 1 1970.
 	RevokedDate time.Time `db:"revokedDate"`
 
 	// revokedReason: If status is 'revoked', this is the reason code for the
-	//   revocation. Otherwise it is zero (which happens to be the reason
-	//   code for 'unspecified').
+	// revocation. Otherwise it is zero (which happens to be the reason
+	// code for 'unspecified').
 	RevokedReason revocation.Reason `db:"revokedReason"`
 
 	LastExpirationNagSent time.Time `db:"lastExpirationNagSent"`
 
 	// The encoded and signed OCSP response.
+	//
+	// Deprecated: We are phasing out storing OCSP Response bytes in the database,
+	// so CertificateStatus objects should not be expected to have a populated
+	// OCSPResponse field anymore.
 	OCSPResponse []byte `db:"ocspResponse"`
 
-	// For performance reasons[0] we duplicate the `Expires` field of the
-	// `Certificates` object/table in `CertificateStatus` to avoid a costly `JOIN`
-	// later on just to retrieve this `Time` value. This helps both the OCSP
-	// updater and the expiration-mailer stay performant.
-	//
-	// Similarly, we add an explicit `IsExpired` boolean to `CertificateStatus`
-	// table that the OCSP updater so that the database can create a meaningful
-	// index on `(isExpired, ocspLastUpdated)` without a `JOIN` on `certificates`.
-	// For more detail see Boulder #1864[0].
-	//
-	// [0]: https://github.com/letsencrypt/boulder/issues/1864
+	// NotAfter and IsExpired are convenience columns which allow expensive
+	// queries to quickly filter out certificates that we don't need to care about
+	// anymore. These are particularly useful for the expiration mailer and CRL
+	// updater. See https://github.com/letsencrypt/boulder/issues/1864.
 	NotAfter  time.Time `db:"notAfter"`
 	IsExpired bool      `db:"isExpired"`
 

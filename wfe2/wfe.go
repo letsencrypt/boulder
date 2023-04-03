@@ -17,8 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honeycombio/beeline-go"
-	"github.com/honeycombio/beeline-go/wrappers/hnynethttp"
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -260,10 +258,8 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 			logEvent.Endpoint = pattern
-			beeline.AddFieldToTrace(ctx, "endpoint", pattern)
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
-				beeline.AddFieldToTrace(ctx, "slug", request.URL.Path)
 			}
 			tls := request.Header.Get("TLS-Version")
 			if tls == "TLSv1" || tls == "TLSv1.1" {
@@ -428,7 +424,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 
 	// Endpoint for draft-aaron-ari
 	if features.Enabled(features.ServeRenewalInfo) {
-		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET")
+		wfe.HandleFunc(m, renewalInfoPath, wfe.RenewalInfo, "GET", "POST")
 	}
 
 	// Non-ACME endpoints
@@ -438,7 +434,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return hnynethttp.WrapHandler(measured_http.New(m, wfe.clk, stats))
+	return measured_http.New(m, wfe.clk, stats)
 }
 
 // Method implementations
@@ -517,7 +513,6 @@ func (wfe *WebFrontEndImpl) Directory(
 			return
 		}
 		logEvent.Requester = acct.ID
-		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
 	}
 
 	// Add a random key to the directory in order to make sure that clients don't hardcode an
@@ -575,7 +570,6 @@ func (wfe *WebFrontEndImpl) Nonce(
 			return
 		}
 		logEvent.Requester = acct.ID
-		beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
 	}
 
 	statusCode := http.StatusNoContent
@@ -653,7 +647,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		response.Header().Set("Location",
 			web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acctPB.Id)))
 		logEvent.Requester = acctPB.Id
-		beeline.AddFieldToTrace(ctx, "acct.id", acctPB.Id)
 		addRequesterHeader(response, acctPB.Id)
 
 		acct, err := bgrpc.PbToRegistration(acctPB)
@@ -770,11 +763,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		return
 	}
 	logEvent.Requester = acct.ID
-	beeline.AddFieldToTrace(ctx, "acct.id", acct.ID)
 	addRequesterHeader(response, acct.ID)
 	if acct.Contact != nil {
 		logEvent.Contacts = *acct.Contact
-		beeline.AddFieldToTrace(ctx, "contacts", *acct.Contact)
 	}
 
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
@@ -801,7 +792,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 // or revocation reason don't pass simple static checks. Also populates some
 // metadata fields on the given logEvent.
 func (wfe *WebFrontEndImpl) parseRevocation(
-	ctx context.Context, jwsBody []byte, logEvent *web.RequestEvent) (*x509.Certificate, revocation.Reason, *probs.ProblemDetails) {
+	jwsBody []byte, logEvent *web.RequestEvent) (*x509.Certificate, revocation.Reason, *probs.ProblemDetails) {
 	// Read the revoke request from the JWS payload
 	var revokeRequest struct {
 		CertificateDER core.JSONBuffer    `json:"certificate"`
@@ -824,7 +815,6 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 	if revokeRequest.Reason != nil {
 		logEvent.Extra["RevocationReason"] = *revokeRequest.Reason
 	}
-	beeline.AddFieldToTrace(ctx, "cert.serial", serial)
 
 	// Try to validate the signature on the provided cert using its corresponding
 	// issuer certificate.
@@ -838,7 +828,6 @@ func (wfe *WebFrontEndImpl) parseRevocation(
 		return nil, 0, probs.NotFound("No such certificate")
 	}
 	logEvent.DNSNames = parsedCertificate.DNSNames
-	beeline.AddFieldToTrace(ctx, "dnsnames", parsedCertificate.DNSNames)
 
 	if parsedCertificate.NotAfter.Before(wfe.clk.Now()) {
 		return nil, 0, probs.Unauthorized("Certificate is expired")
@@ -885,7 +874,7 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 		return prob
 	}
 
-	cert, reason, prob := wfe.parseRevocation(ctx, jwsBody, logEvent)
+	cert, reason, prob := wfe.parseRevocation(jwsBody, logEvent)
 	if prob != nil {
 		return prob
 	}
@@ -930,7 +919,7 @@ func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 		return prob
 	}
 
-	cert, reason, prob := wfe.parseRevocation(ctx, jwsBody, logEvent)
+	cert, reason, prob := wfe.parseRevocation(jwsBody, logEvent)
 	if prob != nil {
 		return prob
 	}
@@ -1073,10 +1062,8 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	if authz.Identifier.Type == identifier.DNS {
 		logEvent.DNSName = authz.Identifier.Value
-		beeline.AddFieldToTrace(ctx, "authz.dnsname", authz.Identifier.Value)
 	}
 	logEvent.Status = string(authz.Status)
-	beeline.AddFieldToTrace(ctx, "authz.status", authz.Status)
 
 	challenge := authz.Challenges[challengeIndex]
 	switch request.Method {
@@ -1085,7 +1072,6 @@ func (wfe *WebFrontEndImpl) Challenge(
 
 	case "POST":
 		logEvent.ChallengeType = string(challenge.Type)
-		beeline.AddFieldToTrace(ctx, "authz.challenge.type", challenge.Type)
 		wfe.postChallenge(ctx, response, request, authz, challengeIndex, logEvent)
 	}
 }
@@ -1497,10 +1483,8 @@ func (wfe *WebFrontEndImpl) Authorization(
 
 	if identifier.IdentifierType(authzPB.Identifier) == identifier.DNS {
 		logEvent.DNSName = authzPB.Identifier
-		beeline.AddFieldToTrace(ctx, "authz.dnsname", authzPB.Identifier)
 	}
 	logEvent.Status = authzPB.Status
-	beeline.AddFieldToTrace(ctx, "authz.status", authzPB.Status)
 
 	// After expiring, authorizations are inaccessible
 	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
@@ -1596,7 +1580,6 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 		return
 	}
 	logEvent.Extra["RequestedSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "request.serial", serial)
 
 	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
@@ -1873,7 +1856,7 @@ func (wfe *WebFrontEndImpl) KeyRollover(
 	updatedAcctPb, err := wfe.ra.UpdateRegistration(ctx, &rapb.UpdateRegistrationRequest{Base: regPb, Update: updatePb})
 	if err != nil {
 		if errors.Is(err, berrors.Duplicate) {
-			// It is possible that between checking for the existing key, and preforming the update
+			// It is possible that between checking for the existing key, and performing the update
 			// a parallel update or new account request happened and claimed the key. In this case
 			// just retrieve the account again, and return an error as we would above with a Location
 			// header
@@ -2019,7 +2002,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 			hasValidCNLen = true
 		}
 	}
-	if !hasValidCNLen {
+	if !hasValidCNLen && features.Enabled(features.RequireCommonName) {
 		wfe.sendError(response, logEvent,
 			probs.RejectedIdentifier("NewOrder request did not include a SAN short enough to fit in CN"),
 			nil)
@@ -2037,7 +2020,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		return
 	}
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
-	beeline.AddFieldToTrace(ctx, "order.id", order.Id)
 
 	orderURL := web.RelativeEndpoint(request,
 		fmt.Sprintf("%s%d/%d", orderPath, acct.ID, order.Id))
@@ -2224,9 +2206,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	logEvent.DNSNames = order.Names
-	beeline.AddFieldToTrace(ctx, "dnsnames", csr.DNSNames)
 	logEvent.Extra["KeyType"] = web.KeyTypeToString(csr.PublicKey)
-	beeline.AddFieldToTrace(ctx, "csr.key_type", web.KeyTypeToString(csr.PublicKey))
 
 	updatedOrder, err := wfe.ra.FinalizeOrder(ctx, &rapb.FinalizeOrderRequest{
 		Csr:   rawCSR.CSR,
@@ -2277,6 +2257,11 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 		return
 	}
 
+	if request.Method == http.MethodPost {
+		wfe.UpdateRenewal(ctx, logEvent, response, request)
+		return
+	}
+
 	if len(request.URL.Path) == 0 {
 		wfe.sendError(response, logEvent, probs.NotFound("Must specify a request path"), nil)
 		return
@@ -2286,44 +2271,35 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// the base64url-encoded DER CertID sequence.
 	der, err := base64.RawURLEncoding.DecodeString(request.URL.Path)
 	if err != nil {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not base64url-encoded or had padding"), err)
 		return
 	}
 
 	var id certID
 	rest, err := asn1.Unmarshal(der, &id)
 	if err != nil || len(rest) != 0 {
-		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Path was not a DER-encoded CertID sequence"), err)
 		return
 	}
 
 	// Verify that the hash algorithm is SHA-256, so people don't use SHA-1 here.
 	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
-		wfe.sendError(response, logEvent, probs.Malformed("Request used hash algorithm other than SHA-256"), nil)
+		wfe.sendError(response, logEvent, probs.Malformed("Request used hash algorithm other than SHA-256"), err)
 		return
 	}
 
 	// We can do all of our processing based just on the serial, because Boulder
 	// does not re-use the same serial across multiple issuers.
 	serial := core.SerialToString(id.SerialNumber)
-	if !core.ValidSerial(serial) {
-		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
-		return
-	}
 	logEvent.Extra["RequestedSerial"] = serial
-	beeline.AddFieldToTrace(ctx, "request.serial", serial)
-
-	setDefaultRetryAfterHeader := func(response http.ResponseWriter) {
-		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
-	}
 
 	sendRI := func(ri core.RenewalInfo) {
+		response.Header().Set(headerRetryAfter, fmt.Sprintf("%d", int(6*time.Hour/time.Second)))
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, ri)
 		if err != nil {
 			wfe.sendError(response, logEvent, probs.ServerInternal("Error marshalling renewalInfo"), err)
 			return
 		}
-		setDefaultRetryAfterHeader(response)
 	}
 
 	// Check if the serial is part of an ongoing/active incident, in which case
@@ -2375,6 +2351,72 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	sendRI(core.RenewalInfoSimple(
 		time.Unix(0, cert.Issued).UTC(),
 		time.Unix(0, cert.Expires).UTC()))
+}
+
+// UpdateRenewal is used by the client to inform the server that they have
+// replaced the certificate in question, so it can be safely revoked. All
+// requests must be authenticated to the account which ordered the cert.
+func (wfe *WebFrontEndImpl) UpdateRenewal(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+	if !features.Enabled(features.ServeRenewalInfo) {
+		wfe.sendError(response, logEvent, probs.NotFound("Feature not enabled"), nil)
+		return
+	}
+
+	body, _, acct, prob := wfe.validPOSTForAccount(request, ctx, logEvent)
+	addRequesterHeader(response, logEvent.Requester)
+	if prob != nil {
+		// validPOSTForAccount handles its own setting of logEvent.Errors
+		wfe.sendError(response, logEvent, prob, nil)
+		return
+	}
+
+	var updateRenewalRequest struct {
+		CertID   string `json:"certID"`
+		Replaced bool   `json:"replaced"`
+	}
+	err := json.Unmarshal(body, &updateRenewalRequest)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("Unable to unmarshal RenewalInfo POST request body"), err)
+		return
+	}
+
+	der, err := base64.RawURLEncoding.DecodeString(updateRenewalRequest.CertID)
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.Malformed("certID was not base64url-encoded or contained padding"), err)
+		return
+	}
+
+	var id certID
+	rest, err := asn1.Unmarshal(der, &id)
+	if err != nil || len(rest) != 0 {
+		wfe.sendError(response, logEvent, probs.Malformed("certID was not a DER-encoded CertID ASN.1 sequence"), err)
+		return
+	}
+
+	if !id.HashAlgorithm.Algorithm.Equal(asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}) {
+		wfe.sendError(response, logEvent, probs.Malformed("Decoded CertID used a hashAlgorithm other than SHA-256"), err)
+		return
+	}
+
+	// We can do all of our processing based just on the serial, because Boulder
+	// does not re-use the same serial across multiple issuers.
+	serial := core.SerialToString(id.SerialNumber)
+	logEvent.Extra["RequestedSerial"] = serial
+
+	metadata, err := wfe.sa.GetSerialMetadata(ctx, &sapb.Serial{Serial: serial})
+	if err != nil {
+		wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), err)
+		return
+	}
+
+	if acct.ID != metadata.RegistrationID {
+		wfe.sendError(response, logEvent, probs.Unauthorized("Account ID doesn't match ID for certificate"), err)
+		return
+	}
+
+	// TODO(#6732): Write the replaced status to persistent storage.
+
+	response.WriteHeader(http.StatusOK)
 }
 
 func extractRequesterIP(req *http.Request) (net.IP, error) {

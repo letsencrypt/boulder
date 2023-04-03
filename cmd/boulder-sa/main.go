@@ -4,8 +4,6 @@ import (
 	"flag"
 	"os"
 
-	"github.com/honeycombio/beeline-go"
-
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
@@ -18,22 +16,21 @@ type Config struct {
 	SA struct {
 		cmd.ServiceConfig
 		DB          cmd.DBConfig
-		ReadOnlyDB  cmd.DBConfig
-		IncidentsDB cmd.DBConfig
+		ReadOnlyDB  cmd.DBConfig `validate:"-"`
+		IncidentsDB cmd.DBConfig `validate:"-"`
 		// TODO(#6285): Remove this field, as it is no longer used.
 		Issuers map[string]int
 
 		Features map[string]bool
 
 		// Max simultaneous SQL queries caused by a single RPC.
-		ParallelismPerRPC int
+		ParallelismPerRPC int `validate:"omitempty,min=1"`
 		// LagFactor is how long to sleep before retrying a read request that may
 		// have failed solely due to replication lag.
-		LagFactor config.Duration
+		LagFactor config.Duration `validate:"-"`
 	}
 
-	Syslog  cmd.SyslogConfig
-	Beeline cmd.BeelineConfig
+	Syslog cmd.SyslogConfig
 }
 
 func main() {
@@ -59,11 +56,6 @@ func main() {
 	if *debugAddr != "" {
 		c.SA.DebugAddr = *debugAddr
 	}
-
-	bc, err := c.Beeline.Load()
-	cmd.FailOnError(err, "Failed to load Beeline config")
-	beeline.Init(bc)
-	defer beeline.Close()
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
 	defer logger.AuditPanic()
@@ -95,7 +87,7 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	saroi, err := sa.NewSQLStorageAuthorityRO(
-		dbReadOnlyMap, dbIncidentsMap, parallel, c.SA.LagFactor.Duration, clk, logger)
+		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.Duration, clk, logger)
 	cmd.FailOnError(err, "Failed to create read-only SA impl")
 
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
@@ -112,5 +104,5 @@ func main() {
 }
 
 func init() {
-	cmd.RegisterCommand("boulder-sa", main)
+	cmd.RegisterCommand("boulder-sa", main, &cmd.ConfigValidator{Config: &Config{}})
 }

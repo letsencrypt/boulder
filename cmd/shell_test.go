@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -182,4 +183,48 @@ func Test_newVersionCollector(t *testing.T) {
 
 	// 'goVersion'
 	test.AssertMetricWithLabelsEquals(t, version, prometheus.Labels{"goVersion": runtime.Version()}, 1)
+}
+
+func loadConfigFile(t *testing.T, path string) *os.File {
+	cf, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cf
+}
+
+func TestFailedConfigValidation(t *testing.T) {
+	type FooConfig struct {
+		VitalValue       string `yaml:"vitalValue" validate:"required"`
+		VoluntarilyVoid  string `yaml:"voluntarilyVoid"`
+		VisciouslyVetted string `yaml:"visciouslyVetted" validate:"omitempty,endswith=baz"`
+	}
+
+	// Violates 'endswith' tag JSON.
+	cf := loadConfigFile(t, "testdata/1_missing_endswith.json")
+	defer cf.Close()
+	err := ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected validation error")
+	test.AssertContains(t, err.Error(), "'endswith'")
+
+	// Violates 'endswith' tag YAML.
+	cf = loadConfigFile(t, "testdata/1_missing_endswith.yaml")
+	defer cf.Close()
+	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected validation error")
+	test.AssertContains(t, err.Error(), "'endswith'")
+
+	// Violates 'required' tag JSON.
+	cf = loadConfigFile(t, "testdata/2_missing_required.json")
+	defer cf.Close()
+	err = ValidateJSONConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected validation error")
+	test.AssertContains(t, err.Error(), "'required'")
+
+	// Violates 'required' tag YAML.
+	cf = loadConfigFile(t, "testdata/2_missing_required.yaml")
+	defer cf.Close()
+	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
+	test.AssertError(t, err, "Expected validation error")
+	test.AssertContains(t, err.Error(), "'required'")
 }
