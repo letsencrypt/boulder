@@ -175,6 +175,28 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
+func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial) (*emptypb.Empty, error) {
+	res, err := ssa.dbMap.Exec(
+		`UPDATE certificateStatus SET
+				status = ?,
+			WHERE status = ?`,
+		string(core.OCSPStatusGood),
+		string(core.OCSPStatusNotReady),
+	)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, berrors.InternalServerError("failed to set certificate status to ready")
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 // AddPrecertificate writes a record of a precertificate generation to the DB.
 // Note: this is not idempotent: it does not protect against inserting the same
 // certificate multiple times. Calling code needs to first insert the cert's
@@ -215,9 +237,13 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, err
 		}
 
+		status := core.OCSPStatusGood
+		if req.OcspNotReady {
+			status = core.OCSPStatusNotReady
+		}
 		cs := &core.CertificateStatus{
 			Serial:                serialHex,
-			Status:                core.OCSPStatusGood,
+			Status:                status,
 			OCSPLastUpdated:       ssa.clk.Now(),
 			RevokedDate:           time.Time{},
 			RevokedReason:         0,

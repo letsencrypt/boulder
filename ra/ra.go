@@ -2319,6 +2319,10 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		return nil, err
 	}
 
+	if status.Status == string(core.OCSPStatusNotReady) {
+		return nil, berrors.InternalServerError("issuance failed after linting")
+	}
+
 	notAfter := time.Unix(0, status.NotAfter).UTC()
 	if ra.clk.Now().After(notAfter) {
 		return nil, berrors.NotFoundError("certificate is expired")

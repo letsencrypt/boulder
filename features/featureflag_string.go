@@ -24,11 +24,12 @@ func _() {
 	_ = x[CertCheckerRequiresValidations-13]
 	_ = x[AsyncFinalize-14]
 	_ = x[RequireCommonName-15]
+	_ = x[StoreLintingCertificateInsteadOfPrecertificate-16]
 }
 
-const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6CAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonName"
+const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6CAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonNameStoreLintingCertificateInsteadOfPrecertificate"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 53, 66, 80, 98, 109, 125, 150, 161, 185, 213, 243, 256, 273}
+var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 53, 66, 80, 98, 109, 125, 150, 161, 185, 213, 243, 256, 273, 319}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
