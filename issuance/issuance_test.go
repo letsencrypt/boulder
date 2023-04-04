@@ -905,5 +905,21 @@ func TestIssuanceToken(t *testing.T) {
 
 	_, err = signer.Issue(issuanceToken)
 	test.AssertError(t, err, "expected second issuance with the same issuance token to fail")
-	test.AssertContains(t, err.Error(), "issuance token already issued")
+	test.AssertContains(t, err.Error(), "issuance token already redeemed")
+
+	_, issuanceToken, err = signer.Prepare(&IssuanceRequest{
+		PublicKey: pk.Public(),
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+	})
+	test.AssertNotError(t, err, "expected Prepare to succeed")
+
+	signer2, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
+	test.AssertNotError(t, err, "NewIssuer failed")
+
+	_, err = signer2.Issue(issuanceToken)
+	test.AssertError(t, err, "expected redeeming an issuance token with the wrong issuer to fail")
+	test.AssertContains(t, err.Error(), "wrong issuer")
 }
