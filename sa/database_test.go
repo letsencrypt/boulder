@@ -15,6 +15,14 @@ import (
 func TestInvalidDSN(t *testing.T) {
 	_, err := NewDbMap("invalid", DbSettings{})
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
+
+	DSN := "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertNotError(t, err, "Unique system variable declared with incorrect quoting")
 }
 
 var errExpected = errors.New("expected")
@@ -93,7 +101,7 @@ func TestNewDbMap(t *testing.T) {
 
 	dbMap, err := NewDbMap(mysqlConnectURL, DbSettings{})
 	if err != errExpected {
-		t.Errorf("got incorrect error. Got %v, expected %v", err, errExpected)
+		t.Errorf("got incorrect error. Got %v, expected \"%v\"", err, errExpected)
 	}
 	if dbMap != nil {
 		t.Errorf("expected nil, got %v", dbMap)
@@ -156,15 +164,17 @@ func TestAutoIncrementSchema(t *testing.T) {
 	test.AssertEquals(t, count, int64(0))
 }
 
-func TestAdjustMySQLConfig(t *testing.T) {
+func TestAdjustMariaDBConfig(t *testing.T) {
 	conf := &mysql.Config{}
-	adjustMySQLConfig(conf)
+	err := adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
 	})
 
 	conf = &mysql.Config{ReadTimeout: 100 * time.Second}
-	adjustMySQLConfig(conf)
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":           "'STRICT_ALL_TABLES'",
 		"max_statement_time": "95",
@@ -177,7 +187,8 @@ func TestAdjustMySQLConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	adjustMySQLConfig(conf)
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":        "'STRICT_ALL_TABLES'",
 		"long_query_time": "80",
@@ -188,8 +199,81 @@ func TestAdjustMySQLConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	adjustMySQLConfig(conf)
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
 	})
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"dont_worry_about_integer_vars": "0",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "we don't validate whether numeric variables are in the curated system var list")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"dont_worry_about_fp_vars": "43.21",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "we don't validate whether numeric variables are in the curated system var list")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"dont_worry_about_bools": "true",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "we don't validate whether booleans are in the curated system var list")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"sql_mode_but_not_really": "'STRICT_ALL_TABLES'",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertError(t, err, "variable not found in the curated system var list")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"sql_mode": "'STRICT_ALL_TABLES",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertError(t, err, "value was incorrectly quoted, RHS quote missing")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"sql_mode": "%27STRICT_ALL_TABLES%27",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertError(t, err, "value was incorrectly quoted after being parsed from DSN")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"concurrent_insert": "2",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "key is an enum as a MariaDB integer, but incorrectly errored")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"concurrent_insert": "ALWAYS",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertError(t, err, "key is an enum as a MariaDB string, but should be quoted")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"concurrent_insert": "'ALWAYS'",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "key is an enum as a MariaDB string, but unexpectedly errored")
 }
