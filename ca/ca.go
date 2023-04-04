@@ -326,6 +326,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 			serialHex, req.RegistrationID, names, err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
+
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
@@ -459,7 +460,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
-		return nil, nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)

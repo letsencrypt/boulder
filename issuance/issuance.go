@@ -601,17 +601,23 @@ type IssuanceRequest struct {
 
 // An issuanceToken represents an assertion that Issuer.Lint has generated
 // a linting certificate for a given input and run the linter over it with no
-// errors. It can be used to issue a real certificate (once).
+// errors. The token may be redeemed (at most once) to sign a certificate or
+// precertificate with the same Issuer's private key, containing the same
+// contents that were linted.
 type issuanceToken struct {
 	sync.Mutex
 	template *x509.Certificate
 	pubKey   any
+	// A pointer to the issuer that created this token. This token may only
+	// be redeemed by the same issuer.
+	issuer *Issuer
 }
 
 // Prepare applies this Issuer's profile to create a template certificate. It
 // then generates a linting certificate from that template and runs the linter
 // over it. If successful, returns both the linting certificate (which can be
-// stored) and an issuanceToken (which can be used to issue a real certificate).
+// stored) and an issuanceToken. The issuanceToken can be used to sign a
+// matching certificate with this Issuer's private key.
 func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	// check request is valid according to the issuance profile
 	err := i.Profile.requestValid(i.Clk, req)
@@ -663,7 +669,8 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
-	return lintCertBytes, &issuanceToken{sync.Mutex{}, template, req.PublicKey}, nil
+	token := &issuanceToken{sync.Mutex{}, template, req.PublicKey, i}
+	return lintCertBytes, token, nil
 }
 
 // Issue performs a real issuance using an issuanceToken resulting from a
@@ -676,10 +683,14 @@ func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
 	token.Lock()
 	defer token.Unlock()
 	if token.template == nil {
-		return nil, errors.New("issuance token already issued")
+		return nil, errors.New("issuance token already redeemed")
 	}
 	template := token.template
 	token.template = nil
+
+	if token.issuer != i {
+		return nil, errors.New("tried to redeem issuance token with the wrong issuer")
+	}
 
 	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, token.pubKey, i.Signer)
 }
