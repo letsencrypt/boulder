@@ -131,7 +131,6 @@ func TestLoadFromDB(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		err = dbMap.Insert(&core.CertificateStatus{
 			Serial:          fmt.Sprintf("%036x", i),
-			OCSPResponse:    []byte("phthpbt"),
 			NotAfter:        clk.Now().Add(200 * time.Hour),
 			OCSPLastUpdated: clk.Now(),
 		})

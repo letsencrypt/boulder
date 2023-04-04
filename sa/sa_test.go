@@ -371,13 +371,11 @@ func TestAddPrecertificate(t *testing.T) {
 	serial, testCert := test.ThrowAwayCert(t, 1)
 
 	// Add the cert as a precertificate
-	ocspResp := []byte{0, 0, 1}
 	regID := reg.Id
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        regID,
-		Ocsp:         ocspResp,
 		Issued:       issuedTime.UnixNano(),
 		IssuerNameID: 1,
 	})
@@ -386,11 +384,7 @@ func TestAddPrecertificate(t *testing.T) {
 	// It should have the expected certificate status
 	certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "Couldn't get status for test cert")
-	test.Assert(
-		t,
-		bytes.Equal(certStatus.OcspResponse, ocspResp),
-		fmt.Sprintf("OCSP responses don't match, expected: %x, got %x", certStatus.OcspResponse, ocspResp),
-	)
+	test.AssertEquals(t, certStatus.Status, string(core.OCSPStatusGood))
 	test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
 
 	// It should show up in the issued names table
@@ -463,12 +457,10 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 	_, testCert := test.ThrowAwayCert(t, 1)
 
 	// Add the cert as a precertificate
-	ocspResp := []byte{0, 0, 1}
 	regID := reg.Id
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    testCert.Raw,
 		RegID:  regID,
-		Ocsp:   ocspResp,
 		Issued: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
 		// Leaving out IssuerNameID
 	})
@@ -547,18 +539,6 @@ func TestAddCertificate(t *testing.T) {
 	// The cert should have been added with the specific issued time we provided
 	// as the issued field.
 	test.AssertEquals(t, retrievedCert2.Issued, issuedTime.UnixNano())
-
-	// Test adding OCSP response with cert
-	certDER3, err := os.ReadFile("test-cert2.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	ocspResp := []byte{0, 0, 1}
-	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER3,
-		RegID:  reg.Id,
-		Ocsp:   ocspResp,
-		Issued: issuedTime.UnixNano(),
-	})
-	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 }
 
 func TestAddCertificateDuplicate(t *testing.T) {
@@ -2034,16 +2014,7 @@ func TestRevokeCertificate(t *testing.T) {
 		Date:   now.UnixNano(),
 		Reason: reason,
 	})
-	test.AssertError(t, err, "RevokeCertificate should fail with no response")
-
-	response := []byte{1, 2, 3}
-	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		Serial:   serial,
-		Date:     now.UnixNano(),
-		Reason:   reason,
-		Response: response,
-	})
-	test.AssertNotError(t, err, "RevokeCertificate should have succeeded")
+	test.AssertNotError(t, err, "RevokeCertificate with no OCSP response should succeed")
 
 	status, err = sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
@@ -2051,55 +2022,13 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertEquals(t, status.RevokedReason, reason)
 	test.AssertEquals(t, status.RevokedDate, now.UnixNano())
 	test.AssertEquals(t, status.OcspLastUpdated, now.UnixNano())
-	test.AssertDeepEquals(t, status.OcspResponse, response)
-
-	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		Serial:   serial,
-		Date:     now.UnixNano(),
-		Reason:   reason,
-		Response: response,
-	})
-	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
-}
-
-func TestRevokeCertificateNoResponse(t *testing.T) {
-	sa, fc, cleanUp := initSA(t)
-	defer cleanUp()
-
-	err := features.Set(map[string]bool{features.ROCSPStage6.String(): true})
-	test.AssertNotError(t, err, "failed to set features")
-	defer features.Reset()
-
-	reg := createWorkingRegistration(t, sa)
-	// Add a cert to the DB to test with.
-	certDER, err := os.ReadFile("www.eff.org.der")
-	test.AssertNotError(t, err, "Couldn't read example cert DER")
-	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:          certDER,
-		RegID:        reg.Id,
-		Ocsp:         nil,
-		Issued:       sa.clk.Now().UnixNano(),
-		IssuerNameID: 1,
-	})
-	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
-
-	serial := "000000000000000000000000000000021bd4"
-
-	status, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
-	test.AssertNotError(t, err, "GetCertificateStatus failed")
-	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
-
-	fc.Add(1 * time.Hour)
-
-	now := fc.Now()
-	reason := int64(1)
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial: serial,
 		Date:   now.UnixNano(),
 		Reason: reason,
 	})
-	test.AssertNotError(t, err, "RevokeCertificate should succeed with no response when ROCSPStage6 is enabled")
+	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
 }
 
 func TestUpdateRevokedCertificate(t *testing.T) {
