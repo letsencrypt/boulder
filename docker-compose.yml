@@ -62,7 +62,6 @@ services:
     command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
     logging:
       driver: none
-
   bproxysql:
     image: proxysql/proxysql:2.4.4
     # The --initial flag force resets the ProxySQL database on startup. By
