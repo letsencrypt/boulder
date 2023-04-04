@@ -22,7 +22,7 @@ func TestInvalidDSN(t *testing.T) {
 
 	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
 	_, err = NewDbMap(DSN, DbSettings{})
-	test.AssertNotError(t, err, "Unique system variable declared with incorrect quoting")
+	test.AssertError(t, err, "System variable declared with incorrect quoting")
 }
 
 var errExpected = errors.New("expected")
