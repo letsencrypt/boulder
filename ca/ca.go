@@ -324,14 +324,14 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
-		return nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
 	}
 	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
-		return nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
