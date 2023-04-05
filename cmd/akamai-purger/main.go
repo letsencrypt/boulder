@@ -400,13 +400,9 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		stopped <- true
 	}()
 
-	start, stopFn, err := bgrpc.NewServer(c.AkamaiPurger.GRPC).Add(
-		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk)
-	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
-
-	go cmd.CatchSignals(logger, func() {
-		stopFn()
-
+	// When the gRPC server finally exits, run a clean-up routine that stops the
+	// ticker and waits for the goroutine above to finish purging the stack.
+	defer func() {
 		// Stop the ticker and signal that we want to shutdown by writing to the
 		// stop channel. We wait 15 seconds for any remaining URLs to be emptied
 		// from the current stack, if we pass that deadline we exit early.
@@ -417,14 +413,13 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 			cmd.Fail("Timed out waiting for purger to finish work")
 		case <-stopped:
 		}
-	})
-	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
+	}()
 
-	// When we get a SIGTERM, we will exit from grpcSrv.Serve as soon as all
-	// extant RPCs have been processed, but we want the process to stick around
-	// while we still have a goroutine purging the last elements from the stack.
-	// Once that's done, CatchSignals will call os.Exit().
-	select {}
+	start, err := bgrpc.NewServer(c.AkamaiPurger.GRPC).Add(
+		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk)
+	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
+
+	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
 }
 
 func init() {

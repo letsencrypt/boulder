@@ -249,8 +249,8 @@ func main() {
 		var entries int
 		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename, logger, allowListGauge)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
+		defer ecdsaAllowList.Stop()
 		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
-
 	}
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA)
@@ -272,6 +272,7 @@ func main() {
 		)
 		cmd.FailOnError(err, "Failed to create OCSP impl")
 		go ocspi.LogOCSPLoop()
+		defer ocspi.Stop()
 
 		srv = srv.Add(&capb.OCSPGenerator_ServiceDesc, ocspi)
 	}
@@ -316,16 +317,9 @@ func main() {
 		srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
 	}
 
-	start, stop, err := srv.Build(tlsConfig, scope, clk)
+	start, err := srv.Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
-	go cmd.CatchSignals(logger, func() {
-		stop()
-		ecdsaAllowList.Stop()
-		if ocspi != nil {
-			ocspi.Stop()
-		}
-	})
 	cmd.FailOnError(start(), "CA gRPC service failed")
 }
 

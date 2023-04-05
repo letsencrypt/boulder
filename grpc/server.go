@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
@@ -64,16 +67,18 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 
 // Build creates a gRPC server that uses the provided *tls.Config and exposes
 // all of the services added to the builder. It also exposes a health check
-// service. It returns two functions, start() and stop(), which should be used
-// to start and gracefully stop the server.
-func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, func(), error) {
+// service. It returns one functions, start(), which should be used to start
+// the server. It spawns a goroutine which will listen for OS signals and
+// gracefully stop the server if one is caught, causing the start() function to
+// exit.
+func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
 	// Add the health service to all servers.
 	healthSrv := health.NewServer()
 	sb = sb.Add(&healthpb.Health_ServiceDesc, healthSrv)
 
 	// Check to see if any of the calls to .Add() resulted in an error.
 	if sb.err != nil {
-		return nil, nil, sb.err
+		return nil, sb.err
 	}
 
 	// Ensure that every configured service also got added.
@@ -84,12 +89,12 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	for serviceName := range sb.cfg.Services {
 		_, ok := sb.services[serviceName]
 		if !ok {
-			return nil, nil, fmt.Errorf("gRPC service %q in config does not match any service: %s", serviceName, strings.Join(registeredServices, ", "))
+			return nil, fmt.Errorf("gRPC service %q in config does not match any service: %s", serviceName, strings.Join(registeredServices, ", "))
 		}
 	}
 
 	if tlsConfig == nil {
-		return nil, nil, errNilTLS
+		return nil, errNilTLS
 	}
 
 	// Collect all names which should be allowed to connect to the server at all.
@@ -108,14 +113,14 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 
 	creds, err := bcreds.NewServerCredentials(tlsConfig, acceptedSANs)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Set up all of our interceptors which handle metrics, traces, error
 	// propagation, and more.
 	metrics, err := newServerMetrics(statsRegistry)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	var ai serverInterceptor
@@ -160,18 +165,27 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// Finally return the functions which will start and stop the server.
 	listener, err := net.Listen("tcp", sb.cfg.Address)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	start := func() error {
-		return filterShutdownErrors(server.Serve(listener))
-	}
-	stop := func() {
-		healthSrv.Shutdown()
-		server.GracefulStop()
+		return server.Serve(listener)
 	}
 
-	return start, stop, nil
+	// Start a goroutine which listens for a termination signal, and then
+	// gracefully stops the gRPC server. This in turn causes the start() function
+	// to exit, allowing its caller (generally a main() function) to exit.
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGTERM)
+		signal.Notify(sigChan, syscall.SIGINT)
+		signal.Notify(sigChan, syscall.SIGHUP)
+		<-sigChan
+		healthSrv.Shutdown()
+		server.GracefulStop()
+	}()
+
+	return start, nil
 }
 
 // serverMetrics is a struct type used to return a few registered metrics from
@@ -221,20 +235,4 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 		grpcMetrics: grpcMetrics,
 		rpcLag:      rpcLag,
 	}, nil
-}
-
-// filterShutdownErrors returns the input error, with the exception of "use of
-// closed network connection," on which it returns nil
-// Per https://github.com/grpc/grpc-go/issues/1017, a gRPC server's `Serve()`
-// will always return an error, even when GracefulStop() is called. We don't
-// want to log graceful stops as errors, so we filter out the meaningless
-// error we get in that situation.
-func filterShutdownErrors(err error) error {
-	if err == nil {
-		return nil
-	}
-	if strings.Contains(err.Error(), "use of closed network connection") {
-		return nil
-	}
-	return err
 }

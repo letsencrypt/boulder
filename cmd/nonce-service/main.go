@@ -109,11 +109,10 @@ func main() {
 	cmd.FailOnError(err, "tlsConfig config")
 
 	nonceServer := nonce.NewServer(ns)
-	start, stop, err := bgrpc.NewServer(c.NonceService.GRPC).Add(
+	start, err := bgrpc.NewServer(c.NonceService.GRPC).Add(
 		&noncepb.NonceService_ServiceDesc, nonceServer).Build(tlsConfig, scope, cmd.Clock())
 	cmd.FailOnError(err, "Unable to setup nonce service gRPC server")
 
-	go cmd.CatchSignals(logger, stop)
 	cmd.FailOnError(start(), "Nonce service gRPC server failed")
 }
 

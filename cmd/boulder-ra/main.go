@@ -243,6 +243,7 @@ func main() {
 		apc,
 		issuerCerts,
 	)
+	defer rai.DrainFinalize()
 
 	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
@@ -253,14 +254,10 @@ func main() {
 	rai.OCSP = ocspc
 	rai.SA = sac
 
-	start, stop, err := bgrpc.NewServer(c.RA.GRPC).Add(
+	start, err := bgrpc.NewServer(c.RA.GRPC).Add(
 		&rapb.RegistrationAuthority_ServiceDesc, rai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup RA gRPC server")
 
-	go cmd.CatchSignals(logger, func() {
-		stop()
-		rai.DrainFinalize()
-	})
 	cmd.FailOnError(start(), "RA gRPC service failed")
 }
 
