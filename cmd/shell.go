@@ -276,7 +276,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	return registry
 }
 
-// Fail prints a message audit log, then panics, causing the process to exit but
+// Fail prints a message to the audit log, then panics, causing the process to exit but
 // allowing deferred cleanup functions to run on the way out.
 func Fail(msg string) {
 	logger := blog.Get()
