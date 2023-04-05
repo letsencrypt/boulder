@@ -47,9 +47,9 @@ func TestCommonNameInCSR(t *testing.T) {
 	test.AssertEquals(t, cert.Subject.CommonName, cn)
 }
 
-// TestCommonNameHoisted ensures that CSRs which have no CN set result in certs
-// with one of their SANs hoisted into the CN field.
-func TestCommonNameHoisted(t *testing.T) {
+// TestFirstCSRSANHoistedToCN ensures that CSRs which have no CN set result in
+// certs with the first CSR SAN hoisted into the CN field.
+func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	t.Parallel()
 
 	// Create an account.
@@ -75,7 +75,7 @@ func TestCommonNameHoisted(t *testing.T) {
 	test.AssertSliceContains(t, cert.DNSNames, san2)
 
 	// Ensure that one of the SANs is the CN.
-	test.Assert(t, cert.Subject.CommonName == san1 || cert.Subject.CommonName == san2, "SAN should have been hoisted")
+	test.Assert(t, cert.Subject.CommonName == san1, "SAN should have been hoisted")
 }
 
 // TestCommonNameSANsTooLong tests that, when the names in an order and CSR are
