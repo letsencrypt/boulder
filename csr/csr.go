@@ -126,6 +126,6 @@ func NamesFromCSR(csr *x509.CertificateRequest) names {
 			return names{SANs: core.UniqueLowerNames(sans), CN: name}
 		}
 	}
-	
+
 	return names{SANs: core.UniqueLowerNames(sans)}
 }
