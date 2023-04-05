@@ -20,8 +20,14 @@ func TestInvalidDSN(t *testing.T) {
 	_, err = NewDbMap(DSN, DbSettings{})
 	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
 
-	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=%27value-is-wrong%27"
 	_, err = NewDbMap(DSN, DbSettings{})
+	// We expect the error code to be 1045 (ER_ACCESS_DENIED_ERROR) because
+	// ProxySQL prevents us from making a connection with a valid DSN, but an
+	// invalid value.: https://mariadb.com/kb/en/mariadb-error-codes/
+	if errors.As(err, &mysql.MySQLError) {
+		test.AssertEquals(t, &mysql.MySQLError.Number, uint16(1045))
+	}
 	test.AssertError(t, err, "System variable declared with incorrect quoting")
 }
 
