@@ -2102,6 +2102,10 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 
 	respObj := wfe.orderToOrderJSON(request, order)
 
+	orderURL := web.RelativeEndpoint(request,
+		fmt.Sprintf("%s%d/%d", orderPath, acctID, order.Id))
+	response.Header().Set("Location", orderURL)
+
 	if respObj.Status == core.StatusProcessing {
 		response.Header().Set(headerRetryAfter, strconv.Itoa(orderRetryAfter))
 	}
