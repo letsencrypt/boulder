@@ -33,7 +33,8 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 	if err != nil {
 		return err
 	}
-	return linter.Check(tbs, subjectPubKey)
+	_, err = linter.Check(tbs, subjectPubKey)
+	return err
 }
 
 // Linter is capable of linting a to-be-signed (TBS) certificate. It does so by
@@ -69,14 +70,19 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []str
 
 // Check signs the given TBS certificate using the Linter's fake issuer cert and
 // private key, then runs the resulting certificate through all non-filtered
-// lints. It returns an error if any lint fails.
-func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) error {
-	cert, err := makeLintCert(tbs, subjectPubKey, l.issuer, l.signer)
+// lints. It returns an error if any lint fails. On success it also returns the
+// DER bytes of the linting certificate.
+func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]byte, error) {
+	lintCertBytes, cert, err := makeLintCert(tbs, subjectPubKey, l.issuer, l.signer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	lintRes := zlint.LintCertificateEx(cert, l.registry)
-	return ProcessResultSet(lintRes)
+	err = ProcessResultSet(lintRes)
+	if err != nil {
+		return nil, err
+	}
+	return lintCertBytes, nil
 }
 
 // CheckCRL signs the given RevocationList template using the Linter's fake
@@ -178,16 +184,16 @@ func makeRegistry(skipLints []string) (lint.Registry, error) {
 	return reg, nil
 }
 
-func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer *x509.Certificate, signer crypto.Signer) (*zlintx509.Certificate, error) {
+func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer *x509.Certificate, signer crypto.Signer) ([]byte, *zlintx509.Certificate, error) {
 	lintCertBytes, err := x509.CreateCertificate(rand.Reader, tbs, issuer, subjectPubKey, signer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create lint certificate: %w", err)
+		return nil, nil, fmt.Errorf("failed to create lint certificate: %w", err)
 	}
 	lintCert, err := zlintx509.ParseCertificate(lintCertBytes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse lint certificate: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse lint certificate: %w", err)
 	}
-	return lintCert, nil
+	return lintCertBytes, lintCert, nil
 }
 
 func ProcessResultSet(lintRes *zlint.ResultSet) error {
