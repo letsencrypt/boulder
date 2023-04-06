@@ -20,7 +20,6 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/issuance"
@@ -268,13 +267,6 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 
 	typ = orphanTypeForCert(cert)
 
-	// generate an OCSP response
-	response, err := opf.generateOCSP(ctx, cert)
-	if err != nil {
-		opf.logger.AuditErrf("Couldn't generate OCSP: %s, [%s]", err, line)
-		return true, false, typ
-	}
-
 	// We use `cert.NotBefore` as the issued date to avoid the SA tagging this
 	// certificate with an issued date of the current time when we know it was an
 	// orphan issued in the past. Because certificates are backdated we need to
@@ -285,14 +277,12 @@ func (opf *orphanFinder) storeLogLine(ctx context.Context, line string) (found b
 		_, err = opf.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    parsed.certDER,
 			RegID:  parsed.regID,
-			Ocsp:   response,
 			Issued: issuedDate.UnixNano(),
 		})
 	case precertOrphan:
 		_, err = opf.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:          parsed.certDER,
 			RegID:        parsed.regID,
-			Ocsp:         response,
 			Issued:       issuedDate.UnixNano(),
 			IssuerNameID: parsed.issuerID,
 		})
@@ -317,51 +307,24 @@ func (opf *orphanFinder) parseDER(derPath string, regID int64) {
 	// Because certificates are backdated we need to add the backdate duration
 	// to find the true issued time.
 	issuedDate := cert.NotBefore.Add(1 * opf.backdate)
-	response, err := opf.generateOCSP(ctx, cert)
-	cmd.FailOnError(err, "Generating OCSP")
 
 	switch orphanTypeForCert(cert) {
 	case certOrphan:
 		_, err = opf.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  regID,
-			Ocsp:   response,
 			Issued: issuedDate.UnixNano(),
 		})
 	case precertOrphan:
 		_, err = opf.sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 			Der:    der,
 			RegID:  regID,
-			Ocsp:   response,
 			Issued: issuedDate.UnixNano(),
 		})
 	default:
 		err = errors.New("unknown orphan type")
 	}
 	cmd.FailOnError(err, "Failed to add certificate to database")
-}
-
-// generateOCSP asks the CA to generate a new OCSP response for the given cert.
-func (opf *orphanFinder) generateOCSP(ctx context.Context, cert *x509.Certificate) ([]byte, error) {
-	if features.Enabled(features.ROCSPStage7) {
-		return nil, nil
-	}
-	issuerID := issuance.GetIssuerNameID(cert)
-	_, ok := opf.issuers[issuerID]
-	if !ok {
-		return nil, errors.New("unrecognized issuer for orphan")
-	}
-	ocspResponse, err := opf.ca.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:    core.SerialToString(cert.SerialNumber),
-		IssuerID:  int64(issuerID),
-		Status:    string(core.OCSPStatusGood),
-		Reason:    0,
-		RevokedAt: 0,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return ocspResponse.Response, nil
 }
 
 func main() {

@@ -15,6 +15,7 @@ const (
 	//   Deprecated features, these can be removed once stripped from production configs
 	StoreRevokerInfo
 	ROCSPStage6
+	ROCSPStage7
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -36,11 +37,6 @@ const (
 	// AllowUnrecognizedFeatures is internal to the features package: if true,
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
-
-	// ROCSPStage7 disables generating OCSP responses during issuance and
-	// revocation. This affects codepaths in both the RA (revocation) and the CA
-	// (precert "birth certificates").
-	ROCSPStage7
 
 	// ExpirationMailerUsesJoin enables using a JOIN query in expiration-mailer
 	// rather than a SELECT from certificateStatus followed by thousands of

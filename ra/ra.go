@@ -1823,26 +1823,10 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 	serialString := core.SerialToString(serial)
 	revokedAt := ra.clk.Now().UnixNano()
 
-	var ocspResponse []byte
-	if !features.Enabled(features.ROCSPStage7) {
-		ocspResponsePB, err := ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-			Serial:    serialString,
-			IssuerID:  issuerID,
-			Status:    string(core.OCSPStatusRevoked),
-			Reason:    int32(reason),
-			RevokedAt: revokedAt,
-		})
-		if err != nil {
-			return err
-		}
-		ocspResponse = ocspResponsePB.Response
-	}
-
 	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(reason),
 		Date:     revokedAt,
-		Response: ocspResponse,
 		IssuerID: issuerID,
 	})
 	if err != nil {
@@ -1877,27 +1861,11 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
 	}
 
-	// The new OCSP response has to be back-dated to the original date.
-	var ocspResponse []byte
-	if !features.Enabled(features.ROCSPStage7) {
-		ocspResponsePB, err := ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-			Serial:    serialString,
-			IssuerID:  issuerID,
-			Status:    string(core.OCSPStatusRevoked),
-			Reason:    int32(ocsp.KeyCompromise),
-			RevokedAt: status.RevokedDate,
-		})
-		if err != nil {
-			return err
-		}
-		ocspResponse = ocspResponsePB.Response
-	}
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(ocsp.KeyCompromise),
 		Date:     thisUpdate,
 		Backdate: status.RevokedDate,
-		Response: ocspResponse,
 		IssuerID: issuerID,
 	})
 	if err != nil {
