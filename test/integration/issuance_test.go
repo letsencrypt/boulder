@@ -47,9 +47,9 @@ func TestCommonNameInCSR(t *testing.T) {
 	test.AssertEquals(t, cert.Subject.CommonName, cn)
 }
 
-// TestCommonNameHoisted ensures that CSRs which have no CN set result in certs
-// with one of their SANs hoisted into the CN field.
-func TestCommonNameHoisted(t *testing.T) {
+// TestFirstCSRSANHoistedToCN ensures that CSRs which have no CN set result in
+// certs with the first CSR SAN hoisted into the CN field.
+func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	t.Parallel()
 
 	// Create an account.
@@ -61,21 +61,21 @@ func TestCommonNameHoisted(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")
 
-	// Put together some names.
-	san1 := random_domain()
-	san2 := random_domain()
+	// Create some names that we can sort.
+	san1 := "a" + random_domain()
+	san2 := "b" + random_domain()
 
-	// Issue a cert using a CSR with no CN set.
-	ir, err := authAndIssue(client, key, []string{san1, san2}, false)
+	// Issue a cert using a CSR with no CN set, and the SANs in *non*-alpha order.
+	ir, err := authAndIssue(client, key, []string{san2, san1}, false)
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]
 
-	// Ensure that the SANs are correct.
-	test.AssertSliceContains(t, cert.DNSNames, san1)
-	test.AssertSliceContains(t, cert.DNSNames, san2)
+	// Ensure that the SANs are correct, and sorted alphabetically.
+	test.AssertEquals(t, cert.DNSNames[0], san1)
+	test.AssertEquals(t, cert.DNSNames[1], san2)
 
-	// Ensure that one of the SANs is the CN.
-	test.Assert(t, cert.Subject.CommonName == san1 || cert.Subject.CommonName == san2, "SAN should have been hoisted")
+	// Ensure that the first SAN from the CSR is the CN.
+	test.Assert(t, cert.Subject.CommonName == san2, "first SAN should have been hoisted")
 }
 
 // TestCommonNameSANsTooLong tests that, when the names in an order and CSR are
