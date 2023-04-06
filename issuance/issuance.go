@@ -605,7 +605,7 @@ type IssuanceRequest struct {
 // precertificate with the same Issuer's private key, containing the same
 // contents that were linted.
 type issuanceToken struct {
-	mu sync.Mutex
+	mu       sync.Mutex
 	template *x509.Certificate
 	pubKey   any
 	// A pointer to the issuer that created this token. This token may only

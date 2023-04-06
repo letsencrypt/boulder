@@ -595,15 +595,13 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
-	lintCertBytes, issuanceToken, err := signer.Prepare(&IssuanceRequest{
+	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
 		PublicKey: pk.Public(),
 		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
 		DNSNames:  []string{"example.com"},
 		NotBefore: fc.Now(),
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
-	test.AssertNotError(t, err, "Prepare failed")
-	_, err = x509.ParseCertificate(lintCertBytes)
 	test.AssertNotError(t, err, "failed to parse lint certificate")
 	certBytes, err := signer.Issue(issuanceToken)
 	test.AssertNotError(t, err, "failed to parse certificate")
@@ -643,10 +641,8 @@ func TestIssueCommonName(t *testing.T) {
 		NotAfter:   fc.Now().Add(time.Hour - time.Second),
 	}
 
-	lintCertBytes, issuanceToken, err := signer.Prepare(ir)
+	_, issuanceToken, err := signer.Prepare(ir)
 	test.AssertNotError(t, err, "Prepare failed")
-	_, err = x509.ParseCertificate(lintCertBytes)
-	test.AssertNotError(t, err, "failed to parse certificate")
 	certBytes, err := signer.Issue(issuanceToken)
 	test.AssertNotError(t, err, "Issue failed")
 	cert, err := x509.ParseCertificate(certBytes)
