@@ -241,7 +241,6 @@ func checkMariaDBSystemVariableQuoting(name string, value string) error {
 	// and determine if the value is a properly formatted string e.g.
 	// sql_mode='STRICT_TABLES'
 	if _, found := mariaDBStringTypes[name]; found {
-		fmt.Println(name, value, found)
 		if checkStringQuoteRE.FindString(value) == value {
 			return nil
 		}
