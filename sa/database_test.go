@@ -20,14 +20,8 @@ func TestInvalidDSN(t *testing.T) {
 	_, err = NewDbMap(DSN, DbSettings{})
 	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
 
-	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=%27value-is-wrong%27"
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
 	_, err = NewDbMap(DSN, DbSettings{})
-	// We expect the error code to be 1045 (ER_ACCESS_DENIED_ERROR) because
-	// ProxySQL prevents us from making a connection with a valid DSN, but an
-	// invalid value.: https://mariadb.com/kb/en/mariadb-error-codes/
-	if errors.As(err, &mysql.MySQLError) {
-		test.AssertEquals(t, &mysql.MySQLError.Number, uint16(1045))
-	}
 	test.AssertError(t, err, "System variable declared with incorrect quoting")
 }
 
@@ -265,7 +259,15 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 		},
 	}
 	err = adjustMariaDBConfig(conf)
-	test.AssertNotError(t, err, "key is an enum as a MariaDB integer, but incorrectly errored")
+	test.AssertNotError(t, err, "key is an integer enum, but incorrectly errored")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"concurrent_insert": "'2'",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertError(t, err, "key is an integer enum, but should not have been quoted")
 
 	conf = &mysql.Config{
 		Params: map[string]string{
@@ -273,7 +275,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 		},
 	}
 	err = adjustMariaDBConfig(conf)
-	test.AssertError(t, err, "key is an enum as a MariaDB string, but should be quoted")
+	test.AssertError(t, err, "key is a string enum, but was not quoted")
 
 	conf = &mysql.Config{
 		Params: map[string]string{
@@ -281,5 +283,5 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 		},
 	}
 	err = adjustMariaDBConfig(conf)
-	test.AssertNotError(t, err, "key is an enum as a MariaDB string, but unexpectedly errored")
+	test.AssertNotError(t, err, "key is a string enum, but incorrectly quoted")
 }
