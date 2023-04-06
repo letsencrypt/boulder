@@ -605,7 +605,7 @@ type IssuanceRequest struct {
 // precertificate with the same Issuer's private key, containing the same
 // contents that were linted.
 type issuanceToken struct {
-	sync.Mutex
+	mu sync.Mutex
 	template *x509.Certificate
 	pubKey   any
 	// A pointer to the issuer that created this token. This token may only
@@ -680,8 +680,8 @@ func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
 	if token == nil {
 		return nil, errors.New("nil issuanceToken")
 	}
-	token.Lock()
-	defer token.Unlock()
+	token.mu.Lock()
+	defer token.mu.Unlock()
 	if token.template == nil {
 		return nil, errors.New("issuance token already redeemed")
 	}
