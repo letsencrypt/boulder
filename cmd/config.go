@@ -449,8 +449,4 @@ type OpenTelemetryConfig struct {
 	// ensure that any external API users don't influence our own sampling
 	// decisions.
 	DisableParentSampler bool
-
-	// StdoutExporter prints traces to stdout if this is true.
-	// Useful in test or dev environments without an OTLP endpoint available
-	StdoutExporter bool
 }

@@ -29,7 +29,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -317,15 +316,6 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 	opts := []trace.TracerProviderOption{
 		trace.WithResource(r),
 		trace.WithSampler(sampler),
-	}
-
-	if config.StdoutExporter {
-		exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-		if err != nil {
-			FailOnError(err, "Could not create OpenTelemetry stdout exporter")
-		}
-
-		opts = append(opts, trace.WithBatcher(exporter))
 	}
 
 	if config.Endpoint != "" {
