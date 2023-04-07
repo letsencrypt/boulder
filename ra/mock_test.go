@@ -8,11 +8,17 @@ import (
 	"github.com/letsencrypt/boulder/mocks"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	grpc "google.golang.org/grpc"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 type mockInvalidAuthorizationsAuthority struct {
 	mocks.StorageAuthority
 	domainWithFailures string
+}
+
+// SetCertificateStatusReady implements proto.StorageAuthorityClient
+func (*mockInvalidAuthorizationsAuthority) SetCertificateStatusReady(ctx context.Context, in *sapb.Serial, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	panic("unimplemented")
 }
 
 func (sa *mockInvalidAuthorizationsAuthority) CountOrders(_ context.Context, _ *sapb.CountOrdersRequest, _ ...grpc.CallOption) (*sapb.Count, error) {
