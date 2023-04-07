@@ -21,7 +21,7 @@ var checkBooleanRE = regexp.MustCompile(`^([0-1])|(?i)(true|false)|(?i)(on|off)`
 //     This has an added benefit that we can prevent instantiating a new SA if an
 //     improper set of database variables is provided.
 //
-//   - Correct quoting for strings, string enums, integer enums to prevent future
+//   - Correct quoting for strings and string enums prevent future
 //     problems such as PR #6683 from occurring.
 //
 //   - Regex validation is performed for the various booleans, floats, integers, and strings.
