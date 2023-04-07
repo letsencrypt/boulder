@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
+	"sync"
 	"testing"
 
 	"github.com/letsencrypt/boulder/metrics"
@@ -211,4 +213,36 @@ func TestNoncePrefixValidation(t *testing.T) {
 func TestDerivePrefix(t *testing.T) {
 	prefix := DerivePrefix("192.168.1.1:8080", "3b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
 	test.AssertEquals(t, prefix, "P9qQaK4o")
+}
+
+// TestConcurrency spawns goroutines which each request and redeem nonces, ensuring this code is race-free.
+func TestConcurrency(t *testing.T) {
+	ns, err := NewNonceService(metrics.NoopRegisterer, 320, "")
+	test.AssertNotError(t, err, "creating nonce service")
+
+	var runs int
+	for runs = 0; runs < 3; runs++ {
+		concurrency := 32
+		var wg sync.WaitGroup
+
+		for i := 0; i < concurrency; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				for count := 0; count < ns.maxUsed/concurrency; count++ {
+					nonce, err := ns.Nonce()
+					test.AssertNotError(t, err, "creating nonce")
+
+					runtime.Gosched() // reschedule between request and redemption
+
+					test.Assert(t, ns.Valid(nonce), "invalid nonce")
+				}
+			}()
+		}
+		wg.Wait()
+	}
+
+	test.AssertEquals(t, ns.earliest.Load(), int64((runs-1)*ns.maxUsed))
+	test.AssertEquals(t, ns.latest.Load(), int64((runs)*ns.maxUsed))
 }
