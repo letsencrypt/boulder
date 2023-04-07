@@ -1,6 +1,10 @@
 package observer
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
+
 	blog "github.com/letsencrypt/boulder/log"
 	_ "github.com/letsencrypt/boulder/observer/probers/crl"
 	_ "github.com/letsencrypt/boulder/observer/probers/dns"
@@ -15,14 +19,16 @@ type Observer struct {
 	shutdown func()
 }
 
-// Start spins off a goroutine for each monitor.
-func (o Observer) Start() error {
+// Start spins off a goroutine for each monitor, and waits for a signal to exit
+func (o Observer) Start() {
 	for _, mon := range o.monitors {
 		go mon.start(o.logger)
 	}
-	select {}
-}
 
-func (o Observer) Stop() {
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGTERM)
+	signal.Notify(sigChan, syscall.SIGINT)
+	signal.Notify(sigChan, syscall.SIGHUP)
+	<-sigChan
 	o.shutdown()
 }
