@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -186,11 +187,19 @@ scan:
 	}
 }
 
-func (srv *mailSrv) serveSMTP(l net.Listener) error {
+func (srv *mailSrv) serveSMTP(ctx context.Context, l net.Listener) error {
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			return err
+			// If the accept call returned an error because the listener has been
+			// closed, then the context should have been canceled too. In that case,
+			// ignore the error.
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				return err
+			}
 		}
 		go srv.handleConn(conn)
 	}
@@ -215,9 +224,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Couldn't bind %q for SMTP: %s", *listenSMTP, err)
 	}
-	go cmd.CatchSignals(func() {
-		cmd.FailOnError(l.Close(), "shutting down listener")
-	})
+	defer l.Close()
 
 	srv := mailSrv{
 		closeFirst: *closeFirst,
@@ -235,8 +242,10 @@ func main() {
 		}
 	}()
 
-	err = srv.serveSMTP(l)
-	if err != nil {
-		log.Fatalln(err, "Failed to accept connection")
-	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go cmd.FailOnError(srv.serveSMTP(ctx, l), "Failed to accept connection")
+
+	cmd.WaitForSignal()
 }
