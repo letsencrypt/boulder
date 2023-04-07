@@ -62,10 +62,10 @@ func TestRejectTooLate(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")
 
-	ns.latest = 2
+	ns.latest.Store(2)
 	n, err := ns.Nonce()
 	test.AssertNotError(t, err, "Could not create nonce")
-	ns.latest = 1
+	ns.latest.Store(1)
 	test.Assert(t, !ns.Valid(n), "Accepted a nonce with a too-high counter")
 }
 

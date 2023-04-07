@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -66,8 +67,8 @@ func DerivePrefix(grpcAddr, key string) string {
 // NonceService generates, cancels, and tracks Nonces.
 type NonceService struct {
 	mu               sync.Mutex
-	latest           int64
-	earliest         int64
+	latest           *atomic.Int64
+	earliest         *atomic.Int64
 	used             map[int64]bool
 	usedHeap         *int64Heap
 	gcm              cipher.AEAD
@@ -161,8 +162,8 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	stats.MustRegister(nonceHeapLatency)
 
 	return &NonceService{
-		earliest:         0,
-		latest:           0,
+		earliest:         &atomic.Int64{},
+		latest:           &atomic.Int64{},
 		used:             make(map[int64]bool, maxUsed),
 		usedHeap:         &int64Heap{},
 		gcm:              gcm,
@@ -242,12 +243,8 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 
 // Nonce provides a new Nonce.
 func (ns *NonceService) Nonce() (string, error) {
-	ns.mu.Lock()
-	ns.latest++
-	latest := ns.latest
-	ns.mu.Unlock()
 	defer ns.nonceCreates.Inc()
-	return ns.encrypt(latest)
+	return ns.encrypt(ns.latest.Add(1))
 }
 
 // Valid determines whether the provided Nonce string is valid, returning
@@ -259,17 +256,18 @@ func (ns *NonceService) Valid(nonce string) bool {
 		return false
 	}
 
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
-	if c > ns.latest {
+	if c > ns.latest.Load() {
 		ns.nonceRedeems.WithLabelValues("invalid", "too high").Inc()
 		return false
 	}
 
-	if c <= ns.earliest {
+	if c <= ns.earliest.Load() {
 		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
 		return false
 	}
+
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
 
 	if ns.used[c] {
 		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
@@ -280,9 +278,10 @@ func (ns *NonceService) Valid(nonce string) bool {
 	heap.Push(ns.usedHeap, c)
 	if len(ns.used) > ns.maxUsed {
 		s := time.Now()
-		ns.earliest = heap.Pop(ns.usedHeap).(int64)
+		popped := heap.Pop(ns.usedHeap).(int64)
+		ns.earliest.Store(popped)
 		ns.nonceHeapLatency.Observe(time.Since(s).Seconds())
-		delete(ns.used, ns.earliest)
+		delete(ns.used, popped)
 	}
 
 	ns.nonceRedeems.WithLabelValues("valid", "").Inc()
