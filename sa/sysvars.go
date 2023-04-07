@@ -27,7 +27,7 @@ var checkBooleanRE = regexp.MustCompile(`^([0-1])|(?i)(true|false)|(?i)(on|off)`
 //   - Regex validation is performed for the various booleans, floats, integers, and strings.
 func checkMariaDBSystemVariables(name string, value string) error {
 	// System variable names will be indexed into the appropriate hash sets
-	// below and can possibily exist in several.
+	// below and can possibly exist in several.
 
 	// Check MariaDB system variables can be scoped per session. A session
 	// variable change affects the current session only. Passing a session
