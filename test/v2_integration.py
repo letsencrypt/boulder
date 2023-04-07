@@ -1242,9 +1242,6 @@ def test_auth_deactivation_v2():
 def test_ocsp():
     cert_file = temppath('test_ocsp.pem')
     chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-
-    # As OCSP-Updater is generating responses independently of the CA we sit in a loop
-    # checking OCSP until we either see a good response or we timeout (5s).
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
 
 def test_ct_submission():

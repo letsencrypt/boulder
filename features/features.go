@@ -14,6 +14,7 @@ const (
 	unused FeatureFlag = iota // unused is used for testing
 	//   Deprecated features, these can be removed once stripped from production configs
 	StoreRevokerInfo
+	ROCSPStage6
 
 	//   Currently in-use features
 	// Check CAA and respect validationmethods parameter.
@@ -36,11 +37,6 @@ const (
 	// skip error when unrecognized feature flag names are passed.
 	AllowUnrecognizedFeatures
 
-	// ROCSPStage6 disables writing full OCSP Responses to MariaDB during
-	// (pre)certificate issuance and during revocation. Because Stage 4 involved
-	// disabling ocsp-updater, this means that no ocsp response bytes will be
-	// written to the database anymore.
-	ROCSPStage6
 	// ROCSPStage7 disables generating OCSP responses during issuance and
 	// revocation. This affects codepaths in both the RA (revocation) and the CA
 	// (precert "birth certificates").

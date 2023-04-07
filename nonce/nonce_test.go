@@ -12,6 +12,10 @@ import (
 	"google.golang.org/grpc"
 )
 
+func TestImplementation(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &Server{}, noncepb.UnimplementedNonceServiceServer{})
+}
+
 func TestValidNonce(t *testing.T) {
 	ns, err := NewNonceService(metrics.NoopRegisterer, 0, "")
 	test.AssertNotError(t, err, "Could not create nonce service")

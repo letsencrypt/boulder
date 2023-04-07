@@ -27,7 +27,6 @@
 			"services": {
 				"Publisher": {
 					"clientNames": [
-						"ocsp-updater.boulder",
 						"ra.boulder"
 					]
 				},

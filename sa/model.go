@@ -139,7 +139,7 @@ type CertStatusMetadata struct {
 	IssuerID              int64             `db:"issuerID"`
 }
 
-const certStatusFields = "id, serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, ocspResponse, notAfter, isExpired, issuerID"
+const certStatusFields = "id, serial, status, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent, notAfter, isExpired, issuerID"
 
 // SelectCertificateStatus selects all fields of one certificate status model
 // identified by serial

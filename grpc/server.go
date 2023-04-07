@@ -64,8 +64,10 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 
 // Build creates a gRPC server that uses the provided *tls.Config and exposes
 // all of the services added to the builder. It also exposes a health check
-// service. It returns two functions, start() and stop(), which should be used
-// to start and gracefully stop the server.
+// service. It returns one functions, start(), which should be used to start
+// the server. It spawns a goroutine which will listen for OS signals and
+// gracefully stop the server if one is caught, causing the start() function to
+// exit.
 func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
 	// Add the health service to all servers.
 	healthSrv := health.NewServer()
@@ -164,7 +166,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	}
 
 	start := func() error {
-		return filterShutdownErrors(server.Serve(listener))
+		return server.Serve(listener)
 	}
 
 	// Start a goroutine which listens for a termination signal, and then
@@ -225,20 +227,4 @@ func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 		grpcMetrics: grpcMetrics,
 		rpcLag:      rpcLag,
 	}, nil
-}
-
-// filterShutdownErrors returns the input error, with the exception of "use of
-// closed network connection," on which it returns nil
-// Per https://github.com/grpc/grpc-go/issues/1017, a gRPC server's `Serve()`
-// will always return an error, even when GracefulStop() is called. We don't
-// want to log graceful stops as errors, so we filter out the meaningless
-// error we get in that situation.
-func filterShutdownErrors(err error) error {
-	if err == nil {
-		return nil
-	}
-	if strings.Contains(err.Error(), "use of closed network connection") {
-		return nil
-	}
-	return err
 }

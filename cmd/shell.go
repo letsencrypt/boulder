@@ -157,7 +157,7 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 // StatsAndLogging constructs a prometheus registerer and an AuditLogger based
 // on its config parameters, and return them both. It also spawns off an HTTP
 // server on the provided port to report the stats and provide pprof profiling
-// handlers. NewLogger and newStatsRegistry will call os.Exit on errors.
+// handlers. NewLogger and newStatsRegistry will panic on errors.
 // Also sets the constructed AuditLogger as the default logger, and configures
 // the mysql and grpc packages to use our logger.
 // This must be called before any gRPC code is called, because gRPC's SetLogger
@@ -276,15 +276,18 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	return registry
 }
 
-// Fail exits and prints an error message to stderr and the logger audit log.
+// Fail prints a message to the audit log, then panics, causing the process to exit but
+// allowing deferred cleanup functions to run on the way out.
 func Fail(msg string) {
 	logger := blog.Get()
 	logger.AuditErr(msg)
-	os.Exit(1)
+	panic(msg)
 }
 
-// FailOnError exits and prints an error message, but only if we encountered
-// a problem and err != nil. err is required but msg can be "".
+// FailOnError prints an error message and panics, but only if the provided
+// error is actually non-nil. This is useful for one-line error handling in
+// top-level executables, but should generally be avoided in libraries. The
+// message argument is optional.
 func FailOnError(err error, msg string) {
 	if err == nil {
 		return

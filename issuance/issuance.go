@@ -19,6 +19,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -598,16 +599,30 @@ type IssuanceRequest struct {
 	SCTList           []ct.SignedCertificateTimestamp
 }
 
-// Issue generates a certificate from the provided issuance request and
-// signs it. Before signing the certificate with the issuer's private
-// key, it is signed using a throwaway key so that it can be linted using
-// zlint. If the linting fails, an error is returned and the certificate
-// is not signed using the issuer's key.
-func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
+// An issuanceToken represents an assertion that Issuer.Lint has generated
+// a linting certificate for a given input and run the linter over it with no
+// errors. The token may be redeemed (at most once) to sign a certificate or
+// precertificate with the same Issuer's private key, containing the same
+// contents that were linted.
+type issuanceToken struct {
+	mu       sync.Mutex
+	template *x509.Certificate
+	pubKey   any
+	// A pointer to the issuer that created this token. This token may only
+	// be redeemed by the same issuer.
+	issuer *Issuer
+}
+
+// Prepare applies this Issuer's profile to create a template certificate. It
+// then generates a linting certificate from that template and runs the linter
+// over it. If successful, returns both the linting certificate (which can be
+// stored) and an issuanceToken. The issuanceToken can be used to sign a
+// matching certificate with this Issuer's private key.
+func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	// check request is valid according to the issuance profile
 	err := i.Profile.requestValid(i.Clk, req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// generate template from the issuance profile
@@ -623,7 +638,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	template.AuthorityKeyId = i.Cert.SubjectKeyId
 	skid, err := generateSKID(req.PublicKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	template.SubjectKeyId = skid
 	switch req.PublicKey.(type) {
@@ -638,7 +653,7 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 	} else if req.SCTList != nil {
 		sctListExt, err := generateSCTListExt(req.SCTList)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	}
@@ -649,12 +664,35 @@ func (i *Issuer) Issue(req *IssuanceRequest) ([]byte, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	err = i.Linter.Check(template, req.PublicKey)
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
+		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
-	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, req.PublicKey, i.Signer)
+	token := &issuanceToken{sync.Mutex{}, template, req.PublicKey, i}
+	return lintCertBytes, token, nil
+}
+
+// Issue performs a real issuance using an issuanceToken resulting from a
+// previous call to Prepare(). Call this at most once per token. Calls after
+// the first will receive an error.
+func (i *Issuer) Issue(token *issuanceToken) ([]byte, error) {
+	if token == nil {
+		return nil, errors.New("nil issuanceToken")
+	}
+	token.mu.Lock()
+	defer token.mu.Unlock()
+	if token.template == nil {
+		return nil, errors.New("issuance token already redeemed")
+	}
+	template := token.template
+	token.template = nil
+
+	if token.issuer != i {
+		return nil, errors.New("tried to redeem issuance token with the wrong issuer")
+	}
+
+	return x509.CreateCertificate(rand.Reader, template, i.Cert.Certificate, token.pubKey, i.Signer)
 }
 
 func ContainsMustStaple(extensions []pkix.Extension) bool {

@@ -51,11 +51,10 @@ type issuerMaps struct {
 // It can sign OCSP responses as well, but only via delegation to an ocspImpl.
 type certificateAuthorityImpl struct {
 	capb.UnimplementedCertificateAuthorityServer
-	capb.UnimplementedOCSPGeneratorServer
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
-	// TODO(#6448): Remove this.
+	// TODO(#6285): Remove this.
 	ocsp capb.OCSPGeneratorServer
 
 	// This is temporary, and will be used for testing and slow roll-out
@@ -320,12 +319,19 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
-	certDER, err := issuer.Issue(issuanceReq)
+	_, issuanceToken, err := issuer.Prepare(issuanceReq)
+	if err != nil {
+		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
+			serialHex, req.RegistrationID, names, err)
+		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
+	}
+
+	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
-		return nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, berrors.InternalServerError("failed to sign certificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
@@ -449,7 +455,14 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	certDER, err := issuer.Issue(req)
+	_, issuanceToken, err := issuer.Prepare(req)
+	if err != nil {
+		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
+			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
+		return nil, nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
+	}
+
+	certDER, err := issuer.Issue(issuanceToken)
 	if err != nil {
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",

@@ -2,7 +2,7 @@ version: '3'
 services:
   boulder:
     # Should match one of the GO_DEV_VERSIONS in test/boulder-tools/tag_and_upload.sh.
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.20.2_2023-03-07}
+    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.20.3_2023-04-04}
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening.
@@ -62,7 +62,6 @@ services:
     command: mysqld --bind-address=0.0.0.0 --slow-query-log --log-output=TABLE --log-queries-not-using-indexes=ON
     logging:
       driver: none
-  
   bproxysql:
     image: proxysql/proxysql:2.4.4
     # The --initial flag force resets the ProxySQL database on startup. By

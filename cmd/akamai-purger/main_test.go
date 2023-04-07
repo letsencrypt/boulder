@@ -7,10 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/akamai/proto"
+	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/test"
 )
+
+func TestImplementation(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &akamaiPurger{}, akamaipb.UnimplementedAkamaiPurgerServer{})
+}
 
 func TestThroughput_validate(t *testing.T) {
 	type fields struct {
@@ -67,7 +71,7 @@ func TestThroughput_validate(t *testing.T) {
 }
 
 type mockCCU struct {
-	proto.AkamaiPurgerClient
+	akamaipb.AkamaiPurgerClient
 }
 
 func (m *mockCCU) Purge(urls []string) error {
@@ -84,13 +88,13 @@ func TestAkamaiPurgerQueue(t *testing.T) {
 
 	// Add 250 entries to fill the stack.
 	for i := 0; i < 250; i++ {
-		req := proto.PurgeRequest{Urls: []string{fmt.Sprintf("http://test.com/%d", i)}}
+		req := akamaipb.PurgeRequest{Urls: []string{fmt.Sprintf("http://test.com/%d", i)}}
 		_, err := ap.Purge(context.Background(), &req)
 		test.AssertNotError(t, err, fmt.Sprintf("Purge failed for entry %d.", i))
 	}
 
 	// Add another entry to the stack and using the Purge method.
-	req := proto.PurgeRequest{Urls: []string{"http://test.com/250"}}
+	req := akamaipb.PurgeRequest{Urls: []string{"http://test.com/250"}}
 	_, err := ap.Purge(context.Background(), &req)
 	test.AssertNotError(t, err, "Purge failed.")
 
@@ -129,7 +133,7 @@ func TestAkamaiPurgerQueueWithOneEntry(t *testing.T) {
 	}
 
 	// Add one entry to the stack and using the Purge method.
-	req := proto.PurgeRequest{Urls: []string{"http://test.com/0"}}
+	req := akamaipb.PurgeRequest{Urls: []string{"http://test.com/0"}}
 	_, err := ap.Purge(context.Background(), &req)
 	test.AssertNotError(t, err, "Purge failed.")
 	test.AssertEquals(t, len(ap.toPurge), 1)

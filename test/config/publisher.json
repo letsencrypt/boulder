@@ -26,7 +26,6 @@
 			"address": ":9091",
 			"clientNames": [
 				"health-checker.boulder",
-				"ocsp-updater.boulder",
 				"ra.boulder"
 			]
 		},

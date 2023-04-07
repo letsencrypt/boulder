@@ -18,7 +18,6 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/db"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/revocation"
@@ -226,9 +225,6 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			NotAfter:              parsed.NotAfter,
 			IsExpired:             false,
 			IssuerNameID:          req.IssuerNameID,
-		}
-		if !features.Enabled(features.ROCSPStage6) {
-			cs.OCSPResponse = req.Ocsp
 		}
 		err = ssa.dbMap.WithContext(ctx).Insert(cs)
 		if err != nil {
@@ -761,29 +757,20 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 	if req.Serial == "" || req.Date == 0 {
 		return nil, errIncompleteRequest
 	}
-	if req.Response == nil && !features.Enabled(features.ROCSPStage6) {
-		return nil, errIncompleteRequest
-	}
 
 	revokedDate := time.Unix(0, req.Date)
-	ocspResponse := req.Response
-	if features.Enabled(features.ROCSPStage6) {
-		ocspResponse = nil
-	}
 
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
 				status = ?,
 				revokedReason = ?,
 				revokedDate = ?,
-				ocspLastUpdated = ?,
-				ocspResponse = ?
+				ocspLastUpdated = ?
 			WHERE serial = ? AND status != ?`,
 		string(core.OCSPStatusRevoked),
 		revocation.Reason(req.Reason),
 		revokedDate,
 		revokedDate,
-		ocspResponse,
 		req.Serial,
 		string(core.OCSPStatusRevoked),
 	)
@@ -809,29 +796,20 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 	if req.Serial == "" || req.Date == 0 || req.Backdate == 0 {
 		return nil, errIncompleteRequest
 	}
-	if req.Response == nil && !features.Enabled(features.ROCSPStage6) {
-		return nil, errIncompleteRequest
-	}
 	if req.Reason != ocsp.KeyCompromise {
 		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
 	}
 
 	thisUpdate := time.Unix(0, req.Date)
 	revokedDate := time.Unix(0, req.Backdate)
-	ocspResponse := req.Response
-	if features.Enabled(features.ROCSPStage6) {
-		ocspResponse = nil
-	}
 
 	res, err := ssa.dbMap.Exec(
 		`UPDATE certificateStatus SET
 				revokedReason = ?,
-				ocspLastUpdated = ?,
-				ocspResponse = ?
+				ocspLastUpdated = ?
 			WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
 		revocation.Reason(ocsp.KeyCompromise),
 		thisUpdate,
-		ocspResponse,
 		req.Serial,
 		string(core.OCSPStatusRevoked),
 		revocation.Reason(ocsp.KeyCompromise),

@@ -42,6 +42,10 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
+func TestImplementation(t *testing.T) {
+	test.AssertImplementsGRPCServer(t, &certificateAuthorityImpl{}, capb.UnimplementedCertificateAuthorityServer{})
+}
+
 var (
 	// * Random public key
 	// * CN = not-example.com
