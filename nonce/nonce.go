@@ -264,13 +264,13 @@ func (ns *NonceService) Valid(nonce string) bool {
 		return false
 	}
 
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+
 	if c <= ns.earliest.Load() {
 		ns.nonceRedeems.WithLabelValues("invalid", "too low").Inc()
 		return false
 	}
-
-	ns.mu.Lock()
-	defer ns.mu.Unlock()
 
 	if ns.used[c] {
 		ns.nonceRedeems.WithLabelValues("invalid", "already used").Inc()
