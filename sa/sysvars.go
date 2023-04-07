@@ -10,7 +10,7 @@ var checkIntRE = regexp.MustCompile(`^\d+$`)
 var checkImproperIntRE = regexp.MustCompile(`^'\d+'$`)
 var checkFloatOrIntRE = regexp.MustCompile(`^\d+(\.\d+)?$`)
 var checkImproperFloatOrIntRE = regexp.MustCompile(`^'\d+(\.\d+)?'$`)
-var checkBooleanRE = regexp.MustCompile(`^([0-1])|(?i)(true|false)`)
+var checkBooleanRE = regexp.MustCompile(`^([0-1])|(?i)(true|false)|(?i)(on|off)`)
 
 // checkMariaDBSystemVariables validates a MariaDB config passed in via SA
 // setDefault or DSN. This manually curated list of system variables was

@@ -278,6 +278,8 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"foreign_key_checks":      "false",
 			"sql_warnings":            "TrUe",
 			"tx_read_only":            "FalSe",
+			"sql_notes":               "on",
+			"tcp_nodelay":             "off",
 		},
 	}
 	err = adjustMariaDBConfig(conf)
