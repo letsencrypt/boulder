@@ -74,7 +74,6 @@ type NonceService struct {
 	gcm              cipher.AEAD
 	maxUsed          int
 	prefix           string
-	nonceCreates     prometheus.Counter
 	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
 	// TODO(#6610): Remove this field once we've moved to derivable prefixes by
@@ -145,11 +144,17 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		maxUsed = defaultMaxUsed
 	}
 
-	nonceCreates := prometheus.NewCounter(prometheus.CounterOpts{
+	earliest := new(atomic.Int64)
+	latest := new(atomic.Int64)
+
+	stats.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Name: "nonce_earliest",
+		Help: "A count of the earliest nonce currently accepted",
+	}, func() float64 { return float64(earliest.Load()) }))
+	stats.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
 		Name: "nonce_creates",
 		Help: "A counter of nonces generated",
-	})
-	stats.MustRegister(nonceCreates)
+	}, func() float64 { return float64(latest.Load()) }))
 	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
@@ -162,14 +167,13 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 	stats.MustRegister(nonceHeapLatency)
 
 	return &NonceService{
-		earliest:         &atomic.Int64{},
-		latest:           &atomic.Int64{},
+		earliest:         earliest,
+		latest:           latest,
 		used:             make(map[int64]bool, maxUsed),
 		usedHeap:         &int64Heap{},
 		gcm:              gcm,
 		maxUsed:          maxUsed,
 		prefix:           prefix,
-		nonceCreates:     nonceCreates,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
 		// TODO(#6610): Remove this field once we've moved to derivable prefixes
@@ -243,7 +247,6 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 
 // Nonce provides a new Nonce.
 func (ns *NonceService) Nonce() (string, error) {
-	defer ns.nonceCreates.Inc()
 	return ns.encrypt(ns.latest.Add(1))
 }
 
