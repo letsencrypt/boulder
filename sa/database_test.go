@@ -110,7 +110,7 @@ func TestNewDbMap(t *testing.T) {
 
 	dbMap, err := NewDbMap(mysqlConnectURL, DbSettings{})
 	if err != errExpected {
-		t.Errorf("got incorrect error. Got %v, expected \"%v\"", err, errExpected)
+		t.Errorf("got incorrect error. Got %v, expected %v", err, errExpected)
 	}
 	if dbMap != nil {
 		t.Errorf("expected nil, got %v", dbMap)
