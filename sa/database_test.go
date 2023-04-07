@@ -20,9 +20,18 @@ func TestInvalidDSN(t *testing.T) {
 	_, err = NewDbMap(DSN, DbSettings{})
 	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
 
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertError(t, err, "Variable is unable to be set in the SESSION scope, but was declared")
+
 	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
 	_, err = NewDbMap(DSN, DbSettings{})
-	test.AssertError(t, err, "System variable declared with incorrect quoting")
+	test.AssertError(t, err, "Variable declared with incorrect quoting")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
+
 }
 
 var errExpected = errors.New("expected")
@@ -207,31 +216,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 
 	conf = &mysql.Config{
 		Params: map[string]string{
-			"dont_worry_about_integer_vars": "0",
-		},
-	}
-	err = adjustMariaDBConfig(conf)
-	test.AssertNotError(t, err, "we don't validate whether numeric variables are in the curated system var list")
-
-	conf = &mysql.Config{
-		Params: map[string]string{
-			"dont_worry_about_fp_vars": "43.21",
-		},
-	}
-	err = adjustMariaDBConfig(conf)
-	test.AssertNotError(t, err, "we don't validate whether numeric variables are in the curated system var list")
-
-	conf = &mysql.Config{
-		Params: map[string]string{
-			"dont_worry_about_bools": "true",
-		},
-	}
-	err = adjustMariaDBConfig(conf)
-	test.AssertNotError(t, err, "we don't validate whether booleans are in the curated system var list")
-
-	conf = &mysql.Config{
-		Params: map[string]string{
-			"sql_mode_but_not_really": "'STRICT_ALL_TABLES'",
+			"myBabies": "'kids_I_tell_ya'",
 		},
 	}
 	err = adjustMariaDBConfig(conf)
@@ -243,7 +228,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 		},
 	}
 	err = adjustMariaDBConfig(conf)
-	test.AssertError(t, err, "value was incorrectly quoted, RHS quote missing")
+	test.AssertError(t, err, "value was incorrectly quoted, right hand side quote missing")
 
 	conf = &mysql.Config{
 		Params: map[string]string{
@@ -255,7 +240,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 
 	conf = &mysql.Config{
 		Params: map[string]string{
-			"concurrent_insert": "2",
+			"completion_type": "1",
 		},
 	}
 	err = adjustMariaDBConfig(conf)
@@ -263,7 +248,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 
 	conf = &mysql.Config{
 		Params: map[string]string{
-			"concurrent_insert": "'2'",
+			"completion_type": "'2'",
 		},
 	}
 	err = adjustMariaDBConfig(conf)
@@ -271,7 +256,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 
 	conf = &mysql.Config{
 		Params: map[string]string{
-			"concurrent_insert": "ALWAYS",
+			"completion_type": "RELEASE",
 		},
 	}
 	err = adjustMariaDBConfig(conf)
@@ -279,9 +264,30 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 
 	conf = &mysql.Config{
 		Params: map[string]string{
-			"concurrent_insert": "'ALWAYS'",
+			"completion_type": "'CHAIN'",
 		},
 	}
 	err = adjustMariaDBConfig(conf)
 	test.AssertNotError(t, err, "key is a string enum, but incorrectly quoted")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"autocommit":              "0",
+			"check_constraint_checks": "1",
+			"log_slow_query":          "true",
+			"foreign_key_checks":      "false",
+			"sql_warnings":            "TrUe",
+			"tx_read_only":            "FalSe",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertNotError(t, err, "expected a boolean value")
+
+	conf = &mysql.Config{
+		Params: map[string]string{
+			"autocommit": "2",
+		},
+	}
+	err = adjustMariaDBConfig(conf)
+	test.AssertError(t, err, "boolean value was not provided")
 }
