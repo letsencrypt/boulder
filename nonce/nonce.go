@@ -149,7 +149,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 
 	stats.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
 		Name: "nonce_earliest",
-		Help: "A count of the earliest nonce currently accepted",
+		Help: "A counter with the earliest nonce currently accepted",
 	}, func() float64 { return float64(earliest.Load()) }))
 	stats.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{
 		Name: "nonce_creates",
