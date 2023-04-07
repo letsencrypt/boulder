@@ -88,6 +88,10 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 	return &emptypb.Empty{}, nil
 }
 
+func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, berrors.InternalServerError("unimplemented")
+}
+
 func (m *mockSA) findPrecertificate(serial string) (*corepb.Certificate, error) {
 	if len(m.precertificates) == 0 {
 		return nil, berrors.NotFoundError("no precerts stored")

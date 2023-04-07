@@ -150,6 +150,10 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 	return nil, berrors.NotFoundError("cannot find the cert")
 }
 
+func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, berrors.InternalServerError("not implemented")
+}
+
 var caKey crypto.Signer
 var caCert *issuance.Certificate
 var caCert2 *issuance.Certificate

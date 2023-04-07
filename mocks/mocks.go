@@ -248,6 +248,10 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 	}
 }
 
+func (m *StorageAuthorityReadOnly) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, berrors.InternalServerError("not implemented")
+}
+
 // GetRevocationStatus is a mock
 func (sa *StorageAuthorityReadOnly) GetRevocationStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.RevocationStatus, error) {
 	return nil, nil
