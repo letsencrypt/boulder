@@ -173,16 +173,16 @@ func TestAutoIncrementSchema(t *testing.T) {
 	test.AssertEquals(t, count, int64(0))
 }
 
-func TestAdjustMariaDBConfig(t *testing.T) {
+func TestAdjustMySQLConfig(t *testing.T) {
 	conf := &mysql.Config{}
-	err := adjustMariaDBConfig(conf)
+	err := adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
 	})
 
 	conf = &mysql.Config{ReadTimeout: 100 * time.Second}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":           "'STRICT_ALL_TABLES'",
@@ -196,7 +196,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":        "'STRICT_ALL_TABLES'",
@@ -208,7 +208,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
@@ -219,7 +219,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"myBabies": "'kids_I_tell_ya'",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertError(t, err, "variable not found in the curated system var list")
 
 	conf = &mysql.Config{
@@ -227,7 +227,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"sql_mode": "'STRICT_ALL_TABLES",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertError(t, err, "value was incorrectly quoted, right hand side quote missing")
 
 	conf = &mysql.Config{
@@ -235,7 +235,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"sql_mode": "%27STRICT_ALL_TABLES%27",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertError(t, err, "value was incorrectly quoted after being parsed from DSN")
 
 	conf = &mysql.Config{
@@ -243,7 +243,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"completion_type": "1",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "key is an integer enum, but incorrectly errored")
 
 	conf = &mysql.Config{
@@ -251,7 +251,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"completion_type": "'2'",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertError(t, err, "key is an integer enum, but should not have been quoted")
 
 	conf = &mysql.Config{
@@ -259,7 +259,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"completion_type": "RELEASE",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertError(t, err, "key is a string enum, but was not quoted")
 
 	conf = &mysql.Config{
@@ -267,7 +267,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"completion_type": "'CHAIN'",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "key is a string enum, but incorrectly quoted")
 
 	conf = &mysql.Config{
@@ -282,7 +282,7 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"tcp_nodelay":             "off",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertNotError(t, err, "expected a boolean value")
 
 	conf = &mysql.Config{
@@ -290,6 +290,6 @@ func TestAdjustMariaDBConfig(t *testing.T) {
 			"autocommit": "2",
 		},
 	}
-	err = adjustMariaDBConfig(conf)
+	err = adjustMySQLConfig(conf)
 	test.AssertError(t, err, "boolean value was not provided")
 }

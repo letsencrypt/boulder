@@ -138,7 +138,7 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
 // decomposed form of the connection string, a *mysql.Config.
 func NewDbMapFromConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
-	err := adjustMariaDBConfig(config)
+	err := adjustMySQLConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -162,8 +162,8 @@ func NewDbMapFromConfig(config *mysql.Config, settings DbSettings) (*boulderDB.W
 	return &boulderDB.WrappedMap{DbMap: dbmap}, nil
 }
 
-// adjustMariaDBConfig sets certain flags that we want on every connection.
-func adjustMariaDBConfig(conf *mysql.Config) error {
+// adjustMySQLConfig sets certain flags that we want on every connection.
+func adjustMySQLConfig(conf *mysql.Config) error {
 	// Required to turn DATETIME fields into time.Time
 	conf.ParseTime = true
 
