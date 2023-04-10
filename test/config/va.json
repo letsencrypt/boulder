@@ -19,8 +19,8 @@
 			]
 		},
 		"features": {
-			"EnforceMultiVA": true,
-			"MultiVAFullResults": true
+			"EnforceMultiVA": false,
+			"MultiVAFullResults": false
 		},
 		"remoteVAs": [
 			{

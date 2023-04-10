@@ -29,8 +29,8 @@
 			}
 		},
 		"features": {
-			"CAAValidationMethods": true,
-			"CAAAccountURI": true
+			"CAAValidationMethods": false,
+			"CAAAccountURI": false
 		},
 		"accountURIPrefixes": [
 			"http://boulder.service.consul:4000/acme/reg/",
