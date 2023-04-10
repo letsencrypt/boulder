@@ -31,7 +31,7 @@
 		"backoffIntervalMax": "2s"
 	},
 	"syslog": {
-		"stdoutlevel": 4,
-		"sysloglevel": 4
+		"stdoutlevel": 3,
+		"sysloglevel": 3
 	}
 }

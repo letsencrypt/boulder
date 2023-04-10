@@ -6,8 +6,8 @@
 		"/hierarchy/intermediate-cert-ecdsa-a.pem"
 	],
 	"syslog": {
-		"stdoutlevel": 7,
-		"sysloglevel": 7
+		"stdoutlevel": 3,
+		"sysloglevel": 3
 	},
 	"tls": {
 		"caCertFile": "test/grpc-creds/minica.pem",
