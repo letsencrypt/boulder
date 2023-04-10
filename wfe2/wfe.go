@@ -500,7 +500,7 @@ func (wfe *WebFrontEndImpl) CARoot(
 	logEvent *web.RequestEvent,
 	response http.ResponseWriter,
 	request *http.Request) {
-	filePath := "/tmp/root-cert-rsa.pem"
+	filePath := "/hierarchy/root-cert-rsa.pem"
 	caRoot, err := ioutil.ReadFile(filePath)
 
 	if err != nil {
