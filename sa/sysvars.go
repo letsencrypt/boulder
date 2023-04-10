@@ -8,8 +8,8 @@ import (
 var checkStringQuoteRE = regexp.MustCompile(`^'[0-9A-Za-z_\-=:]+'$`)
 var checkIntRE = regexp.MustCompile(`^\d+$`)
 var checkImproperIntRE = regexp.MustCompile(`^'\d+'$`)
-var checkFloatOrIntRE = regexp.MustCompile(`^\d+(\.\d+)?$`)
-var checkImproperFloatOrIntRE = regexp.MustCompile(`^'\d+(\.\d+)?'$`)
+var checkNumericRE = regexp.MustCompile(`^\d+(\.\d+)?$`)
+var checkImproperNumericRE = regexp.MustCompile(`^'\d+(\.\d+)?'$`)
 var checkBooleanRE = regexp.MustCompile(`^([0-1])|(?i)(true|false)|(?i)(on|off)`)
 
 // checkMariaDBSystemVariables validates a MariaDB config passed in via SA
@@ -25,140 +25,14 @@ var checkBooleanRE = regexp.MustCompile(`^([0-1])|(?i)(true|false)|(?i)(on|off)`
 //     problems such as PR #6683 from occurring.
 //
 //   - Regex validation is performed for the various booleans, floats, integers, and strings.
+//
+// Only session scoped variables should be included. A session variable is one
+// that affects the current session only. Passing a session variable that only
+// solely in the global scope causes database connection error 1045.
+// https://mariadb.com/kb/en/set/#global-session
 func checkMariaDBSystemVariables(name string, value string) error {
 	// System variable names will be indexed into the appropriate hash sets
-	// below and can possibly exist in several.
-
-	// Check MariaDB system variables can be scoped per session. A session
-	// variable change affects the current session only. Passing a session
-	// variable that only exists in the global scope causes database connection
-	// error 1045.
-	// https://mariadb.com/kb/en/set/#global-session
-	mariaDBSessionScope := map[string]struct{}{
-		"autocommit":                           {},
-		"bulk_insert_buffer_size":              {},
-		"character_set_client":                 {},
-		"character_set_connection":             {},
-		"character_set_database":               {},
-		"character_set_filesystem":             {},
-		"character_set_results":                {},
-		"character_set_server":                 {},
-		"check_constraint_checks":              {},
-		"collation_connection":                 {},
-		"collation_database":                   {},
-		"collation_server":                     {},
-		"completion_type":                      {},
-		"debug_sync":                           {},
-		"default_storage_engine":               {},
-		"default_tmp_storage_engine":           {},
-		"default_week_format":                  {},
-		"enforce_storage_engine":               {},
-		"eq_range_index_dive_limit":            {},
-		"error_count":                          {},
-		"expensive_subquery_limit":             {},
-		"external_user":                        {},
-		"foreign_key_checks":                   {},
-		"group_concat_max_len":                 {},
-		"histogram_size":                       {},
-		"idle_readonly_transaction_timeout":    {},
-		"idle_transaction_timeout":             {},
-		"idle_write_transaction_timeout":       {},
-		"in_predicate_conversion_threshold":    {},
-		"insert_id":                            {},
-		"interactive_timeout":                  {},
-		"in_transaction":                       {},
-		"join_buffer_size":                     {},
-		"join_buffer_space_limit":              {},
-		"keep_files_on_create":                 {},
-		"last_insert_id":                       {},
-		"lc_time_names":                        {},
-		"lock_wait_timeout":                    {},
-		"log_slow_min_examined_row_limit":      {},
-		"log_slow_query":                       {},
-		"log_slow_query_time":                  {},
-		"log_slow_rate_limit":                  {},
-		"long_query_time":                      {},
-		"low_priority_updates":                 {},
-		"max_allowed_packet":                   {},
-		"max_delayed_threads":                  {},
-		"max_digest_length":                    {},
-		"max_error_count":                      {},
-		"max_heap_table_size":                  {},
-		"max_join_size":                        {},
-		"max_length_for_sort_data":             {},
-		"max_recursive_iterations":             {},
-		"max_rowid_filter_size":                {},
-		"max_seeks_for_key":                    {},
-		"max_session_mem_used":                 {},
-		"max_sort_length":                      {},
-		"max_sp_recursion_depth":               {},
-		"max_statement_time":                   {},
-		"max_user_connections":                 {},
-		"min_examined_row_limit":               {},
-		"mrr_buffer_size":                      {},
-		"net_buffer_length":                    {},
-		"net_read_timeout":                     {},
-		"net_retry_count":                      {},
-		"net_write_timeout":                    {},
-		"old":                                  {},
-		"old_mode":                             {},
-		"old_passwords":                        {},
-		"optimizer_extra_pruning_depth":        {},
-		"optimizer_max_sel_arg_weight":         {},
-		"optimizer_prune_level":                {},
-		"optimizer_search_depth":               {},
-		"optimizer_selectivity_sampling_limit": {},
-		"optimizer_switch":                     {},
-		"optimizer_trace":                      {},
-		"optimizer_trace_max_mem_size":         {},
-		"preload_buffer_size":                  {},
-		"profiling":                            {},
-		"profiling_history_size":               {},
-		"progress_report_time":                 {},
-		"proxy_user":                           {},
-		"pseudo_slave_mode":                    {},
-		"pseudo_thread_id":                     {},
-		"query_alloc_block_size":               {},
-		"query_cache_strip_comments":           {},
-		"query_cache_wlock_invalidate":         {},
-		"query_prealloc_size":                  {},
-		"rand_seed1":                           {},
-		"range_alloc_block_size":               {},
-		"read_rnd_buffer_size":                 {},
-		"rowid_merge_buff_size":                {},
-		"session_track_schema":                 {},
-		"session_track_state_change":           {},
-		"session_track_system_variables":       {},
-		"session_track_transaction_info":       {},
-		"slow_query_log":                       {},
-		"sql_auto_is_null":                     {},
-		"sql_big_selects":                      {},
-		"sql_buffer_result":                    {},
-		"sql_if_exists":                        {},
-		"sql_log_off":                          {},
-		"sql_mode":                             {},
-		"sql_notes":                            {},
-		"sql_quote_show_create":                {},
-		"sql_safe_updates":                     {},
-		"sql_select_limit":                     {},
-		"sql_warnings":                         {},
-		"standard_compliant_cte":               {},
-		"tcp_nodelay":                          {},
-		"time_zone":                            {},
-		"tmp_disk_table_size":                  {},
-		"transaction_alloc_block_size":         {},
-		"transaction_prealloc_size":            {},
-		"tx_isolation":                         {},
-		"tx_read_only":                         {},
-		"unique_checks":                        {},
-		"updatable_views_with_limit":           {},
-		"wait_timeout":                         {},
-		"warning_count":                        {},
-	}
-
-	if _, found := mariaDBSessionScope[name]; !found {
-		return fmt.Errorf("%v=%v is either unable to be used in the SESSION scope or was not found in the curated list of MariaDB system variables", name, value)
-	}
+	// below and can possibly exist in several sets.
 
 	// Check the list of currently known MariaDB string type system variables
 	// and determine if the value is a properly formatted string e.g.
@@ -263,12 +137,10 @@ func checkMariaDBSystemVariables(name string, value string) error {
 	}
 
 	if _, found := mariaDBNumericTypes[name]; found {
-		if checkFloatOrIntRE.FindString(value) == value {
-			return nil
+		if checkNumericRE.FindString(value) != value {
+			return fmt.Errorf("%q requires numeric value, but %q is not formatted like a number", name, value)
 		}
-		if checkImproperFloatOrIntRE.FindString(value) == value {
-			return fmt.Errorf("%v=%v numeric is quoted, but should not be", name, value)
-		}
+		return nil
 	}
 
 	// Certain MariaDB enums can have both string and integer values.
