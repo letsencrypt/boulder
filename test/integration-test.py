@@ -174,9 +174,11 @@ def check_slow_queries():
 def run_chisel(test_case_filter):
     for key, value in inspect.getmembers(v2_integration):
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
+        print("DEBUG: Running HERE")
         value()
     for key, value in globals().items():
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
+        print("DEBUG: Running THERE")
         value()
 
 def run_loadtest():

@@ -12,6 +12,7 @@ import shutil
 import atexit
 import errno
 import subprocess
+import datetime
 
 import challtestsrv
 
@@ -121,16 +122,20 @@ def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
     return verify_output
 
 def reset_akamai_purges():
-    requests.post("http://localhost:6789/debug/reset-purges", data="{}")
+    r = requests.post("http://localhost:6789/debug/reset-purges", data="{}")
+    print("DEBUG: Status code for /debug/reset-purges: "+str(r.status_code))
 
 def verify_akamai_purge():
-    deadline = time.time() + .4
+    deadline = time.time() + 1
     while True:
         time.sleep(0.05)
         if time.time() > deadline:
             raise(Exception("Timed out waiting for Akamai purge"))
+        #print("DEBUG: Attempting to get akamai purges")
         response = requests.get("http://localhost:6789/debug/get-purges")
+        #print("DEBUG: Status code for /debug/get-purges: "+str(response.status_code))
         purgeData = response.json()
+        print("DEBUG: Inside while: "+str(purgeData)+" Length="+str(len(purgeData["V3"])))
         if len(purgeData["V3"]) != 1:
             continue
         break
