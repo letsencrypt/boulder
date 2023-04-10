@@ -2,7 +2,9 @@ package ca
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
@@ -69,6 +71,7 @@ type certificateAuthorityImpl struct {
 	clk                clock.Clock
 	log                blog.Logger
 	signatureCount     *prometheus.CounterVec
+	pubkeyCount        *prometheus.CounterVec
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
 	signErrorCount     *prometheus.CounterVec
@@ -136,6 +139,14 @@ func NewCertificateAuthorityImpl(
 
 	issuers := makeIssuerMaps(boulderIssuers)
 
+	pubkeyCount := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "pubkey_algs",
+			Help: "Number of certs signed, by what kind of pubkey they have",
+		},
+		[]string{"alg"})
+	stats.MustRegister(pubkeyCount)
+
 	orphanCount := prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "orphans",
@@ -165,6 +176,7 @@ func NewCertificateAuthorityImpl(
 		orphanQueue:        orphanQueue,
 		log:                logger,
 		signatureCount:     signatureCount,
+		pubkeyCount:        pubkeyCount,
 		orphanCount:        orphanCount,
 		adoptedOrphanCount: adoptedOrphanCount,
 		signErrorCount:     signErrorCount,
@@ -337,6 +349,17 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
+
+	var pubkeyAlg string
+	switch issuanceReq.PublicKey.(type) {
+	case *rsa.PublicKey:
+		pubkeyAlg = "RSA"
+	case *ecdsa.PublicKey:
+		pubkeyAlg = "ECDSA"
+	default:
+		pubkeyAlg = "unknown"
+	}
+	ca.pubkeyCount.With(prometheus.Labels{"alg": pubkeyAlg}).Inc()
 
 	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, int64(issuer.Cert.NameID()))
 	if err != nil {
