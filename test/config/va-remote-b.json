@@ -25,8 +25,8 @@
 		]
 	},
 	"syslog": {
-		"stdoutlevel": 6,
-		"sysloglevel": 4
+		"stdoutlevel": 3,
+		"sysloglevel": 3
 	},
 	"common": {
 		"dnsTimeout": "1s",
