@@ -5,12 +5,13 @@ import (
 	"regexp"
 )
 
-var checkStringQuoteRE = regexp.MustCompile(`^'[0-9A-Za-z_\-=:]+'$`)
-var checkIntRE = regexp.MustCompile(`^\d+$`)
-var checkImproperIntRE = regexp.MustCompile(`^'\d+'$`)
-var checkNumericRE = regexp.MustCompile(`^\d+(\.\d+)?$`)
-var checkImproperNumericRE = regexp.MustCompile(`^'\d+(\.\d+)?'$`)
-var checkBooleanRE = regexp.MustCompile(`^([0-1])|(?i)(true|false)|(?i)(on|off)`)
+var (
+	checkStringQuoteRE = regexp.MustCompile(`^'[0-9A-Za-z_\-=:]+'$`)
+	checkIntRE         = regexp.MustCompile(`^\d+$`)
+	checkImproperIntRE = regexp.MustCompile(`^'\d+'$`)
+	checkNumericRE     = regexp.MustCompile(`^\d+(\.\d+)?$`)
+	checkBooleanRE     = regexp.MustCompile(`^([0-1])|(?i)(true|false)|(?i)(on|off)`)
+)
 
 // checkMariaDBSystemVariables validates a MariaDB config passed in via SA
 // setDefault or DSN. This manually curated list of system variables was
