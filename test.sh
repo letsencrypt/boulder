@@ -238,7 +238,7 @@ fi
 STAGE="integration"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Integration Tests"
-  python3 test/integration-test.py --chisel "${FILTER[@]}"
+  python3 test/integration-test.py --chisel --gotest "${FILTER[@]}"
 fi
 
 # Test that just ./start.py works, which is a proxy for testing that
