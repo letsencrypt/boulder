@@ -19,7 +19,6 @@ func main() {
 	flag.Parse()
 
 	v3Purges := [][]string{}
-
 	mu := sync.Mutex{}
 
 	http.HandleFunc("/debug/get-purges", func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +87,6 @@ func main() {
 		}
 		w.WriteHeader(http.StatusCreated)
 		resp, err := json.Marshal(respObj)
-		fmt.Println(err)
 		if err != nil {
 			return
 		}
