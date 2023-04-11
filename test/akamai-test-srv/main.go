@@ -21,16 +21,13 @@ func main() {
 	v3Purges := [][]string{}
 
 	mu := sync.Mutex{}
-	fmt.Println("DEBUG: akamai-test-srv was instantiated")
 
 	http.HandleFunc("/debug/get-purges", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		fmt.Printf("DEBUG: Akamai Purger get-purges PRE %v\n", v3Purges)
 		body, err := json.Marshal(struct {
 			V3 [][]string
 		}{V3: v3Purges})
-		fmt.Printf("DEBUG: Akamai Purger get-purges POST %v\n", v3Purges)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -41,14 +38,11 @@ func main() {
 	http.HandleFunc("/debug/reset-purges", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
-		fmt.Printf("DEBUG: Akamai Purger reset-purges PRE %v\n", v3Purges)
 		v3Purges = [][]string{}
-		fmt.Printf("DEBUG: Akamai Purger reset-purges POST %v\n", v3Purges)
 		w.WriteHeader(http.StatusOK)
 	})
 
 	http.HandleFunc("/ccu/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("DEBUG: /ccu/ was called")
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			fmt.Println("Wrong method:", r.Method)

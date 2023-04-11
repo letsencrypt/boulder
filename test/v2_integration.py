@@ -818,7 +818,6 @@ def test_double_revocation():
     cert_client.revoke(josepy.ComparableX509(cert), 1)
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
     verify_akamai_purge()
-    print("DEBUG: Got here")
 
     # A subsequent attempt should fail, because the cert is already revoked
     # for keyCompromise.

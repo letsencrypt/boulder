@@ -173,7 +173,6 @@ func signingKey(clientSecret string, timestamp string) []byte {
 
 // PurgeTags constructs and dispatches a request to purge a batch of Tags.
 func (cpc *CachePurgeClient) PurgeTags(tags []string) error {
-	fmt.Println("DEBUG: HI PHIL IM THE CACHE CLIENT purgeTagPath")
 	purgeReq := v3PurgeRequest{
 		Objects: tags,
 	}
@@ -186,7 +185,6 @@ func (cpc *CachePurgeClient) purgeURLs(urls []string) error {
 	purgeReq := v3PurgeRequest{
 		Objects: urls,
 	}
-	fmt.Println("DEBUG: HI PHIL IM THE CACHE CLIENT purgeURLs")
 	endpoint := fmt.Sprintf("%s%s%s", cpc.apiEndpoint, v3PurgePath, cpc.v3Network)
 	return cpc.authedRequest(endpoint, purgeReq)
 }

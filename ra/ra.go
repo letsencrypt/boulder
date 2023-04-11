@@ -1908,6 +1908,22 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	return nil
 }
 
+// uniquePurgeURLs returns the set of all the input unique purge URLs sorted in
+// increasing order.
+func uniquePurgeURLs(urls []string) (unique []string) {
+	urlMap := make(map[string]int, len(urls))
+	for _, url := range urls {
+		urlMap[url] = 1
+	}
+
+	unique = make([]string, 0, len(urlMap))
+	for url := range urlMap {
+		unique = append(unique, url)
+	}
+	sort.Strings(unique)
+	return
+}
+
 // purgeOCSPCache makes a request to akamai-purger to purge the cache entries
 // for the given certificate.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
@@ -1923,6 +1939,7 @@ func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x
 	}
 
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
+	purgeURLs = uniquePurgeURLs(purgeURLs)
 	if err != nil {
 		return err
 	}
@@ -1951,7 +1968,6 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	if req == nil || req.Cert == nil || req.RegID == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
-
 	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
 		return nil, berrors.BadRevocationReasonError(req.Code)
 	}

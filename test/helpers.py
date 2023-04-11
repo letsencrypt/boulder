@@ -123,7 +123,6 @@ def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
 
 def reset_akamai_purges():
     r = requests.post("http://localhost:6789/debug/reset-purges", data="{}")
-    print("DEBUG: Status code for /debug/reset-purges: "+str(r.status_code))
 
 def verify_akamai_purge():
     deadline = time.time() + 1
@@ -131,12 +130,9 @@ def verify_akamai_purge():
         time.sleep(0.05)
         if time.time() > deadline:
             raise(Exception("Timed out waiting for Akamai purge"))
-        #print("DEBUG: Attempting to get akamai purges")
         response = requests.get("http://localhost:6789/debug/get-purges")
-        #print("DEBUG: Status code for /debug/get-purges: "+str(response.status_code))
         purgeData = response.json()
-        print("DEBUG: Inside while: "+str(purgeData)+" Length="+str(len(purgeData["V3"])))
-        if len(purgeData["V3"]) != 1:
+        if len(purgeData["V3"]) == 0:
             continue
         break
     reset_akamai_purges()
