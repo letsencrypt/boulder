@@ -804,7 +804,7 @@ func main() {
 	logger.Info(cmd.VersionString())
 
 	if *daemon && c.Mailer.Frequency.Duration == 0 {
-		fmt.Fprintln(os.Stderr, "mailer.Frequency is not set in the JSON config")
+		fmt.Fprintln(os.Stderr, "mailer.frequency is not set in the JSON config")
 		os.Exit(1)
 	}
 

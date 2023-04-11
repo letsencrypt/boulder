@@ -69,7 +69,7 @@ type acmeCache struct {
 	ns *nonceSource
 }
 
-// signEmbeddedV2Request signs the provided request data using the context's
+// signEmbeddedV2Request signs the provided request data using the acmeCache's
 // account's private key. The provided URL is set as a protected header per ACME
 // v2 JWS standards. The resulting JWS contains an **embedded** JWK - this makes
 // this function primarily applicable to new account requests where no key ID is
@@ -100,10 +100,10 @@ func (c *acmeCache) signEmbeddedV2Request(data []byte, url string) (*jose.JSONWe
 	return signed, nil
 }
 
-// signKeyIDV2Request signs the provided request data using the context's
+// signKeyIDV2Request signs the provided request data using the acmeCache's
 // account's private key. The provided URL is set as a protected header per ACME
 // v2 JWS standards. The resulting JWS contains a Key ID header that is
-// populated using the context's account's ID. This is the default JWS signing
+// populated using the acmeCache's account's ID. This is the default JWS signing
 // style for ACME v2 requests and should be used everywhere but where the key ID
 // is unknown (e.g. new-account requests where an account doesn't exist yet).
 func (c *acmeCache) signKeyIDV2Request(data []byte, url string) (*jose.JSONWebSignature, error) {
@@ -594,7 +594,7 @@ func (s *State) sendCall() {
 			break
 		}
 	}
-	// If the context's V2 account isn't nil, update it based on the context's
+	// If the acmeCache's V2 account isn't nil, update it based on the cache's
 	// finalizedOrders and certs.
 	if c.acct != nil {
 		c.acct.update(c.finalizedOrders, c.certs)

@@ -554,9 +554,8 @@ func main() {
 
 	// When main is ready to exit (because it has received a shutdown signal),
 	// gracefully shutdown the servers. Calling these shutdown functions causes
-	// ListenAndServe() to immediately return, cleaning up the server goroutines
-	// as well, then waits for any lingering connection-handing goroutines to
-	// finish and clean themselves up.
+	// ListenAndServe() and ListenAndServeTLS() to immediately return, then waits
+	// for any lingering connection-handling goroutines to finish their work.
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
