@@ -681,7 +681,6 @@ def test_revoke_by_account_unspecified():
 
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
-    reset_akamai_purges()
 
 def test_revoke_by_account_with_reason():
     client = chisel2.make_client(None)
@@ -697,7 +696,6 @@ def test_revoke_by_account_with_reason():
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
 
     verify_akamai_purge()
-    reset_akamai_purges()
 
 def test_revoke_by_authz():
     domains = [random_domain()]
@@ -717,7 +715,6 @@ def test_revoke_by_authz():
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
 
     verify_akamai_purge()
-    reset_akamai_purges()
 
 def test_revoke_by_privkey():
     domains = [random_domain()]
@@ -761,7 +758,6 @@ def test_revoke_by_privkey():
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
 
     verify_akamai_purge()
-    reset_akamai_purges()
 
 def test_double_revocation():
     domains = [random_domain()]
@@ -1604,7 +1600,6 @@ def test_admin_revoker_cert():
     # Wait for OCSP response to indicate revocation took place
     verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
     verify_akamai_purge()
-    reset_akamai_purges()
 
 def test_admin_revoker_batched():
     serialFile = tempfile.NamedTemporaryFile(

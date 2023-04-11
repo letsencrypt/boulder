@@ -122,10 +122,10 @@ def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
     return verify_output
 
 def reset_akamai_purges():
-    r = requests.post("http://localhost:6789/debug/reset-purges", data="{}")
+    requests.post("http://localhost:6789/debug/reset-purges", data="{}")
 
 def verify_akamai_purge():
-    deadline = time.time() + 1
+    deadline = time.time() + .4
     while True:
         time.sleep(0.05)
         if time.time() > deadline:
