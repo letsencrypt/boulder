@@ -1968,6 +1968,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 	if req == nil || req.Cert == nil || req.RegID == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
+
 	if _, present := revocation.UserAllowedReasons[revocation.Reason(req.Code)]; !present {
 		return nil, berrors.BadRevocationReasonError(req.Code)
 	}
