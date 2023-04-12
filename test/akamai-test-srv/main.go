@@ -45,7 +45,6 @@ func main() {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			fmt.Println("Wrong method:", r.Method)
-			defer mu.Unlock()
 			return
 		}
 		mu.Lock()
