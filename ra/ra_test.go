@@ -3992,3 +3992,31 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
 }
+
+func TestUniquePurgeURLs(t *testing.T) {
+	purgeURLs := []string{}
+	appendMe1 := []string{
+		"http://127.0.0.1:4002/?body-md5=0d1034245a13325d",
+		"http://127.0.0.1:4002/MFQwUjBQME4wTDAJBgUrDgMCGgUABBQXd5z2fYTNREmi/H6sQx+YI9hXWgQUhDOjC2zqOrSv7KKgNR5kEkOGHMACEwD/LULE0lRxxxGXg2Y1ymf0+uk=",
+		"http://127.0.0.1:4002/MFQwUjBQME4wTDAJBgUrDgMCGgUABBQXd5z2fYTNREmi%2FH6sQx%2BYI9hXWgQUhDOjC2zqOrSv7KKgNR5kEkOGHMACEwD%2FLULE0lRxxxGXg2Y1ymf0%2Buk%3D",
+	}
+	appendMe2 := appendMe1
+	appendMe3 := []string{
+		"http://127.0.0.1:4002/?body-md5=abcdef1234567689",
+		"http://127.0.0.1:4002/real_fake_data",
+		"http://127.0.0.1:4002/other_real_fake_data",
+	}
+
+	purgeURLs = append(purgeURLs, appendMe1...)
+	test.AssertEquals(t, len(purgeURLs), 3)
+	purgeURLs = append(purgeURLs, appendMe2...)
+	test.AssertEquals(t, len(purgeURLs), 6)
+	purgeURLs = append(purgeURLs, appendMe3...)
+	test.AssertEquals(t, len(purgeURLs), 9)
+	purgeURLs = uniquePurgeURLs(purgeURLs)
+	test.AssertEquals(t, len(purgeURLs), 6)
+
+	empty := []string{}
+	empty = uniquePurgeURLs(empty)
+	test.AssertEquals(t, len(empty), 0)
+}
