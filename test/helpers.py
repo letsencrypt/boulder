@@ -12,7 +12,6 @@ import shutil
 import atexit
 import errno
 import subprocess
-import datetime
 
 import challtestsrv
 
