@@ -1939,10 +1939,10 @@ func (ra *RegistrationAuthorityImpl) purgeOCSPCache(ctx context.Context, cert *x
 	}
 
 	purgeURLs, err := akamai.GeneratePurgeURLs(cert, issuer.Certificate)
-	purgeURLs = uniquePurgeURLs(purgeURLs)
 	if err != nil {
 		return err
 	}
+	purgeURLs = uniquePurgeURLs(purgeURLs)
 
 	_, err = ra.purger.Purge(ctx, &akamaipb.PurgeRequest{Urls: purgeURLs})
 	if err != nil {
