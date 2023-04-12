@@ -1837,10 +1837,10 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 	return nil
 }
 
-// revokeCertificate updates the database to mark the certificate as revoked,
-// with the given reason and current timestamp. This only works for certificates
-// that were previously revoked for a reason other than keyCompromise, and which
-// are now being updated to keyCompromise instead.
+// updateRevocationForKeyCompromise updates the database to mark the certificate
+// as revoked, with the given reason and current timestamp. This only works for
+// certificates that were previously revoked for a reason other than
+// keyCompromise, and which are now being updated to keyCompromise instead.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
 	serialString := core.SerialToString(serial)
