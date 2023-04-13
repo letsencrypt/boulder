@@ -18,8 +18,6 @@ type Config struct {
 		DB          cmd.DBConfig
 		ReadOnlyDB  cmd.DBConfig `validate:"-"`
 		IncidentsDB cmd.DBConfig `validate:"-"`
-		// TODO(#6285): Remove this field, as it is no longer used.
-		Issuers map[string]int
 
 		Features map[string]bool
 

@@ -11,14 +11,14 @@ func _() {
 	_ = x[unused-0]
 	_ = x[StoreRevokerInfo-1]
 	_ = x[ROCSPStage6-2]
-	_ = x[CAAValidationMethods-3]
-	_ = x[CAAAccountURI-4]
-	_ = x[EnforceMultiVA-5]
-	_ = x[MultiVAFullResults-6]
-	_ = x[ECDSAForAll-7]
-	_ = x[ServeRenewalInfo-8]
-	_ = x[AllowUnrecognizedFeatures-9]
-	_ = x[ROCSPStage7-10]
+	_ = x[ROCSPStage7-3]
+	_ = x[CAAValidationMethods-4]
+	_ = x[CAAAccountURI-5]
+	_ = x[EnforceMultiVA-6]
+	_ = x[MultiVAFullResults-7]
+	_ = x[ECDSAForAll-8]
+	_ = x[ServeRenewalInfo-9]
+	_ = x[AllowUnrecognizedFeatures-10]
 	_ = x[ExpirationMailerUsesJoin-11]
 	_ = x[CertCheckerChecksValidations-12]
 	_ = x[CertCheckerRequiresValidations-13]
@@ -26,9 +26,9 @@ func _() {
 	_ = x[RequireCommonName-15]
 }
 
-const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6CAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesROCSPStage7ExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonName"
+const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6ROCSPStage7CAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonName"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 53, 66, 80, 98, 109, 125, 150, 161, 185, 213, 243, 256, 273}
+var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 44, 64, 77, 91, 109, 120, 136, 161, 185, 213, 243, 256, 273}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

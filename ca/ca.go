@@ -54,8 +54,6 @@ type certificateAuthorityImpl struct {
 	sa      sapb.StorageAuthorityCertificateClient
 	pa      core.PolicyAuthority
 	issuers issuerMaps
-	// TODO(#6285): Remove this.
-	ocsp capb.OCSPGeneratorServer
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
@@ -100,7 +98,6 @@ func makeIssuerMaps(issuers []*issuance.Issuer) issuerMaps {
 func NewCertificateAuthorityImpl(
 	sa sapb.StorageAuthorityCertificateClient,
 	pa core.PolicyAuthority,
-	ocsp capb.OCSPGeneratorServer,
 	boulderIssuers []*issuance.Issuer,
 	ecdsaAllowList *ECDSAAllowList,
 	certExpiry time.Duration,
@@ -155,7 +152,6 @@ func NewCertificateAuthorityImpl(
 	ca = &certificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
-		ocsp:               ocsp,
 		issuers:            issuers,
 		validityPeriod:     certExpiry,
 		backdate:           certBackdate,
@@ -214,7 +210,7 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, ocspResp, issuer, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, issuer, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +219,6 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	req := &sapb.AddCertificateRequest{
 		Der:          precertDER,
 		RegID:        regID,
-		Ocsp:         ocspResp,
 		Issued:       nowNanos,
 		IssuerNameID: int64(issuerNameID),
 	}
@@ -240,7 +235,6 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 			ca.queueOrphan(&orphanedCert{
 				DER:      precertDER,
 				RegID:    regID,
-				OCSPResp: ocspResp,
 				Precert:  true,
 				IssuerID: int64(issuerNameID),
 			})
@@ -381,10 +375,10 @@ func (ca *certificateAuthorityImpl) generateSerialNumberAndValidity() (*big.Int,
 	return serialBigInt, validity, nil
 }
 
-func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, []byte, *issuance.Issuer, error) {
+func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context, issueReq *capb.IssueCertificateRequest, serialBigInt *big.Int, validity validity) ([]byte, *issuance.Issuer, error) {
 	csr, err := x509.ParseCertificateRequest(issueReq.Csr)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
@@ -392,7 +386,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.log.AuditErr(err.Error())
 		// VerifyCSR returns berror instances that can be passed through as-is
 		// without wrapping.
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	var issuer *issuance.Issuer
@@ -407,38 +401,22 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		}
 		issuer, ok = ca.issuers.byAlg[alg]
 		if !ok {
-			return nil, nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
+			return nil, nil, berrors.InternalServerError("no issuer found for public key algorithm %s", csr.PublicKeyAlgorithm)
 		}
 	} else {
 		issuer, ok = ca.issuers.byNameID[issuance.IssuerNameID(issueReq.IssuerNameID)]
 		if !ok {
-			return nil, nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
+			return nil, nil, berrors.InternalServerError("no issuer found for IssuerNameID %d", issueReq.IssuerNameID)
 		}
 	}
 
 	if issuer.Cert.NotAfter.Before(validity.NotAfter) {
 		err = berrors.InternalServerError("cannot issue a certificate that expires after the issuer certificate")
 		ca.log.AuditErr(err.Error())
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	serialHex := core.SerialToString(serialBigInt)
-
-	var ocspResp []byte
-	if !features.Enabled(features.ROCSPStage7) {
-		// Generate ocsp response before issuing precertificate
-		ocspRespPB, err := ca.ocsp.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-			Serial:   serialHex,
-			IssuerID: int64(issuer.Cert.NameID()),
-			Status:   string(core.OCSPStatusGood),
-		})
-		if err != nil {
-			err = berrors.InternalServerError(err.Error())
-			ca.log.AuditInfof("OCSP Signing for precertificate failure: serial=[%s] err=[%s]", serialHex, err)
-			return nil, nil, nil, err
-		}
-		ocspResp = ocspRespPB.Response
-	}
 
 	ca.log.AuditInfof("Signing precert: serial=[%s] regID=[%d] names=[%s] csr=[%s]",
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(csr.Raw))
@@ -459,7 +437,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
-		return nil, nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
+		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)
@@ -467,14 +445,14 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		ca.noteSignError(err)
 		ca.log.AuditErrf("Signing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
-		return nil, nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
+		return nil, nil, berrors.InternalServerError("failed to sign precertificate: %s", err)
 	}
 
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(precertType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing precert success: serial=[%s] regID=[%d] names=[%s] precertificate=[%s]",
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER))
 
-	return certDER, ocspResp, issuer, nil
+	return certDER, issuer, nil
 }
 
 func (ca *certificateAuthorityImpl) storeCertificate(
@@ -511,7 +489,6 @@ func (ca *certificateAuthorityImpl) storeCertificate(
 
 type orphanedCert struct {
 	DER      []byte
-	OCSPResp []byte
 	RegID    int64
 	Precert  bool
 	IssuerID int64
@@ -569,7 +546,6 @@ func (ca *certificateAuthorityImpl) integrateOrphan() error {
 		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:          orphan.DER,
 			RegID:        orphan.RegID,
-			Ocsp:         orphan.OCSPResp,
 			Issued:       issued.UnixNano(),
 			IssuerNameID: orphan.IssuerID,
 		})
