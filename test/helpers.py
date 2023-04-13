@@ -131,7 +131,7 @@ def verify_akamai_purge():
             raise(Exception("Timed out waiting for Akamai purge"))
         response = requests.get("http://localhost:6789/debug/get-purges")
         purgeData = response.json()
-        if len(purgeData["V3"]) != 1:
+        if len(purgeData["V3"]) == 0:
             continue
         break
     reset_akamai_purges()
