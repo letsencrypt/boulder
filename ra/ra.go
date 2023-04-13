@@ -1062,7 +1062,12 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 		// that it can wait for all goroutines to drain during shutdown.
 		ra.finalizeWG.Add(1)
 		go func() {
-			ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
+			_, err := ra.issueCertificateOuter(ctx, proto.Clone(order).(*corepb.Order), csr, logEvent)
+			if err != nil {
+				// We only log here, because this is in a background goroutine with
+				// no parent goroutine waiting for it to receive the error.
+				ra.log.AuditErrf("Asynchronous finalization failed: %s", err.Error())
+			}
 			ra.finalizeWG.Done()
 		}()
 		return order, nil

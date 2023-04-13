@@ -617,7 +617,8 @@ func main() {
 		if parallelism < 1 {
 			cmd.Fail("parallelism argument must be >= 1")
 		}
-		r.revokeIncidentTableSerials(ctx, tableName, revocation.Reason(reasonCode), parallelism)
+		err = r.revokeIncidentTableSerials(ctx, tableName, revocation.Reason(reasonCode), parallelism)
+		cmd.FailOnError(err, "Couldn't revoke serials in incident table")
 
 	default:
 		usage()

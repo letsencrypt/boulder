@@ -336,7 +336,10 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 	validate := validator.New()
 	if cv.Validators != nil {
 		for tag, v := range cv.Validators {
-			validate.RegisterValidation(tag, v)
+			err := validate.RegisterValidation(tag, v)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -377,7 +380,10 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 	validate := validator.New()
 	if cv.Validators != nil {
 		for tag, v := range cv.Validators {
-			validate.RegisterValidation(tag, v)
+			err := validate.RegisterValidation(tag, v)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
