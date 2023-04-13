@@ -476,6 +476,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 			RegID:        issueReq.RegistrationID,
 			Issued:       nowNanos,
 			IssuerNameID: int64(issuer.Cert.NameID()),
+			OcspNotReady: true,
 		})
 		if err != nil {
 			return nil, nil, nil, err
