@@ -2084,35 +2084,39 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	// Perform an Akamai cache purge to handle occurrences of a client
-	// previously successfully revoking a certificate, but their cache purge had
-	// unexpectedly failed. Clients can re-attempt revocation and purge the
-	// Akamai cache.
-	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
+	// If the revocation and blocked keys list addition were successful, then
+	// just purge and return.
+	if revokeErr == nil && err == nil {
 		// Don't propagate purger errors to the client.
 		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+		return &emptypb.Empty{}, nil
 	}
 
-	// Finally check the error from revocation itself. If it was an
-	// AlreadyRevoked error, try to re-revoke the cert, in case it is revoked
-	// for a reason other than keyCompromise.
+	// Check the error returned from revokeCertificate itself.
 	err = revokeErr
 	if err != nil {
-		// Error out if the error was anything other than AlreadyRevoked. Otherwise
-		// try re-revocation.
+		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
+		// it was revoked for a reason other than keyCompromise.
+		if errors.Is(err, berrors.AlreadyRevoked) {
+			err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+			// Perform an Akamai cache purge to handle occurrences of a client
+			// previously successfully revoking a certificate, but the cache purge had
+			// unexpectedly failed. Allows clients to re-attempt revocation and purge the
+			// Akamai cache.
+			_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+			if err != nil {
+				return nil, err
+			}
+			return &emptypb.Empty{}, nil
+		}
+
+		// Error out if the error was anything other than AlreadyRevoked.
 		if !errors.Is(err, berrors.AlreadyRevoked) {
 			return nil, err
 		}
-		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
-		if err != nil {
-			return nil, err
-		}
 	}
 
-	// Don't propagate purger errors to the client.
-	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-
-	return &emptypb.Empty{}, nil
+	return nil, fmt.Errorf("unexpected revocation error %q", err)
 }
 
 // AdministrativelyRevokeCertificate terminates trust in the certificate
