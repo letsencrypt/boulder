@@ -559,8 +559,8 @@ func main() {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
-		srv.Shutdown(ctx)
-		tlsSrv.Shutdown(ctx)
+		_ = srv.Shutdown(ctx)
+		_ = tlsSrv.Shutdown(ctx)
 	}()
 
 	cmd.WaitForSignal()
