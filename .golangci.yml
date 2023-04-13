@@ -18,6 +18,8 @@ linters:
 linters-settings:
   errcheck:
     exclude-functions:
+      - (net/http.ResponseWriter).Write
+      - (net.Conn).Write
       - encoding/binary.Write
       - io.Write
       - net/http.Write
