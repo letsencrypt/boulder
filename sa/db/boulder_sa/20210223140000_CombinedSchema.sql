@@ -220,7 +220,6 @@ DROP TABLE `authz2`;
 DROP TABLE `blockedKeys`;
 DROP TABLE `certificateStatus`;
 DROP TABLE `certificatesPerName`;
-DROP TABLE `crls`;
 DROP TABLE `fqdnSets`;
 DROP TABLE `issuedNames`;
 DROP TABLE `keyHashToSerial`;
