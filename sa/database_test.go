@@ -31,7 +31,6 @@ func TestInvalidDSN(t *testing.T) {
 	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
 	_, err = NewDbMap(DSN, DbSettings{})
 	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
-
 }
 
 var errExpected = errors.New("expected")
