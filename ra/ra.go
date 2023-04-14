@@ -2084,38 +2084,38 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	// If the revocation and blocked keys list addition were successful, then
-	// just purge and return.
-	if revokeErr == nil && err == nil {
-		// Don't propagate purger errors to the client.
-		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-		return &emptypb.Empty{}, nil
-	}
-
-	// Check the error returned from revokeCertificate itself.
-	err = revokeErr
-	if err != nil {
-		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
-		// it was revoked for a reason other than keyCompromise.
-		if errors.Is(err, berrors.AlreadyRevoked) {
-			err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
-			// Perform an Akamai cache purge to handle occurrences of a client
-			// previously successfully revoking a certificate, but the cache purge had
-			// unexpectedly failed. Allows clients to re-attempt revocation and purge the
-			// Akamai cache.
-			_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-			if err != nil {
+	if revokeErr == nil {
+		// Check the error returned from revokeCertificate itself.
+		err = revokeErr
+		if err != nil {
+			// If it was an AlreadyRevoked error, try to re-revoke the cert in case
+			// it was revoked for a reason other than keyCompromise.
+			if errors.Is(err, berrors.AlreadyRevoked) {
+				err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+				// Perform an Akamai cache purge to handle occurrences of a client
+				// previously successfully revoking a certificate, but the cache purge had
+				// unexpectedly failed. Allows clients to re-attempt revocation and purge the
+				// Akamai cache.
+				_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+				if err != nil {
+					return nil, err
+				}
+				return &emptypb.Empty{}, nil
+			} else {
+				// Error out if the error was anything other than AlreadyRevoked.
 				return nil, err
 			}
-			return &emptypb.Empty{}, nil
-		}
+		} else {
+			// If the revocation and blocked keys list addition were successful, then
+			// just purge and return.
 
-		// Error out if the error was anything other than AlreadyRevoked.
-		if !errors.Is(err, berrors.AlreadyRevoked) {
-			return nil, err
+			// Don't propagate purger errors to the client.
+			_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
+			return &emptypb.Empty{}, nil
 		}
 	}
 
+	// We should never get here, but the function needs a return value.
 	return nil, fmt.Errorf("unexpected revocation error %q", err)
 }
 
