@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"time"
@@ -165,15 +166,17 @@ func main() {
 	cmd.FailOnError(err, "Failed to create crl-updater")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go cmd.CatchSignals(logger, cancel)
+	go cmd.CatchSignals(cancel)
 
 	if *runOnce {
 		err = u.Tick(ctx, clk.Now())
-		cmd.FailOnError(err, "")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "")
+		}
 	} else {
 		err = u.Run(ctx)
-		if err != nil {
-			logger.Err(err.Error())
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "")
 		}
 	}
 }

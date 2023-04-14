@@ -803,6 +803,11 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
+	if *daemon && c.Mailer.Frequency.Duration == 0 {
+		fmt.Fprintln(os.Stderr, "mailer.frequency is not set in the JSON config")
+		os.Exit(1)
+	}
+
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
 	}
@@ -913,31 +918,26 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go cmd.CatchSignals(logger, func() {
-		cancel()
-		select {} // wait for the `findExpiringCertificates` calls below to exit
-	})
+	go cmd.CatchSignals(cancel)
 
 	if *daemon {
-		if c.Mailer.Frequency.Duration == 0 {
-			fmt.Fprintln(os.Stderr, "mailer.Frequency is not set in the JSON config")
-			os.Exit(1)
-		}
 		t := time.NewTicker(c.Mailer.Frequency.Duration)
 		for {
 			select {
 			case <-t.C:
 				err = m.findExpiringCertificates(ctx)
-				cmd.FailOnError(err, "expiration-mailer has failed")
+				if err != nil && !errors.Is(err, context.Canceled) {
+					cmd.FailOnError(err, "expiration-mailer has failed")
+				}
 			case <-ctx.Done():
-				os.Exit(0)
+				break
 			}
 		}
 	} else {
 		err = m.findExpiringCertificates(ctx)
-		cmd.FailOnError(err, "expiration-mailer has failed")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "expiration-mailer has failed")
+		}
 	}
 }
 

@@ -99,7 +99,6 @@
 		},
 		"features": {
 			"StoreRevokerInfo": true,
-			"ROCSPStage7": true,
 			"AsyncFinalize": true,
 			"RequireCommonName": false
 		},

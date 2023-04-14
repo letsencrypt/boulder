@@ -140,7 +140,15 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 	// Tick once immediately, but create the ticker first so that it starts
 	// counting from the appropriate time.
 	ticker := time.NewTicker(cu.updatePeriod)
-	cu.Tick(ctx, cu.clk.Now())
+	atTime := cu.clk.Now()
+	err := cu.Tick(ctx, atTime)
+	if err != nil {
+		// We only log, rather than return, so that the long-lived process can
+		// continue and try again at the next tick.
+		cu.log.AuditErrf(
+			"Generating CRLs failed: number=[%s] err=[%s]",
+			(*big.Int)(crl.Number(atTime)), err)
+	}
 
 	for {
 		// If we have overrun *and* been canceled, both of the below cases could be
@@ -151,7 +159,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 		}
 		select {
 		case <-ticker.C:
-			atTime := cu.clk.Now()
+			atTime = cu.clk.Now()
 			err := cu.Tick(ctx, atTime)
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can

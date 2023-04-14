@@ -23,5 +23,8 @@
 		"serverAddress": "sa.service.consul:9095",
 		"timeout": "15s",
 		"hostOverride": "sa.boulder"
+	},
+	"features": {
+		"ROCSPStage7": true
 	}
 }

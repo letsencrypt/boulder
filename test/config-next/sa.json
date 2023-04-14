@@ -47,12 +47,6 @@
 				}
 			}
 		},
-		"issuers": {
-			".hierarchy/intermediate-cert-ecdsa-a.pem": 1,
-			".hierarchy/intermediate-cert-ecdsa-b.pem": 2,
-			".hierarchy/intermediate-cert-rsa-a.pem": 3,
-			".hierarchy/intermediate-cert-rsa-b.pem": 4
-		},
 		"features": {
 			"StoreRevokerInfo": true
 		}

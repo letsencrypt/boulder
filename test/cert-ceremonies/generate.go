@@ -74,7 +74,7 @@ func genCert(path string) error {
 }
 
 func main() {
-	blog.Set(blog.StdoutLogger(6))
+	_ = blog.Set(blog.StdoutLogger(6))
 
 	// If one of the output files already exists, assume this ran once
 	// already for the container and don't re-run.

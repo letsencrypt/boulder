@@ -249,11 +249,8 @@ func main() {
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA)
 
-	// TODO(#6285): Remove this predeclaration when NewCertificateAuthorityImpl
-	// no longer needs ocspi as an argument.
-	var ocspi ca.OCSPGenerator
 	if !c.CA.DisableOCSPService {
-		ocspi, err = ca.NewOCSPImpl(
+		ocspi, err := ca.NewOCSPImpl(
 			boulderIssuers,
 			c.CA.LifespanOCSP.Duration,
 			c.CA.OCSPLogMaxLength,
@@ -288,7 +285,6 @@ func main() {
 		cai, err := ca.NewCertificateAuthorityImpl(
 			sa,
 			pa,
-			ocspi,
 			boulderIssuers,
 			ecdsaAllowList,
 			c.CA.Expiry.Duration,

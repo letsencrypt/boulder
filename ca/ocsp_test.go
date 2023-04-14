@@ -33,7 +33,6 @@ func TestOCSP(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		&mockSA{},
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,

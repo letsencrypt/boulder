@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
@@ -93,9 +94,23 @@ func main() {
 	http.HandleFunc("/clear", srv.handleClear)
 	http.HandleFunc("/query", srv.handleQuery)
 
-	// The gosec linter complains that timeouts cannot be set here. That's fine,
-	// because this is test-only code.
-	////nolint:gosec
-	go log.Fatal(http.ListenAndServe(*listenAddr, nil))
-	cmd.CatchSignals(nil, nil)
+	s := http.Server{
+		ReadTimeout: 30 * time.Second,
+		Addr:        *listenAddr,
+	}
+
+	go func() {
+		err := s.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			cmd.FailOnError(err, "Running TLS server")
+		}
+	}()
+
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		s.Shutdown(ctx)
+	}()
+
+	cmd.WaitForSignal()
 }
