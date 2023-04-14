@@ -44,10 +44,13 @@ func checkMariaDBSystemVariables(name string, value string) error {
 		"collation_connection":           {},
 		"collation_database":             {},
 		"collation_server":               {},
+		"debug/debug_dbug":               {},
 		"debug_sync":                     {},
 		"enforce_storage_engine":         {},
 		"external_user":                  {},
+		"lc_messages":                    {},
 		"lc_time_names":                  {},
+		"old_alter_table":                {},
 		"old_mode":                       {},
 		"optimizer_switch":               {},
 		"proxy_user":                     {},
@@ -81,6 +84,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 		"interactive_timeout":                  {},
 		"join_buffer_size":                     {},
 		"join_buffer_space_limit":              {},
+		"join_cache_level":                     {},
 		"last_insert_id":                       {},
 		"lock_wait_timeout":                    {},
 		"log_slow_min_examined_row_limit":      {},
@@ -114,6 +118,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 		"optimizer_search_depth":               {},
 		"optimizer_selectivity_sampling_limit": {},
 		"optimizer_trace_max_mem_size":         {},
+		"optimizer_use_condition_selectivity":  {},
 		"preload_buffer_size":                  {},
 		"profiling_history_size":               {},
 		"progress_report_time":                 {},
@@ -127,6 +132,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 		"rowid_merge_buff_size":                {},
 		"sql_select_limit":                     {},
 		"tmp_disk_table_size":                  {},
+		"tmp_table_size":                       {},
 		"transaction_alloc_block_size":         {},
 		"transaction_prealloc_size":            {},
 		"wait_timeout":                         {},
@@ -142,16 +148,24 @@ func checkMariaDBSystemVariables(name string, value string) error {
 
 	// Certain MariaDB enums can have both string and integer values.
 	mariaDBIntEnumTypes := map[string]struct{}{
-		"completion_type": {},
+		"completion_type":  {},
+		"query_cache_type": {},
 	}
 
 	mariaDBStringEnumTypes := map[string]struct{}{
 		"completion_type":                {},
+		"default_regex_flags":            {},
 		"default_storage_engine":         {},
 		"default_tmp_storage_engine":     {},
+		"histogram_type":                 {},
+		"log_slow_filter":                {},
+		"log_slow_verbosity":             {},
 		"optimizer_trace":                {},
+		"query_cache_type":               {},
 		"session_track_transaction_info": {},
+		"transaction_isolation":          {},
 		"tx_isolation":                   {},
+		"use_stat_tables":                {},
 	}
 
 	// Check the list of currently known MariaDB enumeration type system
@@ -178,6 +192,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 	// https://mariadb.com/kb/en/boolean/
 	mariaDBBooleanTypes := map[string]struct{}{
 		"autocommit":                   {},
+		"big_tables":                   {},
 		"check_constraint_checks":      {},
 		"foreign_key_checks":           {},
 		"in_transaction":               {},
@@ -203,6 +218,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 		"sql_warnings":                 {},
 		"standard_compliant_cte":       {},
 		"tcp_nodelay":                  {},
+		"transaction_read_only":        {},
 		"tx_read_only":                 {},
 		"unique_checks":                {},
 		"updatable_views_with_limit":   {},
