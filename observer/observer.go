@@ -1,10 +1,7 @@
 package observer
 
 import (
-	"os"
-	"os/signal"
-	"syscall"
-
+	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	_ "github.com/letsencrypt/boulder/observer/probers/crl"
 	_ "github.com/letsencrypt/boulder/observer/probers/dns"
@@ -25,10 +22,6 @@ func (o Observer) Start() {
 		go mon.start(o.logger)
 	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGTERM)
-	signal.Notify(sigChan, syscall.SIGINT)
-	signal.Notify(sigChan, syscall.SIGHUP)
-	<-sigChan
-	o.shutdown()
+	defer o.shutdown()
+	cmd.WaitForSignal()
 }
