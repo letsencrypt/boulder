@@ -25,7 +25,7 @@ var (
 //
 // Only session scoped variables should be included. A session variable is one
 // that affects the current session only. Passing a session variable that only
-// solely in the global scope causes database connection error 1045.
+// works in the global scope causes database connection error 1045.
 // https://mariadb.com/kb/en/set/#global-session
 func checkMariaDBSystemVariables(name string, value string) error {
 	// System variable names will be indexed into the appropriate hash sets
@@ -58,7 +58,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 
 	if _, found := mariaDBStringTypes[name]; found {
 		if checkStringQuoteRE.FindString(value) != value {
-			return fmt.Errorf("%v=%v string is not properly quoted", name, value)
+			return fmt.Errorf("%s=%s string is not properly quoted", name, value)
 		}
 		return nil
 	}
@@ -135,7 +135,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 
 	if _, found := mariaDBNumericTypes[name]; found {
 		if checkNumericRE.FindString(value) != value {
-			return fmt.Errorf("%q requires numeric value, but %q is not formatted like a number", name, value)
+			return fmt.Errorf("%s requires numeric value, but %s is not formatted like a number", name, value)
 		}
 		return nil
 	}
@@ -162,14 +162,14 @@ func checkMariaDBSystemVariables(name string, value string) error {
 			return nil
 		}
 		if checkImproperIntRE.FindString(value) == value {
-			return fmt.Errorf("%v=%v integer enum is quoted, but should not be", name, value)
+			return fmt.Errorf("%s=%s integer enum is quoted, but should not be", name, value)
 		}
 	}
 
 	// 2) A properly formatted string e.g. completion_type='CHAIN'
 	if _, found := mariaDBStringEnumTypes[name]; found {
 		if checkStringQuoteRE.FindString(value) != value {
-			return fmt.Errorf("%v=%v string enum is not properly quoted", name, value)
+			return fmt.Errorf("%s=%s string enum is not properly quoted", name, value)
 		}
 		return nil
 	}
@@ -210,10 +210,10 @@ func checkMariaDBSystemVariables(name string, value string) error {
 
 	if _, found := mariaDBBooleanTypes[name]; found {
 		if checkBooleanRE.FindString(value) != value {
-			return fmt.Errorf("%v=%v expected boolean value", name, value)
+			return fmt.Errorf("%s=%s expected boolean value", name, value)
 		}
 		return nil
 	}
 
-	return fmt.Errorf("%v=%v was unexpected", name, value)
+	return fmt.Errorf("%s=%s was unexpected", name, value)
 }
