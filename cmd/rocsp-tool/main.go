@@ -192,7 +192,10 @@ var (
 					Bytes: resp,
 					Type:  "OCSP RESPONSE",
 				}
-				pem.Encode(os.Stdout, &block)
+				err = pem.Encode(os.Stdout, &block)
+				if err != nil {
+					return err
+				}
 			}
 			return nil
 		},

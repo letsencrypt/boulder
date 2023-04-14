@@ -163,6 +163,10 @@ func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, caus
 		return nil, err
 	}
 	src.signAndSaveCounter.WithLabelValues(string(cause), "signing_success").Inc()
-	go src.client.StoreResponse(context.Background(), resp.Response)
+	go func() {
+		// We don't care about the error here, because if storing the response
+		// fails, we'll just generate a new one on the next request.
+		_ = src.client.StoreResponse(context.Background(), resp.Response)
+	}()
 	return resp, nil
 }
