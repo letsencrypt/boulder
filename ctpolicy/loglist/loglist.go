@@ -263,6 +263,7 @@ func (ll List) forPurpose(p purpose) (List, error) {
 	return newList, nil
 }
 
+// TODO(Phil) This seems like an interesting place that a metric could be based on.
 // OperatorForLogID returns the Name of the Group containing the Log with the
 // given ID, or an error if no such log/group can be found.
 func (ll List) OperatorForLogID(logID string) (string, error) {
@@ -286,6 +287,19 @@ func (ll List) Permute() []string {
 		result[i] = keys[j]
 	}
 	return result
+}
+
+// TODO(Phil) What if this information was computed once at startup so that each
+// time through the go func in ctpolicy we didn't need to perform these extra
+// loops over the loglist? Seems like it's a waste of time to me. Same with the extra loops in Permute, OperatorForLogID, etc.
+func (ll List) GetGroupSize(operator string) int {
+	for k, v := range ll {
+		if k == operator {
+			//			fmt.Printf("%v === %v\n", k, v)
+			return len(v)
+		}
+	}
+	return 0
 }
 
 // PickOne returns the URI and Public Key of a single randomly-selected log

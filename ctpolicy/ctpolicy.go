@@ -29,6 +29,7 @@ type CTPolicy struct {
 	stagger       time.Duration
 	log           blog.Logger
 	winnerCounter *prometheus.CounterVec
+	opGroupPicker *prometheus.CounterVec
 }
 
 // New creates a new CTPolicy struct
@@ -42,6 +43,15 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 	)
 	stats.MustRegister(winnerCounter)
 
+	opGroupPicker := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "ct_operator_picker",
+			Help: "Counter for CT operators groups we failed to pick a log from.",
+		},
+		[]string{"group"},
+	)
+	stats.MustRegister(opGroupPicker)
+
 	return &CTPolicy{
 		pub:           pub,
 		sctLogs:       sctLogs,
@@ -50,6 +60,7 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		stagger:       stagger,
 		log:           log,
 		winnerCounter: winnerCounter,
+		opGroupPicker: opGroupPicker,
 	}
 }
 
@@ -109,10 +120,18 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// it and exit without blocking and leaking.
 	results := make(chan result, len(ctp.sctLogs))
 
+	// Increment a prometheus CounterVec for operators with no configured logs
+	for g := range ctp.sctLogs {
+		if ctp.sctLogs.GetGroupSize(g) == 0 {
+			ctp.opGroupPicker.WithLabelValues(g).Inc()
+		}
+	}
+
 	// Kick off a collection of goroutines to try to submit the precert to each
 	// log operator group. Randomize the order of the groups so that we're not
 	// always trying to submit to the same two operators.
 	for i, group := range ctp.sctLogs.Permute() {
+		fmt.Printf("%v %v\n", i, group)
 		go func(i int, g string) {
 			sctDER, url, err := getOne(i, g)
 			results <- result{sct: sctDER, url: url, err: err}
