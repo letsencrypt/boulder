@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
@@ -175,15 +172,10 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// Start a goroutine which listens for a termination signal, and then
 	// gracefully stops the gRPC server. This in turn causes the start() function
 	// to exit, allowing its caller (generally a main() function) to exit.
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGTERM)
-		signal.Notify(sigChan, syscall.SIGINT)
-		signal.Notify(sigChan, syscall.SIGHUP)
-		<-sigChan
+	go cmd.CatchSignals(func() {
 		healthSrv.Shutdown()
 		server.GracefulStop()
-	}()
+	})
 
 	return start, nil
 }

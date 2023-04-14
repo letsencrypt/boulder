@@ -535,9 +535,6 @@ func main() {
 		}
 	}()
 
-	// The gosec linter complains that ReadHeaderTimeout is not set. That's fine,
-	// because that field inherits its value from ReadTimeout.
-	////nolint:gosec
 	tlsSrv := http.Server{
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 120 * time.Second,
@@ -555,20 +552,18 @@ func main() {
 		}()
 	}
 
-	done := make(chan bool)
-	go cmd.CatchSignals(logger, func() {
+	// When main is ready to exit (because it has received a shutdown signal),
+	// gracefully shutdown the servers. Calling these shutdown functions causes
+	// ListenAndServe() and ListenAndServeTLS() to immediately return, then waits
+	// for any lingering connection-handling goroutines to finish their work.
+	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
-		done <- true
-	})
+	}()
 
-	// https://godoc.org/net/http#Server.Shutdown:
-	// When Shutdown is called, Serve, ListenAndServe, and ListenAndServeTLS
-	// immediately return ErrServerClosed. Make sure the program doesn't exit and
-	// waits instead for Shutdown to return.
-	<-done
+	cmd.WaitForSignal()
 }
 
 func init() {

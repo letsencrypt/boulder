@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -118,9 +119,11 @@ func main() {
 			"HTTPOneAddrs, TLSALPNOneAddrs or DNSAddrs\n")
 	}
 
-	go cmd.CatchSignals(nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	go cmd.CatchSignals(cancel)
 
 	err = s.Run(
+		ctx,
 		config.HTTPOneAddrs,
 		config.TLSALPNOneAddrs,
 		config.DNSAddrs,

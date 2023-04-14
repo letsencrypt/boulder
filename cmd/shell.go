@@ -418,18 +418,26 @@ func VersionString() string {
 	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
-// CatchSignals catches SIGTERM, SIGINT, SIGHUP and executes a callback
-// method before exiting
-func CatchSignals(logger blog.Logger, callback func()) {
+// CatchSignals blocks until a SIGTERM, SIGINT, or SIGHUP is received, then
+// executes the given callback. The callback should not block, it should simply
+// signal other goroutines (particularly the main goroutine) to clean themselves
+// up and exit. This function is intended to be called in its own goroutine,
+// while the main goroutine waits for an indication that the other goroutines
+// have exited cleanly.
+func CatchSignals(callback func()) {
+	WaitForSignal()
+	callback()
+}
+
+// WaitForSignal blocks until a SIGTERM, SIGINT, or SIGHUP is received. It then
+// returns, allowing execution to resume, generally allowing a main() function
+// to return and trigger and deferred cleanup functions. This function is
+// intended to be called directly from the main goroutine, while a gRPC or HTTP
+// server runs in a background goroutine.
+func WaitForSignal() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM)
 	signal.Notify(sigChan, syscall.SIGINT)
 	signal.Notify(sigChan, syscall.SIGHUP)
-
 	<-sigChan
-	if callback != nil {
-		callback()
-	}
-
-	os.Exit(0)
 }
