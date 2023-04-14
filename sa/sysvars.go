@@ -135,7 +135,7 @@ func checkMariaDBSystemVariables(name string, value string) error {
 
 	if _, found := mariaDBNumericTypes[name]; found {
 		if checkNumericRE.FindString(value) != value {
-			return fmt.Errorf("%s requires numeric value, but %s is not formatted like a number", name, value)
+			return fmt.Errorf("%s=%s requires a numeric value, but is not formatted like a number", name, value)
 		}
 		return nil
 	}
