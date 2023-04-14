@@ -1816,33 +1816,17 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	return bgrpc.AuthzToPB(authz)
 }
 
-// revokeCertificate generates a revoked OCSP response for the certificate with
-// the given serial and issuer and stores that response in the database.
+// revokeCertificate updates the database to mark the certificate as revoked,
+// with the given reason and current timestamp.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID int64, reason revocation.Reason) error {
 	serialString := core.SerialToString(serial)
 	revokedAt := ra.clk.Now().UnixNano()
 
-	var ocspResponse []byte
-	if !features.Enabled(features.ROCSPStage7) {
-		ocspResponsePB, err := ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-			Serial:    serialString,
-			IssuerID:  issuerID,
-			Status:    string(core.OCSPStatusRevoked),
-			Reason:    int32(reason),
-			RevokedAt: revokedAt,
-		})
-		if err != nil {
-			return err
-		}
-		ocspResponse = ocspResponsePB.Response
-	}
-
 	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(reason),
 		Date:     revokedAt,
-		Response: ocspResponse,
 		IssuerID: issuerID,
 	})
 	if err != nil {
@@ -1853,11 +1837,10 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 	return nil
 }
 
-// updateRevocationForKeyCompromise generates a revoked OCSP response for the
-// already-revoked certificate with the given serial and issuer, and stores that
-// response in the database. This only works for certificates that were
-// previously revoked for a reason other than keyCompromise, and which are now
-// being updated to keyCompromise instead.
+// updateRevocationForKeyCompromise updates the database to mark the certificate
+// as revoked, with the given reason and current timestamp. This only works for
+// certificates that were previously revoked for a reason other than
+// keyCompromise, and which are now being updated to keyCompromise instead.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
 	serialString := core.SerialToString(serial)
@@ -1877,27 +1860,11 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		return berrors.AlreadyRevokedError("unable to re-revoke serial %q which is already revoked for keyCompromise", serialString)
 	}
 
-	// The new OCSP response has to be back-dated to the original date.
-	var ocspResponse []byte
-	if !features.Enabled(features.ROCSPStage7) {
-		ocspResponsePB, err := ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-			Serial:    serialString,
-			IssuerID:  issuerID,
-			Status:    string(core.OCSPStatusRevoked),
-			Reason:    int32(ocsp.KeyCompromise),
-			RevokedAt: status.RevokedDate,
-		})
-		if err != nil {
-			return err
-		}
-		ocspResponse = ocspResponsePB.Response
-	}
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(ocsp.KeyCompromise),
 		Date:     thisUpdate,
 		Backdate: status.RevokedDate,
-		Response: ocspResponse,
 		IssuerID: issuerID,
 	})
 	if err != nil {

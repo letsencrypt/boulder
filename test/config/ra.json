@@ -65,7 +65,8 @@
 			]
 		},
 		"features": {
-			"StoreRevokerInfo": true
+			"StoreRevokerInfo": true,
+			"ROCSPStage7": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

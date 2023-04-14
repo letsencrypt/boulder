@@ -293,7 +293,6 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		0,
@@ -389,7 +388,6 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		&ECDSAAllowList{},
 		testCtx.certExpiry,
@@ -436,7 +434,6 @@ func TestNoIssuers(t *testing.T) {
 	_, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
-		testCtx.ocsp,
 		nil, // No issuers
 		nil,
 		testCtx.certExpiry,
@@ -461,7 +458,6 @@ func TestMultipleIssuers(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -606,7 +602,6 @@ func TestInvalidCSRs(t *testing.T) {
 		ca, err := NewCertificateAuthorityImpl(
 			sa,
 			testCtx.pa,
-			testCtx.ocsp,
 			testCtx.boulderIssuers,
 			nil,
 			testCtx.certExpiry,
@@ -644,7 +639,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -746,7 +740,6 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -853,7 +846,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -896,7 +888,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	errorca, err := NewCertificateAuthorityImpl(
 		errorsa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -973,7 +964,6 @@ func TestPrecertOrphanQueue(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		qsa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -1040,7 +1030,6 @@ func TestOrphanQueue(t *testing.T) {
 	ca, err := NewCertificateAuthorityImpl(
 		qsa,
 		testCtx.pa,
-		testCtx.ocsp,
 		testCtx.boulderIssuers,
 		nil,
 		testCtx.certExpiry,
@@ -1094,9 +1083,8 @@ func TestOrphanQueue(t *testing.T) {
 
 	// test with a duplicate cert
 	ca.queueOrphan(&orphanedCert{
-		DER:      certDER,
-		OCSPResp: []byte{},
-		RegID:    1,
+		DER:   certDER,
+		RegID: 1,
 	})
 
 	qsa.duplicate = true

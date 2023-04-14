@@ -114,19 +114,18 @@ func NamesFromCSR(csr *x509.CertificateRequest) names {
 	if csr.Subject.CommonName != "" {
 		sans = append(sans, csr.Subject.CommonName)
 	}
-	sans = core.UniqueLowerNames(sans)
 
 	if csr.Subject.CommonName != "" {
-		return names{SANs: sans, CN: strings.ToLower(csr.Subject.CommonName)}
+		return names{SANs: core.UniqueLowerNames(sans), CN: strings.ToLower(csr.Subject.CommonName)}
 	}
 
 	// If there's no CN already, but we want to set one, promote the first SAN
 	// which is shorter than the the maximum acceptable CN length (if any).
 	for _, name := range sans {
 		if len(name) <= maxCNLength {
-			return names{SANs: sans, CN: name}
+			return names{SANs: core.UniqueLowerNames(sans), CN: name}
 		}
 	}
 
-	return names{SANs: sans}
+	return names{SANs: core.UniqueLowerNames(sans)}
 }

@@ -477,7 +477,6 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        reg.Id,
-		Ocsp:         []byte{1, 2, 3},
 		Issued:       testCert.NotBefore.UnixNano(),
 		IssuerNameID: 1,
 	})
@@ -1992,7 +1991,6 @@ func TestRevokeCertificate(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		RegID:        reg.Id,
-		Ocsp:         nil,
 		Issued:       sa.clk.Now().UnixNano(),
 		IssuerNameID: 1,
 	})
@@ -2044,7 +2042,6 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		RegID:        reg.Id,
-		Ocsp:         nil,
 		Issued:       issuedTime,
 		IssuerNameID: 1,
 	})
@@ -3009,7 +3006,6 @@ func TestGetRevokedCerts(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
-		Ocsp:         nil,
 		Issued:       eeCert.NotBefore.UnixNano(),
 		IssuerNameID: 1,
 	})
@@ -3102,7 +3098,6 @@ func TestGetMaxExpiration(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
-		Ocsp:         nil,
 		Issued:       eeCert.NotBefore.UnixNano(),
 		IssuerNameID: 1,
 	})

@@ -1172,8 +1172,6 @@ type StorageAuthorityClient interface {
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// Change a serial's OCSP status from core.OCSPStatusNotReady to core.OCSPStatusGood.
-	// Called when precertificate issuance succeeds.
 	SetCertificateStatusReady(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1676,8 +1674,6 @@ type StorageAuthorityServer interface {
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
 	AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
-	// Change a serial's OCSP status from core.OCSPStatusNotReady to core.OCSPStatusGood.
-	// Called when precertificate issuance succeeds.
 	SetCertificateStatusReady(context.Context, *Serial) (*emptypb.Empty, error)
 	AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error)

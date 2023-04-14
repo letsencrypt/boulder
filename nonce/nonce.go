@@ -28,10 +28,11 @@ import (
 	"sync"
 	"time"
 
-	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 )
 
 const (
@@ -74,6 +75,7 @@ type NonceService struct {
 	maxUsed          int
 	prefix           string
 	nonceCreates     prometheus.Counter
+	nonceEarliest    prometheus.Gauge
 	nonceRedeems     *prometheus.CounterVec
 	nonceHeapLatency prometheus.Histogram
 	// TODO(#6610): Remove this field once we've moved to derivable prefixes by
@@ -149,6 +151,11 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		Help: "A counter of nonces generated",
 	})
 	stats.MustRegister(nonceCreates)
+	nonceEarliest := prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nonce_earliest",
+		Help: "A gauge with the current earliest valid nonce value",
+	})
+	stats.MustRegister(nonceEarliest)
 	nonceRedeems := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "nonce_redeems",
 		Help: "A counter of nonce validations labelled by result",
@@ -169,6 +176,7 @@ func NewNonceService(stats prometheus.Registerer, maxUsed int, prefix string) (*
 		maxUsed:          maxUsed,
 		prefix:           prefix,
 		nonceCreates:     nonceCreates,
+		nonceEarliest:    nonceEarliest,
 		nonceRedeems:     nonceRedeems,
 		nonceHeapLatency: nonceHeapLatency,
 		// TODO(#6610): Remove this field once we've moved to derivable prefixes
@@ -281,6 +289,7 @@ func (ns *NonceService) Valid(nonce string) bool {
 	if len(ns.used) > ns.maxUsed {
 		s := time.Now()
 		ns.earliest = heap.Pop(ns.usedHeap).(int64)
+		ns.nonceEarliest.Set(float64(ns.earliest))
 		ns.nonceHeapLatency.Observe(time.Since(s).Seconds())
 		delete(ns.used, ns.earliest)
 	}
