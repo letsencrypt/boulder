@@ -69,7 +69,7 @@ func TestARI(t *testing.T) {
 	err = client.UpdateRenewalInfo(client.Account, cert, issuer, crypto.SHA256, true)
 	test.AssertNotError(t, err, "ARI request should have succeeded")
 
-	// Try to make a new cert for a new domain, but sabotage the CT logs to
+	// Try to make a new cert for a new domain, but sabotage the CT logs so
 	// issuance fails. Recover the precert from CT, then request ARI and check
 	// that it fails, because we don't serve ARI for non-issued certs.
 	name = random_domain()
