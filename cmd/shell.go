@@ -22,8 +22,6 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
-	"github.com/letsencrypt/boulder/strictyaml"
-	"github.com/letsencrypt/validator/v10"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
