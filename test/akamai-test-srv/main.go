@@ -108,7 +108,7 @@ func main() {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		s.Shutdown(ctx)
+		_ = s.Shutdown(ctx)
 	}()
 
 	cmd.WaitForSignal()
