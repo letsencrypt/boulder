@@ -197,6 +197,12 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{"a.com", "b.com"},
 		},
 		{
+			"explicit CN not found in SANs",
+			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "a.com"}, DNSNames: []string{"b.com"}},
+			"a.com",
+			[]string{"a.com", "b.com"},
+		},
+		{
 			"no explicit CN, too long leading SANs",
 			&x509.CertificateRequest{DNSNames: []string{
 				tooLongString + ".a.com",
