@@ -185,6 +185,14 @@ func TestNamesFromCSR(t *testing.T) {
 			[]string{"a.com"},
 		},
 		{
+			"no explicit CN, uppercase SAN",
+			&x509.CertificateRequest{DNSNames: []string{
+				"A.com",
+			}},
+			"a.com",
+			[]string{"a.com"},
+		},
+		{
 			"no explicit CN, too long leading SANs",
 			&x509.CertificateRequest{DNSNames: []string{
 				tooLongString + ".a.com",
