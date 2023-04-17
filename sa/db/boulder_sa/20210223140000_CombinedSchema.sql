@@ -63,13 +63,6 @@ CREATE TABLE `certificatesPerName` (
   UNIQUE KEY `eTLDPlusOne_time_idx` (`eTLDPlusOne`,`time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
-CREATE TABLE `crls` (
-  `serial` varchar(255) NOT NULL,
-  `createdAt` datetime NOT NULL,
-  `crl` varchar(255) NOT NULL,
-  PRIMARY KEY (`serial`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
-
 CREATE TABLE `fqdnSets` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `setHash` binary(32) NOT NULL,
@@ -227,7 +220,6 @@ DROP TABLE `authz2`;
 DROP TABLE `blockedKeys`;
 DROP TABLE `certificateStatus`;
 DROP TABLE `certificatesPerName`;
-DROP TABLE `crls`;
 DROP TABLE `fqdnSets`;
 DROP TABLE `issuedNames`;
 DROP TABLE `keyHashToSerial`;

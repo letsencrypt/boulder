@@ -28,12 +28,12 @@ require (
 	github.com/weppos/publicsuffix-go v0.30.0
 	github.com/zmap/zcrypto v0.0.0-20220402174210-599ec18ecbac
 	github.com/zmap/zlint/v3 v3.4.0
-	golang.org/x/crypto v0.7.0
-	golang.org/x/exp v0.0.0-20230118134722-a68e582fa157
-	golang.org/x/net v0.8.0
+	golang.org/x/crypto v0.8.0
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
+	golang.org/x/net v0.9.0
 	golang.org/x/sync v0.1.0
 	golang.org/x/term v0.7.0
-	golang.org/x/text v0.8.0
+	golang.org/x/text v0.9.0
 	google.golang.org/grpc v1.53.0
 	google.golang.org/protobuf v1.30.0
 	gopkg.in/go-jose/go-jose.v2 v2.6.1
@@ -69,9 +69,9 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
-	golang.org/x/mod v0.8.0 // indirect
+	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/sys v0.7.0 // indirect
-	golang.org/x/tools v0.6.0 // indirect
+	golang.org/x/tools v0.8.0 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
