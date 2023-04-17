@@ -275,21 +275,21 @@ github.com/zmap/zlint/v3/lints/etsi
 github.com/zmap/zlint/v3/lints/mozilla
 github.com/zmap/zlint/v3/lints/rfc
 github.com/zmap/zlint/v3/util
-# golang.org/x/crypto v0.7.0
+# golang.org/x/crypto v0.8.0
 ## explicit; go 1.17
 golang.org/x/crypto/cryptobyte
 golang.org/x/crypto/cryptobyte/asn1
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
-# golang.org/x/exp v0.0.0-20230118134722-a68e582fa157
+# golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 ## explicit; go 1.18
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/mod v0.8.0
+# golang.org/x/mod v0.10.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
-# golang.org/x/net v0.8.0
+# golang.org/x/net v0.9.0
 ## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -318,17 +318,18 @@ golang.org/x/sys/windows
 # golang.org/x/term v0.7.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.8.0
+# golang.org/x/text v0.9.0
 ## explicit; go 1.17
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/tools v0.6.0
+# golang.org/x/tools v0.8.0
 ## explicit; go 1.18
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/packagesdriver
 golang.org/x/tools/go/packages
+golang.org/x/tools/go/types/objectpath
 golang.org/x/tools/internal/event
 golang.org/x/tools/internal/event/core
 golang.org/x/tools/internal/event/keys
