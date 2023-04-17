@@ -2089,35 +2089,32 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		return nil, err
 	}
 
-	// Perform an Akamai cache purge to handle occurrences of a client
-	// previously successfully revoking a certificate, but their cache purge had
-	// unexpectedly failed. Clients can re-attempt revocation and purge the
-	// Akamai cache.
-	if errors.Is(revokeErr, berrors.AlreadyRevoked) {
+	// Check the error returned from revokeCertificate itself.
+	err = revokeErr
+	if err == nil {
+		// If the revocation and blocked keys list addition were successful, then
+		// just purge and return.
 		// Don't propagate purger errors to the client.
 		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-	}
-
-	// Finally check the error from revocation itself. If it was an
-	// AlreadyRevoked error, try to re-revoke the cert, in case it is revoked
-	// for a reason other than keyCompromise.
-	err = revokeErr
-	if err != nil {
-		// Error out if the error was anything other than AlreadyRevoked. Otherwise
-		// try re-revocation.
-		if !errors.Is(err, berrors.AlreadyRevoked) {
-			return nil, err
-		}
+		return &emptypb.Empty{}, nil
+	} else if errors.Is(err, berrors.AlreadyRevoked) {
+		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
+		// it was revoked for a reason other than keyCompromise.
 		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+
+		// Perform an Akamai cache purge to handle occurrences of a client
+		// previously successfully revoking a certificate, but the cache purge had
+		// unexpectedly failed. Allows clients to re-attempt revocation and purge the
+		// Akamai cache.
+		_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
 		if err != nil {
 			return nil, err
 		}
+		return &emptypb.Empty{}, nil
+	} else {
+		// Error out if the error was anything other than AlreadyRevoked.
+		return nil, err
 	}
-
-	// Don't propagate purger errors to the client.
-	_ = ra.purgeOCSPCache(ctx, cert, int64(issuerID))
-
-	return &emptypb.Empty{}, nil
 }
 
 // AdministrativelyRevokeCertificate terminates trust in the certificate
