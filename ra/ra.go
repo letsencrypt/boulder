@@ -2417,7 +2417,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
-			ra.authzAges.Observe((time.Unix(0, authz.Expires).Sub(ra.clk.Now()) - ra.authorizationLifetime).Seconds())
+			ra.authzAges.Observe((ra.authorizationLifetime - time.Unix(0, authz.Expires).Sub(ra.clk.Now())).Seconds())
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
@@ -2426,7 +2426,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
-			ra.authzAges.Observe((time.Unix(0, authz.Expires).Sub(ra.clk.Now()) - ra.authorizationLifetime).Seconds())
+			ra.authzAges.Observe((ra.authorizationLifetime - time.Unix(0, authz.Expires).Sub(ra.clk.Now())).Seconds())
 			continue
 		}
 
