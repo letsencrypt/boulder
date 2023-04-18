@@ -19,7 +19,7 @@ CREATE TABLE `authz2` (
   KEY `regID_expires_idx` (`registrationID`,`status`,`expires`),
   KEY `regID_identifier_status_expires_idx` (`registrationID`,`identifierType`,`identifierValue`,`status`,`expires`),
   KEY `expires_idx` (`expires`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `blockedKeys` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -32,7 +32,7 @@ CREATE TABLE `blockedKeys` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `keyHash` (`keyHash`),
   KEY `extantCertificatesChecked_idx` (`extantCertificatesChecked`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `certificateStatus` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -52,7 +52,7 @@ CREATE TABLE `certificateStatus` (
   UNIQUE KEY `serial` (`serial`),
   KEY `isExpired_ocspLastUpdated_idx` (`isExpired`,`ocspLastUpdated`),
   KEY `notAfter_idx` (`notAfter`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `certificatesPerName` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -61,7 +61,7 @@ CREATE TABLE `certificatesPerName` (
   `count` int(11) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `eTLDPlusOne_time_idx` (`eTLDPlusOne`,`time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `fqdnSets` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -72,7 +72,7 @@ CREATE TABLE `fqdnSets` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `serial` (`serial`),
   KEY `setHash_issued_idx` (`setHash`,`issued`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `issuedNames` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -83,7 +83,7 @@ CREATE TABLE `issuedNames` (
   PRIMARY KEY (`id`),
   KEY `reversedName_notBefore_Idx` (`reversedName`,`notBefore`),
   KEY `reversedName_renewal_notBefore_Idx` (`reversedName`,`renewal`,`notBefore`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `keyHashToSerial` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -93,7 +93,7 @@ CREATE TABLE `keyHashToSerial` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `unique_keyHash_certserial` (`keyHash`,`certSerial`),
   KEY `keyHash_certNotAfter` (`keyHash`,`certNotAfter`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `newOrdersRL` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -102,14 +102,14 @@ CREATE TABLE `newOrdersRL` (
   `count` int(11) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `regID_time_idx` (`regID`,`time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `orderToAuthz2` (
   `orderID` bigint(20) NOT NULL,
   `authzID` bigint(20) NOT NULL,
   PRIMARY KEY (`orderID`,`authzID`),
   KEY `authzID` (`authzID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `orders` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -122,7 +122,7 @@ CREATE TABLE `orders` (
   PRIMARY KEY (`id`),
   KEY `reg_status_expires` (`registrationID`,`expires`),
   KEY `regID_created_idx` (`registrationID`,`created`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `registrations` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -137,7 +137,7 @@ CREATE TABLE `registrations` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `jwk_sha256` (`jwk_sha256`),
   KEY `initialIP_createdAt` (`initialIP`,`createdAt`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tables below have foreign key constraints, so are created after all other tables.
 
@@ -154,7 +154,7 @@ CREATE TABLE `certificates` (
   KEY `regId_certificates_idx` (`registrationID`) COMMENT 'Common lookup',
   KEY `issued_idx` (`issued`),
   CONSTRAINT `regId_certificates` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `orderFqdnSets` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -168,7 +168,7 @@ CREATE TABLE `orderFqdnSets` (
   KEY `orderFqdnSets_registrationID_registrations` (`registrationID`),
   CONSTRAINT `orderFqdnSets_orderID_orders` FOREIGN KEY (`orderID`) REFERENCES `orders` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `orderFqdnSets_registrationID_registrations` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `precertificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -182,7 +182,7 @@ CREATE TABLE `precertificates` (
   KEY `regId_precertificates_idx` (`registrationID`),
   KEY `issued_precertificates_idx` (`issued`),
   CONSTRAINT `regId_precertificates` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `requestedNames` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -192,7 +192,7 @@ CREATE TABLE `requestedNames` (
   KEY `orderID_idx` (`orderID`),
   KEY `reversedName_idx` (`reversedName`),
   CONSTRAINT `orderID_orders` FOREIGN KEY (`orderID`) REFERENCES `orders` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `serials` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -204,7 +204,7 @@ CREATE TABLE `serials` (
   UNIQUE KEY `serial` (`serial`),
   KEY `regId_serials_idx` (`registrationID`),
   CONSTRAINT `regId_serials` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- +migrate Down
 -- SQL section 'Down' is executed when this migration is rolled back
