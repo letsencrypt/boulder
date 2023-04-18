@@ -15,6 +15,22 @@ import (
 func TestInvalidDSN(t *testing.T) {
 	_, err := NewDbMap("invalid", DbSettings{})
 	test.AssertError(t, err, "DB connect string missing the slash separating the database name")
+
+	DSN := "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&stringVarThatDoesntExist=%27whoopsidaisies"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertError(t, err, "Variable does not exist in curated system var list, but didn't return an error and should have")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=2"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertError(t, err, "Variable is unable to be set in the SESSION scope, but was declared")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&optimizer_switch=incorrect-quoted-string"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertError(t, err, "Variable declared with incorrect quoting")
+
+	DSN = "policy:password@tcp(boulder-proxysql:6033)/boulder_policy_integration?readTimeout=800ms&writeTimeout=800ms&concurrent_insert=%272%27"
+	_, err = NewDbMap(DSN, DbSettings{})
+	test.AssertError(t, err, "Integer enum declared, but should not have been quoted")
 }
 
 var errExpected = errors.New("expected")
@@ -158,13 +174,15 @@ func TestAutoIncrementSchema(t *testing.T) {
 
 func TestAdjustMySQLConfig(t *testing.T) {
 	conf := &mysql.Config{}
-	adjustMySQLConfig(conf)
+	err := adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
 	})
 
 	conf = &mysql.Config{ReadTimeout: 100 * time.Second}
-	adjustMySQLConfig(conf)
+	err = adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":           "'STRICT_ALL_TABLES'",
 		"max_statement_time": "95",
@@ -177,7 +195,8 @@ func TestAdjustMySQLConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	adjustMySQLConfig(conf)
+	err = adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode":        "'STRICT_ALL_TABLES'",
 		"long_query_time": "80",
@@ -188,7 +207,8 @@ func TestAdjustMySQLConfig(t *testing.T) {
 			"max_statement_time": "0",
 		},
 	}
-	adjustMySQLConfig(conf)
+	err = adjustMySQLConfig(conf)
+	test.AssertNotError(t, err, "unexpected err setting server variables")
 	test.AssertDeepEquals(t, conf.Params, map[string]string{
 		"sql_mode": "'STRICT_ALL_TABLES'",
 	})

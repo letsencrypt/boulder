@@ -138,7 +138,10 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 // NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
 // decomposed form of the connection string, a *mysql.Config.
 func NewDbMapFromConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
-	adjustMySQLConfig(config)
+	err := adjustMySQLConfig(config)
+	if err != nil {
+		return nil, err
+	}
 
 	db, err := sqlOpen("mysql", config.FormatDSN())
 	if err != nil {
@@ -156,12 +159,11 @@ func NewDbMapFromConfig(config *mysql.Config, settings DbSettings) (*boulderDB.W
 	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
-
 	return &boulderDB.WrappedMap{DbMap: dbmap}, nil
 }
 
 // adjustMySQLConfig sets certain flags that we want on every connection.
-func adjustMySQLConfig(conf *mysql.Config) {
+func adjustMySQLConfig(conf *mysql.Config) error {
 	// Required to turn DATETIME fields into time.Time
 	conf.ParseTime = true
 
@@ -179,7 +181,7 @@ func adjustMySQLConfig(conf *mysql.Config) {
 		conf.Params = make(map[string]string)
 	}
 
-	// If a given parameter is not already set in conf.Params, set it.
+	// If a given parameter is not already set in conf.Params from the DSN, set it.
 	setDefault := func(name, value string) {
 		_, ok := conf.Params[name]
 		if !ok {
@@ -214,6 +216,16 @@ func adjustMySQLConfig(conf *mysql.Config) {
 
 	omitZero("max_statement_time")
 	omitZero("long_query_time")
+
+	// Finally, perform validation over all variables set by the DSN and via Boulder.
+	for k, v := range conf.Params {
+		err := checkMariaDBSystemVariables(k, v)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // SetSQLDebug enables GORP SQL-level Debugging
