@@ -15,11 +15,12 @@ CREATE TABLE `authz2` (
   `validationError` mediumblob DEFAULT NULL,
   `validationRecord` mediumblob DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `token` (`token`),
   KEY `regID_expires_idx` (`registrationID`,`status`,`expires`),
   KEY `regID_identifier_status_expires_idx` (`registrationID`,`identifierType`,`identifierValue`,`status`,`expires`),
   KEY `expires_idx` (`expires`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `blockedKeys` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -70,9 +71,11 @@ CREATE TABLE `fqdnSets` (
   `issued` datetime NOT NULL,
   `expires` datetime NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `serial` (`serial`),
+  KEY `serial` (`serial`),
   KEY `setHash_issued_idx` (`setHash`,`issued`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `incidents` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -90,8 +93,10 @@ CREATE TABLE `issuedNames` (
   `serial` varchar(255) NOT NULL,
   `renewal` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
-  KEY `reversedName_notBefore_Idx` (`reversedName`,`notBefore`),
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  KEY `reversedName_notBefore_Idx` (`reversedName`,`notBefore`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `keyHashToSerial` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -117,7 +122,9 @@ CREATE TABLE `orderToAuthz2` (
   `authzID` bigint(20) NOT NULL,
   PRIMARY KEY (`orderID`,`authzID`),
   KEY `authzID` (`authzID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE COLUMNS(orderID, authzID)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE, MAXVALUE));
 
 CREATE TABLE `orders` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -130,7 +137,9 @@ CREATE TABLE `orders` (
   PRIMARY KEY (`id`),
   KEY `reg_status_expires` (`registrationID`,`expires`),
   KEY `regID_created_idx` (`registrationID`,`created`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `registrations` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -158,11 +167,12 @@ CREATE TABLE `certificates` (
   `issued` datetime NOT NULL,
   `expires` datetime NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `serial` (`serial`),
+  KEY `serial` (`serial`),
   KEY `regId_certificates_idx` (`registrationID`) COMMENT 'Common lookup',
-  KEY `issued_idx` (`issued`),
-  CONSTRAINT `regId_certificates` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  KEY `issued_idx` (`issued`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `orderFqdnSets` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -173,10 +183,10 @@ CREATE TABLE `orderFqdnSets` (
   PRIMARY KEY (`id`),
   KEY `setHash_expires_idx` (`setHash`,`expires`),
   KEY `orderID_idx` (`orderID`),
-  KEY `orderFqdnSets_registrationID_registrations` (`registrationID`),
-  CONSTRAINT `orderFqdnSets_orderID_orders` FOREIGN KEY (`orderID`) REFERENCES `orders` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
-  CONSTRAINT `orderFqdnSets_registrationID_registrations` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  KEY `orderFqdnSets_registrationID_registrations` (`registrationID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `precertificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -186,11 +196,12 @@ CREATE TABLE `precertificates` (
   `issued` datetime NOT NULL,
   `expires` datetime NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `serial` (`serial`),
+  KEY `serial` (`serial`),
   KEY `regId_precertificates_idx` (`registrationID`),
-  KEY `issued_precertificates_idx` (`issued`),
-  CONSTRAINT `regId_precertificates` FOREIGN KEY (`registrationID`) REFERENCES `registrations` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  KEY `issued_precertificates_idx` (`issued`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `requestedNames` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -198,9 +209,10 @@ CREATE TABLE `requestedNames` (
   `reversedName` varchar(253) CHARACTER SET ascii NOT NULL,
   PRIMARY KEY (`id`),
   KEY `orderID_idx` (`orderID`),
-  KEY `reversedName_idx` (`reversedName`),
-  CONSTRAINT `orderID_orders` FOREIGN KEY (`orderID`) REFERENCES `orders` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  KEY `reversedName_idx` (`reversedName`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `serials` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
