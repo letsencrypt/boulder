@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"os"
 	"time"
@@ -123,7 +124,7 @@ func main() {
 	}
 
 	scope, logger, shutdown := cmd.StatsAndLogging("ra", c.Syslog, c.OpenTelemetry, c.RA.DebugAddr)
-	defer shutdown()
+	defer shutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

@@ -445,8 +445,7 @@ func main() {
 		}
 	}
 
-	stats, logger, shutdown := cmd.StatsAndLogging("wfe2", c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
-	defer shutdown()
+	stats, logger, oTelShutdown := cmd.StatsAndLogging("wfe2", c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -563,6 +562,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
+		oTelShutdown(ctx)
 	}()
 
 	cmd.WaitForSignal()

@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -151,7 +152,7 @@ func main() {
 	cmd.FailOnError(err, "failed to parse config file")
 
 	stats, logger, shutdown := cmd.StatsAndLogging("log-validator", config.Syslog, config.OpenTelemetry, config.DebugAddr)
-	defer shutdown()
+	defer shutdown(context.Background())
 	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",

@@ -86,7 +86,7 @@ func main() {
 	cmd.FailOnError(err, "TLS config")
 
 	scope, logger, shutdown := cmd.StatsAndLogging("crl-storer", c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
-	defer shutdown()
+	defer shutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()

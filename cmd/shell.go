@@ -172,7 +172,7 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 // is called, because gRPC's SetLogger doesn't use any locking.
 //
 // This function does not return an error, and will panic on problems.
-func StatsAndLogging(serviceName string, logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func()) {
+func StatsAndLogging(serviceName string, logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
 	logger := NewLogger(logConf)
 
 	shutdown := newOpenTelemetry(serviceName, otConf)
@@ -291,7 +291,7 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 
 // newOpenTelemetry sets up our OpenTelemetry tracing
 // It returns a graceful shutdown function to be deferred.
-func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
+func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func(ctx context.Context) {
 	r, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
@@ -332,8 +332,8 @@ func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func() {
 	otel.SetTracerProvider(tracerProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
-	return func() {
-		err := tracerProvider.Shutdown(context.Background())
+	return func(ctx context.Context) {
+		err := tracerProvider.Shutdown(ctx)
 		if err != nil {
 			blog.Get().AuditErrf("Error while shutting down OpenTelemetry: %v", err)
 		}

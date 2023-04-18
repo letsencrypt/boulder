@@ -1,6 +1,8 @@
 package observer
 
 import (
+	"context"
+
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
 	_ "github.com/letsencrypt/boulder/observer/probers/crl"
@@ -13,7 +15,7 @@ import (
 type Observer struct {
 	logger   blog.Logger
 	monitors []*monitor
-	shutdown func()
+	shutdown func(ctx context.Context)
 }
 
 // Start spins off a goroutine for each monitor, and waits for a signal to exit
@@ -22,6 +24,6 @@ func (o Observer) Start() {
 		go mon.start(o.logger)
 	}
 
-	defer o.shutdown()
+	defer o.shutdown(context.Background())
 	cmd.WaitForSignal()
 }

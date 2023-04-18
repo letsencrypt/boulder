@@ -440,7 +440,7 @@ func main() {
 	cmd.FailOnError(err, "Failed reading config file")
 
 	scope, logger, shutdown := cmd.StatsAndLogging("bad-key-revoker", config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
-	defer shutdown()
+	defer shutdown(context.Background())
 	clk := cmd.Clock()
 
 	scope.MustRegister(keysProcessed)

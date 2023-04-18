@@ -294,7 +294,7 @@ func main() {
 	}
 
 	scope, logger, shutdown := cmd.StatsAndLogging("akamai-purger", c.Syslog, c.OpenTelemetry, apc.DebugAddr)
-	defer shutdown()
+	defer shutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

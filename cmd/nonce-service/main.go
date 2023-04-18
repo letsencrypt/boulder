@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
@@ -100,7 +101,7 @@ func main() {
 	}
 
 	scope, logger, shutdown := cmd.StatsAndLogging("nonce-service", c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
-	defer shutdown()
+	defer shutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
