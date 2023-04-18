@@ -74,6 +74,15 @@ CREATE TABLE `fqdnSets` (
   KEY `setHash_issued_idx` (`setHash`,`issued`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE `incidents` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `serialTable` varchar(128) NOT NULL,
+  `url` varchar(1024) NOT NULL,
+  `renewBy` datetime NOT NULL,
+  `enabled` boolean DEFAULT false,
+  PRIMARY KEY (`id`)
+) CHARSET=utf8mb4;
+
 CREATE TABLE `issuedNames` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `reversedName` varchar(640) CHARACTER SET ascii NOT NULL,
