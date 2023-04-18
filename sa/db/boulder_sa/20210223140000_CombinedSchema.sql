@@ -82,7 +82,6 @@ CREATE TABLE `issuedNames` (
   `renewal` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `reversedName_notBefore_Idx` (`reversedName`,`notBefore`),
-  KEY `reversedName_renewal_notBefore_Idx` (`reversedName`,`renewal`,`notBefore`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `keyHashToSerial` (
