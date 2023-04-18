@@ -55,6 +55,22 @@ CREATE TABLE `certificateStatus` (
   KEY `notAfter_idx` (`notAfter`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE `certificates` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `registrationID` bigint(20) NOT NULL,
+  `serial` varchar(255) NOT NULL,
+  `digest` varchar(255) NOT NULL,
+  `der` mediumblob NOT NULL,
+  `issued` datetime NOT NULL,
+  `expires` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `serial` (`serial`),
+  KEY `regId_certificates_idx` (`registrationID`) COMMENT 'Common lookup',
+  KEY `issued_idx` (`issued`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+
 CREATE TABLE `certificatesPerName` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `eTLDPlusOne` varchar(255) NOT NULL,
@@ -117,6 +133,20 @@ CREATE TABLE `newOrdersRL` (
   UNIQUE KEY `regID_time_idx` (`regID`,`time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE `orderFqdnSets` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `setHash` binary(32) NOT NULL,
+  `orderID` bigint(20) NOT NULL,
+  `registrationID` bigint(20) NOT NULL,
+  `expires` datetime NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `setHash_expires_idx` (`setHash`,`expires`),
+  KEY `orderID_idx` (`orderID`),
+  KEY `orderFqdnSets_registrationID_registrations` (`registrationID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
+
 CREATE TABLE `orderToAuthz2` (
   `orderID` bigint(20) NOT NULL,
   `authzID` bigint(20) NOT NULL,
@@ -141,53 +171,6 @@ CREATE TABLE `orders` (
  PARTITION BY RANGE(id)
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
-CREATE TABLE `registrations` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `jwk` mediumblob NOT NULL,
-  `jwk_sha256` varchar(255) NOT NULL,
-  `contact` varchar(191) CHARACTER SET utf8mb4 NOT NULL,
-  `agreement` varchar(255) NOT NULL,
-  `LockCol` bigint(20) NOT NULL,
-  `initialIP` binary(16) NOT NULL DEFAULT '\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0',
-  `createdAt` datetime NOT NULL,
-  `status` varchar(255) NOT NULL DEFAULT 'valid',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `jwk_sha256` (`jwk_sha256`),
-  KEY `initialIP_createdAt` (`initialIP`,`createdAt`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- Tables below have foreign key constraints, so are created after all other tables.
-
-CREATE TABLE `certificates` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `registrationID` bigint(20) NOT NULL,
-  `serial` varchar(255) NOT NULL,
-  `digest` varchar(255) NOT NULL,
-  `der` mediumblob NOT NULL,
-  `issued` datetime NOT NULL,
-  `expires` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `serial` (`serial`),
-  KEY `regId_certificates_idx` (`registrationID`) COMMENT 'Common lookup',
-  KEY `issued_idx` (`issued`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
-
-CREATE TABLE `orderFqdnSets` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
-  `setHash` binary(32) NOT NULL,
-  `orderID` bigint(20) NOT NULL,
-  `registrationID` bigint(20) NOT NULL,
-  `expires` datetime NOT NULL,
-  PRIMARY KEY (`id`),
-  KEY `setHash_expires_idx` (`setHash`,`expires`),
-  KEY `orderID_idx` (`orderID`),
-  KEY `orderFqdnSets_registrationID_registrations` (`registrationID`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
- PARTITION BY RANGE(id)
-(PARTITION p_start VALUES LESS THAN (MAXVALUE));
-
 CREATE TABLE `precertificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `registrationID` bigint(20) NOT NULL,
@@ -203,6 +186,21 @@ CREATE TABLE `precertificates` (
  PARTITION BY RANGE(id)
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
+CREATE TABLE `registrations` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `jwk` mediumblob NOT NULL,
+  `jwk_sha256` varchar(255) NOT NULL,
+  `contact` varchar(191) CHARACTER SET utf8mb4 NOT NULL,
+  `agreement` varchar(255) NOT NULL,
+  `LockCol` bigint(20) NOT NULL,
+  `initialIP` binary(16) NOT NULL DEFAULT '\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0',
+  `createdAt` datetime NOT NULL,
+  `status` varchar(255) NOT NULL DEFAULT 'valid',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `jwk_sha256` (`jwk_sha256`),
+  KEY `initialIP_createdAt` (`initialIP`,`createdAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE `requestedNames` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `orderID` bigint(20) NOT NULL,
@@ -213,6 +211,8 @@ CREATE TABLE `requestedNames` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
  PARTITION BY RANGE(id)
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));
+
+-- Tables below have foreign key constraints, so are created after all other tables.
 
 CREATE TABLE `serials` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
@@ -230,20 +230,20 @@ CREATE TABLE `serials` (
 -- SQL section 'Down' is executed when this migration is rolled back
 
 -- First set of tables have foreign key constraints, so are dropped first.
-DROP TABLE `certificates`;
-DROP TABLE `orderFqdnSets`;
-DROP TABLE `precertificates`;
-DROP TABLE `requestedNames`;
 DROP TABLE `serials`;
 
 DROP TABLE `authz2`;
 DROP TABLE `blockedKeys`;
 DROP TABLE `certificateStatus`;
 DROP TABLE `certificatesPerName`;
+DROP TABLE `certificates`;
 DROP TABLE `fqdnSets`;
 DROP TABLE `issuedNames`;
 DROP TABLE `keyHashToSerial`;
 DROP TABLE `newOrdersRL`;
+DROP TABLE `orderFqdnSets`;
 DROP TABLE `orderToAuthz2`;
 DROP TABLE `orders`;
+DROP TABLE `precertificates`;
 DROP TABLE `registrations`;
+DROP TABLE `requestedNames`;
