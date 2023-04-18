@@ -50,10 +50,12 @@ CREATE TABLE `certificateStatus` (
   `isExpired` tinyint(1) DEFAULT 0,
   `issuerID` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `serial` (`serial`),
+  KEY `serial` (`serial`),
   KEY `isExpired_ocspLastUpdated_idx` (`isExpired`,`ocspLastUpdated`),
   KEY `notAfter_idx` (`notAfter`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+ PARTITION BY RANGE(id)
+(PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `certificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
