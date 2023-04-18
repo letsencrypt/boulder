@@ -186,11 +186,21 @@ func TestNamesFromCSR(t *testing.T) {
 		},
 		{
 			"no explicit CN, uppercase SAN",
-			&x509.CertificateRequest{DNSNames: []string{
-				"A.com",
-			}},
+			&x509.CertificateRequest{DNSNames: []string{"A.com"}},
 			"a.com",
 			[]string{"a.com"},
+		},
+		{
+			"duplicate SANs",
+			&x509.CertificateRequest{DNSNames: []string{"b.com", "b.com", "a.com", "a.com"}},
+			"b.com",
+			[]string{"a.com", "b.com"},
+		},
+		{
+			"explicit CN not found in SANs",
+			&x509.CertificateRequest{Subject: pkix.Name{CommonName: "a.com"}, DNSNames: []string{"b.com"}},
+			"a.com",
+			[]string{"a.com", "b.com"},
 		},
 		{
 			"no explicit CN, too long leading SANs",
