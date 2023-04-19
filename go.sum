@@ -99,8 +99,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f h1:lO4WD4F/rVNCu3HqELle0jiPLLBs70cWOduZpkS1E78=
 github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f/go.mod h1:cuUVRXasLTGF7a8hSLbxyZXjz+1KgoB3wDUb6vlszIc=
-github.com/eggsampler/acme/v3 v3.3.0 h1:5M7vwYRy65iPpCFHZ01RyWXmYT8e8MlcWn/9BUUB7Ro=
-github.com/eggsampler/acme/v3 v3.3.0/go.mod h1:/qh0rKC/Dh7Jj+p4So7DbWmFNzC4dpcpK53r226Fhuo=
+github.com/eggsampler/acme/v3 v3.4.0 h1:LHWnB3wShVshK1+umL6ObCjnc0MM+D7TE8JINjk8zGY=
+github.com/eggsampler/acme/v3 v3.4.0/go.mod h1:/qh0rKC/Dh7Jj+p4So7DbWmFNzC4dpcpK53r226Fhuo=
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.1-0.20191026205805-5f8ba28d4473/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=

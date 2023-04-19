@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.31.0
 	github.com/aws/smithy-go v1.13.5
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
-	github.com/eggsampler/acme/v3 v3.3.0
+	github.com/eggsampler/acme/v3 v3.4.0
 	github.com/go-gorp/gorp/v3 v3.1.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.5.0
