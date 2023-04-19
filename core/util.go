@@ -16,6 +16,7 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"os"
+	"path"
 	"reflect"
 	"regexp"
 	"sort"
@@ -297,4 +298,8 @@ func IsASCII(str string) bool {
 		}
 	}
 	return true
+}
+
+func Command() string {
+	return path.Base(os.Args[0])
 }

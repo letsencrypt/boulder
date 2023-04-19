@@ -10,13 +10,14 @@ import (
 	"io"
 	"log/syslog"
 	"os"
-	"path"
 	"runtime"
 	"strings"
 	"sync"
 
 	"github.com/jmhodges/clock"
 	"golang.org/x/term"
+
+	"github.com/letsencrypt/boulder/core"
 )
 
 // A Logger logs messages with explicit priority levels. It is
@@ -92,7 +93,7 @@ func newStdoutWriter(level int) *stdoutWriter {
 		}
 	}
 
-	prefix := fmt.Sprintf("%s %s %s[%d]:", shortHostname, datacenter, path.Base(os.Args[0]), os.Getpid())
+	prefix := fmt.Sprintf("%s %s %s[%d]:", shortHostname, datacenter, core.Command(), os.Getpid())
 
 	return &stdoutWriter{
 		prefix: prefix,
@@ -269,7 +270,7 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interf
 			w.clk.Now().UTC().Format("2006-01-02T15:04:05.000000+00:00Z"),
 			w.prefix,
 			int(level),
-			path.Base(os.Args[0]),
+			core.Command(),
 			checkSummed(msg),
 			reset); err != nil {
 			panic(fmt.Sprintf("failed to write to stdout: %v\n", err))
