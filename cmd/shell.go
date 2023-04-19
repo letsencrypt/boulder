@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-logr/stdr"
 	"github.com/go-redis/redis/v8"
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
@@ -160,6 +161,16 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+// logOutput implements the log.Logger interface's Output method for use with logr
+type logOutput struct {
+	blog.Logger
+}
+
+func (l logOutput) Output(calldepth int, logline string) error {
+	l.Logger.Info(logline)
+	return nil
+}
+
 // StatsAndLogging sets up an AuditLogger, Prometheus Registerer, and
 // OpenTelemetry tracing.  It returns the Registerer and AuditLogger, along
 // with a graceful shutdown function to be deferred.
@@ -175,7 +186,7 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
 	logger := NewLogger(logConf)
 
-	shutdown := newOpenTelemetry(otConf)
+	shutdown := newOpenTelemetry(otConf, logger)
 
 	return newStatsRegistry(addr, logger), logger, shutdown
 }
@@ -291,7 +302,10 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 
 // newOpenTelemetry sets up our OpenTelemetry tracing
 // It returns a graceful shutdown function to be deferred.
-func newOpenTelemetry(config OpenTelemetryConfig) func(ctx context.Context) {
+func newOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx context.Context) {
+	otel.SetLogger(stdr.New(logOutput{logger}))
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { logger.Errf("OpenTelemetry error: %v", err) }))
+
 	r, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
@@ -335,7 +349,7 @@ func newOpenTelemetry(config OpenTelemetryConfig) func(ctx context.Context) {
 	return func(ctx context.Context) {
 		err := tracerProvider.Shutdown(ctx)
 		if err != nil {
-			blog.Get().AuditErrf("Error while shutting down OpenTelemetry: %v", err)
+			logger.Errf("Error while shutting down OpenTelemetry: %v", err)
 		}
 	}
 }
