@@ -2,7 +2,7 @@
 -- SQL in section 'Up' is executed when this migration is applied
 
 CREATE TABLE `authz2` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `identifierType` tinyint(4) NOT NULL,
   `identifierValue` varchar(255) NOT NULL,
   `registrationID` bigint(20) NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE `authz2` (
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `blockedKeys` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `keyHash` binary(32) NOT NULL,
   `added` datetime NOT NULL,
   `source` tinyint(4) NOT NULL,
@@ -83,7 +83,7 @@ CREATE TABLE `certificatesPerName` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `fqdnSets` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `setHash` binary(32) NOT NULL,
   `serial` varchar(255) NOT NULL,
   `issued` datetime NOT NULL,
@@ -96,7 +96,7 @@ CREATE TABLE `fqdnSets` (
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));
 
 CREATE TABLE `incidents` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `serialTable` varchar(128) NOT NULL,
   `url` varchar(1024) NOT NULL,
   `renewBy` datetime NOT NULL,
@@ -136,7 +136,7 @@ CREATE TABLE `newOrdersRL` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `orderFqdnSets` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `setHash` binary(32) NOT NULL,
   `orderID` bigint(20) NOT NULL,
   `registrationID` bigint(20) NOT NULL,
@@ -159,7 +159,7 @@ CREATE TABLE `orderToAuthz2` (
 (PARTITION p_start VALUES LESS THAN (MAXVALUE, MAXVALUE));
 
 CREATE TABLE `orders` (
-  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
   `registrationID` bigint(20) NOT NULL,
   `expires` datetime NOT NULL,
   `error` mediumblob DEFAULT NULL,
