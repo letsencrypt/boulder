@@ -445,7 +445,7 @@ func main() {
 		}
 	}
 
-	stats, logger, oTelShutdown := cmd.StatsAndLogging("wfe2", c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

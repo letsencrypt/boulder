@@ -95,7 +95,7 @@ func main2() error {
 		return fmt.Errorf("reading JSON config file: %w", err)
 	}
 
-	_, logger, shutdown := cmd.StatsAndLogging("rocsp-tool", conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
+	_, logger, shutdown := cmd.StatsAndLogging(conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
 	defer shutdown(context.Background())
 	defer logger.AuditPanic()
 

@@ -172,10 +172,10 @@ func (lw logWriter) Write(p []byte) (n int, err error) {
 // is called, because gRPC's SetLogger doesn't use any locking.
 //
 // This function does not return an error, and will panic on problems.
-func StatsAndLogging(serviceName string, logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
+func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
 	logger := NewLogger(logConf)
 
-	shutdown := newOpenTelemetry(serviceName, otConf)
+	shutdown := newOpenTelemetry(otConf)
 
 	return newStatsRegistry(addr, logger), logger, shutdown
 }
@@ -291,12 +291,12 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 
 // newOpenTelemetry sets up our OpenTelemetry tracing
 // It returns a graceful shutdown function to be deferred.
-func newOpenTelemetry(serviceName string, config OpenTelemetryConfig) func(ctx context.Context) {
+func newOpenTelemetry(config OpenTelemetryConfig) func(ctx context.Context) {
 	r, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(serviceName),
+			semconv.ServiceNameKey.String(command()),
 			semconv.ServiceVersionKey.String(core.GetBuildID()),
 		),
 	)

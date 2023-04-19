@@ -100,7 +100,7 @@ func main() {
 		cmd.FailOnError(err, "Failed to derive nonce prefix")
 	}
 
-	scope, logger, shutdown := cmd.StatsAndLogging("nonce-service", c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
+	scope, logger, shutdown := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
 	defer shutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())

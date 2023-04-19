@@ -6,9 +6,10 @@ import (
 	"net"
 	"strconv"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/observer/probers"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -135,7 +136,7 @@ func (c *ObsConf) MakeObserver() (*Observer, error) {
 	}
 
 	// Start monitoring and logging.
-	metrics, logger, shutdown := cmd.StatsAndLogging("observer", c.Syslog, c.OpenTelemetry, c.DebugAddr)
+	metrics, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.DebugAddr)
 	histObservations = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "obs_observations",
