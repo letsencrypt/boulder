@@ -994,6 +994,11 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, errIncompleteRequest
 	}
 
+	qualifiedAuthzFields := make([]string, 0)
+	for _, col := range strings.Split(authzFields, " ") {
+		qualifiedAuthzFields = append(qualifiedAuthzFields, fmt.Sprintf("authz2.%s", col))
+	}
+
 	var ams []authzModel
 	_, err := ssa.dbReadOnlyMap.WithContext(ctx).Select(
 		&ams,
@@ -1003,7 +1008,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 			authz2.expires > :expires AND
 			authz2.status = :status AND
 			orderToAuthz2.orderID = :orderID`,
-			authzFields,
+			strings.Join(qualifiedAuthzFields, " "),
 		),
 		map[string]interface{}{
 			"regID":   req.AcctID,
