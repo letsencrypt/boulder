@@ -1494,7 +1494,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 }
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
-	// Check if there is rate limit space for a new order within the current window
+	// Check if there is rate limit space for a new order within the current window.
 	err := ra.checkNewOrdersPerAccountLimit(ctx, regID)
 	if err != nil {
 		return err
@@ -2363,9 +2363,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		return existingOrder, nil
 	}
 
-	// Check if there is rate limit space for issuing a certificate for the new
-	// order's names. If there isn't then it doesn't make sense to allow creating
-	// an order - it will just fail when finalization checks the same limits.
+	// Check if there is rate limit space for issuing a certificate.
 	err = ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID)
 	if err != nil {
 		return nil, err
