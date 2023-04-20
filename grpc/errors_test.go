@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -29,7 +30,7 @@ func (s *errorServer) Chill(_ context.Context, _ *test_proto.Time) (*test_proto.
 }
 
 func TestErrorWrapping(t *testing.T) {
-	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer, &tls.Config{})
 	test.AssertNotError(t, err, "creating server metrics")
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
@@ -72,7 +73,7 @@ func TestErrorWrapping(t *testing.T) {
 // TestSubErrorWrapping tests that a boulder error with suberrors can be
 // correctly wrapped and unwrapped across the RPC layer.
 func TestSubErrorWrapping(t *testing.T) {
-	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer)
+	serverMetrics, err := newServerMetrics(metrics.NoopRegisterer, &tls.Config{})
 	test.AssertNotError(t, err, "creating server metrics")
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
