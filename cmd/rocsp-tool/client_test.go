@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 )
@@ -31,7 +32,9 @@ func makeClient() (*rocsp.RWClient, clock.Clock) {
 		CertFile:   &CertFile,
 		KeyFile:    &KeyFile,
 	}
-	tlsConfig2, err := tlsConfig.Load()
+	// Instantiate a nil Registerer to satisfy Load(scope)
+	var scope prometheus.Registerer
+	tlsConfig2, err := tlsConfig.Load(scope)
 	if err != nil {
 		panic(err)
 	}
