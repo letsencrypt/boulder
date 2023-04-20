@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -116,7 +115,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 
 	// Set up all of our interceptors which handle metrics, traces, error
 	// propagation, and more.
-	metrics, err := newServerMetrics(statsRegistry, tlsConfig)
+	metrics, err := newServerMetrics(statsRegistry)
 	if err != nil {
 		return nil, err
 	}
@@ -186,20 +185,13 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 type serverMetrics struct {
 	grpcMetrics *grpc_prometheus.ServerMetrics
 	rpcLag      prometheus.Histogram
-	notBefore   prometheus.Gauge
-	notAfter    prometheus.Gauge
 }
 
 // newServerMetrics registers metrics with a registry. It constructs and
-// registers a *grpc_prometheus.ServerMetrics with timing histogram enabled, a
-// prometheus Histogram for RPC latency, and prometheus Gauges for various
-// configured TLS server certificate fields. If called more than once on a
-// single registry, it will gracefully avoid registering duplicate metrics.
-func newServerMetrics(stats prometheus.Registerer, tc *tls.Config) (serverMetrics, error) {
-	if tc == nil {
-		return serverMetrics{}, fmt.Errorf("TLS config either not provided or unexpectedly encountered an error")
-	}
-
+// registers a *grpc_prometheus.ServerMetrics with timing histogram enabled, and
+// a prometheus Histogram for RPC latency. If called more than once on a single
+// registry, it will gracefully avoid registering duplicate metrics.
+func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	// Create the grpc prometheus server metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewServerMetrics()
 	grpcMetrics.EnableHandlingTimeHistogram()
@@ -231,55 +223,8 @@ func newServerMetrics(stats prometheus.Registerer, tc *tls.Config) (serverMetric
 		}
 	}
 
-	// tlsNotBefore is a prometheus gauge that outputs the TLS certificate's
-	// NotBefore field and registers it.
-	tlsNotBefore := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "grpc_tls_server_notbefore_seconds",
-			Help: "TLS server certificate NotBefore field expressed as Unix epoch time",
-		})
-	err = stats.Register(tlsNotBefore)
-	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
-			tlsNotBefore = are.ExistingCollector.(prometheus.Gauge)
-		} else {
-			return serverMetrics{}, err
-		}
-	}
-
-	// tlsNotAfter is a prometheus gauge that outputs the TLS certificate's
-	// NotAfter field and registers it.
-	tlsNotAfter := prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "grpc_tls_server_notafter_seconds",
-			Help: "TLS server certificate NotAfter field expressed as Unix epoch time",
-		})
-	err = stats.Register(tlsNotAfter)
-	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
-			tlsNotAfter = are.ExistingCollector.(prometheus.Gauge)
-		} else {
-			return serverMetrics{}, err
-		}
-	}
-
-	if len(tc.Certificates) > 0 {
-		// Parse the leaf certificate from the TLS config.
-		leaf, err := x509.ParseCertificate(tc.Certificates[0].Certificate[0])
-		if err != nil {
-			return serverMetrics{}, err
-		}
-
-		tlsNotBefore.Set(float64(leaf.NotBefore.Unix()))
-		tlsNotAfter.Set(float64(leaf.NotAfter.Unix()))
-	}
-
 	return serverMetrics{
 		grpcMetrics: grpcMetrics,
 		rpcLag:      rpcLag,
-		notBefore:   tlsNotBefore,
-		notAfter:    tlsNotAfter,
 	}, nil
 }
