@@ -994,9 +994,14 @@ func (ssa *SQLStorageAuthorityRO) GetValidOrderAuthorizations2(ctx context.Conte
 		return nil, errIncompleteRequest
 	}
 
-	qualifiedAuthzFields := make([]string, 0)
-	for _, col := range strings.Split(authzFields, " ") {
-		qualifiedAuthzFields = append(qualifiedAuthzFields, fmt.Sprintf("authz2.%s", col))
+	// The authz2 and orderToAuthz2 tables both have a column named "id", so we
+	// need to be explicit about which table's "id" column we want to select.
+	qualifiedAuthzFields := strings.Split(authzFields, " ")
+	for i, field := range qualifiedAuthzFields {
+		if field == "id," {
+			qualifiedAuthzFields[i] = "authz2.id,"
+			break
+		}
 	}
 
 	var ams []authzModel
