@@ -139,12 +139,6 @@ type TLSConfig struct {
 	CACertFile *string `validate:"required"`
 }
 
-// tlsStats
-type tlsStats struct {
-	notBefore prometheus.Gauge
-	notAfter  prometheus.Gauge
-}
-
 // Load reads and parses the certificates and key listed in the TLSConfig, and
 // returns a *tls.Config suitable for either client or server use.
 func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {

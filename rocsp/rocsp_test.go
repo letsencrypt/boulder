@@ -12,7 +12,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/metrics"
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -25,9 +24,7 @@ func makeClient() (*RWClient, clock.Clock) {
 		CertFile:   &CertFile,
 		KeyFile:    &KeyFile,
 	}
-	// Instantiate a nil Registerer to satisfy Load(scope)
-	var scope prometheus.Registerer
-	tlsConfig2, err := tlsConfig.Load(scope)
+	tlsConfig2, err := tlsConfig.Load(metrics.NoopRegisterer)
 	if err != nil {
 		panic(err)
 	}

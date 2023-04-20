@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 func TestDBConfigURL(t *testing.T) {
@@ -55,8 +55,6 @@ func TestTLSConfigLoad(t *testing.T) {
 	cert := "testdata/cert.pem"
 	key := "testdata/key.pem"
 	caCert := "testdata/minica.pem"
-	// Instantiate a nil Registerer to satisfy Load(scope)
-	var scope prometheus.Registerer
 
 	testCases := []struct {
 		TLSConfig
@@ -90,7 +88,7 @@ func TestTLSConfigLoad(t *testing.T) {
 			title[2] = *tc.CACertFile
 		}
 		t.Run(strings.Join(title[:], "_"), func(t *testing.T) {
-			_, err := tc.TLSConfig.Load(scope)
+			_, err := tc.TLSConfig.Load(metrics.NoopRegisterer)
 			if err == nil {
 				t.Errorf("got no error")
 			}
