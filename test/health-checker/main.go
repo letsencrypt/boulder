@@ -42,30 +42,22 @@ func main() {
 		c.GRPC.ServerAddress = *serverAddr
 	}
 
-	scope, _ := cmd.StatsAndLogging(cmd.SyslogConfig{}, "")
-	fmt.Println("DEBUG: 1")
-
-	tlsConfig, err := c.TLS.Load(scope)
-	fmt.Println("DEBUG: 2")
+	tlsConfig, err := c.TLS.Load(metrics.NoopRegisterer)
 	cmd.FailOnError(err, "failed to load TLS credentials")
 
 	// GRPC connection prerequisites.
 	clk := cmd.Clock()
-	fmt.Println("DEBUG: 3")
 
 	// Health check retry and timeout.
 	ticker := time.NewTicker(100 * time.Millisecond)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*c.GRPC.Timeout.Duration)
-	fmt.Println("DEBUG: 4")
 	defer cancel()
 
 	for {
 		select {
 		case <-ticker.C:
 			fmt.Fprintf(os.Stderr, "Connecting to %s health service\n", *serverAddr)
-			fmt.Println("DEBUG: 4.5")
 			_, hostOverride, err := c.GRPC.MakeTargetAndHostOverride()
-			fmt.Println("DEBUG: 5")
 			cmd.FailOnError(err, "")
 
 			// Set the hostOverride to match the dNSName in the server certificate.
@@ -73,7 +65,6 @@ func main() {
 
 			// Set up the GRPC connection.
 			conn, err := bgrpc.ClientSetup(c.GRPC, tlsConfig, metrics.NoopRegisterer, clk)
-			fmt.Println("DEBUG: 6")
 			cmd.FailOnError(err, "failed to connect to service")
 			client := healthpb.NewHealthClient(conn)
 			ctx2, cancel2 := context.WithTimeout(ctx, c.GRPC.Timeout.Duration)
@@ -83,9 +74,7 @@ func main() {
 			req := &healthpb.HealthCheckRequest{
 				Service: "",
 			}
-			fmt.Println("DEBUG: 77")
 			resp, err := client.Check(ctx2, req)
-			fmt.Println(err)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "got error connecting to health service %s: %s\n", *serverAddr, err)
 			} else if resp.Status == healthpb.HealthCheckResponse_SERVING {
@@ -95,7 +84,6 @@ func main() {
 			}
 
 		case <-ctx.Done():
-			fmt.Println("DEBUG: here?")
 			cmd.Fail(fmt.Sprintf("timed out waiting for %s health check", *serverAddr))
 		}
 	}
