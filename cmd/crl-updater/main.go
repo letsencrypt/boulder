@@ -118,8 +118,8 @@ func main() {
 	tlsConfig, err := c.CRLUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	scope, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
-	defer shutdown(context.Background())
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()

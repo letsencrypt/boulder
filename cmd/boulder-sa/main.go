@@ -57,8 +57,8 @@ func main() {
 		c.SA.DebugAddr = *debugAddr
 	}
 
-	scope, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
-	defer shutdown(context.Background())
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

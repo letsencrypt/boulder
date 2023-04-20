@@ -439,8 +439,8 @@ func main() {
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
 
-	scope, logger, shutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
-	defer shutdown(context.Background())
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
+	defer oTelShutdown(context.Background())
 	clk := cmd.Clock()
 
 	scope.MustRegister(keysProcessed)

@@ -151,8 +151,8 @@ func main() {
 	err = json.Unmarshal(configBytes, &config)
 	cmd.FailOnError(err, "failed to parse config file")
 
-	stats, logger, shutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.DebugAddr)
-	defer shutdown(context.Background())
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.DebugAddr)
+	defer oTelShutdown(context.Background())
 	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",

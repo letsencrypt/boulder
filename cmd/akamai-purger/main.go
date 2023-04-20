@@ -293,8 +293,8 @@ func main() {
 		apc.DebugAddr = *debugAddr
 	}
 
-	scope, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, apc.DebugAddr)
-	defer shutdown(context.Background())
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, apc.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

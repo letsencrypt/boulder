@@ -800,8 +800,8 @@ func main() {
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger, shutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
-	defer shutdown(context.Background())
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
