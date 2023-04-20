@@ -114,13 +114,13 @@ func main() {
 	err = features.Set(c.CRLUpdater.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	tlsConfig, err := c.CRLUpdater.TLS.Load()
-	cmd.FailOnError(err, "TLS config")
-
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CRLUpdater.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
+
+	tlsConfig, err := c.CRLUpdater.TLS.Load(scope)
+	cmd.FailOnError(err, "TLS config")
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLUpdater.IssuerCerts))
 	for _, filepath := range c.CRLUpdater.IssuerCerts {

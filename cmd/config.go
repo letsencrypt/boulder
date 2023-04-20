@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/letsencrypt/boulder/config"
@@ -138,9 +139,15 @@ type TLSConfig struct {
 	CACertFile *string `validate:"required"`
 }
 
+// tlsStats
+type tlsStats struct {
+	notBefore prometheus.Gauge
+	notAfter  prometheus.Gauge
+}
+
 // Load reads and parses the certificates and key listed in the TLSConfig, and
 // returns a *tls.Config suitable for either client or server use.
-func (t *TLSConfig) Load() (*tls.Config, error) {
+func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t == nil {
 		return nil, fmt.Errorf("nil TLS section in config")
 	}
@@ -166,6 +173,55 @@ func (t *TLSConfig) Load() (*tls.Config, error) {
 		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
 			*t.CertFile, *t.KeyFile, err)
 	}
+
+	/*
+		// tlsNotBefore is a prometheus gauge that outputs the TLS certificate's
+		// NotBefore field and registers it.
+		tlsNotBefore := prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "grpc_tls_server_notbefore_seconds",
+				Help: "TLS server certificate NotBefore field expressed as Unix epoch time",
+			})
+		err = scope.Register(tlsNotBefore)
+		if err != nil {
+			are := prometheus.AlreadyRegisteredError{}
+			if errors.As(err, &are) {
+				tlsNotBefore = are.ExistingCollector.(prometheus.Gauge)
+			} else {
+				return &tls.Config{}, err
+			}
+		}
+
+		// tlsNotAfter is a prometheus gauge that outputs the TLS certificate's
+		// NotAfter field and registers it.
+		tlsNotAfter := prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "grpc_tls_server_notafter_seconds",
+				Help: "TLS server certificate NotAfter field expressed as Unix epoch time",
+			})
+		err = scope.Register(tlsNotAfter)
+		if err != nil {
+			are := prometheus.AlreadyRegisteredError{}
+			if errors.As(err, &are) {
+				tlsNotAfter = are.ExistingCollector.(prometheus.Gauge)
+			} else {
+				return &tls.Config{}, err
+			}
+		}
+
+		fmt.Println("IN HERE")
+		leaf, err := x509.ParseCertificate(cert.Certificate[0])
+		fmt.Println(leaf)
+		fmt.Println(err)
+		if err != nil {
+			return &tls.Config{}, err
+		}
+		tlsNotBefore.Set(float64(leaf.NotBefore.Unix()))
+		tlsNotAfter.Set(float64(leaf.NotAfter.Unix()))
+
+		fmt.Println(leaf.NotBefore)
+		fmt.Println(leaf.NotAfter)
+	*/
 	return &tls.Config{
 		RootCAs:      rootCAs,
 		ClientCAs:    rootCAs,

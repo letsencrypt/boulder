@@ -65,6 +65,8 @@ func main() {
 	}
 
 	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
+	fmt.Println("DEBUG: GOT HERE publisher")
+
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -85,7 +87,7 @@ func main() {
 		bundles[id] = publisher.GetCTBundleForChain(chain)
 	}
 
-	tlsConfig, err := c.Publisher.TLS.Load()
+	tlsConfig, err := c.Publisher.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()

@@ -98,9 +98,11 @@ type revoker struct {
 }
 
 func newRevoker(c Config) *revoker {
-	logger := cmd.NewLogger(c.Syslog)
+	scope, logger := cmd.StatsAndLogging(c.Syslog, "")
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString())
 
-	tlsConfig, err := c.Revoker.TLS.Load()
+	tlsConfig, err := c.Revoker.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()

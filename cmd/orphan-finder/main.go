@@ -172,9 +172,12 @@ func newOrphanFinder(configFile string) *orphanFinder {
 	cmd.FailOnError(err, "Failed to parse config file")
 	err = features.Set(conf.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
-	logger := cmd.NewLogger(conf.Syslog)
 
-	tlsConfig, err := conf.TLS.Load()
+	scope, logger := cmd.StatsAndLogging(conf.Syslog, "")
+	defer logger.AuditPanic()
+	logger.Info(cmd.VersionString())
+
+	tlsConfig, err := conf.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, metrics.NoopRegisterer, cmd.Clock())

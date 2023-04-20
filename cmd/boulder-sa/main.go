@@ -81,7 +81,7 @@ func main() {
 		parallel = 1
 	}
 
-	tls, err := c.SA.TLS.Load()
+	tls, err := c.SA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	saroi, err := sa.NewSQLStorageAuthorityRO(
