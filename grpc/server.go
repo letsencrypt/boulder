@@ -187,10 +187,9 @@ type serverMetrics struct {
 	rpcLag      prometheus.Histogram
 }
 
-// newServerMetrics registers metrics with a registry. It constructs and
-// registers a *grpc_prometheus.ServerMetrics with timing histogram enabled, and
-// a prometheus Histogram for RPC latency. If called more than once on a single
-// registry, it will gracefully avoid registering duplicate metrics.
+// registers a *grpc_prometheus.ServerMetrics with timing histogram enabled as
+// well as a prometheus Histogram for RPC latency. If called more than once on a
+// single registry, it will gracefully avoid registering duplicate metrics.
 func newServerMetrics(stats prometheus.Registerer) (serverMetrics, error) {
 	// Create the grpc prometheus server metrics instance and register it
 	grpcMetrics := grpc_prometheus.NewServerMetrics()
