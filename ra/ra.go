@@ -2359,6 +2359,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(time.Unix(0, existingOrder.Created)).Seconds())
 		return existingOrder, nil
 	}
+	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
 
 	// Check if there is rate limit space for issuing a certificate.
 	err = ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID)
