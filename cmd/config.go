@@ -214,7 +214,7 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	serial := (leaf.SerialNumber).String()
 
 	tlsNotBefore.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
-	tlsNotAfter.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
+	tlsNotAfter.WithLabelValues(serial).Set(float64(leaf.NotAfter.Unix()))
 
 	return &tls.Config{
 		RootCAs:      rootCAs,
