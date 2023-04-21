@@ -305,7 +305,7 @@ func newOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 		resource.Default(),
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(command()),
+			semconv.ServiceNameKey.String(core.Command()),
 			semconv.ServiceVersionKey.String(core.GetBuildID()),
 		),
 	)
