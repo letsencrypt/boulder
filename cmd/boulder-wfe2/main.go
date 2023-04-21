@@ -156,7 +156,8 @@ type Config struct {
 		AccountCache *CacheConfig
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 type CacheConfig struct {
@@ -444,7 +445,7 @@ func main() {
 		}
 	}
 
-	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -561,6 +562,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
+		oTelShutdown(ctx)
 	}()
 
 	cmd.WaitForSignal()

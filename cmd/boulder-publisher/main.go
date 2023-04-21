@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -33,7 +34,8 @@ type Config struct {
 		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -64,7 +66,8 @@ func main() {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Publisher.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
