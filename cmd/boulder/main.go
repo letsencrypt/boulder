@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path"
 
 	_ "github.com/letsencrypt/boulder/cmd/admin-revoker"
 	_ "github.com/letsencrypt/boulder/cmd/akamai-purger"
@@ -32,6 +31,7 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/orphan-finder"
 	_ "github.com/letsencrypt/boulder/cmd/reversed-hostname-checker"
 	_ "github.com/letsencrypt/boulder/cmd/rocsp-tool"
+	"github.com/letsencrypt/boulder/core"
 
 	"github.com/letsencrypt/boulder/cmd"
 )
@@ -61,7 +61,7 @@ func readAndValidateConfigFile(name, filename string) error {
 }
 
 func main() {
-	cmd.LookupCommand(path.Base(os.Args[0]))()
+	cmd.LookupCommand(core.Command())()
 }
 
 func init() {

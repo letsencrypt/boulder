@@ -1,4 +1,4 @@
-// This package provides utilities that underlie the specific commands.
+// Package cmd provides utilities that underlie the specific commands.
 package cmd
 
 import (
@@ -14,7 +14,6 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
-	"path"
 	"runtime"
 	"strings"
 	"syscall"
@@ -39,10 +38,6 @@ import (
 	"github.com/letsencrypt/boulder/strictyaml"
 	"github.com/letsencrypt/validator/v10"
 )
-
-func command() string {
-	return path.Base(os.Args[0])
-}
 
 // Because we don't know when this init will be called with respect to
 // flag.Parse() and other flag definitions, we can't rely on the regular
@@ -198,7 +193,7 @@ func NewLogger(logConf SyslogConfig) blog.Logger {
 			"",
 			"",
 			syslog.LOG_INFO, // default, not actually used
-			command())
+			core.Command())
 		FailOnError(err, "Could not connect to Syslog")
 		syslogLevel := int(syslog.LOG_INFO)
 		if logConf.SyslogLevel != 0 {
@@ -245,7 +240,7 @@ func newVersionCollector() prometheus.Collector {
 			Name: "version",
 			Help: fmt.Sprintf(
 				"A metric with a constant value of '1' labeled by the short commit-id (buildId), build timestamp in RFC3339 format (buildTime), and Go release tag like 'go1.3' (goVersion) from which %s was built.",
-				command(),
+				core.Command(),
 			),
 			ConstLabels: prometheus.Labels{
 				"buildId":   core.GetBuildID(),
@@ -310,7 +305,7 @@ func newOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 		resource.Default(),
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(command()),
+			semconv.ServiceNameKey.String(core.Command()),
 			semconv.ServiceVersionKey.String(core.GetBuildID()),
 		),
 	)
@@ -493,7 +488,7 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 
 // VersionString produces a friendly Application version string.
 func VersionString() string {
-	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
+	return fmt.Sprintf("Versions: %s=(%s %s) Golang=(%s) BuildHost=(%s)", core.Command(), core.GetBuildID(), core.GetBuildTime(), runtime.Version(), core.GetBuildHost())
 }
 
 // CatchSignals blocks until a SIGTERM, SIGINT, or SIGHUP is received, then
