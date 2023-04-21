@@ -153,7 +153,7 @@ func NewCertificateAuthorityImpl(
 	lintErrorCount := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "lint_errors",
-			Help: "Number of linting errors encountered during issuance",
+			Help: "Number of issuances that were halted by linting errors",
 		})
 	stats.MustRegister(lintErrorCount)
 
