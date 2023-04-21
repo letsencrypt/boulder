@@ -168,43 +168,44 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 			*t.CertFile, *t.KeyFile, err)
 	}
 
-	// tlsNotBefore is a prometheus gauge that outputs the TLS certificate's
-	// NotBefore field and registers it.
-	tlsNotBefore := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "grpc_tls_notbefore_seconds",
-			Help: "TLS certificate NotBefore field expressed as Unix epoch time",
-		},
-		[]string{"serial"})
-	err = scope.Register(tlsNotBefore)
-	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
-			tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
-		} else {
-			return &tls.Config{}, err
-		}
-	}
-
-	// tlsNotAfter is a prometheus gauge that outputs the TLS certificate's
-	// NotAfter field and registers it.
-	tlsNotAfter := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "grpc_tls_notafter_seconds",
-			Help: "TLS certificate NotAfter field expressed as Unix epoch time",
-		},
-		[]string{"serial"})
-	err = scope.Register(tlsNotAfter)
-	if err != nil {
-		are := prometheus.AlreadyRegisteredError{}
-		if errors.As(err, &are) {
-			tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
-		} else {
-			return &tls.Config{}, err
-		}
-	}
-
+	// Only register the metrics if a leaf certificate exists.
 	if len(cert.Certificate) > 0 {
+		// tlsNotBefore is a prometheus gauge that outputs the TLS certificate's
+		// NotBefore field and registers it.
+		tlsNotBefore := prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "grpc_tls_notbefore_seconds",
+				Help: "TLS certificate NotBefore field expressed as Unix epoch time",
+			},
+			[]string{"serial"})
+		err = scope.Register(tlsNotBefore)
+		if err != nil {
+			are := prometheus.AlreadyRegisteredError{}
+			if errors.As(err, &are) {
+				tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
+			} else {
+				return &tls.Config{}, err
+			}
+		}
+
+		// tlsNotAfter is a prometheus gauge that outputs the TLS certificate's
+		// NotAfter field and registers it.
+		tlsNotAfter := prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "grpc_tls_notafter_seconds",
+				Help: "TLS certificate NotAfter field expressed as Unix epoch time",
+			},
+			[]string{"serial"})
+		err = scope.Register(tlsNotAfter)
+		if err != nil {
+			are := prometheus.AlreadyRegisteredError{}
+			if errors.As(err, &are) {
+				tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
+			} else {
+				return &tls.Config{}, err
+			}
+		}
+
 		leaf, err := x509.ParseCertificate(cert.Certificate[0])
 		if err != nil {
 			return &tls.Config{}, err
