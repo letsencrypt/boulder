@@ -208,6 +208,9 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if err != nil {
 		return &tls.Config{}, err
 	}
+	// There's a potential cardinality issue here where if we start using more
+	// TLS certificates or replacing them more often, we could degrade
+	// prometheus performance.
 	serial := (leaf.SerialNumber).String()
 
 	tlsNotBefore.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
