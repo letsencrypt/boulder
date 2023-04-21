@@ -2293,7 +2293,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 	// SetCertificateStatusReady. We expect this to be rare, and we expect such
 	// certificates not to get OCSP queries, so InterNalServerError is appropriate.
 	if status.Status == string(core.OCSPStatusNotReady) {
-		return nil, berrors.InternalServerError("issuance failed after linting")
+		return nil, berrors.InternalServerError("serial belongs to a certificate that errored during issuance")
 	}
 
 	notAfter := time.Unix(0, status.NotAfter).UTC()
