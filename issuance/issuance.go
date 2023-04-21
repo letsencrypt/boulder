@@ -36,6 +36,8 @@ import (
 	"github.com/letsencrypt/pkcs11key/v4"
 )
 
+var ErrLinting = errors.New("tbsCertificate linting failed")
+
 // ProfileConfig describes the certificate issuance constraints for all issuers.
 type ProfileConfig struct {
 	AllowMustStaple bool
@@ -666,7 +668,7 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	// with a throwaway key and then linting it using zlint
 	lintCertBytes, err := i.Linter.Check(template, req.PublicKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrLinting, err)
 	}
 
 	token := &issuanceToken{sync.Mutex{}, template, req.PublicKey, i}
