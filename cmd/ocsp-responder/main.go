@@ -105,11 +105,6 @@ type Config struct {
 		// LogSampleRate sets how frequently error logs should be emitted. This
 		// avoids flooding the logs during outages. 1 out of N log lines will be emitted.
 		LogSampleRate int `validate:"min=0"`
-
-		// Deprecated: ExpectedFreshness is no longer used now that we do not read
-		// OCSP Response bytes from the database.
-		// TODO(#6775): Remove this.
-		ExpectedFreshness config.Duration `validate:"-"`
 	}
 
 	Syslog        cmd.SyslogConfig
