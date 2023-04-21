@@ -172,7 +172,7 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	// NotBefore field and registers it.
 	tlsNotBefore := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "grpc_tls_notbefore_seconds",
+			Name: "tlsconfig_notbefore_seconds",
 			Help: "TLS certificate NotBefore field expressed as Unix epoch time",
 		},
 		[]string{"serial"})
@@ -190,7 +190,7 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	// NotAfter field and registers it.
 	tlsNotAfter := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "grpc_tls_notafter_seconds",
+			Name: "tlsconfig_notafter_seconds",
 			Help: "TLS certificate NotAfter field expressed as Unix epoch time",
 		},
 		[]string{"serial"})
