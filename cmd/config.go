@@ -170,16 +170,17 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 
 	// tlsNotBefore is a prometheus gauge that outputs the TLS certificate's
 	// NotBefore field and registers it.
-	tlsNotBefore := prometheus.NewGauge(
+	tlsNotBefore := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "grpc_tls_server_notbefore_seconds",
-			Help: "TLS server certificate NotBefore field expressed as Unix epoch time",
-		})
+			Name: "grpc_tls_notbefore_seconds",
+			Help: "TLS certificate NotBefore field expressed as Unix epoch time",
+		},
+		[]string{"serial"})
 	err = scope.Register(tlsNotBefore)
 	if err != nil {
 		are := prometheus.AlreadyRegisteredError{}
 		if errors.As(err, &are) {
-			tlsNotBefore = are.ExistingCollector.(prometheus.Gauge)
+			tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			return &tls.Config{}, err
 		}
@@ -187,16 +188,17 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 
 	// tlsNotAfter is a prometheus gauge that outputs the TLS certificate's
 	// NotAfter field and registers it.
-	tlsNotAfter := prometheus.NewGauge(
+	tlsNotAfter := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "grpc_tls_server_notafter_seconds",
-			Help: "TLS server certificate NotAfter field expressed as Unix epoch time",
-		})
+			Name: "grpc_tls_notafter_seconds",
+			Help: "TLS certificate NotAfter field expressed as Unix epoch time",
+		},
+		[]string{"serial"})
 	err = scope.Register(tlsNotAfter)
 	if err != nil {
 		are := prometheus.AlreadyRegisteredError{}
 		if errors.As(err, &are) {
-			tlsNotAfter = are.ExistingCollector.(prometheus.Gauge)
+			tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
 			return &tls.Config{}, err
 		}
@@ -207,9 +209,10 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		if err != nil {
 			return &tls.Config{}, err
 		}
+		serial := (leaf.SerialNumber).String()
 
-		tlsNotBefore.Set(float64(leaf.NotBefore.Unix()))
-		tlsNotAfter.Set(float64(leaf.NotAfter.Unix()))
+		tlsNotBefore.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
+		tlsNotAfter.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
 	}
 
 	return &tls.Config{
