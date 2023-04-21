@@ -814,6 +814,7 @@ func TestIssueBadLint(t *testing.T) {
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertError(t, err, "Prepare didn't fail")
+	test.AssertErrorIs(t, err, ErrLinting)
 	test.AssertContains(t, err.Error(), "tbsCertificate linting failed: failed lints")
 }
 
