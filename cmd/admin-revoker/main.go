@@ -98,11 +98,10 @@ type revoker struct {
 }
 
 func newRevoker(c Config) *revoker {
-	scope, logger := cmd.StatsAndLogging(c.Syslog, "")
-	defer logger.AuditPanic()
-	logger.Info(cmd.VersionString())
+	logger := cmd.NewLogger(c.Syslog)
 
-	tlsConfig, err := c.Revoker.TLS.Load(scope)
+	// TODO(#6840) Rework admin-revoker to export prometheus metrics.
+	tlsConfig, err := c.Revoker.TLS.Load(metrics.NoopRegisterer)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
