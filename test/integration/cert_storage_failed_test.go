@@ -55,6 +55,7 @@ func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
 	return cert, nil
 }
 
+// expectOCSP500 queries OCSP for the given certificate and expects a 500 error.
 func expectOCSP500(cert *x509.Certificate) error {
 	_, err := ocsp_helper.Req(cert, ocsp_helper.DefaultConfig)
 	if err == nil {
@@ -64,8 +65,7 @@ func expectOCSP500(cert *x509.Certificate) error {
 	var statusCodeError ocsp_helper.StatusCodeError
 	if !errors.As(err, &statusCodeError) {
 		return fmt.Errorf("Got wrong kind of error for OCSP. Expected status code error, got %s", err)
-	}
-	if statusCodeError.Code != 500 {
+	} else if statusCodeError.Code != 500 {
 		return fmt.Errorf("Got wrong error status for OCSP. Expected 500, got %d", statusCodeError.Code)
 	}
 	return nil
@@ -104,6 +104,8 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	// hostname used in this test. Since the UPDATE to the certificateStatus table
 	// doesn't include the hostname, we look it up in the issuedNames table, keyed
 	// off of the serial being updated.
+	// We limit this to UPDATEs that set the status to "good" because otherwise we
+	// would fail to revoke the certificate later.
 	_, err = db.Exec(`
 		CREATE TRIGGER fail_ready
 		BEFORE UPDATE ON certificateStatus

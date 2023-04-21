@@ -175,7 +175,7 @@ func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSeri
 	return &emptypb.Empty{}, nil
 }
 
-// SetCertificateStatusRead changes a serial's OCSP status from core.OCSPStatusNotReady to core.OCSPStatusGood.
+// SetCertificateStatusReady changes a serial's OCSP status from core.OCSPStatusNotReady to core.OCSPStatusGood.
 // Called when precertificate issuance succeeds. returns an error if the serial doesn't have status core.OCSPStatusNotReady.
 func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial) (*emptypb.Empty, error) {
 	res, err := ssa.dbMap.WithContext(ctx).Exec(
