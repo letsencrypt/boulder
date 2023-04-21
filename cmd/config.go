@@ -426,3 +426,27 @@ type GRPCServiceConfig struct {
 	// RPC calls for this service from clients which are not listed here.
 	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
 }
+
+// OpenTelemetryConfig configures tracing via OpenTelemetry.
+// To enable tracing, set a nonzero SampleRatio and configure an Endpoint
+type OpenTelemetryConfig struct {
+	// Endpoint to connect to with the OTLP protocol over gRPC.
+	// It should be of the form "localhost:4317"
+	//
+	// It always connects over plaintext, and so is only intended to connect
+	// to a local OpenTelemetry collector. This should not be used over an
+	// insecure network.
+	Endpoint string
+
+	// SampleRatio is the ratio of new traces to head sample.
+	// This only affects new traces with no parent with its own sampling decision.
+	// Set to something between 0 and 1, where 1 is sampling all traces.
+	// See otel trace.TraceIDRatioBased for details.
+	SampleRatio float64
+
+	// If true, disable the parent sampler.
+	// On external-facing services like the WFE, setting this true will
+	// ensure that any external API users don't influence our own sampling
+	// decisions.
+	DisableParentSampler bool
+}

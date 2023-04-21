@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/crypto/ocsp"
+
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/db"
@@ -20,8 +23,6 @@ import (
 	rocsp_config "github.com/letsencrypt/boulder/rocsp/config"
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test/ocsp/helper"
-	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/crypto/ocsp"
 )
 
 type Config struct {
@@ -33,7 +34,8 @@ type Config struct {
 		// and the CA. Otherwise, it's optional.
 		LoadFromDB *LoadFromDBConfig
 	}
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // LoadFromDBConfig provides the credentials and configuration needed to load
@@ -93,7 +95,8 @@ func main2() error {
 		return fmt.Errorf("reading JSON config file: %w", err)
 	}
 
-	_, logger := cmd.StatsAndLogging(conf.Syslog, conf.ROCSPTool.DebugAddr)
+	_, logger, oTelShutdown := cmd.StatsAndLogging(conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 
 	clk := cmd.Clock()

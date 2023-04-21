@@ -90,7 +90,8 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -117,7 +118,8 @@ func main() {
 	tlsConfig, err := c.CRLUpdater.TLS.Load()
 	cmd.FailOnError(err, "TLS config")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CRLUpdater.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
