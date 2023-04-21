@@ -78,7 +78,7 @@ for db in $DBS; do
     # sql-migrate will default to ./dbconfig.yml and treat all configured dirs
     # as relative.
     cd "${dbpath}"
-    r=`sql-migrate up -env="${dbname}" | xargs echo`
+    r=`sql-migrate up -env="${dbname}" | xargs -0 echo`
     if [[ "${r}" == "Migration failed"* ]]
     then
       echo "Migration failed - dropping and recreating"

@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"os"
 
@@ -28,7 +29,8 @@ type Config struct {
 		LagFactor config.Duration `validate:"-"`
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -55,7 +57,8 @@ func main() {
 		c.SA.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.SA.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.SA.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 

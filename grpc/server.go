@@ -11,6 +11,8 @@ import (
 	"github.com/jmhodges/clock"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -133,12 +135,14 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		mi.metrics.grpcMetrics.UnaryServerInterceptor(),
 		ai.Unary,
 		mi.Unary,
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck()))),
 	}
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		mi.metrics.grpcMetrics.StreamServerInterceptor(),
 		ai.Stream,
 		mi.Stream,
+		otelgrpc.StreamServerInterceptor(),
 	}
 
 	options := []grpc.ServerOption{

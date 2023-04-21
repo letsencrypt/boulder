@@ -18,13 +18,18 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/emptypb"
+	jose "gopkg.in/go-jose/go-jose.v2"
+
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/nonce"
 
 	// 'grpc/noncebalancer' is imported for its init function.
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer"
@@ -32,14 +37,12 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics/measured_http"
+	"github.com/letsencrypt/boulder/nonce"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/web"
-	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/go-jose/go-jose.v2"
 )
 
 // Paths are the ACME-spec identified URL path-segments for various methods.
@@ -257,6 +260,9 @@ func (wfe *WebFrontEndImpl) HandleFunc(mux *http.ServeMux, pattern string, h web
 	methodsStr := strings.Join(methods, ", ")
 	handler := http.StripPrefix(pattern, web.NewTopHandler(wfe.log,
 		web.WFEHandlerFunc(func(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
+			span := trace.SpanFromContext(ctx)
+			span.SetName(pattern)
+
 			logEvent.Endpoint = pattern
 			if request.URL != nil {
 				logEvent.Slug = request.URL.Path
@@ -434,7 +440,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return measured_http.New(m, wfe.clk, stats)
+	return otelhttp.NewHandler(measured_http.New(m, wfe.clk, stats), "server")
 }
 
 // Method implementations
