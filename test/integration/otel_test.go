@@ -27,20 +27,21 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// TraceResponse is just the minimal fields we care about from the Jaeger traces API
-type TraceData struct {
-	TraceID string
-	Spans   []struct {
-		SpanID        string
-		OperationName string
-		Warnings      []string
-		ProcessID     string
-		References    []struct {
-			RefType string
-			TraceID string
-			SpanID  string
-		}
+type SpanData struct {
+	SpanID        string
+	OperationName string
+	Warnings      []string
+	ProcessID     string
+	References    []struct {
+		RefType string
+		TraceID string
+		SpanID  string
 	}
+}
+
+type TraceData struct {
+	TraceID   string
+	Spans     []SpanData
 	Processes map[string]struct {
 		ServiceName string
 	}
@@ -76,18 +77,58 @@ func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) TraceData {
 	return parsed.Data[0]
 }
 
-// assertSpans checks the trace contains all the expected spans.
-func assertSpans(t *testing.T, traceData TraceData, expectedSpans []string) {
-	for _, expectedSpan := range expectedSpans {
-		found := false
-		for _, span := range traceData.Spans {
-			if expectedSpan == span.OperationName {
-				found = true
-				break
-			}
-		}
-		test.Assert(t, found, fmt.Sprintf("Didn't find expected span: %s in %v", expectedSpan, traceData))
+type expectedSpans struct {
+	Operation string
+	Service   string
+	Children  []expectedSpans
+}
+
+// isParent returns true if the given span has a parent of ParentID
+// The empty string means no ParentID
+func isParent(parentID string, span SpanData) bool {
+	if len(span.References) == 0 {
+		return parentID == ""
 	}
+	for _, ref := range span.References {
+		// In OpenTelemetry, CHILD_OF is the only reference, but Jaeger supports other systems.
+		if ref.RefType == "CHILD_OF" {
+			return ref.SpanID == parentID
+		}
+	}
+	return false
+}
+
+func missingChildren(traceData TraceData, spanID string, children []expectedSpans) bool {
+	for _, child := range children {
+		if !findSpans(traceData, spanID, child) {
+			// Missing Child
+			return true
+		}
+	}
+	return false
+}
+
+// findSpans checks if the expectedSpan and its expected children are found in traceData
+func findSpans(traceData TraceData, parentSpan string, expectedSpan expectedSpans) bool {
+	for _, span := range traceData.Spans {
+		if !isParent(parentSpan, span) {
+			continue
+		}
+		if expectedSpan.Service != traceData.Processes[span.ProcessID].ServiceName {
+			continue
+		}
+		if expectedSpan.Operation != span.OperationName {
+			continue
+		}
+		if missingChildren(traceData, span.SpanID, expectedSpan.Children) {
+			continue
+		}
+	
+		// This span has the correct parent, service, operation, and children
+		return true
+	}
+	fmt.Printf("did not find span %s::%s with parent '%s'\n", expectedSpan.Service, expectedSpan.Operation, parentSpan)
+	return false
 }
 
 type ContextInjectingRoundTripper struct {
@@ -110,18 +151,35 @@ func TestTraces(t *testing.T) {
 
 	// Sleep to allow traces to flush
 	// TODO: We could retry with backoff instead, allowing this test to complete faster.
-	// TODO: We could also configure a lower batch delay in CI
+	// TODO: We could also configure a lower batch delay in CI, or disable batching
 	time.Sleep(1.2 * sdktrace.DefaultScheduleDelay * time.Millisecond)
 
-	// TODO: We really want to assert more structure of the trace here
 	traceData := getTraceFromJaeger(t, traceID)
-	assertSpans(t, traceData, []string{
-		"/directory",
-		"/acme/new-acct",
-		"sa.StorageAuthority/GetOrderForNames",
-		"/acme/chall-v3/",
-		"nonce.NonceService/Nonce",
-	})
+	test.Assert(t, findSpans(traceData, "", expectedSpans{
+		Operation: "TraceTest",
+		Service:   "integration.test",
+		Children: []expectedSpans{
+			{Operation: "/directory", Service: "boulder-wfe2"},
+			{Operation: "/acme/new-nonce", Service: "boulder-wfe2", Children: []expectedSpans{
+				{Operation: "nonce.NonceService/Nonce", Service: "boulder-wfe2", Children: []expectedSpans{
+					{Operation: "nonce.NonceService/Nonce", Service: "nonce-service"},
+				}},
+			}},
+			{Operation: "/acme/new-acct", Service: "boulder-wfe2", Children: []expectedSpans{
+				{Operation: "nonce.NonceService/Redeem", Service: "boulder-wfe2", Children: []expectedSpans{
+					{Operation: "nonce.NonceService/Redeem", Service: "nonce-service"},
+				}},
+				{Operation: "sa.StorageAuthorityReadOnly/KeyBlocked", Service: "boulder-wfe2", Children: []expectedSpans{
+					{Operation: "sa.StorageAuthorityReadOnly/KeyBlocked", Service: "boulder-sa"},
+				}},
+			}},
+			{Operation: "/acme/new-order", Service: "boulder-wfe2"},
+			{Operation: "/acme/authz-v3/", Service: "boulder-wfe2"},
+			{Operation: "/acme/chall-v3/", Service: "boulder-wfe2"},
+			{Operation: "/acme/finalize/", Service: "boulder-wfe2"},
+			{Operation: "/acme/cert/", Service: "boulder-wfe2"},
+		},
+	}), "Didn't find expected spans")
 
 	test.AssertEquals(t, len(traceData.Warnings), 0)
 	for _, span := range traceData.Spans {
