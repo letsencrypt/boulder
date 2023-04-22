@@ -29,7 +29,8 @@ import (
 
 // TraceResponse is just the minimal fields we care about from the Jaeger traces API
 type TraceData struct {
-	Spans []struct {
+	TraceID string
+	Spans   []struct {
 		SpanID        string
 		OperationName string
 		Warnings      []string
@@ -40,6 +41,10 @@ type TraceData struct {
 			SpanID  string
 		}
 	}
+	Processes map[string]struct {
+		ServiceName string
+	}
+	Warnings []string
 }
 
 // TraceResponse is what we get from the traces API.
@@ -109,13 +114,19 @@ func TestTraces(t *testing.T) {
 	time.Sleep(1.2 * sdktrace.DefaultScheduleDelay * time.Millisecond)
 
 	// TODO: We really want to assert more structure of the trace here
-	assertSpans(t, getTraceFromJaeger(t, traceID), []string{
+	traceData := getTraceFromJaeger(t, traceID)
+	assertSpans(t, traceData, []string{
 		"/directory",
 		"/acme/new-acct",
 		"sa.StorageAuthority/GetOrderForNames",
 		"/acme/chall-v3/",
 		"nonce.NonceService/Nonce",
 	})
+
+	test.AssertEquals(t, len(traceData.Warnings), 0)
+	for _, span := range traceData.Spans {
+		test.AssertEquals(t, len(span.Warnings), 0)
+	}
 }
 
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
