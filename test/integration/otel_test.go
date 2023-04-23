@@ -123,7 +123,7 @@ func findSpans(traceData TraceData, parentSpan string, expectedSpan expectedSpan
 		if missingChildren(traceData, span.SpanID, expectedSpan.Children) {
 			continue
 		}
-	
+
 		// This span has the correct parent, service, operation, and children
 		return true
 	}
@@ -149,13 +149,7 @@ func TestTraces(t *testing.T) {
 
 	traceID := traceIssuingTestCert(t)
 
-	// Sleep to allow traces to flush
-	// TODO: We could retry with backoff instead, allowing this test to complete faster.
-	// TODO: We could also configure a lower batch delay in CI, or disable batching
-	time.Sleep(1.2 * sdktrace.DefaultScheduleDelay * time.Millisecond)
-
-	traceData := getTraceFromJaeger(t, traceID)
-	test.Assert(t, findSpans(traceData, "", expectedSpans{
+	expectedSpans := expectedSpans{
 		Operation: "TraceTest",
 		Service:   "integration.test",
 		Children: []expectedSpans{
@@ -179,12 +173,24 @@ func TestTraces(t *testing.T) {
 			{Operation: "/acme/finalize/", Service: "boulder-wfe2"},
 			{Operation: "/acme/cert/", Service: "boulder-wfe2"},
 		},
-	}), "Didn't find expected spans")
-
-	test.AssertEquals(t, len(traceData.Warnings), 0)
-	for _, span := range traceData.Spans {
-		test.AssertEquals(t, len(span.Warnings), 0)
 	}
+
+	// Retry checking for spans. Span submission is batched asynchronously, so we
+	// may have to wait for the DefaultScheduleDelay (5 seconds) for results to
+	// be available. Rather than always waiting, we retry a few times.
+	// Empirically, this test passes on the second or third try.
+	for try := 0; try < 10; try++ {
+		traceData := getTraceFromJaeger(t, traceID)
+		if findSpans(traceData, "", expectedSpans) {
+			test.AssertEquals(t, len(traceData.Warnings), 0)
+			for _, span := range traceData.Spans {
+				test.AssertEquals(t, len(span.Warnings), 0)
+			}
+			return
+		}
+		time.Sleep(sdktrace.DefaultScheduleDelay / 5 * time.Millisecond)
+	}
+	t.Fatal("Failed to find expected spans in Jaeger for trace", traceID)
 }
 
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
