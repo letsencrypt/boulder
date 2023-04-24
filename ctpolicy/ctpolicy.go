@@ -2,8 +2,8 @@ package ctpolicy
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
@@ -125,11 +125,11 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// we will collect len(ctp.sctLogs) results from the channel because every
 	// goroutine is guaranteed to write one result to the channel.
 	scts := make(core.SCTDERs, 0)
-	errs := make([]string, 0)
+	errs := make([]error, 0)
 	for i := 0; i < len(ctp.sctLogs); i++ {
 		res := <-results
 		if res.err != nil {
-			errs = append(errs, res.err.Error())
+			errs = append(errs, res.err)
 			if res.url != "" {
 				ctp.winnerCounter.WithLabelValues(res.url, failed).Inc()
 			}
@@ -149,7 +149,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 		// thereby causing all of our getOne sub-goroutines to be cancelled.
 		return nil, berrors.MissingSCTsError("failed to get 2 SCTs before ctx finished: %s", ctx.Err())
 	}
-	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got %d error(s): %s", len(errs), strings.Join(errs, "; "))
+	return nil, berrors.MissingSCTsError("failed to get 2 SCTs, got %d error(s): %w", len(errs), errors.Join(errs...))
 }
 
 // submitAllBestEffort submits the given certificate or precertificate to every
