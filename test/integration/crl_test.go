@@ -37,7 +37,6 @@ func TestCRLPipeline(t *testing.T) {
 	test.Assert(t, ok, "failed to look up test config directory")
 
 	// Basic setup.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	client, err := makeClient()
 	test.AssertNotError(t, err, "creating acme client")
 	configFile := path.Join(configDir, "crl-updater.json")

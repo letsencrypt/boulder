@@ -20,7 +20,6 @@ func TestCommonNameInCSR(t *testing.T) {
 	t.Parallel()
 
 	// Create an account.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 
@@ -53,7 +52,6 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 	t.Parallel()
 
 	// Create an account.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 
@@ -85,7 +83,6 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 	t.Parallel()
 
 	// Create an account.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 
