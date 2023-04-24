@@ -213,10 +213,10 @@ func NewRegistrationAuthorityImpl(
 	orderAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "order_ages",
 		Help: "Histogram of ages, in seconds, of Order objects when they're reused and finalized, labelled by method",
-		// Orders currently have a max age of 7 days (168hrs), so our buckets are:
-		// 1 second, 10 seconds, 1 minute, 10 minutes, 1 hour, 10 hours, 1 day,
-		// 7 days, +inf.
-		Buckets: []float64{1, 10, 60, 600, 3600, 36000, 86400, 172800},
+		// Orders currently have a max age of 7 days (168hrs), so our buckets
+		// are: one nanosecond (new), 1 second, 10 seconds, 1 minute, 10
+		// minutes, 1 hour, 10 hours, 1 day, 7 days, +inf.
+		Buckets: []float64{0.000000001, 1, 10, 60, 600, 3600, 36000, 86400, 172800},
 	}, []string{"method"})
 	stats.MustRegister(orderAges)
 
@@ -2359,7 +2359,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(time.Unix(0, existingOrder.Created)).Seconds())
 		return existingOrder, nil
 	}
-	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
 
 	// Check if there is rate limit space for issuing a certificate.
 	err = ra.checkLimits(ctx, newOrder.Names, newOrder.RegistrationID)
@@ -2504,6 +2503,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if storedOrder.Id == 0 || storedOrder.Created == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.Expires == 0 || len(storedOrder.Names) == 0 {
 		return nil, errIncompleteGRPCResponse
 	}
+	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
 
 	// Note how many names are being requested in this certificate order.
 	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.Names)))
