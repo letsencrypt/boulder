@@ -111,12 +111,11 @@ type RegistrationAuthorityImpl struct {
 	revocationReasonCounter     *prometheus.CounterVec
 	namesPerCert                *prometheus.HistogramVec
 	newRegCounter               prometheus.Counter
-	reusedValidAuthzCounter     prometheus.Counter
 	recheckCAACounter           prometheus.Counter
 	newCertCounter              prometheus.Counter
 	recheckCAAUsedAuthzLifetime prometheus.Counter
-	authzAges                   prometheus.Histogram
-	orderAges                   prometheus.Histogram
+	authzAges                   *prometheus.HistogramVec
+	orderAges                   *prometheus.HistogramVec
 	inflightFinalizes           prometheus.Gauge
 }
 
@@ -173,12 +172,6 @@ func NewRegistrationAuthorityImpl(
 	})
 	stats.MustRegister(newRegCounter)
 
-	reusedValidAuthzCounter := prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "reused_valid_authz",
-		Help: "A counter of reused valid authorizations",
-	})
-	stats.MustRegister(reusedValidAuthzCounter)
-
 	recheckCAACounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "recheck_caa",
 		Help: "A counter of CAA rechecks",
@@ -203,27 +196,28 @@ func NewRegistrationAuthorityImpl(
 	}, []string{"reason"})
 	stats.MustRegister(revocationReasonCounter)
 
-	authzAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+	authzAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "authz_ages",
-		Help: "Histogram of ages of Authorization objects when they're attached to a new Order",
-		// authzAges keeps track of how old, in seconds, authorizations were at
-		// the time that we attached them to an order. We give it a non-standard
-		// bucket distribution so that the leftmost (closest to zero) bucket can be
-		// used exclusively for brand-new (i.e. not reused) authzs. Our buckets are:
-		// one nanosecond, one second, one minute, one hour, 7 hours (our CAA reuse
-		// time), 1 day, 2 days, 7 days, 30 days, +inf (should be empty).
+		Help: "Histogram of ages, in seconds, of Authorization objects, labelled by method and type",
+		// authzAges keeps track of how old, in seconds, authorizations are when
+		// we attach them to a new order and again when we finalize that order.
+		// We give it a non-standard bucket distribution so that the leftmost
+		// (closest to zero) bucket can be used exclusively for brand-new (i.e.
+		// not reused) authzs. Our buckets are: one nanosecond, one second, one
+		// minute, one hour, 7 hours (our CAA reuse time), 1 day, 2 days, 7
+		// days, 30 days, +inf (should be empty).
 		Buckets: []float64{0.000000001, 1, 60, 3600, 25200, 86400, 172800, 604800, 2592000, 7776000},
-	})
+	}, []string{"method", "type"})
 	stats.MustRegister(authzAges)
 
-	orderAges := prometheus.NewHistogram(prometheus.HistogramOpts{
+	orderAges := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "order_ages",
-		Help: "Histogram of ages of Order objects when they're Finalized",
-		// Orders currently have a max age of 7 days (168hrs), so our buckets are:
-		// 1 second, 10 seconds, 1 minute, 10 minutes, 1 hour, 10 hours, 1 day,
-		// 7 days, +inf.
-		Buckets: []float64{1, 10, 60, 600, 3600, 36000, 86400, 172800},
-	})
+		Help: "Histogram of ages, in seconds, of Order objects when they're reused and finalized, labelled by method",
+		// Orders currently have a max age of 7 days (168hrs), so our buckets
+		// are: one nanosecond (new), 1 second, 10 seconds, 1 minute, 10
+		// minutes, 1 hour, 7 hours (our CAA reuse time), 1 day, 7 days, +inf.
+		Buckets: []float64{0.000000001, 1, 10, 60, 600, 3600, 25200, 86400, 172800},
+	}, []string{"method"})
 	stats.MustRegister(orderAges)
 
 	inflightFinalizes := prometheus.NewGauge(prometheus.GaugeOpts{
@@ -260,7 +254,6 @@ func NewRegistrationAuthorityImpl(
 		namesPerCert:                 namesPerCert,
 		rateLimitCounter:             rateLimitCounter,
 		newRegCounter:                newRegCounter,
-		reusedValidAuthzCounter:      reusedValidAuthzCounter,
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
 		revocationReasonCounter:      revocationReasonCounter,
@@ -1023,7 +1016,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Observe the age of this order, so we know how quickly most clients complete
 	// issuance flows.
-	ra.orderAges.Observe(ra.clk.Since(time.Unix(0, req.Order.Created)).Seconds())
+	ra.orderAges.WithLabelValues("FinalizeOrder").Observe(ra.clk.Since(time.Unix(0, req.Order.Created)).Seconds())
 
 	// Step 2: Set the Order to Processing status
 	//
@@ -1169,6 +1162,8 @@ func (ra *RegistrationAuthorityImpl) validateFinalizeRequest(
 			ID:            authz.ID,
 			ChallengeType: solvedByChallengeType,
 		}
+		authzAge := (ra.authorizationLifetime - authz.Expires.Sub(ra.clk.Now())).Seconds()
+		ra.authzAges.WithLabelValues("FinalizeOrder", string(authz.Status)).Observe(authzAge)
 	}
 	logEvent.Authorizations = logEventAuthzs
 
@@ -2360,6 +2355,8 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		if existingOrder.Id == 0 || existingOrder.Created == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || existingOrder.Expires == 0 || len(existingOrder.Names) == 0 {
 			return nil, errIncompleteGRPCResponse
 		}
+		// Track how often we reuse an existing order and how old that order is.
+		ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(time.Unix(0, existingOrder.Created)).Seconds())
 		return existingOrder, nil
 	}
 
@@ -2406,6 +2403,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			continue
 		}
 		authz := nameToExistingAuthz[name]
+		authzAge := (ra.authorizationLifetime - time.Unix(0, authz.Expires).Sub(ra.clk.Now())).Seconds()
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
 		// never get back an authorization for a domain with a wildcard prefix
@@ -2418,7 +2416,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
-			ra.authzAges.Observe((ra.authorizationLifetime - time.Unix(0, authz.Expires).Sub(ra.clk.Now())).Seconds())
+			ra.authzAges.WithLabelValues("NewOrder", authz.Status).Observe(authzAge)
 			continue
 		} else if !strings.HasPrefix(name, "*.") {
 			// If the identifier isn't a wildcard, we can reuse any authz
@@ -2427,7 +2425,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 				return nil, err
 			}
 			newOrder.V2Authorizations = append(newOrder.V2Authorizations, authzID)
-			ra.authzAges.Observe((ra.authorizationLifetime - time.Unix(0, authz.Expires).Sub(ra.clk.Now())).Seconds())
+			ra.authzAges.WithLabelValues("NewOrder", authz.Status).Observe(authzAge)
 			continue
 		}
 
@@ -2437,7 +2435,6 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 		// reuse and we need to mark the name as requiring a new pending authz
 		missingAuthzNames = append(missingAuthzNames, name)
 	}
-	ra.reusedValidAuthzCounter.Add(float64(len(newOrder.V2Authorizations)))
 
 	// If the order isn't fully authorized we need to check that the client has
 	// rate limit room for more pending authorizations
@@ -2460,7 +2457,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			return nil, err
 		}
 		newAuthzs = append(newAuthzs, pb)
-		ra.authzAges.Observe(0)
+		ra.authzAges.WithLabelValues("NewOrder", pb.Status).Observe(0)
 	}
 
 	// Start with the order's own expiry as the minExpiry. We only care
@@ -2506,6 +2503,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if storedOrder.Id == 0 || storedOrder.Created == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.Expires == 0 || len(storedOrder.Names) == 0 {
 		return nil, errIncompleteGRPCResponse
 	}
+	ra.orderAges.WithLabelValues("NewOrder").Observe(0)
 
 	// Note how many names are being requested in this certificate order.
 	ra.namesPerCert.With(prometheus.Labels{"type": "requested"}).Observe(float64(len(storedOrder.Names)))
