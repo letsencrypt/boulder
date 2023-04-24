@@ -140,6 +140,32 @@ func (c *ContextInjectingRoundTripper) RoundTrip(request *http.Request) (*http.R
 	return http.DefaultTransport.RoundTrip(request.WithContext(c.ctx))
 }
 
+// rpcSpan is a helper for constructing an RPC span where we have both a client and server rpc operation
+func rpcSpan(op, client, server string, children ...expectedSpans) expectedSpans {
+	return expectedSpans{
+		Operation: op,
+		Service:   client,
+		Children: []expectedSpans{
+			{
+				Operation: op,
+				Service:   server,
+				Children:  children,
+			},
+		},
+	}
+}
+
+func httpSpan(endpoint string, children ...expectedSpans) expectedSpans {
+	return expectedSpans{
+		Operation: endpoint,
+		Service:   "boulder-wfe2",
+		Children: append(children,
+			rpcSpan("nonce.NonceService/Nonce", "boulder-wfe2", "nonce-service"),
+			rpcSpan("nonce.NonceService/Redeem", "boulder-wfe2", "nonce-service"),
+		),
+	}
+}
+
 // TestTraces tests that all the expected spans are present and properly connected
 func TestTraces(t *testing.T) {
 	t.Parallel()
@@ -155,23 +181,15 @@ func TestTraces(t *testing.T) {
 		Children: []expectedSpans{
 			{Operation: "/directory", Service: "boulder-wfe2"},
 			{Operation: "/acme/new-nonce", Service: "boulder-wfe2", Children: []expectedSpans{
-				{Operation: "nonce.NonceService/Nonce", Service: "boulder-wfe2", Children: []expectedSpans{
-					{Operation: "nonce.NonceService/Nonce", Service: "nonce-service"},
-				}},
+				rpcSpan("nonce.NonceService/Nonce", "boulder-wfe2", "nonce-service"),
 			}},
-			{Operation: "/acme/new-acct", Service: "boulder-wfe2", Children: []expectedSpans{
-				{Operation: "nonce.NonceService/Redeem", Service: "boulder-wfe2", Children: []expectedSpans{
-					{Operation: "nonce.NonceService/Redeem", Service: "nonce-service"},
-				}},
-				{Operation: "sa.StorageAuthorityReadOnly/KeyBlocked", Service: "boulder-wfe2", Children: []expectedSpans{
-					{Operation: "sa.StorageAuthorityReadOnly/KeyBlocked", Service: "boulder-sa"},
-				}},
-			}},
-			{Operation: "/acme/new-order", Service: "boulder-wfe2"},
-			{Operation: "/acme/authz-v3/", Service: "boulder-wfe2"},
-			{Operation: "/acme/chall-v3/", Service: "boulder-wfe2"},
-			{Operation: "/acme/finalize/", Service: "boulder-wfe2"},
-			{Operation: "/acme/cert/", Service: "boulder-wfe2"},
+			httpSpan("/acme/new-acct",
+				rpcSpan("sa.StorageAuthorityReadOnly/KeyBlocked", "boulder-wfe2", "boulder-sa")),
+			httpSpan("/acme/new-order"),
+			httpSpan("/acme/authz-v3/"),
+			httpSpan("/acme/chall-v3/"),
+			httpSpan("/acme/finalize/"),
+			httpSpan("/acme/cert/"),
 		},
 	}
 
