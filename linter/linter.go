@@ -22,7 +22,7 @@ import (
 	_ "github.com/letsencrypt/boulder/linter/lints/subscriber"
 )
 
-var ErrLinting = fmt.Errorf("failed lint(s): ")
+var ErrLinting = fmt.Errorf("failed lint(s)")
 
 // Check accomplishes the entire process of linting: it generates a throwaway
 // signing key, uses that to create a throwaway cert, and runs a default set
