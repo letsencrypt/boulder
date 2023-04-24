@@ -825,7 +825,7 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(c.Mailer.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	tlsConfig, err := c.Mailer.TLS.Load()
+	tlsConfig, err := c.Mailer.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()

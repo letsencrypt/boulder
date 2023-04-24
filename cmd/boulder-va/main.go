@@ -120,7 +120,7 @@ func main() {
 			logger)
 	}
 
-	tlsConfig, err := c.VA.TLS.Load()
+	tlsConfig, err := c.VA.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	var remotes []va.RemoteVA

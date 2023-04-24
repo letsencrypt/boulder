@@ -15,6 +15,7 @@ import (
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/roundrobin"
@@ -42,7 +43,7 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 		CACertFile: s("test/grpc-creds/minica.pem"),
 		CertFile:   s("test/grpc-creds/ra.boulder/cert.pem"),
 		KeyFile:    s("test/grpc-creds/ra.boulder/key.pem"),
-	}).Load()
+	}).Load(metrics.NoopRegisterer)
 	if err != nil {
 		sigterm()
 		return nil, nil, nil, err

@@ -140,7 +140,7 @@ func main() {
 	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
-	tlsConfig, err := c.RA.TLS.Load()
+	tlsConfig, err := c.RA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()

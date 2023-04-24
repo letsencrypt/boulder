@@ -366,7 +366,7 @@ func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string) {
 func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
 	clk := cmd.Clock()
 
-	tlsConfig, err := c.AkamaiPurger.TLS.Load()
+	tlsConfig, err := c.AkamaiPurger.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)

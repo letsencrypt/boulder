@@ -24,7 +24,7 @@ func makeClient() (*RWClient, clock.Clock) {
 		CertFile:   &CertFile,
 		KeyFile:    &KeyFile,
 	}
-	tlsConfig2, err := tlsConfig.Load()
+	tlsConfig2, err := tlsConfig.Load(metrics.NoopRegisterer)
 	if err != nil {
 		panic(err)
 	}

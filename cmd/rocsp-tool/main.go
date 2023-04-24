@@ -249,7 +249,7 @@ func helpExit() {
 }
 
 func configureOCSPGenerator(tlsConf cmd.TLSConfig, grpcConf cmd.GRPCClientConfig, clk clock.Clock, scope prometheus.Registerer) (capb.OCSPGeneratorClient, error) {
-	tlsConfig, err := tlsConf.Load()
+	tlsConfig, err := tlsConf.Load(scope)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}

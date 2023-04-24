@@ -108,7 +108,7 @@ func main() {
 	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, c.NonceService.NoncePrefix)
 	cmd.FailOnError(err, "Failed to initialize nonce service")
 
-	tlsConfig, err := c.NonceService.TLS.Load()
+	tlsConfig, err := c.NonceService.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	nonceServer := nonce.NewServer(ns)

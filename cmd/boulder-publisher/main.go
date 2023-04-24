@@ -65,7 +65,6 @@ func main() {
 	if c.Publisher.UserAgent == "" {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
-
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Publisher.DebugAddr)
 	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
@@ -88,7 +87,7 @@ func main() {
 		bundles[id] = publisher.GetCTBundleForChain(chain)
 	}
 
-	tlsConfig, err := c.Publisher.TLS.Load()
+	tlsConfig, err := c.Publisher.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()

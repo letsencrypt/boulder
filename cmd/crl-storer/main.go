@@ -82,14 +82,14 @@ func main() {
 	err = features.Set(c.CRLStorer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	tlsConfig, err := c.CRLStorer.TLS.Load()
-	cmd.FailOnError(err, "TLS config")
-
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLStorer.DebugAddr)
 	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
+
+	tlsConfig, err := c.CRLStorer.TLS.Load(scope)
+	cmd.FailOnError(err, "TLS config")
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLStorer.IssuerCerts))
 	for _, filepath := range c.CRLStorer.IssuerCerts {

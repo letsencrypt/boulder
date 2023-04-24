@@ -450,7 +450,7 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
+	tlsConfig, err := config.BadKeyRevoker.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, scope, clk)

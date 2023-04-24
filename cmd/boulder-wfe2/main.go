@@ -311,7 +311,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 }
 
 func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, map[string]nonce.Redeemer, nonce.Redeemer, string) {
-	tlsConfig, err := c.WFE.TLS.Load()
+	tlsConfig, err := c.WFE.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, scope, clk)

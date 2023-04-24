@@ -214,7 +214,7 @@ func main() {
 	boulderIssuers, err = loadBoulderIssuers(c.CA.Issuance.Profile, c.CA.Issuance.Issuers, c.CA.Issuance.IgnoredLints)
 	cmd.FailOnError(err, "Couldn't load issuers")
 
-	tlsConfig, err := c.CA.TLS.Load()
+	tlsConfig, err := c.CA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
