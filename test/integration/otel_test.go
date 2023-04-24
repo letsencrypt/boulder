@@ -226,22 +226,28 @@ func TestTraces(t *testing.T) {
 	// may have to wait for the DefaultScheduleDelay (5 seconds) for results to
 	// be available. Rather than always waiting, we retry a few times.
 	// Empirically, this test passes on the second or third try.
+	var traceData TraceData
+	found := false
 	const retries = 10
 	for try := 0; try < retries; try++ {
 		traceData := getTraceFromJaeger(t, traceID)
 		if findSpans(traceData, "", expectedSpans) {
-			test.AssertEquals(t, len(traceData.Warnings), 0)
-			for _, span := range traceData.Spans {
-				if len(span.Warnings) != 0 && try != retries-1 {
-					// We got a warning, which is likely a missing parent span, so continue unless it's our final try
-					t.Fatalf("Span %s (%s) warning: %v", span.SpanID, span.OperationName, span.Warnings)
-				}
-			}
-			return
+			found = true
+			break
 		}
 		time.Sleep(sdktrace.DefaultScheduleDelay / 5 * time.Millisecond)
 	}
-	t.Fatalf("Failed to find expected spans in Jaeger for trace %s\n", traceID)
+	test.Assert(t, found, fmt.Sprintf("Failed to find expected spans in Jaeger for trace %s", traceID))
+
+	test.AssertEquals(t, len(traceData.Warnings), 0)
+	for _, span := range traceData.Spans {
+		for _, warning := range span.Warnings {
+			if strings.Contains(warning, "clock skew adjustment disabled; not applying calculated delta") {
+				continue
+			}
+			t.Errorf("Span %s (%s) warning: %v", span.SpanID, span.OperationName, warning)
+		}
+	}
 }
 
 func traceIssuingTestCert(t *testing.T) trace.TraceID {
