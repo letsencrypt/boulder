@@ -140,7 +140,8 @@ type TLSConfig struct {
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
-// returns a *tls.Config suitable for either client or server use.
+// returns a *tls.Config suitable for either client or server use. Prometheus
+// metrics for various certificate fields will be exported.
 func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t == nil {
 		return nil, fmt.Errorf("nil TLS section in config")
@@ -168,8 +169,6 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 			*t.CertFile, *t.KeyFile, err)
 	}
 
-	// tlsNotBefore is a prometheus gauge that outputs the TLS certificate's
-	// NotBefore field and registers it.
 	tlsNotBefore := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tlsconfig_notbefore_seconds",
@@ -182,12 +181,10 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		if errors.As(err, &are) {
 			tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
-			return &tls.Config{}, err
+			return nil, err
 		}
 	}
 
-	// tlsNotAfter is a prometheus gauge that outputs the TLS certificate's
-	// NotAfter field and registers it.
 	tlsNotAfter := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "tlsconfig_notafter_seconds",
@@ -200,19 +197,16 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 		if errors.As(err, &are) {
 			tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
 		} else {
-			return &tls.Config{}, err
+			return nil, err
 		}
 	}
 
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
-		return &tls.Config{}, err
+		return nil, err
 	}
-	// There's a potential cardinality issue here where if we start using more
-	// TLS certificates or replacing them more often, we could degrade
-	// prometheus performance.
-	serial := (leaf.SerialNumber).String()
 
+	serial := leaf.SerialNumber.String()
 	tlsNotBefore.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
 	tlsNotAfter.WithLabelValues(serial).Set(float64(leaf.NotAfter.Unix()))
 
