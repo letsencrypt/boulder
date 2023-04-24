@@ -22,6 +22,8 @@ import (
 	_ "github.com/letsencrypt/boulder/linter/lints/subscriber"
 )
 
+var ErrLinting = fmt.Errorf("failed lint(s)")
+
 // Check accomplishes the entire process of linting: it generates a throwaway
 // signing key, uses that to create a throwaway cert, and runs a default set
 // of lints (everything except for the ETSI and EV lints) against it. This is
@@ -204,7 +206,7 @@ func ProcessResultSet(lintRes *zlint.ResultSet) error {
 				failedLints = append(failedLints, fmt.Sprintf("%s (%s)", lintName, result.Details))
 			}
 		}
-		return fmt.Errorf("failed lints: %s", strings.Join(failedLints, ", "))
+		return fmt.Errorf("%w: %s", ErrLinting, strings.Join(failedLints, ", "))
 	}
 	return nil
 }

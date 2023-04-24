@@ -800,9 +800,9 @@ func TestIssueMustStaple(t *testing.T) {
 func TestIssueBadLint(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
-	linter, err := linter.New(issuerCert.Certificate, issuerSigner, []string{})
+	lint, err := linter.New(issuerCert.Certificate, issuerSigner, []string{})
 	test.AssertNotError(t, err, "failed to create linter")
-	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
+	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), lint, fc)
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
@@ -814,8 +814,8 @@ func TestIssueBadLint(t *testing.T) {
 		NotAfter:  fc.Now().Add(time.Hour - time.Second),
 	})
 	test.AssertError(t, err, "Prepare didn't fail")
-	test.AssertErrorIs(t, err, ErrLinting)
-	test.AssertContains(t, err.Error(), "tbsCertificate linting failed: failed lints")
+	test.AssertErrorIs(t, err, linter.ErrLinting)
+	test.AssertContains(t, err.Error(), "tbsCertificate linting failed: failed lint(s)")
 }
 
 func TestLoadChain_Valid(t *testing.T) {

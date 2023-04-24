@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -446,7 +447,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
-		if errors.Is(err, issuance.ErrLinting) {
+		if errors.Is(err, linter.ErrLinting) {
 			ca.lintErrorCount.Inc()
 		}
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
