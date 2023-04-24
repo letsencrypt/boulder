@@ -174,7 +174,8 @@ func newOrphanFinder(configFile string) *orphanFinder {
 	cmd.FailOnError(err, "Failed to set feature flags")
 	logger := cmd.NewLogger(conf.Syslog)
 
-	tlsConfig, err := conf.TLS.Load()
+	// TODO(#6840) Rework orphan-finder to export prometheus metrics.
+	tlsConfig, err := conf.TLS.Load(metrics.NoopRegisterer)
 	cmd.FailOnError(err, "TLS config")
 
 	saConn, err := bgrpc.ClientSetup(conf.SAService, tlsConfig, metrics.NoopRegisterer, cmd.Clock())

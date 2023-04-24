@@ -109,28 +109,71 @@ func (c Client) FinalizeOrder(account Account, order Order, csr *x509.Certificat
 
 	order.URL = resp.Header.Get("Location")
 
-	if finished, err := checkFinalizedOrderStatus(order); finished {
+	updateOrder := func(resp *http.Response) (bool, error) {
+		if finished, err := checkFinalizedOrderStatus(order); finished {
+			return true, err
+		}
+
+		retryAfter, err := parseRetryAfter(resp.Header.Get("Retry-After"))
+		if err != nil {
+			return false, fmt.Errorf("acme: error parsing retry-after header: %v", err)
+		}
+		order.RetryAfter = retryAfter
+
+		return false, nil
+	}
+
+	if finished, err := updateOrder(resp); finished || err != nil {
 		return order, err
 	}
 
-	pollInterval, pollTimeout := c.getPollingDurations()
-	end := time.Now().Add(pollTimeout)
-	for {
-		if time.Now().After(end) {
-			return order, errors.New("acme: finalized order timeout")
-		}
-		time.Sleep(pollInterval)
-
-		if _, err := c.post(order.URL, account.URL, account.PrivateKey, "", &order, http.StatusOK); err != nil {
-			// i dont think it's worth exiting the loop on this error
-			// it could just be connectivity issue thats resolved before the timeout duration
-			continue
+	fetchOrder := func() (bool, error) {
+		resp, err := c.post(order.URL, account.URL, account.PrivateKey, "", &order, http.StatusOK)
+		if err != nil {
+			return false, nil
 		}
 
-		order.URL = resp.Header.Get("Location")
+		return updateOrder(resp)
+	}
 
-		if finished, err := checkFinalizedOrderStatus(order); finished {
-			return order, err
+	if !c.IgnoreRetryAfter && !order.RetryAfter.IsZero() {
+		_, pollTimeout := c.getPollingDurations()
+		end := time.Now().Add(pollTimeout)
+
+		for {
+			if time.Now().After(end) {
+				return order, errors.New("acme: finalized order timeout")
+			}
+
+			diff := time.Until(order.RetryAfter)
+			_, pollTimeout := c.getPollingDurations()
+			if diff > pollTimeout {
+				return order, fmt.Errorf("acme: Retry-After (%v) longer than poll timeout (%v)", diff, c.PollTimeout)
+			}
+			if diff > 0 {
+				time.Sleep(diff)
+			}
+
+			if finished, err := fetchOrder(); finished || err != nil {
+				return order, err
+			}
 		}
 	}
+
+	if !c.IgnoreRetryAfter {
+		pollInterval, pollTimeout := c.getPollingDurations()
+		end := time.Now().Add(pollTimeout)
+		for {
+			if time.Now().After(end) {
+				return order, errors.New("acme: finalized order timeout")
+			}
+			time.Sleep(pollInterval)
+
+			if finished, err := fetchOrder(); finished || err != nil {
+				return order, err
+			}
+		}
+	}
+
+	return order, err
 }

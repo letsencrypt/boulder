@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -33,7 +34,8 @@ type Config struct {
 		Chains [][]string `validate:"min=1,dive,min=2,dive,required"`
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -63,8 +65,8 @@ func main() {
 	if c.Publisher.UserAgent == "" {
 		c.Publisher.UserAgent = "certificate-transparency-go/1.0"
 	}
-
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Publisher.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Publisher.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -85,7 +87,7 @@ func main() {
 		bundles[id] = publisher.GetCTBundleForChain(chain)
 	}
 
-	tlsConfig, err := c.Publisher.TLS.Load()
+	tlsConfig, err := c.Publisher.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()

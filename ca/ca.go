@@ -70,6 +70,7 @@ type certificateAuthorityImpl struct {
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
 	signErrorCount     *prometheus.CounterVec
+	lintErrorCount     prometheus.Counter
 }
 
 // makeIssuerMaps processes a list of issuers into a set of maps, mapping
@@ -149,6 +150,13 @@ func NewCertificateAuthorityImpl(
 		[]string{"type"})
 	stats.MustRegister(adoptedOrphanCount)
 
+	lintErrorCount := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "lint_errors",
+			Help: "Number of issuances that were halted by linting errors",
+		})
+	stats.MustRegister(lintErrorCount)
+
 	ca = &certificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
@@ -164,6 +172,7 @@ func NewCertificateAuthorityImpl(
 		orphanCount:        orphanCount,
 		adoptedOrphanCount: adoptedOrphanCount,
 		signErrorCount:     signErrorCount,
+		lintErrorCount:     lintErrorCount,
 		clk:                clk,
 		ecdsaAllowList:     ecdsaAllowList,
 	}
@@ -437,6 +446,9 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
+		if errors.Is(err, issuance.ErrLinting) {
+			ca.lintErrorCount.Inc()
+		}
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 

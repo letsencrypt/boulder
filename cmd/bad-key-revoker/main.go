@@ -423,7 +423,8 @@ type Config struct {
 		}
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -438,7 +439,8 @@ func main() {
 	err := cmd.ReadConfigFile(*configPath, &config)
 	cmd.FailOnError(err, "Failed reading config file")
 
-	scope, logger := cmd.StatsAndLogging(config.Syslog, config.BadKeyRevoker.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.BadKeyRevoker.DebugAddr)
+	defer oTelShutdown(context.Background())
 	clk := cmd.Clock()
 
 	scope.MustRegister(keysProcessed)
@@ -448,7 +450,7 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(config.BadKeyRevoker.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	tlsConfig, err := config.BadKeyRevoker.TLS.Load()
+	tlsConfig, err := config.BadKeyRevoker.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	conn, err := bgrpc.ClientSetup(config.BadKeyRevoker.RAService, tlsConfig, scope, clk)

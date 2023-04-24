@@ -156,7 +156,8 @@ type Config struct {
 		AccountCache *CacheConfig
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 type CacheConfig struct {
@@ -310,7 +311,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 }
 
 func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, map[string]nonce.Redeemer, nonce.Redeemer, string) {
-	tlsConfig, err := c.WFE.TLS.Load()
+	tlsConfig, err := c.WFE.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	raConn, err := bgrpc.ClientSetup(c.WFE.RAService, tlsConfig, scope, clk)
@@ -444,7 +445,7 @@ func main() {
 		}
 	}
 
-	stats, logger := cmd.StatsAndLogging(c.Syslog, c.WFE.DebugAddr)
+	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -561,6 +562,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
+		oTelShutdown(ctx)
 	}()
 
 	cmd.WaitForSignal()

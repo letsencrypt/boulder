@@ -102,7 +102,7 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*
 		return nil, fmt.Errorf("loading password: %w", err)
 	}
 
-	tlsConfig, err := c.TLS.Load()
+	tlsConfig, err := c.TLS.Load(stats)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
@@ -141,7 +141,7 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		return nil, fmt.Errorf("loading password: %w", err)
 	}
 
-	tlsConfig, err := c.TLS.Load()
+	tlsConfig, err := c.TLS.Load(stats)
 	if err != nil {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}

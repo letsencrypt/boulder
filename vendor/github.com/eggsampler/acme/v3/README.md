@@ -1,8 +1,8 @@
 # eggsampler/acme
 
 [![GoDoc](https://godoc.org/github.com/eggsampler/acme?status.svg)](https://godoc.org/github.com/eggsampler/acme)
-[![Build Status](https://travis-ci.com/eggsampler/acme.svg?branch=master)](https://travis-ci.com/eggsampler/acme)
-[![Coverage Status](https://coveralls.io/repos/github/eggsampler/acme/badge.svg?branch=master)](https://coveralls.io/github/eggsampler/acme?branch=master)
+[![Build Status](https://github.com/eggsampler/acme/actions/workflows/go.yml/badge.svg)](https://github.com/eggsampler/acme/actions)
+[![Coverage Status](https://coveralls.io/repos/github/eggsampler/acme/badge.svg)](https://coveralls.io/github/eggsampler/acme)
 
 ## About
 

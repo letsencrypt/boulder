@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -54,6 +55,7 @@ func TestTLSConfigLoad(t *testing.T) {
 	cert := "testdata/cert.pem"
 	key := "testdata/key.pem"
 	caCert := "testdata/minica.pem"
+
 	testCases := []struct {
 		TLSConfig
 		want string
@@ -86,7 +88,7 @@ func TestTLSConfigLoad(t *testing.T) {
 			title[2] = *tc.CACertFile
 		}
 		t.Run(strings.Join(title[:], "_"), func(t *testing.T) {
-			_, err := tc.TLSConfig.Load()
+			_, err := tc.TLSConfig.Load(metrics.NoopRegisterer)
 			if err == nil {
 				t.Errorf("got no error")
 			}
