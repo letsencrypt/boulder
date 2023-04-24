@@ -99,7 +99,7 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	}
 
 	// Use two asserts because we're not sure what integer (10? 8?) will come in
-	// the middle of the error mesage.
+	// the middle of the error message.
 	test.AssertContains(t, outputBuffer.String(), "failed to purge OCSP responses for")
 	test.AssertContains(t, outputBuffer.String(), "certificates before exit: all attempts to submit purge request failed")
 }
