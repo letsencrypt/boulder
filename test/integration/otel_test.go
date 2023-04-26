@@ -131,13 +131,21 @@ func findSpans(traceData TraceData, parentSpan string, expectedSpan expectedSpan
 	return false
 }
 
+// ContextInjectingRoundTripper takes a context that is added to every request sent through this RoundTripper
+// It adds the OpenTelemetry propagation headers.  This is useful for HTTP clients which don't pass through a context,
+// notably including the eggsampler ACME client used in this test.
 type ContextInjectingRoundTripper struct {
 	ctx context.Context
 }
 
+// Roundtrip implements http.RoundTripper, injecting the context from this ContextInjectingRoundTripper into the request
+// and setting OpenTelemetry propagation headers.
 func (c *ContextInjectingRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	otel.GetTextMapPropagator().Inject(c.ctx, propagation.HeaderCarrier(request.Header))
-	return http.DefaultTransport.RoundTrip(request.WithContext(c.ctx))
+	// RoundTrip is not permitted to modify the request, so we clone with this context
+	r := request.Clone(c.ctx)
+	// Inject the otel propagation headers
+	otel.GetTextMapPropagator().Inject(c.ctx, propagation.HeaderCarrier(r.Header))
+	return http.DefaultTransport.RoundTrip(r)
 }
 
 // rpcSpan is a helper for constructing an RPC span where we have both a client and server rpc operation
@@ -272,10 +280,10 @@ func traceIssuingTestCert(t *testing.T) trace.TraceID {
 	})
 
 	c, err := acme.NewClient("http://boulder.service.consul:4001/directory", option)
-	test.AssertNotError(t, err, "newAccount failed")
+	test.AssertNotError(t, err, "acme.NewClient failed")
 
 	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "newAccount failed")
+	test.AssertNotError(t, err, "Generating ECDSA key failed")
 
 	account, err := c.NewAccount(privKey, false, true)
 	test.AssertNotError(t, err, "newAccount failed")
