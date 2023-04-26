@@ -96,9 +96,9 @@ func TestWaitForReadyTrue(t *testing.T) {
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientMetadataInterceptor{
-		timeout: 100 * time.Millisecond,
-		metrics: clientMetrics,
-		clk:     clock.NewFake(),
+		timeout:      100 * time.Millisecond,
+		metrics:      clientMetrics,
+		clk:          clock.NewFake(),
 		waitForReady: true,
 	}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
@@ -127,9 +127,9 @@ func TestWaitForReadyFalse(t *testing.T) {
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
 	ci := &clientMetadataInterceptor{
-		timeout: time.Second,
-		metrics: clientMetrics,
-		clk:     clock.NewFake(),
+		timeout:      time.Second,
+		metrics:      clientMetrics,
+		clk:          clock.NewFake(),
 		waitForReady: false,
 	}
 	conn, err := grpc.Dial("localhost:19876", // random, probably unused port
