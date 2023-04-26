@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
+	"github.com/letsencrypt/boulder/test/vars"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -89,11 +90,13 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	t.Parallel()
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
+	// This test is gated on the StoreLintingCertificateInsteadOfPrecertificate
+	// feature flag.
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		return
+		t.Skip("Skipping test because it requires the StoreLintingCertificateInsteadOfPrecertificate feature flag")
 	}
 	
-	db, err := sql.Open("mysql", "test_setup@tcp(boulder-proxysql:6033)/boulder_sa_integration?interpolateParams=true")
+	db, err := sql.Open("mysql", vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed to open db connection")
 
 	_, err = db.Exec(`DROP TRIGGER IF EXISTS fail_ready`)
@@ -179,13 +182,13 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "revoking second certificate")
 	
-	for i := 0; i < 30; i++ {
-		time.Sleep(50 * time.Millisecond)
+	for i := 0; i < 300; i++ {
 		_, err = ocsp_helper.Req(successfulCert,
 			 ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
 		if err == nil {
 			break
 		}
+		time.Sleep(15 * time.Millisecond)
 	}
 	test.AssertNotError(t, err, "expected status to eventually become revoked")
 
