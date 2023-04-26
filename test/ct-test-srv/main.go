@@ -257,5 +257,5 @@ func main() {
 	for _, p := range c.Personalities {
 		go runPersonality(p)
 	}
-	cmd.CatchSignals(nil, nil)
+	cmd.WaitForSignal()
 }

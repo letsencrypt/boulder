@@ -146,7 +146,8 @@ type Config struct {
 		// purged.
 		PurgeRetryBackoff config.Duration `validate:"-"`
 	}
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 // cachePurgeClient is testing interface.
@@ -292,7 +293,8 @@ func main() {
 		apc.DebugAddr = *debugAddr
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, apc.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, apc.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
@@ -364,7 +366,7 @@ func manualPurge(purgeClient *akamai.CachePurgeClient, tag, tagFile string) {
 func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Registerer) {
 	clk := cmd.Clock()
 
-	tlsConfig, err := c.AkamaiPurger.TLS.Load()
+	tlsConfig, err := c.AkamaiPurger.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	stop, stopped := make(chan bool, 1), make(chan bool, 1)

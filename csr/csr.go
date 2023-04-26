@@ -123,7 +123,7 @@ func NamesFromCSR(csr *x509.CertificateRequest) names {
 	// which is shorter than the the maximum acceptable CN length (if any).
 	for _, name := range sans {
 		if len(name) <= maxCNLength {
-			return names{SANs: core.UniqueLowerNames(sans), CN: name}
+			return names{SANs: core.UniqueLowerNames(sans), CN: strings.ToLower(name)}
 		}
 	}
 

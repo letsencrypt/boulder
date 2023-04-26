@@ -56,7 +56,7 @@ func NewClient(directoryURL string, options ...OptionFunc) (Client, error) {
 	return acmeClient, nil
 }
 
-// The directory object returned by the client connecting to a directory url.
+// Directory is the object returned by the client connecting to a directory url.
 func (c Client) Directory() Directory {
 	return c.dir
 }
@@ -100,7 +100,7 @@ func (c Client) do(req *http.Request, addNonce bool) (*http.Response, error) {
 	return resp, nil
 }
 
-// Helper function to perform an http get request and read the body.
+// Helper function to perform an HTTP get request and read the body.
 func (c Client) getRaw(url string, expectedStatus ...int) (*http.Response, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -165,7 +165,7 @@ func (c Client) nonce() (string, error) {
 	return nonce, nil
 }
 
-// Helper function to perform an http post request and read the body.
+// Helper function to perform an HTTP post request and read the body.
 // Will attempt to retry if error is badNonce
 func (c Client) postRaw(retryCount int, requestURL, kid string, privateKey crypto.Signer, payload interface{}, expectedStatus []int) (*http.Response, []byte, error) {
 	nonce, err := c.nonce()
@@ -262,7 +262,7 @@ func fetchLink(resp *http.Response, wantedLink string) string {
 	return ""
 }
 
-// FetchRaw is a helper function to assist with POST-AS-GET requests
+// Fetch is a helper function to assist with POST-AS-GET requests
 func (c Client) Fetch(account Account, requestURL string, result interface{}, expectedStatus ...int) error {
 	if len(expectedStatus) == 0 {
 		expectedStatus = []int{http.StatusOK}

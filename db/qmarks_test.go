@@ -13,7 +13,7 @@ func TestQuestionMarks(t *testing.T) {
 }
 
 func TestQuestionMarksPanic(t *testing.T) {
-	defer func() { recover() }()
+	defer func() { _ = recover() }()
 	QuestionMarks(0)
 	t.Errorf("calling QuestionMarks(0) did not panic as expected")
 }

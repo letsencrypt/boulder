@@ -1,6 +1,7 @@
 linters:
   disable-all: true
   enable:
+    - errcheck
     - gofmt
     - gosec
     - gosimple
@@ -16,7 +17,14 @@ linters:
     # TODO(#6202): Re-enable 'wastedassign' linter
 linters-settings:
   errcheck:
-    ignore: fmt:[FS]?[Pp]rint*,io:Write,os:Remove,net/http:Write,github.com/miekg/dns:WriteMsg,net:Write,encoding/binary:Write
+    exclude-functions:
+      - (net/http.ResponseWriter).Write
+      - (net.Conn).Write
+      - encoding/binary.Write
+      - io.Write
+      - net/http.Write
+      - os.Remove
+      - github.com/miekg/dns.WriteMsg
   gosimple:
     # S1029: Range over the string directly
     checks: ["all", "-S1029"]

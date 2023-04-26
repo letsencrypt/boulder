@@ -100,7 +100,8 @@ type revoker struct {
 func newRevoker(c Config) *revoker {
 	logger := cmd.NewLogger(c.Syslog)
 
-	tlsConfig, err := c.Revoker.TLS.Load()
+	// TODO(#6840) Rework admin-revoker to export prometheus metrics.
+	tlsConfig, err := c.Revoker.TLS.Load(metrics.NoopRegisterer)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
@@ -617,7 +618,8 @@ func main() {
 		if parallelism < 1 {
 			cmd.Fail("parallelism argument must be >= 1")
 		}
-		r.revokeIncidentTableSerials(ctx, tableName, revocation.Reason(reasonCode), parallelism)
+		err = r.revokeIncidentTableSerials(ctx, tableName, revocation.Reason(reasonCode), parallelism)
+		cmd.FailOnError(err, "Couldn't revoke serials in incident table")
 
 	default:
 		usage()

@@ -42,7 +42,7 @@ func main() {
 		c.GRPC.ServerAddress = *serverAddr
 	}
 
-	tlsConfig, err := c.TLS.Load()
+	tlsConfig, err := c.TLS.Load(metrics.NoopRegisterer)
 	cmd.FailOnError(err, "failed to load TLS credentials")
 
 	// GRPC connection prerequisites.
@@ -75,7 +75,6 @@ func main() {
 				Service: "",
 			}
 			resp, err := client.Check(ctx2, req)
-
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "got error connecting to health service %s: %s\n", *serverAddr, err)
 			} else if resp.Status == healthpb.HealthCheckResponse_SERVING {

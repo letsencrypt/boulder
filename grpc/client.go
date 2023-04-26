@@ -10,6 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
 	// 'grpc/health' is imported for its init function, which causes clients to
@@ -43,11 +44,13 @@ func ClientSetup(c *cmd.GRPCClientConfig, tlsConfig *tls.Config, statsRegistry p
 	unaryInterceptors := []grpc.UnaryClientInterceptor{
 		cmi.Unary,
 		cmi.metrics.grpcMetrics.UnaryClientInterceptor(),
+		otelgrpc.UnaryClientInterceptor(),
 	}
 
 	streamInterceptors := []grpc.StreamClientInterceptor{
 		cmi.Stream,
 		cmi.metrics.grpcMetrics.StreamClientInterceptor(),
+		otelgrpc.StreamClientInterceptor(),
 	}
 
 	target, hostOverride, err := c.MakeTargetAndHostOverride()

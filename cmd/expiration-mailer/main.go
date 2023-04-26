@@ -692,7 +692,8 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func initStats(stats prometheus.Registerer) mailerStats {
@@ -799,9 +800,15 @@ func main() {
 	err = features.Set(c.Mailer.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.Mailer.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.Mailer.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
+
+	if *daemon && c.Mailer.Frequency.Duration == 0 {
+		fmt.Fprintln(os.Stderr, "mailer.frequency is not set in the JSON config")
+		os.Exit(1)
+	}
 
 	if *certLimit > 0 {
 		c.Mailer.CertLimit = *certLimit
@@ -818,7 +825,7 @@ func main() {
 	dbMap, err := sa.InitWrappedDb(c.Mailer.DB, scope, logger)
 	cmd.FailOnError(err, "While initializing dbMap")
 
-	tlsConfig, err := c.Mailer.TLS.Load()
+	tlsConfig, err := c.Mailer.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
 	clk := cmd.Clock()
@@ -913,31 +920,26 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go cmd.CatchSignals(logger, func() {
-		cancel()
-		select {} // wait for the `findExpiringCertificates` calls below to exit
-	})
+	go cmd.CatchSignals(cancel)
 
 	if *daemon {
-		if c.Mailer.Frequency.Duration == 0 {
-			fmt.Fprintln(os.Stderr, "mailer.Frequency is not set in the JSON config")
-			os.Exit(1)
-		}
 		t := time.NewTicker(c.Mailer.Frequency.Duration)
 		for {
 			select {
 			case <-t.C:
 				err = m.findExpiringCertificates(ctx)
-				cmd.FailOnError(err, "expiration-mailer has failed")
+				if err != nil && !errors.Is(err, context.Canceled) {
+					cmd.FailOnError(err, "expiration-mailer has failed")
+				}
 			case <-ctx.Done():
-				os.Exit(0)
+				break
 			}
 		}
 	} else {
 		err = m.findExpiringCertificates(ctx)
-		cmd.FailOnError(err, "expiration-mailer has failed")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "expiration-mailer has failed")
+		}
 	}
 }
 

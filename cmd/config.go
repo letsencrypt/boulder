@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/letsencrypt/boulder/config"
@@ -139,8 +140,9 @@ type TLSConfig struct {
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
-// returns a *tls.Config suitable for either client or server use.
-func (t *TLSConfig) Load() (*tls.Config, error) {
+// returns a *tls.Config suitable for either client or server use. Prometheus
+// metrics for various certificate fields will be exported.
+func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t == nil {
 		return nil, fmt.Errorf("nil TLS section in config")
 	}
@@ -166,6 +168,48 @@ func (t *TLSConfig) Load() (*tls.Config, error) {
 		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
 			*t.CertFile, *t.KeyFile, err)
 	}
+
+	tlsNotBefore := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tlsconfig_notbefore_seconds",
+			Help: "TLS certificate NotBefore field expressed as Unix epoch time",
+		},
+		[]string{"serial"})
+	err = scope.Register(tlsNotBefore)
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
+		} else {
+			return nil, err
+		}
+	}
+
+	tlsNotAfter := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tlsconfig_notafter_seconds",
+			Help: "TLS certificate NotAfter field expressed as Unix epoch time",
+		},
+		[]string{"serial"})
+	err = scope.Register(tlsNotAfter)
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
+		} else {
+			return nil, err
+		}
+	}
+
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return nil, err
+	}
+
+	serial := leaf.SerialNumber.String()
+	tlsNotBefore.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
+	tlsNotAfter.WithLabelValues(serial).Set(float64(leaf.NotAfter.Unix()))
+
 	return &tls.Config{
 		RootCAs:      rootCAs,
 		ClientCAs:    rootCAs,
@@ -425,4 +469,28 @@ type GRPCServiceConfig struct {
 	// which do not appear in this list, and the server interceptor will reject
 	// RPC calls for this service from clients which are not listed here.
 	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
+}
+
+// OpenTelemetryConfig configures tracing via OpenTelemetry.
+// To enable tracing, set a nonzero SampleRatio and configure an Endpoint
+type OpenTelemetryConfig struct {
+	// Endpoint to connect to with the OTLP protocol over gRPC.
+	// It should be of the form "localhost:4317"
+	//
+	// It always connects over plaintext, and so is only intended to connect
+	// to a local OpenTelemetry collector. This should not be used over an
+	// insecure network.
+	Endpoint string
+
+	// SampleRatio is the ratio of new traces to head sample.
+	// This only affects new traces with no parent with its own sampling decision.
+	// Set to something between 0 and 1, where 1 is sampling all traces.
+	// See otel trace.TraceIDRatioBased for details.
+	SampleRatio float64
+
+	// If true, disable the parent sampler.
+	// On external-facing services like the WFE, setting this true will
+	// ensure that any external API users don't influence our own sampling
+	// decisions.
+	DisableParentSampler bool
 }

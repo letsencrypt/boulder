@@ -274,7 +274,8 @@ func TestProcessCerts(t *testing.T) {
 	testCtx := setup(t, []time.Duration{expiresIn})
 
 	certs := addExpiringCerts(t, testCtx)
-	testCtx.m.processCerts(context.Background(), certs, expiresIn)
+	err := testCtx.m.processCerts(context.Background(), certs, expiresIn)
+	test.AssertNotError(t, err, "processing certs")
 	// Test that the lastExpirationNagSent was updated for the certificate
 	// corresponding to serial4, which is set up as "already renewed" by
 	// addExpiringCerts.
@@ -381,7 +382,8 @@ func TestProcessCertsParallel(t *testing.T) {
 
 	testCtx.m.parallelSends = 2
 	certs := addExpiringCerts(t, testCtx)
-	testCtx.m.processCerts(context.Background(), certs, expiresIn)
+	err := testCtx.m.processCerts(context.Background(), certs, expiresIn)
+	test.AssertNotError(t, err, "processing certs")
 	// Test that the lastExpirationNagSent was updated for the certificate
 	// corresponding to serial4, which is set up as "already renewed" by
 	// addExpiringCerts.
@@ -404,7 +406,8 @@ func TestProcessCertsConnectError(t *testing.T) {
 	testCtx.m.mailer = erroringMailClient{}
 	certs := addExpiringCerts(t, testCtx)
 	// Checking that this terminates rather than deadlocks
-	testCtx.m.processCerts(context.Background(), certs, expiresIn)
+	err := testCtx.m.processCerts(context.Background(), certs, expiresIn)
+	test.AssertError(t, err, "processing certs")
 }
 
 func TestFindExpiringCertificates(t *testing.T) {

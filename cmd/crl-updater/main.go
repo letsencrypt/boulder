@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"time"
@@ -89,7 +90,8 @@ type Config struct {
 		Features map[string]bool
 	}
 
-	Syslog cmd.SyslogConfig
+	Syslog        cmd.SyslogConfig
+	OpenTelemetry cmd.OpenTelemetryConfig
 }
 
 func main() {
@@ -113,13 +115,14 @@ func main() {
 	err = features.Set(c.CRLUpdater.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	tlsConfig, err := c.CRLUpdater.TLS.Load()
-	cmd.FailOnError(err, "TLS config")
-
-	scope, logger := cmd.StatsAndLogging(c.Syslog, c.CRLUpdater.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.CRLUpdater.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 	clk := cmd.Clock()
+
+	tlsConfig, err := c.CRLUpdater.TLS.Load(scope)
+	cmd.FailOnError(err, "TLS config")
 
 	issuers := make([]*issuance.Certificate, 0, len(c.CRLUpdater.IssuerCerts))
 	for _, filepath := range c.CRLUpdater.IssuerCerts {
@@ -165,15 +168,17 @@ func main() {
 	cmd.FailOnError(err, "Failed to create crl-updater")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go cmd.CatchSignals(logger, cancel)
+	go cmd.CatchSignals(cancel)
 
 	if *runOnce {
 		err = u.Tick(ctx, clk.Now())
-		cmd.FailOnError(err, "")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "")
+		}
 	} else {
 		err = u.Run(ctx)
-		if err != nil {
-			logger.Err(err.Error())
+		if err != nil && !errors.Is(err, context.Canceled) {
+			cmd.FailOnError(err, "")
 		}
 	}
 }
