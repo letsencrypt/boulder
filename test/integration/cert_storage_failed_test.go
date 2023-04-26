@@ -195,6 +195,4 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	if !strings.Contains(err.Error(), "public key is forbidden") {
 		t.Errorf("expected issuance to be rejected with a bad pubkey")
 	}
-
-
 }
