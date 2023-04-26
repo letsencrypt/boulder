@@ -34,7 +34,7 @@ func TestErrorWrapping(t *testing.T) {
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake(), true}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
@@ -77,7 +77,7 @@ func TestSubErrorWrapping(t *testing.T) {
 	smi := newServerMetadataInterceptor(serverMetrics, clock.NewFake())
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
-	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake()}
+	cmi := clientMetadataInterceptor{time.Second, clientMetrics, clock.NewFake(), true}
 	srv := grpc.NewServer(grpc.UnaryInterceptor(smi.Unary))
 	es := &errorServer{}
 	test_proto.RegisterChillerServer(srv, es)
