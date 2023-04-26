@@ -77,13 +77,19 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = purgerClient.Purge(context.Background(), &akamaipb.PurgeRequest{
-		Urls: []string{"http://example.com/"},
-	})
-	if err != nil {
-		// Don't use t.Fatal here because we need to get as far as the SIGTERM or
-		// we'll hang on exit.
-		t.Error(err)
+
+	// We know that the purger is configured to only process two items per batch,
+	// so submitting 10 items should give it enough of a backlog to guarantee
+	// that our SIGTERM reaches the process before it's fully cleared the queue.
+	for i := 0; i < 10; i++ {
+		_, err = purgerClient.Purge(context.Background(), &akamaipb.PurgeRequest{
+			Urls: []string{fmt.Sprintf("http://example%d.com/", i)},
+		})
+		if err != nil {
+			// Don't use t.Fatal here because we need to get as far as the SIGTERM or
+			// we'll hang on exit.
+			t.Error(err)
+		}
 	}
 
 	purgerCmd.Process.Signal(syscall.SIGTERM)
@@ -91,7 +97,11 @@ func TestAkamaiPurgerDrainQueueFails(t *testing.T) {
 	if err == nil {
 		t.Error("expected error shutting down akamai-purger that could not reach backend")
 	}
-	test.AssertContains(t, outputBuffer.String(), "failed to purge OCSP responses for 1 certificates before exit: all attempts to submit purge request failed")
+
+	// Use two asserts because we're not sure what integer (10? 8?) will come in
+	// the middle of the error message.
+	test.AssertContains(t, outputBuffer.String(), "failed to purge OCSP responses for")
+	test.AssertContains(t, outputBuffer.String(), "certificates before exit: all attempts to submit purge request failed")
 }
 
 func TestAkamaiPurgerDrainQueueSucceeds(t *testing.T) {
