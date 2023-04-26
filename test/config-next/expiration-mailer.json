@@ -31,6 +31,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
