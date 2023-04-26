@@ -2295,6 +2295,16 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		return nil, err
 	}
 
+	// If we get an OCSP query for a certificate where the status is still
+	// OCSPStatusNotReady, that means an error occurred, not here but at issuance
+	// time. Specifically, we succeeded in storing the linting certificate (and
+	// corresponding certificateStatus row), but failed before calling
+	// SetCertificateStatusReady. We expect this to be rare, and we expect such
+	// certificates not to get OCSP queries, so InternalServerError is appropriate.
+	if status.Status == string(core.OCSPStatusNotReady) {
+		return nil, errors.New("serial belongs to a certificate that errored during issuance")
+	}
+
 	notAfter := time.Unix(0, status.NotAfter).UTC()
 	if ra.clk.Now().After(notAfter) {
 		return nil, berrors.NotFoundError("certificate is expired")

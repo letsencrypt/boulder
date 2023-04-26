@@ -273,6 +273,11 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	respBytes, err := io.ReadAll(httpResp.Body)
+	defer httpResp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
 	fmt.Fprintf(config.output, "HTTP %d\n", httpResp.StatusCode)
 	for k, v := range httpResp.Header {
 		for _, vv := range v {
@@ -280,17 +285,21 @@ func Req(cert *x509.Certificate, config Config) (*ocsp.Response, error) {
 		}
 	}
 	if httpResp.StatusCode != 200 {
-		return nil, fmt.Errorf("http status code %d", httpResp.StatusCode)
-	}
-	respBytes, err := io.ReadAll(httpResp.Body)
-	defer httpResp.Body.Close()
-	if err != nil {
-		return nil, err
+		return nil, StatusCodeError{httpResp.StatusCode, respBytes}
 	}
 	if len(respBytes) == 0 {
 		return nil, fmt.Errorf("empty response body")
 	}
 	return parseAndPrint(respBytes, cert, issuer, config)
+}
+
+type StatusCodeError struct {
+	Code int
+	Body []byte
+}
+
+func (e StatusCodeError) Error() string {
+	return fmt.Sprintf("HTTP status code %d, body: %s", e.Code, e.Body)
 }
 
 func sendHTTPRequest(

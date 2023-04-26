@@ -67,6 +67,14 @@ const (
 	// According to the BRs Section 7.1.4.2.2(a), the commonName field is
 	// Deprecated, and its inclusion is discouraged but not (yet) prohibited.
 	RequireCommonName
+
+	// StoreLintingCertificateInsteadOfPrecertificate stores a copy of the fake
+	// certificate we use for linting in the `precertificates` table. This
+	// allows us to write something useful to the database before signing
+	// anything with a real issuer certificate, so we can treat it as if it
+	// was issued even if there is a power outage or other error between
+	// signing the precertificate and writing it to the database.
+	StoreLintingCertificateInsteadOfPrecertificate
 )
 
 // List of features and their default value, protected by fMu
@@ -87,6 +95,8 @@ var features = map[FeatureFlag]bool{
 	CertCheckerRequiresValidations: false,
 	AsyncFinalize:                  false,
 	RequireCommonName:              true,
+
+	StoreLintingCertificateInsteadOfPrecertificate: false,
 }
 
 var fMu = new(sync.RWMutex)
