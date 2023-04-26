@@ -55,7 +55,7 @@ type TraceResponse struct {
 }
 
 func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) TraceData {
-	traceURL := "http://jaeger:16686/api/traces/" + traceID.String()
+	traceURL := "http://bjaeger:16686/api/traces/" + traceID.String()
 	resp, err := http.Get(traceURL)
 	test.AssertNotError(t, err, "failed to trace from jaeger: "+traceID.String())
 	if resp.StatusCode == http.StatusNotFound {
@@ -263,7 +263,7 @@ func traceIssuingTestCert(t *testing.T) trace.TraceID {
 
 	// Configure this integration test to trace to jaeger:4317 like Boulder will
 	shutdown := cmd.NewOpenTelemetry(cmd.OpenTelemetryConfig{
-		Endpoint:    "jaeger:4317",
+		Endpoint:    "bjaeger:4317",
 		SampleRatio: 1,
 	}, blog.Get())
 	defer shutdown(context.Background())

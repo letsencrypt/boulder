@@ -43,7 +43,7 @@ services:
       - bredis_1
       - bredis_2
       - bconsul
-      - jaeger
+      - bjaeger
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -119,7 +119,7 @@ services:
     working_dir: *boulder_working_dir
     entrypoint: test/entrypoint-netaccess.sh
 
-  jaeger:
+  bjaeger:
     image: jaegertracing/all-in-one:1.44
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
