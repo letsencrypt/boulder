@@ -195,7 +195,7 @@ func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, r
 		return nil, err
 	}
 	if rows == 0 {
-		return nil, berrors.InternalServerError("failed to set certificate status to ready")
+		return nil, errors.New("failed to set certificate status to ready")
 	}
 
 	return &emptypb.Empty{}, nil

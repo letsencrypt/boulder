@@ -24,6 +24,8 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -151,7 +153,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 }
 
 func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return nil, berrors.InternalServerError("not implemented")
+	return nil, status.Error(codes.Unimplemented, "unimplemented mock")
 }
 
 var caKey crypto.Signer
