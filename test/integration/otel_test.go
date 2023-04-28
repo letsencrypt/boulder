@@ -120,10 +120,10 @@ func findSpans(trace Trace, parentSpan string, expectedSpan expectedSpans) bool 
 		if !isParent(parentSpan, span) {
 			continue
 		}
-		if expectedSpan.Service != trace.Processes[span.ProcessID].ServiceName {
+		if trace.Processes[span.ProcessID].ServiceName != expectedSpan.Service {
 			continue
 		}
-		if expectedSpan.Operation != span.OperationName {
+		if span.OperationName != expectedSpan.Operation {
 			continue
 		}
 		if missingChildren(trace, span.SpanID, expectedSpan.Children) {
