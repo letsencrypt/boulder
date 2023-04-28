@@ -137,15 +137,22 @@ func findSpans(trace Trace, parentSpan string, expectedSpan expectedSpans) bool 
 	return false
 }
 
-// ContextInjectingRoundTripper takes a context that is added to every request sent through this RoundTripper
-// It adds the OpenTelemetry propagation headers.  This is useful for HTTP clients which don't pass through a context,
+// ContextInjectingRoundTripper holds a context that is added to every request
+// sent through this RoundTripper, propagating the OpenTelemetry trace through
+// the requests made with it.
+//
+// This is useful for tracing HTTP clients which don't pass through a context,
 // notably including the eggsampler ACME client used in this test.
+//
+// This test uses a trace started in the test to connect all the outgoing
+// requests into a trace that is retrieved from Jaeger's API to make assertions
+// about the spans from Boulder.
 type ContextInjectingRoundTripper struct {
 	ctx context.Context
 }
 
-// Roundtrip implements http.RoundTripper, injecting the context from this ContextInjectingRoundTripper into the request
-// and setting OpenTelemetry propagation headers.
+// RoundTrip implements http.RoundTripper, injecting c.ctx and the OpenTelemetry
+// propagation headers into the request. This ensures all requests are traced.
 func (c *ContextInjectingRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
 	// RoundTrip is not permitted to modify the request, so we clone with this context
 	r := request.Clone(c.ctx)
