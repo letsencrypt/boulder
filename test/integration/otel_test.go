@@ -61,6 +61,7 @@ type Span struct {
 }
 
 func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) Trace {
+	t.Helper()
 	traceURL := "http://bjaeger:16686/api/traces/" + traceID.String()
 	resp, err := http.Get(traceURL)
 	test.AssertNotError(t, err, "failed to trace from jaeger: "+traceID.String())
@@ -77,7 +78,7 @@ func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) Trace {
 	test.AssertNotError(t, err, "failed to decode traces body")
 
 	if len(parsed.Data) != 1 {
-		t.Fatalf("expected to get exactly one trace for %s: %v", traceID, parsed)
+		t.Fatalf("expected to get exactly one trace from jaeger for %s: %v", traceID, parsed)
 	}
 
 	return parsed.Data[0]
