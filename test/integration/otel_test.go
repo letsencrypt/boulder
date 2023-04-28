@@ -27,7 +27,28 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-type SpanData struct {
+// TraceResponse is the list of traces returned from Jaeger's trace search API
+// We always search for a single trace by ID, so this should be length 1.
+// This is a specialization of Jaeger's structuredResponse type which
+// uses []interface{} upstream.
+type TraceResponse struct {
+	Data []Trace
+}
+
+// Trace represents a single trace in Jaeger's API
+// See https://pkg.go.dev/github.com/jaegertracing/jaeger/model/json#Trace
+type Trace struct {
+	TraceID   string
+	Spans     []Span
+	Processes map[string]struct {
+		ServiceName string
+	}
+	Warnings []string
+}
+
+// Span represents a single span in Jaeger's API
+// See https://pkg.go.dev/github.com/jaegertracing/jaeger/model/json#Span
+type Span struct {
 	SpanID        string
 	OperationName string
 	Warnings      []string
@@ -39,22 +60,7 @@ type SpanData struct {
 	}
 }
 
-type TraceData struct {
-	TraceID   string
-	Spans     []SpanData
-	Processes map[string]struct {
-		ServiceName string
-	}
-	Warnings []string
-}
-
-// TraceResponse is what we get from the traces API.
-// We always search for a single trace by ID, so this should be length 1.
-type TraceResponse struct {
-	Data []TraceData
-}
-
-func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) TraceData {
+func getTraceFromJaeger(t *testing.T, traceID trace.TraceID) Trace {
 	traceURL := "http://bjaeger:16686/api/traces/" + traceID.String()
 	resp, err := http.Get(traceURL)
 	test.AssertNotError(t, err, "failed to trace from jaeger: "+traceID.String())
@@ -85,7 +91,7 @@ type expectedSpans struct {
 
 // isParent returns true if the given span has a parent of ParentID
 // The empty string means no ParentID
-func isParent(parentID string, span SpanData) bool {
+func isParent(parentID string, span Span) bool {
 	if len(span.References) == 0 {
 		return parentID == ""
 	}
@@ -98,9 +104,9 @@ func isParent(parentID string, span SpanData) bool {
 	return false
 }
 
-func missingChildren(traceData TraceData, spanID string, children []expectedSpans) bool {
+func missingChildren(trace Trace, spanID string, children []expectedSpans) bool {
 	for _, child := range children {
-		if !findSpans(traceData, spanID, child) {
+		if !findSpans(trace, spanID, child) {
 			// Missing Child
 			return true
 		}
@@ -108,19 +114,19 @@ func missingChildren(traceData TraceData, spanID string, children []expectedSpan
 	return false
 }
 
-// findSpans checks if the expectedSpan and its expected children are found in traceData
-func findSpans(traceData TraceData, parentSpan string, expectedSpan expectedSpans) bool {
-	for _, span := range traceData.Spans {
+// findSpans checks if the expectedSpan and its expected children are found in trace
+func findSpans(trace Trace, parentSpan string, expectedSpan expectedSpans) bool {
+	for _, span := range trace.Spans {
 		if !isParent(parentSpan, span) {
 			continue
 		}
-		if expectedSpan.Service != traceData.Processes[span.ProcessID].ServiceName {
+		if expectedSpan.Service != trace.Processes[span.ProcessID].ServiceName {
 			continue
 		}
 		if expectedSpan.Operation != span.OperationName {
 			continue
 		}
-		if missingChildren(traceData, span.SpanID, expectedSpan.Children) {
+		if missingChildren(trace, span.SpanID, expectedSpan.Children) {
 			continue
 		}
 
@@ -234,12 +240,12 @@ func TestTraces(t *testing.T) {
 	// may have to wait for the DefaultScheduleDelay (5 seconds) for results to
 	// be available. Rather than always waiting, we retry a few times.
 	// Empirically, this test passes on the second or third try.
-	var traceData TraceData
+	var trace Trace
 	found := false
 	const retries = 10
 	for try := 0; try < retries; try++ {
-		traceData := getTraceFromJaeger(t, traceID)
-		if findSpans(traceData, "", expectedSpans) {
+		trace := getTraceFromJaeger(t, traceID)
+		if findSpans(trace, "", expectedSpans) {
 			found = true
 			break
 		}
@@ -247,8 +253,8 @@ func TestTraces(t *testing.T) {
 	}
 	test.Assert(t, found, fmt.Sprintf("Failed to find expected spans in Jaeger for trace %s", traceID))
 
-	test.AssertEquals(t, len(traceData.Warnings), 0)
-	for _, span := range traceData.Spans {
+	test.AssertEquals(t, len(trace.Warnings), 0)
+	for _, span := range trace.Spans {
 		for _, warning := range span.Warnings {
 			if strings.Contains(warning, "clock skew adjustment disabled; not applying calculated delta") {
 				continue
