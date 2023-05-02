@@ -215,8 +215,8 @@ func NewRegistrationAuthorityImpl(
 		Help: "Histogram of ages, in seconds, of Order objects when they're reused and finalized, labelled by method",
 		// Orders currently have a max age of 7 days (168hrs), so our buckets
 		// are: one nanosecond (new), 1 second, 10 seconds, 1 minute, 10
-		// minutes, 1 hour, 7 hours (our CAA reuse time), 1 day, 7 days, +inf.
-		Buckets: []float64{0.000000001, 1, 10, 60, 600, 3600, 25200, 86400, 172800},
+		// minutes, 1 hour, 7 hours (our CAA reuse time), 1 day, 2 days, 7 days, +inf.
+		Buckets: []float64{0.000000001, 1, 10, 60, 600, 3600, 25200, 86400, 172800, 604800},
 	}, []string{"method"})
 	stats.MustRegister(orderAges)
 
