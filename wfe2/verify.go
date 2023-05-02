@@ -102,10 +102,7 @@ const (
 // endpoints that need to handle both embedded JWK and embedded key ID requests
 // can determine which type of request they have and act accordingly (e.g.
 // acme v2 cert revocation).
-func checkJWSAuthType(jws *jose.JSONWebSignature) (jwsAuthType, *probs.ProblemDetails) {
-	// checkJWSAuthType is called after parseJWS() which defends against the
-	// incorrect number of signatures.
-	header := jws.Signatures[0].Header
+func checkJWSAuthType(header jose.Header) (jwsAuthType, *probs.ProblemDetails) {
 	// There must not be a Key ID *and* an embedded JWK
 	if header.KeyID != "" && header.JSONWebKey != nil {
 		return invalidAuthType, probs.Malformed(
@@ -115,6 +112,7 @@ func checkJWSAuthType(jws *jose.JSONWebSignature) (jwsAuthType, *probs.ProblemDe
 	} else if header.JSONWebKey != nil {
 		return embeddedJWK, nil
 	}
+
 	return invalidAuthType, nil
 }
 
@@ -125,7 +123,7 @@ func (wfe *WebFrontEndImpl) enforceJWSAuthType(
 	jws *jose.JSONWebSignature,
 	expectedAuthType jwsAuthType) *probs.ProblemDetails {
 	// Check the auth type for the provided JWS
-	authType, prob := checkJWSAuthType(jws)
+	authType, prob := checkJWSAuthType(jws.Signatures[0].Header)
 	if prob != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAuthTypeInvalid"}).Inc()
 		return prob

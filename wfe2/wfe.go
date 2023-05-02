@@ -981,7 +981,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	}
 
 	// Figure out which type of authentication this JWS uses
-	authType, prob := checkJWSAuthType(jws)
+	authType, prob := checkJWSAuthType(jws.Signatures[0].Header)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return
