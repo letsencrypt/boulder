@@ -22,6 +22,7 @@ randAx.plot(0, 0, color="orange", label="90th quantile")
 randAx.plot(0, 0, color="red", label="99th quantile")
 handles, labels = randAx.get_legend_handles_labels()
 
+
 # big ol' plotting method
 def plot_section(all_data, title, outputPath):
     # group calls by the endpoint/method

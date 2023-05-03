@@ -362,8 +362,7 @@ def test_http_challenge_http_redirect():
     if len(history) < 2:
         raise (
             Exception(
-                "Expected at least 2 HTTP request events on challtestsrv, found {0}".format(
-                    )
+                "Expected at least 2 HTTP request events on challtestsrv, found {0}".format()
             )
         )
 
@@ -1628,9 +1627,7 @@ def ocsp_exp_unauth_setup():
     order = chisel2.auth_and_issue(
         [random_domain()], client=client, cert_output=cert_file.name
     )
-    OpenSSL.crypto.load_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
-    )
+    OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
 
     # Since our servers are pretending to be in the past, but the openssl cli
     # isn't, we'll get an expired OCSP response. Just check that it exists;
