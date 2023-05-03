@@ -1,0 +1,3 @@
+[tool.ruff]
+
+ignore = ["E501","F405"]
