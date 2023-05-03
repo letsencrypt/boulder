@@ -3,13 +3,11 @@
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
-import numpy as np
 import datetime
 import json
 import pandas
 import matplotlib
 import argparse
-import os
 
 matplotlib.style.use("ggplot")
 

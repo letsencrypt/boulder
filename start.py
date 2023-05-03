@@ -12,7 +12,6 @@ start, or die before ^C.
 import errno
 import os
 import sys
-import time
 
 sys.path.append("./test")
 import startservers

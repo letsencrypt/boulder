@@ -10,22 +10,17 @@ are also in this file.
 import argparse
 import datetime
 import inspect
-import json
 import os
-import random
 import re
 import requests
 import subprocess
-import shlex
 import signal
-import time
 
 import startservers
 
 import v2_integration
 from helpers import *
 
-from acme import challenges
 
 # Set the environment variable RACE to anything other than 'true' to disable
 # race detection. This significantly speeds up integration testing cycles
@@ -213,7 +208,7 @@ def check_balance():
     ]
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)
-        if not "grpc_server_handled_total" in metrics.text:
+        if "grpc_server_handled_total" not in metrics.text:
             raise (Exception("no gRPC traffic processed by %s; load balancing problem?") % address)
 
 

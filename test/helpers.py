@@ -4,7 +4,6 @@ import urllib
 import time
 import re
 import random
-import json
 import requests
 import socket
 import tempfile
