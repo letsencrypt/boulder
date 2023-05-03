@@ -127,8 +127,8 @@ args = parser.parse_args()
 
 with open(args.chartData) as data_file:
     stuff = []
-    for l in data_file.readlines():
-        stuff.append(json.loads(l))
+    for line in data_file.readlines():
+        stuff.append(json.loads(line))
 
 df = pandas.DataFrame(stuff)
 df["finished"] = pandas.to_datetime(df["finished"]).astype(datetime.datetime)
