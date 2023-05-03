@@ -14,7 +14,7 @@ import os
 import sys
 
 sys.path.append("./test")
-import startservers
+import startservers  # noqa: E402
 
 if not startservers.install(race_detection=False):
     raise (Exception("failed to build"))
