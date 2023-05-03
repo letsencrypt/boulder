@@ -310,7 +310,7 @@ def test_http_challenge_http_redirect():
     # There should have been at least two GET requests made to the
     # challtestsrv. There may have been more if remote VAs were configured.
     if len(history) < 2:
-        raise (Exception("Expected at least 2 HTTP request events on challtestsrv, found {0}".format()))
+        raise (Exception("Expected at least 2 HTTP request events on challtestsrv, found {0}".format(history)))
 
     initialRequests = []
     redirectedRequests = []
@@ -1176,10 +1176,9 @@ def test_new_order_policy_errs():
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
             raise (Exception("Expected rejectedIdentifier type problem, got {0}".format(e.typ)))
         if (
-            e.detail
-            != 'Error creating new order :: Cannot issue for "between-addr.in-addr.arpa": The ACME server refuses to '
-               'issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. '
-               'Refer to sub-problems for more information.)'
+            e.detail != 'Error creating new order :: Cannot issue for "between-addr.in-addr.arpa": The ACME server refuses to '
+            "issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. "
+            "Refer to sub-problems for more information.)"
         ):
             raise (Exception("Order problem detail did not match expected"))
     if not ok:
