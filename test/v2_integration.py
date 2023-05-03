@@ -128,7 +128,7 @@ def check_challenge_dns_err(chalType):
                 c = chisel2.get_chall(authzr, challenges.TLSALPN01)
             else:
                 raise (
-                    Exception("Invalid challenge type requested: {0}".format(challType))
+                    Exception("Invalid challenge type requested: {0}".format(chalType))
                 )
 
             # The failed challenge's error should match expected
@@ -413,8 +413,8 @@ def test_http_challenge_http_redirect():
     if len(initialRequests) < 1:
         raise (
             Exception(
-                "Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(
-                    validation_attempts, len(initialRequests)
+                "Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(
+                    len(initialRequests)
                 )
             )
         )
@@ -423,8 +423,8 @@ def test_http_challenge_http_redirect():
     if len(redirectedRequests) < 1:
         raise (
             Exception(
-                "Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(
-                    validation_attempts, len(redirectedRequests)
+                "Expected a redirected HTTP-01 request events on challtestsrv, found {0}".format(
+                    len(redirectedRequests)
                 )
             )
         )
@@ -505,8 +505,8 @@ def test_http_challenge_https_redirect():
     if len(initialRequests) < 1:
         raise (
             Exception(
-                "Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(
-                    validation_attempts, len(initialRequests)
+                "Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(
+                    len(initialRequests)
                 )
             )
         )
@@ -519,8 +519,8 @@ def test_http_challenge_https_redirect():
     if len(redirectedRequests) < 1:
         raise (
             Exception(
-                "Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(
-                    validation_attempts, len(redirectedRequests)
+                "Expected an redirected HTTP-01 request events on challtestsrv, found {0}".format(
+                    len(redirectedRequests)
                 )
             )
         )
@@ -1649,7 +1649,7 @@ def test_ocsp_exp_unauth():
             last_error = cpe.output
             if cpe.output == b"Responder Error: unauthorized (6)\n":
                 break
-        except e:
+        except Exception as e:
             last_error = e
             pass
         tries += 1
