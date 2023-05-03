@@ -532,7 +532,7 @@ class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"this is not an ACME key authorization")
-        except:
+        except Exception:
             pass
 
 
