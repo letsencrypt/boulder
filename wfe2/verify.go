@@ -116,14 +116,14 @@ func checkJWSAuthType(header jose.Header) (jwsAuthType, *probs.ProblemDetails) {
 	return invalidAuthType, nil
 }
 
-// enforceJWSAuthType enforces a provided JWS has the provided auth type. If there
-// is an error determining the auth type or if it is not the expected auth type
-// then a problem is returned.
+// enforceJWSAuthType enforces that a provided JWS' protected headers have the
+// provided auth type. If there is an error determining the auth type or if it
+// is not the expected auth type then a problem is returned.
 func (wfe *WebFrontEndImpl) enforceJWSAuthType(
-	jws *jose.JSONWebSignature,
+	header jose.Header,
 	expectedAuthType jwsAuthType) *probs.ProblemDetails {
 	// Check the auth type for the provided JWS
-	authType, prob := checkJWSAuthType(jws.Signatures[0].Header)
+	authType, prob := checkJWSAuthType(header)
 	if prob != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSAuthTypeInvalid"}).Inc()
 		return prob
@@ -379,21 +379,18 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*jose.JSONWe
 	return jws, nil
 }
 
-// extractJWK extracts a JWK from a provided JWS or returns a problem. It
-// expects that the JWS is using the embedded JWK style of authentication and
-// does not contain an embedded Key ID. Callers should have acquired the
-// provided JWS from parseJWS to ensure it has the correct number of signatures
-// present.
-func (wfe *WebFrontEndImpl) extractJWK(jws *jose.JSONWebSignature) (*jose.JSONWebKey, *probs.ProblemDetails) {
+// extractJWK extracts a JWK from a provided JWS' protected headers or returns a
+// problem. It expects that the JWS is using the embedded JWK style of
+// authentication and does not contain an embedded Key ID. Callers should have
+// acquired the provided protected JWS' headers from parseJWS to ensure it has
+// the correct number of signatures present.
+func (wfe *WebFrontEndImpl) extractJWK(header jose.Header) (*jose.JSONWebKey, *probs.ProblemDetails) {
 	// extractJWK expects the request to be using an embedded JWK auth type and
 	// to not contain the mutually exclusive KeyID.
-	if prob := wfe.enforceJWSAuthType(jws, embeddedJWK); prob != nil {
+	if prob := wfe.enforceJWSAuthType(header, embeddedJWK); prob != nil {
 		return nil, prob
 	}
 
-	// extractJWK must be called after parseJWS() which defends against the
-	// incorrect number of signatures.
-	header := jws.Signatures[0].Header
 	// We can be sure that JSONWebKey is != nil because we have already called
 	// enforceJWSAuthType()
 	key := header.JSONWebKey
@@ -438,24 +435,23 @@ func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request)
 	return accountID, nil
 }
 
-// lookupJWK finds a JWK associated with the Key ID present in a provided JWS,
-// returning the JWK and a pointer to the associated account, or a problem. It
-// expects that the JWS is using the embedded Key ID style of authentication
-// and does not contain an embedded JWK. Callers should have acquired the
-// provided JWS from parseJWS to ensure it has the correct number of signatures
-// present.
+// lookupJWK finds a JWK associated with the Key ID present in a provided
+// JWS' protected headers, returning the JWK and a pointer to the associated
+// account, or a problem. It expects that the JWS header is using the embedded
+// Key ID style of authentication and does not contain an embedded JWK. Callers
+// should have acquired the provided protected JWS' headers from parseJWS to
+// ensure it has the correct number of signatures present.
 func (wfe *WebFrontEndImpl) lookupJWK(
-	jws *jose.JSONWebSignature,
+	header jose.Header,
 	ctx context.Context,
 	request *http.Request,
 	logEvent *web.RequestEvent) (*jose.JSONWebKey, *core.Registration, *probs.ProblemDetails) {
 	// We expect the request to be using an embedded Key ID auth type and to not
 	// contain the mutually exclusive embedded JWK.
-	if prob := wfe.enforceJWSAuthType(jws, embeddedKeyID); prob != nil {
+	if prob := wfe.enforceJWSAuthType(header, embeddedKeyID); prob != nil {
 		return nil, nil, prob
 	}
 
-	header := jws.Signatures[0].Header
 	accountURL := header.KeyID
 	accountID, prob := wfe.acctIDFromURL(accountURL, request)
 	if prob != nil {
@@ -571,7 +567,7 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	ctx context.Context,
 	logEvent *web.RequestEvent) ([]byte, *jose.JSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Lookup the account and JWK for the key ID that authenticated the JWS
-	pubKey, account, prob := wfe.lookupJWK(jws, ctx, request, logEvent)
+	pubKey, account, prob := wfe.lookupJWK(jws.Signatures[0].Header, ctx, request, logEvent)
 	if prob != nil {
 		return nil, nil, nil, prob
 	}
@@ -649,8 +645,8 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	ctx context.Context,
 	jws *jose.JSONWebSignature,
 	request *http.Request) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
-	// Extract the embedded JWK from the parsed JWS
-	pubKey, prob := wfe.extractJWK(jws)
+	// Extract the embedded JWK from the parsed protected JWS' headers
+	pubKey, prob := wfe.extractJWK(jws.Signatures[0].Header)
 	if prob != nil {
 		return nil, nil, prob
 	}
@@ -731,8 +727,8 @@ func (wfe *WebFrontEndImpl) validKeyRollover(
 	innerJWS *jose.JSONWebSignature,
 	oldKey *jose.JSONWebKey) (*rolloverOperation, *probs.ProblemDetails) {
 
-	// Extract the embedded JWK from the inner JWS
-	jwk, prob := wfe.extractJWK(innerJWS)
+	// Extract the embedded JWK from the inner JWS' protected headers
+	jwk, prob := wfe.extractJWK(innerJWS.Signatures[0].Header)
 	if prob != nil {
 		return nil, prob
 	}

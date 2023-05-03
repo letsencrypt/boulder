@@ -610,7 +610,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.enforceJWSAuthType(tc.JWS, tc.ExpectedAuthType)
+			prob := wfe.enforceJWSAuthType(tc.JWS.Signatures[0].Header, tc.ExpectedAuthType)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatalf("Expected nil result, got %#v", prob)
 			} else {
@@ -1000,11 +1000,11 @@ func TestExtractJWK(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			jwk, prob := wfe.extractJWK(tc.JWS)
+			jwkHeader, prob := wfe.extractJWK(tc.JWS.Signatures[0].Header)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertMarshaledEquals(t, jwk, tc.ExpectedKey)
+				test.AssertMarshaledEquals(t, jwkHeader, tc.ExpectedKey)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
@@ -1167,12 +1167,12 @@ func TestLookupJWK(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
-			jwk, acct, prob := wfe.lookupJWK(tc.JWS, context.Background(), tc.Request, inputLogEvent)
+			jwkHeader, acct, prob := wfe.lookupJWK(tc.JWS.Signatures[0].Header, context.Background(), tc.Request, inputLogEvent)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				inThumb, _ := tc.ExpectedKey.Thumbprint(crypto.SHA256)
-				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
+				outThumb, _ := jwkHeader.Thumbprint(crypto.SHA256)
 				test.AssertDeepEquals(t, inThumb, outThumb)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAccount)
 				test.AssertEquals(t, inputLogEvent.Requester, acct.ID)
