@@ -123,7 +123,7 @@ def check_challenge_dns_err(chalType):
             elif chalType == "tls-alpn-01":
                 c = chisel2.get_chall(authzr, challenges.TLSALPN01)
             else:
-                raise (Exception("Invalid challenge type requested: {0}".format(challType)))
+                raise (Exception("Invalid challenge type requested: {0}".format(chalType)))
 
             # The failed challenge's error should match expected
             error = c.error
@@ -349,11 +349,11 @@ def test_http_challenge_http_redirect():
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise (Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests))))
+        raise (Exception("Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(len(initialRequests))))
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise (Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests))))
+        raise (Exception("Expected an redirected HTTP-01 request events on challtestsrv, found {0}".format(len(redirectedRequests))))
 
 
 def test_http_challenge_https_redirect():
@@ -415,7 +415,7 @@ def test_http_challenge_https_redirect():
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise (Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests))))
+        raise (Exception("Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(len(initialRequests))))
     # All initial requests should have been over HTTP
     for r in initialRequests:
         if r["HTTPS"] is True:
@@ -423,7 +423,7 @@ def test_http_challenge_https_redirect():
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise (Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests))))
+        raise (Exception("Expected a redirected HTTP-01 request events on challtestsrv, found {0}".format(len(redirectedRequests))))
     # All the redirected requests should have been over HTTPS with the correct
     # SNI value
     for r in redirectedRequests:
@@ -1338,7 +1338,7 @@ def test_ocsp_exp_unauth():
             last_error = cpe.output
             if cpe.output == b"Responder Error: unauthorized (6)\n":
                 break
-        except e:
+        except Exception as e:
             last_error = e
             pass
         tries += 1
