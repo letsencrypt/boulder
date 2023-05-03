@@ -362,7 +362,9 @@ def test_http_challenge_http_redirect():
     if len(history) < 2:
         raise (
             Exception(
-                "Expected at least 2 HTTP request events on challtestsrv, found {0}".format()
+                "Expected at least 2 HTTP request events on challtestsrv, found {0}".format(
+                    history
+                )
             )
         )
 
