@@ -1783,7 +1783,7 @@ def test_expiration_mailer():
     last_reminder = expiry + datetime.timedelta(days=-2)
 
     requests.post("http://localhost:9381/clear", data="")
-    for time in (no_reminder, first_reminder, last_reminder):
+    for reminder_time in (no_reminder, first_reminder, last_reminder):
         print(
             get_future_output(
                 [
@@ -1792,7 +1792,7 @@ def test_expiration_mailer():
                     "--config",
                     "%s/expiration-mailer.json" % config_dir,
                 ],
-                time,
+                reminder_time,
             )
         )
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
