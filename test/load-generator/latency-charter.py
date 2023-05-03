@@ -6,7 +6,6 @@ from matplotlib import gridspec
 import datetime
 import json
 import pandas
-import matplotlib
 import argparse
 
 matplotlib.style.use("ggplot")
