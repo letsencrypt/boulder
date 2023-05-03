@@ -6,7 +6,6 @@ import subprocess
 import requests
 import datetime
 import time
-import os
 import json
 import re
 
@@ -22,9 +21,8 @@ from helpers import *
 
 from acme import errors as acme_errors
 
-from acme.messages import Status, CertificateRequest, Directory, NewRegistration
+from acme.messages import Status
 from acme import crypto_util as acme_crypto_util
-from acme import client as acme_client
 from acme import messages
 from acme import challenges
 from acme import errors
@@ -32,8 +30,6 @@ from acme import errors
 import josepy
 
 import tempfile
-import shutil
-import atexit
 import random
 import string
 
@@ -232,7 +228,7 @@ def test_failed_validation_limit():
         client.answer_challenge(chall, chall.response(client.net.key))
         try:
             client.poll_and_finalize(order)
-        except errors.ValidationError as e:
+        except errors.ValidationError:
             pass
     chisel2.expect_problem(
         "urn:ietf:params:acme:error:rateLimited",
@@ -366,9 +362,8 @@ def test_http_challenge_http_redirect():
     if len(history) < 2:
         raise (
             Exception(
-                "Expected at least 2 HTTP request events on challtestsrv, found {1}".format(
-                    len(history)
-                )
+                "Expected at least 2 HTTP request events on challtestsrv, found {0}".format(
+                    )
             )
         )
 
@@ -754,7 +749,7 @@ def test_order_reuse_failed_authz():
         # Poll the order's authorizations until they are non-pending, a timeout
         # occurs, or there is an invalid authorization status.
         client.poll_authorizations(order, deadline)
-    except acme_errors.ValidationError as e:
+    except acme_errors.ValidationError:
         # We expect there to be a ValidationError from one of the authorizations
         # being invalid.
         authzFailed = True
@@ -1438,7 +1433,7 @@ def test_new_order_policy_errs():
     # subproblems are properly represented.
     ok = False
     try:
-        order = client.new_order(csr_pem)
+        client.new_order(csr_pem)
     except messages.Error as e:
         ok = True
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
@@ -1614,7 +1609,7 @@ def check_ocsp_basic_oid(cert_file, issuer_file, url):
     # successful response.
     expected = bytearray.fromhex("06 09 2B 06 01 05 05 07 30 01 01")
     for resp in responses:
-        if not expected in bytearray(resp):
+        if expected not in bytearray(resp):
             raise (
                 Exception(
                     "Did not receive successful OCSP response: %s doesn't contain %s"
@@ -1633,7 +1628,7 @@ def ocsp_exp_unauth_setup():
     order = chisel2.auth_and_issue(
         [random_domain()], client=client, cert_output=cert_file.name
     )
-    cert = OpenSSL.crypto.load_certificate(
+    OpenSSL.crypto.load_certificate(
         OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
     )
 
@@ -1747,7 +1742,7 @@ def test_blocked_key_cert():
     authzs = order.authorizations
 
     testPass = False
-    cleanup = chisel2.do_http_challenges(client, authzs)
+    chisel2.do_http_challenges(client, authzs)
     try:
         order = client.poll_and_finalize(order)
     except acme_errors.Error as e:

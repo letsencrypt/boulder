@@ -8,18 +8,13 @@ $ . venv/bin/activate
 $ pip install -r requirements.txt
 $ python chisel2.py foo.com bar.com
 """
-import json
 import logging
 import os
 import sys
 import signal
-import threading
-import time
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes
 
 import OpenSSL
 import josepy

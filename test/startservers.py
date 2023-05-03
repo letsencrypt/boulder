@@ -1,15 +1,10 @@
 import atexit
 import collections
 import os
-import shutil
 import signal
 import subprocess
-import sys
-import tempfile
-import threading
-import time
 
-from helpers import waithealth, waitport, config_dir, CONFIG_NEXT
+from helpers import waithealth, waitport, config_dir
 
 Service = collections.namedtuple(
     "Service", ("name", "debug_port", "grpc_addr", "cmd", "deps")
