@@ -418,9 +418,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 				path: "idk",
 			},
 			ExpectedRecord: core.ValidationRecord{
-				URL:      "http://ipv4.and.ipv6.localhost/yellow/brick/road",
-				Hostname: "foobar",
-				Port:     strconv.Itoa(va.httpPort),
+				URL: "http://ipv4.and.ipv6.localhost/yellow/brick/road",
 			},
 			ExpectedError: fmt.Errorf(`host "foobar" has no IP addresses remaining to use`),
 		},
@@ -429,8 +427,6 @@ func TestSetupHTTPValidation(t *testing.T) {
 			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpPort, "/yellow/brick/road"),
 			InputURL:    httpInputURL,
 			ExpectedRecord: core.ValidationRecord{
-				Hostname:          "ipv4.and.ipv6.localhost",
-				Port:              strconv.Itoa(va.httpPort),
 				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
@@ -446,8 +442,6 @@ func TestSetupHTTPValidation(t *testing.T) {
 			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpsPort, "/yellow/brick/road"),
 			InputURL:    httpsInputURL,
 			ExpectedRecord: core.ValidationRecord{
-				Hostname:          "ipv4.and.ipv6.localhost",
-				Port:              strconv.Itoa(va.httpsPort),
 				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
@@ -763,8 +757,6 @@ func TestFetchHTTP(t *testing.T) {
 		}
 		expectedLoopRecords = append(expectedLoopRecords,
 			core.ValidationRecord{
-				Hostname:          "example.com",
-				Port:              strconv.Itoa(httpPort),
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -783,8 +775,6 @@ func TestFetchHTTP(t *testing.T) {
 		}
 		expectedTooManyRedirRecords = append(expectedTooManyRedirRecords,
 			core.ValidationRecord{
-				Hostname:          "example.com",
-				Port:              strconv.Itoa(httpPort),
 				URL:               url,
 				AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -823,8 +813,6 @@ func TestFetchHTTP(t *testing.T) {
 					"Timeout after connect (your server may be slow or overloaded)"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -857,8 +845,6 @@ func TestFetchHTTP(t *testing.T) {
 					`are supported, not "gopher"`),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-proto",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -874,8 +860,6 @@ func TestFetchHTTP(t *testing.T) {
 					"Only ports %d and 443 are supported, not 1987", httpPort)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-port",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -891,8 +875,6 @@ func TestFetchHTTP(t *testing.T) {
 					`"127.0.0.1". Only domain names are supported, not IP addresses`),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-bad-host",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -907,8 +889,6 @@ func TestFetchHTTP(t *testing.T) {
 				"127.0.0.1: Fetching https://example.com/this-is-too-long-01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: Redirect target too long"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-path-too-long",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -923,8 +903,6 @@ func TestFetchHTTP(t *testing.T) {
 				"127.0.0.1: Invalid response from http://example.com/bad-status-code: 410"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/bad-status-code",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -939,8 +917,6 @@ func TestFetchHTTP(t *testing.T) {
 				"127.0.0.1: Fetching http://example.org/303-see-other: received disallowed redirect status code"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/303-see-other",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -956,8 +932,6 @@ func TestFetchHTTP(t *testing.T) {
 			)),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/resp-too-big",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -972,8 +946,6 @@ func TestFetchHTTP(t *testing.T) {
 				"::1: Fetching http://ipv6.localhost/ok: Error getting validation data"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "ipv6.localhost",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1")},
 					AddressUsed:       net.ParseIP("::1"),
@@ -987,16 +959,12 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "ipv4.and.ipv6.localhost",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The first validation record should have used the IPv6 addr
 					AddressUsed: net.ParseIP("::1"),
 				},
 				{
-					Hostname:          "ipv4.and.ipv6.localhost",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://ipv4.and.ipv6.localhost/ok",
 					AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 					// The second validation record should have used the IPv4 addr as a fallback
@@ -1011,8 +979,6 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1026,15 +992,11 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedBody: "ok",
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/redir-uppercase-publicsuffix",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/ok",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -1053,8 +1015,6 @@ func TestFetchHTTP(t *testing.T) {
 			},
 			ExpectedRecords: []core.ValidationRecord{
 				{
-					Hostname:          "example.com",
-					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/printf-verbs",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
