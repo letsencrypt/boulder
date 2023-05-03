@@ -499,7 +499,7 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) RenewalInfo {
 }
 
 // RenewalInfoImmediate constructs a `RenewalInfo` object with a suggested
-// window in the past. Per the draft-ietf-acme-ari-00 spec, clients should
+// window in the past. Per the draft-ietf-acme-ari-01 spec, clients should
 // attempt to renew immediately if the suggested window is in the past. The
 // passed `now` is assumed to be a timestamp representing the current moment in
 // time.
