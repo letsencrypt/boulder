@@ -26,6 +26,8 @@ from acme import errors as acme_errors
 from acme import messages
 from acme import standalone
 
+import challtestsrv
+
 logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(int(os.getenv("LOGLEVEL", 20)))
@@ -35,8 +37,6 @@ ACCEPTABLE_TOS = os.getenv("ACCEPTABLE_TOS", "https://boulder.service.consul:443
 PORT = os.getenv("PORT", "80")
 
 os.environ.setdefault("REQUESTS_CA_BUNDLE", "test/wfe-tls/minica.pem")
-
-import challtestsrv
 
 challSrv = challtestsrv.ChallTestServer()
 
