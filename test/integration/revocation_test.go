@@ -11,15 +11,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/eggsampler/acme/v3"
+	"golang.org/x/crypto/ocsp"
+
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
-	"golang.org/x/crypto/ocsp"
 )
 
 // isPrecert returns true if the provided cert has an extension with the OID
@@ -39,9 +39,6 @@ func isPrecert(cert *x509.Certificate) bool {
 // keyCompromise revocation reasons.
 func TestRevocation(t *testing.T) {
 	t.Parallel()
-
-	// Create a base account to use for revocation tests.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type authMethod string
 	var (
@@ -203,9 +200,6 @@ func TestRevocation(t *testing.T) {
 func TestReRevocation(t *testing.T) {
 	t.Parallel()
 
-	// Create a base account to use for revocation tests.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
-
 	type authMethod string
 	var (
 		byAccount authMethod = "byAccount"
@@ -335,7 +329,6 @@ func TestReRevocation(t *testing.T) {
 
 func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 	t.Parallel()
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type authMethod string
 	var (
@@ -387,8 +380,6 @@ func TestRevokeWithKeyCompromiseBlocksKey(t *testing.T) {
 }
 
 func TestBadKeyRevoker(t *testing.T) {
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
-
 	// Both accounts have two email addresses, one of which is shared between
 	// them. All three addresses should receive mail, because the revocation
 	// request is signed by the certificate key, not an account key, so we don't
@@ -468,8 +459,6 @@ func TestBadKeyRevoker(t *testing.T) {
 }
 
 func TestBadKeyRevokerByAccount(t *testing.T) {
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
-
 	// Both accounts have two email addresses, one of which is shared between
 	// them. No accounts should receive any mail, because the revocation request
 	// is signed by the account key (not the cert key) and so will not be

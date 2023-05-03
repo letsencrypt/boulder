@@ -9,11 +9,11 @@ import (
 	"crypto/rand"
 	"crypto/x509/pkix"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/eggsampler/acme/v3"
+
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
 )
@@ -30,7 +30,6 @@ func TestARI(t *testing.T) {
 	t.Parallel()
 
 	// Create an account.
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 

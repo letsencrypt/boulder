@@ -42,7 +42,7 @@ type client struct {
 }
 
 func makeClient(contacts ...string) (*client, error) {
-	c, err := acme.NewClient(os.Getenv("DIRECTORY"))
+	c, err := acme.NewClient("http://boulder.service.consul:4001/directory")
 	if err != nil {
 		return nil, fmt.Errorf("Error connecting to acme directory: %v", err)
 	}
