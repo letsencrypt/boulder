@@ -31,8 +31,9 @@ from acme import challenges
 # race detection. This significantly speeds up integration testing cycles
 # locally.
 race_detection = True
-if os.environ.get('RACE', 'true') != 'true':
+if os.environ.get("RACE", "true") != "true":
     race_detection = False
+
 
 def run_go_tests(filterPattern=None):
     """
@@ -43,48 +44,81 @@ def run_go_tests(filterPattern=None):
     cmdLine = ["go", "test"]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
-    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
+    cmdLine = cmdLine + [
+        "-tags",
+        "integration",
+        "-count=1",
+        "-race",
+        "./test/integration",
+    ]
     subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
+
 
 def test_single_ocsp():
     """Run ocsp-responder with the single OCSP response generated for the intermediate
-       certificate using the ceremony tool during setup and check that it successfully
-       answers OCSP requests, and shut the responder back down.
+    certificate using the ceremony tool during setup and check that it successfully
+    answers OCSP requests, and shut the responder back down.
 
-       This is a non-API test.
+    This is a non-API test.
     """
     p = subprocess.Popen(
-        ["./bin/boulder", "ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
-    waitport(4003, ' '.join(p.args))
+        [
+            "./bin/boulder",
+            "ocsp-responder",
+            "--config",
+            "test/issuer-ocsp-responder.json",
+        ]
+    )
+    waitport(4003, " ".join(p.args))
 
     # Verify that the static OCSP responder, which answers with a
     # pre-signed, long-lived response for the CA cert, works.
-    verify_ocsp("/hierarchy/intermediate-cert-rsa-a.pem", "/hierarchy/root-cert-rsa.pem", "http://localhost:4003", "good")
+    verify_ocsp(
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "/hierarchy/root-cert-rsa.pem",
+        "http://localhost:4003",
+        "good",
+    )
 
     p.send_signal(signal.SIGTERM)
     p.wait()
 
+
 exit_status = 1
 
+
 def main():
-    parser = argparse.ArgumentParser(description='Run integration tests')
-    parser.add_argument('--chisel', dest="run_chisel", action="store_true",
-                        help="run integration tests using chisel")
-    parser.add_argument('--gotest', dest="run_go", action="store_true",
-                        help="run Go integration tests")
-    parser.add_argument('--filter', dest="test_case_filter", action="store",
-                        help="Regex filter for test cases")
+    parser = argparse.ArgumentParser(description="Run integration tests")
+    parser.add_argument(
+        "--chisel",
+        dest="run_chisel",
+        action="store_true",
+        help="run integration tests using chisel",
+    )
+    parser.add_argument(
+        "--gotest", dest="run_go", action="store_true", help="run Go integration tests"
+    )
+    parser.add_argument(
+        "--filter",
+        dest="test_case_filter",
+        action="store",
+        help="Regex filter for test cases",
+    )
     # allow any ACME client to run custom command for integration
     # testing (without having to implement its own busy-wait loop)
-    parser.add_argument('--custom', metavar="CMD", help="run custom command")
+    parser.add_argument("--custom", metavar="CMD", help="run custom command")
     parser.set_defaults(run_chisel=False, test_case_filter="", skip_setup=False)
     args = parser.parse_args()
 
-    if not (args.run_chisel or args.custom  or args.run_go is not None):
-        raise(Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"))
+    if not (args.run_chisel or args.custom or args.run_go is not None):
+        raise (
+            Exception(
+                "must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"
+            )
+        )
 
     if not startservers.install(race_detection=race_detection):
-        raise(Exception("failed to build"))
+        raise (Exception("failed to build"))
 
     # Setup issuance hierarchy
     startservers.setupHierarchy()
@@ -92,20 +126,20 @@ def main():
     if not args.test_case_filter:
         now = datetime.datetime.utcnow()
 
-        six_months_ago = now+datetime.timedelta(days=-30*6)
+        six_months_ago = now + datetime.timedelta(days=-30 * 6)
         if not startservers.start(fakeclock=fakeclock(six_months_ago)):
-            raise(Exception("startservers failed (mocking six months ago)"))
+            raise (Exception("startservers failed (mocking six months ago)"))
         setup_six_months_ago()
         startservers.stop()
 
-        twenty_days_ago = now+datetime.timedelta(days=-20)
+        twenty_days_ago = now + datetime.timedelta(days=-20)
         if not startservers.start(fakeclock=fakeclock(twenty_days_ago)):
-            raise(Exception("startservers failed (mocking twenty days ago)"))
+            raise (Exception("startservers failed (mocking twenty days ago)"))
         setup_twenty_days_ago()
         startservers.stop()
 
     if not startservers.start(fakeclock=None):
-        raise(Exception("startservers failed"))
+        raise (Exception("startservers failed"))
 
     if args.run_chisel:
         run_chisel(args.test_case_filter)
@@ -128,14 +162,15 @@ def main():
         run_loadtest()
 
     if not startservers.check():
-        raise(Exception("startservers.check failed"))
+        raise (Exception("startservers.check failed"))
 
     # This test is flaky, so it's temporarily disabled.
     # TODO(#4583): Re-enable this test.
-    #check_slow_queries()
+    # check_slow_queries()
 
     global exit_status
     exit_status = 0
+
 
 def check_slow_queries():
     """Checks that we haven't run any slow queries during the integration test.
@@ -165,19 +200,29 @@ def check_slow_queries():
         \G
     """
     output = subprocess.check_output(
-      ["mysql", "-h", "boulder-proxysql", "-e", query],
-      stderr=subprocess.STDOUT).decode()
+        ["mysql", "-h", "boulder-proxysql", "-e", query], stderr=subprocess.STDOUT
+    ).decode()
     if len(output) > 0:
         print(output)
         raise Exception("Found slow queries in the slow query log")
 
+
 def run_chisel(test_case_filter):
     for key, value in inspect.getmembers(v2_integration):
-      if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
-        value()
+        if (
+            callable(value)
+            and key.startswith("test_")
+            and re.search(test_case_filter, key)
+        ):
+            value()
     for key, value in globals().items():
-      if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
-        value()
+        if (
+            callable(value)
+            and key.startswith("test_")
+            and re.search(test_case_filter, key)
+        ):
+            value()
+
 
 def run_loadtest():
     """Run the ACME v2 load generator."""
@@ -189,9 +234,16 @@ def run_loadtest():
     # might benefit from the pebble-challtestsrv being restarted.
     startservers.stopChallSrv()
 
-    run(["./bin/load-generator",
-        "-config", "test/load-generator/config/integration-test-config.json",
-        "-results", latency_data_file])
+    run(
+        [
+            "./bin/load-generator",
+            "-config",
+            "test/load-generator/config/integration-test-config.json",
+            "-results",
+            latency_data_file,
+        ]
+    )
+
 
 def check_balance():
     """Verify that gRPC load balancing across backends is working correctly.
@@ -214,11 +266,22 @@ def check_balance():
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)
         if not "grpc_server_handled_total" in metrics.text:
-            raise(Exception("no gRPC traffic processed by %s; load balancing problem?")
-                % address)
+            raise (
+                Exception("no gRPC traffic processed by %s; load balancing problem?")
+                % address
+            )
+
 
 def run_cert_checker():
-    run(["./bin/boulder", "cert-checker", "-config", "%s/cert-checker.json" % config_dir])
+    run(
+        [
+            "./bin/boulder",
+            "cert-checker",
+            "-config",
+            "%s/cert-checker.json" % config_dir,
+        ]
+    )
+
 
 if __name__ == "__main__":
     main()

@@ -43,19 +43,26 @@ import socketserver
 import socket
 
 import challtestsrv
+
 challSrv = challtestsrv.ChallTestServer()
+
 
 def test_multidomain():
     chisel2.auth_and_issue([random_domain(), random_domain()])
+
 
 def test_wildcardmultidomain():
     """
     Test issuance for a random domain and a random wildcard domain using DNS-01.
     """
-    chisel2.auth_and_issue([random_domain(), "*."+random_domain()], chall_type="dns-01")
+    chisel2.auth_and_issue(
+        [random_domain(), "*." + random_domain()], chall_type="dns-01"
+    )
+
 
 def test_http_challenge():
     chisel2.auth_and_issue([random_domain(), random_domain()], chall_type="http-01")
+
 
 def rand_http_chall(client):
     d = random_domain()
@@ -66,7 +73,8 @@ def rand_http_chall(client):
         for c in a.body.challenges:
             if isinstance(c.chall, challenges.HTTP01):
                 return d, c.chall
-    raise(Exception("No HTTP-01 challenge found for random domain authz"))
+    raise (Exception("No HTTP-01 challenge found for random domain authz"))
+
 
 def check_challenge_dns_err(chalType):
     """
@@ -84,7 +92,9 @@ def check_challenge_dns_err(chalType):
 
     # Expect a DNS problem with a detail that matches a regex
     expectedProbType = "dns"
-    expectedProbRegex = re.compile(r"SERVFAIL looking up (A|AAAA|TXT|CAA) for {0}".format(d))
+    expectedProbRegex = re.compile(
+        r"SERVFAIL looking up (A|AAAA|TXT|CAA) for {0}".format(d)
+    )
 
     # Try and issue for the domain with the given challenge type.
     failed = False
@@ -103,20 +113,35 @@ def check_challenge_dns_err(chalType):
             elif chalType == "tls-alpn-01":
                 c = chisel2.get_chall(authzr, challenges.TLSALPN01)
             else:
-                raise(Exception("Invalid challenge type requested: {0}".format(challType)))
+                raise (
+                    Exception("Invalid challenge type requested: {0}".format(challType))
+                )
 
             # The failed challenge's error should match expected
             error = c.error
-            if error is None or error.typ != "urn:ietf:params:acme:error:{0}".format(expectedProbType):
-                raise(Exception("Expected {0} prob, got {1}".format(expectedProbType, error.typ)))
+            if error is None or error.typ != "urn:ietf:params:acme:error:{0}".format(
+                expectedProbType
+            ):
+                raise (
+                    Exception(
+                        "Expected {0} prob, got {1}".format(expectedProbType, error.typ)
+                    )
+                )
             if not expectedProbRegex.search(error.detail):
-                raise(Exception("Prob detail did not match expectedProbRegex, got \"{0}\"".format(error.detail)))
+                raise (
+                    Exception(
+                        'Prob detail did not match expectedProbRegex, got "{0}"'.format(
+                            error.detail
+                        )
+                    )
+                )
     finally:
         challSrv.remove_servfail_response(d)
 
     # If there was no exception that means something went wrong. The test should fail.
     if failed is False:
-        raise(Exception("No problem generated issuing for broken DNS identifier"))
+        raise (Exception("No problem generated issuing for broken DNS identifier"))
+
 
 def test_http_challenge_dns_err():
     """
@@ -125,6 +150,7 @@ def test_http_challenge_dns_err():
     """
     check_challenge_dns_err("http-01")
 
+
 def test_dns_challenge_dns_err():
     """
     test_dns_challenge_dns_err tests that a DNS-01 challenge for a domain
@@ -132,12 +158,14 @@ def test_dns_challenge_dns_err():
     """
     check_challenge_dns_err("dns-01")
 
+
 def test_tls_alpn_challenge_dns_err():
     """
     test_tls_alpn_challenge_dns_err tests that a TLS-ALPN-01 challenge for a domain
     with broken DNS produces the correct problem response.
     """
     check_challenge_dns_err("tls-alpn-01")
+
 
 def test_http_challenge_broken_redirect():
     """
@@ -154,12 +182,12 @@ def test_http_challenge_broken_redirect():
     # Create a broken HTTP redirect similar to a sort we see frequently "in the wild"
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     redirect = "http://{0}.well-known/acme-challenge/bad-bad-bad".format(d)
-    challSrv.add_http_redirect(
-        challengePath,
-        redirect)
+    challSrv.add_http_redirect(challengePath, redirect)
 
     # Expect the specialized error message
-    expectedError = "10.77.77.77: Fetching {0}: Invalid host in redirect target \"{1}.well-known\". Check webserver config for missing '/' in redirect target.".format(redirect, d)
+    expectedError = "10.77.77.77: Fetching {0}: Invalid host in redirect target \"{1}.well-known\". Check webserver config for missing '/' in redirect target.".format(
+        redirect, d
+    )
 
     # NOTE(@cpu): Can't use chisel2.expect_problem here because it doesn't let
     # us interrogate the detail message easily.
@@ -170,11 +198,19 @@ def test_http_challenge_broken_redirect():
             c = chisel2.get_chall(authzr, challenges.HTTP01)
             error = c.error
             if error is None or error.typ != "urn:ietf:params:acme:error:connection":
-                raise(Exception("Expected connection prob, got %s" % (error.__str__())))
+                raise (
+                    Exception("Expected connection prob, got %s" % (error.__str__()))
+                )
             if error.detail != expectedError:
-                raise(Exception("Expected prob detail %s, got %s" % (expectedError, error.detail)))
+                raise (
+                    Exception(
+                        "Expected prob detail %s, got %s"
+                        % (expectedError, error.detail)
+                    )
+                )
 
     challSrv.remove_http_redirect(challengePath)
+
 
 def test_failed_validation_limit():
     """
@@ -198,8 +234,10 @@ def test_failed_validation_limit():
             client.poll_and_finalize(order)
         except errors.ValidationError as e:
             pass
-    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
-        lambda: chisel2.auth_and_issue([domain], client=client))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:rateLimited",
+        lambda: chisel2.auth_and_issue([domain], client=client),
+    )
 
 
 def test_http_challenge_loop_redirect():
@@ -211,16 +249,17 @@ def test_http_challenge_loop_redirect():
 
     # Create a HTTP redirect from the challenge's validation path to itself
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    challSrv.add_http_redirect(
-        challengePath,
-        "http://{0}{1}".format(d, challengePath))
+    challSrv.add_http_redirect(challengePath, "http://{0}{1}".format(d, challengePath))
 
     # Issuing for the the name should fail because of the challenge domains's
     # redirect loop.
-    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
-        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"),
+    )
 
     challSrv.remove_http_redirect(challengePath)
+
 
 def test_http_challenge_badport_redirect():
     client = chisel2.make_client()
@@ -233,15 +272,18 @@ def test_http_challenge_badport_redirect():
     # an invalid port.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     challSrv.add_http_redirect(
-        challengePath,
-        "http://{0}:1337{1}".format(d, challengePath))
+        challengePath, "http://{0}:1337{1}".format(d, challengePath)
+    )
 
     # Issuing for the name should fail because of the challenge domain's
     # invalid port redirect.
-    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
-        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"),
+    )
 
     challSrv.remove_http_redirect(challengePath)
+
 
 def test_http_challenge_badhost_redirect():
     client = chisel2.make_client()
@@ -254,15 +296,18 @@ def test_http_challenge_badhost_redirect():
     # hostname.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     challSrv.add_http_redirect(
-        challengePath,
-        "https://127.0.0.1{0}".format(challengePath))
+        challengePath, "https://127.0.0.1{0}".format(challengePath)
+    )
 
     # Issuing for the name should cause a connection error because the redirect
     # domain name is an IP address.
-    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
-        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"),
+    )
 
     challSrv.remove_http_redirect(challengePath)
+
 
 def test_http_challenge_badproto_redirect():
     client = chisel2.make_client()
@@ -275,15 +320,18 @@ def test_http_challenge_badproto_redirect():
     # non-http/https protocol URL.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
     challSrv.add_http_redirect(
-        challengePath,
-        "gopher://{0}{1}".format(d, challengePath))
+        challengePath, "gopher://{0}{1}".format(d, challengePath)
+    )
 
     # Issuing for the name should cause a connection error because the redirect
     # domain name is an IP address.
-    chisel2.expect_problem("urn:ietf:params:acme:error:connection",
-        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:connection",
+        lambda: chisel2.auth_and_issue([d], client=client, chall_type="http-01"),
+    )
 
     challSrv.remove_http_redirect(challengePath)
+
 
 def test_http_challenge_http_redirect():
     client = chisel2.make_client()
@@ -300,10 +348,10 @@ def test_http_challenge_http_redirect():
     # Create a HTTP redirect from the challenge's validation path to some other
     # token path where we have registered the key authorization.
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    redirectPath = "/.well-known/acme-challenge/http-redirect?params=are&important=to&not=lose"
-    challSrv.add_http_redirect(
-        challengePath,
-        "http://{0}{1}".format(d, redirectPath))
+    redirectPath = (
+        "/.well-known/acme-challenge/http-redirect?params=are&important=to&not=lose"
+    )
+    challSrv.add_http_redirect(challengePath, "http://{0}{1}".format(d, redirectPath))
 
     chisel2.auth_and_issue([d], client=client, chall_type="http-01")
 
@@ -316,32 +364,57 @@ def test_http_challenge_http_redirect():
     # There should have been at least two GET requests made to the
     # challtestsrv. There may have been more if remote VAs were configured.
     if len(history) < 2:
-        raise(Exception("Expected at least 2 HTTP request events on challtestsrv, found {1}".format(len(history))))
+        raise (
+            Exception(
+                "Expected at least 2 HTTP request events on challtestsrv, found {1}".format(
+                    len(history)
+                )
+            )
+        )
 
     initialRequests = []
     redirectedRequests = []
 
     for request in history:
-      # All requests should have been over HTTP
-      if request['HTTPS'] is True:
-        raise(Exception("Expected all requests to be HTTP"))
-      # Initial requests should have the expected initial HTTP-01 URL for the challenge
-      if request['URL'] == challengePath:
-        initialRequests.append(request)
-      # Redirected requests should have the expected redirect path URL with all
-      # its parameters
-      elif request['URL'] == redirectPath:
-        redirectedRequests.append(request)
-      else:
-        raise(Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request)))
+        # All requests should have been over HTTP
+        if request["HTTPS"] is True:
+            raise (Exception("Expected all requests to be HTTP"))
+        # Initial requests should have the expected initial HTTP-01 URL for the challenge
+        if request["URL"] == challengePath:
+            initialRequests.append(request)
+        # Redirected requests should have the expected redirect path URL with all
+        # its parameters
+        elif request["URL"] == redirectPath:
+            redirectedRequests.append(request)
+        else:
+            raise (
+                Exception(
+                    "Unexpected request URL {0} in challtestsrv history: {1}".format(
+                        request["URL"], request
+                    )
+                )
+            )
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise(Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests))))
+        raise (
+            Exception(
+                "Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(
+                    validation_attempts, len(initialRequests)
+                )
+            )
+        )
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise(Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests))))
+        raise (
+            Exception(
+                "Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(
+                    validation_attempts, len(redirectedRequests)
+                )
+            )
+        )
+
 
 def test_http_challenge_https_redirect():
     client = chisel2.make_client()
@@ -358,10 +431,10 @@ def test_http_challenge_https_redirect():
     # Create a HTTP redirect from the challenge's validation path to an HTTPS
     # path with some parameters
     challengePath = "/.well-known/acme-challenge/{0}".format(token)
-    redirectPath = "/.well-known/acme-challenge/https-redirect?params=are&important=to&not=lose"
-    challSrv.add_http_redirect(
-        challengePath,
-        "https://{0}{1}".format(d, redirectPath))
+    redirectPath = (
+        "/.well-known/acme-challenge/https-redirect?params=are&important=to&not=lose"
+    )
+    challSrv.add_http_redirect(challengePath, "https://{0}{1}".format(d, redirectPath))
 
     # Also add an A record for the domain pointing to the interface that the
     # HTTPS HTTP-01 challtestsrv is bound.
@@ -376,7 +449,7 @@ def test_http_challenge_https_redirect():
                 error = chall.error
                 if error:
                     problems.append(error.__str__())
-        raise(Exception("validation problem: %s" % "; ".join(problems)))
+        raise (Exception("validation problem: %s" % "; ".join(problems)))
 
     challSrv.remove_http_redirect(challengePath)
     challSrv.remove_a_record(d)
@@ -386,40 +459,71 @@ def test_http_challenge_https_redirect():
 
     # There should have been at least two GET requests made to the challtestsrv by the VA
     if len(history) < 2:
-        raise(Exception("Expected 2 HTTP request events on challtestsrv, found {0}".format(len(history))))
+        raise (
+            Exception(
+                "Expected 2 HTTP request events on challtestsrv, found {0}".format(
+                    len(history)
+                )
+            )
+        )
 
     initialRequests = []
     redirectedRequests = []
 
     for request in history:
-      # Initial requests should have the expected initial HTTP-01 URL for the challenge
-      if request['URL'] == challengePath:
-        initialRequests.append(request)
-      # Redirected requests should have the expected redirect path URL with all
-      # its parameters
-      elif request['URL'] == redirectPath:
-        redirectedRequests.append(request)
-      else:
-        raise(Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request['URL'], request)))
+        # Initial requests should have the expected initial HTTP-01 URL for the challenge
+        if request["URL"] == challengePath:
+            initialRequests.append(request)
+        # Redirected requests should have the expected redirect path URL with all
+        # its parameters
+        elif request["URL"] == redirectPath:
+            redirectedRequests.append(request)
+        else:
+            raise (
+                Exception(
+                    "Unexpected request URL {0} in challtestsrv history: {1}".format(
+                        request["URL"], request
+                    )
+                )
+            )
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise(Exception("Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(initialRequests))))
-     # All initial requests should have been over HTTP
+        raise (
+            Exception(
+                "Expected {0} initial HTTP-01 request events on challtestsrv, found {1}".format(
+                    validation_attempts, len(initialRequests)
+                )
+            )
+        )
+    # All initial requests should have been over HTTP
     for r in initialRequests:
-      if r['HTTPS'] is True:
-        raise(Exception("Expected all initial requests to be HTTP, got %s" % r))
+        if r["HTTPS"] is True:
+            raise (Exception("Expected all initial requests to be HTTP, got %s" % r))
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise(Exception("Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(validation_attempts, len(redirectedRequests))))
+        raise (
+            Exception(
+                "Expected {0} redirected HTTP-01 request events on challtestsrv, found {1}".format(
+                    validation_attempts, len(redirectedRequests)
+                )
+            )
+        )
     # All the redirected requests should have been over HTTPS with the correct
     # SNI value
     for r in redirectedRequests:
-      if r['HTTPS'] is False:
-        raise(Exception("Expected all redirected requests to be HTTPS"))
-      if r['ServerName'] != d:
-        raise(Exception("Expected all redirected requests to have ServerName {0} got \"{1}\"".format(d, r['ServerName'])))
+        if r["HTTPS"] is False:
+            raise (Exception("Expected all redirected requests to be HTTPS"))
+        if r["ServerName"] != d:
+            raise (
+                Exception(
+                    'Expected all redirected requests to have ServerName {0} got "{1}"'.format(
+                        d, r["ServerName"]
+                    )
+                )
+            )
+
 
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -435,11 +539,13 @@ class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
         except:
             pass
 
+
 class SlowHTTPServer(HTTPServer):
     # Override handle_error so we don't print a misleading stack trace when the
     # VA terminates the connection due to timeout.
     def handle_error(self, request, client_address):
         pass
+
 
 def test_http_challenge_timeout():
     """
@@ -451,7 +557,7 @@ def test_http_challenge_timeout():
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
     httpd = SlowHTTPServer(("10.88.88.88", 80), SlowHTTPRequestHandler)
-    thread = threading.Thread(target = httpd.serve_forever)
+    thread = threading.Thread(target=httpd.serve_forever)
     thread.daemon = False
     thread.start()
 
@@ -467,8 +573,10 @@ def test_http_challenge_timeout():
 
     try:
         # We expect a connection timeout error to occur
-        chisel2.expect_problem("urn:ietf:params:acme:error:connection",
-            lambda: chisel2.auth_and_issue([hostname], chall_type="http-01"))
+        chisel2.expect_problem(
+            "urn:ietf:params:acme:error:connection",
+            lambda: chisel2.auth_and_issue([hostname], chall_type="http-01"),
+        )
         end = datetime.datetime.utcnow()
     finally:
         # Shut down the HTTP server gracefully and join on its thread.
@@ -481,12 +589,18 @@ def test_http_challenge_timeout():
     # present the timeout is 20s so adding 2s of padding = 22s)
     expectedDuration = 22
     if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
-        raise(Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds())))
+        raise (
+            Exception(
+                "expected timeout to occur in under {0} seconds. Took {1}".format(
+                    expectedDuration, delta.total_seconds()
+                )
+            )
+        )
 
 
 def test_tls_alpn_challenge():
     # Pick two random domains
-    domains = [random_domain(),random_domain()]
+    domains = [random_domain(), random_domain()]
 
     # Add A records for these domains to ensure the VA's requests are directed
     # to the interface that the challtestsrv has bound for TLS-ALPN-01 challenge
@@ -498,27 +612,33 @@ def test_tls_alpn_challenge():
     for host in domains:
         challSrv.remove_a_record(host)
 
+
 def test_overlapping_wildcard():
     """
     Test issuance for a random domain and a wildcard version of the same domain
     using DNS-01. This should result in *two* distinct authorizations.
     """
     domain = random_domain()
-    domains = [ domain, "*."+domain ]
+    domains = [domain, "*." + domain]
     client = chisel2.make_client(None)
     csr_pem = chisel2.make_csr(domains)
     order = client.new_order(csr_pem)
     authzs = order.authorizations
 
     if len(authzs) != 2:
-        raise(Exception("order for %s had %d authorizations, expected 2" %
-                (domains, len(authzs))))
+        raise (
+            Exception(
+                "order for %s had %d authorizations, expected 2"
+                % (domains, len(authzs))
+            )
+        )
 
     cleanup = chisel2.do_dns_challenges(client, authzs)
     try:
         order = client.poll_and_finalize(order)
     finally:
         cleanup()
+
 
 def test_highrisk_blocklist():
     """
@@ -531,8 +651,11 @@ def test_highrisk_blocklist():
     # blocked.
     domain = "foo.example.org"
     # We expect this to produce a policy problem
-    chisel2.expect_problem("urn:ietf:params:acme:error:rejectedIdentifier",
-        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:rejectedIdentifier",
+        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"),
+    )
+
 
 def test_wildcard_exactblacklist():
     """
@@ -544,8 +667,11 @@ def test_wildcard_exactblacklist():
     # Issuing for "*.le-test.hoffman-andrews.com" should be blocked
     domain = "*.le-test.hoffman-andrews.com"
     # We expect this to produce a policy problem
-    chisel2.expect_problem("urn:ietf:params:acme:error:rejectedIdentifier",
-        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:rejectedIdentifier",
+        lambda: chisel2.auth_and_issue([domain], chall_type="dns-01"),
+    )
+
 
 def test_wildcard_authz_reuse():
     """
@@ -557,7 +683,7 @@ def test_wildcard_authz_reuse():
     client = chisel2.make_client(None)
 
     # Pick a random domain to issue for
-    domains = [ random_domain() ]
+    domains = [random_domain()]
     csr_pem = chisel2.make_csr(domains)
 
     # Submit an order for the name
@@ -577,12 +703,20 @@ def test_wildcard_authz_reuse():
     # We expect all of the returned authorizations to be pending status
     for authz in order.authorizations:
         if authz.body.status != Status("pending"):
-            raise(Exception("order for %s included a non-pending authorization (status: %s) from a previous HTTP-01 order" %
-                    ((domains), str(authz.body.status))))
+            raise (
+                Exception(
+                    "order for %s included a non-pending authorization (status: %s) from a previous HTTP-01 order"
+                    % ((domains), str(authz.body.status))
+                )
+            )
+
 
 def test_bad_overlap_wildcard():
-    chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
-        lambda: chisel2.auth_and_issue(["*.example.com", "www.example.com"]))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:malformed",
+        lambda: chisel2.auth_and_issue(["*.example.com", "www.example.com"]),
+    )
+
 
 def test_duplicate_orders():
     """
@@ -590,9 +724,10 @@ def test_duplicate_orders():
     works without error.
     """
     client = chisel2.make_client(None)
-    domains = [ random_domain() ]
+    domains = [random_domain()]
     chisel2.auth_and_issue(domains, client=client)
     chisel2.auth_and_issue(domains, client=client)
+
 
 def test_order_reuse_failed_authz():
     """
@@ -602,7 +737,7 @@ def test_order_reuse_failed_authz():
     """
 
     client = chisel2.make_client(None)
-    domains = [ random_domain() ]
+    domains = [random_domain()]
     csr_pem = chisel2.make_csr(domains)
 
     order = client.new_order(csr_pem)
@@ -627,20 +762,28 @@ def test_order_reuse_failed_authz():
     # If the poll ended and an authz's status isn't invalid then we reached the
     # deadline, fail the test
     if not authzFailed:
-        raise(Exception("timed out waiting for order %s to become invalid" % firstOrderURI))
+        raise (
+            Exception(
+                "timed out waiting for order %s to become invalid" % firstOrderURI
+            )
+        )
 
     # Make another order with the same domains
     order = client.new_order(csr_pem)
 
     # It should not be the same order as before
     if order.uri == firstOrderURI:
-        raise(Exception("new-order for %s returned a , now-invalid, order" % domains))
+        raise (Exception("new-order for %s returned a , now-invalid, order" % domains))
 
     # We expect all of the returned authorizations to be pending status
     for authz in order.authorizations:
         if authz.body.status != Status("pending"):
-            raise(Exception("order for %s included a non-pending authorization (status: %s) from a previous order" %
-                    ((domains), str(authz.body.status))))
+            raise (
+                Exception(
+                    "order for %s included a non-pending authorization (status: %s) from a previous order"
+                    % ((domains), str(authz.body.status))
+                )
+            )
 
     # We expect the new order can be fulfilled
     cleanup = chisel2.do_http_challenges(client, order.authorizations)
@@ -648,6 +791,7 @@ def test_order_reuse_failed_authz():
         order = client.poll_and_finalize(order)
     finally:
         cleanup()
+
 
 def test_order_finalize_early():
     """
@@ -658,7 +802,7 @@ def test_order_finalize_early():
     client = chisel2.make_client(None)
 
     # Create a random domain and a csr
-    domains = [ random_domain() ]
+    domains = [random_domain()]
     csr_pem = chisel2.make_csr(domains)
 
     # Create an order for the domain
@@ -667,41 +811,67 @@ def test_order_finalize_early():
     deadline = datetime.datetime.now() + datetime.timedelta(seconds=5)
 
     # Finalizing an order early should generate an orderNotReady error.
-    chisel2.expect_problem("urn:ietf:params:acme:error:orderNotReady",
-        lambda: client.finalize_order(order, deadline))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:orderNotReady",
+        lambda: client.finalize_order(order, deadline),
+    )
+
 
 def test_revoke_by_account_unspecified():
     client = chisel2.make_client()
-    cert_file = temppath('test_revoke_by_account_0.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert_file = temppath("test_revoke_by_account_0.pem")
+    order = chisel2.auth_and_issue(
+        [random_domain()], client=client, cert_output=cert_file.name
+    )
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
+    )
 
     reset_akamai_purges()
     client.revoke(josepy.ComparableX509(cert), 0)
 
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "revoked",
+    )
     verify_akamai_purge()
+
 
 def test_revoke_by_account_with_reason():
     client = chisel2.make_client(None)
-    cert_file = temppath('test_revoke_by_account_1.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert_file = temppath("test_revoke_by_account_1.pem")
+    order = chisel2.auth_and_issue(
+        [random_domain()], client=client, cert_output=cert_file.name
+    )
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
+    )
 
     reset_akamai_purges()
 
     # Requesting revocation for keyCompromise should work, but not block the
     # key.
     client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "revoked",
+        "keyCompromise",
+    )
 
     verify_akamai_purge()
 
+
 def test_revoke_by_authz():
     domains = [random_domain()]
-    cert_file = temppath('test_revoke_by_authz.pem')
+    cert_file = temppath("test_revoke_by_authz.pem")
     order = chisel2.auth_and_issue(domains, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
+    )
 
     # create a new client and re-authz
     client = chisel2.make_client(None)
@@ -712,9 +882,16 @@ def test_revoke_by_authz():
     # Even though we requested reason 1 ("keyCompromise"), the result should be
     # 5 ("cessationOfOperation") due to the authorization method.
     client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "cessationOfOperation")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "revoked",
+        "cessationOfOperation",
+    )
 
     verify_akamai_purge()
+
 
 def test_revoke_by_privkey():
     domains = [random_domain()]
@@ -725,7 +902,7 @@ def test_revoke_by_privkey():
     key_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
+        encryption_algorithm=serialization.NoEncryption(),
     )
     csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
 
@@ -737,13 +914,16 @@ def test_revoke_by_privkey():
         order = issue_client.poll_and_finalize(order)
     finally:
         cleanup()
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
+    )
 
     cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_revoke_by_privkey.pem',
-        mode='w+', delete=False)
-    cert_file.write(OpenSSL.crypto.dump_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+        dir=tempdir, suffix=".test_revoke_by_privkey.pem", mode="w+", delete=False
+    )
+    cert_file.write(
+        OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert).decode()
+    )
     cert_file.close()
 
     # Create a new client with the cert key as the account key. We don't
@@ -755,9 +935,16 @@ def test_revoke_by_privkey():
     # Even though we requested reason 0 ("unspecified"), the result should be
     # 1 ("keyCompromise") due to the authorization method.
     revoke_client.revoke(josepy.ComparableX509(cert), 0)
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "revoked",
+        "keyCompromise",
+    )
 
     verify_akamai_purge()
+
 
 def test_double_revocation():
     domains = [random_domain()]
@@ -768,7 +955,7 @@ def test_double_revocation():
     key_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
+        encryption_algorithm=serialization.NoEncryption(),
     )
     csr_pem = acme_crypto_util.make_csr(key_pem, domains, False)
 
@@ -780,13 +967,16 @@ def test_double_revocation():
         order = sub_client.poll_and_finalize(order)
     finally:
         cleanup()
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
+    )
 
     cert_file = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_double_revoke.pem',
-        mode='w+', delete=False)
-    cert_file.write(OpenSSL.crypto.dump_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, cert).decode())
+        dir=tempdir, suffix=".test_double_revoke.pem", mode="w+", delete=False
+    )
+    cert_file.write(
+        OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert).decode()
+    )
     cert_file.close()
 
     # Create a new client with the cert key as the account key. We don't
@@ -797,7 +987,12 @@ def test_double_revocation():
 
     # First revoke for any reason.
     sub_client.revoke(josepy.ComparableX509(cert), 0)
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "revoked",
+    )
     verify_akamai_purge()
 
     # Re-revocation for anything other than keyCompromise should fail.
@@ -806,13 +1001,19 @@ def test_double_revocation():
     except messages.Error:
         pass
     else:
-        raise(Exception("Re-revoked for a bad reason"))
+        raise (Exception("Re-revoked for a bad reason"))
 
     # Re-revocation for keyCompromise should work, as long as it is done
     # via the cert key to demonstrate said compromise.
     reset_akamai_purges()
     cert_client.revoke(josepy.ComparableX509(cert), 1)
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked", "keyCompromise")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "revoked",
+        "keyCompromise",
+    )
     verify_akamai_purge()
 
     # A subsequent attempt should fail, because the cert is already revoked
@@ -822,7 +1023,7 @@ def test_double_revocation():
     except messages.Error:
         pass
     else:
-        raise(Exception("Re-revoked already keyCompromise'd cert"))
+        raise (Exception("Re-revoked already keyCompromise'd cert"))
 
     # The same is true even when using the cert key.
     try:
@@ -830,7 +1031,8 @@ def test_double_revocation():
     except messages.Error:
         pass
     else:
-        raise(Exception("Re-revoked already keyCompromise'd cert"))
+        raise (Exception("Re-revoked already keyCompromise'd cert"))
+
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
@@ -839,52 +1041,59 @@ def test_sct_embedding():
 
     # make sure there is no poison extension
     try:
-        cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
-        raise(Exception("certificate contains CT poison extension"))
+        cert.extensions.get_extension_for_oid(
+            x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3")
+        )
+        raise (Exception("certificate contains CT poison extension"))
     except x509.ExtensionNotFound:
         # do nothing
         pass
 
     # make sure there is a SCT list extension
     try:
-        sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
+        sctList = cert.extensions.get_extension_for_oid(
+            x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2")
+        )
     except x509.ExtensionNotFound:
-        raise(Exception("certificate doesn't contain SCT list extension"))
+        raise (Exception("certificate doesn't contain SCT list extension"))
     if len(sctList.value) != 2:
-        raise(Exception("SCT list contains wrong number of SCTs"))
+        raise (Exception("SCT list contains wrong number of SCTs"))
     for sct in sctList.value:
         if sct.version != x509.certificate_transparency.Version.v1:
-            raise(Exception("SCT contains wrong version"))
+            raise (Exception("SCT contains wrong version"))
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
-            raise(Exception("SCT contains wrong entry type"))
+            raise (Exception("SCT contains wrong entry type"))
+
 
 def test_only_return_existing_reg():
     client = chisel2.uninitialized_client()
     email = "test@not-example.com"
-    client.new_account(messages.NewRegistration.from_data(email=email,
-            terms_of_service_agreed=True))
+    client.new_account(
+        messages.NewRegistration.from_data(email=email, terms_of_service_agreed=True)
+    )
 
     client = chisel2.uninitialized_client(key=client.net.key)
+
     class extendedAcct(dict):
         def json_dumps(self, indent=None):
             return json.dumps(self)
-    acct = extendedAcct({
-        "termsOfServiceAgreed": True,
-        "contact": [email],
-        "onlyReturnExisting": True
-    })
-    resp = client.net.post(client.directory['newAccount'], acct)
+
+    acct = extendedAcct(
+        {"termsOfServiceAgreed": True, "contact": [email], "onlyReturnExisting": True}
+    )
+    resp = client.net.post(client.directory["newAccount"], acct)
     if resp.status_code != 200:
-        raise(Exception("incorrect response returned for onlyReturnExisting"))
+        raise (Exception("incorrect response returned for onlyReturnExisting"))
 
     other_client = chisel2.uninitialized_client()
-    newAcct = extendedAcct({
-        "termsOfServiceAgreed": True,
-        "contact": [email],
-        "onlyReturnExisting": True
-    })
-    chisel2.expect_problem("urn:ietf:params:acme:error:accountDoesNotExist",
-        lambda: other_client.net.post(other_client.directory['newAccount'], newAcct))
+    newAcct = extendedAcct(
+        {"termsOfServiceAgreed": True, "contact": [email], "onlyReturnExisting": True}
+    )
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:accountDoesNotExist",
+        lambda: other_client.net.post(other_client.directory["newAccount"], newAcct),
+    )
+
 
 def BouncerHTTPRequestHandler(redirect, guestlist):
     """
@@ -897,6 +1106,7 @@ def BouncerHTTPRequestHandler(redirect, guestlist):
     expended requests will get a bogus result and have to stand outside in the
     cold
     """
+
     class BouncerHandler(BaseHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             BaseHTTPRequestHandler.__init__(self, *args, **kwargs)
@@ -907,26 +1117,35 @@ def BouncerHTTPRequestHandler(redirect, guestlist):
             self.end_headers()
 
         def do_GET(self):
-            ua = self.headers['User-Agent']
+            ua = self.headers["User-Agent"]
             guestlistAllows = BouncerHandler.guestlist.get(ua, 0)
             # If there is still space on the guestlist for this UA then redirect
             # the request and decrement the guestlist.
             if guestlistAllows > 0:
                 BouncerHandler.guestlist[ua] -= 1
-                self.log_message("BouncerHandler UA {0} is on the Guestlist. {1} requests remaining.".format(ua, BouncerHandler.guestlist[ua]))
+                self.log_message(
+                    "BouncerHandler UA {0} is on the Guestlist. {1} requests remaining.".format(
+                        ua, BouncerHandler.guestlist[ua]
+                    )
+                )
                 self.send_response(302)
                 self.send_header("Location", BouncerHandler.redirect)
                 self.end_headers()
             # Otherwise return a bogus result
             else:
-                self.log_message("BouncerHandler UA {0} has no requests on the Guestlist. Sending request to the curb".format(ua))
+                self.log_message(
+                    "BouncerHandler UA {0} has no requests on the Guestlist. Sending request to the curb".format(
+                        ua
+                    )
+                )
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(u"(• ◡ •) <( VIPs only! )".encode())
+                self.wfile.write("(• ◡ •) <( VIPs only! )".encode())
 
     BouncerHandler.guestlist = guestlist
     BouncerHandler.redirect = redirect
     return BouncerHandler
+
 
 def wait_for_server(addr):
     while True:
@@ -939,6 +1158,7 @@ def wait_for_server(addr):
         except requests.exceptions.ConnectionError:
             pass
         time.sleep(0.5)
+
 
 def multiva_setup(client, guestlist):
     """
@@ -958,7 +1178,7 @@ def multiva_setup(client, guestlist):
         if isinstance(c.chall, challenges.HTTP01):
             chall = c.chall
     if chall is None:
-        raise(Exception("No HTTP-01 challenge found for random domain authz"))
+        raise (Exception("No HTTP-01 challenge found for random domain authz"))
 
     token = chall.encode("token")
 
@@ -981,10 +1201,11 @@ def multiva_setup(client, guestlist):
     # NOTE(@cpu): The pebble-challtestsrv binds 10.77.77.77:80 for HTTP-01
     # challenges so we must use the 10.88.88.88 address for the throw away
     # server for this test and add a mock DNS entry that directs the VA to it.
-    redirect = "http://{0}/.well-known/acme-challenge/{1}".format(
-            redirHostname, token)
-    httpd = HTTPServer(("10.88.88.88", 80), BouncerHTTPRequestHandler(redirect, guestlist))
-    thread = threading.Thread(target = httpd.serve_forever)
+    redirect = "http://{0}/.well-known/acme-challenge/{1}".format(redirHostname, token)
+    httpd = HTTPServer(
+        ("10.88.88.88", 80), BouncerHTTPRequestHandler(redirect, guestlist)
+    )
+    thread = threading.Thread(target=httpd.serve_forever)
     thread.daemon = False
     thread.start()
 
@@ -999,6 +1220,7 @@ def multiva_setup(client, guestlist):
         thread.join()
 
     return hostname, cleanup
+
 
 def test_http_multiva_threshold_pass():
     client = chisel2.make_client()
@@ -1015,6 +1237,7 @@ def test_http_multiva_threshold_pass():
         chisel2.auth_and_issue([hostname], client=client, chall_type="http-01")
     finally:
         cleanup()
+
 
 def test_http_multiva_primary_fail_remote_pass():
     client = chisel2.make_client()
@@ -1036,21 +1259,30 @@ def test_http_multiva_primary_fail_remote_pass():
         # test needs to unpack an `acme_errors.ValidationError` on its own. It
         # might be possible to clean this up in the future.
         if len(e.failed_authzrs) != 1:
-            raise(Exception("expected one failed authz, found {0}".format(len(e.failed_authzrs))))
+            raise (
+                Exception(
+                    "expected one failed authz, found {0}".format(len(e.failed_authzrs))
+                )
+            )
         challs = e.failed_authzrs[0].body.challenges
         httpChall = None
         for chall_body in challs:
             if isinstance(chall_body.chall, challenges.HTTP01):
                 httpChall = chall_body
         if httpChall is None:
-            raise(Exception("no HTTP-01 challenge in failed authz"))
+            raise (Exception("no HTTP-01 challenge in failed authz"))
         if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
-            raise(Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
+            raise (
+                Exception(
+                    "expected unauthorized prob, found {0}".format(httpChall.error.typ)
+                )
+            )
         foundException = True
     finally:
         cleanup()
         if foundException is False:
-            raise(Exception("Overall validation did not fail"))
+            raise (Exception("Overall validation did not fail"))
+
 
 def test_http_multiva_threshold_fail():
     client = chisel2.make_client()
@@ -1072,24 +1304,40 @@ def test_http_multiva_threshold_fail():
     finally:
         cleanup()
     if len(failed_authzrs) != 1:
-        raise(Exception("expected one failed authz, found {0}".format(len(failed_authzrs))))
+        raise (
+            Exception(
+                "expected one failed authz, found {0}".format(len(failed_authzrs))
+            )
+        )
     challs = failed_authzrs[0].body.challenges
     httpChall = None
     for chall_body in challs:
         if isinstance(chall_body.chall, challenges.HTTP01):
             httpChall = chall_body
     if httpChall is None:
-        raise(Exception("no HTTP-01 challenge in failed authz"))
+        raise (Exception("no HTTP-01 challenge in failed authz"))
     if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
-        raise(Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
+        raise (
+            Exception(
+                "expected unauthorized prob, found {0}".format(httpChall.error.typ)
+            )
+        )
     if not httpChall.error.detail.startswith("During secondary validation: "):
-        raise(Exception("expected 'During secondary validation' problem detail, found {0}".format(httpChall.error.detail)))
+        raise (
+            Exception(
+                "expected 'During secondary validation' problem detail, found {0}".format(
+                    httpChall.error.detail
+                )
+            )
+        )
+
 
 class FakeH2ServerHandler(socketserver.BaseRequestHandler):
     """
     FakeH2ServerHandler is a TCP socket handler that writes data representing an
     initial HTTP/2 SETTINGS frame as a response to all received data.
     """
+
     def handle(self):
         # Read whatever the HTTP request was so that the response isn't seen as
         # unsolicited.
@@ -1097,7 +1345,10 @@ class FakeH2ServerHandler(socketserver.BaseRequestHandler):
         # Blast some HTTP/2 bytes onto the socket
         # Truncated example data from taken from the community forum:
         # https://community.letsencrypt.org/t/le-validation-error-if-server-is-in-google-infrastructure/51841
-        self.request.sendall(b"\x00\x00\x12\x04\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x80\x00")
+        self.request.sendall(
+            b"\x00\x00\x12\x04\x00\x00\x00\x00\x00\x00\x03\x00\x00\x00\x80\x00"
+        )
+
 
 def wait_for_tcp_server(addr, port):
     """
@@ -1113,6 +1364,7 @@ def wait_for_tcp_server(addr, port):
         except socket.error:
             time.sleep(0.5)
             pass
+
 
 def test_http2_http01_challenge():
     """
@@ -1135,7 +1387,7 @@ def test_http2_http01_challenge():
     socketserver.TCPServer.allow_reuse_address = True
     # Create, start, and wait for a fake HTTP/2 server.
     server = socketserver.TCPServer(("10.88.88.88", 80), FakeH2ServerHandler)
-    thread = threading.Thread(target = server.serve_forever)
+    thread = threading.Thread(target=server.serve_forever)
     thread.daemon = False
     thread.start()
     wait_for_tcp_server("10.88.88.88", 80)
@@ -1150,13 +1402,21 @@ def test_http2_http01_challenge():
             c = chisel2.get_chall(authzr, challenges.HTTP01)
             error = c.error
             if error is None or error.typ != "urn:ietf:params:acme:error:connection":
-                raise(Exception("Expected connection prob, got %s" % (error.__str__())))
+                raise (
+                    Exception("Expected connection prob, got %s" % (error.__str__()))
+                )
             if not error.detail.endswith(expectedError):
-                raise(Exception("Expected prob detail ending in %s, got %s" % (expectedError, error.detail)))
+                raise (
+                    Exception(
+                        "Expected prob detail ending in %s, got %s"
+                        % (expectedError, error.detail)
+                    )
+                )
     finally:
         server.shutdown()
         server.server_close()
         thread.join()
+
 
 def test_new_order_policy_errs():
     """
@@ -1182,32 +1442,55 @@ def test_new_order_policy_errs():
     except messages.Error as e:
         ok = True
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
-            raise(Exception("Expected rejectedIdentifier type problem, got {0}".format(e.typ)))
-        if e.detail != 'Error creating new order :: Cannot issue for "between-addr.in-addr.arpa": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)':
-            raise(Exception("Order problem detail did not match expected"))
+            raise (
+                Exception(
+                    "Expected rejectedIdentifier type problem, got {0}".format(e.typ)
+                )
+            )
+        if (
+            e.detail
+            != 'Error creating new order :: Cannot issue for "between-addr.in-addr.arpa": The ACME server refuses to issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. Refer to sub-problems for more information.)'
+        ):
+            raise (Exception("Order problem detail did not match expected"))
     if not ok:
-        raise(Exception("Expected problem, got no error"))
+        raise (Exception("Expected problem, got no error"))
+
 
 def test_long_san_no_cn():
     if CONFIG_NEXT:
         return
     try:
-        chisel2.auth_and_issue(["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
+        chisel2.auth_and_issue(
+            ["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"]
+        )
         # if we get to this raise the auth_and_issue call didn't fail, so fail the test
-        raise(Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length"))
+        raise (
+            Exception(
+                "Issuance didn't fail when the only SAN in a certificate was longer than the max CN length"
+            )
+        )
     except messages.Error as e:
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
-            raise(Exception("Expected malformed type problem, got {0}".format(e.typ)))
-        if e.detail != "NewOrder request did not include a SAN short enough to fit in CN":
-            raise(Exception("Problem detail did not match expected"))
+            raise (Exception("Expected malformed type problem, got {0}".format(e.typ)))
+        if (
+            e.detail
+            != "NewOrder request did not include a SAN short enough to fit in CN"
+        ):
+            raise (Exception("Problem detail did not match expected"))
+
 
 def test_delete_unused_challenges():
     order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
     a = order.authorizations[0]
     if len(a.body.challenges) != 1:
-        raise(Exception("too many challenges (%d) left after validation" % len(a.body.challenges)))
+        raise (
+            Exception(
+                "too many challenges (%d) left after validation"
+                % len(a.body.challenges)
+            )
+        )
     if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
-        raise(Exception("wrong challenge type left after validation"))
+        raise (Exception("wrong challenge type left after validation"))
 
     # intentionally fail a challenge
     client = chisel2.make_client()
@@ -1221,10 +1504,15 @@ def test_delete_unused_challenges():
             break
         time.sleep(1)
     if len(a.body.challenges) != 1:
-        raise(Exception("too many challenges (%d) left after failed validation" %
-            len(a.body.challenges)))
+        raise (
+            Exception(
+                "too many challenges (%d) left after failed validation"
+                % len(a.body.challenges)
+            )
+        )
     if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
-        raise(Exception("wrong challenge type left after validation"))
+        raise (Exception("wrong challenge type left after validation"))
+
 
 def test_auth_deactivation_v2():
     client = chisel2.make_client(None)
@@ -1232,17 +1520,24 @@ def test_auth_deactivation_v2():
     order = client.new_order(csr_pem)
     resp = client.deactivate_authorization(order.authorizations[0])
     if resp.body.status is not messages.STATUS_DEACTIVATED:
-        raise(Exception("unexpected authorization status"))
+        raise (Exception("unexpected authorization status"))
 
     order = chisel2.auth_and_issue([random_domain()], client=client)
     resp = client.deactivate_authorization(order.authorizations[0])
     if resp.body.status is not messages.STATUS_DEACTIVATED:
-        raise(Exception("unexpected authorization status"))
+        raise (Exception("unexpected authorization status"))
+
 
 def test_ocsp():
-    cert_file = temppath('test_ocsp.pem')
+    cert_file = temppath("test_ocsp.pem")
     chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "good")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "good",
+    )
+
 
 def test_ct_submission():
     hostname = random_domain()
@@ -1251,8 +1546,16 @@ def test_ct_submission():
 
     # These should correspond to the configured logs in ra.json.
     log_groups = [
-        ["http://boulder.service.consul:4600/submissions", "http://boulder.service.consul:4601/submissions", "http://boulder.service.consul:4602/submissions", "http://boulder.service.consul:4603/submissions"],
-        ["http://boulder.service.consul:4604/submissions", "http://boulder.service.consul:4605/submissions"],
+        [
+            "http://boulder.service.consul:4600/submissions",
+            "http://boulder.service.consul:4601/submissions",
+            "http://boulder.service.consul:4602/submissions",
+            "http://boulder.service.consul:4603/submissions",
+        ],
+        [
+            "http://boulder.service.consul:4604/submissions",
+            "http://boulder.service.consul:4605/submissions",
+        ],
         ["http://boulder.service.consul:4606/submissions"],
         ["http://boulder.service.consul:4607/submissions"],
         ["http://boulder.service.consul:4608/submissions"],
@@ -1265,7 +1568,7 @@ def test_ct_submission():
         "http://boulder.service.consul:4601/submissions",
         "http://boulder.service.consul:4606/submissions",
         "http://boulder.service.consul:4609/submissions",
-     ]
+    ]
 
     # We'd like to enforce strict limits here (exactly 1 submission per group,
     # exactly two submissions overall) but the async nature of the race system
@@ -1284,11 +1587,17 @@ def test_ct_submission():
             if log in final_logs:
                 threshold += 1
             if count > threshold:
-                raise(Exception("Got %d submissions for log %s, expected at most %d" % (count, log, threshold)))
+                raise (
+                    Exception(
+                        "Got %d submissions for log %s, expected at most %d"
+                        % (count, log, threshold)
+                    )
+                )
             group_count += count
         total_count += group_count
     if total_count < 2:
-        raise(Exception("Got %d total submissions, expected at least 2" % total_count))
+        raise (Exception("Got %d total submissions, expected at least 2" % total_count))
+
 
 def check_ocsp_basic_oid(cert_file, issuer_file, url):
     """
@@ -1306,34 +1615,55 @@ def check_ocsp_basic_oid(cert_file, issuer_file, url):
     expected = bytearray.fromhex("06 09 2B 06 01 05 05 07 30 01 01")
     for resp in responses:
         if not expected in bytearray(resp):
-            raise(Exception("Did not receive successful OCSP response: %s doesn't contain %s" %
-                (base64.b64encode(resp), base64.b64encode(expected))))
+            raise (
+                Exception(
+                    "Did not receive successful OCSP response: %s doesn't contain %s"
+                    % (base64.b64encode(resp), base64.b64encode(expected))
+                )
+            )
+
 
 ocsp_exp_unauth_setup_data = {}
+
+
 @register_six_months_ago
 def ocsp_exp_unauth_setup():
     client = chisel2.make_client(None)
-    cert_file = temppath('ocsp_exp_unauth_setup.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+    cert_file = temppath("ocsp_exp_unauth_setup.pem")
+    order = chisel2.auth_and_issue(
+        [random_domain()], client=client, cert_output=cert_file.name
+    )
+    cert = OpenSSL.crypto.load_certificate(
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
+    )
 
     # Since our servers are pretending to be in the past, but the openssl cli
     # isn't, we'll get an expired OCSP response. Just check that it exists;
     # don't do the full verification (which would fail).
-    check_ocsp_basic_oid(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+    check_ocsp_basic_oid(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+    )
     global ocsp_exp_unauth_setup_data
-    ocsp_exp_unauth_setup_data['cert_file'] = cert_file.name
+    ocsp_exp_unauth_setup_data["cert_file"] = cert_file.name
+
 
 def test_ocsp_exp_unauth():
     tries = 0
-    if 'cert_file' not in ocsp_exp_unauth_setup_data:
+    if "cert_file" not in ocsp_exp_unauth_setup_data:
         raise Exception("ocsp_exp_unauth_setup didn't run")
-    cert_file = ocsp_exp_unauth_setup_data['cert_file']
+    cert_file = ocsp_exp_unauth_setup_data["cert_file"]
     last_error = ""
     while tries < 5:
         try:
-            verify_ocsp(cert_file, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
-            raise(Exception("Unexpected return from verify_ocsp"))
+            verify_ocsp(
+                cert_file,
+                "/hierarchy/intermediate-cert-rsa-a.pem",
+                "http://localhost:4002",
+                "XXX",
+            )
+            raise (Exception("Unexpected return from verify_ocsp"))
         except subprocess.CalledProcessError as cpe:
             last_error = cpe.output
             if cpe.output == b"Responder Error: unauthorized (6)\n":
@@ -1344,7 +1674,14 @@ def test_ocsp_exp_unauth():
         tries += 1
         time.sleep(0.25)
     else:
-        raise(Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
+        raise (
+            Exception(
+                "timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(
+                    last_error
+                )
+            )
+        )
+
 
 def test_blocked_key_account():
     # Only config-next has a blocked keys file configured.
@@ -1352,7 +1689,9 @@ def test_blocked_key_account():
         return
 
     with open("test/test-ca.key", "rb") as key_file:
-        key = serialization.load_pem_private_key(key_file.read(), password=None, backend=default_backend())
+        key = serialization.load_pem_private_key(
+            key_file.read(), password=None, backend=default_backend()
+        )
 
     # Create a client with the JWK set to a blocked private key
     jwk = josepy.JWKRSA(key=key)
@@ -1362,17 +1701,35 @@ def test_blocked_key_account():
     # Try to create an account
     testPass = False
     try:
-        client.new_account(messages.NewRegistration.from_data(email=email,
-                terms_of_service_agreed=True))
+        client.new_account(
+            messages.NewRegistration.from_data(
+                email=email, terms_of_service_agreed=True
+            )
+        )
     except acme_errors.Error as e:
         if e.typ != "urn:ietf:params:acme:error:badPublicKey":
-            raise(Exception("problem did not have correct error type, had {0}".format(e.typ)))
+            raise (
+                Exception(
+                    "problem did not have correct error type, had {0}".format(e.typ)
+                )
+            )
         if e.detail != "public key is forbidden":
-            raise(Exception("problem did not have correct error detail, had {0}".format(e.detail)))
+            raise (
+                Exception(
+                    "problem did not have correct error detail, had {0}".format(
+                        e.detail
+                    )
+                )
+            )
         testPass = True
 
     if testPass is False:
-        raise(Exception("expected account creation to fail with Error when using blocked key"))
+        raise (
+            Exception(
+                "expected account creation to fail with Error when using blocked key"
+            )
+        )
+
 
 def test_blocked_key_cert():
     # Only config-next has a blocked keys file configured.
@@ -1395,13 +1752,31 @@ def test_blocked_key_cert():
         order = client.poll_and_finalize(order)
     except acme_errors.Error as e:
         if e.typ != "urn:ietf:params:acme:error:badCSR":
-            raise(Exception("problem did not have correct error type, had {0}".format(e.typ)))
-        if e.detail != "Error finalizing order :: invalid public key in CSR: public key is forbidden":
-            raise(Exception("problem did not have correct error detail, had {0}".format(e.detail)))
+            raise (
+                Exception(
+                    "problem did not have correct error type, had {0}".format(e.typ)
+                )
+            )
+        if (
+            e.detail
+            != "Error finalizing order :: invalid public key in CSR: public key is forbidden"
+        ):
+            raise (
+                Exception(
+                    "problem did not have correct error detail, had {0}".format(
+                        e.detail
+                    )
+                )
+            )
         testPass = True
 
     if testPass is False:
-        raise(Exception("expected cert creation to fail with Error when using blocked key"))
+        raise (
+            Exception(
+                "expected cert creation to fail with Error when using blocked key"
+            )
+        )
+
 
 def test_expiration_mailer():
     email_addr = "integration.%x@letsencrypt.org" % random.randrange(2**16)
@@ -1413,17 +1788,30 @@ def test_expiration_mailer():
     first_reminder = expiry + datetime.timedelta(days=-13)
     last_reminder = expiry + datetime.timedelta(days=-2)
 
-    requests.post("http://localhost:9381/clear", data='')
+    requests.post("http://localhost:9381/clear", data="")
     for time in (no_reminder, first_reminder, last_reminder):
-        print(get_future_output(
-            ["./bin/boulder", "expiration-mailer", "--config", "%s/expiration-mailer.json" % config_dir],
-            time))
+        print(
+            get_future_output(
+                [
+                    "./bin/boulder",
+                    "expiration-mailer",
+                    "--config",
+                    "%s/expiration-mailer.json" % config_dir,
+                ],
+                time,
+            )
+        )
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)
     if mailcount != 2:
-        raise(Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
+        raise (
+            Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
+        )
+
 
 caa_recheck_setup_data = {}
+
+
 @register_twenty_days_ago
 def caa_recheck_setup():
     client = chisel2.make_client()
@@ -1433,28 +1821,30 @@ def caa_recheck_setup():
     numNames = 10
     # Generate numNames subdomains of a random domain
     base_domain = random_domain()
-    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
+    domains = ["{0}.{1}".format(str(n), base_domain) for n in range(numNames)]
     order = chisel2.auth_and_issue(domains, client=client)
 
     global caa_recheck_setup_data
     caa_recheck_setup_data = {
-        'client': client,
-        'authzs': order.authorizations,
+        "client": client,
+        "authzs": order.authorizations,
     }
+
 
 def test_recheck_caa():
     """Request issuance for a domain where we have a old cached authz from when CAA
-       was good. We'll set a new CAA record forbidding issuance; the CAA should
-       recheck CAA and reject the request.
+    was good. We'll set a new CAA record forbidding issuance; the CAA should
+    recheck CAA and reject the request.
     """
-    if 'authzs' not in caa_recheck_setup_data:
-        raise(Exception("CAA authzs not prepared for test_caa"))
+    if "authzs" not in caa_recheck_setup_data:
+        raise (Exception("CAA authzs not prepared for test_caa"))
     domains = []
-    for a in caa_recheck_setup_data['authzs']:
-        response = caa_recheck_setup_data['client']._post(a.uri, None)
+    for a in caa_recheck_setup_data["authzs"]:
+        response = caa_recheck_setup_data["client"]._post(a.uri, None)
         if response.status_code != 200:
-            raise(Exception("Unexpected response for CAA authz: ",
-                response.status_code))
+            raise (
+                Exception("Unexpected response for CAA authz: ", response.status_code)
+            )
         domain = a.body.identifier.value
         domains.append(domain)
 
@@ -1463,19 +1853,27 @@ def test_recheck_caa():
 
     # Request issuance for the previously-issued domain name, which should
     # now be denied due to CAA.
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(domains, client=caa_recheck_setup_data['client']))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue(
+            domains, client=caa_recheck_setup_data["client"]
+        ),
+    )
+
 
 def test_caa_good():
     domain = random_domain()
     challSrv.add_caa_issue(domain, "happy-hacker-ca.invalid")
     chisel2.auth_and_issue([domain])
 
+
 def test_caa_reject():
     domain = random_domain()
     challSrv.add_caa_issue(domain, "sad-hacker-ca.invalid")
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue([domain]))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:caa", lambda: chisel2.auth_and_issue([domain])
+    )
+
 
 def test_caa_extensions():
     goodCAA = "happy-hacker-ca.invalid"
@@ -1483,10 +1881,22 @@ def test_caa_extensions():
     client = chisel2.make_client()
     caa_account_uri = client.net.account.uri
     caa_records = [
-        {"domain": "accounturi.good-caa-reserved.com", "value":"{0}; accounturi={1}".format(goodCAA, caa_account_uri)},
-        {"domain": "dns-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01".format(goodCAA)},
-        {"domain": "http-01-only.good-caa-reserved.com", "value": "{0}; validationmethods=http-01".format(goodCAA)},
-        {"domain": "dns-01-or-http01.good-caa-reserved.com", "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA)},
+        {
+            "domain": "accounturi.good-caa-reserved.com",
+            "value": "{0}; accounturi={1}".format(goodCAA, caa_account_uri),
+        },
+        {
+            "domain": "dns-01-only.good-caa-reserved.com",
+            "value": "{0}; validationmethods=dns-01".format(goodCAA),
+        },
+        {
+            "domain": "http-01-only.good-caa-reserved.com",
+            "value": "{0}; validationmethods=http-01".format(goodCAA),
+        },
+        {
+            "domain": "dns-01-or-http01.good-caa-reserved.com",
+            "value": "{0}; validationmethods=dns-01,http-01".format(goodCAA),
+        },
     ]
     for policy in caa_records:
         challSrv.add_caa_issue(policy["domain"], policy["value"])
@@ -1496,53 +1906,112 @@ def test_caa_extensions():
     if not CONFIG_NEXT:
         return
 
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(["dns-01-only.good-caa-reserved.com"], chall_type="http-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue(
+            ["dns-01-only.good-caa-reserved.com"], chall_type="http-01"
+        ),
+    )
 
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa",
-        lambda: chisel2.auth_and_issue(["http-01-only.good-caa-reserved.com"], chall_type="dns-01"))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue(
+            ["http-01-only.good-caa-reserved.com"], chall_type="dns-01"
+        ),
+    )
 
     ## Note: the additional names are to avoid rate limiting...
-    chisel2.auth_and_issue(["dns-01-only.good-caa-reserved.com", "www.dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
-    chisel2.auth_and_issue(["http-01-only.good-caa-reserved.com", "www.http-01-only.good-caa-reserved.com"], chall_type="http-01")
-    chisel2.auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "dns-01-only.good-caa-reserved.com"], chall_type="dns-01")
-    chisel2.auth_and_issue(["dns-01-or-http-01.good-caa-reserved.com", "http-01-only.good-caa-reserved.com"], chall_type="http-01")
+    chisel2.auth_and_issue(
+        ["dns-01-only.good-caa-reserved.com", "www.dns-01-only.good-caa-reserved.com"],
+        chall_type="dns-01",
+    )
+    chisel2.auth_and_issue(
+        [
+            "http-01-only.good-caa-reserved.com",
+            "www.http-01-only.good-caa-reserved.com",
+        ],
+        chall_type="http-01",
+    )
+    chisel2.auth_and_issue(
+        [
+            "dns-01-or-http-01.good-caa-reserved.com",
+            "dns-01-only.good-caa-reserved.com",
+        ],
+        chall_type="dns-01",
+    )
+    chisel2.auth_and_issue(
+        [
+            "dns-01-or-http-01.good-caa-reserved.com",
+            "http-01-only.good-caa-reserved.com",
+        ],
+        chall_type="http-01",
+    )
 
     ## CAA should fail with an arbitrary account, but succeed with the CAA client.
-    chisel2.expect_problem("urn:ietf:params:acme:error:caa", lambda: chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"]))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:caa",
+        lambda: chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"]),
+    )
     chisel2.auth_and_issue(["accounturi.good-caa-reserved.com"], client=client)
+
 
 def test_new_account():
     """
     Test creating new accounts with no email, empty email, one email, and a
     tuple of multiple emails.
     """
-    for contact in (None, (), ("mailto:single@chisel.com",), ("mailto:one@chisel.com", "mailto:two@chisel.com")):
+    for contact in (
+        None,
+        (),
+        ("mailto:single@chisel.com",),
+        ("mailto:one@chisel.com", "mailto:two@chisel.com"),
+    ):
         # We don't use `chisel2.make_client` or `messages.NewRegistration.from_data`
         # here because they do too much client-side processing to make the
         # contact addresses look "nice".
         client = chisel2.uninitialized_client()
-        result = client.new_account(messages.NewRegistration(contact=contact, terms_of_service_agreed=True))
+        result = client.new_account(
+            messages.NewRegistration(contact=contact, terms_of_service_agreed=True)
+        )
         actual = result.body.contact
         if contact is not None and contact != actual:
-            raise(Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
+            raise (
+                Exception(
+                    "New Account failed: expected contact %s, got %s"
+                    % (contact, actual)
+                )
+            )
+
 
 def test_account_update():
     """
     Create a new ACME client/account with one contact email. Then update the
     account to a different contact emails.
     """
-    for contact in (None, (), ("mailto:single@chisel.com",), ("mailto:one@chisel.com", "mailto:two@chisel.com")):
+    for contact in (
+        None,
+        (),
+        ("mailto:single@chisel.com",),
+        ("mailto:one@chisel.com", "mailto:two@chisel.com"),
+    ):
         # We don't use `chisel2.update_email` or `messages.NewRegistration.from_data`
         # here because they do too much client-side processing to make the
         # contact addresses look "nice".
         print()
         client = chisel2.make_client()
-        update = client.net.account.update(body=client.net.account.body.update(contact=contact))
+        update = client.net.account.update(
+            body=client.net.account.body.update(contact=contact)
+        )
         result = client.update_registration(update)
         actual = result.body.contact
         if contact is not None and contact != actual:
-            raise(Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
+            raise (
+                Exception(
+                    "New Account failed: expected contact %s, got %s"
+                    % (contact, actual)
+                )
+            )
+
 
 def test_renewal_exemption():
     """
@@ -1565,61 +2034,102 @@ def test_renewal_exemption():
     # Renew that one
     chisel2.auth_and_issue(["blog." + base_domain])
     # Final, failed issuance, for another different cert
-    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
-        lambda: chisel2.auth_and_issue(["mail." + base_domain]))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:rateLimited",
+        lambda: chisel2.auth_and_issue(["mail." + base_domain]),
+    )
+
 
 def test_certificates_per_name():
-    chisel2.expect_problem("urn:ietf:params:acme:error:rateLimited",
-        lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:rateLimited",
+        lambda: chisel2.auth_and_issue([random_domain() + ".lim.it"]),
+    )
+
 
 def test_oversized_csr():
     # Number of names is chosen to be one greater than the configured RA/CA maxNames
     numNames = 101
     # Generate numNames subdomains of a random domain
     base_domain = random_domain()
-    domains = [ "{0}.{1}".format(str(n),base_domain) for n in range(numNames) ]
+    domains = ["{0}.{1}".format(str(n), base_domain) for n in range(numNames)]
     # We expect issuing for these domains to produce a malformed error because
     # there are too many names in the request.
-    chisel2.expect_problem("urn:ietf:params:acme:error:malformed",
-            lambda: chisel2.auth_and_issue(domains))
+    chisel2.expect_problem(
+        "urn:ietf:params:acme:error:malformed", lambda: chisel2.auth_and_issue(domains)
+    )
+
 
 def parse_cert(order):
-    return x509.load_pem_x509_certificate(order.fullchain_pem.encode(), default_backend())
+    return x509.load_pem_x509_certificate(
+        order.fullchain_pem.encode(), default_backend()
+    )
+
 
 def test_admin_revoker_cert():
-    cert_file = temppath('test_admin_revoker_cert.pem')
+    cert_file = temppath("test_admin_revoker_cert.pem")
     order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
     parsed_cert = parse_cert(order)
 
     # Revoke certificate by serial
     reset_akamai_purges()
-    run(["./bin/boulder", "admin-revoker", "serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        '%x' % parsed_cert.serial_number, '1'])
+    run(
+        [
+            "./bin/boulder",
+            "admin-revoker",
+            "serial-revoke",
+            "--config",
+            "%s/admin-revoker.json" % config_dir,
+            "%x" % parsed_cert.serial_number,
+            "1",
+        ]
+    )
 
     # Wait for OCSP response to indicate revocation took place
-    verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+    verify_ocsp(
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+        "revoked",
+    )
     verify_akamai_purge()
+
 
 def test_admin_revoker_batched():
     serialFile = tempfile.NamedTemporaryFile(
-        dir=tempdir, suffix='.test_admin_revoker_batched.serials.hex',
-        mode='w+', delete=False)
-    cert_files = [
-        temppath('test_admin_revoker_batched.%d.pem' % x) for x in range(3)
-    ]
+        dir=tempdir,
+        suffix=".test_admin_revoker_batched.serials.hex",
+        mode="w+",
+        delete=False,
+    )
+    cert_files = [temppath("test_admin_revoker_batched.%d.pem" % x) for x in range(3)]
 
     for cert_file in cert_files:
         order = chisel2.auth_and_issue([random_domain()], cert_output=cert_file.name)
         serialFile.write("%x\n" % parse_cert(order).serial_number)
     serialFile.close()
 
-    run(["./bin/boulder", "admin-revoker", "batched-serial-revoke",
-        "--config", "%s/admin-revoker.json" % config_dir,
-        serialFile.name, '0', '2'])
+    run(
+        [
+            "./bin/boulder",
+            "admin-revoker",
+            "batched-serial-revoke",
+            "--config",
+            "%s/admin-revoker.json" % config_dir,
+            serialFile.name,
+            "0",
+            "2",
+        ]
+    )
 
     for cert_file in cert_files:
-        verify_ocsp(cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "revoked")
+        verify_ocsp(
+            cert_file.name,
+            "/hierarchy/intermediate-cert-rsa-a.pem",
+            "http://localhost:4002",
+            "revoked",
+        )
+
 
 def test_sct_embedding():
     order = chisel2.auth_and_issue([random_domain()])
@@ -1627,28 +2137,37 @@ def test_sct_embedding():
 
     # make sure there is no poison extension
     try:
-        cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
-        raise(Exception("certificate contains CT poison extension"))
+        cert.extensions.get_extension_for_oid(
+            x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3")
+        )
+        raise (Exception("certificate contains CT poison extension"))
     except x509.ExtensionNotFound:
         # do nothing
         pass
 
     # make sure there is a SCT list extension
     try:
-        sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
+        sctList = cert.extensions.get_extension_for_oid(
+            x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2")
+        )
     except x509.ExtensionNotFound:
-        raise(Exception("certificate doesn't contain SCT list extension"))
+        raise (Exception("certificate doesn't contain SCT list extension"))
     if len(sctList.value) != 2:
-        raise(Exception("SCT list contains wrong number of SCTs"))
+        raise (Exception("SCT list contains wrong number of SCTs"))
     for sct in sctList.value:
         if sct.version != x509.certificate_transparency.Version.v1:
-            raise(Exception("SCT contains wrong version"))
+            raise (Exception("SCT contains wrong version"))
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
-            raise(Exception("SCT contains wrong entry type"))
+            raise (Exception("SCT contains wrong entry type"))
         delta = sct.timestamp - datetime.datetime.now()
         if abs(delta) > datetime.timedelta(hours=1):
-            raise(Exception("Delta between SCT timestamp and now was too great "
-                "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta)))
+            raise (
+                Exception(
+                    "Delta between SCT timestamp and now was too great "
+                    "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta)
+                )
+            )
+
 
 def test_auth_deactivation():
     client = chisel2.make_client(None)
@@ -1665,14 +2184,18 @@ def test_auth_deactivation():
     if resp.body.status is not messages.STATUS_DEACTIVATED:
         raise Exception("unexpected authorization status")
 
+
 def get_ocsp_response_and_reason(cert_file, issuer_file, url):
     """Returns the ocsp response output and revocation reason."""
     output = verify_ocsp(cert_file, issuer_file, url, None)
-    m = re.search('Reason: (\w+)', output)
+    m = re.search("Reason: (\w+)", output)
     reason = m.group(1) if m is not None else ""
     return output, reason
 
+
 ocsp_resigning_setup_data = {}
+
+
 @register_twenty_days_ago
 def ocsp_resigning_setup():
     """Issue and then revoke a cert in the past.
@@ -1682,41 +2205,57 @@ def ocsp_resigning_setup():
     response.
     """
     client = chisel2.make_client(None)
-    cert_file = temppath('ocsp_resigning_setup.pem')
-    order = chisel2.auth_and_issue([random_domain()], client=client, cert_output=cert_file.name)
+    cert_file = temppath("ocsp_resigning_setup.pem")
+    order = chisel2.auth_and_issue(
+        [random_domain()], client=client, cert_output=cert_file.name
+    )
 
     cert = OpenSSL.crypto.load_certificate(
-        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem)
+        OpenSSL.crypto.FILETYPE_PEM, order.fullchain_pem
+    )
     # Revoke for reason 5: cessationOfOperation
     client.revoke(josepy.ComparableX509(cert), 5)
 
     ocsp_response, reason = get_ocsp_response_and_reason(
-        cert_file.name, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002")
+        cert_file.name,
+        "/hierarchy/intermediate-cert-rsa-a.pem",
+        "http://localhost:4002",
+    )
     global ocsp_resigning_setup_data
     ocsp_resigning_setup_data = {
-        'cert_file': cert_file.name,
-        'response': ocsp_response,
-        'reason': reason
+        "cert_file": cert_file.name,
+        "response": ocsp_response,
+        "reason": reason,
     }
+
 
 def test_ocsp_resigning():
     """Check that, after re-signing an OCSP, the reason is still set."""
-    if 'response' not in ocsp_resigning_setup_data:
+    if "response" not in ocsp_resigning_setup_data:
         raise Exception("ocsp_resigning_setup didn't run")
 
     tries = 0
     while tries < 5:
         resp, reason = get_ocsp_response_and_reason(
-            ocsp_resigning_setup_data['cert_file'], "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002")
-        if resp != ocsp_resigning_setup_data['response']:
+            ocsp_resigning_setup_data["cert_file"],
+            "/hierarchy/intermediate-cert-rsa-a.pem",
+            "http://localhost:4002",
+        )
+        if resp != ocsp_resigning_setup_data["response"]:
             break
         tries += 1
         time.sleep(0.25)
     else:
-        raise(Exception("timed out waiting for re-signed OCSP response for certificate"))
+        raise (
+            Exception("timed out waiting for re-signed OCSP response for certificate")
+        )
 
-    if reason != ocsp_resigning_setup_data['reason']:
-        raise(Exception("re-signed ocsp response has different reason %s expected %s" % (
-            reason, ocsp_resigning_setup_data['reason'])))
+    if reason != ocsp_resigning_setup_data["reason"]:
+        raise (
+            Exception(
+                "re-signed ocsp response has different reason %s expected %s"
+                % (reason, ocsp_resigning_setup_data["reason"])
+            )
+        )
     if reason != "cessationOfOperation":
-        raise(Exception("re-signed ocsp response has wrong reason %s" % reason))
+        raise (Exception("re-signed ocsp response has wrong reason %s" % reason))

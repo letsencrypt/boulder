@@ -12,13 +12,12 @@ start, or die before ^C.
 import errno
 import os
 import sys
-import time
 
-sys.path.append('./test')
+sys.path.append("./test")
 import startservers
 
 if not startservers.install(race_detection=False):
-    raise(Exception("failed to build"))
+    raise (Exception("failed to build"))
 
 # Setup issuance hierarchy
 startservers.setupHierarchy()
