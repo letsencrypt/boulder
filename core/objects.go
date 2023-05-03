@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -118,15 +119,13 @@ type Registration struct {
 	Status AcmeStatus `json:"status"`
 }
 
-// ValidationRecord represents a validation attempt against a specific URL/hostname
-// and the IP addresses that were resolved and used
+// ValidationRecord represents a validation attempt against a specific URL and
+// the IP addresses that were resolved and used
 type ValidationRecord struct {
 	// SimpleHTTP only
-	URL string `json:"url,omitempty"`
+	URL string `json:"url"`
 
 	// Shared
-	Hostname          string   `json:"hostname"`
-	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
 	AddressUsed       net.IP   `json:"addressUsed,omitempty"`
 	// AddressesTried contains a list of addresses tried before the `AddressUsed`.
@@ -144,6 +143,33 @@ type ValidationRecord struct {
 	//   ...
 	// }
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
+}
+
+type RehydratedValidationRecordFields struct {
+	Hostname string
+	Port     string
+}
+
+// RehydrateHostnameAndPort does a thing.
+func RehydrateHostnameAndPort(input string) (*RehydratedValidationRecordFields, error) {
+	url, err := url.Parse(input)
+	if err != nil {
+		return &RehydratedValidationRecordFields{}, fmt.Errorf("Could not rehydrate Hostname and Port from URL %v", input)
+	}
+	scheme := url.Scheme
+	hostname := url.Hostname()
+	if hostname == "" {
+		return &RehydratedValidationRecordFields{}, fmt.Errorf("Could not parse hostname from %v\n", input)
+
+	}
+	port := url.Port()
+	if scheme == "https" && port == "" {
+		port = "443"
+	} else if scheme == "http" && port == "" {
+		port = "80"
+	}
+
+	return &RehydratedValidationRecordFields{Hostname: hostname, Port: port}, nil
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -225,7 +251,11 @@ func (ch Challenge) RecordsSane() bool {
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
-			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
+			rhp, err := RehydrateHostnameAndPort(rec.URL)
+			if err != nil {
+				return false
+			}
+			if rec.URL == "" || rec.AddressUsed == nil || rhp.Hostname == "" || rhp.Port == "" ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}
@@ -237,7 +267,11 @@ func (ch Challenge) RecordsSane() bool {
 		if ch.ValidationRecord[0].URL != "" {
 			return false
 		}
-		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
+		rhp, err := RehydrateHostnameAndPort(ch.ValidationRecord[0].URL)
+		if err != nil {
+			return false
+		}
+		if rhp.Hostname == "" || rhp.Port == "" ||
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
@@ -245,7 +279,11 @@ func (ch Challenge) RecordsSane() bool {
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
-		if ch.ValidationRecord[0].Hostname == "" {
+		rhp, err := RehydrateHostnameAndPort(ch.ValidationRecord[0].URL)
+		if err != nil {
+			return false
+		}
+		if rhp.Hostname == "" {
 			return false
 		}
 		return true
