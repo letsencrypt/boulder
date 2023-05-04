@@ -237,8 +237,8 @@ type SyslogConfig struct {
 	SyslogLevel int `validate:"min=-1,max=7"`
 }
 
-// ServiceDomain contains the service and domain name the gRPC client will use
-// to construct a SRV DNS query to lookup backends.
+// ServiceDomain contains the service and domain name the gRPC or BDNS client
+// will use to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
 	Service string `validate:"required"`
 	Domain  string `validate:"required"`
@@ -265,8 +265,8 @@ type GRPCClientConfig struct {
 	// the 'Domain' is 'service.consul'. The expected dNSName to be
 	// authenticated in the server certificate would be 'foo.service.consul'.
 	//
-	// Note: The 'proto' field of the SRV record MUST be 'tcp' and the 'port'
-	// field MUST be contain valid port. In a Consul configuration file you
+	// Note: The 'proto' field of the SRV record MUST contain 'tcp' and the
+	// 'port' field MUST be a valid port. In a Consul configuration file you
 	// would specify 'foo.service.consul' as:
 	//
 	// services {
@@ -493,4 +493,49 @@ type OpenTelemetryConfig struct {
 	// ensure that any external API users don't influence our own sampling
 	// decisions.
 	DisableParentSampler bool
+}
+
+// DNSProvider contains the configuration for a DNS provider in the bdns package
+// which supports dynamic reloading of its backends.
+type DNSProvider struct {
+	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
+	// to be used for resolution of DNS backends. If the address contains a
+	// hostname the BDNS will resolve it via the system DNS. If the address
+	// contains a port, the client will use it directly, otherwise port 53 is
+	// used.
+	DNSAuthority string `validate:"required,ip|hostname|hostname_port"`
+
+	// SRVLookup contains the service and domain name used to construct a SRV
+	// DNS query to lookup DNS backends. For example: if the resource record is
+	// 'unbound.service.consul', then the 'Service' is 'unbound' and the
+	// 'Domain' is 'service.consul'. The expected dNSName to be authenticated in
+	// the server certificate would be 'unbound.service.consul'.
+	//
+	// Note: The 'proto' field of the SRV record MUST contain 'udp' and the
+	// 'port' field MUST be a valid port. In a Consul configuration file you
+	// would specify 'unbound.service.consul' as:
+	//
+	// services {
+	//   id      = "unbound-1" // Must be unique
+	//   name    = "unbound"
+	//   address = "10.77.77.77"
+	//   port    = 53
+	//   tags    = ["udp"]
+	// }
+	//
+	// services {
+	//   id      = "unbound-2" // Must be unique
+	//   name    = "unbound"
+	//   address = "10.88.88.88"
+	//   port    = 53
+	//   tags    = ["udp"]
+	// }
+	//
+	// If you've added the above to your Consul configuration file (and reloaded
+	// Consul) then you should be able to resolve the following dig query:
+	//
+	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
+	// 1 1 8080 0a585858.addr.dc1.consul.
+	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
+	SRVLookup ServiceDomain `validate:"required"`
 }

@@ -3,7 +3,12 @@
 		"userAgent": "boulder-remote-a",
 		"debugAddr": ":8011",
 		"dnsTries": 3,
-		"dnsResolver": "service.consul",
+		"dnsDynamicResolver": {
+			"srvLookup": {
+				"service": "dns",
+				"domain": "service.consul"
+			}
+		},
 		"dnsTimeout": "1s",
 		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",

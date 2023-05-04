@@ -27,6 +27,7 @@ type Config struct {
 		// will be turned into 1.
 		DNSTries                  int
 		DNSResolver               string `validate:"required"`
+		DNSProvider               *cmd.DNSProvider
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
@@ -93,11 +94,26 @@ func main() {
 	}
 	clk := cmd.Clock()
 
-	var servers bdns.ServerProvider
-	if c.VA.DNSResolver == "" {
-		cmd.Fail("Config key 'dnsresolver' is required")
+	// TODO(#6868) Remove this once all instances of VA.DNSResolver have been
+	// removed from production config files.
+	if c.VA.DNSResolver != "" && c.VA.DNSProvider != nil {
+		cmd.Fail("Cannot specify both 'dnsResolver' and dnsDynamicResolver")
 	}
-	servers, err = bdns.StartDynamicProvider(c.VA.DNSResolver, 60*time.Second)
+
+	if c.VA.DNSResolver == "" && c.VA.DNSProvider == nil {
+		cmd.Fail("Must specify either 'dnsResolver' or dnsDynamicResolver")
+	}
+
+	if c.VA.DNSProvider == nil && c.VA.DNSResolver != "" {
+		c.VA.DNSProvider = &cmd.DNSProvider{
+			SRVLookup: cmd.ServiceDomain{
+				Domain: c.VA.DNSResolver,
+			},
+		}
+	}
+
+	var servers bdns.ServerProvider
+	servers, err = bdns.StartDynamicProvider(c.VA.DNSProvider, 60*time.Second)
 	cmd.FailOnError(err, "Couldn't start dynamic DNS server resolver")
 	defer servers.Stop()
 
