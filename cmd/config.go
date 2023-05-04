@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/letsencrypt/boulder/config"
@@ -491,4 +492,21 @@ type OpenTelemetryConfig struct {
 	// is being overloaded, and we otherwise handle sampling in the collectors.
 	// See otel trace.ParentBased and trace.TraceIDRatioBased for details.
 	SampleRatio float64
+}
+
+// OpenTelemetryHTTPConfig configures the otelhttp server tracing.
+type OpenTelemetryHTTPConfig struct {
+	// TrustIncomingSpans should only be set true if there's a trusted service
+	// connecting to Boulder, such as a load balancer that's tracing-aware.
+	// If false, the default, incoming traces won't be set as the parent.
+	// See otelhttp.WithPublicEndpoint
+	TrustIncomingSpans bool
+}
+
+func (c *OpenTelemetryHTTPConfig) Options() []otelhttp.Option {
+	var options []otelhttp.Option
+	if !c.TrustIncomingSpans {
+		options = append(options, otelhttp.WithPublicEndpoint())
+	}
+	return options
 }

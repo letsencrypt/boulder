@@ -158,6 +158,8 @@ type Config struct {
 
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
+
+	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
 type CacheConfig struct {
@@ -518,7 +520,7 @@ func main() {
 	logger.Infof("WFE using key policy: %#v", kp)
 
 	logger.Infof("Server running, listening on %s....", c.WFE.ListenAddress)
-	handler := wfe.Handler(stats)
+	handler := wfe.Handler(stats, c.OpenTelemetryHTTPConfig.Options()...)
 
 	srv := http.Server{
 		ReadTimeout:  30 * time.Second,
