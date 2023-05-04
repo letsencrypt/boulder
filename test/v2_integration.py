@@ -18,7 +18,6 @@ from cryptography.hazmat.primitives import serialization
 
 import chisel2
 
-# from helpers import *
 from helpers import (
     random_domain,
     temppath,
