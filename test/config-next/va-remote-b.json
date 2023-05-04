@@ -3,7 +3,7 @@
 		"userAgent": "boulder-remote-b",
 		"debugAddr": ":8012",
 		"dnsTries": 3,
-		"dnsDynamicResolver": {
+		"DNSProvider": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "dns",

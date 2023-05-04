@@ -97,11 +97,11 @@ func main() {
 	// TODO(#6868) Remove this once all instances of VA.DNSResolver have been
 	// removed from production config files.
 	if c.VA.DNSResolver != "" && c.VA.DNSProvider != nil {
-		cmd.Fail("Cannot specify both 'dnsResolver' and dnsDynamicResolver")
+		cmd.Fail("Cannot specify both 'dnsResolver' and dnsProvider")
 	}
 
 	if c.VA.DNSResolver == "" && c.VA.DNSProvider == nil {
-		cmd.Fail("Must specify either 'dnsResolver' or dnsDynamicResolver")
+		cmd.Fail("Must specify either 'dnsResolver' or dnsProvider")
 	}
 
 	if c.VA.DNSProvider == nil && c.VA.DNSResolver != "" {
