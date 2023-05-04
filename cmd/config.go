@@ -502,7 +502,7 @@ type DNSProvider struct {
 	// to be used for resolution of DNS backends. If the address contains a
 	// hostname it will be resolved via the system DNS. If the address contains
 	// a port, the client will use it directly, otherwise port 53 is assumed.
-	DNSAuthority string `validate:"required,ip|hostname|hostname_port"`
+	DNSAuthority string `validate:"omitempty,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name used to construct a SRV
 	// DNS query to lookup DNS backends. For example: if the resource record is

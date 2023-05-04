@@ -26,8 +26,8 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries                  int
-		DNSResolver               string `validate:"required"`
-		DNSProvider               *cmd.DNSProvider
+		DNSResolver               string           `validate:"required_without=DNSProvider"`
+		DNSProvider               *cmd.DNSProvider `validate:"required_without=DNSResolver"`
 		DNSTimeout                string
 		DNSAllowLoopbackAddresses bool
 
