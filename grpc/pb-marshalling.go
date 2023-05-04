@@ -137,14 +137,31 @@ func ValidationRecordToPB(record core.ValidationRecord) (*corepb.ValidationRecor
 	if err != nil {
 		return nil, err
 	}
-	return &corepb.ValidationRecord{
-		Hostname:          record.Hostname,
-		Port:              record.Port,
-		AddressesResolved: addrs,
-		AddressUsed:       addrUsed,
-		Url:               record.URL,
-		AddressesTried:    addrsTried,
-	}, nil
+
+	if record.URL != "" {
+		// If we're in here, it is assumed that this is an HTTP-01 challenge.
+		rvrf, err := core.TransformURLIntoHostnameAndPort(record.URL)
+		if err != nil {
+			return &corepb.ValidationRecord{}, err
+		}
+		return &corepb.ValidationRecord{
+			Hostname:          rvrf.Hostname,
+			Port:              rvrf.Port,
+			AddressesResolved: addrs,
+			AddressUsed:       addrUsed,
+			Url:               record.URL,
+			AddressesTried:    addrsTried,
+		}, nil
+	} else {
+		return &corepb.ValidationRecord{
+			Hostname:          record.Hostname,
+			Port:              record.Port,
+			AddressesResolved: addrs,
+			AddressUsed:       addrUsed,
+			Url:               record.URL,
+			AddressesTried:    addrsTried,
+		}, nil
+	}
 }
 
 func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRecord, err error) {
@@ -164,14 +181,31 @@ func PBToValidationRecord(in *corepb.ValidationRecord) (record core.ValidationRe
 	if err != nil {
 		return
 	}
-	return core.ValidationRecord{
-		Hostname:          in.Hostname,
-		Port:              in.Port,
-		AddressesResolved: addrs,
-		AddressUsed:       addrUsed,
-		URL:               in.Url,
-		AddressesTried:    addrsTried,
-	}, nil
+
+	if record.URL != "" {
+		// If we're in here, it is assumed that this is an HTTP-01 challenge.
+		rvrf, err := core.TransformURLIntoHostnameAndPort(record.URL)
+		if err != nil {
+			return core.ValidationRecord{}, err
+		}
+		return core.ValidationRecord{
+			Hostname:          rvrf.Hostname,
+			Port:              rvrf.Port,
+			AddressesResolved: addrs,
+			AddressUsed:       addrUsed,
+			URL:               in.Url,
+			AddressesTried:    addrsTried,
+		}, nil
+	} else {
+		return core.ValidationRecord{
+			Hostname:          in.Hostname,
+			Port:              in.Port,
+			AddressesResolved: addrs,
+			AddressUsed:       addrUsed,
+			URL:               in.Url,
+			AddressesTried:    addrsTried,
+		}, nil
+	}
 }
 
 func ValidationResultToPB(records []core.ValidationRecord, prob *probs.ProblemDetails) (*vapb.ValidationResult, error) {
