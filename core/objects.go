@@ -123,9 +123,11 @@ type Registration struct {
 // the IP addresses that were resolved and used
 type ValidationRecord struct {
 	// SimpleHTTP only
-	URL string `json:"url"`
+	URL string `json:"url,omitempty"`
 
 	// Shared
+	Hostname          string   `json:"hostname"`
+	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
 	AddressUsed       net.IP   `json:"addressUsed,omitempty"`
 	// AddressesTried contains a list of addresses tried before the `AddressUsed`.
@@ -151,6 +153,7 @@ type RehydratedValidationRecordFields struct {
 }
 
 // RehydrateHostnameAndPort does a thing.
+// TODO(Phil) Only do this for the HTTP challenge type
 func RehydrateHostnameAndPort(input string) (*RehydratedValidationRecordFields, error) {
 	url, err := url.Parse(input)
 	if err != nil {
@@ -267,11 +270,7 @@ func (ch Challenge) RecordsSane() bool {
 		if ch.ValidationRecord[0].URL != "" {
 			return false
 		}
-		rhp, err := RehydrateHostnameAndPort(ch.ValidationRecord[0].URL)
-		if err != nil {
-			return false
-		}
-		if rhp.Hostname == "" || rhp.Port == "" ||
+		if ch.ValidationRecord[0].Hostname == "" || ch.ValidationRecord[0].Port == "" ||
 			ch.ValidationRecord[0].AddressUsed == nil || len(ch.ValidationRecord[0].AddressesResolved) == 0 {
 			return false
 		}
@@ -279,11 +278,7 @@ func (ch Challenge) RecordsSane() bool {
 		if len(ch.ValidationRecord) > 1 {
 			return false
 		}
-		rhp, err := RehydrateHostnameAndPort(ch.ValidationRecord[0].URL)
-		if err != nil {
-			return false
-		}
-		if rhp.Hostname == "" {
+		if ch.ValidationRecord[0].Hostname == "" {
 			return false
 		}
 		return true
