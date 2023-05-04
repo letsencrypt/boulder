@@ -358,8 +358,6 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 	// Construct a base validation record with the validation target's
 	// information.
 	record := core.ValidationRecord{
-		Hostname:          target.host,
-		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
 	}

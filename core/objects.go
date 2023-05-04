@@ -152,17 +152,22 @@ type RehydratedValidationRecordFields struct {
 	Port     string
 }
 
-// RehydrateHostnameAndPort does a thing.
+// TransformURLIntoHostnameAndPort does a thing.
 // TODO(Phil) Only do this for the HTTP challenge type
-func RehydrateHostnameAndPort(input string) (*RehydratedValidationRecordFields, error) {
+func TransformURLIntoHostnameAndPort(input string) (*RehydratedValidationRecordFields, error) {
 	url, err := url.Parse(input)
 	if err != nil {
-		return &RehydratedValidationRecordFields{}, fmt.Errorf("Could not rehydrate Hostname and Port from URL %v", input)
+		return &RehydratedValidationRecordFields{}, fmt.Errorf("Could not parse url %v", input)
 	}
+
 	scheme := url.Scheme
+	if scheme != "http" && scheme != "https" {
+		return &RehydratedValidationRecordFields{}, fmt.Errorf("Invalid protocol scheme. Only \"http\" and \"https\" protocol schemes are supported, not %q", scheme)
+	}
+
 	hostname := url.Hostname()
 	if hostname == "" {
-		return &RehydratedValidationRecordFields{}, fmt.Errorf("Could not parse hostname from %v\n", input)
+		return &RehydratedValidationRecordFields{}, fmt.Errorf("Could not parse hostname: %v\n", input)
 
 	}
 	port := url.Port()
@@ -170,6 +175,10 @@ func RehydrateHostnameAndPort(input string) (*RehydratedValidationRecordFields, 
 		port = "443"
 	} else if scheme == "http" && port == "" {
 		port = "80"
+	} else {
+		// This shouldn't happen but defensively return an internal server error in
+		// case it does.
+		return &RehydratedValidationRecordFields{}, fmt.Errorf("unable to determine HTTP/HTTPS request port")
 	}
 
 	return &RehydratedValidationRecordFields{Hostname: hostname, Port: port}, nil
@@ -254,7 +263,7 @@ func (ch Challenge) RecordsSane() bool {
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
-			rhp, err := RehydrateHostnameAndPort(rec.URL)
+			rhp, err := TransformURLIntoHostnameAndPort(rec.URL)
 			if err != nil {
 				return false
 			}
