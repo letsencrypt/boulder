@@ -483,14 +483,12 @@ type OpenTelemetryConfig struct {
 	Endpoint string
 
 	// SampleRatio is the ratio of new traces to head sample.
-	// This only affects new traces with no parent with its own sampling decision.
+	// This only affects new traces without a parent with its own sampling
+	// decision, and otherwise use the parent's sampling decision.
+	//
 	// Set to something between 0 and 1, where 1 is sampling all traces.
-	// See otel trace.TraceIDRatioBased for details.
+	// This is primarily meant as a pressure relief if the Endpoint we connect to
+	// is being overloaded, and we otherwise handle sampling in the collectors.
+	// See otel trace.ParentBased and trace.TraceIDRatioBased for details.
 	SampleRatio float64
-
-	// If true, disable the parent sampler.
-	// On external-facing services like the WFE, setting this true will
-	// ensure that any external API users don't influence our own sampling
-	// decisions.
-	DisableParentSampler bool
 }
