@@ -500,9 +500,8 @@ type OpenTelemetryConfig struct {
 type DNSProvider struct {
 	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
 	// to be used for resolution of DNS backends. If the address contains a
-	// hostname the BDNS will resolve it via the system DNS. If the address
-	// contains a port, the client will use it directly, otherwise port 53 is
-	// used.
+	// hostname it will be resolved via the system DNS. If the address contains
+	// a port, the client will use it directly, otherwise port 53 is assumed.
 	DNSAuthority string `validate:"required,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name used to construct a SRV
@@ -534,8 +533,8 @@ type DNSProvider struct {
 	// If you've added the above to your Consul configuration file (and reloaded
 	// Consul) then you should be able to resolve the following dig query:
 	//
-	// $ dig @10.55.55.10 -t SRV _foo._tcp.service.consul +short
-	// 1 1 8080 0a585858.addr.dc1.consul.
-	// 1 1 8080 0a4d4d4d.addr.dc1.consul.
+	// $ dig @10.55.55.10 -t SRV _unbound._udp.service.consul +short
+	// 1 1 53 0a585858.addr.dc1.consul.
+	// 1 1 53 0a4d4d4d.addr.dc1.consul.
 	SRVLookup ServiceDomain `validate:"required"`
 }

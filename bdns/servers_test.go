@@ -2,6 +2,8 @@ package bdns
 
 import (
 	"testing"
+
+	"github.com/letsencrypt/boulder/test"
 )
 
 func Test_validateServerAddress(t *testing.T) {
@@ -56,6 +58,39 @@ func Test_validateServerAddress(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("formatServer() error = %v, wantErr %v", err, tt.wantErr)
 				return
+			}
+		})
+	}
+}
+
+func Test_resolveDNSAuthority(t *testing.T) {
+	type args struct {
+		d string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{"IP4 with port", args{"10.10.10.10:53"}, "10.10.10.10:53", false},
+		{"IP4 without port", args{"10.10.10.10"}, "10.10.10.10:53", false},
+		{"IP6 with port and brackets", args{"[2606:4700:4700::1111]:53"}, "[2606:4700:4700::1111]:53", false},
+		{"IP6 without port", args{"2606:4700:4700::1111"}, "[2606:4700:4700::1111]:53", false},
+		{"IP6 with brackets without port", args{"[2606:4700:4700::1111]"}, "", true},
+		{"hostname with port", args{"localhost:53"}, "127.0.0.1:53", false},
+		{"hostname without port", args{"localhost"}, "127.0.0.1:53", false},
+		{"malformed hostname with port", args{"localhost:foo"}, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := resolveDNSAuthority(tt.args.d)
+			if (err != nil) != tt.wantErr {
+				test.AssertNotError(t, err, "returned unexpected error")
+				return
+			}
+			if got != tt.want {
+				test.AssertEquals(t, got, tt.want)
 			}
 		})
 	}

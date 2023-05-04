@@ -106,12 +106,9 @@ type dynamicProvider struct {
 	// contains a port, the client will use it directly, otherwise port 53 is
 	// used.
 	dnsAuthority string
-	// service is the name of the service to look up SRV records for. This will
-	// be used as the basis of a SRV query to locate DNS services on the domain.
-	// If not specified, "dns" will be used.
+	// service is the service name to look up SRV records for within the domain.
 	service string
-	// domain is the domain to look up SRV records for. This will be used as the
-	// basis of a SRV query to locate DNS services on the domain.
+	// domain is the name to look up SRV records within.
 	domain string
 	// A map of IP addresses (results of A record lookups for SRV Targets) to
 	// ports (Port fields in SRV records) associated with those addresses.
@@ -123,8 +120,8 @@ type dynamicProvider struct {
 	updateCounter *prometheus.CounterVec
 }
 
-// resolveDNSAuthority resolves the DNS authority to use for resolution of DNS
-// backends. The DNS authority can be specified as a hostname or IP address,
+// resolveDNSAuthority resolves the DNS authority to use for resolution of other
+// DNS backends. The DNS authority can be specified as a hostname or IP address,
 // with or without a port. If the authority is specified as a hostname it will
 // be resolved via the system DNS. If the authority is specified as an IP
 // address it will be used directly, defaulting to port 53 if no port is
