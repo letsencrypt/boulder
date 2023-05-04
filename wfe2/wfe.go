@@ -73,7 +73,7 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 
 	// Draft or likely-to-change paths
-	renewalInfoPath = getAPIPrefix + "draft-ietf-acme-ari-00/renewalInfo/"
+	renewalInfoPath = "/draft-ietf-acme-ari-01/renewalInfo/"
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"

@@ -88,10 +88,32 @@ func checkARI(baseURL string, certPath string) (*core.RenewalInfo, error) {
 	return ri, nil
 }
 
+func getARIURL(directory string) (string, error) {
+	resp, err := http.Get(directory)
+	if err != nil {
+		return "", err
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var dir struct {
+		RenewalInfo string `json:"renewalInfo"`
+	}
+	err = json.Unmarshal(body, &dir)
+	if err != nil {
+		return "", err
+	}
+
+	return dir.RenewalInfo, nil
+}
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `
-checkari [-url https://acme.api/ari/endpoint] FILE [FILE]...
+checkari [-url https://acme.api/directory] FILE [FILE]...
 
 Tool for querying ARI. Provide a list of filenames for certificates in PEM
 format, and this tool will query for and output the suggested renewal window
@@ -100,16 +122,22 @@ for each certificate.
 `)
 		flag.PrintDefaults()
 	}
-	url := flag.String("url", "https://acme-v02.api.letsencrypt.org/get/draft-ietf-acme-ari-00/renewalInfo/", "ACME server's RenewalInfo URL")
+	directory := flag.String("url", "https://acme-v02.api.letsencrypt.org/directory", "ACME server's Directory URL")
 	flag.Parse()
 	if len(flag.Args()) == 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
+	ariPath, err := getARIURL(*directory)
+	if err != nil {
+		fmt.Println(err.Error())
+		os.Exit(1)
+	}
+
 	for _, cert := range flag.Args() {
 		fmt.Printf("%s:\n", cert)
-		window, err := checkARI(*url, cert)
+		window, err := checkARI(ariPath, cert)
 		if err != nil {
 			fmt.Printf("\t%s\n", err)
 		} else {
