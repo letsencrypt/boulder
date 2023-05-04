@@ -86,10 +86,10 @@ def main():
     args = parser.parse_args()
 
     if not (args.run_chisel or args.custom or args.run_go is not None):
-        raise (Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom"))
+        raise Exception("must run at least one of the letsencrypt or chisel tests with --chisel, --gotest, or --custom")
 
     if not startservers.install(race_detection=race_detection):
-        raise (Exception("failed to build"))
+        raise Exception("failed to build")
 
     # Setup issuance hierarchy
     startservers.setupHierarchy()
@@ -99,18 +99,18 @@ def main():
 
         six_months_ago = now + datetime.timedelta(days=-30 * 6)
         if not startservers.start(fakeclock=fakeclock(six_months_ago)):
-            raise (Exception("startservers failed (mocking six months ago)"))
+            raise Exception("startservers failed (mocking six months ago)")
         setup_six_months_ago()
         startservers.stop()
 
         twenty_days_ago = now + datetime.timedelta(days=-20)
         if not startservers.start(fakeclock=fakeclock(twenty_days_ago)):
-            raise (Exception("startservers failed (mocking twenty days ago)"))
+            raise Exception("startservers failed (mocking twenty days ago)")
         setup_twenty_days_ago()
         startservers.stop()
 
     if not startservers.start(fakeclock=None):
-        raise (Exception("startservers failed"))
+        raise Exception("startservers failed")
 
     if args.run_chisel:
         run_chisel(args.test_case_filter)
@@ -133,7 +133,7 @@ def main():
         run_loadtest()
 
     if not startservers.check():
-        raise (Exception("startservers.check failed"))
+        raise Exception("startservers.check failed")
 
     # This test is flaky, so it's temporarily disabled.
     # TODO(#4583): Re-enable this test.
@@ -219,7 +219,7 @@ def check_balance():
     for address in addresses:
         metrics = requests.get("http://%s/metrics" % address)
         if "grpc_server_handled_total" not in metrics.text:
-            raise (Exception("no gRPC traffic processed by %s; load balancing problem?") % address)
+            raise Exception("no gRPC traffic processed by %s; load balancing problem?" % address)
 
 
 def run_cert_checker():

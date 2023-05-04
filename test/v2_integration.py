@@ -84,7 +84,7 @@ def rand_http_chall(client):
         for c in a.body.challenges:
             if isinstance(c.chall, challenges.HTTP01):
                 return d, c.chall
-    raise (Exception("No HTTP-01 challenge found for random domain authz"))
+    raise Exception("No HTTP-01 challenge found for random domain authz")
 
 
 def check_challenge_dns_err(chalType):
@@ -122,20 +122,20 @@ def check_challenge_dns_err(chalType):
             elif chalType == "tls-alpn-01":
                 c = chisel2.get_chall(authzr, challenges.TLSALPN01)
             else:
-                raise (Exception("Invalid challenge type requested: {0}".format(chalType)))
+                raise Exception("Invalid challenge type requested: {0}".format(chalType))
 
             # The failed challenge's error should match expected
             error = c.error
             if error is None or error.typ != "urn:ietf:params:acme:error:{0}".format(expectedProbType):
-                raise (Exception("Expected {0} prob, got {1}".format(expectedProbType, error.typ)))
+                raise Exception("Expected {0} prob, got {1}".format(expectedProbType, error.typ))
             if not expectedProbRegex.search(error.detail):
-                raise (Exception('Prob detail did not match expectedProbRegex, got "{0}"'.format(error.detail)))
+                raise Exception('Prob detail did not match expectedProbRegex, got "{0}"'.format(error.detail))
     finally:
         challSrv.remove_servfail_response(d)
 
     # If there was no exception that means something went wrong. The test should fail.
     if failed is False:
-        raise (Exception("No problem generated issuing for broken DNS identifier"))
+        raise Exception("No problem generated issuing for broken DNS identifier")
 
 
 def test_http_challenge_dns_err():
@@ -191,9 +191,9 @@ def test_http_challenge_broken_redirect():
             c = chisel2.get_chall(authzr, challenges.HTTP01)
             error = c.error
             if error is None or error.typ != "urn:ietf:params:acme:error:connection":
-                raise (Exception("Expected connection prob, got %s" % (error.__str__())))
+                raise Exception("Expected connection prob, got %s" % (error.__str__()))
             if error.detail != expectedError:
-                raise (Exception("Expected prob detail %s, got %s" % (expectedError, error.detail)))
+                raise Exception("Expected prob detail %s, got %s" % (expectedError, error.detail))
 
     challSrv.remove_http_redirect(challengePath)
 
@@ -327,7 +327,7 @@ def test_http_challenge_http_redirect():
     # There should have been at least two GET requests made to the
     # challtestsrv. There may have been more if remote VAs were configured.
     if len(history) < 2:
-        raise (Exception("Expected at least 2 HTTP request events on challtestsrv, found {0}".format(history)))
+        raise Exception("Expected at least 2 HTTP request events on challtestsrv, found {0}".format(history))
 
     initialRequests = []
     redirectedRequests = []
@@ -335,7 +335,7 @@ def test_http_challenge_http_redirect():
     for request in history:
         # All requests should have been over HTTP
         if request["HTTPS"] is True:
-            raise (Exception("Expected all requests to be HTTP"))
+            raise Exception("Expected all requests to be HTTP")
         # Initial requests should have the expected initial HTTP-01 URL for the challenge
         if request["URL"] == challengePath:
             initialRequests.append(request)
@@ -344,15 +344,15 @@ def test_http_challenge_http_redirect():
         elif request["URL"] == redirectPath:
             redirectedRequests.append(request)
         else:
-            raise (Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request["URL"], request)))
+            raise Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request["URL"], request))
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise (Exception("Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(len(initialRequests))))
+        raise Exception("Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(len(initialRequests)))
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise (Exception("Expected an redirected HTTP-01 request events on challtestsrv, found {0}".format(len(redirectedRequests))))
+        raise Exception("Expected an redirected HTTP-01 request events on challtestsrv, found {0}".format(len(redirectedRequests)))
 
 
 def test_http_challenge_https_redirect():
@@ -386,7 +386,7 @@ def test_http_challenge_https_redirect():
                 error = chall.error
                 if error:
                     problems.append(error.__str__())
-        raise (Exception("validation problem: %s" % "; ".join(problems)))
+        raise Exception("validation problem: %s" % "; ".join(problems))
 
     challSrv.remove_http_redirect(challengePath)
     challSrv.remove_a_record(d)
@@ -396,7 +396,7 @@ def test_http_challenge_https_redirect():
 
     # There should have been at least two GET requests made to the challtestsrv by the VA
     if len(history) < 2:
-        raise (Exception("Expected 2 HTTP request events on challtestsrv, found {0}".format(len(history))))
+        raise Exception("Expected 2 HTTP request events on challtestsrv, found {0}".format(len(history)))
 
     initialRequests = []
     redirectedRequests = []
@@ -410,26 +410,26 @@ def test_http_challenge_https_redirect():
         elif request["URL"] == redirectPath:
             redirectedRequests.append(request)
         else:
-            raise (Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request["URL"], request)))
+            raise Exception("Unexpected request URL {0} in challtestsrv history: {1}".format(request["URL"], request))
 
     # There should have been at least 1 initial HTTP-01 validation request.
     if len(initialRequests) < 1:
-        raise (Exception("Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(len(initialRequests))))
+        raise Exception("Expected an initial HTTP-01 request events on challtestsrv, found {0}".format(len(initialRequests)))
     # All initial requests should have been over HTTP
     for r in initialRequests:
         if r["HTTPS"] is True:
-            raise (Exception("Expected all initial requests to be HTTP, got %s" % r))
+            raise Exception("Expected all initial requests to be HTTP, got %s" % r)
 
     # There should have been at least 1 redirected HTTP request for each VA
     if len(redirectedRequests) < 1:
-        raise (Exception("Expected a redirected HTTP-01 request events on challtestsrv, found {0}".format(len(redirectedRequests))))
+        raise Exception("Expected a redirected HTTP-01 request events on challtestsrv, found {0}".format(len(redirectedRequests)))
     # All the redirected requests should have been over HTTPS with the correct
     # SNI value
     for r in redirectedRequests:
         if r["HTTPS"] is False:
-            raise (Exception("Expected all redirected requests to be HTTPS"))
+            raise Exception("Expected all redirected requests to be HTTPS")
         if r["ServerName"] != d:
-            raise (Exception('Expected all redirected requests to have ServerName {0} got "{1}"'.format(d, r["ServerName"])))
+            raise Exception('Expected all redirected requests to have ServerName {0} got "{1}"'.format(d, r["ServerName"]))
 
 
 class SlowHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -493,7 +493,7 @@ def test_http_challenge_timeout():
     # present the timeout is 20s so adding 2s of padding = 22s)
     expectedDuration = 22
     if delta.total_seconds() == 0 or delta.total_seconds() > expectedDuration:
-        raise (Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds())))
+        raise Exception("expected timeout to occur in under {0} seconds. Took {1}".format(expectedDuration, delta.total_seconds()))
 
 
 def test_tls_alpn_challenge():
@@ -524,7 +524,7 @@ def test_overlapping_wildcard():
     authzs = order.authorizations
 
     if len(authzs) != 2:
-        raise (Exception("order for %s had %d authorizations, expected 2" % (domains, len(authzs))))
+        raise Exception("order for %s had %d authorizations, expected 2" % (domains, len(authzs)))
 
     cleanup = chisel2.do_dns_challenges(client, authzs)
     try:
@@ -590,7 +590,7 @@ def test_wildcard_authz_reuse():
     # We expect all of the returned authorizations to be pending status
     for authz in order.authorizations:
         if authz.body.status != Status("pending"):
-            raise (Exception("order for %s included a non-pending authorization (status: %s) from a previous HTTP-01 order" % ((domains), str(authz.body.status))))
+            raise Exception("order for %s included a non-pending authorization (status: %s) from a previous HTTP-01 order" % ((domains), str(authz.body.status)))
 
 
 def test_bad_overlap_wildcard():
@@ -641,19 +641,19 @@ def test_order_reuse_failed_authz():
     # If the poll ended and an authz's status isn't invalid then we reached the
     # deadline, fail the test
     if not authzFailed:
-        raise (Exception("timed out waiting for order %s to become invalid" % firstOrderURI))
+        raise Exception("timed out waiting for order %s to become invalid" % firstOrderURI)
 
     # Make another order with the same domains
     order = client.new_order(csr_pem)
 
     # It should not be the same order as before
     if order.uri == firstOrderURI:
-        raise (Exception("new-order for %s returned a , now-invalid, order" % domains))
+        raise Exception("new-order for %s returned a , now-invalid, order" % domains)
 
     # We expect all of the returned authorizations to be pending status
     for authz in order.authorizations:
         if authz.body.status != Status("pending"):
-            raise (Exception("order for %s included a non-pending authorization (status: %s) from a previous order" % ((domains), str(authz.body.status))))
+            raise Exception("order for %s included a non-pending authorization (status: %s) from a previous order" % ((domains), str(authz.body.status)))
 
     # We expect the new order can be fulfilled
     cleanup = chisel2.do_http_challenges(client, order.authorizations)
@@ -810,7 +810,7 @@ def test_double_revocation():
     except messages.Error:
         pass
     else:
-        raise (Exception("Re-revoked for a bad reason"))
+        raise Exception("Re-revoked for a bad reason")
 
     # Re-revocation for keyCompromise should work, as long as it is done
     # via the cert key to demonstrate said compromise.
@@ -826,7 +826,7 @@ def test_double_revocation():
     except messages.Error:
         pass
     else:
-        raise (Exception("Re-revoked already keyCompromise'd cert"))
+        raise Exception("Re-revoked already keyCompromise'd cert")
 
     # The same is true even when using the cert key.
     try:
@@ -834,7 +834,7 @@ def test_double_revocation():
     except messages.Error:
         pass
     else:
-        raise (Exception("Re-revoked already keyCompromise'd cert"))
+        raise Exception("Re-revoked already keyCompromise'd cert")
 
 
 def test_only_return_existing_reg():
@@ -851,7 +851,7 @@ def test_only_return_existing_reg():
     acct = extendedAcct({"termsOfServiceAgreed": True, "contact": [email], "onlyReturnExisting": True})
     resp = client.net.post(client.directory["newAccount"], acct)
     if resp.status_code != 200:
-        raise (Exception("incorrect response returned for onlyReturnExisting"))
+        raise Exception("incorrect response returned for onlyReturnExisting")
 
     other_client = chisel2.uninitialized_client()
     newAcct = extendedAcct({"termsOfServiceAgreed": True, "contact": [email], "onlyReturnExisting": True})
@@ -933,7 +933,7 @@ def multiva_setup(client, guestlist):
         if isinstance(c.chall, challenges.HTTP01):
             chall = c.chall
     if chall is None:
-        raise (Exception("No HTTP-01 challenge found for random domain authz"))
+        raise Exception("No HTTP-01 challenge found for random domain authz")
 
     token = chall.encode("token")
 
@@ -1012,21 +1012,21 @@ def test_http_multiva_primary_fail_remote_pass():
         # test needs to unpack an `acme_errors.ValidationError` on its own. It
         # might be possible to clean this up in the future.
         if len(e.failed_authzrs) != 1:
-            raise (Exception("expected one failed authz, found {0}".format(len(e.failed_authzrs))))
+            raise Exception("expected one failed authz, found {0}".format(len(e.failed_authzrs)))
         challs = e.failed_authzrs[0].body.challenges
         httpChall = None
         for chall_body in challs:
             if isinstance(chall_body.chall, challenges.HTTP01):
                 httpChall = chall_body
         if httpChall is None:
-            raise (Exception("no HTTP-01 challenge in failed authz"))
+            raise Exception("no HTTP-01 challenge in failed authz")
         if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
-            raise (Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
+            raise Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ))
         foundException = True
     finally:
         cleanup()
         if foundException is False:
-            raise (Exception("Overall validation did not fail"))
+            raise Exception("Overall validation did not fail")
 
 
 def test_http_multiva_threshold_fail():
@@ -1049,18 +1049,18 @@ def test_http_multiva_threshold_fail():
     finally:
         cleanup()
     if len(failed_authzrs) != 1:
-        raise (Exception("expected one failed authz, found {0}".format(len(failed_authzrs))))
+        raise Exception("expected one failed authz, found {0}".format(len(failed_authzrs)))
     challs = failed_authzrs[0].body.challenges
     httpChall = None
     for chall_body in challs:
         if isinstance(chall_body.chall, challenges.HTTP01):
             httpChall = chall_body
     if httpChall is None:
-        raise (Exception("no HTTP-01 challenge in failed authz"))
+        raise Exception("no HTTP-01 challenge in failed authz")
     if httpChall.error.typ != "urn:ietf:params:acme:error:unauthorized":
-        raise (Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ)))
+        raise Exception("expected unauthorized prob, found {0}".format(httpChall.error.typ))
     if not httpChall.error.detail.startswith("During secondary validation: "):
-        raise (Exception("expected 'During secondary validation' problem detail, found {0}".format(httpChall.error.detail)))
+        raise Exception("expected 'During secondary validation' problem detail, found {0}".format(httpChall.error.detail))
 
 
 class FakeH2ServerHandler(socketserver.BaseRequestHandler):
@@ -1131,9 +1131,9 @@ def test_http2_http01_challenge():
             c = chisel2.get_chall(authzr, challenges.HTTP01)
             error = c.error
             if error is None or error.typ != "urn:ietf:params:acme:error:connection":
-                raise (Exception("Expected connection prob, got %s" % (error.__str__())))
+                raise Exception("Expected connection prob, got %s" % (error.__str__()))
             if not error.detail.endswith(expectedError):
-                raise (Exception("Expected prob detail ending in %s, got %s" % (expectedError, error.detail)))
+                raise Exception("Expected prob detail ending in %s, got %s" % (expectedError, error.detail))
     finally:
         server.shutdown()
         server.server_close()
@@ -1164,15 +1164,15 @@ def test_new_order_policy_errs():
     except messages.Error as e:
         ok = True
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
-            raise (Exception("Expected rejectedIdentifier type problem, got {0}".format(e.typ)))
+            raise Exception("Expected rejectedIdentifier type problem, got {0}".format(e.typ))
         if e.detail != (
             'Error creating new order :: Cannot issue for "between-addr.in-addr.arpa": The ACME server refuses to '
             + "issue a certificate for this domain name, because it is forbidden by policy (and 1 more problems. "
             + "Refer to sub-problems for more information.)"
         ):
-            raise (Exception("Order problem detail did not match expected"))
+            raise Exception("Order problem detail did not match expected")
     if not ok:
-        raise (Exception("Expected problem, got no error"))
+        raise Exception("Expected problem, got no error")
 
 
 def test_long_san_no_cn():
@@ -1181,21 +1181,21 @@ def test_long_san_no_cn():
     try:
         chisel2.auth_and_issue(["".join(random.choice(string.ascii_uppercase) for x in range(61)) + ".com"])
         # if we get to this raise the auth_and_issue call didn't fail, so fail the test
-        raise (Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length"))
+        raise Exception("Issuance didn't fail when the only SAN in a certificate was longer than the max CN length")
     except messages.Error as e:
         if e.typ != "urn:ietf:params:acme:error:rejectedIdentifier":
-            raise (Exception("Expected malformed type problem, got {0}".format(e.typ)))
+            raise Exception("Expected malformed type problem, got {0}".format(e.typ))
         if e.detail != "NewOrder request did not include a SAN short enough to fit in CN":
-            raise (Exception("Problem detail did not match expected"))
+            raise Exception("Problem detail did not match expected")
 
 
 def test_delete_unused_challenges():
     order = chisel2.auth_and_issue([random_domain()], chall_type="dns-01")
     a = order.authorizations[0]
     if len(a.body.challenges) != 1:
-        raise (Exception("too many challenges (%d) left after validation" % len(a.body.challenges)))
+        raise Exception("too many challenges (%d) left after validation" % len(a.body.challenges))
     if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
-        raise (Exception("wrong challenge type left after validation"))
+        raise Exception("wrong challenge type left after validation")
 
     # intentionally fail a challenge
     client = chisel2.make_client()
@@ -1209,9 +1209,9 @@ def test_delete_unused_challenges():
             break
         time.sleep(1)
     if len(a.body.challenges) != 1:
-        raise (Exception("too many challenges (%d) left after failed validation" % len(a.body.challenges)))
+        raise Exception("too many challenges (%d) left after failed validation" % len(a.body.challenges))
     if not isinstance(a.body.challenges[0].chall, challenges.DNS01):
-        raise (Exception("wrong challenge type left after validation"))
+        raise Exception("wrong challenge type left after validation")
 
 
 def test_auth_deactivation_v2():
@@ -1220,12 +1220,12 @@ def test_auth_deactivation_v2():
     order = client.new_order(csr_pem)
     resp = client.deactivate_authorization(order.authorizations[0])
     if resp.body.status is not messages.STATUS_DEACTIVATED:
-        raise (Exception("unexpected authorization status"))
+        raise Exception("unexpected authorization status")
 
     order = chisel2.auth_and_issue([random_domain()], client=client)
     resp = client.deactivate_authorization(order.authorizations[0])
     if resp.body.status is not messages.STATUS_DEACTIVATED:
-        raise (Exception("unexpected authorization status"))
+        raise Exception("unexpected authorization status")
 
 
 def test_ocsp():
@@ -1279,11 +1279,11 @@ def test_ct_submission():
             if log in final_logs:
                 threshold += 1
             if count > threshold:
-                raise (Exception("Got %d submissions for log %s, expected at most %d" % (count, log, threshold)))
+                raise Exception("Got %d submissions for log %s, expected at most %d" % (count, log, threshold))
             group_count += count
         total_count += group_count
     if total_count < 2:
-        raise (Exception("Got %d total submissions, expected at least 2" % total_count))
+        raise Exception("Got %d total submissions, expected at least 2" % total_count)
 
 
 def check_ocsp_basic_oid(cert_file, issuer_file, url):
@@ -1302,7 +1302,7 @@ def check_ocsp_basic_oid(cert_file, issuer_file, url):
     expected = bytearray.fromhex("06 09 2B 06 01 05 05 07 30 01 01")
     for resp in responses:
         if expected not in bytearray(resp):
-            raise (Exception("Did not receive successful OCSP response: %s doesn't contain %s" % (base64.b64encode(resp), base64.b64encode(expected))))
+            raise Exception("Did not receive successful OCSP response: %s doesn't contain %s" % (base64.b64encode(resp), base64.b64encode(expected)))
 
 
 ocsp_exp_unauth_setup_data = {}
@@ -1332,7 +1332,7 @@ def test_ocsp_exp_unauth():
     while tries < 5:
         try:
             verify_ocsp(cert_file, "/hierarchy/intermediate-cert-rsa-a.pem", "http://localhost:4002", "XXX")
-            raise (Exception("Unexpected return from verify_ocsp"))
+            raise Exception("Unexpected return from verify_ocsp")
         except subprocess.CalledProcessError as cpe:
             last_error = cpe.output
             if cpe.output == b"Responder Error: unauthorized (6)\n":
@@ -1343,7 +1343,7 @@ def test_ocsp_exp_unauth():
         tries += 1
         time.sleep(0.25)
     else:
-        raise (Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error)))
+        raise Exception("timed out waiting for unauthorized OCSP response for expired certificate. Last error: {}".format(last_error))
 
 
 def test_blocked_key_account():
@@ -1365,13 +1365,13 @@ def test_blocked_key_account():
         client.new_account(messages.NewRegistration.from_data(email=email, terms_of_service_agreed=True))
     except acme_errors.Error as e:
         if e.typ != "urn:ietf:params:acme:error:badPublicKey":
-            raise (Exception("problem did not have correct error type, had {0}".format(e.typ)))
+            raise Exception("problem did not have correct error type, had {0}".format(e.typ))
         if e.detail != "public key is forbidden":
-            raise (Exception("problem did not have correct error detail, had {0}".format(e.detail)))
+            raise Exception("problem did not have correct error detail, had {0}".format(e.detail))
         testPass = True
 
     if testPass is False:
-        raise (Exception("expected account creation to fail with Error when using blocked key"))
+        raise Exception("expected account creation to fail with Error when using blocked key")
 
 
 def test_blocked_key_cert():
@@ -1395,13 +1395,13 @@ def test_blocked_key_cert():
         order = client.poll_and_finalize(order)
     except acme_errors.Error as e:
         if e.typ != "urn:ietf:params:acme:error:badCSR":
-            raise (Exception("problem did not have correct error type, had {0}".format(e.typ)))
+            raise Exception("problem did not have correct error type, had {0}".format(e.typ))
         if e.detail != "Error finalizing order :: invalid public key in CSR: public key is forbidden":
-            raise (Exception("problem did not have correct error detail, had {0}".format(e.detail)))
+            raise Exception("problem did not have correct error detail, had {0}".format(e.detail))
         testPass = True
 
     if testPass is False:
-        raise (Exception("expected cert creation to fail with Error when using blocked key"))
+        raise Exception("expected cert creation to fail with Error when using blocked key")
 
 
 def test_expiration_mailer():
@@ -1420,7 +1420,7 @@ def test_expiration_mailer():
     resp = requests.get("http://localhost:9381/count?to=%s" % email_addr)
     mailcount = int(resp.text)
     if mailcount != 2:
-        raise (Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount))
+        raise Exception("\nExpiry mailer failed: expected 2 emails, got %d" % mailcount)
 
 
 caa_recheck_setup_data = {}
@@ -1451,12 +1451,12 @@ def test_recheck_caa():
     recheck CAA and reject the request.
     """
     if "authzs" not in caa_recheck_setup_data:
-        raise (Exception("CAA authzs not prepared for test_caa"))
+        raise Exception("CAA authzs not prepared for test_caa")
     domains = []
     for a in caa_recheck_setup_data["authzs"]:
         response = caa_recheck_setup_data["client"]._post(a.uri, None)
         if response.status_code != 200:
-            raise (Exception("Unexpected response for CAA authz: ", response.status_code))
+            raise Exception("Unexpected response for CAA authz: ", response.status_code)
         domain = a.body.identifier.value
         domains.append(domain)
 
@@ -1527,7 +1527,7 @@ def test_new_account():
         result = client.new_account(messages.NewRegistration(contact=contact, terms_of_service_agreed=True))
         actual = result.body.contact
         if contact is not None and contact != actual:
-            raise (Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
+            raise Exception("New Account failed: expected contact %s, got %s" % (contact, actual))
 
 
 def test_account_update():
@@ -1545,7 +1545,7 @@ def test_account_update():
         result = client.update_registration(update)
         actual = result.body.contact
         if contact is not None and contact != actual:
-            raise (Exception("New Account failed: expected contact %s, got %s" % (contact, actual)))
+            raise Exception("New Account failed: expected contact %s, got %s" % (contact, actual))
 
 
 def test_renewal_exemption():
@@ -1627,7 +1627,7 @@ def test_sct_embedding():
     # make sure there is no poison extension
     try:
         cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.3"))
-        raise (Exception("certificate contains CT poison extension"))
+        raise Exception("certificate contains CT poison extension")
     except x509.ExtensionNotFound:
         # do nothing
         pass
@@ -1636,17 +1636,17 @@ def test_sct_embedding():
     try:
         sctList = cert.extensions.get_extension_for_oid(x509.ObjectIdentifier("1.3.6.1.4.1.11129.2.4.2"))
     except x509.ExtensionNotFound:
-        raise (Exception("certificate doesn't contain SCT list extension"))
+        raise Exception("certificate doesn't contain SCT list extension")
     if len(sctList.value) != 2:
-        raise (Exception("SCT list contains wrong number of SCTs"))
+        raise Exception("SCT list contains wrong number of SCTs")
     for sct in sctList.value:
         if sct.version != x509.certificate_transparency.Version.v1:
-            raise (Exception("SCT contains wrong version"))
+            raise Exception("SCT contains wrong version")
         if sct.entry_type != x509.certificate_transparency.LogEntryType.PRE_CERTIFICATE:
-            raise (Exception("SCT contains wrong entry type"))
+            raise Exception("SCT contains wrong entry type")
         delta = sct.timestamp - datetime.datetime.now()
         if abs(delta) > datetime.timedelta(hours=1):
-            raise (Exception("Delta between SCT timestamp and now was too great " "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta)))
+            raise Exception("Delta between SCT timestamp and now was too great " "%s vs %s (%s)" % (sct.timestamp, datetime.datetime.now(), delta))
 
 
 def test_auth_deactivation():
@@ -1710,9 +1710,9 @@ def test_ocsp_resigning():
         tries += 1
         time.sleep(0.25)
     else:
-        raise (Exception("timed out waiting for re-signed OCSP response for certificate"))
+        raise Exception("timed out waiting for re-signed OCSP response for certificate")
 
     if reason != ocsp_resigning_setup_data["reason"]:
-        raise (Exception("re-signed ocsp response has different reason %s expected %s" % (reason, ocsp_resigning_setup_data["reason"])))
+        raise Exception("re-signed ocsp response has different reason %s expected %s" % (reason, ocsp_resigning_setup_data["reason"]))
     if reason != "cessationOfOperation":
-        raise (Exception("re-signed ocsp response has wrong reason %s" % reason))
+        raise Exception("re-signed ocsp response has wrong reason %s" % reason)

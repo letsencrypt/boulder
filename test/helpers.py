@@ -90,7 +90,7 @@ def ocsp_verify(cert_file, issuer_file, ocsp_response):
     verify_failure = "Response Verify Failure"
     if re.search(verify_failure, output):
         print(output)
-        raise (Exception("OCSP verify failure"))
+        raise Exception("OCSP verify failure")
     return output
 
 
@@ -101,7 +101,7 @@ def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
     # Verify all responses are the same
     for resp in responses:
         if resp != responses[0]:
-            raise (Exception("OCSP responses differed: %s vs %s" % (base64.b64encode(responses[0]), base64.b64encode(resp))))
+            raise Exception("OCSP responses differed: %s vs %s" % (base64.b64encode(responses[0]), base64.b64encode(resp)))
 
     # Check response is for the correct certificate and is correct
     # status
@@ -110,11 +110,11 @@ def verify_ocsp(cert_file, issuer_file, url, status="revoked", reason=None):
     if status is not None:
         if not re.search("%s: %s" % (cert_file, status), verify_output):
             print(verify_output)
-            raise (Exception("OCSP response wasn't '%s'" % status))
+            raise Exception("OCSP response wasn't '%s'" % status)
     if reason is not None:
         if not re.search("Reason: %s" % reason, verify_output):
             print(verify_output)
-            raise (Exception("OCSP response wasn't '%s'" % reason))
+            raise Exception("OCSP response wasn't '%s'" % reason)
     return verify_output
 
 
@@ -127,7 +127,7 @@ def verify_akamai_purge():
     while True:
         time.sleep(0.05)
         if time.time() > deadline:
-            raise (Exception("Timed out waiting for Akamai purge"))
+            raise Exception("Timed out waiting for Akamai purge")
         response = requests.get("http://localhost:6789/debug/get-purges")
         purgeData = response.json()
         if len(purgeData["V3"]) == 0:
@@ -181,7 +181,7 @@ def waitport(port, prog, perTickCheck=None):
                 print("Waiting for debug port %d (%s)" % (port, prog))
             else:
                 raise
-    raise (Exception("timed out waiting for debug port %d (%s)" % (port, prog)))
+    raise Exception("timed out waiting for debug port %d (%s)" % (port, prog))
 
 
 def waithealth(prog, addr):

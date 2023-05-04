@@ -81,9 +81,9 @@ def update_email(client, email):
     email.
     """
     if client is None:
-        raise (NoClientError("update_email requires a valid acme.Client argument"))
+        raise NoClientError("update_email requires a valid acme.Client argument")
     if email is None:
-        raise (EmailRequiredError("update_email requires an email argument"))
+        raise EmailRequiredError("update_email requires an email argument")
     if not email.startswith("mailto:"):
         email = "mailto:" + email
     acct = client.net.account

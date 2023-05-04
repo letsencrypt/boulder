@@ -159,7 +159,7 @@ def _service_toposort(services):
         print("WARNING: services with unsatisfied dependencies:")
         for s in blocked:
             print(s.name, ":", s.deps)
-        raise (Exception("Unable to satisfy service dependencies"))
+        raise Exception("Unable to satisfy service dependencies")
 
 
 processes = []
@@ -267,7 +267,7 @@ def startChallSrv():
     """
     global challSrvProcess
     if challSrvProcess is not None:
-        raise (Exception("startChallSrv called more than once"))
+        raise Exception("startChallSrv called more than once")
 
     # NOTE(@cpu): We specify explicit bind addresses for -https01 and
     # --tlsalpn01 here to allow HTTPS HTTP-01 responses on 443 for on interface
