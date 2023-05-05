@@ -2,6 +2,10 @@
 	"syslog": {
 		"stdoutLevel": 7
 	},
+	"opentelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
+	},
 	"debugAddr": ":8016",
 	"files": [
 		"/var/log/akamai-purger.log",
