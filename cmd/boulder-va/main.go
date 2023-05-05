@@ -40,15 +40,6 @@ type Config struct {
 
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
-
-	// TODO(#6716): Remove Config.Common once all instances of it have been
-	// removed from production config files.
-	Common struct {
-		// DEPRECATED: Use VA.DNSTimeout instead.
-		DNSTimeout string
-		// DEPRECATED: Use VA.DNSAllowLoopbackAddresses instead.
-		DNSAllowLoopbackAddresses bool
-	}
 }
 
 func main() {
@@ -83,8 +74,6 @@ func main() {
 	var dnsTimeout time.Duration
 	if c.VA.DNSTimeout != "" {
 		dnsTimeout, err = time.ParseDuration(c.VA.DNSTimeout)
-	} else {
-		dnsTimeout, err = time.ParseDuration(c.Common.DNSTimeout)
 	}
 	cmd.FailOnError(err, "Couldn't parse DNS timeout")
 	dnsTries := c.VA.DNSTries
@@ -102,7 +91,7 @@ func main() {
 	defer servers.Stop()
 
 	var resolver bdns.Client
-	if !(c.VA.DNSAllowLoopbackAddresses || c.Common.DNSAllowLoopbackAddresses) {
+	if !c.VA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
 			dnsTimeout,
 			servers,
