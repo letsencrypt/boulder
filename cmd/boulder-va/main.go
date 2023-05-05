@@ -27,8 +27,8 @@ type Config struct {
 		// before giving up. May be short-circuited by deadlines. A zero value
 		// will be turned into 1.
 		DNSTries                  int
-		DNSResolver               string `validate:"required"`
-		DNSTimeout                config.Duration
+		DNSResolver               string          `validate:"required"`
+		DNSTimeout                config.Duration `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
