@@ -131,7 +131,6 @@ func resolveDNSAuthority(d string) (string, error) {
 		// Assume host with no port specified, default port to 53.
 		host = d
 		port = "53"
-
 	}
 	if net.ParseIP(host) != nil {
 		return net.JoinHostPort(host, port), nil
