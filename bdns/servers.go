@@ -102,9 +102,8 @@ func (sp *staticProvider) Stop() {}
 type dynamicProvider struct {
 	// dnsAuthority is the single <hostname|IPv4|[IPv6]>:<port> of the DNS
 	// server to be used for resolution of DNS backends. If the address contains
-	// a hostname the BDNS will resolve it via the system DNS. If the address
-	// contains a port, the client will use it directly, otherwise port 53 is
-	// used.
+	// a hostname it will be resolved via the system DNS. If the port is left
+	// unspecified it will default to '53'.
 	dnsAuthority string
 	// service is the service name to look up SRV records for within the domain.
 	service string
