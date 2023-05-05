@@ -166,11 +166,11 @@ func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicPr
 
 	dnsAuthority := c.DNSAuthority
 	if dnsAuthority != "" {
-		var err error
-		dnsAuthority, err = resolveDNSAuthority(dnsAuthority)
+		resolved, err := resolveDNSAuthority(dnsAuthority)
 		if err != nil {
 			return nil, err
 		}
+		dnsAuthority = resolved
 	}
 
 	dp := dynamicProvider{
