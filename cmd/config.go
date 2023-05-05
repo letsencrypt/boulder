@@ -237,7 +237,7 @@ type SyslogConfig struct {
 	SyslogLevel int `validate:"min=-1,max=7"`
 }
 
-// ServiceDomain contains the service and domain name the gRPC or BDNS client
+// ServiceDomain contains the service and domain name the gRPC or bdns provider
 // will use to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
 	Service string `validate:"required"`
