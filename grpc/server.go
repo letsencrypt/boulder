@@ -99,11 +99,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// Collect all names which should be allowed to connect to the server at all.
 	// This is the names which are allowlisted at the server level, plus the union
 	// of all names which are allowlisted for any individual service.
-	// TODO(#6698): Remove the first portion of this.
 	acceptedSANs := make(map[string]struct{})
-	for _, name := range sb.cfg.ClientNames {
-		acceptedSANs[name] = struct{}{}
-	}
 	for _, service := range sb.cfg.Services {
 		for _, name := range service.ClientNames {
 			acceptedSANs[name] = struct{}{}
