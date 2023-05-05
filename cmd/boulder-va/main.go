@@ -8,6 +8,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
@@ -27,7 +28,7 @@ type Config struct {
 		// will be turned into 1.
 		DNSTries                  int
 		DNSResolver               string `validate:"required"`
-		DNSTimeout                string
+		DNSTimeout                config.Duration
 		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
@@ -71,11 +72,9 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	var dnsTimeout time.Duration
-	if c.VA.DNSTimeout != "" {
-		dnsTimeout, err = time.ParseDuration(c.VA.DNSTimeout)
+	if c.VA.DNSTimeout.Duration == 0 {
+		cmd.Fail("'dnsTimeout' is required")
 	}
-	cmd.FailOnError(err, "Couldn't parse DNS timeout")
 	dnsTries := c.VA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
@@ -93,7 +92,7 @@ func main() {
 	var resolver bdns.Client
 	if !c.VA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
-			dnsTimeout,
+			c.VA.DNSTimeout.Duration,
 			servers,
 			scope,
 			clk,
@@ -101,7 +100,7 @@ func main() {
 			logger)
 	} else {
 		resolver = bdns.NewTest(
-			dnsTimeout,
+			c.VA.DNSTimeout.Duration,
 			servers,
 			scope,
 			clk,
