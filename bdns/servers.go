@@ -128,29 +128,14 @@ type dynamicProvider struct {
 func resolveDNSAuthority(d string) (string, error) {
 	host, port, err := net.SplitHostPort(d)
 	if err != nil {
-		// No port specified.
-		if net.ParseIP(d) != nil {
-			// IP without port, use it directly, defaulting to port 53.
-			return net.JoinHostPort(d, "53"), nil
-		}
-		// Assume hostname without port, resolve it via the system DNS.
-		ips, err := net.LookupIP(d)
-		if err != nil {
-			return "", fmt.Errorf("during A/AAAA lookup of %q: %s", d, err)
-		}
-		if len(ips) <= 0 {
-			return "", fmt.Errorf("A/AAAA lookup of %q returned 0 results", d)
-		}
-		// Use the first IP returned, defaulting to port 53.
-		return net.JoinHostPort(ips[0].String(), "53"), nil
+		// Assume host with no port specified, default port to 53.
+		host = d
+		port = "53"
 
 	}
-	// Port specified.
 	if net.ParseIP(host) != nil {
-		// IP with port, use it directly.
 		return net.JoinHostPort(host, port), nil
 	}
-	// Assume hostname with port, resolve it via the system DNS.
 	ips, err := net.LookupIP(host)
 	if err != nil {
 		return "", fmt.Errorf("during A/AAAA lookup of %q: %s", d, err)
@@ -158,7 +143,6 @@ func resolveDNSAuthority(d string) (string, error) {
 	if len(ips) <= 0 {
 		return "", fmt.Errorf("A/AAAA lookup for %q returned 0 results", d)
 	}
-	// Use the first IP returned.
 	return net.JoinHostPort(ips[0].String(), port), nil
 }
 
