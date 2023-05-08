@@ -264,22 +264,23 @@ func main() {
 	err = features.Set(c.WFE.Features)
 	cmd.FailOnError(err, "Failed to set feature flags")
 
-	allCertChains := map[issuance.IssuerNameID][][]byte{}
+	certChains := map[issuance.IssuerNameID][][]byte{}
 	issuerCerts := map[issuance.IssuerNameID]*issuance.Certificate{}
-	if c.WFE.Chains != nil {
-		for _, files := range c.WFE.Chains {
-			issuer, chain, err := loadChain(files)
-			cmd.FailOnError(err, "Failed to load chain")
+	if c.WFE.Chains == nil {
+		cmd.Fail("'chains' must be configured")
+	}
+	for _, files := range c.WFE.Chains {
+		issuer, chain, err := loadChain(files)
+		cmd.FailOnError(err, "Failed to load chain")
 
-			id := issuer.NameID()
-			allCertChains[id] = append(allCertChains[id], chain)
-			// This may overwrite a previously-set issuerCert (e.g. if there are two
-			// chains for the same issuer, but with different versions of the same
-			// same intermediate issued by different roots). This is okay, as the
-			// only truly important content here is the public key to verify other
-			// certs.
-			issuerCerts[id] = issuer
-		}
+		id := issuer.NameID()
+		certChains[id] = append(certChains[id], chain)
+		// This may overwrite a previously-set issuerCert (e.g. if there are two
+		// chains for the same issuer, but with different versions of the same
+		// same intermediate issued by different roots). This is okay, as the
+		// only truly important content here is the public key to verify other
+		// certs.
+		issuerCerts[id] = issuer
 	}
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
@@ -329,7 +330,7 @@ func main() {
 		stats,
 		clk,
 		kp,
-		allCertChains,
+		certChains,
 		issuerCerts,
 		logger,
 		c.WFE.Timeout.Duration,
