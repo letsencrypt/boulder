@@ -4,6 +4,8 @@
 		"debugAddr": ":8011",
 		"dnsTries": 3,
 		"dnsResolver": "service.consul",
+		"dnsTimeout": "1s",
+		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
 		"tls": {
 			"caCertfile": "test/grpc-creds/minica.pem",
@@ -27,9 +29,5 @@
 	"syslog": {
 		"stdoutlevel": 6,
 		"sysloglevel": 4
-	},
-	"common": {
-		"dnsTimeout": "1s",
-		"dnsAllowLoopbackAddresses": true
 	}
 }
