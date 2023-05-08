@@ -22,8 +22,7 @@ const (
 	CAAProblem                   = ProblemType("caa")
 	ConnectionProblem            = ProblemType("connection")
 	DNSProblem                   = ProblemType("dns")
-	// TODO: Change this to InvalidContactProblem and "invalidContact".
-	InvalidEmailProblem          = ProblemType("invalidEmail")
+	InvalidContactProblem        = ProblemType("invalidContact")
 	MalformedProblem             = ProblemType("malformed")
 	OrderNotReadyProblem         = ProblemType("orderNotReady")
 	RateLimitedProblem           = ProblemType("rateLimited")
@@ -176,11 +175,10 @@ func DNS(detail string) *ProblemDetails {
 	}
 }
 
-// InvalidEmail returns a ProblemDetails representing an InvalidEmailProblem.
-// TODO: Change this to InvalidContact.
-func InvalidEmail(detail string) *ProblemDetails {
+// InvalidContact returns a ProblemDetails representing an InvalidContactProblem.
+func InvalidContact(detail string) *ProblemDetails {
 	return &ProblemDetails{
-		Type:       InvalidEmailProblem,
+		Type:       InvalidContactProblem,
 		Detail:     detail,
 		HTTPStatus: http.StatusBadRequest,
 	}
