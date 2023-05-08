@@ -3,7 +3,7 @@
 		"userAgent": "boulder",
 		"debugAddr": ":8004",
 		"dnsTries": 3,
-		"DNSProvider": {
+		"dnsProvider": {
 			"dnsAuthority": "consul.service.consul:53",
 			"srvLookup": {
 				"service": "dns",
