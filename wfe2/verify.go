@@ -294,15 +294,17 @@ func (wfe *WebFrontEndImpl) matchJWSURLs(outer, inner jose.Header) *probs.Proble
 	return nil
 }
 
-// bJSONWebSignature is a new distinct type with an underlying
+// bJSONWebSignature is a new distinct type which embeds the
 // *jose.JSONWebSignature concrete type. Callers must never create their own
 // bJSONWebSignature. Instead they should rely upon wfe.parseJWS instead.
-type bJSONWebSignature *jose.JSONWebSignature
+type bJSONWebSignature struct {
+	*jose.JSONWebSignature
+}
 
 // parseJWS extracts a JSONWebSignature from a byte slice. If there is an error
 // reading the JWS or it is unacceptable (e.g. too many/too few signatures,
 // presence of unprotected headers) a problem is returned, otherwise a
-// bJSONWebSignature is returned.
+// *bJSONWebSignature is returned.
 func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.ProblemDetails) {
 	// Parse the raw JWS JSON to check that:
 	// * the unprotected Header field is not being used.
@@ -357,7 +359,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.Pr
 		return nil, probs.Malformed("POST JWS not signed")
 	}
 
-	return parsedJWS, nil
+	return &bJSONWebSignature{parsedJWS}, nil
 }
 
 // parseJWSRequest extracts a JSONWebSignature from an HTTP POST request's body using parseJWS.
@@ -575,13 +577,13 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 	// Lookup the account and JWK for the key ID that authenticated the JWS
 	pubKey, account, prob := wfe.lookupJWK(jws.Signatures[0].Header, ctx, request, logEvent)
 	if prob != nil {
-		return nil, &bJSONWebSignature{}, nil, prob
+		return nil, nil, nil, prob
 	}
 
 	// Verify the JWS with the JWK from the SA
 	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request)
 	if prob != nil {
-		return nil, &bJSONWebSignature{}, nil, prob
+		return nil, nil, nil, prob
 	}
 
 	return payload, jws, account, nil
@@ -599,7 +601,7 @@ func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
-		return nil, &bJSONWebSignature{}, nil, prob
+		return nil, nil, nil, prob
 	}
 	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
 }
