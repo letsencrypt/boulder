@@ -294,13 +294,10 @@ func (wfe *WebFrontEndImpl) matchJWSURLs(outer, inner jose.Header) *probs.Proble
 	return nil
 }
 
-// Define a new distinct bJSONWebSignature with an embedded
-// *jose.JSONWebSignature. A caller must never create a bJSONWebSignature on
-// their own. The only correct way to create a bJSONWebSignature is from
-// wfe.parseJWS.
-type bJSONWebSignature struct {
-	*jose.JSONWebSignature
-}
+// bJSONWebSignature is a new distinct type with an underlying
+// *jose.JSONWebSignature concrete type. Callers must never create their own
+// bJSONWebSignature. Instead they should rely upon wfe.parseJWS instead.
+type bJSONWebSignature *jose.JSONWebSignature
 
 // parseJWS extracts a JSONWebSignature from a byte slice. If there is an error
 // reading the JWS or it is unacceptable (e.g. too many/too few signatures,
@@ -320,14 +317,14 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.Pr
 	err := json.Unmarshal(body, &unprotected)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnmarshalFailed"}).Inc()
-		return &bJSONWebSignature{}, probs.Malformed("Parse error reading JWS")
+		return nil, probs.Malformed("Parse error reading JWS")
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
 	// include unprotected headers.
 	if unprotected.Header != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnprotectedHeaders"}).Inc()
-		return &bJSONWebSignature{}, probs.Malformed(
+		return nil, probs.Malformed(
 			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
 	}
 
@@ -335,7 +332,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.Pr
 	// mandatory "signature" field. Reject JWS that include the "signatures" array.
 	if len(unprotected.Signatures) > 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMultiSig"}).Inc()
-		return &bJSONWebSignature{}, probs.Malformed(
+		return nil, probs.Malformed(
 			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
@@ -345,29 +342,29 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.Pr
 	parsedJWS, err := jose.ParseSigned(bodyStr)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
-		return &bJSONWebSignature{}, probs.Malformed("Parse error reading JWS")
+		return nil, probs.Malformed("Parse error reading JWS")
 	}
 	if len(parsedJWS.Signatures) > 1 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSTooManySignatures"}).Inc()
-		return &bJSONWebSignature{}, probs.Malformed("Too many signatures in POST body")
+		return nil, probs.Malformed("Too many signatures in POST body")
 	}
 	if len(parsedJWS.Signatures) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSNoSignatures"}).Inc()
-		return &bJSONWebSignature{}, probs.Malformed("POST JWS not signed")
+		return nil, probs.Malformed("POST JWS not signed")
 	}
 	if len(parsedJWS.Signatures) == 1 && len(parsedJWS.Signatures[0].Signature) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSEmptySignature"}).Inc()
-		return &bJSONWebSignature{}, probs.Malformed("POST JWS not signed")
+		return nil, probs.Malformed("POST JWS not signed")
 	}
 
-	return &bJSONWebSignature{parsedJWS}, nil
+	return parsedJWS, nil
 }
 
 // parseJWSRequest extracts a JSONWebSignature from an HTTP POST request's body using parseJWS.
 func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*bJSONWebSignature, *probs.ProblemDetails) {
 	// Verify that the POST request has the expected headers
 	if prob := wfe.validPOSTRequest(request); prob != nil {
-		return &bJSONWebSignature{}, prob
+		return nil, prob
 	}
 
 	// Read the POST request body's bytes. validPOSTRequest has already checked
@@ -375,15 +372,15 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*bJSONWebSig
 	bodyBytes, err := io.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
 		if err.Error() == "http: request body too large" {
-			return &bJSONWebSignature{}, probs.Unauthorized("request body too large")
+			return nil, probs.Unauthorized("request body too large")
 		}
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "UnableToReadReqBody"}).Inc()
-		return &bJSONWebSignature{}, probs.ServerInternal("unable to read request body")
+		return nil, probs.ServerInternal("unable to read request body")
 	}
 
 	jws, prob := wfe.parseJWS(bodyBytes)
 	if prob != nil {
-		return &bJSONWebSignature{}, prob
+		return nil, prob
 	}
 
 	return jws, nil
