@@ -442,18 +442,11 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
 	Address string `json:"address" validate:"hostname_port"`
-	// ClientNames is a list of allowed client certificate subject alternate names
-	// (SANs). The server will reject clients that do not present a certificate
-	// with a SAN present on the `ClientNames` list.
-	// DEPRECATED: Use the ClientNames field within each Service instead.
-	// TODO(#6698): Remove this field once all production configs have been
-	// migrated to using the service specific client names.
-	ClientNames []string `json:"clientNames" validate:"required_without=Services,dive,hostname"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
 	// the package names set in those files (e.g. "ca.CertificateAuthority").
-	Services map[string]GRPCServiceConfig `json:"services" validate:"required_without=ClientNames,dive,required"`
+	Services map[string]GRPCServiceConfig `json:"services" validate:"required,dive,required"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
