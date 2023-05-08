@@ -818,7 +818,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Timeout for host",
 			Host: "example.com",
 			Path: "/timeout",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching http://example.com/timeout: " +
 					"Timeout after connect (your server may be slow or overloaded)"),
 			ExpectedRecords: []core.ValidationRecord{
@@ -835,7 +835,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Redirect loop",
 			Host: "example.com",
 			Path: "/loop",
-			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
+			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching http://example.com:%d/loop: Redirect loop detected", httpPort)),
 			ExpectedRecords: expectedLoopRecords,
 		},
@@ -843,7 +843,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Too many redirects",
 			Host: "example.com",
 			Path: "/max-redirect/0",
-			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
+			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching http://example.com:%d/max-redirect/12: Too many redirects", httpPort)),
 			ExpectedRecords: expectedTooManyRedirRecords,
 		},
@@ -851,7 +851,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Redirect to bad protocol",
 			Host: "example.com",
 			Path: "/redir-bad-proto",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching gopher://example.com: Invalid protocol scheme in " +
 					`redirect target. Only "http" and "https" protocol schemes ` +
 					`are supported, not "gopher"`),
@@ -869,7 +869,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Redirect to bad port",
 			Host: "example.com",
 			Path: "/redir-bad-port",
-			ExpectedProblem: probs.ConnectionFailure(fmt.Sprintf(
+			ExpectedProblem: probs.Connection(fmt.Sprintf(
 				"127.0.0.1: Fetching https://example.com:1987: Invalid port in redirect target. "+
 					"Only ports %d and 443 are supported, not 1987", httpPort)),
 			ExpectedRecords: []core.ValidationRecord{
@@ -886,7 +886,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Redirect to bad host (bare IP address)",
 			Host: "example.com",
 			Path: "/redir-bad-host",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching https://127.0.0.1: Invalid host in redirect target " +
 					`"127.0.0.1". Only domain names are supported, not IP addresses`),
 			ExpectedRecords: []core.ValidationRecord{
@@ -903,7 +903,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Redirect to long path",
 			Host: "example.com",
 			Path: "/redir-path-too-long",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching https://example.com/this-is-too-long-01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789: Redirect target too long"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -935,7 +935,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "HTTP status code 303 redirect",
 			Host: "example.com",
 			Path: "/303-see-other",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching http://example.org/303-see-other: received disallowed redirect status code"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -968,7 +968,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Broken IPv6 only",
 			Host: "ipv6.localhost",
 			Path: "/ok",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.Connection(
 				"::1: Fetching http://ipv6.localhost/ok: Error getting validation data"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
@@ -1411,7 +1411,7 @@ func TestHTTPRedirectLookup(t *testing.T) {
 	_, err := va.validateHTTP01(ctx, dnsi("localhost.com"), chall)
 	test.AssertError(t, err, chall.Token)
 	test.AssertEquals(t, len(log.GetAllMatching(`Resolved addresses for localhost.com: \[127.0.0.1\]`)), 1)
-	test.AssertDeepEquals(t, err, probs.ConnectionFailure(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD`))
+	test.AssertDeepEquals(t, err, probs.Connection(`127.0.0.1: Fetching http://invalid.invalid/path: Invalid hostname in redirect target, must end in IANA registered TLD`))
 
 	log.Clear()
 	setChallengeToken(&chall, pathReLookup)

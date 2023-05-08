@@ -27,7 +27,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/mail"
-	"github.com/letsencrypt/boulder/probs"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -655,49 +654,4 @@ func (m *mockMailerConn) Close() error {
 // Connect is a mock
 func (m *Mailer) Connect() (mail.Conn, error) {
 	return &mockMailerConn{parent: m}, nil
-}
-
-// SAWithFailedChallenges is a mocks.StorageAuthority that has
-// a `GetAuthorization` implementation that can return authorizations with
-// failed challenges.
-type SAWithFailedChallenges struct {
-	StorageAuthorityReadOnly
-	Clk clock.FakeClock
-}
-
-func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
-	authz := core.Authorization{
-		ID:             "55",
-		Status:         core.StatusValid,
-		RegistrationID: 1,
-		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
-		Challenges: []core.Challenge{
-			{
-				Status: core.StatusInvalid,
-				Type:   "dns",
-				Token:  "exampleToken",
-			},
-		},
-	}
-	prob := &probs.ProblemDetails{
-		Type:       "things:are:whack",
-		Detail:     "whack attack",
-		HTTPStatus: 555,
-	}
-	exp := sa.Clk.Now().AddDate(100, 0, 0)
-	authz.Expires = &exp
-	// 55 returns an authz with a failed challenge that has the problem type
-	// statically prefixed by the V1ErrorNS
-	if id.Id == 55 {
-		prob.Type = probs.V1ErrorNS + prob.Type
-		authz.Challenges[0].Error = prob
-		return bgrpc.AuthzToPB(authz)
-	}
-	// 56 returns an authz with a failed challenge that has no error
-	// namespace on the problem type.
-	if id.Id == 56 {
-		authz.Challenges[0].Error = prob
-		return bgrpc.AuthzToPB(authz)
-	}
-	return nil, berrors.NotFoundError("no authorization found with id %q", id)
 }
