@@ -131,7 +131,17 @@ func resolveDNSAuthority(d string) (string, error) {
 		// Assume host with no port specified, default port to 53.
 		host = d
 		port = "53"
+	} else {
+		// Ensure the `port` portion of `address` is a valid port.
+		portNum, err := strconv.Atoi(port)
+		if err != nil {
+			return "", errors.New("port must be an integer: %s")
+		}
+		if portNum <= 0 || portNum > 65535 {
+			return "", errors.New("port must be an integer between 0 - 65535")
+		}
 	}
+
 	if net.ParseIP(host) != nil {
 		return net.JoinHostPort(host, port), nil
 	}

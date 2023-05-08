@@ -2,8 +2,6 @@ package bdns
 
 import (
 	"testing"
-
-	"github.com/letsencrypt/boulder/test"
 )
 
 func Test_validateServerAddress(t *testing.T) {
@@ -85,12 +83,12 @@ func Test_resolveDNSAuthority(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := resolveDNSAuthority(tt.args.d)
-			if (err != nil) != tt.wantErr {
-				test.AssertNotError(t, err, "returned unexpected error")
+			if err != nil && !tt.wantErr {
+				t.Errorf("resolveDNSAuthority() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if got != tt.want {
-				test.AssertEquals(t, got, tt.want)
+				t.Errorf("resolveDNSAuthority() = %v, want %v", got, tt.want)
 			}
 		})
 	}
