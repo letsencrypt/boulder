@@ -294,8 +294,10 @@ func (wfe *WebFrontEndImpl) matchJWSURLs(outer, inner jose.Header) *probs.Proble
 	return nil
 }
 
-// bJSONWebSignature wraps a *jose.JSONWebSignature, but ensures it has been
-// created and processed by the various safety/sanity checks in wfe.parseJWS.
+// Define a new distinct bJSONWebSignature with an embedded
+// *jose.JSONWebSignature. A caller must never create a bJSONWebSignature on
+// their own. The only correct way to create a bJSONWebSignature is from
+// wfe.parseJWS.
 type bJSONWebSignature struct {
 	*jose.JSONWebSignature
 }
@@ -304,7 +306,7 @@ type bJSONWebSignature struct {
 // reading the JWS or it is unacceptable (e.g. too many/too few signatures,
 // presence of unprotected headers) a problem is returned, otherwise a
 // bJSONWebSignature is returned.
-func (wfe *WebFrontEndImpl) parseJWS(body []byte) (bJSONWebSignature, *probs.ProblemDetails) {
+func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.ProblemDetails) {
 	// Parse the raw JWS JSON to check that:
 	// * the unprotected Header field is not being used.
 	// * the "signatures" member isn't present, just "signature".
@@ -318,14 +320,14 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (bJSONWebSignature, *probs.Pro
 	err := json.Unmarshal(body, &unprotected)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnmarshalFailed"}).Inc()
-		return bJSONWebSignature{}, probs.Malformed("Parse error reading JWS")
+		return &bJSONWebSignature{}, probs.Malformed("Parse error reading JWS")
 	}
 
 	// ACME v2 never uses values from the unprotected JWS header. Reject JWS that
 	// include unprotected headers.
 	if unprotected.Header != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSUnprotectedHeaders"}).Inc()
-		return bJSONWebSignature{}, probs.Malformed(
+		return &bJSONWebSignature{}, probs.Malformed(
 			"JWS \"header\" field not allowed. All headers must be in \"protected\" field")
 	}
 
@@ -333,7 +335,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (bJSONWebSignature, *probs.Pro
 	// mandatory "signature" field. Reject JWS that include the "signatures" array.
 	if len(unprotected.Signatures) > 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMultiSig"}).Inc()
-		return bJSONWebSignature{}, probs.Malformed(
+		return &bJSONWebSignature{}, probs.Malformed(
 			"JWS \"signatures\" field not allowed. Only the \"signature\" field should contain a signature")
 	}
 
@@ -343,29 +345,29 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (bJSONWebSignature, *probs.Pro
 	parsedJWS, err := jose.ParseSigned(bodyStr)
 	if err != nil {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSParseError"}).Inc()
-		return bJSONWebSignature{}, probs.Malformed("Parse error reading JWS")
+		return &bJSONWebSignature{}, probs.Malformed("Parse error reading JWS")
 	}
 	if len(parsedJWS.Signatures) > 1 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSTooManySignatures"}).Inc()
-		return bJSONWebSignature{}, probs.Malformed("Too many signatures in POST body")
+		return &bJSONWebSignature{}, probs.Malformed("Too many signatures in POST body")
 	}
 	if len(parsedJWS.Signatures) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSNoSignatures"}).Inc()
-		return bJSONWebSignature{}, probs.Malformed("POST JWS not signed")
+		return &bJSONWebSignature{}, probs.Malformed("POST JWS not signed")
 	}
 	if len(parsedJWS.Signatures) == 1 && len(parsedJWS.Signatures[0].Signature) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSEmptySignature"}).Inc()
-		return bJSONWebSignature{}, probs.Malformed("POST JWS not signed")
+		return &bJSONWebSignature{}, probs.Malformed("POST JWS not signed")
 	}
 
-	return bJSONWebSignature{parsedJWS}, nil
+	return &bJSONWebSignature{parsedJWS}, nil
 }
 
 // parseJWSRequest extracts a JSONWebSignature from an HTTP POST request's body using parseJWS.
-func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (bJSONWebSignature, *probs.ProblemDetails) {
+func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*bJSONWebSignature, *probs.ProblemDetails) {
 	// Verify that the POST request has the expected headers
 	if prob := wfe.validPOSTRequest(request); prob != nil {
-		return bJSONWebSignature{}, prob
+		return &bJSONWebSignature{}, prob
 	}
 
 	// Read the POST request body's bytes. validPOSTRequest has already checked
@@ -373,15 +375,15 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (bJSONWebSign
 	bodyBytes, err := io.ReadAll(http.MaxBytesReader(nil, request.Body, maxRequestSize))
 	if err != nil {
 		if err.Error() == "http: request body too large" {
-			return bJSONWebSignature{}, probs.Unauthorized("request body too large")
+			return &bJSONWebSignature{}, probs.Unauthorized("request body too large")
 		}
 		wfe.stats.httpErrorCount.With(prometheus.Labels{"type": "UnableToReadReqBody"}).Inc()
-		return bJSONWebSignature{}, probs.ServerInternal("unable to read request body")
+		return &bJSONWebSignature{}, probs.ServerInternal("unable to read request body")
 	}
 
 	jws, prob := wfe.parseJWS(bodyBytes)
 	if prob != nil {
-		return bJSONWebSignature{}, prob
+		return &bJSONWebSignature{}, prob
 	}
 
 	return jws, nil
@@ -447,8 +449,7 @@ func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request)
 // JWS' protected headers, returning the JWK and a pointer to the associated
 // account, or a problem. It expects that the JWS header is using the embedded
 // Key ID style of authentication and does not contain an embedded JWK. Callers
-// should have acquired the provided protected JWS' headers from parseJWS to
-// ensure it has the correct number of signatures present.
+// should have acquired headers from a bJSONWebSignature.
 func (wfe *WebFrontEndImpl) lookupJWK(
 	header jose.Header,
 	ctx context.Context,
@@ -514,7 +515,7 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 // and the JWS URL are verified to ensure that they are correct.
 func (wfe *WebFrontEndImpl) validJWSForKey(
 	ctx context.Context,
-	jws bJSONWebSignature,
+	jws *bJSONWebSignature,
 	jwk *jose.JSONWebKey,
 	request *http.Request) ([]byte, *probs.ProblemDetails) {
 
@@ -570,20 +571,20 @@ func (wfe *WebFrontEndImpl) validJWSForKey(
 // JSONWebSignature, and a pointer to the JWK's associated account. If any of
 // these conditions are not met or an error occurs only a problem is returned.
 func (wfe *WebFrontEndImpl) validJWSForAccount(
-	jws bJSONWebSignature,
+	jws *bJSONWebSignature,
 	request *http.Request,
 	ctx context.Context,
-	logEvent *web.RequestEvent) ([]byte, bJSONWebSignature, *core.Registration, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Lookup the account and JWK for the key ID that authenticated the JWS
 	pubKey, account, prob := wfe.lookupJWK(jws.Signatures[0].Header, ctx, request, logEvent)
 	if prob != nil {
-		return nil, bJSONWebSignature{}, nil, prob
+		return nil, &bJSONWebSignature{}, nil, prob
 	}
 
 	// Verify the JWS with the JWK from the SA
 	payload, prob := wfe.validJWSForKey(ctx, jws, pubKey, request)
 	if prob != nil {
-		return nil, bJSONWebSignature{}, nil, prob
+		return nil, &bJSONWebSignature{}, nil, prob
 	}
 
 	return payload, jws, account, nil
@@ -597,11 +598,11 @@ func (wfe *WebFrontEndImpl) validJWSForAccount(
 func (wfe *WebFrontEndImpl) validPOSTForAccount(
 	request *http.Request,
 	ctx context.Context,
-	logEvent *web.RequestEvent) ([]byte, bJSONWebSignature, *core.Registration, *probs.ProblemDetails) {
+	logEvent *web.RequestEvent) ([]byte, *bJSONWebSignature, *core.Registration, *probs.ProblemDetails) {
 	// Parse the JWS from the POST request
 	jws, prob := wfe.parseJWSRequest(request)
 	if prob != nil {
-		return nil, bJSONWebSignature{}, nil, prob
+		return nil, &bJSONWebSignature{}, nil, prob
 	}
 	return wfe.validJWSForAccount(jws, request, ctx, logEvent)
 }
@@ -651,7 +652,7 @@ func (wfe *WebFrontEndImpl) validPOSTAsGETForAccount(
 // cert.
 func (wfe *WebFrontEndImpl) validSelfAuthenticatedJWS(
 	ctx context.Context,
-	jws bJSONWebSignature,
+	jws *bJSONWebSignature,
 	request *http.Request) ([]byte, *jose.JSONWebKey, *probs.ProblemDetails) {
 	// Extract the embedded JWK from the parsed protected JWS' headers
 	pubKey, prob := wfe.extractJWK(jws.Signatures[0].Header)
@@ -731,8 +732,8 @@ type rolloverOperation struct {
 // account that verified the outer JWS.
 func (wfe *WebFrontEndImpl) validKeyRollover(
 	ctx context.Context,
-	outerJWS bJSONWebSignature,
-	innerJWS bJSONWebSignature,
+	outerJWS *bJSONWebSignature,
+	innerJWS *bJSONWebSignature,
 	oldKey *jose.JSONWebKey) (*rolloverOperation, *probs.ProblemDetails) {
 
 	// Extract the embedded JWK from the inner JWS' protected headers

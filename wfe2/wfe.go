@@ -869,7 +869,7 @@ type revocationEvidence struct {
 // is authenticated by a KeyID and the associated account.
 func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 	ctx context.Context,
-	outerJWS bJSONWebSignature,
+	outerJWS *bJSONWebSignature,
 	request *http.Request,
 	logEvent *web.RequestEvent) error {
 	// For Key ID revocations we authenticate the outer JWS by using
@@ -912,7 +912,7 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 // to be revoked
 func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	ctx context.Context,
-	outerJWS bJSONWebSignature,
+	outerJWS *bJSONWebSignature,
 	request *http.Request,
 	logEvent *web.RequestEvent) error {
 	// For embedded JWK revocations we authenticate the outer JWS by using
