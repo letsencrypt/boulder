@@ -8,6 +8,7 @@ import (
 
 	"github.com/letsencrypt/boulder/bdns"
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/features"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/va"
@@ -28,7 +29,7 @@ type Config struct {
 		DNSTries                  int
 		DNSResolver               string           `validate:"required_without=DNSProvider,excluded_with=DNSProvider,omitempty,hostname|hostname_port"`
 		DNSProvider               *cmd.DNSProvider `validate:"required_without=DNSResolver,excluded_with=DNSResolver,omitempty"`
-		DNSTimeout                string
+		DNSTimeout                config.Duration  `validate:"required"`
 		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
@@ -41,15 +42,6 @@ type Config struct {
 
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
-
-	// TODO(#6716): Remove Config.Common once all instances of it have been
-	// removed from production config files.
-	Common struct {
-		// DEPRECATED: Use VA.DNSTimeout instead.
-		DNSTimeout string
-		// DEPRECATED: Use VA.DNSAllowLoopbackAddresses instead.
-		DNSAllowLoopbackAddresses bool
-	}
 }
 
 func main() {
@@ -81,13 +73,9 @@ func main() {
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
-	var dnsTimeout time.Duration
-	if c.VA.DNSTimeout != "" {
-		dnsTimeout, err = time.ParseDuration(c.VA.DNSTimeout)
-	} else {
-		dnsTimeout, err = time.ParseDuration(c.Common.DNSTimeout)
+	if c.VA.DNSTimeout.Duration == 0 {
+		cmd.Fail("'dnsTimeout' is required")
 	}
-	cmd.FailOnError(err, "Couldn't parse DNS timeout")
 	dnsTries := c.VA.DNSTries
 	if dnsTries < 1 {
 		dnsTries = 1
@@ -118,9 +106,9 @@ func main() {
 	defer servers.Stop()
 
 	var resolver bdns.Client
-	if !(c.VA.DNSAllowLoopbackAddresses || c.Common.DNSAllowLoopbackAddresses) {
+	if !c.VA.DNSAllowLoopbackAddresses {
 		resolver = bdns.New(
-			dnsTimeout,
+			c.VA.DNSTimeout.Duration,
 			servers,
 			scope,
 			clk,
@@ -128,7 +116,7 @@ func main() {
 			logger)
 	} else {
 		resolver = bdns.NewTest(
-			dnsTimeout,
+			c.VA.DNSTimeout.Duration,
 			servers,
 			scope,
 			clk,
