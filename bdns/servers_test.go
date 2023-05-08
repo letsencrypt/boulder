@@ -85,9 +85,10 @@ func Test_resolveDNSAuthority(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := resolveDNSAuthority(tt.args.d)
-			if err != nil && !tt.wantErr {
-				t.Errorf("resolveDNSAuthority() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				test.AssertError(t, err, "expected error")
+			} else {
+				test.AssertNotError(t, err, "unexpected error")
 			}
 			test.AssertEquals(t, got, tt.want)
 		})
