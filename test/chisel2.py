@@ -9,7 +9,6 @@ $ pip install -r requirements.txt
 $ python chisel2.py foo.com bar.com
 """
 import logging
-import os
 import sys
 import signal
 
