@@ -47,7 +47,7 @@ func sigAlgorithmForKey(key *jose.JSONWebKey) (jose.SignatureAlgorithm, error) {
 			return jose.ES512, nil
 		}
 	}
-	return "", errors.New("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521")
+	return "", errors.New("JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)")
 }
 
 var supportedAlgs = map[string]bool{
@@ -60,7 +60,7 @@ var supportedAlgs = map[string]bool{
 // Check that (1) there is a suitable algorithm for the provided key based on its
 // Golang type, (2) the Algorithm field on the JWK is either absent, or matches
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
-// that algorithm. Precondition: parsedJws must have exactly one signature on
+// that algorithm. Precondition: parsedJWS must have exactly one signature on
 // it.
 func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
 	sigHeaderAlg := header.Algorithm
@@ -70,10 +70,7 @@ func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
 			header.Algorithm,
 		)
 	}
-	// The Algorithm field should always be set, but may not be in tests.
-	if key.Algorithm == "" {
-		return fmt.Errorf("JWK key header algorithm was not specified for key")
-	}
+
 	expectedAlg, err := sigAlgorithmForKey(key)
 	if err != nil {
 		return err
