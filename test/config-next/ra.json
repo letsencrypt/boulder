@@ -31,6 +31,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "20s",
+			"noWaitForReady": true,
 			"hostOverride": "va.boulder"
 		},
 		"caService": {
@@ -40,6 +41,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
 		"ocspService": {
@@ -49,6 +51,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
 		"publisherService": {
@@ -58,6 +61,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "300s",
+			"noWaitForReady": true,
 			"hostOverride": "publisher.boulder"
 		},
 		"saService": {
@@ -67,6 +71,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"akamaiPurgerService": {
@@ -76,6 +81,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "akamai-purger.boulder"
 		},
 		"grpc": {

@@ -17,6 +17,7 @@
 				"domain": "service.consul"
 			},
 			"hostOverride": "ra.boulder",
+			"noWaitForReady": true,
 			"timeout": "15s"
 		},
 		"mailer": {

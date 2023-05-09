@@ -13,6 +13,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"crlGeneratorService": {
@@ -22,6 +23,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "ca.boulder"
 		},
 		"crlStorerService": {
@@ -31,6 +33,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "crl-storer.boulder"
 		},
 		"issuerCerts": [

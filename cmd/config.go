@@ -343,6 +343,13 @@ type GRPCClientConfig struct {
 	// verify in the certificate presented by the server.
 	HostOverride string `validate:"excluded_with=ServerIPAddresses,omitempty,hostname"`
 	Timeout      config.Duration
+
+	// NoWaitForReady turns off our (current) default of setting grpc.WaitForReady(true).
+	// This means if all of a GRPC client's backends are down, it will error immediately.
+	// The current default, grpc.WaitForReady(true), means that if all of a GRPC client's
+	// backends are down, it will wait until either one becomes available or the RPC
+	// times out.
+	NoWaitForReady bool
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will

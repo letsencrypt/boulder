@@ -224,6 +224,8 @@ type clientMetadataInterceptor struct {
 	timeout time.Duration
 	metrics clientMetrics
 	clk     clock.Clock
+
+	waitForReady bool
 }
 
 // Unary implements the grpc.UnaryClientInterceptor interface.
@@ -255,7 +257,7 @@ func (cmi *clientMetadataInterceptor) Unary(
 
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
-	opts = append(opts, grpc.WaitForReady(true))
+	opts = append(opts, grpc.WaitForReady(cmi.waitForReady))
 
 	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
 	respMD := metadata.New(nil)
@@ -364,7 +366,7 @@ func (cmi *clientMetadataInterceptor) Stream(
 
 	// Disable fail-fast so RPCs will retry until deadline, even if all backends
 	// are down.
-	opts = append(opts, grpc.WaitForReady(true))
+	opts = append(opts, grpc.WaitForReady(cmi.waitForReady))
 
 	// Create a grpc/metadata.Metadata instance for a grpc.Trailer.
 	respMD := metadata.New(nil)
