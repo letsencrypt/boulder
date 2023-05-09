@@ -498,21 +498,26 @@ type OpenTelemetryConfig struct {
 // DNSProvider contains the configuration for a DNS provider in the bdns package
 // which supports dynamic reloading of its backends.
 type DNSProvider struct {
-	// DNSAuthority is a single <hostname|IPv4|[IPv6]>:<port> of the DNS server
-	// to be used for resolution of DNS backends. If the address contains a
-	// hostname it will be resolved via the system DNS. If the address contains
-	// a port, the client will use it directly, otherwise port 53 is assumed.
+	// DNSAuthority is the single <hostname|IPv4|[IPv6]>:<port> of the DNS
+	// server to be used for resolution of DNS backends. If the address contains
+	// a hostname it will be resolved via the system DNS. If the port is left
+	// unspecified it will default to '53'. If this field is left unspecified
+	// the system DNS will be used for resolution of DNS backends.
+	//
+	// TODO(#6868): Make this field required once 'dnsResolver' is removed from
+	// the boulder-va JSON config in favor of 'dnsProvider'.
 	DNSAuthority string `validate:"omitempty,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name used to construct a SRV
-	// DNS query to lookup DNS backends. For example: if the resource record is
-	// 'unbound.service.consul', then the 'Service' is 'unbound' and the
-	// 'Domain' is 'service.consul'. The expected dNSName to be authenticated in
-	// the server certificate would be 'unbound.service.consul'.
+	// DNS query to lookup DNS backends. 'Domain' is required. 'Service' is
+	// optional and will be defaulted to 'dns' if left unspecified.
 	//
-	// Note: The 'proto' field of the SRV record MUST contain 'udp' and the
-	// 'port' field MUST be a valid port. In a Consul configuration file you
-	// would specify 'unbound.service.consul' as:
+	// Usage: If the resource record is 'unbound.service.consul', then the
+	// 'Service' is 'unbound' and the 'Domain' is 'service.consul'. The expected
+	// dNSName to be authenticated in the server certificate would be
+	// 'unbound.service.consul'. The 'proto' field of the SRV record MUST
+	// contain 'udp' and the 'port' field MUST be a valid port. In a Consul
+	// configuration file you would specify 'unbound.service.consul' as:
 	//
 	// services {
 	//   id      = "unbound-1" // Must be unique

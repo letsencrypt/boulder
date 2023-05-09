@@ -53,7 +53,7 @@ func validateServerAddress(address string) error {
 	// Ensure the `port` portion of `address` is a valid port.
 	portNum, err := strconv.Atoi(port)
 	if err != nil {
-		return errors.New("port must be an integer: %s")
+		return fmt.Errorf("parsing port number: %s", err)
 	}
 	if portNum <= 0 || portNum > 65535 {
 		return errors.New("port must be an integer between 0 - 65535")
@@ -103,9 +103,14 @@ type dynamicProvider struct {
 	// dnsAuthority is the single <hostname|IPv4|[IPv6]>:<port> of the DNS
 	// server to be used for resolution of DNS backends. If the address contains
 	// a hostname it will be resolved via the system DNS. If the port is left
-	// unspecified it will default to '53'.
+	// unspecified it will default to '53'. If this field is left unspecified
+	// the system DNS will be used for resolution of DNS backends.
+	//
+	// TODO(#6868): Make this field required once 'dnsResolver' is removed from
+	// the boulder-va JSON config in favor of 'dnsProvider'.
 	dnsAuthority string
 	// service is the service name to look up SRV records for within the domain.
+	// If this field is left unspecified 'dns' will be used as the service name.
 	service string
 	// domain is the name to look up SRV records within.
 	domain string
@@ -135,7 +140,7 @@ func resolveDNSAuthority(d string) (string, error) {
 		// Ensure the `port` portion of `address` is a valid port.
 		portNum, err := strconv.Atoi(port)
 		if err != nil {
-			return "", errors.New("port must be an integer: %s")
+			return "", fmt.Errorf("parsing port number: %s", err)
 		}
 		if portNum <= 0 || portNum > 65535 {
 			return "", errors.New("port must be an integer between 0 - 65535")
@@ -174,6 +179,8 @@ func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicPr
 		service = "dns"
 	}
 
+	// TODO(#6868): Make dnsAuthority required once 'dnsResolver' is removed
+	// from the boulder-va JSON config in favor of 'dnsProvider'.
 	dnsAuthority := c.DNSAuthority
 	if dnsAuthority != "" {
 		resolved, err := resolveDNSAuthority(dnsAuthority)
