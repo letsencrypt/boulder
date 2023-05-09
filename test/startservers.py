@@ -29,16 +29,8 @@ def bouldersvc(cmd, cfg, addr, debug_port, deps=None):
 ra_deps = ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2")
 
 SERVICES = {
-    "boulder-remoteva-a": {
-        "debug_port": 8011,
-        "grpc_addr": "rva1.service.consul:9097",
-        "cmd": bouldercmd("boulder-remoteva", "va-remote-a.json"),
-    },
-    "boulder-remoteva-b": {
-        "debug_port": 8012,
-        "grpc_addr": "rva1.service.consul:9098",
-        "cmd": bouldercmd("boulder-remoteva", "va-remote-b.json"),
-    },
+    "boulder-remoteva-a": bouldersvc("boulder-remoteva", "va-remote-a.json", "rva1.service.consul:9097", 8011),
+    "boulder-remoteva-b": bouldersvc("boulder-remoteva", "va-remote-b.json", "rva1.service.consul:9097", 8012),
     "boulder-sa-1": bouldersvc("boulder-sa", "sa.json", "sa1.service.consul:9095", 8003),
     "boulder-sa-2": bouldersvc("boulder-sa", "sa.json", "sa2.service.consul:9095", 8103),
     "ct-test-srv": {
