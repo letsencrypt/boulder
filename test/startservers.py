@@ -6,26 +6,35 @@ import subprocess
 from helpers import waithealth, waitport, config_dir
 
 
+def bouldercmd(cmd, cfg, addr=None, debug_port=None):
+    argv = ["./bin/boulder", cmd, "--config", os.path.join(config_dir, cfg)]
+    if addr:
+        argv += ["--addr", addr]
+    if debug_port:
+        argv += ["--debug-addr", f":{debug_port}"]
+    return argv
+
+
 SERVICES = {
     "boulder-remoteva-a": {
         "debug_port": 8011,
         "grpc_addr": "rva1.service.consul:9097",
-        "cmd": ("./bin/boulder", "boulder-remoteva", "--config", os.path.join(config_dir, "va-remote-a.json")),
+        "cmd": bouldercmd("boulder-remoteva", "va-remote-a.json"),
     },
     "boulder-remoteva-b": {
         "debug_port": 8012,
         "grpc_addr": "rva1.service.consul:9098",
-        "cmd": ("./bin/boulder", "boulder-remoteva", "--config", os.path.join(config_dir, "va-remote-b.json")),
+        "cmd": bouldercmd("boulder-remoteva", "va-remote-b.json"),
     },
     "boulder-sa-1": {
         "debug_port": 8003,
         "grpc_addr": "sa1.service.consul:9095",
-        "cmd": ("./bin/boulder", "boulder-sa", "--config", os.path.join(config_dir, "sa.json"), "--addr", "sa1.service.consul:9095", "--debug-addr", ":8003"),
+        "cmd": bouldercmd("boulder-sa", "sa.json", addr="sa1.service.consul:9095", debug_port=8003),
     },
     "boulder-sa-2": {
         "debug_port": 8103,
         "grpc_addr": "sa2.service.consul:9095",
-        "cmd": ("./bin/boulder", "boulder-sa", "--config", os.path.join(config_dir, "sa.json"), "--addr", "sa2.service.consul:9095", "--debug-addr", ":8103"),
+        "cmd": bouldercmd("boulder-sa", "sa.json", addr="sa2.service.consul:9095", debug_port=8103),
     },
     "ct-test-srv": {
         "debug_port": 4500,
@@ -34,12 +43,12 @@ SERVICES = {
     "boulder-publisher-1": {
         "debug_port": 8009,
         "grpc_addr": "publisher1.service.consul:9091",
-        "cmd": ("./bin/boulder", "boulder-publisher", "--config", os.path.join(config_dir, "publisher.json"), "--addr", "publisher1.service.consul:9091", "--debug-addr", ":8009"),
+        "cmd": bouldercmd("boulder-publisher", "publisher.json", addr="publisher1.service.consul:9091", debug_port=8009),
     },
     "boulder-publisher-2": {
         "debug_port": 8109,
         "grpc_addr": "publisher2.service.consul:9091",
-        "cmd": ("./bin/boulder", "boulder-publisher", "--config", os.path.join(config_dir, "publisher.json"), "--addr", "publisher2.service.consul:9091", "--debug-addr", ":8109"),
+        "cmd": bouldercmd("boulder-publisher", "publisher.json", addr="publisher2.service.consul:9091", debug_port=8109),
     },
     "mail-test-srv": {
         "debug_port": 9380,
@@ -47,97 +56,79 @@ SERVICES = {
     },
     "ocsp-responder": {
         "debug_port": 8005,
-        "cmd": ("./bin/boulder", "ocsp-responder", "--config", os.path.join(config_dir, "ocsp-responder.json")),
+        "cmd": bouldercmd("ocsp-responder", "ocsp-responder.json"),
         "deps": ("boulder-ra-1", "boulder-ra-2"),
     },
     "boulder-va-1": {
         "debug_port": 8004,
         "grpc_addr": "va1.service.consul:9092",
-        "cmd": ("./bin/boulder", "boulder-va", "--config", os.path.join(config_dir, "va.json"), "--addr", "va1.service.consul:9092", "--debug-addr", ":8004"),
+        "cmd": bouldercmd("boulder-va", "va.json", addr="va1.service.consul:9092", debug_port=8004),
         "deps": ("boulder-remoteva-a", "boulder-remoteva-b"),
     },
     "boulder-va-2": {
         "debug_port": 8104,
         "grpc_addr": "va2.service.consul:9092",
-        "cmd": ("./bin/boulder", "boulder-va", "--config", os.path.join(config_dir, "va.json"), "--addr", "va2.service.consul:9092", "--debug-addr", ":8104"),
+        "cmd": bouldercmd("boulder-va", "va.json", addr="va2.service.consul:9092", debug_port=8104),
         "deps": ("boulder-remoteva-a", "boulder-remoteva-b"),
     },
     "boulder-ca-a": {
         "debug_port": 8001,
         "grpc_addr": "ca1.service.consul:9093",
-        "cmd": ("./bin/boulder", "boulder-ca", "--config", os.path.join(config_dir, "ca-a.json"), "--ca-addr", "ca1.service.consul:9093", "--debug-addr", ":8001"),
+        "cmd": bouldercmd("boulder-ca", "ca-a.json", debug_port=8001) + ["--ca-addr", "ca1.service.consul:9093"],
         "deps": ("boulder-sa-1", "boulder-sa-2"),
     },
     "boulder-ca-b": {
         "debug_port": 8101,
         "grpc_addr": "ca2.service.consul:9093",
-        "cmd": ("./bin/boulder", "boulder-ca", "--config", os.path.join(config_dir, "ca-b.json"), "--ca-addr", "ca2.service.consul:9093", "--debug-addr", ":8101"),
+        "cmd": bouldercmd("boulder-ca", "ca-b.json", debug_port=8101) + ["--ca-addr", "ca2.service.consul:9093"],
         "deps": ("boulder-sa-1", "boulder-sa-2"),
     },
     "akamai-test-srv": {"debug_port": 6789, "cmd": ("./bin/akamai-test-srv", "--listen", "localhost:6789", "--secret", "its-a-secret")},
     "akamai-purger": {
         "debug_port": 9666,
-        "cmd": ("./bin/boulder", "akamai-purger", "--config", os.path.join(config_dir, "akamai-purger.json")),
+        "cmd": bouldercmd("akamai-purger", "akamai-purger.json"),
         "deps": ("akamai-test-srv",),
     },
     "s3-test-srv": {"debug_port": 7890, "cmd": ("./bin/s3-test-srv", "--listen", "localhost:7890")},
-    "crl-storer": {"debug_port": 9667, "cmd": ("./bin/boulder", "crl-storer", "--config", os.path.join(config_dir, "crl-storer.json")), "deps": ("s3-test-srv",)},
+    "crl-storer": {"debug_port": 9667, "cmd": bouldercmd("crl-storer", "crl-storer.json"), "deps": ("s3-test-srv",)},
     "crl-updater": {
         "debug_port": 8021,
-        "cmd": ("./bin/boulder", "crl-updater", "--config", os.path.join(config_dir, "crl-updater.json")),
+        "cmd": bouldercmd("crl-updater", "crl-updater.json"),
         "deps": ("boulder-ca-a", "boulder-ca-b", "boulder-sa-1", "boulder-sa-2", "crl-storer"),
     },
     "boulder-ra-1": {
         "debug_port": 8002,
         "grpc_addr": "ra1.service.consul:9094",
-        "cmd": ("./bin/boulder", "boulder-ra", "--config", os.path.join(config_dir, "ra.json"), "--addr", "ra1.service.consul:9094", "--debug-addr", ":8002"),
+        "cmd": bouldercmd("boulder-ra", "ra.json", addr="ra1.service.consul:9094", debug_port=8002),
         "deps": ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
     },
     "boulder-ra-2": {
         "debug_port": 8102,
         "grpc_addr": "ra2.service.consul:9094",
-        "cmd": ("./bin/boulder", "boulder-ra", "--config", os.path.join(config_dir, "ra.json"), "--addr", "ra2.service.consul:9094", "--debug-addr", ":8102"),
+        "cmd": bouldercmd("boulder-ra", "ra.json", addr="ra2.service.consul:9094", debug_port=8102),
         "deps": ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
     },
     "bad-key-revoker": {
         "debug_port": 8020,
-        "cmd": ("./bin/boulder", "bad-key-revoker", "--config", os.path.join(config_dir, "bad-key-revoker.json")),
+        "cmd": bouldercmd("bad-key-revoker", "bad-key-revoker.json"),
         "deps": ("boulder-ra-1", "boulder-ra-2", "mail-test-srv"),
     },
     "nonce-service-taro": {
         "debug_port": 8111,
         "grpc_addr": "nonce1.service.consul:9101",
-        "cmd": (
-            "./bin/boulder",
-            "nonce-service",
-            "--config",
-            os.path.join(config_dir, "nonce-a.json"),
-            "--addr",
-            "10.77.77.77:9101",
-            "--debug-addr",
-            ":8111",
-        ),
+        "cmd": bouldercmd("nonce-service", "nonce-a.json", addr="10.77.77.77:9101", debug_port=8111),
     },
     "nonce-service-zinc": {
         "debug_port": 8112,
         "grpc_addr": "nonce2.service.consul:9101",
-        "cmd": (
-            "./bin/boulder",
-            "nonce-service",
-            "--config",
-            os.path.join(config_dir, "nonce-b.json"),
-            "--addr",
-            "10.88.88.88:9101",
-            "--debug-addr",
-            ":8112",
-        ),
+        "cmd": bouldercmd("nonce-service", "nonce-b.json", addr="10.88.88.88:9101", debug_port=8112),
     },
     "boulder-wfe2": {
         "debug_port": 4001,
-        "cmd": ("./bin/boulder", "boulder-wfe2", "--config", os.path.join(config_dir, "wfe2.json")),
+        "cmd": bouldercmd("boulder-wfe2", "wfe2.json"),
         "deps": ("boulder-ra-1", "boulder-ra-2", "boulder-sa-1", "boulder-sa-2", "nonce-service-taro", "nonce-service-zinc"),
     },
-    "log-validator": {"debug_port": 8016, "cmd": ("./bin/boulder", "log-validator", "--config", os.path.join(config_dir, "log-validator.json"))},
+    "log-validator": {"debug_port": 8016, "cmd": bouldercmd("log-validator", "log-validator.json")},
 }
 
 
