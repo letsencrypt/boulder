@@ -7,6 +7,7 @@ from helpers import waithealth, waitport, config_dir
 
 
 def bouldercmd(cmd, cfg, addr=None, debug_port=None):
+    """bouldercmd is the common core of most of the services here"""
     argv = ["./bin/boulder", cmd, "--config", os.path.join(config_dir, cfg)]
     if addr:
         argv += ["--addr", addr]
@@ -14,6 +15,18 @@ def bouldercmd(cmd, cfg, addr=None, debug_port=None):
         argv += ["--debug-addr", f":{debug_port}"]
     return argv
 
+
+def bouldersvc(cmd, cfg, addr, debug_port, deps=None):
+    """bouldersvc is an even more specific common case"""
+    return {
+        "debug_port": debug_port,
+        "grpc_addr": addr,
+        "cmd": bouldercmd(cmd, cfg, addr, debug_port),
+        "deps": deps,
+    }
+
+
+ra_deps = ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2")
 
 SERVICES = {
     "boulder-remoteva-a": {
@@ -26,30 +39,14 @@ SERVICES = {
         "grpc_addr": "rva1.service.consul:9098",
         "cmd": bouldercmd("boulder-remoteva", "va-remote-b.json"),
     },
-    "boulder-sa-1": {
-        "debug_port": 8003,
-        "grpc_addr": "sa1.service.consul:9095",
-        "cmd": bouldercmd("boulder-sa", "sa.json", addr="sa1.service.consul:9095", debug_port=8003),
-    },
-    "boulder-sa-2": {
-        "debug_port": 8103,
-        "grpc_addr": "sa2.service.consul:9095",
-        "cmd": bouldercmd("boulder-sa", "sa.json", addr="sa2.service.consul:9095", debug_port=8103),
-    },
+    "boulder-sa-1": bouldersvc("boulder-sa", "sa.json", "sa1.service.consul:9095", 8003),
+    "boulder-sa-2": bouldersvc("boulder-sa", "sa.json", "sa2.service.consul:9095", 8103),
     "ct-test-srv": {
         "debug_port": 4500,
         "cmd": ("./bin/ct-test-srv", "--config", "test/ct-test-srv/ct-test-srv.json"),
     },
-    "boulder-publisher-1": {
-        "debug_port": 8009,
-        "grpc_addr": "publisher1.service.consul:9091",
-        "cmd": bouldercmd("boulder-publisher", "publisher.json", addr="publisher1.service.consul:9091", debug_port=8009),
-    },
-    "boulder-publisher-2": {
-        "debug_port": 8109,
-        "grpc_addr": "publisher2.service.consul:9091",
-        "cmd": bouldercmd("boulder-publisher", "publisher.json", addr="publisher2.service.consul:9091", debug_port=8109),
-    },
+    "boulder-publisher-1": bouldersvc("boulder-publisher", "publisher.json", "publisher1.service.consul:9091", 8009),
+    "boulder-publisher-2": bouldersvc("boulder-publisher", "publisher.json", "publisher2.service.consul:9091", 8109),
     "mail-test-srv": {
         "debug_port": 9380,
         "cmd": ("./bin/mail-test-srv", "--closeFirst", "5", "--cert", "test/mail-test-srv/localhost/cert.pem", "--key", "test/mail-test-srv/localhost/key.pem"),
@@ -59,18 +56,8 @@ SERVICES = {
         "cmd": bouldercmd("ocsp-responder", "ocsp-responder.json"),
         "deps": ("boulder-ra-1", "boulder-ra-2"),
     },
-    "boulder-va-1": {
-        "debug_port": 8004,
-        "grpc_addr": "va1.service.consul:9092",
-        "cmd": bouldercmd("boulder-va", "va.json", addr="va1.service.consul:9092", debug_port=8004),
-        "deps": ("boulder-remoteva-a", "boulder-remoteva-b"),
-    },
-    "boulder-va-2": {
-        "debug_port": 8104,
-        "grpc_addr": "va2.service.consul:9092",
-        "cmd": bouldercmd("boulder-va", "va.json", addr="va2.service.consul:9092", debug_port=8104),
-        "deps": ("boulder-remoteva-a", "boulder-remoteva-b"),
-    },
+    "boulder-va-1": bouldersvc("boulder-va", "va.json", "va1.service.consul:9092", 8004, deps=("boulder-remoteva-a", "boulder-remoteva-b")),
+    "boulder-va-2": bouldersvc("boulder-va", "va.json", "va2.service.consul:9092", 8104, deps=("boulder-remoteva-a", "boulder-remoteva-b")),
     "boulder-ca-a": {
         "debug_port": 8001,
         "grpc_addr": "ca1.service.consul:9093",
@@ -96,18 +83,8 @@ SERVICES = {
         "cmd": bouldercmd("crl-updater", "crl-updater.json"),
         "deps": ("boulder-ca-a", "boulder-ca-b", "boulder-sa-1", "boulder-sa-2", "crl-storer"),
     },
-    "boulder-ra-1": {
-        "debug_port": 8002,
-        "grpc_addr": "ra1.service.consul:9094",
-        "cmd": bouldercmd("boulder-ra", "ra.json", addr="ra1.service.consul:9094", debug_port=8002),
-        "deps": ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
-    },
-    "boulder-ra-2": {
-        "debug_port": 8102,
-        "grpc_addr": "ra2.service.consul:9094",
-        "cmd": bouldercmd("boulder-ra", "ra.json", addr="ra2.service.consul:9094", debug_port=8102),
-        "deps": ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
-    },
+    "boulder-ra-1": bouldersvc("boulder-ra", "ra.json", "ra1.service.consul:9094", 8002, deps=ra_deps),
+    "boulder-ra-2": bouldersvc("boulder-ra", "ra.json", "ra2.service.consul:9094", 8102, deps=ra_deps),
     "bad-key-revoker": {
         "debug_port": 8020,
         "cmd": bouldercmd("bad-key-revoker", "bad-key-revoker.json"),
