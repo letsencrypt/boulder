@@ -22,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/web"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/davecgh/go-spew/spew"
 	"google.golang.org/grpc"
 	"gopkg.in/go-jose/go-jose.v2"
 )
@@ -311,7 +310,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWK key header algorithm was not specified for key",
+			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)",
 		},
 		{
 			jose.JSONWebKey{
@@ -343,7 +342,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521",
+			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)",
 		},
 		{
 			jose.JSONWebKey{
@@ -404,11 +403,12 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 	test.AssertNotError(t, err, "RS256 key: Expected nil error")
 
 	badJSONWebKeyRS256 := &jose.JSONWebKey{
-		Key: &rsa.PublicKey{},
+		Algorithm: "ObviouslyWrongButNotZeroValue",
+		Key:       &rsa.PublicKey{},
 	}
 	err = checkAlgorithm(badJSONWebKeyRS256, jwsRS256.Signatures[0].Header)
 	test.AssertError(t, err, "RS256 key: Expected nil error")
-	test.AssertContains(t, err.Error(), "JWK key header algorithm was not specified")
+	test.AssertContains(t, err.Error(), "JWK key header algorithm \"ObviouslyWrongButNotZeroValue\" does not match expected algorithm \"RS256\" for JWK")
 
 	jwsES256 := &jose.JSONWebSignature{
 		Signatures: []jose.Signature{
@@ -429,13 +429,14 @@ func TestCheckAlgorithmSuccess(t *testing.T) {
 	test.AssertNotError(t, err, "ES256 key: Expected nil error")
 
 	badJSONWebKeyES256 := &jose.JSONWebKey{
+		Algorithm: "ObviouslyWrongButNotZeroValue",
 		Key: &ecdsa.PublicKey{
 			Curve: elliptic.P256(),
 		},
 	}
 	err = checkAlgorithm(badJSONWebKeyES256, jwsES256.Signatures[0].Header)
 	test.AssertError(t, err, "ES256 key: Expected nil error")
-	test.AssertContains(t, err.Error(), "JWK key header algorithm was not specified")
+	test.AssertContains(t, err.Error(), "JWK key header algorithm \"ObviouslyWrongButNotZeroValue\" does not match expected algorithm \"ES256\" for JWK")
 }
 
 func TestValidPOSTRequest(t *testing.T) {
@@ -1297,9 +1298,7 @@ func TestValidJWSForKey(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			request := makePostRequestWithPath("test", tc.Body)
-			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request)
-			fmt.Printf("DEBUG: key %v\n", tc.JWS.Signatures[0].Header.KeyID)
-			spew.Dump(tc.JWS)
+			outPayload, prob := wfe.validJWSForKey(context.Background(), &tc.JWS, tc.JWK, request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
