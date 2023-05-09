@@ -108,6 +108,7 @@ func TestWaitForReadyTrue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
+	defer conn.Close()
 	c := test_proto.NewChillerClient(conn)
 
 	start := time.Now()
@@ -118,11 +119,11 @@ func TestWaitForReadyTrue(t *testing.T) {
 	if time.Since(start) < 90*time.Millisecond {
 		t.Errorf("Chill failed fast, when WaitForReady should be enabled.")
 	}
-	_ = conn.Close()
 }
 
 // TestWaitForReadyFalse configures a gRPC client with waitForReady: false and
-// unavailable, and ensures that the request errors out promptly.
+// sends a request to a backend that is unavailable, and ensures that the request
+// errors out promptly.
 func TestWaitForReadyFalse(t *testing.T) {
 	clientMetrics, err := newClientMetrics(metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "creating client metrics")
@@ -139,6 +140,7 @@ func TestWaitForReadyFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("did not connect: %v", err)
 	}
+	defer conn.Close()
 	c := test_proto.NewChillerClient(conn)
 
 	start := time.Now()
@@ -149,7 +151,6 @@ func TestWaitForReadyFalse(t *testing.T) {
 	if time.Since(start) > 200*time.Millisecond {
 		t.Errorf("Chill failed slow, when WaitForReady should be disabled.")
 	}
-	_ = conn.Close()
 }
 
 // testServer is used to implement TestTimeouts, and will attempt to sleep for
