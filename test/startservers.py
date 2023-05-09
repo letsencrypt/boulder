@@ -1,106 +1,113 @@
 import atexit
-import collections
 import os
 import signal
 import subprocess
 
 from helpers import waithealth, waitport, config_dir
 
-Service = collections.namedtuple("Service", ("name", "debug_port", "grpc_addr", "cmd", "deps"))
 
-SERVICES = (
-    Service("boulder-remoteva-a", 8011, "rva1.service.consul:9097", ("./bin/boulder", "boulder-remoteva", "--config", os.path.join(config_dir, "va-remote-a.json")), None),
-    Service("boulder-remoteva-b", 8012, "rva1.service.consul:9098", ("./bin/boulder", "boulder-remoteva", "--config", os.path.join(config_dir, "va-remote-b.json")), None),
-    Service(
-        "boulder-sa-1",
-        8003,
-        "sa1.service.consul:9095",
-        ("./bin/boulder", "boulder-sa", "--config", os.path.join(config_dir, "sa.json"), "--addr", "sa1.service.consul:9095", "--debug-addr", ":8003"),
-        None,
-    ),
-    Service(
-        "boulder-sa-2",
-        8103,
-        "sa2.service.consul:9095",
-        ("./bin/boulder", "boulder-sa", "--config", os.path.join(config_dir, "sa.json"), "--addr", "sa2.service.consul:9095", "--debug-addr", ":8103"),
-        None,
-    ),
-    Service("ct-test-srv", 4500, None, ("./bin/ct-test-srv", "--config", "test/ct-test-srv/ct-test-srv.json"), None),
-    Service(
-        "boulder-publisher-1",
-        8009,
-        "publisher1.service.consul:9091",
-        ("./bin/boulder", "boulder-publisher", "--config", os.path.join(config_dir, "publisher.json"), "--addr", "publisher1.service.consul:9091", "--debug-addr", ":8009"),
-        None,
-    ),
-    Service(
-        "boulder-publisher-2",
-        8109,
-        "publisher2.service.consul:9091",
-        ("./bin/boulder", "boulder-publisher", "--config", os.path.join(config_dir, "publisher.json"), "--addr", "publisher2.service.consul:9091", "--debug-addr", ":8109"),
-        None,
-    ),
-    Service("mail-test-srv", 9380, None, ("./bin/mail-test-srv", "--closeFirst", "5", "--cert", "test/mail-test-srv/localhost/cert.pem", "--key", "test/mail-test-srv/localhost/key.pem"), None),
-    Service("ocsp-responder", 8005, None, ("./bin/boulder", "ocsp-responder", "--config", os.path.join(config_dir, "ocsp-responder.json")), ("boulder-ra-1", "boulder-ra-2")),
-    Service(
-        "boulder-va-1",
-        8004,
-        "va1.service.consul:9092",
-        ("./bin/boulder", "boulder-va", "--config", os.path.join(config_dir, "va.json"), "--addr", "va1.service.consul:9092", "--debug-addr", ":8004"),
-        ("boulder-remoteva-a", "boulder-remoteva-b"),
-    ),
-    Service(
-        "boulder-va-2",
-        8104,
-        "va2.service.consul:9092",
-        ("./bin/boulder", "boulder-va", "--config", os.path.join(config_dir, "va.json"), "--addr", "va2.service.consul:9092", "--debug-addr", ":8104"),
-        ("boulder-remoteva-a", "boulder-remoteva-b"),
-    ),
-    Service(
-        "boulder-ca-a",
-        8001,
-        "ca1.service.consul:9093",
-        ("./bin/boulder", "boulder-ca", "--config", os.path.join(config_dir, "ca-a.json"), "--ca-addr", "ca1.service.consul:9093", "--debug-addr", ":8001"),
-        ("boulder-sa-1", "boulder-sa-2"),
-    ),
-    Service(
-        "boulder-ca-b",
-        8101,
-        "ca2.service.consul:9093",
-        ("./bin/boulder", "boulder-ca", "--config", os.path.join(config_dir, "ca-b.json"), "--ca-addr", "ca2.service.consul:9093", "--debug-addr", ":8101"),
-        ("boulder-sa-1", "boulder-sa-2"),
-    ),
-    Service("akamai-test-srv", 6789, None, ("./bin/akamai-test-srv", "--listen", "localhost:6789", "--secret", "its-a-secret"), None),
-    Service("akamai-purger", 9666, None, ("./bin/boulder", "akamai-purger", "--config", os.path.join(config_dir, "akamai-purger.json")), ("akamai-test-srv",)),
-    Service("s3-test-srv", 7890, None, ("./bin/s3-test-srv", "--listen", "localhost:7890"), None),
-    Service("crl-storer", 9667, None, ("./bin/boulder", "crl-storer", "--config", os.path.join(config_dir, "crl-storer.json")), ("s3-test-srv",)),
-    Service(
-        "crl-updater",
-        8021,
-        None,
-        ("./bin/boulder", "crl-updater", "--config", os.path.join(config_dir, "crl-updater.json")),
-        ("boulder-ca-a", "boulder-ca-b", "boulder-sa-1", "boulder-sa-2", "crl-storer"),
-    ),
-    Service(
-        "boulder-ra-1",
-        8002,
-        "ra1.service.consul:9094",
-        ("./bin/boulder", "boulder-ra", "--config", os.path.join(config_dir, "ra.json"), "--addr", "ra1.service.consul:9094", "--debug-addr", ":8002"),
-        ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
-    ),
-    Service(
-        "boulder-ra-2",
-        8102,
-        "ra2.service.consul:9094",
-        ("./bin/boulder", "boulder-ra", "--config", os.path.join(config_dir, "ra.json"), "--addr", "ra2.service.consul:9094", "--debug-addr", ":8102"),
-        ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
-    ),
-    Service("bad-key-revoker", 8020, None, ("./bin/boulder", "bad-key-revoker", "--config", os.path.join(config_dir, "bad-key-revoker.json")), ("boulder-ra-1", "boulder-ra-2", "mail-test-srv")),
-    Service(
-        "nonce-service-taro",
-        8111,
-        "nonce1.service.consul:9101",
-        (
+SERVICES = {
+    "boulder-remoteva-a": {
+        "debug_port": 8011,
+        "grpc_addr": "rva1.service.consul:9097",
+        "cmd": ("./bin/boulder", "boulder-remoteva", "--config", os.path.join(config_dir, "va-remote-a.json")),
+    },
+    "boulder-remoteva-b": {
+        "debug_port": 8012,
+        "grpc_addr": "rva1.service.consul:9098",
+        "cmd": ("./bin/boulder", "boulder-remoteva", "--config", os.path.join(config_dir, "va-remote-b.json")),
+    },
+    "boulder-sa-1": {
+        "debug_port": 8003,
+        "grpc_addr": "sa1.service.consul:9095",
+        "cmd": ("./bin/boulder", "boulder-sa", "--config", os.path.join(config_dir, "sa.json"), "--addr", "sa1.service.consul:9095", "--debug-addr", ":8003"),
+    },
+    "boulder-sa-2": {
+        "debug_port": 8103,
+        "grpc_addr": "sa2.service.consul:9095",
+        "cmd": ("./bin/boulder", "boulder-sa", "--config", os.path.join(config_dir, "sa.json"), "--addr", "sa2.service.consul:9095", "--debug-addr", ":8103"),
+    },
+    "ct-test-srv": {
+        "debug_port": 4500,
+        "cmd": ("./bin/ct-test-srv", "--config", "test/ct-test-srv/ct-test-srv.json"),
+    },
+    "boulder-publisher-1": {
+        "debug_port": 8009,
+        "grpc_addr": "publisher1.service.consul:9091",
+        "cmd": ("./bin/boulder", "boulder-publisher", "--config", os.path.join(config_dir, "publisher.json"), "--addr", "publisher1.service.consul:9091", "--debug-addr", ":8009"),
+    },
+    "boulder-publisher-2": {
+        "debug_port": 8109,
+        "grpc_addr": "publisher2.service.consul:9091",
+        "cmd": ("./bin/boulder", "boulder-publisher", "--config", os.path.join(config_dir, "publisher.json"), "--addr", "publisher2.service.consul:9091", "--debug-addr", ":8109"),
+    },
+    "mail-test-srv": {
+        "debug_port": 9380,
+        "cmd": ("./bin/mail-test-srv", "--closeFirst", "5", "--cert", "test/mail-test-srv/localhost/cert.pem", "--key", "test/mail-test-srv/localhost/key.pem"),
+    },
+    "ocsp-responder": {
+        "debug_port": 8005,
+        "cmd": ("./bin/boulder", "ocsp-responder", "--config", os.path.join(config_dir, "ocsp-responder.json")),
+        "deps": ("boulder-ra-1", "boulder-ra-2"),
+    },
+    "boulder-va-1": {
+        "debug_port": 8004,
+        "grpc_addr": "va1.service.consul:9092",
+        "cmd": ("./bin/boulder", "boulder-va", "--config", os.path.join(config_dir, "va.json"), "--addr", "va1.service.consul:9092", "--debug-addr", ":8004"),
+        "deps": ("boulder-remoteva-a", "boulder-remoteva-b"),
+    },
+    "boulder-va-2": {
+        "debug_port": 8104,
+        "grpc_addr": "va2.service.consul:9092",
+        "cmd": ("./bin/boulder", "boulder-va", "--config", os.path.join(config_dir, "va.json"), "--addr", "va2.service.consul:9092", "--debug-addr", ":8104"),
+        "deps": ("boulder-remoteva-a", "boulder-remoteva-b"),
+    },
+    "boulder-ca-a": {
+        "debug_port": 8001,
+        "grpc_addr": "ca1.service.consul:9093",
+        "cmd": ("./bin/boulder", "boulder-ca", "--config", os.path.join(config_dir, "ca-a.json"), "--ca-addr", "ca1.service.consul:9093", "--debug-addr", ":8001"),
+        "deps": ("boulder-sa-1", "boulder-sa-2"),
+    },
+    "boulder-ca-b": {
+        "debug_port": 8101,
+        "grpc_addr": "ca2.service.consul:9093",
+        "cmd": ("./bin/boulder", "boulder-ca", "--config", os.path.join(config_dir, "ca-b.json"), "--ca-addr", "ca2.service.consul:9093", "--debug-addr", ":8101"),
+        "deps": ("boulder-sa-1", "boulder-sa-2"),
+    },
+    "akamai-test-srv": {"debug_port": 6789, "cmd": ("./bin/akamai-test-srv", "--listen", "localhost:6789", "--secret", "its-a-secret")},
+    "akamai-purger": {
+        "debug_port": 9666,
+        "cmd": ("./bin/boulder", "akamai-purger", "--config", os.path.join(config_dir, "akamai-purger.json")),
+        "deps": ("akamai-test-srv",),
+    },
+    "s3-test-srv": {"debug_port": 7890, "cmd": ("./bin/s3-test-srv", "--listen", "localhost:7890")},
+    "crl-storer": {"debug_port": 9667, "cmd": ("./bin/boulder", "crl-storer", "--config", os.path.join(config_dir, "crl-storer.json")), "deps": ("s3-test-srv",)},
+    "crl-updater": {
+        "debug_port": 8021,
+        "cmd": ("./bin/boulder", "crl-updater", "--config", os.path.join(config_dir, "crl-updater.json")),
+        "deps": ("boulder-ca-a", "boulder-ca-b", "boulder-sa-1", "boulder-sa-2", "crl-storer"),
+    },
+    "boulder-ra-1": {
+        "debug_port": 8002,
+        "grpc_addr": "ra1.service.consul:9094",
+        "cmd": ("./bin/boulder", "boulder-ra", "--config", os.path.join(config_dir, "ra.json"), "--addr", "ra1.service.consul:9094", "--debug-addr", ":8002"),
+        "deps": ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
+    },
+    "boulder-ra-2": {
+        "debug_port": 8102,
+        "grpc_addr": "ra2.service.consul:9094",
+        "cmd": ("./bin/boulder", "boulder-ra", "--config", os.path.join(config_dir, "ra.json"), "--addr", "ra2.service.consul:9094", "--debug-addr", ":8102"),
+        "deps": ("boulder-sa-1", "boulder-sa-2", "boulder-ca-a", "boulder-ca-b", "boulder-va-1", "boulder-va-2", "akamai-purger", "boulder-publisher-1", "boulder-publisher-2"),
+    },
+    "bad-key-revoker": {
+        "debug_port": 8020,
+        "cmd": ("./bin/boulder", "bad-key-revoker", "--config", os.path.join(config_dir, "bad-key-revoker.json")),
+        "deps": ("boulder-ra-1", "boulder-ra-2", "mail-test-srv"),
+    },
+    "nonce-service-taro": {
+        "debug_port": 8111,
+        "grpc_addr": "nonce1.service.consul:9101",
+        "cmd": (
             "./bin/boulder",
             "nonce-service",
             "--config",
@@ -110,13 +117,11 @@ SERVICES = (
             "--debug-addr",
             ":8111",
         ),
-        None,
-    ),
-    Service(
-        "nonce-service-zinc",
-        8112,
-        "nonce2.service.consul:9101",
-        (
+    },
+    "nonce-service-zinc": {
+        "debug_port": 8112,
+        "grpc_addr": "nonce2.service.consul:9101",
+        "cmd": (
             "./bin/boulder",
             "nonce-service",
             "--config",
@@ -126,17 +131,14 @@ SERVICES = (
             "--debug-addr",
             ":8112",
         ),
-        None,
-    ),
-    Service(
-        "boulder-wfe2",
-        4001,
-        None,
-        ("./bin/boulder", "boulder-wfe2", "--config", os.path.join(config_dir, "wfe2.json")),
-        ("boulder-ra-1", "boulder-ra-2", "boulder-sa-1", "boulder-sa-2", "nonce-service-taro", "nonce-service-zinc"),
-    ),
-    Service("log-validator", 8016, None, ("./bin/boulder", "log-validator", "--config", os.path.join(config_dir, "log-validator.json")), None),
-)
+    },
+    "boulder-wfe2": {
+        "debug_port": 4001,
+        "cmd": ("./bin/boulder", "boulder-wfe2", "--config", os.path.join(config_dir, "wfe2.json")),
+        "deps": ("boulder-ra-1", "boulder-ra-2", "boulder-sa-1", "boulder-sa-2", "nonce-service-taro", "nonce-service-zinc"),
+    },
+    "log-validator": {"debug_port": 8016, "cmd": ("./bin/boulder", "log-validator", "--config", os.path.join(config_dir, "log-validator.json"))},
+}
 
 
 def _service_toposort(services):
@@ -145,20 +147,20 @@ def _service_toposort(services):
     No service will be yielded until every service listed in its deps value
     has been yielded.
     """
-    ready = set([s for s in services if not s.deps])
+    ready = set([s for s in services if not services[s].get("deps")])
     blocked = set(services) - ready
     done = set()
     while ready:
         service = ready.pop()
         yield service
-        done.add(service.name)
-        new = set([s for s in blocked if all([d in done for d in s.deps])])
+        done.add(service)
+        new = set([s for s in blocked if all([d in done for d in services[s].get("deps")])])
         ready |= new
         blocked -= new
     if blocked:
         print("WARNING: services with unsatisfied dependencies:")
         for s in blocked:
-            print(s.name, ":", s.deps)
+            print(s, ":", services[s].get("deps"))
         raise Exception("Unable to satisfy service dependencies")
 
 
@@ -220,18 +222,18 @@ def start(fakeclock):
     # before any services that intend to send it RPCs. On shutdown they will be
     # killed in reverse order.
     for service in _service_toposort(SERVICES):
-        print("Starting service", service.name)
+        print("Starting service", service)
         try:
             global processes
-            p = run(service.cmd, fakeclock)
+            p = run(SERVICES[service]["cmd"], fakeclock)
             processes.append(p)
-            if service.grpc_addr is not None:
-                waithealth(" ".join(p.args), service.grpc_addr)
+            if SERVICES[service].get("grpc_addr") is not None:
+                waithealth(" ".join(p.args), SERVICES[service]["grpc_addr"])
             else:
-                if not waitport(service.debug_port, " ".join(p.args), perTickCheck=check):
+                if not waitport(SERVICES[service]["debug_port"], " ".join(p.args), perTickCheck=check):
                     return False
         except Exception as e:
-            print("Error starting service %s: %s" % (service.name, e))
+            print(f"Error starting service {service}: {e}")
             return False
 
     print("All servers running. Hit ^C to kill.")
