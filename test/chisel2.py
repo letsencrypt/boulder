@@ -30,13 +30,7 @@ import challtestsrv
 
 logging.basicConfig()
 logger = logging.getLogger()
-logger.setLevel(int(os.getenv("LOGLEVEL", 20)))
-
-DIRECTORY_V2 = os.getenv("DIRECTORY_V2", "http://boulder.service.consul:4001/directory")
-ACCEPTABLE_TOS = os.getenv("ACCEPTABLE_TOS", "https://boulder.service.consul:4431/terms/v7")
-PORT = os.getenv("PORT", "80")
-
-os.environ.setdefault("REQUESTS_CA_BUNDLE", "test/wfe-tls/minica.pem")
+logger.setLevel(20)
 
 challSrv = challtestsrv.ChallTestServer()
 
@@ -45,7 +39,7 @@ def uninitialized_client(key=None):
     if key is None:
         key = josepy.JWKRSA(key=rsa.generate_private_key(65537, 2048, default_backend()))
     net = acme_client.ClientNetwork(key, user_agent="Boulder integration tester")
-    directory = messages.Directory.from_json(net.get(DIRECTORY_V2).json())
+    directory = messages.Directory.from_json(net.get("http://boulder.service.consul:4001/directory").json())
     return acme_client.ClientV2(directory, net)
 
 
@@ -53,10 +47,9 @@ def make_client(email=None):
     """Build an acme.Client and register a new account with a random key."""
     client = uninitialized_client()
     tos = client.directory.meta.terms_of_service
-    if tos == ACCEPTABLE_TOS:
-        client.net.account = client.new_account(messages.NewRegistration.from_data(email=email, terms_of_service_agreed=True))
-    else:
+    if tos != "https://boulder.service.consul:4431/terms/v7":
         raise Exception("Unrecognized terms of service URL %s" % tos)
+    client.net.account = client.new_account(messages.NewRegistration.from_data(email=email, terms_of_service_agreed=True))
     return client
 
 
