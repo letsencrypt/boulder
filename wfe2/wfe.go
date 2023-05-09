@@ -1113,9 +1113,9 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
 	challenge.ProvidedKeyAuthorization = ""
 
-	// Internally, we store challege error problems with just the short form (e.g.
-	// "CAA") of the problem type. But for external display, we need to prefix
-	// the error type with the RFC8555 ACME Error namespace.
+	// Internally, we store challenge error problems with just the short form
+	// (e.g. "CAA") of the problem type. But for external display, we need to
+	// prefix the error type with the RFC8555 ACME Error namespace.
 	if challenge.Error != nil {
 		challenge.Error.Type = probs.ErrorNS + challenge.Error.Type
 	}
