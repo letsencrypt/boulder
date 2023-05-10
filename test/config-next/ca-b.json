@@ -53,15 +53,6 @@
 				"policies": [
 					{
 						"oid": "2.23.140.1.2.1"
-					},
-					{
-						"oid": "1.2.3.4",
-						"qualifiers": [
-							{
-								"type": "id-qt-cps",
-								"value": "http://example.com/cps"
-							}
-						]
 					}
 				],
 				"maxValidityPeriod": "7776000s",
