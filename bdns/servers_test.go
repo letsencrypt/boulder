@@ -64,33 +64,40 @@ func Test_validateServerAddress(t *testing.T) {
 }
 
 func Test_resolveDNSAuthority(t *testing.T) {
-	type args struct {
-		d string
+	type want struct {
+		host string
+		port string
 	}
 	tests := []struct {
 		name    string
-		args    args
-		want    string
+		target  string
+		want    want
 		wantErr bool
 	}{
-		{"IP4 with port", args{"10.10.10.10:53"}, "10.10.10.10:53", false},
-		{"IP4 without port", args{"10.10.10.10"}, "10.10.10.10:53", false},
-		{"IP6 with port and brackets", args{"[2606:4700:4700::1111]:53"}, "[2606:4700:4700::1111]:53", false},
-		{"IP6 without port", args{"2606:4700:4700::1111"}, "[2606:4700:4700::1111]:53", false},
-		{"IP6 with brackets without port", args{"[2606:4700:4700::1111]"}, "", true},
-		{"hostname with port", args{"localhost:53"}, "127.0.0.1:53", false},
-		{"hostname without port", args{"localhost"}, "127.0.0.1:53", false},
-		{"malformed hostname with port", args{"localhost:foo"}, "", true},
+		{"IP4 with port", "10.10.10.10:53", want{"10.10.10.10", "53"}, false},
+		{"IP4 without port", "10.10.10.10", want{"10.10.10.10", "53"}, false},
+		{"IP6 with port and brackets", "[2606:4700:4700::1111]:53", want{"2606:4700:4700::1111", "53"}, false},
+		{"IP6 without port", "2606:4700:4700::1111", want{"2606:4700:4700::1111", "53"}, false},
+		{"IP6 with brackets without port", "[2606:4700:4700::1111]", want{"2606:4700:4700::1111", "53"}, false},
+		{"hostname with port", "localhost:53", want{"localhost", "53"}, false},
+		{"hostname without port", "localhost", want{"localhost", "53"}, false},
+		{"only port", ":53", want{"localhost", "53"}, false},
+		{"hostname with no port after colon", "localhost:", want{"", ""}, true},
+		{"IP4 with no port after colon", "10.10.10.10:", want{"", ""}, true},
+		{"IP6 with no port after colon", "[2606:4700:4700::1111]:", want{"", ""}, true},
+		{"no hostname or port", "", want{"", ""}, true},
+		{"invalid addr", "foo:bar:baz", want{"", ""}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveDNSAuthority(tt.args.d)
+			gotHost, gotPort, gotErr := ParseTarget(tt.target, "53")
+			test.AssertEquals(t, gotHost, tt.want.host)
+			test.AssertEquals(t, gotPort, tt.want.port)
 			if tt.wantErr {
-				test.AssertError(t, err, "expected error")
+				test.AssertError(t, gotErr, "expected error")
 			} else {
-				test.AssertNotError(t, err, "unexpected error")
+				test.AssertNotError(t, gotErr, "unexpected error")
 			}
-			test.AssertEquals(t, got, tt.want)
 		})
 	}
 }

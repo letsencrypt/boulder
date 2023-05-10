@@ -124,40 +124,50 @@ type dynamicProvider struct {
 	updateCounter *prometheus.CounterVec
 }
 
-// resolveDNSAuthority resolves the DNS authority to use for resolution of other
-// DNS backends. The DNS authority can be specified as a hostname or IP address,
-// with or without a port. If the authority is specified as a hostname it will
-// be resolved via the system DNS. If the authority is specified as an IP
-// address it will be used directly, defaulting to port 53 if no port is
-// specified.
-func resolveDNSAuthority(d string) (string, error) {
-	host, port, err := net.SplitHostPort(d)
-	if err != nil {
-		// Assume host with no port specified, default port to 53.
-		host = d
-		port = "53"
-	} else {
-		// Ensure the `port` portion of `address` is a valid port.
-		portNum, err := strconv.Atoi(port)
-		if err != nil {
-			return "", fmt.Errorf("parsing port number: %s", err)
+// ParseTarget takes the user input target string and default port, returns
+// formatted host and port info. If target doesn't specify a port, set the port
+// to be the defaultPort. If target is in IPv6 format and host-name is enclosed
+// in square brackets, brackets are stripped when setting the host.
+//
+// Examples:
+//   - target: "www.google.com" defaultPort: "443" returns host: "www.google.com", port: "443"
+//   - target: "ipv4-host:80" defaultPort: "443" returns host: "ipv4-host", port: "80"
+//   - target: "[ipv6-host]" defaultPort: "443" returns host: "ipv6-host", port: "443"
+//   - target: ":80" defaultPort: "443" returns host: "localhost", port: "80"
+//
+// This function is copied from:
+// https://github.com/grpc/grpc-go/blob/master/internal/resolver/dns/dns_resolver.go
+// It has been minimally modified to fit our code style.
+func ParseTarget(target, defaultPort string) (host, port string, err error) {
+	if target == "" {
+		return "", "", errors.New("missing address")
+	}
+	ip := net.ParseIP(target)
+	if ip != nil {
+		// Target is an IPv4 or IPv6(without brackets) address.
+		return target, defaultPort, nil
+	}
+	host, port, err = net.SplitHostPort(target)
+	if err == nil {
+		if port == "" {
+			// If the port field is empty (target ends with colon), e.g.
+			// "[::1]:", this is an error.
+			return "", "", errors.New("missing port after port-separator colon")
 		}
-		if portNum <= 0 || portNum > 65535 {
-			return "", errors.New("port must be an integer between 0 - 65535")
+		// target has port, i.e ipv4-host:port, [ipv6-host]:port, host-name:port
+		if host == "" {
+			// Keep consistent with net.Dial(): If the host is empty, as in
+			// ":80", the local system is assumed.
+			host = "localhost"
 		}
+		return host, port, nil
 	}
-
-	if net.ParseIP(host) != nil {
-		return net.JoinHostPort(host, port), nil
+	host, port, err = net.SplitHostPort(target + ":" + defaultPort)
+	if err == nil {
+		// Target doesn't have port.
+		return host, port, nil
 	}
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return "", fmt.Errorf("during A/AAAA lookup of %q: %s", d, err)
-	}
-	if len(ips) <= 0 {
-		return "", fmt.Errorf("A/AAAA lookup for %q returned 0 results", d)
-	}
-	return net.JoinHostPort(ips[0].String(), port), nil
+	return "", "", fmt.Errorf("invalid target address %v, error info: %v", target, err)
 }
 
 var _ ServerProvider = &dynamicProvider{}
@@ -183,11 +193,15 @@ func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicPr
 	// from the boulder-va JSON config in favor of 'dnsProvider'.
 	dnsAuthority := c.DNSAuthority
 	if dnsAuthority != "" {
-		resolved, err := resolveDNSAuthority(dnsAuthority)
+		host, port, err := ParseTarget(dnsAuthority, "53")
 		if err != nil {
 			return nil, err
 		}
-		dnsAuthority = resolved
+		dnsAuthority = net.JoinHostPort(host, port)
+		err = validateServerAddress(dnsAuthority)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	dp := dynamicProvider{
@@ -252,8 +266,8 @@ func (dp *dynamicProvider) update() error {
 	resolver := net.DefaultResolver
 	if dp.dnsAuthority != "" {
 		resolver = &net.Resolver{
+			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				// Same as the default resolver, but with a custom IP/port.
 				d := &net.Dialer{}
 				return d.DialContext(ctx, network, dp.dnsAuthority)
 			},

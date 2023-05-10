@@ -4,6 +4,7 @@
 		"debugAddr": ":8011",
 		"dnsTries": 3,
 		"dnsProvider": {
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "dns",
 				"domain": "service.consul"
