@@ -756,10 +756,6 @@ func TestFetchHTTP(t *testing.T) {
 			url = fmt.Sprintf("http://example.com:%d/loop", httpPort)
 		}
 
-		/* TODO (Phil) Move this commented stuff into the WFE?
-		rvrf, err := core.TransformURLIntoHostnameAndPort(url)
-		test.AssertNotError(t, err, "Error transforming URL into hostname and port")
-		*/
 		expectedLoopRecords = append(expectedLoopRecords,
 			core.ValidationRecord{
 				URL:               url,
