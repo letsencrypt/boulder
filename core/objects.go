@@ -119,8 +119,8 @@ type Registration struct {
 	Status AcmeStatus `json:"status"`
 }
 
-// ValidationRecord represents a validation attempt against a specific URL and
-// the IP addresses that were resolved and used
+// ValidationRecord represents a validation attempt against a specific
+// URL/hostname and the IP addresses that were resolved and used.
 type ValidationRecord struct {
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
@@ -152,8 +152,10 @@ type RehydratedValidationRecordFields struct {
 	Port     string
 }
 
-// TransformURLIntoHostnameAndPort does a thing.
-// TODO(Phil) Only do this for the HTTP challenge type, for now.
+// TransformURLIntoHostnameAndPort takes a URL string as input and returns a
+// *RehydratedValidationRecordFields. To save database space, boulder no longer
+// stores the hostname and port fields in the validation record for an HTTP-01
+// challenge because that data can be rehydrated from the url field.
 func TransformURLIntoHostnameAndPort(input string) (*RehydratedValidationRecordFields, error) {
 	url, err := url.Parse(input)
 	if err != nil {
