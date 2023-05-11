@@ -15,6 +15,8 @@ import (
 
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	jose "gopkg.in/go-jose/go-jose.v2"
@@ -246,6 +248,11 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 	} else {
 		return nil, errors.New("No cert status")
 	}
+}
+
+func (sa *StorageAuthorityReadOnly) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "unimplemented mock")
+
 }
 
 // GetRevocationStatus is a mock

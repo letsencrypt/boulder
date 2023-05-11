@@ -9,10 +9,18 @@
 		"grpc": {
 			"address": ":9109",
 			"maxConnectionAge": "30s",
-			"clientNames": [
-				"health-checker.boulder",
-				"crl-updater.boulder"
-			]
+			"services": {
+				"storer.CRLStorer": {
+					"clientNames": [
+						"crl-updater.boulder"
+					]
+				},
+				"grpc.health.v1.Health": {
+					"clientNames": [
+						"health-checker.boulder"
+					]
+				}
+			}
 		},
 		"issuerCerts": [
 			"/hierarchy/intermediate-cert-rsa-a.pem",

@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
@@ -41,7 +42,8 @@ type Config struct {
 		// by default.
 		NoncePrefixKey cmd.PasswordConfig `validate:"excluded_with=NoncePrefix,structonly"`
 
-		Syslog cmd.SyslogConfig
+		Syslog        cmd.SyslogConfig
+		OpenTelemetry cmd.OpenTelemetryConfig
 	}
 }
 
@@ -98,14 +100,15 @@ func main() {
 		cmd.FailOnError(err, "Failed to derive nonce prefix")
 	}
 
-	scope, logger := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.DebugAddr)
+	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.NonceService.Syslog, c.NonceService.OpenTelemetry, c.NonceService.DebugAddr)
+	defer oTelShutdown(context.Background())
 	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
 	ns, err := nonce.NewNonceService(scope, c.NonceService.MaxUsed, c.NonceService.NoncePrefix)
 	cmd.FailOnError(err, "Failed to initialize nonce service")
 
-	tlsConfig, err := c.NonceService.TLS.Load()
+	tlsConfig, err := c.NonceService.TLS.Load(scope)
 	cmd.FailOnError(err, "tlsConfig config")
 
 	nonceServer := nonce.NewServer(ns)

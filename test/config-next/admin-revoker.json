@@ -16,6 +16,7 @@
 				"domain": "service.consul"
 			},
 			"hostOverride": "ra.boulder",
+			"noWaitForReady": true,
 			"timeout": "15s"
 		},
 		"saService": {
@@ -25,6 +26,7 @@
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"features": {}

@@ -27,6 +27,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/issuance"
+	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
@@ -70,6 +71,7 @@ type certificateAuthorityImpl struct {
 	orphanCount        *prometheus.CounterVec
 	adoptedOrphanCount *prometheus.CounterVec
 	signErrorCount     *prometheus.CounterVec
+	lintErrorCount     prometheus.Counter
 }
 
 // makeIssuerMaps processes a list of issuers into a set of maps, mapping
@@ -149,6 +151,13 @@ func NewCertificateAuthorityImpl(
 		[]string{"type"})
 	stats.MustRegister(adoptedOrphanCount)
 
+	lintErrorCount := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "lint_errors",
+			Help: "Number of issuances that were halted by linting errors",
+		})
+	stats.MustRegister(lintErrorCount)
+
 	ca = &certificateAuthorityImpl{
 		sa:                 sa,
 		pa:                 pa,
@@ -164,6 +173,7 @@ func NewCertificateAuthorityImpl(
 		orphanCount:        orphanCount,
 		adoptedOrphanCount: adoptedOrphanCount,
 		signErrorCount:     signErrorCount,
+		lintErrorCount:     lintErrorCount,
 		clk:                clk,
 		ecdsaAllowList:     ecdsaAllowList,
 	}
@@ -223,23 +233,30 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		IssuerNameID: int64(issuerNameID),
 	}
 
-	_, err = ca.sa.AddPrecertificate(ctx, req)
-	if err != nil {
-		ca.orphanCount.With(prometheus.Labels{"type": "precert"}).Inc()
-		err = berrors.InternalServerError(err.Error())
-		// Note: This log line is parsed by cmd/orphan-finder. If you make any
-		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			serialHex, hex.EncodeToString(precertDER), issuerNameID, issueReq.RegistrationID, issueReq.OrderID, err)
-		if ca.orphanQueue != nil {
-			ca.queueOrphan(&orphanedCert{
-				DER:      precertDER,
-				RegID:    regID,
-				Precert:  true,
-				IssuerID: int64(issuerNameID),
-			})
+	if features.Enabled(features.StoreLintingCertificateInsteadOfPrecertificate) {
+		_, err = ca.sa.SetCertificateStatusReady(ctx, &sapb.Serial{Serial: serialHex})
+		if err != nil {
+			return nil, err
 		}
-		return nil, err
+	} else {
+		_, err = ca.sa.AddPrecertificate(ctx, req)
+		if err != nil {
+			ca.orphanCount.With(prometheus.Labels{"type": "precert"}).Inc()
+			err = berrors.InternalServerError(err.Error())
+			// Note: This log line is parsed by cmd/orphan-finder. If you make any
+			// changes here, you should make sure they are reflected in orphan-finder.
+			ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
+				serialHex, hex.EncodeToString(precertDER), issuerNameID, issueReq.RegistrationID, issueReq.OrderID, err)
+			if ca.orphanQueue != nil {
+				ca.queueOrphan(&orphanedCert{
+					DER:      precertDER,
+					RegID:    regID,
+					Precert:  true,
+					IssuerID: int64(issuerNameID),
+				})
+			}
+			return nil, err
+		}
 	}
 
 	return &capb.IssuePrecertificateResponse{
@@ -433,11 +450,28 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		NotAfter:          validity.NotAfter,
 	}
 
-	_, issuanceToken, err := issuer.Prepare(req)
+	lintCertBytes, issuanceToken, err := issuer.Prepare(req)
 	if err != nil {
 		ca.log.AuditErrf("Preparing precert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), err)
+		if errors.Is(err, linter.ErrLinting) {
+			ca.lintErrorCount.Inc()
+		}
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
+	}
+
+	if features.Enabled(features.StoreLintingCertificateInsteadOfPrecertificate) {
+		nowNanos := ca.clk.Now().UnixNano()
+		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+			Der:          lintCertBytes,
+			RegID:        issueReq.RegistrationID,
+			Issued:       nowNanos,
+			IssuerNameID: int64(issuer.Cert.NameID()),
+			OcspNotReady: true,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)

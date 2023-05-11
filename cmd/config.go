@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/letsencrypt/boulder/config"
@@ -133,39 +134,82 @@ type HostnamePolicyConfig struct {
 
 // TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
-	CertFile   *string `validate:"required"`
-	KeyFile    *string `validate:"required"`
-	CACertFile *string `validate:"required"`
+	CertFile   string `validate:"required"`
+	KeyFile    string `validate:"required"`
+	CACertFile string `validate:"required"`
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
-// returns a *tls.Config suitable for either client or server use.
-func (t *TLSConfig) Load() (*tls.Config, error) {
+// returns a *tls.Config suitable for either client or server use. Prometheus
+// metrics for various certificate fields will be exported.
+func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t == nil {
 		return nil, fmt.Errorf("nil TLS section in config")
 	}
-	if t.CertFile == nil {
+	if t.CertFile == "" {
 		return nil, fmt.Errorf("nil CertFile in TLSConfig")
 	}
-	if t.KeyFile == nil {
+	if t.KeyFile == "" {
 		return nil, fmt.Errorf("nil KeyFile in TLSConfig")
 	}
-	if t.CACertFile == nil {
+	if t.CACertFile == "" {
 		return nil, fmt.Errorf("nil CACertFile in TLSConfig")
 	}
-	caCertBytes, err := os.ReadFile(*t.CACertFile)
+	caCertBytes, err := os.ReadFile(t.CACertFile)
 	if err != nil {
-		return nil, fmt.Errorf("reading CA cert from %q: %s", *t.CACertFile, err)
+		return nil, fmt.Errorf("reading CA cert from %q: %s", t.CACertFile, err)
 	}
 	rootCAs := x509.NewCertPool()
 	if ok := rootCAs.AppendCertsFromPEM(caCertBytes); !ok {
-		return nil, fmt.Errorf("parsing CA certs from %s failed", *t.CACertFile)
+		return nil, fmt.Errorf("parsing CA certs from %s failed", t.CACertFile)
 	}
-	cert, err := tls.LoadX509KeyPair(*t.CertFile, *t.KeyFile)
+	cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
-			*t.CertFile, *t.KeyFile, err)
+			t.CertFile, t.KeyFile, err)
 	}
+
+	tlsNotBefore := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tlsconfig_notbefore_seconds",
+			Help: "TLS certificate NotBefore field expressed as Unix epoch time",
+		},
+		[]string{"serial"})
+	err = scope.Register(tlsNotBefore)
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			tlsNotBefore = are.ExistingCollector.(*prometheus.GaugeVec)
+		} else {
+			return nil, err
+		}
+	}
+
+	tlsNotAfter := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "tlsconfig_notafter_seconds",
+			Help: "TLS certificate NotAfter field expressed as Unix epoch time",
+		},
+		[]string{"serial"})
+	err = scope.Register(tlsNotAfter)
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			tlsNotAfter = are.ExistingCollector.(*prometheus.GaugeVec)
+		} else {
+			return nil, err
+		}
+	}
+
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return nil, err
+	}
+
+	serial := leaf.SerialNumber.String()
+	tlsNotBefore.WithLabelValues(serial).Set(float64(leaf.NotBefore.Unix()))
+	tlsNotAfter.WithLabelValues(serial).Set(float64(leaf.NotAfter.Unix()))
+
 	return &tls.Config{
 		RootCAs:      rootCAs,
 		ClientCAs:    rootCAs,
@@ -299,6 +343,13 @@ type GRPCClientConfig struct {
 	// verify in the certificate presented by the server.
 	HostOverride string `validate:"excluded_with=ServerIPAddresses,omitempty,hostname"`
 	Timeout      config.Duration
+
+	// NoWaitForReady turns off our (current) default of setting grpc.WaitForReady(true).
+	// This means if all of a GRPC client's backends are down, it will error immediately.
+	// The current default, grpc.WaitForReady(true), means that if all of a GRPC client's
+	// backends are down, it will wait until either one becomes available or the RPC
+	// times out.
+	NoWaitForReady bool
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will
@@ -398,18 +449,11 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
 	Address string `json:"address" validate:"hostname_port"`
-	// ClientNames is a list of allowed client certificate subject alternate names
-	// (SANs). The server will reject clients that do not present a certificate
-	// with a SAN present on the `ClientNames` list.
-	// DEPRECATED: Use the ClientNames field within each Service instead.
-	// TODO(#6698): Remove this field once all production configs have been
-	// migrated to using the service specific client names.
-	ClientNames []string `json:"clientNames" validate:"required_without=Services,dive,hostname"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
 	// the package names set in those files (e.g. "ca.CertificateAuthority").
-	Services map[string]GRPCServiceConfig `json:"services" validate:"required_without=ClientNames,dive,required"`
+	Services map[string]GRPCServiceConfig `json:"services" validate:"required,dive,required"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
@@ -425,4 +469,28 @@ type GRPCServiceConfig struct {
 	// which do not appear in this list, and the server interceptor will reject
 	// RPC calls for this service from clients which are not listed here.
 	ClientNames []string `json:"clientNames" validate:"min=1,dive,hostname,required"`
+}
+
+// OpenTelemetryConfig configures tracing via OpenTelemetry.
+// To enable tracing, set a nonzero SampleRatio and configure an Endpoint
+type OpenTelemetryConfig struct {
+	// Endpoint to connect to with the OTLP protocol over gRPC.
+	// It should be of the form "localhost:4317"
+	//
+	// It always connects over plaintext, and so is only intended to connect
+	// to a local OpenTelemetry collector. This should not be used over an
+	// insecure network.
+	Endpoint string
+
+	// SampleRatio is the ratio of new traces to head sample.
+	// This only affects new traces with no parent with its own sampling decision.
+	// Set to something between 0 and 1, where 1 is sampling all traces.
+	// See otel trace.TraceIDRatioBased for details.
+	SampleRatio float64
+
+	// If true, disable the parent sampler.
+	// On external-facing services like the WFE, setting this true will
+	// ensure that any external API users don't influence our own sampling
+	// decisions.
+	DisableParentSampler bool
 }

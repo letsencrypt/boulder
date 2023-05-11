@@ -1172,6 +1172,7 @@ type StorageAuthorityClient interface {
 	AddBlockedKey(ctx context.Context, in *AddBlockedKeyRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddCertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddPrecertificate(ctx context.Context, in *AddCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SetCertificateStatusReady(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateAuthorization2(ctx context.Context, in *AuthorizationID2, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeactivateRegistration(ctx context.Context, in *RegistrationID, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -1519,6 +1520,15 @@ func (c *storageAuthorityClient) AddPrecertificate(ctx context.Context, in *AddC
 	return out, nil
 }
 
+func (c *storageAuthorityClient) SetCertificateStatusReady(ctx context.Context, in *Serial, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/SetCertificateStatusReady", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *storageAuthorityClient) AddSerial(ctx context.Context, in *AddSerialRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/sa.StorageAuthority/AddSerial", in, out, opts...)
@@ -1664,6 +1674,7 @@ type StorageAuthorityServer interface {
 	AddBlockedKey(context.Context, *AddBlockedKeyRequest) (*emptypb.Empty, error)
 	AddCertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
 	AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error)
+	SetCertificateStatusReady(context.Context, *Serial) (*emptypb.Empty, error)
 	AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error)
 	DeactivateAuthorization2(context.Context, *AuthorizationID2) (*emptypb.Empty, error)
 	DeactivateRegistration(context.Context, *RegistrationID) (*emptypb.Empty, error)
@@ -1775,6 +1786,9 @@ func (UnimplementedStorageAuthorityServer) AddCertificate(context.Context, *AddC
 }
 func (UnimplementedStorageAuthorityServer) AddPrecertificate(context.Context, *AddCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddPrecertificate not implemented")
+}
+func (UnimplementedStorageAuthorityServer) SetCertificateStatusReady(context.Context, *Serial) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetCertificateStatusReady not implemented")
 }
 func (UnimplementedStorageAuthorityServer) AddSerial(context.Context, *AddSerialRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddSerial not implemented")
@@ -2389,6 +2403,24 @@ func _StorageAuthority_AddPrecertificate_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageAuthority_SetCertificateStatusReady_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Serial)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageAuthorityServer).SetCertificateStatusReady(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/sa.StorageAuthority/SetCertificateStatusReady",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageAuthorityServer).SetCertificateStatusReady(ctx, req.(*Serial))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StorageAuthority_AddSerial_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AddSerialRequest)
 	if err := dec(in); err != nil {
@@ -2727,6 +2759,10 @@ var StorageAuthority_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddPrecertificate",
 			Handler:    _StorageAuthority_AddPrecertificate_Handler,
+		},
+		{
+			MethodName: "SetCertificateStatusReady",
+			Handler:    _StorageAuthority_SetCertificateStatusReady_Handler,
 		},
 		{
 			MethodName: "AddSerial",

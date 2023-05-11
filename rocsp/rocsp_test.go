@@ -20,11 +20,11 @@ func makeClient() (*RWClient, clock.Clock) {
 	CertFile := "../test/redis-tls/boulder/cert.pem"
 	KeyFile := "../test/redis-tls/boulder/key.pem"
 	tlsConfig := cmd.TLSConfig{
-		CACertFile: &CACertFile,
-		CertFile:   &CertFile,
-		KeyFile:    &KeyFile,
+		CACertFile: CACertFile,
+		CertFile:   CertFile,
+		KeyFile:    KeyFile,
 	}
-	tlsConfig2, err := tlsConfig.Load()
+	tlsConfig2, err := tlsConfig.Load(metrics.NoopRegisterer)
 	if err != nil {
 		panic(err)
 	}

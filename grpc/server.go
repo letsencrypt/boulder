@@ -11,6 +11,8 @@ import (
 	"github.com/jmhodges/clock"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -97,11 +99,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// Collect all names which should be allowed to connect to the server at all.
 	// This is the names which are allowlisted at the server level, plus the union
 	// of all names which are allowlisted for any individual service.
-	// TODO(#6698): Remove the first portion of this.
 	acceptedSANs := make(map[string]struct{})
-	for _, name := range sb.cfg.ClientNames {
-		acceptedSANs[name] = struct{}{}
-	}
 	for _, service := range sb.cfg.Services {
 		for _, name := range service.ClientNames {
 			acceptedSANs[name] = struct{}{}
@@ -133,12 +131,14 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		mi.metrics.grpcMetrics.UnaryServerInterceptor(),
 		ai.Unary,
 		mi.Unary,
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithInterceptorFilter(filters.Not(filters.HealthCheck()))),
 	}
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		mi.metrics.grpcMetrics.StreamServerInterceptor(),
 		ai.Stream,
 		mi.Stream,
+		otelgrpc.StreamServerInterceptor(),
 	}
 
 	options := []grpc.ServerOption{

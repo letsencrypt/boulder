@@ -9,6 +9,10 @@
 			"stdoutLevel": 6,
 			"syslogLevel": -1
 		},
+		"opentelemetry": {
+			"endpoint": "bjaeger:4317",
+			"sampleratio": 1
+		},
 		"debugAddr": ":8111",
 		"grpc": {
 			"maxConnectionAge": "30s",

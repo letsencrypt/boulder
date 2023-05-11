@@ -17,6 +17,7 @@
 				"domain": "service.consul"
 			},
 			"hostOverride": "ra.boulder",
+			"noWaitForReady": true,
 			"timeout": "15s"
 		},
 		"mailer": {
@@ -31,11 +32,15 @@
 		},
 		"maximumRevocations": 15,
 		"findCertificatesBatchSize": 10,
-		"interval": "1s",
+		"interval": "50ms",
 		"backoffIntervalMax": "2s"
 	},
 	"syslog": {
 		"stdoutlevel": 4,
 		"sysloglevel": -1
+	},
+	"opentelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
 	}
 }

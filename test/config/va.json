@@ -4,6 +4,8 @@
 		"debugAddr": ":8004",
 		"dnsTries": 3,
 		"dnsResolver": "service.consul",
+		"dnsTimeout": "1s",
+		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
 		"tls": {
 			"caCertfile": "test/grpc-creds/minica.pem",
@@ -13,10 +15,23 @@
 		"grpc": {
 			"maxConnectionAge": "30s",
 			"address": ":9092",
-			"clientNames": [
-				"health-checker.boulder",
-				"ra.boulder"
-			]
+			"services": {
+				"va.VA": {
+					"clientNames": [
+						"ra.boulder"
+					]
+				},
+				"va.CAA": {
+					"clientNames": [
+						"ra.boulder"
+					]
+				},
+				"grpc.health.v1.Health": {
+					"clientNames": [
+						"health-checker.boulder"
+					]
+				}
+			}
 		},
 		"features": {
 			"EnforceMultiVA": true,
@@ -43,9 +58,5 @@
 	"syslog": {
 		"stdoutlevel": 6,
 		"sysloglevel": 6
-	},
-	"common": {
-		"dnsTimeout": "1s",
-		"dnsAllowLoopbackAddresses": true
 	}
 }

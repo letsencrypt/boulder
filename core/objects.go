@@ -75,11 +75,16 @@ type OCSPStatus string
 const (
 	OCSPStatusGood    = OCSPStatus("good")
 	OCSPStatusRevoked = OCSPStatus("revoked")
+	// Not a real OCSP status. This is a placeholder we write before the
+	// actual precertificate is issued, to ensure we never return "good" before
+	// issuance succeeds, for BR compliance reasons.
+	OCSPStatusNotReady = OCSPStatus("wait")
 )
 
 var OCSPStatusToInt = map[OCSPStatus]int{
-	OCSPStatusGood:    ocsp.Good,
-	OCSPStatusRevoked: ocsp.Revoked,
+	OCSPStatusGood:     ocsp.Good,
+	OCSPStatusRevoked:  ocsp.Revoked,
+	OCSPStatusNotReady: -1,
 }
 
 // DNSPrefix is attached to DNS names in DNS challenges
@@ -494,7 +499,7 @@ func RenewalInfoSimple(issued time.Time, expires time.Time) RenewalInfo {
 }
 
 // RenewalInfoImmediate constructs a `RenewalInfo` object with a suggested
-// window in the past. Per the draft-ietf-acme-ari-00 spec, clients should
+// window in the past. Per the draft-ietf-acme-ari-01 spec, clients should
 // attempt to renew immediately if the suggested window is in the past. The
 // passed `now` is assumed to be a timestamp representing the current moment in
 // time.

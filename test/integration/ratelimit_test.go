@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"os"
 	"testing"
 
 	"github.com/letsencrypt/boulder/test"
@@ -12,7 +11,6 @@ import (
 func TestDuplicateFQDNRateLimit(t *testing.T) {
 	t.Parallel()
 	domain := random_domain()
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	_, err := authAndIssue(nil, nil, []string{domain}, true)
 	test.AssertNotError(t, err, "Failed to issue first certificate")

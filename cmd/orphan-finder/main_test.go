@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/jmhodges/clock"
@@ -86,6 +88,10 @@ func (m *mockSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificate
 	}
 	m.precertificates = append(m.precertificates, precert)
 	return &emptypb.Empty{}, nil
+}
+
+func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "unimplemented mock")
 }
 
 func (m *mockSA) findPrecertificate(serial string) (*corepb.Certificate, error) {
