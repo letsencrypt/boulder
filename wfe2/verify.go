@@ -95,14 +95,14 @@ const (
 	invalidAuthType
 )
 
-// checkJWSAuthType examines a JWS' protected headers to determine if
-// the request being authenticated by the JWS is identified using an embedded
-// JWK or an embedded key ID. If no signatures are present, or mutually
-// exclusive authentication types are specified at the same time, a problem is
-// returned. checkJWSAuthType is separate from enforceJWSAuthType so that
-// endpoints that need to handle both embedded JWK and embedded key ID requests
-// can determine which type of request they have and act accordingly (e.g.
-// acme v2 cert revocation).
+// checkJWSAuthType examines the protected headers from a bJSONWebSignature to
+// determine if the request being authenticated by the JWS is identified using
+// an embedded JWK or an embedded key ID. If no signatures are present, or
+// mutually exclusive authentication types are specified at the same time, a
+// problem is returned. checkJWSAuthType is separate from enforceJWSAuthType so
+// that endpoints that need to handle both embedded JWK and embedded key ID
+// requests can determine which type of request they have and act accordingly
+// (e.g. acme v2 cert revocation).
 func checkJWSAuthType(header jose.Header) (jwsAuthType, *probs.ProblemDetails) {
 	// There must not be a Key ID *and* an embedded JWK
 	if header.KeyID != "" && header.JSONWebKey != nil {
@@ -117,9 +117,10 @@ func checkJWSAuthType(header jose.Header) (jwsAuthType, *probs.ProblemDetails) {
 	return invalidAuthType, nil
 }
 
-// enforceJWSAuthType enforces that a provided JWS' protected headers have the
-// provided auth type. If there is an error determining the auth type or if it
-// is not the expected auth type then a problem is returned.
+// enforceJWSAuthType enforces that the protected headers from a
+// bJSONWebSignature have the provided auth type. If there is an error
+// determining the auth type or if it is not the expected auth type then a
+// problem is returned.
 func (wfe *WebFrontEndImpl) enforceJWSAuthType(
 	header jose.Header,
 	expectedAuthType jwsAuthType) *probs.ProblemDetails {
@@ -385,11 +386,11 @@ func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*bJSONWebSig
 	return jws, nil
 }
 
-// extractJWK extracts a JWK from a provided JWS' protected headers or returns a
-// problem. It expects that the JWS is using the embedded JWK style of
-// authentication and does not contain an embedded Key ID. Callers should have
-// acquired the provided protected JWS' headers from parseJWS to ensure it has
-// the correct number of signatures present.
+// extractJWK extracts a JWK from the protected headers of a bJSONWebSignature
+// or returns a problem. It expects that the JWS is using the embedded JWK style
+// of authentication and does not contain an embedded Key ID. Callers should
+// have acquired the headers from a bJSONWebSignature returned by parseJWS to
+// ensure it has the correct number of signatures present.
 func (wfe *WebFrontEndImpl) extractJWK(header jose.Header) (*jose.JSONWebKey, *probs.ProblemDetails) {
 	// extractJWK expects the request to be using an embedded JWK auth type and
 	// to not contain the mutually exclusive KeyID.
@@ -441,11 +442,11 @@ func (wfe *WebFrontEndImpl) acctIDFromURL(acctURL string, request *http.Request)
 	return accountID, nil
 }
 
-// lookupJWK finds a JWK associated with the Key ID present in a provided
-// JWS' protected headers, returning the JWK and a pointer to the associated
-// account, or a problem. It expects that the JWS header is using the embedded
-// Key ID style of authentication and does not contain an embedded JWK. Callers
-// should have acquired headers from a bJSONWebSignature.
+// lookupJWK finds a JWK associated with the Key ID present in the provided
+// headers, returning the JWK and a pointer to the associated account, or a
+// problem. It expects that the JWS header is using the embedded Key ID style of
+// authentication and does not contain an embedded JWK. Callers should have
+// acquired headers from a bJSONWebSignature.
 func (wfe *WebFrontEndImpl) lookupJWK(
 	header jose.Header,
 	ctx context.Context,
