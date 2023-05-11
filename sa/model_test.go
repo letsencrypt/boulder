@@ -56,8 +56,6 @@ func TestRegistrationModelToPb(t *testing.T) {
 	test.AssertNotError(t, err, "Should pass")
 }
 
-func TestRegistrationPbToModel(t *testing.T) {}
-
 func TestAuthzModel(t *testing.T) {
 	authzPB := &corepb.Authorization{
 		Id:             "1",
@@ -73,10 +71,8 @@ func TestAuthzModel(t *testing.T) {
 				Validated: 1234,
 				Validationrecords: []*corepb.ValidationRecord{
 					{
-						Hostname:          "hostname",
-						Port:              "port",
 						AddressUsed:       []byte("1.2.3.4"),
-						Url:               "url",
+						Url:               "https://example.com",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},
@@ -116,8 +112,6 @@ func TestAuthzModel(t *testing.T) {
 				Token:  "MTIz",
 				Validationrecords: []*corepb.ValidationRecord{
 					{
-						Hostname:          "hostname",
-						Port:              "port",
 						AddressUsed:       []byte("1.2.3.4"),
 						Url:               "url",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
@@ -131,8 +125,6 @@ func TestAuthzModel(t *testing.T) {
 				Token:  "MTIz",
 				Validationrecords: []*corepb.ValidationRecord{
 					{
-						Hostname:          "hostname",
-						Port:              "port",
 						AddressUsed:       []byte("1.2.3.4"),
 						Url:               "url",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},

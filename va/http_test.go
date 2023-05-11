@@ -413,21 +413,21 @@ func TestSetupHTTPValidation(t *testing.T) {
 			Name:     "target with no IPs",
 			InputURL: httpInputURL,
 			InputTarget: &httpValidationTarget{
-				host: "foobar",
+				host: "ipv4.and.ipv6.localhost",
 				port: va.httpPort,
 				path: "idk",
 			},
 			ExpectedRecord: core.ValidationRecord{
-				URL: "http://ipv4.and.ipv6.localhost/yellow/brick/road",
+				URL: httpInputURL,
 			},
-			ExpectedError: fmt.Errorf(`host "foobar" has no IP addresses remaining to use`),
+			ExpectedError: fmt.Errorf(`host "ipv4.and.ipv6.localhost" has no IP addresses remaining to use`),
 		},
 		{
 			Name:        "HTTP input req",
 			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpPort, "/yellow/brick/road"),
 			InputURL:    httpInputURL,
 			ExpectedRecord: core.ValidationRecord{
-				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
+				URL:               httpInputURL,
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
 			},
@@ -442,7 +442,7 @@ func TestSetupHTTPValidation(t *testing.T) {
 			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpsPort, "/yellow/brick/road"),
 			InputURL:    httpsInputURL,
 			ExpectedRecord: core.ValidationRecord{
-				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
+				URL:               httpsInputURL,
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
 			},
@@ -755,6 +755,11 @@ func TestFetchHTTP(t *testing.T) {
 		if i != 0 {
 			url = fmt.Sprintf("http://example.com:%d/loop", httpPort)
 		}
+
+		/* TODO (Phil) Move this commented stuff into the WFE?
+		rvrf, err := core.TransformURLIntoHostnameAndPort(url)
+		test.AssertNotError(t, err, "Error transforming URL into hostname and port")
+		*/
 		expectedLoopRecords = append(expectedLoopRecords,
 			core.ValidationRecord{
 				URL:               url,
@@ -805,7 +810,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: nil,
 		},
 		{
-			Name: "Timeout for host",
+			Name: "Timeout for host with standard ACME allowed port",
 			Host: "example.com",
 			Path: "/timeout",
 			ExpectedProblem: probs.ConnectionFailure(
@@ -814,6 +819,21 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: []core.ValidationRecord{
 				{
 					URL:               "http://example.com/timeout",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		},
+		{
+			Name: "Connecting to bad port",
+			Host: "example.com:" + strconv.Itoa(httpPort),
+			Path: "/timeout",
+			ExpectedProblem: probs.ConnectionFailure(
+				"127.0.0.1: Fetching http://example.com:" + strconv.Itoa(httpPort) + "/timeout: " +
+					"Error getting validation data"),
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},

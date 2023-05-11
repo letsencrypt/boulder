@@ -72,8 +72,6 @@ func TestChallenge(t *testing.T) {
 	ip := net.ParseIP("1.1.1.1")
 	chall.ValidationRecord = []core.ValidationRecord{
 		{
-			Hostname:          "example.com",
-			Port:              "2020",
 			AddressesResolved: []net.IP{ip},
 			AddressUsed:       ip,
 			URL:               "https://example.com:2020",
@@ -100,8 +98,6 @@ func TestChallenge(t *testing.T) {
 func TestValidationRecord(t *testing.T) {
 	ip := net.ParseIP("1.1.1.1")
 	vr := core.ValidationRecord{
-		Hostname:          "exampleA.com",
-		Port:              "80",
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "http://exampleA.com",
@@ -120,16 +116,12 @@ func TestValidationRecord(t *testing.T) {
 func TestValidationResult(t *testing.T) {
 	ip := net.ParseIP("1.1.1.1")
 	vrA := core.ValidationRecord{
-		Hostname:          "exampleA.com",
-		Port:              "443",
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "https://exampleA.com",
 		AddressesTried:    []net.IP{ip},
 	}
 	vrB := core.ValidationRecord{
-		Hostname:          "exampleB.com",
-		Port:              "443",
 		AddressesResolved: []net.IP{ip},
 		AddressUsed:       ip,
 		URL:               "https://exampleB.com",

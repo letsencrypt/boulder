@@ -126,7 +126,7 @@ type ValidationRecord struct {
 	URL string `json:"url,omitempty"`
 
 	// Shared
-	Hostname          string   `json:"hostname"`
+	Hostname          string   `json:"hostname,omitempty"`
 	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
 	AddressUsed       net.IP   `json:"addressUsed,omitempty"`
@@ -258,6 +258,9 @@ func (ch Challenge) RecordsSane() bool {
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
+			// We no longer store the hostname and port in the validation record
+			// for HTTP-01 challenges. Instead, we'll rehydrate it from the URL
+			// field.
 			rhp, err := TransformURLIntoHostnameAndPort(rec.URL)
 			if err != nil {
 				return false
