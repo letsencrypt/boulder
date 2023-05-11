@@ -29,7 +29,8 @@ type CTPolicy struct {
 	stagger       time.Duration
 	log           blog.Logger
 	winnerCounter *prometheus.CounterVec
-	opGroupPicker *prometheus.CounterVec
+	opGroupSize   *prometheus.GaugeVec
+	shardExpiryTimestamp *prometheus.GaugeVec
 }
 
 // New creates a new CTPolicy struct
@@ -43,14 +44,24 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 	)
 	stats.MustRegister(winnerCounter)
 
-	opGroupPicker := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "ct_operator_picker",
-			Help: "Counter for CT operators groups we failed to pick a log from.",
+	opGroupSize := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ct_operator_group_size_gauge",
+			Help: "Gauge for CT operators group size.",
 		},
-		[]string{"group"},
+		[]string{"operator"},
 	)
-	stats.MustRegister(opGroupPicker)
+	stats.MustRegister(opGroupSize)
+
+	shardExpiryTimestamp := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ct_shard_expiration_seconds",
+			Help: "CT shard end_exclusive field expressed as Unix epoch time.",
+		},
+		[]string{"operator", "shard"},
+	)
+	stats.MustRegister(shardExpiryTimestamp)
+
 
 	return &CTPolicy{
 		pub:           pub,
@@ -60,7 +71,8 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		stagger:       stagger,
 		log:           log,
 		winnerCounter: winnerCounter,
-		opGroupPicker: opGroupPicker,
+		opGroupSize:   opGroupSize,
+		shardExpiryTimestamp: shardExpiryTimestamp,
 	}
 }
 
@@ -120,18 +132,17 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// it and exit without blocking and leaking.
 	results := make(chan result, len(ctp.sctLogs))
 
-	// Increment a prometheus CounterVec for operators with no configured logs
+	// Increment a prometheus GaugeVec with the number of logs for each configured operator.
 	for g := range ctp.sctLogs {
-		if ctp.sctLogs.GetGroupSize(g) == 0 {
-			ctp.opGroupPicker.WithLabelValues(g).Inc()
-		}
+		groupSize := ctp.sctLogs.GetGroupSize(g)
+		ctp.opGroupSize.WithLabelValues(g).Add(groupSize)
+		ctp.
 	}
 
 	// Kick off a collection of goroutines to try to submit the precert to each
 	// log operator group. Randomize the order of the groups so that we're not
 	// always trying to submit to the same two operators.
 	for i, group := range ctp.sctLogs.Permute() {
-		fmt.Printf("%v %v\n", i, group)
 		go func(i int, g string) {
 			sctDER, url, err := getOne(i, g)
 			results <- result{sct: sctDER, url: url, err: err}

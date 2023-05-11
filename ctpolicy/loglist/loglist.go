@@ -289,17 +289,26 @@ func (ll List) Permute() []string {
 	return result
 }
 
-// TODO(Phil) What if this information was computed once at startup so that each
-// time through the go func in ctpolicy we didn't need to perform these extra
-// loops over the loglist? Seems like it's a waste of time to me. Same with the extra loops in Permute, OperatorForLogID, etc.
-func (ll List) GetGroupSize(operator string) int {
+// GetGroupSize returns the number of logs managed by provided CT operator group
+// as a float64 for prometheus.
+func (ll List) GetGroupSize(operator string) float64 {
 	for k, v := range ll {
 		if k == operator {
-			//			fmt.Printf("%v === %v\n", k, v)
-			return len(v)
+			return float64(len(v))
 		}
 	}
-	return 0
+	return float64(0)
+}
+
+// GetTemporalShardEndExlusive returns the end_exclusive date expressed as Unix
+// epoch time for each temporal shard managed by a given CT operator.
+func (ll List) GetTemporalShardEndExlusive(operator string) float64 {
+	for k, v := range ll {
+		if k == operator {
+			return float64(len(v))
+		}
+	}
+	return float64(0)
 }
 
 // PickOne returns the URI and Public Key of a single randomly-selected log
@@ -333,5 +342,5 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 }
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
+	rand.New(rand.NewSource(time.Now().UnixNano()))
 }
