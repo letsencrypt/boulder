@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+	"errors"
 	"fmt"
 	"os"
 
@@ -36,6 +36,8 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
+var errNoRegisteredConfig = fmt.Errorf("no config file registered for this command")
+
 // readAndValidateConfigFile takes a file path as an argument and attempts to
 // unmarshal the content of the file into a struct containing a configuration of
 // a boulder component specified by name (e.g. boulder-ca, bad-key-revoker,
@@ -45,7 +47,7 @@ import (
 func readAndValidateConfigFile(name, filename string) error {
 	cv, err := cmd.LookupConfigValidator(name)
 	if err != nil {
-		return err
+		return errNoRegisteredConfig
 	}
 
 	file, err := os.Open(filename)
@@ -60,57 +62,106 @@ func readAndValidateConfigFile(name, filename string) error {
 	return cmd.ValidateJSONConfig(cv, file)
 }
 
-func main() {
-	cmd.LookupCommand(core.Command())()
+func skipConfigValidationSpecified() bool {
+	for _, arg := range os.Args {
+		if arg == "--skip-config-validation" || arg == "-skip-config-validation" {
+			return true
+		}
+	}
+	return false
 }
 
-func init() {
-	cmd.RegisterCommand("boulder", func() {
-		if len(os.Args) <= 1 {
-			fmt.Fprintf(os.Stderr, "Call with --list to list available subcommands. Run them like boulder <subcommand>.\n")
+// popFlagFromArgs removes the first instance of the given flag from os.Args,
+// while maintaining the order of the remaining args. flag should NOT include
+// the leading dashes (e.g. "config" not "--config"). If the flag is not found,
+// this function does nothing. Note that this function does not remove any
+// values passed after the associated flag.
+func popFlagFromArgs(flag string) {
+	for i, arg := range os.Args {
+		if arg == "--"+flag || arg == "-"+flag {
+			os.Args = append(os.Args[:i], os.Args[i+1:]...)
 			return
 		}
-		subcommand := cmd.LookupCommand(os.Args[1])
+	}
+}
+
+// getConfigPath returns the path to the config file if it was provided as a
+// command line flag. If the flag was not provided, it returns an empty string.
+func getConfigPath() string {
+	for i := 0; i < len(os.Args); i++ {
+		if os.Args[i] == "--config" || os.Args[i] == "-config" {
+			if i+1 < len(os.Args) {
+				return os.Args[i+1]
+			}
+		}
+	}
+	return ""
+}
+
+var boulderUsage = fmt.Sprintf(`Usage: %s <subcommand> [flags]
+
+  Each boulder component has its own subcommand. Use --list to see
+  a list of the available components. Use <subcommand> --help to
+  see the usage for a specific component. 
+
+global flag(s):
+  --skip-config-validation/ -skip-config-validation:
+        Skip validation of the configuration file.
+`,
+	core.Command())
+
+func main() {
+	var subcommand func()
+	if core.Command() == "boulder" {
+		// The operator is running the boulder binary directly.
+		if len(os.Args) <= 1 {
+			// No arguments passed.
+			fmt.Fprint(os.Stderr, boulderUsage)
+			return
+		}
+
+		if os.Args[1] == "--help" || os.Args[1] == "-help" {
+			// Help flag passed.
+			fmt.Fprint(os.Stderr, boulderUsage)
+			return
+		}
+
+		if os.Args[1] == "--list" || os.Args[1] == "-list" {
+			// List flag passed.
+			for _, c := range cmd.AvailableCommands() {
+				fmt.Println(c)
+			}
+			return
+		}
+
+		subcommand = cmd.LookupCommand(os.Args[1])
 		if subcommand == nil {
 			fmt.Fprintf(os.Stderr, "Unknown subcommand '%s'.\n", os.Args[1])
-			return
+			os.Exit(1)
 		}
+		// Remove the subcommand from the args before invoking the subcommand.
 		os.Args = os.Args[1:]
-		subcommand()
-	}, nil)
-	// TODO(#6763): Move this inside of main().
-	cmd.RegisterCommand("--list", func() {
-		for _, c := range cmd.AvailableCommands() {
-			if c != "boulder" && c != "--list" {
-				fmt.Println(c)
-			}
-		}
-	}, nil)
-	// TODO(#6763): Move this inside of main().
-	cmd.RegisterCommand("validate", func() {
-		if len(os.Args) <= 1 {
-			fmt.Fprintf(os.Stderr, "Call with --help to list usage.\n")
-			os.Exit(1)
-		}
-		list := flag.Bool("list", false, "List available components to validate configuration for.")
-		component := flag.String("component", "", "The name of the component to validate configuration for.")
-		configFile := flag.String("config", "", "The path to the configuration file to validate.")
-		flag.Parse()
+	}
 
-		if *list {
-			for _, c := range cmd.AvailableConfigValidators() {
-				fmt.Println(c)
-			}
-			return
-		}
-		if *component == "" || *configFile == "" {
-			fmt.Fprintf(os.Stderr, "Must provide a configuration file to validate.\n")
-			os.Exit(1)
-		}
-		err := readAndValidateConfigFile(*component, *configFile)
+	configPath := getConfigPath()
+	if configPath != "" && !skipConfigValidationSpecified() {
+		err := readAndValidateConfigFile(core.Command(), configPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error validating configuration: %s\n", err)
-			os.Exit(1)
+			if errors.Is(err, errNoRegisteredConfig) {
+				// We don't strictly require a validator for every component
+				// that accepts a config file.
+				fmt.Fprintf(os.Stdout, "No config file registered for this command.\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "Error validating config file %q: %v\n", configPath, err)
+				os.Exit(1)
+			}
 		}
-	}, nil)
+
+	}
+	popFlagFromArgs("skip-config-validation")
+	if subcommand == nil {
+		// The operator used a symlink created by link.sh.
+		cmd.LookupCommand(core.Command())()
+	}
+	subcommand()
 }
