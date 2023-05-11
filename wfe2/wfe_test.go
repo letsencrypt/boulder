@@ -1657,7 +1657,7 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
-	// The Challenge Error Type should have had the probs.V2ErrorNS prefix added
+	// The Challenge Error Type should have had the probs.ErrorNS prefix added
 	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.ErrorNS+"things:are:whack")
 	responseWriter.Body.Reset()
 }
