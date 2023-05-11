@@ -56,6 +56,8 @@ func TestRegistrationModelToPb(t *testing.T) {
 	test.AssertNotError(t, err, "Should pass")
 }
 
+func TestRegistrationPbToModel(t *testing.T) {}
+
 func TestAuthzModel(t *testing.T) {
 	authzPB := &corepb.Authorization{
 		Id:             "1",
