@@ -22,7 +22,7 @@ const (
 	CAAProblem                   = ProblemType("caa")
 	ConnectionProblem            = ProblemType("connection")
 	DNSProblem                   = ProblemType("dns")
-	// TODO: Change this to InvalidContactProblem and "invalidContact".
+	// TODO(#6877): Change this to InvalidContactProblem and "invalidContact".
 	InvalidEmailProblem          = ProblemType("invalidEmail")
 	MalformedProblem             = ProblemType("malformed")
 	OrderNotReadyProblem         = ProblemType("orderNotReady")
@@ -177,7 +177,7 @@ func DNS(detail string) *ProblemDetails {
 }
 
 // InvalidEmail returns a ProblemDetails representing an InvalidEmailProblem.
-// TODO: Change this to InvalidContact.
+// TODO(#6877): Change this to InvalidContact.
 func InvalidEmail(detail string) *ProblemDetails {
 	return &ProblemDetails{
 		Type:       InvalidEmailProblem,
