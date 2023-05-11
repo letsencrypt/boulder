@@ -15,7 +15,7 @@
 		"keyFile": "test/grpc-creds/orphan-finder.boulder/key.pem"
 	},
 	"ocspGeneratorService": {
-		"dnsAuthority": "10.55.55.10",
+		"dnsAuthority": "consul.service.consul",
 		"srvLookup": {
 			"service": "ca",
 			"domain": "service.consul"
@@ -25,7 +25,7 @@
 		"hostOverride": "ca.boulder"
 	},
 	"saService": {
-		"dnsAuthority": "10.55.55.10",
+		"dnsAuthority": "consul.service.consul",
 		"srvLookup": {
 			"service": "sa",
 			"domain": "service.consul"

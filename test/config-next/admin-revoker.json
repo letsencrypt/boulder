@@ -10,7 +10,7 @@
 			"keyFile": "test/grpc-creds/admin-revoker.boulder/key.pem"
 		},
 		"raService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "ra",
 				"domain": "service.consul"
@@ -20,7 +20,7 @@
 			"timeout": "15s"
 		},
 		"saService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "sa",
 				"domain": "service.consul"
