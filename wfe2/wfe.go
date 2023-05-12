@@ -605,7 +605,7 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 		}
 	}
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
-	web.SendError(wfe.log, probs.V2ErrorNS, response, logEvent, prob, ierr)
+	web.SendError(wfe.log, response, logEvent, prob, ierr)
 }
 
 func link(url, relation string) string {
@@ -1113,13 +1113,11 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
 	challenge.ProvidedKeyAuthorization = ""
 
-	// Historically the Type field of a problem was always prefixed with a static
-	// error namespace. To support the V2 API and migrating to the correct IETF
-	// namespace we now prefix the Type with the correct namespace at runtime when
-	// we write the problem JSON to the user. We skip this process if the
-	// challenge error type has already been prefixed with the V1ErrorNS.
-	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
-		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
+	// Internally, we store challenge error problems with just the short form
+	// (e.g. "CAA") of the problem type. But for external display, we need to
+	// prefix the error type with the RFC8555 ACME Error namespace.
+	if challenge.Error != nil {
+		challenge.Error.Type = probs.ErrorNS + challenge.Error.Type
 	}
 
 	// If the authz has been marked invalid, consider all challenges on that authz
@@ -1930,7 +1928,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 				"proto buf prob to problem details: %q", order.Id, err)
 		}
 		respObj.Error = prob
-		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
+		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type
 	}
 	for _, v2ID := range order.V2Authorizations {
 		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%d", authzPath, v2ID)))

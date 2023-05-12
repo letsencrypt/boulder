@@ -41,6 +41,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -465,7 +466,7 @@ func TestHandleFunc(t *testing.T) {
 			test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), sortHeader(strings.Join(addHeadIfGet(c.allowed), ", ")))
 			test.AssertUnmarshaledEquals(t,
 				rw.Body.String(),
-				`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+				`{"type":"`+probs.ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 		}
 		if c.reqMethod == "GET" && c.pattern != newNoncePath {
 			nonce := rw.Header().Get("Replay-Nonce")
@@ -489,7 +490,7 @@ func TestHandleFunc(t *testing.T) {
 	// Disallowed method returns error JSON in body
 	runWrappedHandler(&http.Request{Method: "PUT"}, "/test", "GET", "POST")
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
-	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"`+probs.V2ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"`+probs.ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	test.AssertEquals(t, sortHeader(rw.Header().Get("Allow")), "GET, HEAD, POST")
 
 	// Disallowed method special case: response to HEAD has got no body
@@ -503,7 +504,7 @@ func TestHandleFunc(t *testing.T) {
 	test.AssertEquals(t, rw.Code, http.StatusMethodNotAllowed)
 	test.AssertEquals(t, rw.Header().Get("Content-Type"), "application/problem+json")
 	test.AssertEquals(t, rw.Header().Get("Allow"), "POST")
-	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"`+probs.V2ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+	test.AssertUnmarshaledEquals(t, rw.Body.String(), `{"type":"`+probs.ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 
 	wfe.AllowOrigins = []string{"*"}
 	testOrigin := "https://example.com"
@@ -1132,25 +1133,25 @@ func TestChallenge(t *testing.T) {
 			Name:           "Expired challenge",
 			Request:        post("3/-ZfxEw"),
 			ExpectedStatus: http.StatusNotFound,
-			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Expired authorization","status":404}`,
+			ExpectedBody:   `{"type":"` + probs.ErrorNS + `malformed","detail":"Expired authorization","status":404}`,
 		},
 		{
 			Name:           "Missing challenge",
 			Request:        post("1/"),
 			ExpectedStatus: http.StatusNotFound,
-			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No such challenge","status":404}`,
+			ExpectedBody:   `{"type":"` + probs.ErrorNS + `malformed","detail":"No such challenge","status":404}`,
 		},
 		{
 			Name:           "Unspecified database error",
 			Request:        post("4/-ZfxEw"),
 			ExpectedStatus: http.StatusInternalServerError,
-			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `serverInternal","detail":"Problem getting authorization","status":500}`,
+			ExpectedBody:   `{"type":"` + probs.ErrorNS + `serverInternal","detail":"Problem getting authorization","status":500}`,
 		},
 		{
 			Name:           "POST-as-GET, wrong owner",
 			Request:        postAsGet(1, "5/-ZfxEw", ""),
 			ExpectedStatus: http.StatusForbidden,
-			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"User account ID doesn't match account ID in authorization","status":403}`,
+			ExpectedBody:   `{"type":"` + probs.ErrorNS + `unauthorized","detail":"User account ID doesn't match account ID in authorization","status":403}`,
 		},
 		{
 			Name:           "Valid POST-as-GET",
@@ -1254,7 +1255,7 @@ func TestBadNonce(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to sign body")
 	wfe.NewAccount(ctx, newRequestEvent(), responseWriter,
 		makePostRequestWithPath("nonce", result.FullSerialize()))
-	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.V2ErrorNS+`badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
+	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), `{"type":"`+probs.ErrorNS+`badNonce","detail":"JWS has no anti-replay nonce","status":400}`)
 }
 
 func TestNewECDSAAccount(t *testing.T) {
@@ -1358,7 +1359,7 @@ func TestEmptyAccount(t *testing.T) {
 
 	responseBody := responseWriter.Body.String()
 	// There should be no error
-	test.AssertNotContains(t, responseBody, probs.V2ErrorNS)
+	test.AssertNotContains(t, responseBody, probs.ErrorNS)
 
 	// We should get back a populated Account
 	var acct core.Registration
@@ -1403,19 +1404,19 @@ func TestNewAccount(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
 		},
 
 		// POST, but body that isn't valid JWS
 		{
 			makePostRequestWithPath(newAcctPath, "hi"),
-			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
 		},
 
 		// POST, Properly JWS-signed, but payload is "foo", not base64-encoded JSON.
 		{
 			makePostRequestWithPath(newAcctPath, fooBody),
-			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 
 		// Same signed body, but payload modified by one byte, breaking signature.
@@ -1423,11 +1424,11 @@ func TestNewAccount(t *testing.T) {
 		{
 			makePostRequestWithPath(newAcctPath,
 				`{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`),
-			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"JWS verification error","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"JWS verification error","status":400}`,
 		},
 		{
 			makePostRequestWithPath(newAcctPath, wrongAgreementBody),
-			`{"type":"` + probs.V2ErrorNS + `malformed","detail":"must agree to terms of service","status":400}`,
+			`{"type":"` + probs.ErrorNS + `malformed","detail":"must agree to terms of service","status":400}`,
 		},
 	}
 	for _, rt := range acctErrTests {
@@ -1551,7 +1552,7 @@ func TestGetAuthorization(t *testing.T) {
 	})
 	test.AssertEquals(t, responseWriter.Code, http.StatusNotFound)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
+		`{"type":"`+probs.ErrorNS+`malformed","detail":"Expired authorization","status":404}`)
 	responseWriter.Body.Reset()
 
 	// Ensure that a valid authorization can't be reached with an invalid URL
@@ -1560,7 +1561,7 @@ func TestGetAuthorization(t *testing.T) {
 		Method: "GET",
 	})
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Invalid authorization ID","status":400}`)
+		`{"type":"`+probs.ErrorNS+`malformed","detail":"Invalid authorization ID","status":400}`)
 
 	_, _, jwsBody := signer.byKeyID(1, nil, "http://localhost/1", "")
 	postAsGet := makePostRequestWithPath("1", jwsBody)
@@ -1607,16 +1608,45 @@ func TestAuthorization500(t *testing.T) {
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), expected)
 }
 
+// SAWithFailedChallenges is a mocks.StorageAuthority that has
+// a `GetAuthorization` implementation that can return authorizations with
+// failed challenges.
+type SAWithFailedChallenges struct {
+	mocks.StorageAuthorityReadOnly
+	Clk clock.FakeClock
+}
+
+func (sa *SAWithFailedChallenges) GetAuthorization2(ctx context.Context, id *sapb.AuthorizationID2, _ ...grpc.CallOption) (*corepb.Authorization, error) {
+	authz := core.Authorization{
+		ID:             "55",
+		Status:         core.StatusValid,
+		RegistrationID: 1,
+		Identifier:     identifier.DNSIdentifier("not-an-example.com"),
+		Challenges: []core.Challenge{
+			{
+				Status: core.StatusInvalid,
+				Type:   "dns",
+				Token:  "exampleToken",
+				Error: &probs.ProblemDetails{
+					Type:       "things:are:whack",
+					Detail:     "whack attack",
+					HTTPStatus: 555,
+				},
+			},
+		},
+	}
+	exp := sa.Clk.Now().AddDate(100, 0, 0)
+	authz.Expires = &exp
+	return bgrpc.AuthzToPB(authz)
+}
+
 // TestAuthorizationChallengeNamespace tests that the runtime prefixing of
 // Challenge Problem Types works as expected
 func TestAuthorizationChallengeNamespace(t *testing.T) {
 	wfe, clk, _ := setupWFE(t)
 
-	mockSA := &mocks.SAWithFailedChallenges{Clk: clk}
-	wfe.sa = mockSA
+	wfe.sa = &SAWithFailedChallenges{Clk: clk}
 
-	// For "oldNS" the SA mock returns an authorization with a failed challenge
-	// that has an error with the type already prefixed by the v1 error NS
 	responseWriter := httptest.NewRecorder()
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
 		Method: "GET",
@@ -1627,22 +1657,8 @@ func TestAuthorizationChallengeNamespace(t *testing.T) {
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &authz)
 	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
 	test.AssertEquals(t, len(authz.Challenges), 1)
-	// The Challenge Error Type should have its prefix unmodified
-	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.V1ErrorNS+"things:are:whack")
-
-	// For "failed" the SA mock returns an authorization with a failed challenge
-	// that has an error with the type not prefixed by an error namespace.
-	responseWriter = httptest.NewRecorder()
-	wfe.Authorization(ctx, newRequestEvent(), responseWriter, &http.Request{
-		Method: "GET",
-		URL:    mustParseURL("56"),
-	})
-
-	err = json.Unmarshal(responseWriter.Body.Bytes(), &authz)
-	test.AssertNotError(t, err, "Couldn't unmarshal returned authorization object")
-	test.AssertEquals(t, len(authz.Challenges), 1)
-	// The Challenge Error Type should have had the probs.V2ErrorNS prefix added
-	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.V2ErrorNS+"things:are:whack")
+	// The Challenge Error Type should have had the probs.ErrorNS prefix added
+	test.AssertEquals(t, string(authz.Challenges[0].Error.Type), probs.ErrorNS+"things:are:whack")
 	responseWriter.Body.Reset()
 }
 
@@ -1667,14 +1683,14 @@ func TestAccount(t *testing.T) {
 	})
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
+		`{"type":"`+probs.ErrorNS+`malformed","detail":"Method not allowed","status":405}`)
 	responseWriter.Body.Reset()
 
 	// Test POST invalid JSON
 	wfe.Account(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("2", "invalid"))
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
+		`{"type":"`+probs.ErrorNS+`malformed","detail":"Parse error reading JWS","status":400}`)
 	responseWriter.Body.Reset()
 
 	key := loadKey(t, []byte(test2KeyPrivatePEM))
@@ -1692,7 +1708,7 @@ func TestAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`accountDoesNotExist","detail":"Account \"http://localhost/acme/acct/102\" not found","status":400}`)
+		`{"type":"`+probs.ErrorNS+`accountDoesNotExist","detail":"Account \"http://localhost/acme/acct/102\" not found","status":400}`)
 	responseWriter.Body.Reset()
 
 	key = loadKey(t, []byte(test1KeyPrivatePEM))
@@ -1707,7 +1723,7 @@ func TestAccount(t *testing.T) {
 	request = makePostRequestWithPath(path, body)
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
-	test.AssertNotContains(t, responseWriter.Body.String(), probs.V2ErrorNS)
+	test.AssertNotContains(t, responseWriter.Body.String(), probs.ErrorNS)
 	links := responseWriter.Header()["Link"]
 	test.AssertEquals(t, contains(links, "<"+agreementURL+">;rel=\"terms-of-service\""), true)
 	responseWriter.Body.Reset()
@@ -1720,7 +1736,7 @@ func TestAccount(t *testing.T) {
 
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertContains(t, responseWriter.Body.String(), "400")
-	test.AssertContains(t, responseWriter.Body.String(), probs.V2ErrorNS+"malformed")
+	test.AssertContains(t, responseWriter.Body.String(), probs.ErrorNS+"malformed")
 	responseWriter.Body.Reset()
 
 	// Test valid POST-as-GET request
@@ -1729,7 +1745,7 @@ func TestAccount(t *testing.T) {
 	request = makePostRequestWithPath("1", body)
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	// It should not error
-	test.AssertNotContains(t, responseWriter.Body.String(), probs.V2ErrorNS)
+	test.AssertNotContains(t, responseWriter.Body.String(), probs.ErrorNS)
 	test.AssertEquals(t, responseWriter.Code, http.StatusOK)
 
 	altKey := loadKey(t, []byte(test2KeyPrivatePEM))
@@ -1855,7 +1871,7 @@ func TestGetCertificate(t *testing.T) {
 	reqPath := fmt.Sprintf("/acme/cert/%s", core.SerialToString(cert.SerialNumber))
 	pkixContent := "application/pem-certificate-chain"
 	noCache := "public, max-age=0, no-cache"
-	notFound := `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Certificate not found","status":404}`
+	notFound := `{"type":"` + probs.ErrorNS + `malformed","detail":"Certificate not found","status":404}`
 
 	testCases := []struct {
 		Name            string
@@ -1948,13 +1964,13 @@ func TestGetCertificate(t *testing.T) {
 			Name:           "Valid serial (explicit non-existent alternate chain)",
 			Request:        makeGet(reqPath + "/2"),
 			ExpectedStatus: http.StatusNotFound,
-			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Unknown issuance chain","status":404}`,
+			ExpectedBody:   `{"type":"` + probs.ErrorNS + `malformed","detail":"Unknown issuance chain","status":404}`,
 		},
 		{
 			Name:           "Valid serial (explicit negative alternate chain)",
 			Request:        makeGet(reqPath + "/-1"),
 			ExpectedStatus: http.StatusBadRequest,
-			ExpectedBody:   `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Chain ID must be a non-negative integer","status":400}`,
+			ExpectedBody:   `{"type":"` + probs.ErrorNS + `malformed","detail":"Chain ID must be a non-negative integer","status":400}`,
 		},
 	}
 
@@ -2111,7 +2127,7 @@ func TestGetCertificateNew(t *testing.T) {
 			Request:        makeGet("/get/cert/000000000000000000000000000000000001"),
 			ExpectedStatus: http.StatusForbidden,
 			ExpectedBody: `{
-				"type": "` + probs.V2ErrorNS + `unauthorized",
+				"type": "` + probs.ErrorNS + `unauthorized",
 				"detail": "Certificate is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago",
 				"status": 403
 			}`,
@@ -2292,7 +2308,7 @@ func TestDeactivateAuthorization(t *testing.T) {
 	wfe.Authorization(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type": "`+probs.V2ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
+		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid status value","status": 400}`)
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated"}`
@@ -2334,7 +2350,7 @@ func TestDeactivateAccount(t *testing.T) {
 	wfe.Account(ctx, newRequestEvent(), responseWriter, request)
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type": "`+probs.V2ErrorNS+`malformed","detail": "Invalid value provided for status field","status": 400}`)
+		`{"type": "`+probs.ErrorNS+`malformed","detail": "Invalid value provided for status field","status": 400}`)
 
 	responseWriter.Body.Reset()
 	payload = `{"status":"deactivated"}`
@@ -2393,7 +2409,7 @@ func TestDeactivateAccount(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "type": "`+probs.V2ErrorNS+`unauthorized",
+		  "type": "`+probs.ErrorNS+`unauthorized",
 		  "detail": "Account is not valid, has status \"deactivated\"",
 		  "status": 403
 		}`)
@@ -2465,42 +2481,42 @@ func TestNewOrder(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
 		},
 		{
 			Name:         "POST, with an invalid JWS body",
 			Request:      makePostRequestWithPath("hi", "hi"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
 			Request:      signAndPost(signer, targetPath, signedURL, "foo"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "POST, empty domain name identifier",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type":"dns","value":""}]}`),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included empty domain name","status":400}`,
 		},
 		{
 			Name:         "POST, no identifiers in payload",
 			Request:      signAndPost(signer, targetPath, signedURL, "{}"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
 		},
 		{
 			Name:         "POST, invalid identifier in payload",
 			Request:      signAndPost(signer, targetPath, signedURL, nonDNSIdentifierBody),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
 			Name:         "POST, notAfter and notBefore in payload",
 			Request:      signAndPost(signer, targetPath, signedURL, `{"identifiers":[{"type": "dns", "value": "not-example.com"}], "notBefore":"now", "notAfter": "later"}`),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NotBefore and NotAfter are not supported","status":400}`,
 		},
 		{
 			Name:         "POST, no potential CNs 64 bytes or smaller",
 			Request:      signAndPost(signer, targetPath, signedURL, tooLongCNBody),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `rejectedIdentifier","detail":"NewOrder request did not include a SAN short enough to fit in CN","status":400}`,
 		},
 		{
 			Name:    "POST, good payload, one potential CNs less than 64 bytes and one longer",
@@ -2596,27 +2612,27 @@ func TestFinalizeOrder(t *testing.T) {
 					"Content-Type":   {expectedJWSContentType},
 				},
 			},
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No body on POST","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No body on POST","status":400}`,
 		},
 		{
 			Name:         "POST, with an invalid JWS body",
 			Request:      makePostRequestWithPath(targetPath, "hi"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Parse error reading JWS","status":400}`,
 		},
 		{
 			Name:         "POST, properly signed JWS, payload isn't valid",
 			Request:      signAndPost(signer, targetPath, signedURL, "foo"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Request payload did not parse as JSON","status":400}`,
 		},
 		{
 			Name:         "Invalid path",
 			Request:      signAndPost(signer, "1", "http://localhost/1", "{}"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:         "Bad acct ID in path",
 			Request:      signAndPost(signer, "a/1", "http://localhost/a/1", "{}"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
 		},
 		{
 			Name: "Mismatched acct ID in path/JWS",
@@ -2626,35 +2642,35 @@ func TestFinalizeOrder(t *testing.T) {
 			// stripped by the global WFE2 handler. We need the JWS URL to match the request
 			// URL so we fudge both such that the finalize-order prefix has been removed.
 			Request:      signAndPost(signer, "2/1", "http://localhost/2/1", "{}"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No order found for account ID 2","status":404}`,
 		},
 		{
 			Name:         "Order ID is invalid",
 			Request:      signAndPost(signer, "1/okwhatever/finalize-order", "http://localhost/1/okwhatever/finalize-order", "{}"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
 		},
 		{
 			Name: "Order doesn't exist",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 2 as missing
 			Request:      signAndPost(signer, "1/2", "http://localhost/1/2", "{}"),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order for ID 2","status":404}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"No order for ID 2","status":404}`,
 		},
 		{
 			Name: "Order is already finalized",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 1 as an Order with a Serial
 			Request:      signAndPost(signer, "1/1", "http://localhost/1/1", goodCertCSRPayload),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"valid\") is not acceptable for finalization","status":403}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `orderNotReady","detail":"Order's status (\"valid\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name: "Order is expired",
 			// mocks/mocks.go's StorageAuthority's GetOrder mock treats ID 7 as an Order that has already expired
 			Request:      signAndPost(signer, "1/7", "http://localhost/1/7", goodCertCSRPayload),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"Order 7 is expired","status":404}`,
 		},
 		{
 			Name:         "Good CSR, Pending Order",
 			Request:      signAndPost(signer, "1/4", "http://localhost/1/4", goodCertCSRPayload),
-			ExpectedBody: `{"type":"` + probs.V2ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `orderNotReady","detail":"Order's status (\"pending\") is not acceptable for finalization","status":403}`,
 		},
 		{
 			Name:    "Good CSR, Ready Order",
@@ -2722,7 +2738,7 @@ func TestKeyRollover(t *testing.T) {
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
 		`{
-		  "type": "`+probs.V2ErrorNS+`malformed",
+		  "type": "`+probs.ErrorNS+`malformed",
 		  "detail": "Parse error reading JWS",
 		  "status": 400
 		}`)
@@ -2738,7 +2754,7 @@ func TestKeyRollover(t *testing.T) {
 			Name:    "Missing account URL",
 			Payload: `{"oldKey":` + test1KeyPublicJSON + `}`,
 			ExpectedResponse: `{
-		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "type": "` + probs.ErrorNS + `malformed",
 		     "detail": "Inner key rollover request specified Account \"\", but outer JWS has Key ID \"http://localhost/acme/acct/1\"",
 		     "status": 400
 		   }`,
@@ -2749,7 +2765,7 @@ func TestKeyRollover(t *testing.T) {
 			Name:    "incorrect old key",
 			Payload: `{"oldKey":` + string(newJWKJSON) + `,"account":"http://localhost/acme/acct/1"}`,
 			ExpectedResponse: `{
-		     "type": "` + probs.V2ErrorNS + `malformed",
+		     "type": "` + probs.ErrorNS + `malformed",
 		     "detail": "Inner JWS does not contain old key field matching current account key",
 		     "status": 400
 		   }`,
@@ -2844,42 +2860,42 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "404 request",
 			Request:  makeGet("1/2"),
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order for ID 2", "status":404}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"No order for ID 2", "status":404}`,
 		},
 		{
 			Name:     "Invalid request path",
 			Request:  makeGet("asd"),
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid request path","status":404}`,
 		},
 		{
 			Name:     "Invalid account ID",
 			Request:  makeGet("asd/asd"),
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid account ID","status":400}`,
 		},
 		{
 			Name:     "Invalid order ID",
 			Request:  makeGet("1/asd"),
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"Invalid order ID","status":400}`,
 		},
 		{
 			Name:     "Real request, wrong account",
 			Request:  makeGet("2/1"),
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2", "status":404}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"No order found for account ID 2", "status":404}`,
 		},
 		{
 			Name:     "Internal error request",
 			Request:  makeGet("1/3"),
-			Response: `{"type":"` + probs.V2ErrorNS + `serverInternal","detail":"Failed to retrieve order for ID 3","status":500}`,
+			Response: `{"type":"` + probs.ErrorNS + `serverInternal","detail":"Failed to retrieve order for ID 3","status":500}`,
 		},
 		{
 			Name:     "Invalid POST-as-GET",
 			Request:  makePost(1, "1/1", "{}"),
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"POST-as-GET requests must have an empty payload", "status":400}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"POST-as-GET requests must have an empty payload", "status":400}`,
 		},
 		{
 			Name:     "Valid POST-as-GET, wrong account",
 			Request:  makePost(1, "2/1", ""),
-			Response: `{"type":"` + probs.V2ErrorNS + `malformed","detail":"No order found for account ID 2", "status":404}`,
+			Response: `{"type":"` + probs.ErrorNS + `malformed","detail":"No order found for account ID 2", "status":404}`,
 		},
 		{
 			Name:     "Valid POST-as-GET",
@@ -2889,7 +2905,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "GET new order",
 			Request:  makeGet("1/9"),
-			Response: `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Order is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`,
+			Response: `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Order is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`,
 			Endpoint: "/get/order/",
 		},
 		{
@@ -3100,13 +3116,13 @@ func TestRevokeCertificateReasons(t *testing.T) {
 			Name:             "Unsupported reason",
 			Reason:           &reason2,
 			ExpectedHTTPCode: http.StatusBadRequest,
-			ExpectedBody:     `{"type":"` + probs.V2ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: cACompromise (2). Supported reasons: unspecified (0), keyCompromise (1), superseded (4), cessationOfOperation (5)","status":400}`,
+			ExpectedBody:     `{"type":"` + probs.ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: cACompromise (2). Supported reasons: unspecified (0), keyCompromise (1), superseded (4), cessationOfOperation (5)","status":400}`,
 		},
 		{
 			Name:             "Non-existent reason",
 			Reason:           &reason100,
 			ExpectedHTTPCode: http.StatusBadRequest,
-			ExpectedBody:     `{"type":"` + probs.V2ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: unknown (100). Supported reasons: unspecified (0), keyCompromise (1), superseded (4), cessationOfOperation (5)","status":400}`,
+			ExpectedBody:     `{"type":"` + probs.ErrorNS + `badRevocationReason","detail":"unsupported revocation reason code provided: unknown (100). Supported reasons: unspecified (0), keyCompromise (1), superseded (4), cessationOfOperation (5)","status":400}`,
 		},
 	}
 
@@ -3152,7 +3168,7 @@ func TestRevokeCertificateWrongCertificateKey(t *testing.T) {
 		makePostRequestWithPath("revoke-cert", jwsBody))
 	test.AssertEquals(t, responseWriter.Code, 403)
 	test.AssertUnmarshaledEquals(t, responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`unauthorized","detail":"JWK embedded in revocation request must be the same public key as the cert to be revoked","status":403}`)
+		`{"type":"`+probs.ErrorNS+`unauthorized","detail":"JWK embedded in revocation request must be the same public key as the cert to be revoked","status":403}`)
 }
 
 type mockSAGetRegByKeyFails struct {
@@ -3181,7 +3197,7 @@ func TestNewAccountWhenGetRegByKeyFails(t *testing.T) {
 	var prob probs.ProblemDetails
 	err := json.Unmarshal(responseWriter.Body.Bytes(), &prob)
 	test.AssertNotError(t, err, "unmarshalling response")
-	if prob.Type != probs.V2ErrorNS+probs.ServerInternalProblem {
+	if prob.Type != probs.ErrorNS+probs.ServerInternalProblem {
 		t.Errorf("Wrong type for returned problem: %#v", prob.Type)
 	}
 }
@@ -3297,7 +3313,7 @@ func TestFinalizeSCTError(t *testing.T) {
 	// a serverInternal error with the right message.
 	test.AssertUnmarshaledEquals(t,
 		responseWriter.Body.String(),
-		`{"type":"`+probs.V2ErrorNS+`serverInternal","detail":"Error finalizing order :: Unable to meet CA SCT embedding requirements","status":500}`)
+		`{"type":"`+probs.ErrorNS+`serverInternal","detail":"Error finalizing order :: Unable to meet CA SCT embedding requirements","status":500}`)
 }
 
 func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
@@ -3375,7 +3391,7 @@ func TestGETAPIAuthz(t *testing.T) {
 		},
 	}
 
-	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
+	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)
@@ -3414,7 +3430,7 @@ func TestGETAPIChallenge(t *testing.T) {
 		},
 	}
 
-	tooFreshErr := `{"type":"` + probs.V2ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
+	tooFreshErr := `{"type":"` + probs.ErrorNS + `unauthorized","detail":"Authorization is too new for GET API. You should only use this non-standard API to access resources created more than 10s ago","status":403}`
 	for _, tc := range testCases {
 		responseWriter := httptest.NewRecorder()
 		req, logEvent := makeGet(tc.path, getAuthzPath)

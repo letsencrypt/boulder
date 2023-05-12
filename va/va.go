@@ -320,30 +320,30 @@ func detailedError(err error) *probs.ProblemDetails {
 		if fmt.Sprintf("%T", netOpErr.Err) == "tls.alert" {
 			// All the tls.alert error strings are reasonable to hand back to a
 			// user. Confirmed against Go 1.8.
-			return probs.TLSError(netOpErr.Error())
+			return probs.TLS(netOpErr.Error())
 		} else if netOpErr.Timeout() && netOpErr.Op == "dial" {
-			return probs.ConnectionFailure("Timeout during connect (likely firewall problem)")
+			return probs.Connection("Timeout during connect (likely firewall problem)")
 		} else if netOpErr.Timeout() {
-			return probs.ConnectionFailure(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
+			return probs.Connection(fmt.Sprintf("Timeout during %s (your server may be slow or overloaded)", netOpErr.Op))
 		}
 	}
 	var syscallErr *os.SyscallError
 	if errors.As(err, &syscallErr) {
 		switch syscallErr.Err {
 		case syscall.ECONNREFUSED:
-			return probs.ConnectionFailure("Connection refused")
+			return probs.Connection("Connection refused")
 		case syscall.ENETUNREACH:
-			return probs.ConnectionFailure("Network unreachable")
+			return probs.Connection("Network unreachable")
 		case syscall.ECONNRESET:
-			return probs.ConnectionFailure("Connection reset by peer")
+			return probs.Connection("Connection reset by peer")
 		}
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
-		return probs.ConnectionFailure("Timeout after connect (your server may be slow or overloaded)")
+		return probs.Connection("Timeout after connect (your server may be slow or overloaded)")
 	}
 	if errors.Is(err, berrors.ConnectionFailure) {
-		return probs.ConnectionFailure(err.Error())
+		return probs.Connection(err.Error())
 	}
 	if errors.Is(err, berrors.Unauthorized) {
 		return probs.Unauthorized(err.Error())
@@ -353,9 +353,9 @@ func detailedError(err error) *probs.ProblemDetails {
 	}
 
 	if h2SettingsFrameErrRegex.MatchString(err.Error()) {
-		return probs.ConnectionFailure("Server is speaking HTTP/2 over HTTP")
+		return probs.Connection("Server is speaking HTTP/2 over HTTP")
 	}
-	return probs.ConnectionFailure("Error getting validation data")
+	return probs.Connection("Error getting validation data")
 }
 
 // validate performs a challenge validation and, in parallel,
