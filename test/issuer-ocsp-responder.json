@@ -1,18 +1,38 @@
 {
-  "ocspResponder": {
-    "source": "file:///hierarchy/intermediate-ocsp-rsa.b64",
-    "path": "/",
-    "listenAddress": "0.0.0.0:4003",
-    "issuerCerts": [
-      "/hierarchy/intermediate-cert-rsa-a.pem"
-    ],
-    "timeout": "4.9s",
-    "shutdownStopTimeout": "10s",
-    "debugAddr": "localhost:8010"
-  },
-
-  "syslog": {
-   "stdoutlevel": 6,
-   "sysloglevel": 6
- }
+	"ocspResponder": {
+		"redis": {
+			"username": "ocsp-responder",
+			"passwordFile": "test/secrets/ocsp_responder_redis_password",
+			"shardAddrs": {
+				"shard1": "10.33.33.2:4218",
+				"shard2": "10.33.33.3:4218"
+			},
+			"timeout": "5s",
+			"poolSize": 100,
+			"routeRandomly": true,
+			"tls": {
+				"caCertFile": "test/redis-tls/minica.pem",
+				"certFile": "test/redis-tls/boulder/cert.pem",
+				"keyFile": "test/redis-tls/boulder/key.pem"
+			}
+		},
+    "tls": {
+			"caCertFile": "test/grpc-creds/minica.pem",
+			"certFile": "test/grpc-creds/ocsp-responder.boulder/cert.pem",
+			"keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
+		},
+		"source": "file:///hierarchy/intermediate-ocsp-rsa.b64",
+		"path": "/",
+		"listenAddress": "0.0.0.0:4003",
+		"issuerCerts": [
+			"/hierarchy/intermediate-cert-rsa-a.pem"
+		],
+		"timeout": "4.9s",
+		"shutdownStopTimeout": "10s",
+		"debugAddr": "localhost:8010"
+	},
+	"syslog": {
+		"stdoutlevel": 6,
+		"sysloglevel": 6
+	}
 }

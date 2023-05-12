@@ -54,7 +54,7 @@ def test_single_ocsp():
        This is a non-API test.
     """
     p = subprocess.Popen(
-        ["./bin/boulder", "ocsp-responder", "--config", "test/issuer-ocsp-responder.json", "--skip-config-validation"])
+        ["./bin/boulder", "ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
     waitport(4003, ' '.join(p.args))
 
     # Verify that the static OCSP responder, which answers with a
