@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -36,20 +35,14 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 )
 
-var errNoRegisteredConfig = fmt.Errorf("no config file registered for this command")
-
-// readAndValidateConfigFile takes a file path as an argument and attempts to
-// unmarshal the content of the file into a struct containing a configuration of
-// a boulder component specified by name (e.g. boulder-ca, bad-key-revoker,
-// etc.). Any config keys in the JSON file which do not correspond to expected
-// keys in the config struct will result in errors. It also validates the config
-// using the struct tags defined in the config struct.
+// readAndValidateConfigFile uses the ConfigValidator registered for the given
+// command to validate the provided config file. If the command does not have a
+// registered ConfigValidator, this function does nothing.
 func readAndValidateConfigFile(name, filename string) error {
-	cv, err := cmd.LookupConfigValidator(name)
-	if err != nil {
-		return errNoRegisteredConfig
+	cv := cmd.LookupConfigValidator(name)
+	if cv == nil {
+		return nil
 	}
-
 	file, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -71,11 +64,9 @@ func skipConfigValidationSpecified() bool {
 	return false
 }
 
-// popFlagFromArgs removes the first instance of the given flag from os.Args,
-// while maintaining the order of the remaining args. flag should NOT include
-// the leading dashes (e.g. "config" not "--config"). If the flag is not found,
-// this function does nothing. Note that this function does not remove any
-// values passed after the associated flag.
+// popFlagFromArgs removes the first instance of the given flag from os.Args. If
+// the flag is not present, this function does nothing. Flag should not include
+// the leading dashes (e.g. "config", not "--config").
 func popFlagFromArgs(flag string) {
 	for i, arg := range os.Args {
 		if arg == "--"+flag || arg == "-"+flag {
@@ -139,27 +130,27 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Unknown subcommand '%s'.\n", os.Args[1])
 			os.Exit(1)
 		}
-		// Remove the subcommand from the args before invoking the subcommand.
-		os.Args = os.Args[1:]
 	}
 
 	configPath := getConfigPath()
 	if configPath != "" && !skipConfigValidationSpecified() {
+		// Config flag passed.
 		err := readAndValidateConfigFile(core.Command(), configPath)
 		if err != nil {
-			if !errors.Is(err, errNoRegisteredConfig) {
-				fmt.Fprintf(os.Stderr, "Error validating config file %q: %v\n", configPath, err)
-				os.Exit(1)
-			}
+			fmt.Fprintf(os.Stderr, "Error validating config file %q: %v\n", configPath, err)
+			os.Exit(1)
 		}
 
 	}
 	popFlagFromArgs("skip-config-validation")
 	if subcommand == nil {
-		// Operator ran a boulder component directly using a symlink.
+		// Operator ran a boulder component using a symlink. This is safe
+		// because the symlinks are produced using the output of '--list.
 		cmd.LookupCommand(core.Command())()
 	} else {
-		// Operator passed a component name as a subcommand.
+		// Operator ran a boulder component using a subcommand. Remove the
+		// subcommand from the args before invoking the subcommand.
+		os.Args = os.Args[1:]
 		subcommand()
 	}
 }
