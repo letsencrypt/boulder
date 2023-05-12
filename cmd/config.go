@@ -503,6 +503,8 @@ type OpenTelemetryHTTPConfig struct {
 	TrustIncomingSpans bool
 }
 
+// Options returns the otelhttp options for this configuration. They can be
+// passed to otelhttp.NewHandler or Boulder's wrapper, measured_http.New.
 func (c *OpenTelemetryHTTPConfig) Options() []otelhttp.Option {
 	var options []otelhttp.Option
 	if !c.TrustIncomingSpans {
