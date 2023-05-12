@@ -122,7 +122,7 @@ func main() {
 		// Config flag passed.
 		err := readAndValidateConfigFile(core.Command(), configPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error validating config file %q: %v\n", configPath, err)
+			fmt.Fprintf(os.Stderr, "Error validating config file %q: %s\n", configPath, err)
 			os.Exit(1)
 		}
 
