@@ -60,8 +60,7 @@ var supportedAlgs = map[string]bool{
 // Check that (1) there is a suitable algorithm for the provided key based on its
 // Golang type, (2) the Algorithm field on the JWK is either absent, or matches
 // that algorithm, and (3) the Algorithm field on the JWK is present and matches
-// that algorithm. Precondition: parsedJWS must have exactly one signature on
-// it.
+// that algorithm.
 func checkAlgorithm(key *jose.JSONWebKey, header jose.Header) error {
 	sigHeaderAlg := header.Algorithm
 	if !supportedAlgs[sigHeaderAlg] {
@@ -188,8 +187,6 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 // NOTE: this function assumes the JWS has already been verified with the
 // correct public key.
 func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) *probs.ProblemDetails {
-	// validNonce is called after validPOSTRequest() and parseJWS() which
-	// defend against the incorrect number of signatures.
 	if len(header.Nonce) == 0 {
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
@@ -228,8 +225,6 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 func (wfe *WebFrontEndImpl) validPOSTURL(
 	request *http.Request,
 	header jose.Header) *probs.ProblemDetails {
-	// validPOSTURL is called after parseJWS() which defends against the incorrect
-	// number of signatures.
 	extraHeaders := header.ExtraHeaders
 	// Check that there is at least one Extra Header
 	if len(extraHeaders) == 0 {
@@ -360,7 +355,7 @@ func (wfe *WebFrontEndImpl) parseJWS(body []byte) (*bJSONWebSignature, *probs.Pr
 	return &bJSONWebSignature{parsedJWS}, nil
 }
 
-// parseJWSRequest extracts a JSONWebSignature from an HTTP POST request's body using parseJWS.
+// parseJWSRequest extracts a bJSONWebSignature from an HTTP POST request's body using parseJWS.
 func (wfe *WebFrontEndImpl) parseJWSRequest(request *http.Request) (*bJSONWebSignature, *probs.ProblemDetails) {
 	// Verify that the POST request has the expected headers
 	if prob := wfe.validPOSTRequest(request); prob != nil {
