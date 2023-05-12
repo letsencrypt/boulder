@@ -147,11 +147,7 @@ func main() {
 	if configPath != "" && !skipConfigValidationSpecified() {
 		err := readAndValidateConfigFile(core.Command(), configPath)
 		if err != nil {
-			if errors.Is(err, errNoRegisteredConfig) {
-				// We don't strictly require a validator for every component
-				// that accepts a config file.
-				fmt.Fprintf(os.Stdout, "No config file registered for this command.\n")
-			} else {
+			if !errors.Is(err, errNoRegisteredConfig) {
 				fmt.Fprintf(os.Stderr, "Error validating config file %q: %v\n", configPath, err)
 				os.Exit(1)
 			}
@@ -160,8 +156,10 @@ func main() {
 	}
 	popFlagFromArgs("skip-config-validation")
 	if subcommand == nil {
-		// The operator used a symlink created by link.sh.
+		// Operator ran a boulder component directly using a symlink.
 		cmd.LookupCommand(core.Command())()
+	} else {
+		// Operator passed a component name as a subcommand.
+		subcommand()
 	}
-	subcommand()
 }
