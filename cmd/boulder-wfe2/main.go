@@ -159,6 +159,7 @@ type Config struct {
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
 
+	// OpenTelemetryHTTPConfig configures tracing on incoming HTTP requests
 	OpenTelemetryHTTPConfig cmd.OpenTelemetryHTTPConfig
 }
 
