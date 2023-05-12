@@ -22,12 +22,6 @@ $ ./bin/boulder boulder-observer -config test/config-next/observer.yml
 Error validating config file "test/config-next/observer.yml": Key: 'ObsConf.MonConfs[1].Kind' Error:Field validation for 'Kind' failed on the 'oneof' tag
 ```
 
-To skip validation, pass the `-skip-config-validation` flag:
-
-```shell
-$ ./bin/boulder-observer -config test/config-next/observer.yml -skip-config-validation
-```
-
 ## Struct Tag Tips
 
 You can find the full list of struct tags supported by the validator [here]

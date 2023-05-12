@@ -85,9 +85,11 @@ var boulderUsage = fmt.Sprintf(`Usage: %s <subcommand> [flags]
 	core.Command())
 
 func main() {
-	var subcommand func()
+	var command string
 	if core.Command() == "boulder" {
-		// The operator is running the boulder binary directly.
+		// Operator passed the boulder component as a subcommand.
+		command = os.Args[1]
+
 		if len(os.Args) <= 1 {
 			// No arguments passed.
 			fmt.Fprint(os.Stderr, boulderUsage)
@@ -108,37 +110,27 @@ func main() {
 			return
 		}
 
-		// Operator ran a boulder using a subcommand. Lookup the
-		// subcommand.
-		subcommand = cmd.LookupCommand(os.Args[1])
-		if subcommand == nil {
-			fmt.Fprintf(os.Stderr, "Unknown subcommand %q.\n", os.Args[1])
-			os.Exit(1)
-		}
-	}
-
-	configPath := getConfigPath()
-	if configPath != "" {
-		// Config flag passed.
-		err := readAndValidateConfigFile(core.Command(), configPath)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error validating config file %q: %s\n", configPath, err)
-			os.Exit(1)
-		}
-
-	}
-	if subcommand == nil {
-		// Operator ran a boulder component using a symlink. Lookup the
-		// subcommand using the name of the symlink.
-		subcommand = cmd.LookupCommand(core.Command())
-		if subcommand == nil {
-			fmt.Fprintf(os.Stderr, "Unknown subcommand %q.\n", core.Command())
-			os.Exit(1)
-		}
-	} else {
-		// Operator ran a boulder component using a subcommand. Remove the
-		// subcommand from the args before invoking the subcommand.
+		// Remove the subcommand from the arguments.
 		os.Args = os.Args[1:]
+	} else {
+		// Operator ran a boulder component using a symlink.
+		command = core.Command()
 	}
-	subcommand()
+
+	config := getConfigPath()
+	if config != "" {
+		// Config flag passed.
+		err := readAndValidateConfigFile(command, config)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error validating config file %q for command %q: %s\n", config, command, err)
+			os.Exit(1)
+		}
+	}
+
+	commandFunc := cmd.LookupCommand(command)
+	if commandFunc == nil {
+		fmt.Fprintf(os.Stderr, "Unknown subcommand %q.\n", command)
+		os.Exit(1)
+	}
+	commandFunc()
 }
