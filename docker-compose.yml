@@ -43,6 +43,7 @@ services:
       - bredis_1
       - bredis_2
       - bconsul
+      - bjaeger
     entrypoint: test/entrypoint.sh
     working_dir: &boulder_working_dir /boulder
 
@@ -117,6 +118,17 @@ services:
       - .:/boulder
     working_dir: *boulder_working_dir
     entrypoint: test/entrypoint-netaccess.sh
+
+  bjaeger:
+    image: jaegertracing/all-in-one:1.44
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      bluenet:
+        ipv4_address: 10.77.77.17
+    ports:
+      - "16686:16686" # Jaegar API and UI
+      - "4317:4317"  # OTLP grpc trace submission
 
 networks:
   bluenet:
