@@ -6,6 +6,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // responseWriterWithStatus satisfies http.ResponseWriter, but keeps track of the
@@ -46,7 +47,7 @@ type MeasuredHandler struct {
 	stat *prometheus.HistogramVec
 }
 
-func New(m serveMux, clk clock.Clock, stats prometheus.Registerer) *MeasuredHandler {
+func New(m serveMux, clk clock.Clock, stats prometheus.Registerer, opts ...otelhttp.Option) http.Handler {
 	responseTime := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "response_time",
@@ -54,11 +55,11 @@ func New(m serveMux, clk clock.Clock, stats prometheus.Registerer) *MeasuredHand
 		},
 		[]string{"endpoint", "method", "code"})
 	stats.MustRegister(responseTime)
-	return &MeasuredHandler{
+	return otelhttp.NewHandler(&MeasuredHandler{
 		serveMux: m,
 		clk:      clk,
 		stat:     responseTime,
-	}
+	}, "server", opts...)
 }
 
 func (h *MeasuredHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

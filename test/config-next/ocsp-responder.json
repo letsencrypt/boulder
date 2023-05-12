@@ -67,5 +67,8 @@
 	"opentelemetry": {
 		"endpoint": "bjaeger:4317",
 		"sampleratio": 1
+	},
+	"openTelemetryHttpConfig": {
+		"trustIncomingSpans": true
 	}
 }

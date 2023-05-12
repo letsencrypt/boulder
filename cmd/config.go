@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/letsencrypt/boulder/config"
@@ -483,16 +484,33 @@ type OpenTelemetryConfig struct {
 	Endpoint string
 
 	// SampleRatio is the ratio of new traces to head sample.
-	// This only affects new traces with no parent with its own sampling decision.
+	// This only affects new traces without a parent with its own sampling
+	// decision, and otherwise use the parent's sampling decision.
+	//
 	// Set to something between 0 and 1, where 1 is sampling all traces.
-	// See otel trace.TraceIDRatioBased for details.
+	// This is primarily meant as a pressure relief if the Endpoint we connect to
+	// is being overloaded, and we otherwise handle sampling in the collectors.
+	// See otel trace.ParentBased and trace.TraceIDRatioBased for details.
 	SampleRatio float64
+}
 
-	// If true, disable the parent sampler.
-	// On external-facing services like the WFE, setting this true will
-	// ensure that any external API users don't influence our own sampling
-	// decisions.
-	DisableParentSampler bool
+// OpenTelemetryHTTPConfig configures the otelhttp server tracing.
+type OpenTelemetryHTTPConfig struct {
+	// TrustIncomingSpans should only be set true if there's a trusted service
+	// connecting to Boulder, such as a load balancer that's tracing-aware.
+	// If false, the default, incoming traces won't be set as the parent.
+	// See otelhttp.WithPublicEndpoint
+	TrustIncomingSpans bool
+}
+
+// Options returns the otelhttp options for this configuration. They can be
+// passed to otelhttp.NewHandler or Boulder's wrapper, measured_http.New.
+func (c *OpenTelemetryHTTPConfig) Options() []otelhttp.Option {
+	var options []otelhttp.Option
+	if !c.TrustIncomingSpans {
+		options = append(options, otelhttp.WithPublicEndpoint())
+	}
+	return options
 }
 
 // DNSProvider contains the configuration for a DNS provider in the bdns package

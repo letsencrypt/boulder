@@ -313,16 +313,11 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 		FailOnError(err, "Could not create OpenTelemetry resource")
 	}
 
-	// Use a ParentBased sampler to respect the sample decisions on incoming
-	// traces, and TraceIDRatioBased to randomly sample new traces.
-	sampler := trace.TraceIDRatioBased(config.SampleRatio)
-	if !config.DisableParentSampler {
-		sampler = trace.ParentBased(sampler)
-	}
-
 	opts := []trace.TracerProviderOption{
 		trace.WithResource(r),
-		trace.WithSampler(sampler),
+		// Use a ParentBased sampler to respect the sample decisions on incoming
+		// traces, and TraceIDRatioBased to randomly sample new traces.
+		trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(config.SampleRatio))),
 	}
 
 	if config.Endpoint != "" {
