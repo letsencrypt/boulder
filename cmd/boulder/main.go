@@ -56,27 +56,6 @@ func readAndValidateConfigFile(name, filename string) error {
 	return cmd.ValidateJSONConfig(cv, file)
 }
 
-func skipConfigValidationSpecified() bool {
-	for _, arg := range os.Args {
-		if arg == "--skip-config-validation" || arg == "-skip-config-validation" {
-			return true
-		}
-	}
-	return false
-}
-
-// popFlagFromArgs removes the first instance of the given flag from os.Args. If
-// the flag is not present, this function does nothing. Flag should not include
-// the leading dashes (e.g. "config", not "--config").
-func popFlagFromArgs(flag string) {
-	for i, arg := range os.Args {
-		if arg == "--"+flag || arg == "-"+flag {
-			os.Args = append(os.Args[:i], os.Args[i+1:]...)
-			return
-		}
-	}
-}
-
 // getConfigPath returns the path to the config file if it was provided as a
 // command line flag. If the flag was not provided, it returns an empty string.
 func getConfigPath() string {
@@ -101,11 +80,7 @@ var boulderUsage = fmt.Sprintf(`Usage: %s <subcommand> [flags]
 
   Each boulder component has its own subcommand. Use --list to see
   a list of the available components. Use <subcommand> --help to
-  see the usage for a specific component. 
-
-global flag(s):
-  --skip-config-validation/ -skip-config-validation:
-        Skip validation of the configuration file.
+  see the usage for a specific component.
 `,
 	core.Command())
 
@@ -133,15 +108,17 @@ func main() {
 			return
 		}
 
+		// Operator ran a boulder using a subcommand. Lookup the
+		// subcommand.
 		subcommand = cmd.LookupCommand(os.Args[1])
 		if subcommand == nil {
-			fmt.Fprintf(os.Stderr, "Unknown subcommand '%s'.\n", os.Args[1])
+			fmt.Fprintf(os.Stderr, "Unknown subcommand %q.\n", os.Args[1])
 			os.Exit(1)
 		}
 	}
 
 	configPath := getConfigPath()
-	if configPath != "" && !skipConfigValidationSpecified() {
+	if configPath != "" {
 		// Config flag passed.
 		err := readAndValidateConfigFile(core.Command(), configPath)
 		if err != nil {
@@ -150,15 +127,18 @@ func main() {
 		}
 
 	}
-	popFlagFromArgs("skip-config-validation")
 	if subcommand == nil {
-		// Operator ran a boulder component using a symlink. This is safe
-		// because the symlinks are produced using the output of '--list.
-		cmd.LookupCommand(core.Command())()
+		// Operator ran a boulder component using a symlink. Lookup the
+		// subcommand using the name of the symlink.
+		subcommand = cmd.LookupCommand(core.Command())
+		if subcommand == nil {
+			fmt.Fprintf(os.Stderr, "Unknown subcommand %q.\n", core.Command())
+			os.Exit(1)
+		}
 	} else {
 		// Operator ran a boulder component using a subcommand. Remove the
 		// subcommand from the args before invoking the subcommand.
 		os.Args = os.Args[1:]
-		subcommand()
 	}
+	subcommand()
 }
