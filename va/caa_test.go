@@ -631,57 +631,60 @@ func TestCAAFailure(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.CAAProblem)
 }
 
-func TestParseResults(t *testing.T) {
-	// An empty slice of caaResults should return nil, "", nil
+func TestSelectCAA(t *testing.T) {
+	expected := dns.CAA{Tag: "issue", Value: "foo"}
+
+	// An empty slice of caaResults should return nil, nil
 	r := []caaResult{}
-	s, response, err := parseResults(r)
+	s, err := selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
-	test.Assert(t, err == nil, "error is not nil")
-	test.Assert(t, response == "", "records is not nil")
+	test.AssertNotError(t, err, "error is not nil")
+
 	// A slice of empty caaResults should return nil, "", nil
 	r = []caaResult{
-		{"", []*dns.CAA{}, "", nil},
-		{"", []*dns.CAA{}, "", nil},
-		{"", []*dns.CAA{}, "", nil},
+		{"", nil, nil, false, "", nil},
+		{"", nil, nil, false, "", nil},
+		{"", nil, nil, false, "", nil},
 	}
-	s, response, err = parseResults(r)
+	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
-	test.Assert(t, err == nil, "error is not nil")
-	test.AssertEquals(t, response, "")
+	test.AssertNotError(t, err, "error is not nil")
+
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{"foo.com", nil, "", errors.New("")},
-		{"com", []*dns.CAA{{Value: "test"}}, "", nil},
+		{"foo.com", nil, nil, false, "", errors.New("oops")},
+		{"com", []*dns.CAA{&expected}, nil, false, "foo", nil},
 	}
-	s, response, err = parseResults(r)
+	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
-	test.AssertEquals(t, err.Error(), "")
-	test.AssertEquals(t, response, "")
+	test.AssertError(t, err, "error is nil")
+	test.AssertEquals(t, err.Error(), "oops")
+
 	//  A slice of caaResults containing a good record that precedes an
 	//  error, should return that good record, not the error
-	expected := dns.CAA{Value: "foo"}
 	r = []caaResult{
-		{"foo.com", []*dns.CAA{&expected}, "foo", nil},
-		{"com", nil, "", errors.New("")},
+		{"foo.com", []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", nil, nil, false, "", errors.New("")},
 	}
-	s, response, err = parseResults(r)
-	test.AssertEquals(t, len(s.Unknown), 1)
-	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, response, "foo")
+	s, err = selectCAA(r)
+	test.AssertEquals(t, len(s.issue), 1)
+	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
+	test.AssertEquals(t, s.raw, "foo")
 	test.Assert(t, err == nil, "error is not nil")
+
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
-		{"bar.foo.com", []*dns.CAA{}, "", nil},
-		{"foo.com", []*dns.CAA{&expected}, "foo", nil},
-		{"com", []*dns.CAA{{Value: "bar"}}, "bar", nil},
+		{"bar.foo.com", []*dns.CAA{}, []*dns.CAA{}, false, "", nil},
+		{"foo.com", []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", []*dns.CAA{&expected}, nil, false, "bar", nil},
 	}
-	s, response, err = parseResults(r)
-	test.AssertEquals(t, len(s.Unknown), 1)
-	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, response, "foo")
-	test.AssertNotError(t, err, "no error should be returned")
+	s, err = selectCAA(r)
+	test.AssertEquals(t, len(s.issue), 1)
+	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
+	test.AssertEquals(t, s.raw, "foo")
+	test.AssertNotError(t, err, "expect nil error")
 }
 
 func TestAccountURIMatches(t *testing.T) {
