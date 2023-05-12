@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	_ "github.com/letsencrypt/boulder/cmd/admin-revoker"
 	_ "github.com/letsencrypt/boulder/cmd/akamai-purger"
@@ -80,10 +81,17 @@ func popFlagFromArgs(flag string) {
 // command line flag. If the flag was not provided, it returns an empty string.
 func getConfigPath() string {
 	for i := 0; i < len(os.Args); i++ {
-		if os.Args[i] == "--config" || os.Args[i] == "-config" {
+		arg := os.Args[i]
+		if arg == "--config" || arg == "-config" {
 			if i+1 < len(os.Args) {
 				return os.Args[i+1]
 			}
+		}
+		if strings.HasPrefix(arg, "--config=") {
+			return strings.TrimPrefix(arg, "--config=")
+		}
+		if strings.HasPrefix(arg, "-config=") {
+			return strings.TrimPrefix(arg, "-config=")
 		}
 	}
 	return ""
