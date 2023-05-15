@@ -88,8 +88,6 @@ func main() {
 	var command string
 	if core.Command() == "boulder" {
 		// Operator passed the boulder component as a subcommand.
-		command = os.Args[1]
-
 		if len(os.Args) <= 1 {
 			// No arguments passed.
 			fmt.Fprint(os.Stderr, boulderUsage)
@@ -109,6 +107,7 @@ func main() {
 			}
 			return
 		}
+		command = os.Args[1]
 
 		// Remove the subcommand from the arguments.
 		os.Args = os.Args[1:]
