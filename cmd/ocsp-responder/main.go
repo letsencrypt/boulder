@@ -91,7 +91,7 @@ type Config struct {
 		Redis *rocsp_config.RedisConfig `validate:"required_without=Source"`
 
 		// TLS client certificate, private key, and trusted root bundle.
-		TLS cmd.TLSConfig
+		TLS cmd.TLSConfig `validate:"required_without=Source,structonly"`
 
 		// RAService configures how to communicate with the RA when it is necessary
 		// to generate a fresh OCSP response.

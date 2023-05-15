@@ -1,10 +1,5 @@
 {
 	"ocspResponder": {
-		"tls": {
-			"caCertFile": "test/grpc-creds/minica.pem",
-			"certFile": "test/grpc-creds/ocsp-responder.boulder/cert.pem",
-			"keyFile": "test/grpc-creds/ocsp-responder.boulder/key.pem"
-		},
 		"source": "file:///hierarchy/intermediate-ocsp-rsa.b64",
 		"path": "/",
 		"listenAddress": "0.0.0.0:4003",
