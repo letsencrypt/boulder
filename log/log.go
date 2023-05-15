@@ -93,15 +93,22 @@ func newStdoutWriter(level int) *stdoutWriter {
 		}
 	}
 
-	prefix := fmt.Sprintf("%s %s %s[%d]:", shortHostname, datacenter, core.Command(), os.Getpid())
+	prefix := fmt.Sprintf("%s %s %s[%d]: ", shortHostname, datacenter, core.Command(), os.Getpid())
+	clkFormat := "2006-01-02T15:04:05.000000+00:00Z"
+
+	if strings.HasPrefix(os.Getenv("BOULDER_CONFIG_DIR"), "test/config") {
+		prefix = ""
+		clkFormat = "15:04:05.000000"
+	}
 
 	return &stdoutWriter{
-		prefix: prefix,
-		level:  level,
-		clk:    clock.New(),
-		stdout: os.Stdout,
-		stderr: os.Stderr,
-		isatty: term.IsTerminal(int(os.Stdout.Fd())),
+		prefix:    prefix,
+		level:     level,
+		clkFormat: clkFormat,
+		clk:       clock.New(),
+		stdout:    os.Stdout,
+		stderr:    os.Stderr,
+		isatty:    term.IsTerminal(int(os.Stdout.Fd())),
 	}
 }
 
@@ -164,12 +171,13 @@ type bothWriter struct {
 type stdoutWriter struct {
 	// prefix is a set of information that is the same for every log line,
 	// imitating what syslog emits for us when we use the syslog writer.
-	prefix string
-	level  int
-	clk    clock.Clock
-	stdout io.Writer
-	stderr io.Writer
-	isatty bool
+	prefix    string
+	level     int
+	clkFormat string
+	clk       clock.Clock
+	stdout    io.Writer
+	stderr    io.Writer
+	isatty    bool
 }
 
 func LogLineChecksum(line string) string {
@@ -265,9 +273,9 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interf
 			}
 		}
 
-		if _, err := fmt.Fprintf(output, "%s%s %s %d %s %s%s\n",
+		if _, err := fmt.Fprintf(output, "%s%s %s%d %s %s%s\n",
 			color,
-			w.clk.Now().UTC().Format("2006-01-02T15:04:05.000000+00:00Z"),
+			w.clk.Now().UTC().Format(w.clkFormat),
 			w.prefix,
 			int(level),
 			core.Command(),
