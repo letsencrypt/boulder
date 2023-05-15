@@ -18,34 +18,6 @@ func TestProblemDetails(t *testing.T) {
 	test.AssertEquals(t, pd.Error(), "malformed :: Wat? o.O")
 }
 
-func TestProblemDetailsToStatusCode(t *testing.T) {
-	testCases := []struct {
-		pb         *ProblemDetails
-		statusCode int
-	}{
-		{&ProblemDetails{Type: ConnectionProblem}, http.StatusBadRequest},
-		{&ProblemDetails{Type: MalformedProblem}, http.StatusBadRequest},
-		{&ProblemDetails{Type: ServerInternalProblem}, http.StatusInternalServerError},
-		{&ProblemDetails{Type: TLSProblem}, http.StatusBadRequest},
-		{&ProblemDetails{Type: UnauthorizedProblem}, http.StatusForbidden},
-		{&ProblemDetails{Type: RateLimitedProblem}, statusTooManyRequests},
-		{&ProblemDetails{Type: BadNonceProblem}, http.StatusBadRequest},
-		{&ProblemDetails{Type: InvalidEmailProblem}, http.StatusBadRequest},
-		{&ProblemDetails{Type: "foo"}, http.StatusInternalServerError},
-		{&ProblemDetails{Type: "foo", HTTPStatus: 200}, 200},
-		{&ProblemDetails{Type: ConnectionProblem, HTTPStatus: 200}, 200},
-		{&ProblemDetails{Type: AccountDoesNotExistProblem}, http.StatusBadRequest},
-		{&ProblemDetails{Type: BadRevocationReasonProblem}, http.StatusBadRequest},
-	}
-
-	for _, c := range testCases {
-		p := ProblemDetailsToStatusCode(c.pb)
-		if c.statusCode != p {
-			t.Errorf("Incorrect status code for %s. Expected %d, got %d", c.pb.Type, c.statusCode, p)
-		}
-	}
-}
-
 func TestProblemDetailsConvenience(t *testing.T) {
 	testCases := []struct {
 		pb           *ProblemDetails
@@ -54,13 +26,13 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		detail       string
 	}{
 		{InvalidEmail("invalid email detail"), InvalidEmailProblem, http.StatusBadRequest, "invalid email detail"},
-		{ConnectionFailure("connection failure detail"), ConnectionProblem, http.StatusBadRequest, "connection failure detail"},
+		{Connection("connection failure detail"), ConnectionProblem, http.StatusBadRequest, "connection failure detail"},
 		{Malformed("malformed detail"), MalformedProblem, http.StatusBadRequest, "malformed detail"},
 		{ServerInternal("internal error detail"), ServerInternalProblem, http.StatusInternalServerError, "internal error detail"},
 		{Unauthorized("unauthorized detail"), UnauthorizedProblem, http.StatusForbidden, "unauthorized detail"},
-		{RateLimited("rate limited detail"), RateLimitedProblem, statusTooManyRequests, "rate limited detail"},
+		{RateLimited("rate limited detail"), RateLimitedProblem, http.StatusTooManyRequests, "rate limited detail"},
 		{BadNonce("bad nonce detail"), BadNonceProblem, http.StatusBadRequest, "bad nonce detail"},
-		{TLSError("TLS error detail"), TLSProblem, http.StatusBadRequest, "TLS error detail"},
+		{TLS("TLS error detail"), TLSProblem, http.StatusBadRequest, "TLS error detail"},
 		{RejectedIdentifier("rejected identifier detail"), RejectedIdentifierProblem, http.StatusBadRequest, "rejected identifier detail"},
 		{AccountDoesNotExist("no account detail"), AccountDoesNotExistProblem, http.StatusBadRequest, "no account detail"},
 		{BadRevocationReason("only reason xxx is supported"), BadRevocationReasonProblem, http.StatusBadRequest, "only reason xxx is supported"},
@@ -91,7 +63,7 @@ func TestWithSubProblems(t *testing.T) {
 	topProb := &ProblemDetails{
 		Type:       RateLimitedProblem,
 		Detail:     "don't you think you have enough certificates already?",
-		HTTPStatus: statusTooManyRequests,
+		HTTPStatus: http.StatusTooManyRequests,
 	}
 	subProbs := []SubProblemDetails{
 		{
@@ -99,7 +71,7 @@ func TestWithSubProblems(t *testing.T) {
 			ProblemDetails: ProblemDetails{
 				Type:       RateLimitedProblem,
 				Detail:     "don't you think you have enough certificates already?",
-				HTTPStatus: statusTooManyRequests,
+				HTTPStatus: http.StatusTooManyRequests,
 			},
 		},
 		{
@@ -124,7 +96,7 @@ func TestWithSubProblems(t *testing.T) {
 		ProblemDetails: ProblemDetails{
 			Type:       RateLimitedProblem,
 			Detail:     "yet another rate limit err",
-			HTTPStatus: statusTooManyRequests,
+			HTTPStatus: http.StatusTooManyRequests,
 		},
 	}
 	outResult = outResult.WithSubProblems([]SubProblemDetails{anotherSubProb})

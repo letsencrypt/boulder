@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc/resolver"
 
 	"github.com/letsencrypt/boulder/config"
@@ -134,9 +135,9 @@ type HostnamePolicyConfig struct {
 
 // TLSConfig represents certificates and a key for authenticated TLS.
 type TLSConfig struct {
-	CertFile   *string `validate:"required"`
-	KeyFile    *string `validate:"required"`
-	CACertFile *string `validate:"required"`
+	CertFile   string `validate:"required"`
+	KeyFile    string `validate:"required"`
+	CACertFile string `validate:"required"`
 }
 
 // Load reads and parses the certificates and key listed in the TLSConfig, and
@@ -146,27 +147,27 @@ func (t *TLSConfig) Load(scope prometheus.Registerer) (*tls.Config, error) {
 	if t == nil {
 		return nil, fmt.Errorf("nil TLS section in config")
 	}
-	if t.CertFile == nil {
+	if t.CertFile == "" {
 		return nil, fmt.Errorf("nil CertFile in TLSConfig")
 	}
-	if t.KeyFile == nil {
+	if t.KeyFile == "" {
 		return nil, fmt.Errorf("nil KeyFile in TLSConfig")
 	}
-	if t.CACertFile == nil {
+	if t.CACertFile == "" {
 		return nil, fmt.Errorf("nil CACertFile in TLSConfig")
 	}
-	caCertBytes, err := os.ReadFile(*t.CACertFile)
+	caCertBytes, err := os.ReadFile(t.CACertFile)
 	if err != nil {
-		return nil, fmt.Errorf("reading CA cert from %q: %s", *t.CACertFile, err)
+		return nil, fmt.Errorf("reading CA cert from %q: %s", t.CACertFile, err)
 	}
 	rootCAs := x509.NewCertPool()
 	if ok := rootCAs.AppendCertsFromPEM(caCertBytes); !ok {
-		return nil, fmt.Errorf("parsing CA certs from %s failed", *t.CACertFile)
+		return nil, fmt.Errorf("parsing CA certs from %s failed", t.CACertFile)
 	}
-	cert, err := tls.LoadX509KeyPair(*t.CertFile, *t.KeyFile)
+	cert, err := tls.LoadX509KeyPair(t.CertFile, t.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("loading key pair from %q and %q: %s",
-			*t.CertFile, *t.KeyFile, err)
+			t.CertFile, t.KeyFile, err)
 	}
 
 	tlsNotBefore := prometheus.NewGaugeVec(
@@ -237,8 +238,8 @@ type SyslogConfig struct {
 	SyslogLevel int `validate:"min=-1,max=7"`
 }
 
-// ServiceDomain contains the service and domain name the gRPC client will use
-// to construct a SRV DNS query to lookup backends.
+// ServiceDomain contains the service and domain name the gRPC or bdns provider
+// will use to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
 	Service string `validate:"required"`
 	Domain  string `validate:"required"`
@@ -265,8 +266,8 @@ type GRPCClientConfig struct {
 	// the 'Domain' is 'service.consul'. The expected dNSName to be
 	// authenticated in the server certificate would be 'foo.service.consul'.
 	//
-	// Note: The 'proto' field of the SRV record MUST be 'tcp' and the 'port'
-	// field MUST be contain valid port. In a Consul configuration file you
+	// Note: The 'proto' field of the SRV record MUST contain 'tcp' and the
+	// 'port' field MUST be a valid port. In a Consul configuration file you
 	// would specify 'foo.service.consul' as:
 	//
 	// services {
@@ -343,6 +344,13 @@ type GRPCClientConfig struct {
 	// verify in the certificate presented by the server.
 	HostOverride string `validate:"excluded_with=ServerIPAddresses,omitempty,hostname"`
 	Timeout      config.Duration
+
+	// NoWaitForReady turns off our (current) default of setting grpc.WaitForReady(true).
+	// This means if all of a GRPC client's backends are down, it will error immediately.
+	// The current default, grpc.WaitForReady(true), means that if all of a GRPC client's
+	// backends are down, it will wait until either one becomes available or the RPC
+	// times out.
+	NoWaitForReady bool
 }
 
 // MakeTargetAndHostOverride constructs the target URI that the gRPC client will
@@ -442,18 +450,11 @@ func (c *GRPCClientConfig) makeSRVScheme() (string, error) {
 // GRPCServerConfig contains the information needed to start a gRPC server.
 type GRPCServerConfig struct {
 	Address string `json:"address" validate:"hostname_port"`
-	// ClientNames is a list of allowed client certificate subject alternate names
-	// (SANs). The server will reject clients that do not present a certificate
-	// with a SAN present on the `ClientNames` list.
-	// DEPRECATED: Use the ClientNames field within each Service instead.
-	// TODO(#6698): Remove this field once all production configs have been
-	// migrated to using the service specific client names.
-	ClientNames []string `json:"clientNames" validate:"required_without=Services,dive,hostname"`
 	// Services is a map of service names to configuration specific to that service.
 	// These service names must match the service names advertised by gRPC itself,
 	// which are identical to the names set in our gRPC .proto files prefixed by
 	// the package names set in those files (e.g. "ca.CertificateAuthority").
-	Services map[string]GRPCServiceConfig `json:"services" validate:"required_without=ClientNames,dive,required"`
+	Services map[string]GRPCServiceConfig `json:"services" validate:"required,dive,required"`
 	// MaxConnectionAge specifies how long a connection may live before the server sends a GoAway to the
 	// client. Because gRPC connections re-resolve DNS after a connection close,
 	// this controls how long it takes before a client learns about changes to its
@@ -483,14 +484,80 @@ type OpenTelemetryConfig struct {
 	Endpoint string
 
 	// SampleRatio is the ratio of new traces to head sample.
-	// This only affects new traces with no parent with its own sampling decision.
+	// This only affects new traces without a parent with its own sampling
+	// decision, and otherwise use the parent's sampling decision.
+	//
 	// Set to something between 0 and 1, where 1 is sampling all traces.
-	// See otel trace.TraceIDRatioBased for details.
+	// This is primarily meant as a pressure relief if the Endpoint we connect to
+	// is being overloaded, and we otherwise handle sampling in the collectors.
+	// See otel trace.ParentBased and trace.TraceIDRatioBased for details.
 	SampleRatio float64
+}
 
-	// If true, disable the parent sampler.
-	// On external-facing services like the WFE, setting this true will
-	// ensure that any external API users don't influence our own sampling
-	// decisions.
-	DisableParentSampler bool
+// OpenTelemetryHTTPConfig configures the otelhttp server tracing.
+type OpenTelemetryHTTPConfig struct {
+	// TrustIncomingSpans should only be set true if there's a trusted service
+	// connecting to Boulder, such as a load balancer that's tracing-aware.
+	// If false, the default, incoming traces won't be set as the parent.
+	// See otelhttp.WithPublicEndpoint
+	TrustIncomingSpans bool
+}
+
+// Options returns the otelhttp options for this configuration. They can be
+// passed to otelhttp.NewHandler or Boulder's wrapper, measured_http.New.
+func (c *OpenTelemetryHTTPConfig) Options() []otelhttp.Option {
+	var options []otelhttp.Option
+	if !c.TrustIncomingSpans {
+		options = append(options, otelhttp.WithPublicEndpoint())
+	}
+	return options
+}
+
+// DNSProvider contains the configuration for a DNS provider in the bdns package
+// which supports dynamic reloading of its backends.
+type DNSProvider struct {
+	// DNSAuthority is the single <hostname|IPv4|[IPv6]>:<port> of the DNS
+	// server to be used for resolution of DNS backends. If the address contains
+	// a hostname it will be resolved via the system DNS. If the port is left
+	// unspecified it will default to '53'. If this field is left unspecified
+	// the system DNS will be used for resolution of DNS backends.
+	//
+	// TODO(#6868): Make this field required once 'dnsResolver' is removed from
+	// the boulder-va JSON config in favor of 'dnsProvider'.
+	DNSAuthority string `validate:"omitempty,ip|hostname|hostname_port"`
+
+	// SRVLookup contains the service and domain name used to construct a SRV
+	// DNS query to lookup DNS backends. 'Domain' is required. 'Service' is
+	// optional and will be defaulted to 'dns' if left unspecified.
+	//
+	// Usage: If the resource record is 'unbound.service.consul', then the
+	// 'Service' is 'unbound' and the 'Domain' is 'service.consul'. The expected
+	// dNSName to be authenticated in the server certificate would be
+	// 'unbound.service.consul'. The 'proto' field of the SRV record MUST
+	// contain 'udp' and the 'port' field MUST be a valid port. In a Consul
+	// configuration file you would specify 'unbound.service.consul' as:
+	//
+	// services {
+	//   id      = "unbound-1" // Must be unique
+	//   name    = "unbound"
+	//   address = "10.77.77.77"
+	//   port    = 53
+	//   tags    = ["udp"]
+	// }
+	//
+	// services {
+	//   id      = "unbound-2" // Must be unique
+	//   name    = "unbound"
+	//   address = "10.88.88.88"
+	//   port    = 53
+	//   tags    = ["udp"]
+	// }
+	//
+	// If you've added the above to your Consul configuration file (and reloaded
+	// Consul) then you should be able to resolve the following dig query:
+	//
+	// $ dig @10.55.55.10 -t SRV _unbound._udp.service.consul +short
+	// 1 1 53 0a585858.addr.dc1.consul.
+	// 1 1 53 0a4d4d4d.addr.dc1.consul.
+	SRVLookup ServiceDomain `validate:"required"`
 }

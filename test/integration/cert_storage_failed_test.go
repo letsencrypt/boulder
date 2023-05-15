@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 	ocsp_helper "github.com/letsencrypt/boulder/test/ocsp/helper"
+	"github.com/letsencrypt/boulder/test/vars"
 	"golang.org/x/crypto/ocsp"
 )
 
@@ -36,6 +37,8 @@ func getPrecertByName(db *sql.DB, name string) (*x509.Certificate, error) {
 		FROM issuedNames JOIN precertificates
 		USING (serial)
 		WHERE reversedName = ?
+		ORDER BY issuedNames.id DESC
+		LIMIT 1
 	`, name)
 	for rows.Next() {
 		err = rows.Scan(&der)
@@ -95,11 +98,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 		t.Skip("Skipping test because it requires the StoreLintingCertificateInsteadOfPrecertificate feature flag")
 	}
 	
-	// Note: DROP / CREATE TRIGGER does not work with prepared statements. Go's
-	// database/sql usually uses prepared statements, so we have to work to prevent that.
-	// We do this by using the interpolateParams=true option in the connection string,
-	// and by not passing any parameters to db.Exec other than the query string.
-	db, err := sql.Open("mysql", "test_setup@tcp(boulder-proxysql:6033)/boulder_sa_integration?interpolateParams=true")
+	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
 	test.AssertNotError(t, err, "failed to open db connection")
 
 	_, err = db.Exec(`DROP TRIGGER IF EXISTS fail_ready`)
@@ -112,6 +111,9 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	// off of the serial being updated.
 	// We limit this to UPDATEs that set the status to "good" because otherwise we
 	// would fail to revoke the certificate later.
+	// NOTE: CREATE and DROP TRIGGER do not work in prepared statements. Go's
+	// database/sql will automatically try to use a prepared statement if you pass
+	// any arguments to Exec besides the query itself, so don't do that.
 	_, err = db.Exec(`
 		CREATE TRIGGER fail_ready
 		BEFORE UPDATE ON certificateStatus

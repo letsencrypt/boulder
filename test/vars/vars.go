@@ -13,6 +13,9 @@ var (
 	DBConnSAMailer = fmt.Sprintf(dbURL, "mailer", "boulder_sa_test")
 	// DBConnSAFullPerms is the sa database connection with full perms
 	DBConnSAFullPerms = fmt.Sprintf(dbURL, "test_setup", "boulder_sa_test")
+	// DBConnSAIntegrationFullPerms is the sa database connection for the
+	// integration test DB, with full perms
+	DBConnSAIntegrationFullPerms = fmt.Sprintf(dbURL, "test_setup", "boulder_sa_integration")
 	// DBInfoSchemaRoot is the root user and the information_schema connection.
 	DBInfoSchemaRoot = fmt.Sprintf(dbURL, "root", "information_schema")
 	// DBConnIncidents is the incidents database connection.

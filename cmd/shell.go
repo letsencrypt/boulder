@@ -181,7 +181,7 @@ func (l logOutput) Output(calldepth int, logline string) error {
 func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr string) (prometheus.Registerer, blog.Logger, func(context.Context)) {
 	logger := NewLogger(logConf)
 
-	shutdown := newOpenTelemetry(otConf, logger)
+	shutdown := NewOpenTelemetry(otConf, logger)
 
 	return newStatsRegistry(addr, logger), logger, shutdown
 }
@@ -295,9 +295,9 @@ func newStatsRegistry(addr string, logger blog.Logger) prometheus.Registerer {
 	return registry
 }
 
-// newOpenTelemetry sets up our OpenTelemetry tracing
+// NewOpenTelemetry sets up our OpenTelemetry tracing
 // It returns a graceful shutdown function to be deferred.
-func newOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx context.Context) {
+func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx context.Context) {
 	otel.SetLogger(stdr.New(logOutput{logger}))
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) { logger.Errf("OpenTelemetry error: %v", err) }))
 
@@ -313,16 +313,11 @@ func newOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 		FailOnError(err, "Could not create OpenTelemetry resource")
 	}
 
-	// Use a ParentBased sampler to respect the sample decisions on incoming
-	// traces, and TraceIDRatioBased to randomly sample new traces.
-	sampler := trace.TraceIDRatioBased(config.SampleRatio)
-	if !config.DisableParentSampler {
-		sampler = trace.ParentBased(sampler)
-	}
-
 	opts := []trace.TracerProviderOption{
 		trace.WithResource(r),
-		trace.WithSampler(sampler),
+		// Use a ParentBased sampler to respect the sample decisions on incoming
+		// traces, and TraceIDRatioBased to randomly sample new traces.
+		trace.WithSampler(trace.ParentBased(trace.TraceIDRatioBased(config.SampleRatio))),
 	}
 
 	if config.Endpoint != "" {

@@ -25,12 +25,13 @@
 			"keyFile": "test/grpc-creds/expiration-mailer.boulder/key.pem"
 		},
 		"saService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "sa",
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"SMTPTrustedRootFile": "test/mail-test-srv/minica.pem",
@@ -42,5 +43,9 @@
 	"syslog": {
 		"stdoutlevel": 6,
 		"sysloglevel": -1
+	},
+	"opentelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
 	}
 }

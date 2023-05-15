@@ -92,7 +92,7 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	validationErr := probs.ConnectionFailure("weewoo")
+	validationErr := probs.Connection("weewoo")
 	authzPB.Challenges[0].Status = string(core.StatusInvalid)
 	authzPB.Challenges[0].Error, err = grpc.ProblemDetailsToPB(validationErr)
 	test.AssertNotError(t, err, "grpc.ProblemDetailsToPB failed")

@@ -8,10 +8,10 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"math/big"
-	"os"
 	"testing"
 
 	"github.com/eggsampler/acme/v3"
+
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -19,8 +19,6 @@ import (
 // less than 100 rounds of Fermat's Algorithm is rejected.
 func TestFermat(t *testing.T) {
 	t.Parallel()
-
-	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
 	type testCase struct {
 		name string

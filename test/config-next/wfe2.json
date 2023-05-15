@@ -23,21 +23,23 @@
 			"keyFile": "test/grpc-creds/wfe.boulder/key.pem"
 		},
 		"raService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "ra",
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "ra.boulder"
 		},
 		"saService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "sa",
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"accountCache": {
@@ -45,16 +47,17 @@
 			"ttl": "5s"
 		},
 		"getNonceService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "nonce",
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
 		"redeemNonceService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookups": [
 				{
 					"service": "nonce1",
@@ -67,6 +70,7 @@
 			],
 			"srvResolver": "nonce-srv",
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
 		"noncePrefixKey": {
@@ -101,5 +105,12 @@
 	"syslog": {
 		"stdoutlevel": 4,
 		"sysloglevel": -1
+	},
+	"opentelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
+	},
+	"openTelemetryHttpConfig": {
+		"trustIncomingSpans": true
 	}
 }

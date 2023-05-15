@@ -34,7 +34,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/go-jose/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
 	capb "github.com/letsencrypt/boulder/ca/proto"
