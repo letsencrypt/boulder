@@ -119,8 +119,8 @@ type Registration struct {
 	Status AcmeStatus `json:"status"`
 }
 
-// ValidationRecord represents a validation attempt against a specific
-// URL/hostname and the IP addresses that were resolved and used.
+// ValidationRecord represents a validation attempt against a specific URL/hostname
+// and the IP addresses that were resolved and used
 type ValidationRecord struct {
 	// SimpleHTTP only
 	URL string `json:"url,omitempty"`
@@ -147,19 +147,18 @@ type ValidationRecord struct {
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
 }
 
-type RehydratedValidationRecordFields struct {
+type RehydratedVRF struct {
 	Hostname string
 	Port     string
 }
 
-// TransformURLIntoHostnameAndPort takes a URL string as input and returns a
-// *RehydratedValidationRecordFields. To save database space, boulder no longer
-// stores the hostname and port fields in the validation record for an HTTP-01
-// challenge because that data can be rehydrated from the url field.
-func TransformURLIntoHostnameAndPort(input string) (*RehydratedValidationRecordFields, error) {
+// getHostPort returns the hostname and port parsed from the inner URL. If the
+// URL doesn't have a specify a port, the default port for the scheme will be
+// used. If the URL cannot be parsed, an error will be returned.
+func (vr ValidationRecord) getHostPort() (*RehydratedVRF, error) {
 	url, err := url.Parse(input)
 	if err != nil {
-		return &RehydratedValidationRecordFields{}, fmt.Errorf("could not parse url %v", input)
+		return &RehydratedVRF{}, fmt.Errorf("could not parse url %v", input)
 	}
 
 	// A safety check for the scheme being either https or http is done in the
@@ -167,7 +166,7 @@ func TransformURLIntoHostnameAndPort(input string) (*RehydratedValidationRecordF
 	scheme := url.Scheme
 	hostname := url.Hostname()
 	if hostname == "" {
-		return &RehydratedValidationRecordFields{}, fmt.Errorf("could not parse hostname: %v", input)
+		return &RehydratedVRF{}, fmt.Errorf("could not parse hostname: %v", input)
 	}
 	port := url.Port()
 	if scheme == "https" && port == "" {
@@ -176,7 +175,7 @@ func TransformURLIntoHostnameAndPort(input string) (*RehydratedValidationRecordF
 		port = "80"
 	}
 
-	return &RehydratedValidationRecordFields{Hostname: hostname, Port: port}, nil
+	return &RehydratedVRF{Hostname: hostname, Port: port}, nil
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -261,7 +260,7 @@ func (ch Challenge) RecordsSane() bool {
 			// We no longer store the hostname and port in the validation record
 			// for HTTP-01 challenges. Instead, we'll rehydrate it from the URL
 			// field.
-			rhp, err := TransformURLIntoHostnameAndPort(rec.URL)
+			rhp, err := rec.getHostPort(rec.URL)
 			if err != nil {
 				return false
 			}
