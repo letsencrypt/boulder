@@ -5,24 +5,21 @@ at https://github.com/letsencrypt/validator.
 
 ## Usage
 
-A `validate` subcommand has been included in the `boulder` binary. You can check
-the usage with `boulder validate -help`.
+By default Boulder validates config files for all components with a registered
+validator. Validating a config file for a given component is as simple as
+running the component directly:
 
-Use the following syntax to validate a config file:
 ```shell
-boulder validate -component <component> -config <config file>
+$ ./bin/boulder-observer -config test/config-next/observer.yml
+Error validating config file "test/config-next/observer.yml": Key: 'ObsConf.MonConfs[1].Kind' Error:Field validation for 'Kind' failed on the 'oneof' tag
 ```
 
-For instance, to validate the `boulder-ca` config file you can run:
+or by running the `boulder` binary and passing the component name as a
+subcommand:
 
 ```shell
-boulder validate -component boulder-ca -config test/config/ca.json`
-```
-
-For a complete list of `boulder` components which support config validation you
-can run:
-```shell
-boulder validate -list`
+$ ./bin/boulder boulder-observer -config test/config-next/observer.yml
+Error validating config file "test/config-next/observer.yml": Key: 'ObsConf.MonConfs[1].Kind' Error:Field validation for 'Kind' failed on the 'oneof' tag
 ```
 
 ## Struct Tag Tips
