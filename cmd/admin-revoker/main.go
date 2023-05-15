@@ -510,7 +510,10 @@ func main() {
 	)
 	comment := flagSet.String("comment", "", "Comment to include in the blocked key database entry ")
 	err := flagSet.Parse(os.Args[2:])
-	cmd.FailOnError(err, "Error parsing flagset")
+	if err == flag.ErrHelp {
+		os.Exit(1)
+	}
+	cmd.FailOnError(err, "parsing flagset")
 
 	if *configFile == "" {
 		usage()
