@@ -82,25 +82,7 @@ func StdoutLogger(level int) Logger {
 }
 
 func newStdoutWriter(level int) *stdoutWriter {
-	shortHostname := "unknown"
-	datacenter := "unknown"
-	hostname, err := os.Hostname()
-	if err == nil {
-		splits := strings.SplitN(hostname, ".", 3)
-		shortHostname = splits[0]
-		if len(splits) > 1 {
-			datacenter = splits[1]
-		}
-	}
-
-	prefix := fmt.Sprintf("%s %s %s[%d]: ", shortHostname, datacenter, core.Command(), os.Getpid())
-	clkFormat := "2006-01-02T15:04:05.000000+00:00Z"
-
-	if strings.HasPrefix(os.Getenv("BOULDER_CONFIG_DIR"), "test/config") {
-		prefix = ""
-		clkFormat = "15:04:05.000000"
-	}
-
+	prefix, clkFormat := getPrefix()
 	return &stdoutWriter{
 		prefix:    prefix,
 		level:     level,
