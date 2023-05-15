@@ -126,9 +126,6 @@ services:
     networks:
       bluenet:
         ipv4_address: 10.77.77.17
-    ports:
-      - "16686:16686" # Jaegar API and UI
-      - "4317:4317"  # OTLP grpc trace submission
 
 networks:
   bluenet:
