@@ -517,7 +517,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 			return berrors.InvalidEmailError("invalid contact")
 		}
 		if parsed.Scheme != "mailto" {
-			return berrors.InvalidEmailError("contact method %q is not supported", parsed.Scheme)
+			return berrors.UnsupportedContactError("contact method %q is not supported", parsed.Scheme)
 		}
 		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
 			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)

@@ -25,7 +25,7 @@ func TestProblemDetailsConvenience(t *testing.T) {
 		statusCode   int
 		detail       string
 	}{
-		{InvalidEmail("invalid email detail"), InvalidEmailProblem, http.StatusBadRequest, "invalid email detail"},
+		{InvalidContact("invalid email detail"), InvalidContactProblem, http.StatusBadRequest, "invalid email detail"},
 		{Connection("connection failure detail"), ConnectionProblem, http.StatusBadRequest, "connection failure detail"},
 		{Malformed("malformed detail"), MalformedProblem, http.StatusBadRequest, "malformed detail"},
 		{ServerInternal("internal error detail"), ServerInternalProblem, http.StatusInternalServerError, "internal error detail"},

@@ -59,25 +59,25 @@ func TestAccountEmailError(t *testing.T) {
 		{
 			name:               "empty contact",
 			contacts:           []string{"mailto:valid@valid.com", ""},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: `empty contact`,
 		},
 		{
 			name:               "empty proto",
 			contacts:           []string{"mailto:valid@valid.com", " "},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:unsupportedContact",
 			expectedProbDetail: `contact method "" is not supported`,
 		},
 		{
 			name:               "empty mailto",
 			contacts:           []string{"mailto:valid@valid.com", "mailto:"},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: `"" is not a valid e-mail address`,
 		},
 		{
 			name:               "non-ascii mailto",
 			contacts:           []string{"mailto:valid@valid.com", "mailto:cpu@l̴etsencrypt.org"},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: `contact email ["mailto:cpu@l̴etsencrypt.org"] contains non-ASCII characters`,
 		},
 		{
@@ -89,25 +89,25 @@ func TestAccountEmailError(t *testing.T) {
 		{
 			name:               "invalid contact",
 			contacts:           []string{"mailto:valid@valid.com", "mailto:a@"},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: `"a@" is not a valid e-mail address`,
 		},
 		{
 			name:               "forbidden contact domain",
 			contacts:           []string{"mailto:valid@valid.com", "mailto:a@example.com"},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: "invalid contact domain. Contact emails @example.com are forbidden",
 		},
 		{
 			name:               "contact domain invalid TLD",
 			contacts:           []string{"mailto:valid@valid.com", "mailto:a@example.cpu"},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: `contact email "a@example.cpu" has invalid domain : Domain name does not end with a valid public suffix (TLD)`,
 		},
 		{
 			name:               "contact domain invalid",
 			contacts:           []string{"mailto:valid@valid.com", "mailto:a@example./.com"},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: "contact email \"a@example./.com\" has invalid domain : Domain name contains an invalid character",
 		},
 		{
@@ -115,7 +115,7 @@ func TestAccountEmailError(t *testing.T) {
 			contacts: []string{
 				longStringBuf.String(),
 			},
-			expectedProbType:   "urn:ietf:params:acme:error:invalidEmail",
+			expectedProbType:   "urn:ietf:params:acme:error:invalidContact",
 			expectedProbDetail: `too many/too long contact(s). Please use shorter or fewer email addresses`,
 		},
 	}

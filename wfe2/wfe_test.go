@@ -2504,9 +2504,9 @@ func TestNewOrder(t *testing.T) {
 			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request did not specify any identifiers","status":400}`,
 		},
 		{
-			Name:         "POST, invalid identifier in payload",
+			Name:         "POST, non-DNS identifier in payload",
 			Request:      signAndPost(signer, targetPath, signedURL, nonDNSIdentifierBody),
-			ExpectedBody: `{"type":"` + probs.ErrorNS + `malformed","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
+			ExpectedBody: `{"type":"` + probs.ErrorNS + `unsupportedIdentifier","detail":"NewOrder request included invalid non-DNS type identifier: type \"fakeID\", value \"www.i-am-21.com\"","status":400}`,
 		},
 		{
 			Name:         "POST, notAfter and notBefore in payload",
