@@ -39,7 +39,7 @@ type Config struct {
 		// can be a DBConnect string or a file URL. The file URL style is used
 		// when responding from a static file for intermediates and roots.
 		// If DBConfig has non-empty fields, it takes precedence over this.
-		Source string `validate:"required_without_all=DB.DBConnectFile SAService Redis,omitempty"`
+		Source string `validate:"required_without_all=DB.DBConnectFile SAService Redis"`
 
 		// The list of issuer certificates, against which OCSP requests/responses
 		// are checked to ensure we're not responding for anyone else's certs.
