@@ -1989,7 +1989,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	for i, ident := range newOrderRequest.Identifiers {
 		if ident.Type != identifier.DNS {
 			wfe.sendError(response, logEvent,
-				probs.Malformed("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
+				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
 					ident.Type, ident.Value),
 				nil)
 			return
