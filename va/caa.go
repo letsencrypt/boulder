@@ -90,8 +90,9 @@ type caaResult struct {
 }
 
 // filterCAA processes a set of CAA resource records and picks out the only bits
-// we care about: the issue records, the issuewild records, and whether any
-// unrecognized records had the critical bit set.
+// we care about. It returns two slices of CAA records, representing the issue
+// records and the issuewild records respectively, and a boolean indicating
+// whether any unrecognized records had the critical bit set.
 func filterCAA(rrs []*dns.CAA) ([]*dns.CAA, []*dns.CAA, bool) {
 	var issue, issuewild []*dns.CAA
 	var criticalUnknown bool
