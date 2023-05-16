@@ -643,8 +643,8 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	}
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {
-		// Rehydrate the Hostname and Port fields from the URL field for the caller.
 		if challenge.Type == string(core.ChallengeTypeHTTP01) {
+			// Rehydrate the Hostname and Port fields from the URL field for the caller.
 			rhost, rport, err := r.GetHostPort()
 			if err != nil {
 				return err
