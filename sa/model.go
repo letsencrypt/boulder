@@ -59,11 +59,15 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regModel, error) {
+func selectRegistration(s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
+	if whereCol != "id" && whereCol != "jwk_sha256" {
+		return nil, fmt.Errorf("column name %q invalid for registrations table WHERE clause", whereCol)
+	}
+
 	var model regModel
 	err := s.SelectOne(
 		&model,
-		"SELECT "+regFields+" FROM registrations "+q,
+		"SELECT "+regFields+" FROM registrations WHERE "+whereCol+" = ? LIMIT 1",
 		args...,
 	)
 	return &model, err
