@@ -355,10 +355,11 @@ func (va *ValidationAuthorityImpl) setupHTTPValidation(
 			fmt.Errorf("httpValidationTarget can not be nil")
 	}
 
-	// The WFE can rehydrate the Hostname and Port from the URL when returning
-	// data to the client rather than a record of it being stored in the
-	// database.
+	// Construct a base validation record with the validation target's
+	// information.
 	record := core.ValidationRecord{
+		Hostname:          target.host,
+		Port:              strconv.Itoa(target.port),
 		AddressesResolved: target.available,
 		URL:               reqURL,
 	}

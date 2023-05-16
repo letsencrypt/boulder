@@ -418,7 +418,9 @@ func TestSetupHTTPValidation(t *testing.T) {
 				path: "idk",
 			},
 			ExpectedRecord: core.ValidationRecord{
-				URL: httpInputURL,
+				URL:      "http://ipv4.and.ipv6.localhost/yellow/brick/road",
+				Hostname: "ipv4.and.ipv6.localhost",
+				Port:     strconv.Itoa(va.httpPort),
 			},
 			ExpectedError: fmt.Errorf(`host "ipv4.and.ipv6.localhost" has no IP addresses remaining to use`),
 		},
@@ -427,7 +429,9 @@ func TestSetupHTTPValidation(t *testing.T) {
 			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpPort, "/yellow/brick/road"),
 			InputURL:    httpInputURL,
 			ExpectedRecord: core.ValidationRecord{
-				URL:               httpInputURL,
+				Hostname:          "ipv4.and.ipv6.localhost",
+				Port:              strconv.Itoa(va.httpPort),
+				URL:               "http://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
 			},
@@ -442,7 +446,9 @@ func TestSetupHTTPValidation(t *testing.T) {
 			InputTarget: mustTarget(t, "ipv4.and.ipv6.localhost", va.httpsPort, "/yellow/brick/road"),
 			InputURL:    httpsInputURL,
 			ExpectedRecord: core.ValidationRecord{
-				URL:               httpsInputURL,
+				Hostname:          "ipv4.and.ipv6.localhost",
+				Port:              strconv.Itoa(va.httpsPort),
+				URL:               "https://ipv4.and.ipv6.localhost/yellow/brick/road",
 				AddressesResolved: []net.IP{net.ParseIP("::1"), net.ParseIP("127.0.0.1")},
 				AddressUsed:       net.ParseIP("::1"),
 			},
@@ -813,6 +819,8 @@ func TestFetchHTTP(t *testing.T) {
 					"Timeout after connect (your server may be slow or overloaded)"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
@@ -828,6 +836,8 @@ func TestFetchHTTP(t *testing.T) {
 					"Error getting validation data"),
 			ExpectedRecords: []core.ValidationRecord{
 				{
+					Hostname:          "example.com",
+					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),

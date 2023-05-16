@@ -147,36 +147,48 @@ type ValidationRecord struct {
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
 }
 
-// GetHostPort returns the hostname and port parsed from the inner URL. If the
-// URL doesn't specify a port, the default port for the scheme will be
-// returned. If the URL cannot be parsed, an error will be returned.
+// RehydrateHostPort mutates a validation record. If the URL in the validation
+// record cannot be parsed, an error will be returned. If the Hostname and Port
+// fields already exist in the validation record, they will be retained.
+// Otherwise, the Hostname and Port will be derived from the URL field of the
+// validation record.
 //
 // CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
 // (http), 443 (https)
-func (vr ValidationRecord) GetHostPort() (string, string, error) {
+func (vr *ValidationRecord) RehydrateHostPort() error {
+	if vr.URL == "" {
+		return fmt.Errorf("expected URL field in validation record, but could not be found")
+	}
+
+	// Use the existing Hostname and Port from the validation record if it exists.
+	if vr.Hostname != "" && vr.Port != "" {
+		return nil
+	}
+
 	url, err := url.Parse(vr.URL)
 	if err != nil {
-		return "", "", fmt.Errorf("could not parse url %v", vr.URL)
+		return fmt.Errorf("could not parse url from validation record %v", vr.URL)
 	}
 
 	if url.Hostname() == "" {
-		return "", "", fmt.Errorf("could not parse hostname: %v", vr.URL)
+		return fmt.Errorf("could not parse hostname: %s", vr.URL)
 	}
+	vr.Hostname = url.Hostname()
 
-	port := url.Port()
-	if port == "" {
+	if url.Port() == "" {
 		switch url.Scheme {
 		case "https":
-			port = "443"
+			vr.Port = "443"
 		case "http":
-			port = "80"
+			vr.Port = "80"
 		default:
 			// This should never happen since the VA should have already
 			// checked the scheme.
-			return "", "", fmt.Errorf("unknown scheme %q in URL %q", url.Scheme, vr.URL)
+			return fmt.Errorf("unknown scheme %q in URL %q", url.Scheme, vr.URL)
 		}
 	}
-	return url.Hostname(), port, nil
+
+	return nil
 }
 
 func looksLikeKeyAuthorization(str string) error {
@@ -261,11 +273,11 @@ func (ch Challenge) RecordsSane() bool {
 			// We no longer store the hostname and port in the validation record
 			// for HTTP-01 challenges. Instead, we'll rehydrate it from the URL
 			// field.
-			rhost, rport, err := rec.GetHostPort()
+			err := rec.RehydrateHostPort()
 			if err != nil {
 				return false
 			}
-			if rec.URL == "" || rec.AddressUsed == nil || rhost == "" || rport == "" ||
+			if rec.URL == "" || rec.AddressUsed == nil || rec.Hostname == "" || rec.Port == "" ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}

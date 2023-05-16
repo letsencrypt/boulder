@@ -91,8 +91,44 @@ func TestAuthzModel(t *testing.T) {
 
 	authzPBOut, err := modelToAuthzPB(*model)
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	if authzPB.Challenges[0].Validationrecords[0].Hostname != "" {
+		test.Assert(t, false, fmt.Sprintf("dehydrated http-01 validation record expected hostname field to be missing, but found %v", authzPB.Challenges[0].Validationrecords[0].Hostname))
+	}
+	if authzPB.Challenges[0].Validationrecords[0].Port != "" {
+		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port field to be missing, but found %v", authzPB.Challenges[0].Validationrecords[0].Port))
+	}
+	// Shoving the Hostname and Port backinto the validation record should
+	// succeed because authzPB validation record will should match the retrieved
+	// model from the database with the rehydrated Hostname and Port.
+	authzPB.Challenges[0].Validationrecords[0].Hostname = "example.com"
+	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
+	authzPB = &corepb.Authorization{
+		Id:             "1",
+		Identifier:     "example.com",
+		RegistrationID: 1,
+		Status:         string(core.StatusValid),
+		Expires:        1234,
+		Challenges: []*corepb.Challenge{
+			{
+				Type:      string(core.ChallengeTypeHTTP01),
+				Status:    string(core.StatusValid),
+				Token:     "MTIz",
+				Validated: 1234,
+				Validationrecords: []*corepb.ValidationRecord{
+					{
+						AddressUsed:       []byte("1.2.3.4"),
+						Url:               "https://example.com",
+						Hostname:          "example.com",
+						Port:              "443",
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					},
+				},
+			},
+		},
+	}
 	validationErr := probs.ConnectionFailure("weewoo")
 	authzPB.Challenges[0].Status = string(core.StatusInvalid)
 	authzPB.Challenges[0].Error, err = grpc.ProblemDetailsToPB(validationErr)
@@ -102,6 +138,17 @@ func TestAuthzModel(t *testing.T) {
 
 	authzPBOut, err = modelToAuthzPB(*model)
 	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	if authzPB.Challenges[0].Validationrecords[0].Hostname != "" {
+		test.Assert(t, false, fmt.Sprintf("dehydrated http-01 validation record expected hostname field to be missing, but found %v", authzPB.Challenges[0].Validationrecords[0].Hostname))
+	}
+	if authzPB.Challenges[0].Validationrecords[0].Port != "" {
+		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port field to be missing, but found %v", authzPB.Challenges[0].Validationrecords[0].Port))
+	}
+	// Shoving the Hostname and Port backinto the validation record should
+	// succeed because authzPB validation record will should match the retrieved
+	// model from the database with the rehydrated Hostname and Port.
+	authzPB.Challenges[0].Validationrecords[0].Hostname = "example.com"
+	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
 	authzPB = &corepb.Authorization{
@@ -158,7 +205,7 @@ func TestAuthzModel(t *testing.T) {
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),
-						Url:               "https://example.com:1337",
+						Url:               "https://example.com",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},
@@ -175,8 +222,8 @@ func TestAuthzModel(t *testing.T) {
 	if authzPBOut.Challenges[0].Validationrecords[0].Hostname != "example.com" {
 		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected hostname example.com but found %v", authzPBOut.Challenges[0].Validationrecords[0].Hostname))
 	}
-	if authzPBOut.Challenges[0].Validationrecords[0].Port != "1337" {
-		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port 1337 but found %v", authzPBOut.Challenges[0].Validationrecords[0].Port))
+	if authzPBOut.Challenges[0].Validationrecords[0].Port != "443" {
+		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port 443 but found %v", authzPBOut.Challenges[0].Validationrecords[0].Port))
 	}
 }
 
