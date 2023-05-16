@@ -82,10 +82,11 @@ func (va *ValidationAuthorityImpl) checkCAA(
 // critical, and stores the raw response text for logging and debugging.
 type caaResult struct {
 	name            string
+	present         bool
 	issue           []*dns.CAA
 	issuewild       []*dns.CAA
 	criticalUnknown bool
-	raw             string
+	dig             string
 	err             error
 }
 
@@ -134,7 +135,10 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		go func(name string, r *caaResult) {
 			r.name = name
 			var records []*dns.CAA
-			records, r.raw, r.err = va.dnsClient.LookupCAA(ctx, name)
+			records, r.dig, r.err = va.dnsClient.LookupCAA(ctx, name)
+			if len(records) > 0 {
+				r.present = true
+			}
 			r.issue, r.issuewild, r.criticalUnknown = filterCAA(records)
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
@@ -154,7 +158,7 @@ func selectCAA(rrs []caaResult) (*caaResult, error) {
 		if res.err != nil {
 			return nil, res.err
 		}
-		if len(res.raw) > 0 {
+		if res.present {
 			return &res, nil
 		}
 	}
@@ -209,7 +213,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 	}
 	raw := ""
 	if caaSet != nil {
-		raw = caaSet.raw
+		raw = caaSet.dig
 	}
 	valid, foundAt := va.validateCAA(caaSet, wildcard, params)
 	return foundAt, valid, raw, nil

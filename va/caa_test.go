@@ -642,9 +642,9 @@ func TestSelectCAA(t *testing.T) {
 
 	// A slice of empty caaResults should return nil, "", nil
 	r = []caaResult{
-		{"", nil, nil, false, "", nil},
-		{"", nil, nil, false, "", nil},
-		{"", nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -653,8 +653,8 @@ func TestSelectCAA(t *testing.T) {
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{"foo.com", nil, nil, false, "", errors.New("oops")},
-		{"com", []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"foo.com", false, nil, nil, false, "", errors.New("oops")},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
 	}
 	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
@@ -664,26 +664,26 @@ func TestSelectCAA(t *testing.T) {
 	//  A slice of caaResults containing a good record that precedes an
 	//  error, should return that good record, not the error
 	r = []caaResult{
-		{"foo.com", []*dns.CAA{&expected}, nil, false, "foo", nil},
-		{"com", nil, nil, false, "", errors.New("")},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", false, nil, nil, false, "", errors.New("")},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)
 	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, s.raw, "foo")
+	test.AssertEquals(t, s.dig, "foo")
 	test.Assert(t, err == nil, "error is not nil")
 
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
-		{"bar.foo.com", []*dns.CAA{}, []*dns.CAA{}, false, "", nil},
-		{"foo.com", []*dns.CAA{&expected}, nil, false, "foo", nil},
-		{"com", []*dns.CAA{&expected}, nil, false, "bar", nil},
+		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil},
 	}
 	s, err = selectCAA(r)
 	test.AssertEquals(t, len(s.issue), 1)
 	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, s.raw, "foo")
+	test.AssertEquals(t, s.dig, "foo")
 	test.AssertNotError(t, err, "expect nil error")
 }
 
