@@ -92,7 +92,7 @@ func SelectPrecertificate(s db.OneSelector, serial string) (core.Certificate, er
 	var model precertificateModel
 	err := s.SelectOne(
 		&model,
-		"SELECT "+precertFields+" FROM precertificates WHERE serial = ?",
+		"SELECT "+precertFields+" FROM precertificates WHERE serial = ? LIMIT 1",
 		serial)
 	return core.Certificate{
 		RegistrationID: model.RegistrationID,
@@ -147,7 +147,7 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 	var model core.CertificateStatus
 	err := s.SelectOne(
 		&model,
-		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ?",
+		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ? LIMIT 1",
 		serial,
 	)
 	return model, err
@@ -168,7 +168,7 @@ func SelectRevocationStatus(s db.OneSelector, serial string) (*sapb.RevocationSt
 	var model RevocationStatusModel
 	err := s.SelectOne(
 		&model,
-		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ?",
+		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ? LIMIT 1",
 		serial,
 	)
 	if err != nil {
