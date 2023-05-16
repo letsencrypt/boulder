@@ -50,18 +50,8 @@ SERVICES = {
     },
     "boulder-va-1": bouldersvc("boulder-va", "va.json", "va1.service.consul:9092", 8004, deps=("boulder-remoteva-a", "boulder-remoteva-b")),
     "boulder-va-2": bouldersvc("boulder-va", "va.json", "va2.service.consul:9092", 8104, deps=("boulder-remoteva-a", "boulder-remoteva-b")),
-    "boulder-ca-a": {
-        "debug_port": 8001,
-        "grpc_addr": "ca1.service.consul:9093",
-        "cmd": bouldersvc("boulder-ca", "ca-a.json", "ca1.service.consul:9093", 8001),
-        "deps": ("boulder-sa-1", "boulder-sa-2"),
-    },
-    "boulder-ca-b": {
-        "debug_port": 8101,
-        "grpc_addr": "ca2.service.consul:9093",
-        "cmd": bouldersvc("boulder-ca", "ca-b.json", "ca2.service.consul:9093", 8101),
-        "deps": ("boulder-sa-1", "boulder-sa-2"),
-    },
+    "boulder-ca-a": bouldersvc("boulder-ca", "ca-a.json", "ca1.service.consul:9093", 8001, deps=("boulder-sa-1", "boulder-sa-2")),
+    "boulder-ca-b": bouldersvc("boulder-ca", "ca-b.json", "ca2.service.consul:9093", 8101, deps=("boulder-sa-1", "boulder-sa-2")),
     "akamai-test-srv": {"debug_port": 6789, "cmd": ("./bin/akamai-test-srv", "--listen", "localhost:6789", "--secret", "its-a-secret")},
     "akamai-purger": {
         "debug_port": 9666,
