@@ -755,7 +755,6 @@ func TestFetchHTTP(t *testing.T) {
 		if i != 0 {
 			url = fmt.Sprintf("http://example.com:%d/loop", httpPort)
 		}
-
 		expectedLoopRecords = append(expectedLoopRecords,
 			core.ValidationRecord{
 				URL:               url,
