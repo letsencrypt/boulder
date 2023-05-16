@@ -187,7 +187,7 @@ func (ap *akamaiPurger) purgeBatch(batch [][]string) error {
 
 	err := ap.client.Purge(urls)
 	if err != nil {
-		ap.log.Errf("Failed to purge OCSP responses for %d certificates: %s", len(batch), err)
+		ap.log.Errf("Failed to purge %d OCSP responses (%s): %s", len(batch), strings.Join(urls, ","), err)
 		return err
 	}
 	return nil

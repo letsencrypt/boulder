@@ -24,7 +24,7 @@ import (
 	"time"
 	"unicode"
 
-	jose "gopkg.in/go-jose/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 )
 
 const Unspecified = "Unspecified"

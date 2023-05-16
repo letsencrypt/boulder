@@ -41,7 +41,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/go-jose/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 )
 
 var log = blog.UseMock()
@@ -2349,7 +2349,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), fc.Now().UTC())
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
-	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
+	prob, _ := bgrpc.ProblemDetailsToPB(probs.Connection("it went bad captain"))
 
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,

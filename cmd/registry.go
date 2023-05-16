@@ -69,13 +69,13 @@ func AvailableCommands() []string {
 }
 
 // LookupConfigValidator constructs an instance of the *ConfigValidator for the
-// given Boulder component name. If no *ConfigValidator was registered, an error
-// is returned.
-func LookupConfigValidator(name string) (*ConfigValidator, error) {
+// given Boulder component name. If no *ConfigValidator was registered, nil is
+// returned.
+func LookupConfigValidator(name string) *ConfigValidator {
 	registry.Lock()
 	defer registry.Unlock()
 	if registry.configs[name] == nil {
-		return nil, fmt.Errorf("no config validator found for %q", name)
+		return nil
 	}
 
 	// Create a new copy of the config struct so that we can validate it
@@ -87,7 +87,7 @@ func LookupConfigValidator(name string) (*ConfigValidator, error) {
 	return &ConfigValidator{
 		Config:     copy,
 		Validators: registry.configs[name].Validators,
-	}, nil
+	}
 }
 
 // AvailableConfigValidators returns a list of Boulder component names for which
