@@ -22,7 +22,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/go-jose/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -73,7 +73,7 @@ const (
 	getCertPath      = getAPIPrefix + "cert/"
 
 	// Draft or likely-to-change paths
-	renewalInfoPath = getAPIPrefix + "draft-ietf-acme-ari-00/renewalInfo/"
+	renewalInfoPath = "/draft-ietf-acme-ari-01/renewalInfo/"
 
 	// Non-ACME paths
 	aiaIssuerPath = "/aia/issuer/"
@@ -399,7 +399,7 @@ func (wfe *WebFrontEndImpl) relativeDirectory(request *http.Request, directory m
 
 // Handler returns an http.Handler that uses various functions for
 // various ACME-specified paths.
-func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
+func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer, oTelHTTPOptions ...otelhttp.Option) http.Handler {
 	m := http.NewServeMux()
 	// Boulder specific endpoints
 	wfe.HandleFunc(m, buildIDPath, wfe.BuildID, "GET")
@@ -440,7 +440,7 @@ func (wfe *WebFrontEndImpl) Handler(stats prometheus.Registerer) http.Handler {
 	// meaning we can wind up returning 405 when we mean to return 404. See
 	// https://github.com/letsencrypt/boulder/issues/717
 	m.Handle("/", web.NewTopHandler(wfe.log, web.WFEHandlerFunc(wfe.Index)))
-	return otelhttp.NewHandler(measured_http.New(m, wfe.clk, stats), "server")
+	return measured_http.New(m, wfe.clk, stats, oTelHTTPOptions...)
 }
 
 // Method implementations
@@ -605,7 +605,7 @@ func (wfe *WebFrontEndImpl) sendError(response http.ResponseWriter, logEvent *we
 		}
 	}
 	wfe.stats.httpErrorCount.With(prometheus.Labels{"type": string(prob.Type)}).Inc()
-	web.SendError(wfe.log, probs.V2ErrorNS, response, logEvent, prob, ierr)
+	web.SendError(wfe.log, response, logEvent, prob, ierr)
 }
 
 func link(url, relation string) string {
@@ -1113,13 +1113,11 @@ func (wfe *WebFrontEndImpl) prepChallengeForDisplay(request *http.Request, authz
 	// ACMEv2 never sends the KeyAuthorization back in a challenge object.
 	challenge.ProvidedKeyAuthorization = ""
 
-	// Historically the Type field of a problem was always prefixed with a static
-	// error namespace. To support the V2 API and migrating to the correct IETF
-	// namespace we now prefix the Type with the correct namespace at runtime when
-	// we write the problem JSON to the user. We skip this process if the
-	// challenge error type has already been prefixed with the V1ErrorNS.
-	if challenge.Error != nil && !strings.HasPrefix(string(challenge.Error.Type), probs.V1ErrorNS) {
-		challenge.Error.Type = probs.V2ErrorNS + challenge.Error.Type
+	// Internally, we store challenge error problems with just the short form
+	// (e.g. "CAA") of the problem type. But for external display, we need to
+	// prefix the error type with the RFC8555 ACME Error namespace.
+	if challenge.Error != nil {
+		challenge.Error.Type = probs.ErrorNS + challenge.Error.Type
 	}
 
 	// If the authz has been marked invalid, consider all challenges on that authz
@@ -1930,7 +1928,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 				"proto buf prob to problem details: %q", order.Id, err)
 		}
 		respObj.Error = prob
-		respObj.Error.Type = probs.V2ErrorNS + respObj.Error.Type
+		respObj.Error.Type = probs.ErrorNS + respObj.Error.Type
 	}
 	for _, v2ID := range order.V2Authorizations {
 		respObj.Authorizations = append(respObj.Authorizations, web.RelativeEndpoint(request, fmt.Sprintf("%s%d", authzPath, v2ID)))
@@ -1991,7 +1989,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	for i, ident := range newOrderRequest.Identifiers {
 		if ident.Type != identifier.DNS {
 			wfe.sendError(response, logEvent,
-				probs.Malformed("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
+				probs.UnsupportedIdentifier("NewOrder request included invalid non-DNS type identifier: type %q, value %q",
 					ident.Type, ident.Value),
 				nil)
 			return

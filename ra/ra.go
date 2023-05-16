@@ -20,9 +20,10 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/ocsp"
 	"golang.org/x/exp/slices"
-	grpc "google.golang.org/grpc"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.in/go-jose/go-jose.v2"
@@ -516,7 +517,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 			return berrors.InvalidEmailError("invalid contact")
 		}
 		if parsed.Scheme != "mailto" {
-			return berrors.InvalidEmailError("contact method %q is not supported", parsed.Scheme)
+			return berrors.UnsupportedContactError("contact method %q is not supported", parsed.Scheme)
 		}
 		if parsed.RawQuery != "" || contact[len(contact)-1] == '?' {
 			return berrors.InvalidEmailError("contact email %q contains a question mark", contact)
@@ -1250,8 +1251,9 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	if features.Enabled(features.AsyncFinalize) {
 		// If we're in async mode, use a context with a much longer timeout.
 		// TODO(go1.22?): use context.Detach to preserve tracing metadata.
+		span := trace.SpanFromContext(ctx)
 		var cancel func()
-		ctx, cancel = context.WithTimeout(context.Background(), ra.finalizeTimeout)
+		ctx, cancel = context.WithTimeout(trace.ContextWithSpan(context.Background(), span), ra.finalizeTimeout)
 		defer cancel()
 	}
 

@@ -60,32 +60,32 @@ func TestTLSConfigLoad(t *testing.T) {
 		TLSConfig
 		want string
 	}{
-		{TLSConfig{nil, &null, &null}, "nil CertFile in TLSConfig"},
-		{TLSConfig{&null, nil, &null}, "nil KeyFile in TLSConfig"},
-		{TLSConfig{&null, &null, nil}, "nil CACertFile in TLSConfig"},
-		{TLSConfig{&nonExistent, &key, &caCert}, "loading key pair.*no such file or directory"},
-		{TLSConfig{&cert, &nonExistent, &caCert}, "loading key pair.*no such file or directory"},
-		{TLSConfig{&cert, &key, &nonExistent}, "reading CA cert from.*no such file or directory"},
-		{TLSConfig{&null, &key, &caCert}, "loading key pair.*failed to find any PEM data"},
-		{TLSConfig{&cert, &null, &caCert}, "loading key pair.*failed to find any PEM data"},
-		{TLSConfig{&cert, &key, &null}, "parsing CA certs"},
+		{TLSConfig{"", null, null}, "nil CertFile in TLSConfig"},
+		{TLSConfig{null, "", null}, "nil KeyFile in TLSConfig"},
+		{TLSConfig{null, null, ""}, "nil CACertFile in TLSConfig"},
+		{TLSConfig{nonExistent, key, caCert}, "loading key pair.*no such file or directory"},
+		{TLSConfig{cert, nonExistent, caCert}, "loading key pair.*no such file or directory"},
+		{TLSConfig{cert, key, nonExistent}, "reading CA cert from.*no such file or directory"},
+		{TLSConfig{null, key, caCert}, "loading key pair.*failed to find any PEM data"},
+		{TLSConfig{cert, null, caCert}, "loading key pair.*failed to find any PEM data"},
+		{TLSConfig{cert, key, null}, "parsing CA certs"},
 	}
 	for _, tc := range testCases {
 		var title [3]string
-		if tc.CertFile == nil {
+		if tc.CertFile == "" {
 			title[0] = "nil"
 		} else {
-			title[0] = *tc.CertFile
+			title[0] = tc.CertFile
 		}
-		if tc.KeyFile == nil {
+		if tc.KeyFile == "" {
 			title[1] = "nil"
 		} else {
-			title[1] = *tc.KeyFile
+			title[1] = tc.KeyFile
 		}
-		if tc.CACertFile == nil {
+		if tc.CACertFile == "" {
 			title[2] = "nil"
 		} else {
-			title[2] = *tc.CACertFile
+			title[2] = tc.CACertFile
 		}
 		t.Run(strings.Join(title[:], "_"), func(t *testing.T) {
 			_, err := tc.TLSConfig.Load(metrics.NoopRegisterer)

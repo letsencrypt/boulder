@@ -35,16 +35,16 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 		}),
 		"dfoop",
 	)
-	SendError(log.NewMock(), "namespace:test:", rw, &RequestEvent{}, prob, errors.New("it bad"))
+	SendError(log.NewMock(), rw, &RequestEvent{}, prob, errors.New("it bad"))
 
 	body := rw.Body.String()
 	test.AssertUnmarshaledEquals(t, body, `{
-		"type": "namespace:test:malformed",
+		"type": "urn:ietf:params:acme:error:malformed",
 		"detail": "dfoop :: bad",
 		"status": 400,
 		"subproblems": [
 		  {
-			"type": "namespace:test:malformed",
+			"type": "urn:ietf:params:acme:error:malformed",
 			"detail": "dfoop :: nop",
 			"status": 400,
 			"identifier": {
@@ -53,7 +53,7 @@ func TestSendErrorSubProblemNamespace(t *testing.T) {
 			}
 		  },
 		  {
-			"type": "namespace:test:malformed",
+			"type": "urn:ietf:params:acme:error:malformed",
 			"detail": "dfoop :: nah",
 			"status": 400,
 			"identifier": {
@@ -90,7 +90,7 @@ func TestSendErrorSubProbLogging(t *testing.T) {
 		"dfoop",
 	)
 	logEvent := RequestEvent{}
-	SendError(log.NewMock(), "namespace:test:", rw, &logEvent, prob, errors.New("it bad"))
+	SendError(log.NewMock(), rw, &logEvent, prob, errors.New("it bad"))
 
 	test.AssertEquals(t, logEvent.Error, `400 :: malformed :: dfoop :: bad ["example.com :: malformed :: dfoop :: nop", "what about example.com :: malformed :: dfoop :: nah"]`)
 }

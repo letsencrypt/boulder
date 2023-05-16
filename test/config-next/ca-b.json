@@ -35,12 +35,13 @@
 			}
 		},
 		"saService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "sa",
 				"domain": "service.consul"
 			},
 			"timeout": "15s",
+			"noWaitForReady": true,
 			"hostOverride": "sa.boulder"
 		},
 		"issuance": {
@@ -52,15 +53,6 @@
 				"policies": [
 					{
 						"oid": "2.23.140.1.2.1"
-					},
-					{
-						"oid": "1.2.3.4",
-						"qualifiers": [
-							{
-								"type": "id-qt-cps",
-								"value": "http://example.com/cps"
-							}
-						]
 					}
 				],
 				"maxValidityPeriod": "7776000s",
@@ -139,5 +131,9 @@
 	"syslog": {
 		"stdoutlevel": 6,
 		"sysloglevel": -1
+	},
+	"openTelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
 	}
 }

@@ -53,13 +53,13 @@ SERVICES = {
     "boulder-ca-a": {
         "debug_port": 8001,
         "grpc_addr": "ca1.service.consul:9093",
-        "cmd": bouldercmd("boulder-ca", "ca-a.json", debug_port=8001) + ["--ca-addr", "ca1.service.consul:9093"],
+        "cmd": bouldersvc("boulder-ca", "ca-a.json", "ca1.service.consul:9093", 8001),
         "deps": ("boulder-sa-1", "boulder-sa-2"),
     },
     "boulder-ca-b": {
         "debug_port": 8101,
         "grpc_addr": "ca2.service.consul:9093",
-        "cmd": bouldercmd("boulder-ca", "ca-b.json", debug_port=8101) + ["--ca-addr", "ca2.service.consul:9093"],
+        "cmd": bouldersvc("boulder-ca", "ca-b.json", "ca2.service.consul:9093", 8101),
         "deps": ("boulder-sa-1", "boulder-sa-2"),
     },
     "akamai-test-srv": {"debug_port": 6789, "cmd": ("./bin/akamai-test-srv", "--listen", "localhost:6789", "--secret", "its-a-secret")},

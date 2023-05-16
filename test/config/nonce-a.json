@@ -10,10 +10,18 @@
 		"grpc": {
 			"maxConnectionAge": "30s",
 			"address": ":9101",
-			"clientNames": [
-				"health-checker.boulder",
-				"wfe.boulder"
-			]
+			"services": {
+				"nonce.NonceService": {
+					"clientNames": [
+						"wfe.boulder"
+					]
+				},
+				"grpc.health.v1.Health": {
+					"clientNames": [
+						"health-checker.boulder"
+					]
+				}
+			}
 		},
 		"tls": {
 			"caCertFile": "test/grpc-creds/minica.pem",

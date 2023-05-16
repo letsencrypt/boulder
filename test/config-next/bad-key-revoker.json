@@ -11,12 +11,13 @@
 			"keyFile": "test/grpc-creds/bad-key-revoker.boulder/key.pem"
 		},
 		"raService": {
-			"dnsAuthority": "10.55.55.10",
+			"dnsAuthority": "consul.service.consul",
 			"srvLookup": {
 				"service": "ra",
 				"domain": "service.consul"
 			},
 			"hostOverride": "ra.boulder",
+			"noWaitForReady": true,
 			"timeout": "15s"
 		},
 		"mailer": {
@@ -37,5 +38,9 @@
 	"syslog": {
 		"stdoutlevel": 4,
 		"sysloglevel": -1
+	},
+	"openTelemetry": {
+		"endpoint": "bjaeger:4317",
+		"sampleratio": 1
 	}
 }
