@@ -612,7 +612,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 }
 
 // populateAttemptedFields takes a challenge and populates it with the validation fields status,
-// validation records, and error (the latter only if the validation failed) from a authzModel.
+// validation records, and error (the latter only if the validation failed) from an authzModel.
 func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	if len(am.ValidationError) != 0 {
 		// If the error is non-empty the challenge must be invalid.
@@ -643,6 +643,15 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	}
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {
+		// Rehydrate the Hostname and Port fields from the URL field for the caller.
+		if challenge.Type == string(core.ChallengeTypeHTTP01) {
+			rhost, rport, err := r.GetHostPort()
+			if err != nil {
+				return err
+			}
+			r.Hostname = rhost
+			r.Port = rport
+		}
 		challenge.Validationrecords[i], err = grpc.ValidationRecordToPB(r)
 		if err != nil {
 			return err

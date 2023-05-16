@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"fmt"
 	"math/big"
 	"net"
 	"testing"
@@ -75,6 +76,8 @@ func TestAuthzModel(t *testing.T) {
 					{
 						AddressUsed:       []byte("1.2.3.4"),
 						Url:               "https://example.com",
+						Hostname:          "example.com",
+						Port:              "443",
 						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
 					},
@@ -138,6 +141,43 @@ func TestAuthzModel(t *testing.T) {
 	}
 	_, err = authzPBToModel(authzPB)
 	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
+
+	// Test that the caller Hostname and Port rehydration returns the expected data in the expected fields.
+	authzPB = &corepb.Authorization{
+		Id:             "1",
+		Identifier:     "example.com",
+		RegistrationID: 1,
+		Status:         string(core.StatusValid),
+		Expires:        1234,
+		Challenges: []*corepb.Challenge{
+			{
+				Type:      string(core.ChallengeTypeHTTP01),
+				Status:    string(core.StatusValid),
+				Token:     "MTIz",
+				Validated: 1234,
+				Validationrecords: []*corepb.ValidationRecord{
+					{
+						AddressUsed:       []byte("1.2.3.4"),
+						Url:               "https://example.com:1337",
+						AddressesResolved: [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+						AddressesTried:    [][]byte{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4}},
+					},
+				},
+			},
+		},
+	}
+
+	model, err = authzPBToModel(authzPB)
+	test.AssertNotError(t, err, "authzPBToModel failed")
+
+	authzPBOut, err = modelToAuthzPB(*model)
+	test.AssertNotError(t, err, "modelToAuthzPB failed")
+	if authzPBOut.Challenges[0].Validationrecords[0].Hostname != "example.com" {
+		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected hostname example.com but found %v", authzPBOut.Challenges[0].Validationrecords[0].Hostname))
+	}
+	if authzPBOut.Challenges[0].Validationrecords[0].Port != "1337" {
+		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port 1337 but found %v", authzPBOut.Challenges[0].Validationrecords[0].Port))
+	}
 }
 
 // TestModelToOrderBADJSON tests that converting an order model with an invalid
