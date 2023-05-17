@@ -233,6 +233,33 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 	test.AssertErrorIs(t, err, berrors.NotFound)
 }
 
+func TestSelectRegistration(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	var ctx = context.Background()
+	var ssaCtx = sa.dbMap.WithContext(ctx)
+	jwk := goodTestJWK()
+	jwkJSON, _ := jwk.MarshalJSON()
+	sha, err := core.KeyDigestB64(jwk.Key)
+	test.AssertNotError(t, err, "couldn't parse jwk.Key")
+
+	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       jwkJSON,
+		Contact:   []string{"mailto:foo@example.com"},
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, fmt.Sprintf("couldn't create new registration: %s", err))
+	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
+
+	_, err = selectRegistration(ssaCtx, "id", reg.Id)
+	test.AssertNotError(t, err, "selecting by id should work")
+	_, err = selectRegistration(ssaCtx, "jwk_sha256", sha)
+	test.AssertNotError(t, err, "selecting by jwk_sha256 should work")
+	_, err = selectRegistration(ssaCtx, "initialIP", reg.Id)
+	test.AssertError(t, err, "selecting by any other column should not work")
+}
+
 func TestReplicationLagRetries(t *testing.T) {
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
