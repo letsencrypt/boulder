@@ -46,24 +46,6 @@ def run_go_tests(filterPattern=None):
     cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
     subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
 
-def test_single_ocsp():
-    """Run ocsp-responder with the single OCSP response generated for the intermediate
-       certificate using the ceremony tool during setup and check that it successfully
-       answers OCSP requests, and shut the responder back down.
-
-       This is a non-API test.
-    """
-    p = subprocess.Popen(
-        ["./bin/boulder", "ocsp-responder", "--config", "test/issuer-ocsp-responder.json"])
-    waitport(4003, ' '.join(p.args))
-
-    # Verify that the static OCSP responder, which answers with a
-    # pre-signed, long-lived response for the CA cert, works.
-    verify_ocsp("/hierarchy/intermediate-cert-rsa-a.pem", "/hierarchy/root-cert-rsa.pem", "http://localhost:4003", "good")
-
-    p.send_signal(signal.SIGTERM)
-    p.wait()
-
 exit_status = 1
 
 def main():

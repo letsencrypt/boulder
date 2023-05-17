@@ -153,13 +153,18 @@ func main() {
 	err = genCert(ecdsaTmpIntermediateB)
 	cmd.FailOnError(err, "failed to generate ECDSA intermediate cert")
 
-	// Rewrite OCSP configs and generate OCSP responses for the A intermediates
-	rsaTmpOCSPConfig, err := rewriteConfig("test/cert-ceremonies/intermediate-ocsp-rsa.yaml", map[string]string{
+	// Create CRLs stating that the intermediates are not revoked.
+	rsaTmpCRLConfig, err := rewriteConfig("test/cert-ceremonies/root-crl-rsa.yaml", map[string]string{
 		"SlotID": rsaRootKeySlot,
 	})
-	cmd.FailOnError(err, "failed to rewrite RSA intermediate OCSP config with key ID")
-	err = genCert(rsaTmpOCSPConfig)
-	cmd.FailOnError(err, "failed to generate RSA intermediate OCSP response")
-	// We do not generate OCSP for the ECDSA intermediates, as our new issuers
-	// only use CRLs, not OCSP.
+	cmd.FailOnError(err, "failed to rewrite RSA root CRL config with key ID")
+	err = genCert(rsaTmpCRLConfig)
+	cmd.FailOnError(err, "failed to generate RSA root CRL")
+
+	ecdsaTmpCRLConfig, err := rewriteConfig("test/cert-ceremonies/root-crl-ecdsa.yaml", map[string]string{
+		"SlotID": ecdsaRootKeySlot,
+	})
+	cmd.FailOnError(err, "failed to rewrite ECDSA root CRL config with key ID")
+	err = genCert(ecdsaTmpCRLConfig)
+	cmd.FailOnError(err, "failed to generate ECDSA root CRL")
 }
