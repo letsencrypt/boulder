@@ -252,7 +252,7 @@ func TestRejectsNone(t *testing.T) {
 	}
 	noneJWK := noneJWS.Signatures[0].Header.JSONWebKey
 
-	err = checkAlgorithm(noneJWK, noneJWS)
+	err = checkAlgorithm(noneJWK, noneJWS.Signatures[0].Header)
 	if err == nil {
 		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'none'")
 	}
@@ -283,7 +283,7 @@ func TestRejectsHS256(t *testing.T) {
 	}
 	hs256JWK := hs256JWS.Signatures[0].Header.JSONWebKey
 
-	err = checkAlgorithm(hs256JWK, hs256JWS)
+	err = checkAlgorithm(hs256JWK, hs256JWS.Signatures[0].Header)
 	if err == nil {
 		t.Fatalf("checkAlgorithm did not reject JWS with alg: 'HS256'")
 	}
@@ -305,6 +305,22 @@ func TestCheckAlgorithm(t *testing.T) {
 				Signatures: []jose.Signature{
 					{
 						Header: jose.Header{
+							Algorithm: "RS256",
+						},
+					},
+				},
+			},
+			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)",
+		},
+		{
+			jose.JSONWebKey{
+				Algorithm: "HS256",
+				Key:       &rsa.PublicKey{},
+			},
+			jose.JSONWebSignature{
+				Signatures: []jose.Signature{
+					{
+						Header: jose.Header{
 							Algorithm: "HS256",
 						},
 					},
@@ -314,7 +330,8 @@ func TestCheckAlgorithm(t *testing.T) {
 		},
 		{
 			jose.JSONWebKey{
-				Key: &dsa.PublicKey{},
+				Algorithm: "ES256",
+				Key:       &dsa.PublicKey{},
 			},
 			jose.JSONWebSignature{
 				Signatures: []jose.Signature{
@@ -325,7 +342,7 @@ func TestCheckAlgorithm(t *testing.T) {
 					},
 				},
 			},
-			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521",
+			"JWK contains unsupported key type (expected RSA, or ECDSA P-256, P-384, or P-521)",
 		},
 		{
 			jose.JSONWebKey{
@@ -361,7 +378,7 @@ func TestCheckAlgorithm(t *testing.T) {
 		},
 	}
 	for i, tc := range testCases {
-		err := checkAlgorithm(&tc.key, &tc.jws)
+		err := checkAlgorithm(&tc.key, tc.jws.Signatures[0].Header)
 		if tc.expectedErr != "" && err.Error() != tc.expectedErr {
 			t.Errorf("TestCheckAlgorithm %d: Expected %q, got %q", i, tc.expectedErr, err)
 		}
@@ -369,70 +386,57 @@ func TestCheckAlgorithm(t *testing.T) {
 }
 
 func TestCheckAlgorithmSuccess(t *testing.T) {
-	err := checkAlgorithm(&jose.JSONWebKey{
+	jwsRS256 := &jose.JSONWebSignature{
+		Signatures: []jose.Signature{
+			{
+				Header: jose.Header{
+					Algorithm: "RS256",
+				},
+			},
+		},
+	}
+	goodJSONWebKeyRS256 := &jose.JSONWebKey{
 		Algorithm: "RS256",
 		Key:       &rsa.PublicKey{},
-	}, &jose.JSONWebSignature{
-		Signatures: []jose.Signature{
-			{
-				Header: jose.Header{
-					Algorithm: "RS256",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Errorf("RS256 key: Expected nil error, got '%s'", err)
 	}
-	err = checkAlgorithm(&jose.JSONWebKey{
-		Key: &rsa.PublicKey{},
-	}, &jose.JSONWebSignature{
-		Signatures: []jose.Signature{
-			{
-				Header: jose.Header{
-					Algorithm: "RS256",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Errorf("RS256 key: Expected nil error, got '%s'", err)
-	}
+	err := checkAlgorithm(goodJSONWebKeyRS256, jwsRS256.Signatures[0].Header)
+	test.AssertNotError(t, err, "RS256 key: Expected nil error")
 
-	err = checkAlgorithm(&jose.JSONWebKey{
+	badJSONWebKeyRS256 := &jose.JSONWebKey{
+		Algorithm: "ObviouslyWrongButNotZeroValue",
+		Key:       &rsa.PublicKey{},
+	}
+	err = checkAlgorithm(badJSONWebKeyRS256, jwsRS256.Signatures[0].Header)
+	test.AssertError(t, err, "RS256 key: Expected nil error")
+	test.AssertContains(t, err.Error(), "JWK key header algorithm \"ObviouslyWrongButNotZeroValue\" does not match expected algorithm \"RS256\" for JWK")
+
+	jwsES256 := &jose.JSONWebSignature{
+		Signatures: []jose.Signature{
+			{
+				Header: jose.Header{
+					Algorithm: "ES256",
+				},
+			},
+		},
+	}
+	goodJSONWebKeyES256 := &jose.JSONWebKey{
 		Algorithm: "ES256",
 		Key: &ecdsa.PublicKey{
 			Curve: elliptic.P256(),
 		},
-	}, &jose.JSONWebSignature{
-		Signatures: []jose.Signature{
-			{
-				Header: jose.Header{
-					Algorithm: "ES256",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Errorf("ES256 key: Expected nil error, got '%s'", err)
 	}
+	err = checkAlgorithm(goodJSONWebKeyES256, jwsES256.Signatures[0].Header)
+	test.AssertNotError(t, err, "ES256 key: Expected nil error")
 
-	err = checkAlgorithm(&jose.JSONWebKey{
+	badJSONWebKeyES256 := &jose.JSONWebKey{
+		Algorithm: "ObviouslyWrongButNotZeroValue",
 		Key: &ecdsa.PublicKey{
 			Curve: elliptic.P256(),
 		},
-	}, &jose.JSONWebSignature{
-		Signatures: []jose.Signature{
-			{
-				Header: jose.Header{
-					Algorithm: "ES256",
-				},
-			},
-		},
-	})
-	if err != nil {
-		t.Errorf("ES256 key: Expected nil error, got '%s'", err)
 	}
+	err = checkAlgorithm(badJSONWebKeyES256, jwsES256.Signatures[0].Header)
+	test.AssertError(t, err, "ES256 key: Expected nil error")
+	test.AssertContains(t, err.Error(), "JWK key header algorithm \"ObviouslyWrongButNotZeroValue\" does not match expected algorithm \"ES256\" for JWK")
 }
 
 func TestValidPOSTRequest(t *testing.T) {
@@ -610,7 +614,7 @@ func TestEnforceJWSAuthType(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.enforceJWSAuthType(tc.JWS, tc.ExpectedAuthType)
+			prob := wfe.enforceJWSAuthType(tc.JWS.Signatures[0].Header, tc.ExpectedAuthType)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatalf("Expected nil result, got %#v", prob)
 			} else {
@@ -672,7 +676,7 @@ func TestValidNonce(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.validNonce(context.Background(), tc.JWS)
+			prob := wfe.validNonce(context.Background(), tc.JWS.Signatures[0].Header)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatalf("Expected nil result, got %#v", prob)
 			} else {
@@ -790,7 +794,7 @@ func TestValidPOSTURL(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			tc.Request.Header.Add("Content-Type", expectedJWSContentType)
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.validPOSTURL(tc.Request, tc.JWS)
+			prob := wfe.validPOSTURL(tc.Request, tc.JWS.Signatures[0].Header)
 			if tc.ExpectedResult == nil && prob != nil {
 				t.Fatalf("Expected nil result, got %#v", prob)
 			} else {
@@ -1000,11 +1004,11 @@ func TestExtractJWK(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			jwk, prob := wfe.extractJWK(tc.JWS)
+			jwkHeader, prob := wfe.extractJWK(tc.JWS.Signatures[0].Header)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
-				test.AssertMarshaledEquals(t, jwk, tc.ExpectedKey)
+				test.AssertMarshaledEquals(t, jwkHeader, tc.ExpectedKey)
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
@@ -1167,12 +1171,12 @@ func TestLookupJWK(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			inputLogEvent := newRequestEvent()
-			jwk, acct, prob := wfe.lookupJWK(tc.JWS, context.Background(), tc.Request, inputLogEvent)
+			jwkHeader, acct, prob := wfe.lookupJWK(tc.JWS.Signatures[0].Header, context.Background(), tc.Request, inputLogEvent)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
 				inThumb, _ := tc.ExpectedKey.Thumbprint(crypto.SHA256)
-				outThumb, _ := jwk.Thumbprint(crypto.SHA256)
+				outThumb, _ := jwkHeader.Thumbprint(crypto.SHA256)
 				test.AssertDeepEquals(t, inThumb, outThumb)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAccount)
 				test.AssertEquals(t, inputLogEvent.Requester, acct.ID)
@@ -1198,9 +1202,7 @@ func TestValidJWSForKey(t *testing.T) {
 	// badSigJWSBody is a JWS that has had the payload changed by 1 byte to break the signature
 	badSigJWSBody := `{"payload":"Zm9x","protected":"eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoicW5BUkxyVDdYejRnUmNLeUxkeWRtQ3ItZXk5T3VQSW1YNFg0MHRoazNvbjI2RmtNem5SM2ZSanM2NmVMSzdtbVBjQlo2dU9Kc2VVUlU2d0FhWk5tZW1vWXgxZE12cXZXV0l5aVFsZUhTRDdROHZCcmhSNnVJb080akF6SlpSLUNoelp1U0R0N2lITi0zeFVWc3B1NVhHd1hVX01WSlpzaFR3cDRUYUZ4NWVsSElUX09iblR2VE9VM1hoaXNoMDdBYmdaS21Xc1ZiWGg1cy1DcklpY1U0T2V4SlBndW5XWl9ZSkp1ZU9LbVR2bkxsVFY0TXpLUjJvWmxCS1oyN1MwLVNmZFZfUUR4X3lkbGU1b01BeUtWdGxBVjM1Y3lQTUlzWU53Z1VHQkNkWV8yVXppNWVYMGxUYzdNUFJ3ejZxUjFraXAtaTU5VmNHY1VRZ3FIVjZGeXF3IiwiZSI6IkFRQUIifSwia2lkIjoiIiwibm9uY2UiOiJyNHpuenZQQUVwMDlDN1JwZUtYVHhvNkx3SGwxZVBVdmpGeXhOSE1hQnVvIiwidXJsIjoiaHR0cDovL2xvY2FsaG9zdC9hY21lL25ldy1yZWcifQ","signature":"jcTdxSygm_cvD7KbXqsxgnoPApCTSkV4jolToSOd2ciRkg5W7Yl0ZKEEKwOc-dYIbQiwGiDzisyPCicwWsOUA1WSqHylKvZ3nxSMc6KtwJCW2DaOqcf0EEjy5VjiZJUrOt2c-r6b07tbn8sfOJKwlF2lsOeGi4s-rtvvkeQpAU-AWauzl9G4bv2nDUeCviAZjHx_PoUC-f9GmZhYrbDzAvXZ859ktM6RmMeD0OqPN7bhAeju2j9Gl0lnryZMtq2m0J2m1ucenQBL1g4ZkP1JiJvzd2cAz5G7Ftl2YeJJyWhqNd3qq0GVOt1P11s8PTGNaSoM0iR9QfUxT9A6jxARtg"}`
 	badJWS, err := jose.ParseSigned(badSigJWSBody)
-	if err != nil {
-		t.Fatal("error loading badSigJWS body")
-	}
+	test.AssertNotError(t, err, "error loading badSigJWS body")
 
 	// wrongAlgJWS is a JWS that has an invalid "HS256" algorithm in its header
 	wrongAlgJWS := &jose.JSONWebSignature{
@@ -1224,7 +1226,7 @@ func TestValidJWSForKey(t *testing.T) {
 
 	testCases := []struct {
 		Name            string
-		JWS             *jose.JSONWebSignature
+		JWS             bJSONWebSignature
 		JWK             *jose.JSONWebKey
 		Body            string
 		ExpectedProblem *probs.ProblemDetails
@@ -1232,7 +1234,7 @@ func TestValidJWSForKey(t *testing.T) {
 	}{
 		{
 			Name: "JWS with an invalid algorithm",
-			JWS:  wrongAlgJWS,
+			JWS:  bJSONWebSignature{wrongAlgJWS},
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.BadSignatureAlgorithmProblem,
@@ -1243,7 +1245,7 @@ func TestValidJWSForKey(t *testing.T) {
 		},
 		{
 			Name: "JWS with an invalid nonce",
-			JWS:  signer.invalidNonce(),
+			JWS:  bJSONWebSignature{signer.invalidNonce()},
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
@@ -1254,7 +1256,7 @@ func TestValidJWSForKey(t *testing.T) {
 		},
 		{
 			Name: "JWS with broken signature",
-			JWS:  badJWS,
+			JWS:  bJSONWebSignature{badJWS},
 			JWK:  badJWS.Signatures[0].Header.JSONWebKey,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
@@ -1265,7 +1267,7 @@ func TestValidJWSForKey(t *testing.T) {
 		},
 		{
 			Name: "JWS with incorrect URL",
-			JWS:  wrongURLHeaderJWS,
+			JWS:  bJSONWebSignature{wrongURLHeaderJWS},
 			JWK:  wrongURLHeaderJWS.Signatures[0].Header.JSONWebKey,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
@@ -1276,7 +1278,7 @@ func TestValidJWSForKey(t *testing.T) {
 		},
 		{
 			Name: "Valid JWS with invalid JSON in the protected body",
-			JWS:  badJSONJWS,
+			JWS:  bJSONWebSignature{badJSONJWS},
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.MalformedProblem,
@@ -1287,7 +1289,7 @@ func TestValidJWSForKey(t *testing.T) {
 		},
 		{
 			Name: "Good JWS and JWK",
-			JWS:  goodJWS,
+			JWS:  bJSONWebSignature{goodJWS},
 			JWK:  goodJWK,
 		},
 	}
@@ -1296,8 +1298,7 @@ func TestValidJWSForKey(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			request := makePostRequestWithPath("test", tc.Body)
-			outPayload, prob := wfe.validJWSForKey(context.Background(), tc.JWS, tc.JWK, request)
-
+			outPayload, prob := wfe.validJWSForKey(context.Background(), &tc.JWS, tc.JWK, request)
 			if tc.ExpectedProblem == nil && prob != nil {
 				t.Fatalf("Expected nil problem, got %#v\n", prob)
 			} else if tc.ExpectedProblem == nil {
@@ -1628,7 +1629,7 @@ func TestMatchJWSURLs(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
-			prob := wfe.matchJWSURLs(tc.Outer, tc.Inner)
+			prob := wfe.matchJWSURLs(tc.Outer.Signatures[0].Header, tc.Inner.Signatures[0].Header)
 			if prob != nil && tc.ExpectedProblem == nil {
 				t.Errorf("matchJWSURLs failed. Expected no problem, got %#v", prob)
 			} else {

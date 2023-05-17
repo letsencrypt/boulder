@@ -22,7 +22,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -870,7 +869,7 @@ type revocationEvidence struct {
 // is authenticated by a KeyID and the associated account.
 func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 	ctx context.Context,
-	outerJWS *jose.JSONWebSignature,
+	outerJWS *bJSONWebSignature,
 	request *http.Request,
 	logEvent *web.RequestEvent) error {
 	// For Key ID revocations we authenticate the outer JWS by using
@@ -913,7 +912,7 @@ func (wfe *WebFrontEndImpl) revokeCertBySubscriberKey(
 // to be revoked
 func (wfe *WebFrontEndImpl) revokeCertByCertKey(
 	ctx context.Context,
-	outerJWS *jose.JSONWebSignature,
+	outerJWS *bJSONWebSignature,
 	request *http.Request,
 	logEvent *web.RequestEvent) error {
 	// For embedded JWK revocations we authenticate the outer JWS by using
@@ -981,7 +980,7 @@ func (wfe *WebFrontEndImpl) RevokeCertificate(
 	}
 
 	// Figure out which type of authentication this JWS uses
-	authType, prob := checkJWSAuthType(jws)
+	authType, prob := checkJWSAuthType(jws.Signatures[0].Header)
 	if prob != nil {
 		wfe.sendError(response, logEvent, prob, nil)
 		return
