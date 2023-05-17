@@ -59,11 +59,15 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(s db.OneSelector, q string, args ...interface{}) (*regModel, error) {
+func selectRegistration(s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
+	if whereCol != "id" && whereCol != "jwk_sha256" {
+		return nil, fmt.Errorf("column name %q invalid for registrations table WHERE clause", whereCol)
+	}
+
 	var model regModel
 	err := s.SelectOne(
 		&model,
-		"SELECT "+regFields+" FROM registrations "+q,
+		"SELECT "+regFields+" FROM registrations WHERE "+whereCol+" = ? LIMIT 1",
 		args...,
 	)
 	return &model, err
@@ -92,7 +96,7 @@ func SelectPrecertificate(s db.OneSelector, serial string) (core.Certificate, er
 	var model precertificateModel
 	err := s.SelectOne(
 		&model,
-		"SELECT "+precertFields+" FROM precertificates WHERE serial = ?",
+		"SELECT "+precertFields+" FROM precertificates WHERE serial = ? LIMIT 1",
 		serial)
 	return core.Certificate{
 		RegistrationID: model.RegistrationID,
@@ -147,7 +151,7 @@ func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateS
 	var model core.CertificateStatus
 	err := s.SelectOne(
 		&model,
-		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ?",
+		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ? LIMIT 1",
 		serial,
 	)
 	return model, err
@@ -168,7 +172,7 @@ func SelectRevocationStatus(s db.OneSelector, serial string) (*sapb.RevocationSt
 	var model RevocationStatusModel
 	err := s.SelectOne(
 		&model,
-		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ?",
+		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ? LIMIT 1",
 		serial,
 	)
 	if err != nil {

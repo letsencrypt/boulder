@@ -107,14 +107,13 @@ func (ssa *SQLStorageAuthorityRO) GetRegistration(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
-	const query = "WHERE id = ?"
-	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
+	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), "id", req.Id)
 	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetRegistration is often called to validate a JWK belonging to a brand
 		// new account whose registrations table row hasn't propagated to the read
 		// replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
-		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, req.Id)
+		model, err = selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), "id", req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				ssa.lagFactorCounter.WithLabelValues("GetRegistration", "notfound").Inc()
@@ -151,12 +150,11 @@ func (ssa *SQLStorageAuthorityRO) GetRegistrationByKey(ctx context.Context, req 
 		return nil, err
 	}
 
-	const query = "WHERE jwk_sha256 = ?"
 	sha, err := core.KeyDigestB64(jwk.Key)
 	if err != nil {
 		return nil, err
 	}
-	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), query, sha)
+	model, err := selectRegistration(ssa.dbReadOnlyMap.WithContext(ctx), "jwk_sha256", sha)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no registrations with public key sha256 %q", sha)
