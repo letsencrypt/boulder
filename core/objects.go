@@ -150,8 +150,8 @@ type ValidationRecord struct {
 // RehydrateHostPort mutates a validation record. If the URL in the validation
 // record cannot be parsed, an error will be returned. If the Hostname and Port
 // fields already exist in the validation record, they will be retained.
-// Otherwise, the Hostname and Port will be derived from the URL field of the
-// validation record.
+// Otherwise, the Hostname and Port will be derived and set from the URL field
+// of the validation record.
 //
 // CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
 // (http), 443 (https)
