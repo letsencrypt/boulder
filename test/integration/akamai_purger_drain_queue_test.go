@@ -36,13 +36,10 @@ func setup() (*exec.Cmd, *bytes.Buffer, akamaipb.AkamaiPurgerClient, error) {
 		purgerCmd.Wait()
 	}
 
-	s := func(input string) *string {
-		return &input
-	}
 	tlsConfig, err := (&cmd.TLSConfig{
-		CACertFile: s("test/grpc-creds/minica.pem"),
-		CertFile:   s("test/grpc-creds/ra.boulder/cert.pem"),
-		KeyFile:    s("test/grpc-creds/ra.boulder/key.pem"),
+		CACertFile: "test/grpc-creds/minica.pem",
+		CertFile:   "test/grpc-creds/ra.boulder/cert.pem",
+		KeyFile:    "test/grpc-creds/ra.boulder/key.pem",
 	}).Load(metrics.NoopRegisterer)
 	if err != nil {
 		sigterm()

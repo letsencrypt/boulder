@@ -47,6 +47,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/core"
@@ -185,7 +186,9 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	// to not be able to cancel our operations in arbitrary places. Instead we
 	// start a new context, and apply timeouts in our various RPCs.
 	// TODO(go1.22?): Use context.Detach()
-	ctx := context.Background()
+	span := trace.SpanFromContext(request.Context())
+	ctx := trace.ContextWithSpan(context.Background(), span)
+	request = request.WithContext(ctx)
 
 	if rs.timeout != 0 {
 		var cancel func()

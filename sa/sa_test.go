@@ -41,7 +41,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
-	jose "gopkg.in/go-jose/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2"
 )
 
 var log = blog.UseMock()
@@ -231,6 +231,33 @@ func TestNoSuchRegistrationErrors(t *testing.T) {
 
 	_, err = sa.UpdateRegistration(ctx, &corepb.Registration{Id: 100, Key: jwkJSON, InitialIP: []byte("foo")})
 	test.AssertErrorIs(t, err, berrors.NotFound)
+}
+
+func TestSelectRegistration(t *testing.T) {
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+	var ctx = context.Background()
+	var ssaCtx = sa.dbMap.WithContext(ctx)
+	jwk := goodTestJWK()
+	jwkJSON, _ := jwk.MarshalJSON()
+	sha, err := core.KeyDigestB64(jwk.Key)
+	test.AssertNotError(t, err, "couldn't parse jwk.Key")
+
+	initialIP, _ := net.ParseIP("43.34.43.34").MarshalText()
+	reg, err := sa.NewRegistration(ctx, &corepb.Registration{
+		Key:       jwkJSON,
+		Contact:   []string{"mailto:foo@example.com"},
+		InitialIP: initialIP,
+	})
+	test.AssertNotError(t, err, fmt.Sprintf("couldn't create new registration: %s", err))
+	test.Assert(t, reg.Id != 0, "ID shouldn't be 0")
+
+	_, err = selectRegistration(ssaCtx, "id", reg.Id)
+	test.AssertNotError(t, err, "selecting by id should work")
+	_, err = selectRegistration(ssaCtx, "jwk_sha256", sha)
+	test.AssertNotError(t, err, "selecting by jwk_sha256 should work")
+	_, err = selectRegistration(ssaCtx, "initialIP", reg.Id)
+	test.AssertError(t, err, "selecting by any other column should not work")
 }
 
 func TestReplicationLagRetries(t *testing.T) {
@@ -2349,7 +2376,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), fc.Now().UTC())
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
-	prob, _ := bgrpc.ProblemDetailsToPB(probs.ConnectionFailure("it went bad captain"))
+	prob, _ := bgrpc.ProblemDetailsToPB(probs.Connection("it went bad captain"))
 
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id: authzID,

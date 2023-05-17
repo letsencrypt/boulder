@@ -48,6 +48,7 @@ const (
 	BadCSR
 	AlreadyRevoked
 	BadRevocationReason
+	UnsupportedContact
 )
 
 func (ErrorType) Error() string {
@@ -121,6 +122,8 @@ func (be *BoulderError) GRPCStatus() *status.Status {
 	case AlreadyRevoked:
 		c = codes.AlreadyExists
 	case BadRevocationReason:
+		c = codes.InvalidArgument
+	case UnsupportedContact:
 		c = codes.InvalidArgument
 	default:
 		c = codes.Unknown
@@ -201,6 +204,10 @@ func RejectedIdentifierError(msg string, args ...interface{}) error {
 
 func InvalidEmailError(msg string, args ...interface{}) error {
 	return New(InvalidEmail, msg, args...)
+}
+
+func UnsupportedContactError(msg string, args ...interface{}) error {
+	return New(UnsupportedContact, msg, args...)
 }
 
 func ConnectionFailureError(msg string, args ...interface{}) error {

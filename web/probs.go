@@ -27,7 +27,7 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 	case berrors.RejectedIdentifier:
 		outProb = probs.RejectedIdentifier(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.InvalidEmail:
-		outProb = probs.InvalidEmail(fmt.Sprintf("%s :: %s", msg, err))
+		outProb = probs.InvalidContact(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.CAA:
 		outProb = probs.CAA(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.MissingSCTs:
@@ -44,6 +44,8 @@ func problemDetailsForBoulderError(err *berrors.BoulderError, msg string) *probs
 		outProb = probs.AlreadyRevoked(fmt.Sprintf("%s :: %s", msg, err))
 	case berrors.BadRevocationReason:
 		outProb = probs.BadRevocationReason(fmt.Sprintf("%s :: %s", msg, err))
+	case berrors.UnsupportedContact:
+		outProb = probs.UnsupportedContact(fmt.Sprintf("%s :: %s", msg, err))
 	default:
 		// Internal server error messages may include sensitive data, so we do
 		// not include it.

@@ -104,6 +104,7 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
+<<<<<<< HEAD
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
@@ -129,7 +130,9 @@ func TestAuthzModel(t *testing.T) {
 			},
 		},
 	}
-	validationErr := probs.ConnectionFailure("weewoo")
+
+	validationErr := probs.Connection("weewoo")
+
 	authzPB.Challenges[0].Status = string(core.StatusInvalid)
 	authzPB.Challenges[0].Error, err = grpc.ProblemDetailsToPB(validationErr)
 	test.AssertNotError(t, err, "grpc.ProblemDetailsToPB failed")

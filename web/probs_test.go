@@ -35,7 +35,7 @@ func TestProblemDetailsFromError(t *testing.T) {
 		{berrors.UnauthorizedError(detailMsg), 403, probs.UnauthorizedProblem, fullDetail},
 		{berrors.NotFoundError(detailMsg), 404, probs.MalformedProblem, fullDetail},
 		{berrors.RateLimitError(0, detailMsg), 429, probs.RateLimitedProblem, fullDetail + ": see https://letsencrypt.org/docs/rate-limits/"},
-		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidEmailProblem, fullDetail},
+		{berrors.InvalidEmailError(detailMsg), 400, probs.InvalidContactProblem, fullDetail},
 		{berrors.RejectedIdentifierError(detailMsg), 400, probs.RejectedIdentifierProblem, fullDetail},
 	}
 	for _, c := range testCases {

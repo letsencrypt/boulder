@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/letsencrypt/boulder/cmd"
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -52,7 +53,7 @@ func validateServerAddress(address string) error {
 	// Ensure the `port` portion of `address` is a valid port.
 	portNum, err := strconv.Atoi(port)
 	if err != nil {
-		return errors.New("port must be an integer: %s")
+		return fmt.Errorf("parsing port number: %s", err)
 	}
 	if portNum <= 0 || portNum > 65535 {
 		return errors.New("port must be an integer between 0 - 65535")
@@ -99,10 +100,20 @@ func (sp *staticProvider) Stop() {}
 // addresses, and refreshes it regularly using a goroutine started by its
 // constructor.
 type dynamicProvider struct {
-	// The domain name which should be used for DNS. Will be used as the basis of
-	// a SRV query to locate DNS services on this domain, which will in turn be
-	// used as the basis for A queries to cache IP addrs for those services.
-	name string
+	// dnsAuthority is the single <hostname|IPv4|[IPv6]>:<port> of the DNS
+	// server to be used for resolution of DNS backends. If the address contains
+	// a hostname it will be resolved via the system DNS. If the port is left
+	// unspecified it will default to '53'. If this field is left unspecified
+	// the system DNS will be used for resolution of DNS backends.
+	//
+	// TODO(#6868): Make this field required once 'dnsResolver' is removed from
+	// the boulder-va JSON config in favor of 'dnsProvider'.
+	dnsAuthority string
+	// service is the service name to look up SRV records for within the domain.
+	// If this field is left unspecified 'dns' will be used as the service name.
+	service string
+	// domain is the name to look up SRV records within.
+	domain string
 	// A map of IP addresses (results of A record lookups for SRV Targets) to
 	// ports (Port fields in SRV records) associated with those addresses.
 	addrs map[string][]uint16
@@ -113,23 +124,93 @@ type dynamicProvider struct {
 	updateCounter *prometheus.CounterVec
 }
 
+// ParseTarget takes the user input target string and default port, returns
+// formatted host and port info. If target doesn't specify a port, set the port
+// to be the defaultPort. If target is in IPv6 format and host-name is enclosed
+// in square brackets, brackets are stripped when setting the host.
+//
+// Examples:
+//   - target: "www.google.com" defaultPort: "443" returns host: "www.google.com", port: "443"
+//   - target: "ipv4-host:80" defaultPort: "443" returns host: "ipv4-host", port: "80"
+//   - target: "[ipv6-host]" defaultPort: "443" returns host: "ipv6-host", port: "443"
+//   - target: ":80" defaultPort: "443" returns host: "localhost", port: "80"
+//
+// This function is copied from:
+// https://github.com/grpc/grpc-go/blob/master/internal/resolver/dns/dns_resolver.go
+// It has been minimally modified to fit our code style.
+func ParseTarget(target, defaultPort string) (host, port string, err error) {
+	if target == "" {
+		return "", "", errors.New("missing address")
+	}
+	ip := net.ParseIP(target)
+	if ip != nil {
+		// Target is an IPv4 or IPv6(without brackets) address.
+		return target, defaultPort, nil
+	}
+	host, port, err = net.SplitHostPort(target)
+	if err == nil {
+		if port == "" {
+			// If the port field is empty (target ends with colon), e.g.
+			// "[::1]:", this is an error.
+			return "", "", errors.New("missing port after port-separator colon")
+		}
+		// target has port, i.e ipv4-host:port, [ipv6-host]:port, host-name:port
+		if host == "" {
+			// Keep consistent with net.Dial(): If the host is empty, as in
+			// ":80", the local system is assumed.
+			host = "localhost"
+		}
+		return host, port, nil
+	}
+	host, port, err = net.SplitHostPort(target + ":" + defaultPort)
+	if err == nil {
+		// Target doesn't have port.
+		return host, port, nil
+	}
+	return "", "", fmt.Errorf("invalid target address %v, error info: %v", target, err)
+}
+
 var _ ServerProvider = &dynamicProvider{}
 
 // StartDynamicProvider constructs a new dynamicProvider and starts its
 // auto-update goroutine. The auto-update process queries DNS for SRV records
 // at refresh intervals and uses the resulting IP/port combos to populate the
 // list returned by Addrs. The update process ignores the Priority and Weight
-// attributes of the SRV records. The given server name should be a full domain
-// name like `example.com`, which will result in SRV queries for `_dns._udp.example.com`.
-func StartDynamicProvider(server string, refresh time.Duration) (*dynamicProvider, error) {
-	if server == "" {
-		return nil, fmt.Errorf("no DNS domain name provided")
+// attributes of the SRV records.
+func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicProvider, error) {
+	if c.SRVLookup.Domain == "" {
+		return nil, fmt.Errorf("'domain' cannot be empty")
 	}
+
+	service := c.SRVLookup.Service
+	if service == "" {
+		// Default to "dns" if no service is specified. This is the default
+		// service name for DNS servers.
+		service = "dns"
+	}
+
+	// TODO(#6868): Make dnsAuthority required once 'dnsResolver' is removed
+	// from the boulder-va JSON config in favor of 'dnsProvider'.
+	dnsAuthority := c.DNSAuthority
+	if dnsAuthority != "" {
+		host, port, err := ParseTarget(dnsAuthority, "53")
+		if err != nil {
+			return nil, err
+		}
+		dnsAuthority = net.JoinHostPort(host, port)
+		err = validateServerAddress(dnsAuthority)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	dp := dynamicProvider{
-		name:    server,
-		addrs:   make(map[string][]uint16),
-		cancel:  make(chan interface{}),
-		refresh: refresh,
+		dnsAuthority: dnsAuthority,
+		service:      service,
+		domain:       c.SRVLookup.Domain,
+		addrs:        make(map[string][]uint16),
+		cancel:       make(chan interface{}),
+		refresh:      refresh,
 		updateCounter: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "dns_update",
@@ -180,25 +261,41 @@ func (dp *dynamicProvider) update() error {
 	ctx, cancel := context.WithTimeout(context.Background(), dp.refresh/2)
 	defer cancel()
 
-	_, srvs, err := net.DefaultResolver.LookupSRV(ctx, "dns", "udp", dp.name)
+	// If dnsAuthority is specified, setup a custom resolver to use it
+	// otherwise use a default system resolver.
+	resolver := net.DefaultResolver
+	if dp.dnsAuthority != "" {
+		resolver = &net.Resolver{
+			PreferGo: true,
+			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				d := &net.Dialer{}
+				return d.DialContext(ctx, network, dp.dnsAuthority)
+			},
+		}
+	}
+
+	// RFC 2782 formatted SRV record being queried e.g. "_service._proto.name."
+	record := fmt.Sprintf("_%s._udp.%s.", dp.service, dp.domain)
+
+	_, srvs, err := resolver.LookupSRV(ctx, dp.service, "udp", dp.domain)
 	if err != nil {
-		return fmt.Errorf("failed to lookup SRV records for %q: %w", dp.name, err)
+		return fmt.Errorf("during SRV lookup of %q: %w", record, err)
 	}
 	if len(srvs) == 0 {
-		return fmt.Errorf("no SRV records found for %q", dp.name)
+		return fmt.Errorf("SRV lookup of %q returned 0 results", record)
 	}
 
 	addrPorts := make(map[string][]uint16)
 	for _, srv := range srvs {
-		addrs, err := net.DefaultResolver.LookupHost(ctx, srv.Target)
+		addrs, err := resolver.LookupHost(ctx, srv.Target)
 		if err != nil {
-			return fmt.Errorf("failed to resolve SRV Target %q: %w", srv.Target, err)
+			return fmt.Errorf("during A/AAAA lookup of target %q from SRV record %q: %w", srv.Target, record, err)
 		}
 		for _, addr := range addrs {
 			joinedHostPort := net.JoinHostPort(addr, fmt.Sprint(srv.Port))
 			err := validateServerAddress(joinedHostPort)
 			if err != nil {
-				return fmt.Errorf("invalid SRV addr %q: %w", joinedHostPort, err)
+				return fmt.Errorf("invalid addr %q from SRV record %q: %w", joinedHostPort, record, err)
 			}
 			addrPorts[addr] = append(addrPorts[addr], srv.Port)
 		}
