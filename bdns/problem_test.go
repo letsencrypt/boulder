@@ -6,6 +6,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/dns"
 )
 
@@ -57,4 +58,21 @@ func TestError(t *testing.T) {
 			t.Errorf("got %q, expected %q", tc.err.Error(), tc.expected)
 		}
 	}
+}
+
+func TestWrapErr(t *testing.T) {
+	err := wrapErr(dns.TypeA, "hostname", &dns.Msg{
+		MsgHdr: dns.MsgHdr{Rcode: dns.RcodeSuccess},
+	}, nil)
+	test.AssertNotError(t, err, "expected success")
+
+	err = wrapErr(dns.TypeA, "hostname", &dns.Msg{
+		MsgHdr: dns.MsgHdr{Rcode: dns.RcodeRefused},
+	}, nil)
+	test.AssertError(t, err, "expected error")
+
+	err = wrapErr(dns.TypeA, "hostname", &dns.Msg{
+		MsgHdr: dns.MsgHdr{Rcode: dns.RcodeSuccess},
+	}, errors.New("oh no"))
+	test.AssertError(t, err, "expected error")
 }

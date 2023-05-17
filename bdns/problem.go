@@ -68,6 +68,39 @@ func wrapErr(queryType uint16, hostname string, resp *dns.Msg, err error) error 
 	return nil
 }
 
+// A copy of miekg/dns's mapping of error codes to strings. We tweak it slightly so all DNSSEC-related
+// errors say "DNSSEC" at the beginning.
+// https://pkg.go.dev/github.com/miekg/dns#ExtendedErrorCodeToString
+// Also note that not all of these codes can currently be emitted by Unbound. See Unbound's
+// announcement post for EDE: https://blog.nlnetlabs.nl/extended-dns-error-support-for-unbound/
+var extendedErrorCodeToString = map[uint16]string{
+	dns.ExtendedErrorCodeOther:                      "Other",
+	dns.ExtendedErrorCodeUnsupportedDNSKEYAlgorithm: "DNSSEC: Unsupported DNSKEY Algorithm",
+	dns.ExtendedErrorCodeUnsupportedDSDigestType:    "DNSSEC: Unsupported DS Digest Type",
+	dns.ExtendedErrorCodeStaleAnswer:                "Stale Answer",
+	dns.ExtendedErrorCodeForgedAnswer:               "Forged Answer",
+	dns.ExtendedErrorCodeDNSSECIndeterminate:        "DNSSEC: Indeterminate",
+	dns.ExtendedErrorCodeDNSBogus:                   "DNSSEC: Bogus",
+	dns.ExtendedErrorCodeSignatureExpired:           "DNSSEC: Signature Expired",
+	dns.ExtendedErrorCodeSignatureNotYetValid:       "DNSSEC: Signature Not Yet Valid",
+	dns.ExtendedErrorCodeDNSKEYMissing:              "DNSSEC: DNSKEY Missing",
+	dns.ExtendedErrorCodeRRSIGsMissing:              "DNSSEC: RRSIGs Missing",
+	dns.ExtendedErrorCodeNoZoneKeyBitSet:            "DNSSEC: No Zone Key Bit Set",
+	dns.ExtendedErrorCodeNSECMissing:                "DNSSEC: NSEC Missing",
+	dns.ExtendedErrorCodeCachedError:                "Cached Error",
+	dns.ExtendedErrorCodeNotReady:                   "Not Ready",
+	dns.ExtendedErrorCodeBlocked:                    "Blocked",
+	dns.ExtendedErrorCodeCensored:                   "Censored",
+	dns.ExtendedErrorCodeFiltered:                   "Filtered",
+	dns.ExtendedErrorCodeProhibited:                 "Prohibited",
+	dns.ExtendedErrorCodeStaleNXDOMAINAnswer:        "Stale NXDOMAIN Answer",
+	dns.ExtendedErrorCodeNotAuthoritative:           "Not Authoritative",
+	dns.ExtendedErrorCodeNotSupported:               "Not Supported",
+	dns.ExtendedErrorCodeNoReachableAuthority:       "No Reachable Authority",
+	dns.ExtendedErrorCodeNetworkError:               "Network Error between Resolver and Authority",
+	dns.ExtendedErrorCodeInvalidData:                "Invalid Data",
+}
+
 func (d Error) Error() string {
 	var detail, additional string
 	if d.underlying != nil {
@@ -100,38 +133,6 @@ func (d Error) Error() string {
 			dns.TypeToString[d.recordType], d.hostname, additional)
 	}
 
-	// A copy of bdns's mapping of error codes to strings. We tweak it slightly so all DNSSEC-related
-	// errors say "DNSSEC" at the beginning.
-	// https://pkg.go.dev/github.com/miekg/dns#ExtendedErrorCodeToString
-	// Also note that not all of these codes can currently be emitted by Unbound. See Unbound's
-	// announcement post for EDE: https://blog.nlnetlabs.nl/extended-dns-error-support-for-unbound/
-	extendedErrorCodeToString := map[uint16]string{
-		dns.ExtendedErrorCodeOther:                      "Other",
-		dns.ExtendedErrorCodeUnsupportedDNSKEYAlgorithm: "DNSSEC: Unsupported DNSKEY Algorithm",
-		dns.ExtendedErrorCodeUnsupportedDSDigestType:    "DNSSEC: Unsupported DS Digest Type",
-		dns.ExtendedErrorCodeStaleAnswer:                "Stale Answer",
-		dns.ExtendedErrorCodeForgedAnswer:               "Forged Answer",
-		dns.ExtendedErrorCodeDNSSECIndeterminate:        "DNSSEC: Indeterminate",
-		dns.ExtendedErrorCodeDNSBogus:                   "DNSSEC: Bogus",
-		dns.ExtendedErrorCodeSignatureExpired:           "DNSSEC: Signature Expired",
-		dns.ExtendedErrorCodeSignatureNotYetValid:       "DNSSEC: Signature Not Yet Valid",
-		dns.ExtendedErrorCodeDNSKEYMissing:              "DNSSEC: DNSKEY Missing",
-		dns.ExtendedErrorCodeRRSIGsMissing:              "DNSSEC: RRSIGs Missing",
-		dns.ExtendedErrorCodeNoZoneKeyBitSet:            "DNSSEC: No Zone Key Bit Set",
-		dns.ExtendedErrorCodeNSECMissing:                "DNSSEC: NSEC Missing",
-		dns.ExtendedErrorCodeCachedError:                "Cached Error",
-		dns.ExtendedErrorCodeNotReady:                   "Not Ready",
-		dns.ExtendedErrorCodeBlocked:                    "Blocked",
-		dns.ExtendedErrorCodeCensored:                   "Censored",
-		dns.ExtendedErrorCodeFiltered:                   "Filtered",
-		dns.ExtendedErrorCodeProhibited:                 "Prohibited",
-		dns.ExtendedErrorCodeStaleNXDOMAINAnswer:        "Stale NXDOMAIN Answer",
-		dns.ExtendedErrorCodeNotAuthoritative:           "Not Authoritative",
-		dns.ExtendedErrorCodeNotSupported:               "Not Supported",
-		dns.ExtendedErrorCodeNoReachableAuthority:       "No Reachable Authority",
-		dns.ExtendedErrorCodeNetworkError:               "Network Error between Resolver and Authority",
-		dns.ExtendedErrorCodeInvalidData:                "Invalid Data",
-	}
 	summary := extendedErrorCodeToString[d.extended.InfoCode]
 	if summary == "" {
 		summary = fmt.Sprintf("Unknown Extended DNS Error code %d", d.extended.InfoCode)
