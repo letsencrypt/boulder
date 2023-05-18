@@ -582,8 +582,8 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 			records := make([]core.ValidationRecord, len(chall.Validationrecords))
 			for i, recordPB := range chall.Validationrecords {
 				if chall.Type == string(core.ChallengeTypeHTTP01) {
-					// Dehydrate these fields because they can be rehydrated
-					// later on from the URL field.
+					// Remove these fields because they can be rehydrated later
+					// on from the URL field.
 					recordPB.Hostname = ""
 					recordPB.Port = ""
 				}
