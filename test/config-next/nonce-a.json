@@ -9,7 +9,7 @@
 			"stdoutLevel": 6,
 			"syslogLevel": -1
 		},
-		"opentelemetry": {
+		"openTelemetry": {
 			"endpoint": "bjaeger:4317",
 			"sampleratio": 1
 		},

@@ -3,7 +3,13 @@
 		"userAgent": "boulder",
 		"debugAddr": ":8004",
 		"dnsTries": 3,
-		"dnsResolver": "service.consul",
+		"dnsProvider": {
+			"dnsAuthority": "consul.service.consul",
+			"srvLookup": {
+				"service": "dns",
+				"domain": "service.consul"
+			}
+		},
 		"dnsTimeout": "1s",
 		"dnsAllowLoopbackAddresses": true,
 		"issuerDomain": "happy-hacker-ca.invalid",
@@ -61,7 +67,7 @@
 		"stdoutlevel": 6,
 		"sysloglevel": 6
 	},
-	"opentelemetry": {
+	"openTelemetry": {
 		"endpoint": "bjaeger:4317",
 		"sampleratio": 1
 	}

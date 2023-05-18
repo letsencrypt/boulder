@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/crypto/ocsp"
 
 	blog "github.com/letsencrypt/boulder/log"
@@ -40,7 +41,7 @@ func TestMux(t *testing.T) {
 	src, err := responder.NewMemorySource(responses, blog.NewMock())
 	test.AssertNotError(t, err, "failed to create inMemorySource")
 
-	h := mux("/foobar/", src, time.Second, metrics.NoopRegisterer, blog.NewMock(), 1000)
+	h := mux("/foobar/", src, time.Second, metrics.NoopRegisterer, []otelhttp.Option{}, blog.NewMock(), 1000)
 
 	type muxTest struct {
 		method   string
