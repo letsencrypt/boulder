@@ -171,7 +171,7 @@ func (vr *ValidationRecord) RehydrateHostPort() error {
 	}
 
 	if url.Hostname() == "" {
-		return fmt.Errorf("could not parse hostname: %s", vr.URL)
+		return fmt.Errorf("hostname missing in URL %q", vr.URL)
 	}
 	vr.Hostname = url.Hostname()
 
