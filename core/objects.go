@@ -157,7 +157,7 @@ type ValidationRecord struct {
 // (http), 443 (https)
 func (vr *ValidationRecord) RehydrateHostPort() error {
 	if vr.URL == "" {
-		return fmt.Errorf("expected URL field in validation record, but could not be found")
+		return fmt.Errorf("rehydrating validation record, URL field cannot be empty")
 	}
 
 	// Use the existing Hostname and Port from the validation record if it exists.
