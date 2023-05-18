@@ -26,7 +26,6 @@ type Error struct {
 func extendedDNSError(msg *dns.Msg) *dns.EDNS0_EDE {
 	opt := msg.IsEdns0()
 	if opt != nil {
-
 		for _, opt := range opt.Option {
 			ede, ok := opt.(*dns.EDNS0_EDE)
 			if !ok {
