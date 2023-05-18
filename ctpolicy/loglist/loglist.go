@@ -160,7 +160,6 @@ func newHelper(file []byte) (List, error) {
 		result[op.Name] = group
 	}
 
-	fmt.Println("+%v\n", result)
 	return result, nil
 }
 
