@@ -160,8 +160,8 @@ func (vr *ValidationRecord) RehydrateHostPort() error {
 		return fmt.Errorf("rehydrating validation record, URL field cannot be empty")
 	}
 
-	// Use the existing Hostname and Port from the validation record if it exists.
 	if vr.Hostname != "" && vr.Port != "" {
+	    // Hostname and Port already exist.
 		return nil
 	}
 
