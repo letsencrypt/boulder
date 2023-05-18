@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
@@ -33,6 +34,7 @@ type crlUpdater struct {
 	updatePeriod   time.Duration
 	updateOffset   time.Duration
 	maxParallelism int
+	maxAttempts    int
 
 	sa sapb.StorageAuthorityReadOnlyClient
 	ca capb.CRLGeneratorClient
@@ -53,6 +55,7 @@ func NewUpdater(
 	updatePeriod time.Duration,
 	updateOffset time.Duration,
 	maxParallelism int,
+	maxAttempts int,
 	sa sapb.StorageAuthorityReadOnlyClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
@@ -85,6 +88,10 @@ func NewUpdater(
 		maxParallelism = 1
 	}
 
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+
 	tickHistogram := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "crl_updater_ticks",
 		Help:    "A histogram of crl-updater tick latencies labeled by issuer and result",
@@ -106,6 +113,7 @@ func NewUpdater(
 		updatePeriod,
 		updateOffset,
 		maxParallelism,
+		maxAttempts,
 		sa,
 		ca,
 		cs,
@@ -244,7 +252,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 			default:
 				out <- shardResult{
 					shardIdx: idx,
-					err:      cu.tickShard(ctx, atTime, issuerNameID, idx, shardMap[idx]),
+					err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
 				}
 			}
 		}
@@ -277,6 +285,30 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 		return fmt.Errorf("%d shards failed: %v", len(errShards), errShards)
 	}
 	return nil
+}
+
+// tickShardWithRetry calls tickShard repeatedly (with exponential backoff
+// between attempts) until it succeeds or the max number of attempts is reached.
+func (cu *crlUpdater) tickShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
+	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+
+	var err error
+	for i := 0; i < cu.maxAttempts; i++ {
+		// core.RetryBackoff always returns 0 when its first argument is zero.
+		sleepTime := core.RetryBackoff(i, time.Second, time.Minute, 2)
+		if i != 0 {
+			cu.log.Errf(
+				"Generating CRL failed, will retry in %vs: id=[%s] err=[%s]",
+				sleepTime.Seconds(), crlID, err)
+		}
+		cu.clk.Sleep(sleepTime)
+
+		err = cu.tickShard(ctx, atTime, issuerNameID, shardIdx, chunks)
+		if err == nil {
+			break
+		}
+	}
+	return err
 }
 
 // tickShard processes a single shard. It computes the shard's boundaries, gets

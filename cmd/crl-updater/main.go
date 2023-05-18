@@ -87,6 +87,12 @@ type Config struct {
 		// by this updater.
 		MaxParallelism int `validate:"min=0"`
 
+		// MaxAttempts control how many times the updater will attempt to generate
+		// a single CRL shard. A higher number increases the likelihood of a fully
+		// successful run, but also increases the worst-case runtime and db/network
+		// load of said run. The default is 1.
+		MaxAttempts int `validate:"omitempty,min=1"`
+
 		Features map[string]bool
 	}
 
@@ -158,6 +164,7 @@ func main() {
 		c.CRLUpdater.UpdatePeriod.Duration,
 		c.CRLUpdater.UpdateOffset.Duration,
 		c.CRLUpdater.MaxParallelism,
+		c.CRLUpdater.MaxAttempts,
 		sac,
 		cac,
 		csc,
