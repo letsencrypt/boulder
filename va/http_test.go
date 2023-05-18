@@ -1209,7 +1209,7 @@ func TestHTTPKeyAuthorizationFileMismatch(t *testing.T) {
 	if prob == nil {
 		t.Fatalf("Expected validation to fail when file mismatched.")
 	}
-	expected := `The key authorization file from the server did not match this challenge "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI" != "\xef\xffAABBCC"`
+	expected := `The key authorization file from the server did not match this challenge. Expected "LoqXcYV8q5ONbJQxbmR7SCTNo3tiAXDfowyjxAjEuX0.9jg46WB3rR_AHD-EBXdN7cBkH1WOu0tA3M9fm21mqTI" (got "\xef\xffAABBCC")`
 	if prob.Detail != expected {
 		t.Errorf("validation failed with %s, expected %s", prob.Detail, expected)
 	}
