@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -183,7 +184,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"url": "UrlA1", "result": failed}, 1)
 }
 
-func TestCTOpGroup(t *testing.T) {
+func TestCTOpGroupMetric(t *testing.T) {
 	// Multiple operator groups with configured logs.
 	ctp := New(&mockPub{}, loglist.List{
 		"OperA": {
@@ -237,4 +238,26 @@ func TestCTOpGroup(t *testing.T) {
 	_, err = ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
 	test.AssertError(t, err, "GetSCTs failed")
 	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA"}, 0)
+}
+
+func TestCTEndExclusiveMetric(t *testing.T) {
+	fc := clock.NewFake()
+	Tomorrow := fc.Now().Add(24 * time.Hour)
+	NextWeek := fc.Now().Add(7 * 24 * time.Hour)
+
+	// Multiple operator groups with configured logs.
+	ctp := New(&mockPub{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1", Name: "LogA1", EndExclusive: Tomorrow},
+			"LogA2": {Url: "UrlA2", Key: "KeyA2", Name: "LogA2", EndExclusive: NextWeek},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1", Name: "LogB1", EndExclusive: Tomorrow},
+		},
+	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
+	test.AssertNotError(t, err, "GetSCTs failed")
+	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperA", "logID": "LogA1"}, 86400)
+	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperA", "logID": "LogA2"}, 604800)
+	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperB", "logID": "LogB1"}, 86400)
 }

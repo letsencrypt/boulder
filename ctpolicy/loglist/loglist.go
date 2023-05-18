@@ -160,6 +160,7 @@ func newHelper(file []byte) (List, error) {
 		result[op.Name] = group
 	}
 
+	fmt.Println("+%v\n", result)
 	return result, nil
 }
 
@@ -263,7 +264,6 @@ func (ll List) forPurpose(p purpose) (List, error) {
 	return newList, nil
 }
 
-// TODO(Phil) This seems like an interesting place that a metric could be based on.
 // OperatorForLogID returns the Name of the Group containing the Log with the
 // given ID, or an error if no such log/group can be found.
 func (ll List) OperatorForLogID(logID string) (string, error) {
@@ -292,20 +292,21 @@ func (ll List) Permute() []string {
 // GetGroupSize returns the number of logs managed by provided CT operator group
 // as a float64 for prometheus.
 func (ll List) GetGroupSize(operator string) float64 {
-	for k, v := range ll {
-		if k == operator {
-			return float64(len(v))
+	for op, group := range ll {
+		if op == operator {
+			return float64(len(group))
 		}
 	}
+
 	return float64(0)
 }
 
 // GetTemporalShardEndExlusive returns the end_exclusive date expressed as Unix
-// epoch time for each temporal shard managed by a given CT operator.
-func (ll List) GetTemporalShardEndExlusive(operator string) float64 {
-	for k, v := range ll {
-		if k == operator {
-			return float64(len(v))
+// epoch time for the given temporal shard.
+func (ll List) GetTemporalShardEndExlusive(logID string) float64 {
+	for _, group := range ll {
+		if shard, found := group[logID]; found {
+			return float64(shard.EndExclusive.Unix())
 		}
 	}
 	return float64(0)
@@ -339,8 +340,4 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 
 	log := candidates[rand.Intn(len(candidates))]
 	return log.Url, log.Key, nil
-}
-
-func init() {
-	rand.New(rand.NewSource(time.Now().UnixNano()))
 }

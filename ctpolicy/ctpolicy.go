@@ -22,14 +22,14 @@ const (
 // CTPolicy is used to hold information about SCTs required from various
 // groupings
 type CTPolicy struct {
-	pub           pubpb.PublisherClient
-	sctLogs       loglist.List
-	infoLogs      loglist.List
-	finalLogs     loglist.List
-	stagger       time.Duration
-	log           blog.Logger
-	winnerCounter *prometheus.CounterVec
-	opGroupSize   *prometheus.GaugeVec
+	pub                  pubpb.PublisherClient
+	sctLogs              loglist.List
+	infoLogs             loglist.List
+	finalLogs            loglist.List
+	stagger              time.Duration
+	log                  blog.Logger
+	winnerCounter        *prometheus.CounterVec
+	opGroupSize          *prometheus.GaugeVec
 	shardExpiryTimestamp *prometheus.GaugeVec
 }
 
@@ -58,20 +58,19 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 			Name: "ct_shard_expiration_seconds",
 			Help: "CT shard end_exclusive field expressed as Unix epoch time.",
 		},
-		[]string{"operator", "shard"},
+		[]string{"operator", "logID"},
 	)
 	stats.MustRegister(shardExpiryTimestamp)
 
-
 	return &CTPolicy{
-		pub:           pub,
-		sctLogs:       sctLogs,
-		infoLogs:      infoLogs,
-		finalLogs:     finalLogs,
-		stagger:       stagger,
-		log:           log,
-		winnerCounter: winnerCounter,
-		opGroupSize:   opGroupSize,
+		pub:                  pub,
+		sctLogs:              sctLogs,
+		infoLogs:             infoLogs,
+		finalLogs:            finalLogs,
+		stagger:              stagger,
+		log:                  log,
+		winnerCounter:        winnerCounter,
+		opGroupSize:          opGroupSize,
 		shardExpiryTimestamp: shardExpiryTimestamp,
 	}
 }
@@ -132,11 +131,14 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// it and exit without blocking and leaking.
 	results := make(chan result, len(ctp.sctLogs))
 
-	// Increment a prometheus GaugeVec with the number of logs for each configured operator.
-	for g := range ctp.sctLogs {
-		groupSize := ctp.sctLogs.GetGroupSize(g)
-		ctp.opGroupSize.WithLabelValues(g).Add(groupSize)
-		ctp.
+	// Increment various prometheus metrics.
+	for i, group := range ctp.sctLogs {
+		groupSize := ctp.sctLogs.GetGroupSize(i)
+		ctp.opGroupSize.WithLabelValues(i).Set(groupSize)
+		for _, log := range group {
+			shardExpiry := ctp.sctLogs.GetTemporalShardEndExlusive(log.Name)
+			ctp.shardExpiryTimestamp.WithLabelValues(i, log.Name).Set(shardExpiry)
+		}
 	}
 
 	// Kick off a collection of goroutines to try to submit the precert to each
