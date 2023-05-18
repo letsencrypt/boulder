@@ -353,7 +353,7 @@ func TestMultiVA(t *testing.T) {
 	}
 
 	unauthorized := probs.Unauthorized(fmt.Sprintf(
-		`The key authorization file from the server did not match this challenge %q != "???"`,
+		`The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 		expectedKeyAuthorization))
 
 	expectedInternalErrLine := fmt.Sprintf(
@@ -441,7 +441,7 @@ func TestMultiVA(t *testing.T) {
 			AllowedUAs: map[string]bool{localUA: true, remoteUA2: true},
 			Features:   enforceMultiVA,
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
+				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 		{
@@ -483,7 +483,7 @@ func TestMultiVA(t *testing.T) {
 			AllowedUAs: map[string]bool{localUA: true},
 			Features:   enforceMultiVAFullResults,
 			ExpectedProb: probs.Unauthorized(fmt.Sprintf(
-				`During secondary validation: The key authorization file from the server did not match this challenge %q != "???"`,
+				`During secondary validation: The key authorization file from the server did not match this challenge. Expected %q (got "???")`,
 				expectedKeyAuthorization)),
 		},
 	}
