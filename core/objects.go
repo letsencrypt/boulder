@@ -156,13 +156,13 @@ type ValidationRecord struct {
 // CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
 // (http), 443 (https)
 func (vr *ValidationRecord) RehydrateHostPort() error {
-	if vr.URL == "" {
-		return fmt.Errorf("rehydrating validation record, URL field cannot be empty")
+	if vr.Hostname != "" && vr.Port != "" {
+		// Hostname and Port already exist.
+		return nil
 	}
 
-	if vr.Hostname != "" && vr.Port != "" {
-	    // Hostname and Port already exist.
-		return nil
+	if vr.URL == "" {
+		return fmt.Errorf("rehydrating validation record, URL field cannot be empty")
 	}
 
 	url, err := url.Parse(vr.URL)
