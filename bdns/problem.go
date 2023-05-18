@@ -24,15 +24,8 @@ type Error struct {
 // extendedDNSError returns non-nil if the input message contained an OPT RR
 // with an EDE option. https://www.rfc-editor.org/rfc/rfc8914.
 func extendedDNSError(msg *dns.Msg) *dns.EDNS0_EDE {
-	for _, extra := range msg.Extra {
-		if extra.Header().Rrtype != dns.TypeOPT {
-			continue
-		}
-
-		opt, ok := extra.(*dns.OPT)
-		if !ok {
-			continue
-		}
+	opt := msg.IsEdns0()
+	if opt != nil {
 
 		for _, opt := range opt.Option {
 			ede, ok := opt.(*dns.EDNS0_EDE)
