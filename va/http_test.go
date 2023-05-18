@@ -835,7 +835,7 @@ func TestFetchHTTP(t *testing.T) {
 			Name: "Connecting to bad port",
 			Host: "example.com:" + strconv.Itoa(httpPort),
 			Path: "/timeout",
-			ExpectedProblem: probs.ConnectionFailure(
+			ExpectedProblem: probs.Connection(
 				"127.0.0.1: Fetching http://example.com:" + strconv.Itoa(httpPort) + "/timeout: " +
 					"Error getting validation data"),
 			ExpectedRecords: []core.ValidationRecord{
