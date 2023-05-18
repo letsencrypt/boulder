@@ -148,11 +148,11 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 	return results
 }
 
-// selectCAA picks the relevant CAA resource record set to be used, i.e. the
-// set for the "closest parent" of the FQDN in question, including the domain
-// itself. If the first non-empty RR set we find encountered an error during
-// lookup, we must assume that there could have been real records hidden by the
-// error, and propagate that error upwards.
+// selectCAA picks the relevant CAA resource record set to be used, i.e. the set
+// for the "closest parent" of the FQDN in question, including the domain
+// itself. If we encountered an error for a lookup before we found a successful,
+// non-empty response, assume there could have been real records hidden by it,
+// and return that error.
 func selectCAA(rrs []caaResult) (*caaResult, error) {
 	for _, res := range rrs {
 		if res.err != nil {
@@ -165,11 +165,13 @@ func selectCAA(rrs []caaResult) (*caaResult, error) {
 	return nil, nil
 }
 
-// getCAA returns the single CAA set which is relevant for the given FQDN,
-// i.e. the first CAA record found by traversing upwards from the FQDN by
-// removing the leftmost label. It returns nil if no record set is found on
-// any parent of the given FQDN. It also returns the raw CAA response, and an
+// getCAA returns the CAA Relevant Resource Set[1] for the given FQDN, i.e. the
+// first CAA RRSet found by traversing upwards from the FQDN by removing the
+// leftmost label. It returns nil if no RRSet is found on any parent of the
+// given FQDN. The returned result also contains the raw CAA response, and an
 // error if one is encountered while querying or parsing the records.
+//
+// [1]: https://datatracker.ietf.org/doc/html/rfc8659#name-relevant-resource-record-se
 func (va *ValidationAuthorityImpl) getCAA(ctx context.Context, hostname string) (*caaResult, error) {
 	hostname = strings.TrimRight(hostname, ".")
 

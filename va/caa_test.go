@@ -255,6 +255,12 @@ func TestCAAChecking(t *testing.T) {
 			Valid:   true,
 		},
 		{
+			Name:    "Good (present on parent)",
+			Domain:  "child.present.com",
+			FoundAt: "present.com",
+			Valid:   true,
+		},
+		{
 			Name:    "Good (present w/ servfail exception?)",
 			Domain:  "present.servfail.com",
 			FoundAt: "present.servfail.com",
