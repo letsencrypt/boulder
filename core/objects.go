@@ -167,7 +167,7 @@ func (vr *ValidationRecord) RehydrateHostPort() error {
 
 	url, err := url.Parse(vr.URL)
 	if err != nil {
-		return fmt.Errorf("could not parse url from validation record %v", vr.URL)
+		return fmt.Errorf("parsing validation record URL %q: %w", vr.URL, err)
 	}
 
 	if url.Hostname() == "" {
