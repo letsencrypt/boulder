@@ -222,6 +222,55 @@ func TestTickShard(t *testing.T) {
 	cu.updatedCounter.Reset()
 }
 
+func TestTickShardWithRetry(t *testing.T) {
+	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
+	test.AssertNotError(t, err, "loading test issuer")
+	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
+	test.AssertNotError(t, err, "loading test issuer")
+
+	sentinelErr := errors.New("oops")
+
+	clk := clock.NewFake()
+	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
+
+	// Build an updater that will always fail when it talks to the SA.
+	cu, err := NewUpdater(
+		[]*issuance.Certificate{e1, r3},
+		2, 18*time.Hour, 24*time.Hour,
+		6*time.Hour, 1*time.Minute, 1, 1,
+		&fakeSAC{grcc: fakeGRCC{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
+		&fakeCGC{gcc: fakeGCC{}},
+		&fakeCSC{ucc: fakeUCC{}},
+		metrics.NoopRegisterer, blog.NewMock(), clk,
+	)
+	test.AssertNotError(t, err, "building test crlUpdater")
+
+	testChunks := []chunk{
+		{clk.Now(), clk.Now().Add(18 * time.Hour), 0},
+	}
+
+	// Ensure that having MaxAttempts set to 1 results in the clock not moving
+	// forward at all.
+	startTime := cu.clk.Now()
+	err = cu.tickShardWithRetry(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	test.AssertError(t, err, "database error")
+	test.AssertErrorIs(t, err, sentinelErr)
+	test.AssertEquals(t, cu.clk.Now(), startTime)
+
+	// Ensure that having MaxAttempts set to 5 results in the clock moving forward
+	// by 1+2+4+8=15 seconds. The core.RetryBackoff system has some jitter built
+	// in, so we have to be approximate.
+	cu.maxAttempts = 5
+	startTime = cu.clk.Now()
+	err = cu.tickShardWithRetry(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	test.AssertError(t, err, "database error")
+	test.AssertErrorIs(t, err, sentinelErr)
+	t.Logf("start: %v", startTime)
+	t.Logf("now: %v", cu.clk.Now())
+	test.Assert(t, startTime.Add(12*time.Second).Before(cu.clk.Now()), "retries didn't sleep enough")
+	test.Assert(t, startTime.Add(18*time.Second).After(cu.clk.Now()), "retries slept too much")
+}
+
 func TestTickIssuer(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
