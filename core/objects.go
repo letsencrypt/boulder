@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net"
-	"net/url"
 	"strings"
 	"time"
 
@@ -147,50 +146,6 @@ type ValidationRecord struct {
 	AddressesTried []net.IP `json:"addressesTried,omitempty"`
 }
 
-// RehydrateHostPort mutates a validation record. If the URL in the validation
-// record cannot be parsed, an error will be returned. If the Hostname and Port
-// fields already exist in the validation record, they will be retained.
-// Otherwise, the Hostname and Port will be derived and set from the URL field
-// of the validation record.
-//
-// CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
-// (http), 443 (https)
-func (vr *ValidationRecord) RehydrateHostPort() error {
-	if vr.Hostname != "" && vr.Port != "" {
-		// Hostname and Port already exist.
-		return nil
-	}
-
-	if vr.URL == "" {
-		return fmt.Errorf("rehydrating validation record, URL field cannot be empty")
-	}
-
-	url, err := url.Parse(vr.URL)
-	if err != nil {
-		return fmt.Errorf("parsing validation record URL %q: %w", vr.URL, err)
-	}
-
-	if url.Hostname() == "" {
-		return fmt.Errorf("hostname missing in URL %q", vr.URL)
-	}
-	vr.Hostname = url.Hostname()
-
-	if url.Port() == "" {
-		switch url.Scheme {
-		case "https":
-			vr.Port = "443"
-		case "http":
-			vr.Port = "80"
-		default:
-			// This should never happen since the VA should have already
-			// checked the scheme.
-			return fmt.Errorf("unknown scheme %q in URL %q", url.Scheme, vr.URL)
-		}
-	}
-
-	return nil
-}
-
 func looksLikeKeyAuthorization(str string) error {
 	parts := strings.Split(str, ".")
 	if len(parts) != 2 {
@@ -270,14 +225,7 @@ func (ch Challenge) RecordsSane() bool {
 	switch ch.Type {
 	case ChallengeTypeHTTP01:
 		for _, rec := range ch.ValidationRecord {
-			// We no longer store the hostname and port in the validation record
-			// for HTTP-01 challenges. Instead, we'll rehydrate it from the URL
-			// field.
-			err := rec.RehydrateHostPort()
-			if err != nil {
-				return false
-			}
-			if rec.URL == "" || rec.AddressUsed == nil || rec.Hostname == "" || rec.Port == "" ||
+			if rec.URL == "" || rec.Hostname == "" || rec.Port == "" || rec.AddressUsed == nil ||
 				len(rec.AddressesResolved) == 0 {
 				return false
 			}
