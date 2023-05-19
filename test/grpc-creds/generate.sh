@@ -9,17 +9,14 @@ command -v minica >/dev/null 2>&1 || {
   exit 1;
 }
 
-# Below, IP addresses are necessary for consul gRPC health checks.
-
-minica -domains "consul.boulder" -ip-addresses "10.55.55.10"
+minica -domains "consul.boulder"
 
 for SERVICE in admin-revoker expiration-mailer ocsp-responder \
   orphan-finder wfe akamai-purger bad-key-revoker crl-updater crl-storer \
   health-checker; do
-  minica -domains "${SERVICE}.boulder" -ip-addresses "10.77.77.77,10.88.88.88"
+  minica -domains "${SERVICE}.boulder"
 done
 
 for SERVICE in publisher nonce ra ca sa va rva ; do
-  minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder" \
-    -ip-addresses "10.77.77.77,10.88.88.88"
+  minica -domains "${SERVICE}.boulder,${SERVICE}1.boulder,${SERVICE}2.boulder"
 done

@@ -1,14 +1,11 @@
-client_addr                 = "0.0.0.0"
-bind_addr                   = "10.55.55.10"
-log_level                   = "INFO"
+client_addr = "0.0.0.0"
+bind_addr   = "10.55.55.10"
+log_level   = "INFO"
 // When set, uses a subset of the agent's TLS configuration (key_file,
 // cert_file, ca_file, ca_path, and server_name) to set up the client for HTTP
 // or gRPC health checks. This allows services requiring 2-way TLS to be checked
 // using the agent's credentials.
 enable_agent_tls_for_checks = true
-// When provided, this overrides the node_name for the TLS certificate. It can
-// be used to ensure that the certificate name matches the hostname we declare.
-server_name                 = "consul.boulder"
 tls {
   defaults {
     ca_file         = "test/grpc-creds/minica.pem"
@@ -240,7 +237,8 @@ services {
     name            = "sa-a-grpc"
     grpc            = "10.77.77.77:9095"
     grpc_use_tls    = true
-    tls_skip_verify = true
+    tls_server_name = "sa.boulder"
+    tls_skip_verify = false
     interval        = "5s"
   }
 }
@@ -256,7 +254,8 @@ services {
     name            = "sa-b-grpc"
     grpc            = "10.88.88.88:9095"
     grpc_use_tls    = true
-    tls_skip_verify = true
+    tls_server_name = "sa.boulder"
+    tls_skip_verify = false
     interval        = "5s"
   }
 }
