@@ -146,7 +146,7 @@ func TestAuthzModel(t *testing.T) {
 	if authzPB.Challenges[0].Validationrecords[0].Port != "" {
 		test.Assert(t, false, fmt.Sprintf("rehydrated http-01 validation record expected port field to be missing, but found %v", authzPB.Challenges[0].Validationrecords[0].Port))
 	}
-	// Shoving the Hostname and Port backinto the validation record should
+	// Shoving the Hostname and Port back into the validation record should
 	// succeed because authzPB validation record will should match the retrieved
 	// model from the database with the rehydrated Hostname and Port.
 	authzPB.Challenges[0].Validationrecords[0].Hostname = "example.com"
