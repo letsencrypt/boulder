@@ -475,9 +475,10 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 	}
 
 	if vr.Port == "" {
+		// CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
+		// (http), 443 (https)
 		if parsedUrl.Port() == "" {
-			// CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
-			// (http), 443 (https)
+			// If there is only a scheme, then we'll determine the appropriate port.
 			switch parsedUrl.Scheme {
 			case "https":
 				vr.Port = "443"
@@ -488,8 +489,13 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 				// checked the scheme.
 				return fmt.Errorf("unknown scheme %q in URL %q", parsedUrl.Scheme, vr.URL)
 			}
-		} else {
+		} else if parsedUrl.Port() != "80" && parsedUrl.Port() != "443" {
+			// If :80 or :443 were explicitly stated in the URL field
+			// e.g. '"url":"https://example.com:443"'
 			return fmt.Errorf("only ports 80/tcp and 443/tcp are allowed in URL %q", vr.URL)
+		} else {
+			// This should never happen.
+			vr.Port = parsedUrl.Port()
 		}
 	}
 
@@ -626,15 +632,12 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 			// Marshal corepb.ValidationRecords to core.ValidationRecords so that we
 			// can marshal them to JSON.
 			records := make([]core.ValidationRecord, len(chall.Validationrecords))
-			fmt.Printf("DEBUG: Challenge type is %v\n", chall.Type)
 			for i, recordPB := range chall.Validationrecords {
 				if chall.Type == string(core.ChallengeTypeHTTP01) {
 					// Remove these fields because they can be rehydrated later
 					// on from the URL field.
-					fmt.Printf("DEBUG: In here with %v:%v\n", recordPB.Hostname, recordPB.Port)
 					recordPB.Hostname = ""
 					recordPB.Port = ""
-					fmt.Printf("DEBUG: Out there with %v:%v\n", recordPB.Hostname, recordPB.Port)
 				}
 				var err error
 				records[i], err = grpc.PBToValidationRecord(recordPB)
