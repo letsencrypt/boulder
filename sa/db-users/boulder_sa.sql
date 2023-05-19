@@ -55,7 +55,7 @@ GRANT SELECT ON incidents TO 'sa_ro'@'localhost';
 GRANT SELECT ON certificateStatus TO 'ocsp_resp'@'localhost';
 
 -- Revoker Tool
-GRANT SELECT ON registrations TO 'revoker'@'localhost';
+GRANT SELECT,UPDATE ON registrations TO 'revoker'@'localhost';
 GRANT SELECT ON certificates TO 'revoker'@'localhost';
 GRANT SELECT ON precertificates TO 'revoker'@'localhost';
 GRANT SELECT ON keyHashToSerial TO 'revoker'@'localhost';

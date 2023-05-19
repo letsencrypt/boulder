@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -10,6 +11,7 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +60,51 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 }
 
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
+
+// ClearEmail removes the provided email address from one specified registration. If
+// there are multiple email addresses present, it does not modify other ones. If the email
+// address is not present, it does not modify the registration and return nil error.
+func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email string) error {
+	_, overallError := db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		curr, err := selectRegistration(txWithCtx, "id", regID)
+		if err != nil {
+			return nil, err
+		}
+
+		currPb, err := registrationModelToPb(curr)
+		if err != nil {
+			return nil, err
+		}
+
+		var newContacts []string
+		modified := false
+		for _, contact := range currPb.Contact {
+			if contact == "mailto:"+email {
+				fmt.Fprintf(os.Stderr, "Skipping %s\n", contact)
+				modified = true
+			} else {
+				newContacts = append(newContacts, contact)
+			}
+		}
+
+		if !modified {
+			return nil, nil
+		}
+
+		currPb.Contact = newContacts
+		newModel, err := registrationPbToModel(currPb)
+		if err != nil {
+			return nil, err
+		}
+
+		return txWithCtx.Update(newModel)
+	})
+	if overallError != nil {
+		return overallError
+	}
+
+	return nil
+}
 
 // selectRegistration selects all fields of one registration model
 func selectRegistration(s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
@@ -216,6 +263,33 @@ type regModel struct {
 	Status    string `db:"status"`
 }
 
+// contactsToJSON converts a slice of contact addresses to a JSON array.
+// If the slice is empty, it returns the empty JSON array "[]". It never returns
+// "null".
+func contactsToJSON(contacts []string) ([]byte, error) {
+	// We don't want to write literal JSON "null" strings into the database if the
+	// list of contact addresses is empty. Replace any possibly-`nil` slice with
+	// an empty JSON array. We don't need to check reg.ContactPresent, because
+	// we're going to write the whole object to the database anyway.
+	if len(contacts) == 0 {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(contacts)
+}
+
+// jsonToContacts attempts to parse a JSON array into a slice of contacts.
+// If the input is empty, it returns an empty slice of contacts (not an error).
+func jsonToContacts(input []byte) ([]string, error) {
+	var contacts []string
+	if len(input) > 0 {
+		err := json.Unmarshal(input, &contacts)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return contacts, nil
+}
+
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
 	// for the sake of the `Key` field, we do need to do the conversion in order
@@ -230,16 +304,9 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		return nil, err
 	}
 
-	// We don't want to write literal JSON "null" strings into the database if the
-	// list of contact addresses is empty. Replace any possibly-`nil` slice with
-	// an empty JSON array. We don't need to check reg.ContactPresent, because
-	// we're going to write the whole object to the database anyway.
-	jsonContact := []byte("[]")
-	if len(reg.Contact) != 0 {
-		jsonContact, err = json.Marshal(reg.Contact)
-		if err != nil {
-			return nil, err
-		}
+	jsonContact, err := contactsToJSON(reg.Contact)
+	if err != nil {
+		return nil, err
 	}
 
 	// For some reason we use different serialization formats for InitialIP
@@ -276,16 +343,9 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
-	contact := []string{}
-	contactsPresent := false
-	if len(reg.Contact) > 0 {
-		err := json.Unmarshal([]byte(reg.Contact), &contact)
-		if err != nil {
-			return nil, err
-		}
-		if len(contact) > 0 {
-			contactsPresent = true
-		}
+	contacts, err := jsonToContacts([]byte(reg.Contact))
+	if err != nil {
+		return nil, err
 	}
 
 	// For some reason we use different serialization formats for InitialIP
@@ -299,8 +359,8 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 	return &corepb.Registration{
 		Id:              reg.ID,
 		Key:             reg.Key,
-		Contact:         contact,
-		ContactsPresent: contactsPresent,
+		Contact:         contacts,
+		ContactsPresent: len(contacts) > 0,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
 		CreatedAt:       reg.CreatedAt.UTC().UnixNano(),
