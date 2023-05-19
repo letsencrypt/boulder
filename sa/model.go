@@ -702,10 +702,11 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	}
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {
+		// Fixes implicit memory aliasing in for loop so we can deference r
+		// later on for rehydrateHostPort.
+		r := r
 		if challenge.Type == string(core.ChallengeTypeHTTP01) {
-			r := r
 			err := rehydrateHostPort(&r)
-			fmt.Println("DEBUG: here")
 			if err != nil {
 				return err
 			}
