@@ -724,6 +724,12 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		if err != nil {
 			return nil, err
 		}
+		if req.Attempted == string(core.ChallengeTypeHTTP01) {
+			// Remove these fields because they can be rehydrated later
+			// on from the URL field.
+			record.Hostname = ""
+			record.Port = ""
+		}
 		validationRecords = append(validationRecords, record)
 	}
 	vrJSON, err := json.Marshal(validationRecords)
