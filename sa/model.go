@@ -626,12 +626,15 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 			// Marshal corepb.ValidationRecords to core.ValidationRecords so that we
 			// can marshal them to JSON.
 			records := make([]core.ValidationRecord, len(chall.Validationrecords))
+			fmt.Printf("DEBUG: Challenge type is %v\n", chall.Type)
 			for i, recordPB := range chall.Validationrecords {
 				if chall.Type == string(core.ChallengeTypeHTTP01) {
 					// Remove these fields because they can be rehydrated later
 					// on from the URL field.
+					fmt.Printf("DEBUG: In here with %v:%v\n", recordPB.Hostname, recordPB.Port)
 					recordPB.Hostname = ""
 					recordPB.Port = ""
+					fmt.Printf("DEBUG: Out there with %v:%v\n", recordPB.Hostname, recordPB.Port)
 				}
 				var err error
 				records[i], err = grpc.PBToValidationRecord(recordPB)
@@ -700,7 +703,9 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {
 		if challenge.Type == string(core.ChallengeTypeHTTP01) {
+			r := r
 			err := rehydrateHostPort(&r)
+			fmt.Println("DEBUG: here")
 			if err != nil {
 				return err
 			}
