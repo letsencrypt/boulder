@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -450,6 +451,51 @@ type authzModel struct {
 	ValidationRecord []byte     `db:"validationRecord"`
 }
 
+// rehydrateHostPort mutates a validation record. If the URL in the validation
+// record cannot be parsed, an error will be returned. If the Hostname and Port
+// fields already exist in the validation record, they will be retained.
+// Otherwise, the Hostname and Port will be derived and set from the URL field
+// of the validation record.
+func rehydrateHostPort(vr *core.ValidationRecord) error {
+	if vr.URL == "" {
+		return fmt.Errorf("rehydrating validation record, URL field cannot be empty")
+	}
+
+	parsedUrl, err := url.Parse(vr.URL)
+	if err != nil {
+		return fmt.Errorf("parsing validation record URL %q: %w", vr.URL, err)
+	}
+
+	if vr.Hostname == "" {
+		hostname := parsedUrl.Hostname()
+		if hostname == "" {
+			return fmt.Errorf("hostname missing in URL %q", vr.URL)
+		}
+		vr.Hostname = hostname
+	}
+
+	if vr.Port == "" {
+		if parsedUrl.Port() == "" {
+			// CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
+			// (http), 443 (https)
+			switch parsedUrl.Scheme {
+			case "https":
+				vr.Port = "443"
+			case "http":
+				vr.Port = "80"
+			default:
+				// This should never happen since the VA should have already
+				// checked the scheme.
+				return fmt.Errorf("unknown scheme %q in URL %q", parsedUrl.Scheme, vr.URL)
+			}
+		} else {
+			return fmt.Errorf("only ports 80/tcp and 443/tcp are allowed in URL %q", vr.URL)
+		}
+	}
+
+	return nil
+}
+
 // SelectAuthzsMatchingIssuance looks for a set of authzs that would have
 // authorized a given issuance that is known to have occurred. The returned
 // authzs will all belong to the given regID, will have potentially been valid
@@ -654,7 +700,7 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {
 		if challenge.Type == string(core.ChallengeTypeHTTP01) {
-			err := r.RehydrateHostPort()
+			err := rehydrateHostPort(&r)
 			if err != nil {
 				return err
 			}
