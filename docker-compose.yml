@@ -134,6 +134,7 @@ networks:
       driver: default
       config:
         - subnet: 10.77.77.0/24
+
   rednet:
     driver: bridge
     ipam:
