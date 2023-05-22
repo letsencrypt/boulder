@@ -490,11 +490,10 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 				return fmt.Errorf("unknown scheme %q in URL %q", parsedUrl.Scheme, vr.URL)
 			}
 		} else if parsedUrl.Port() != "80" && parsedUrl.Port() != "443" {
-			// If :80 or :443 were explicitly stated in the URL field
-			// e.g. '"url":"https://example.com:443"'
 			return fmt.Errorf("only ports 80/tcp and 443/tcp are allowed in URL %q", vr.URL)
 		} else {
-			// This should never happen.
+			// If :80 or :443 were embeded in the URL field
+			// e.g. '"url":"https://example.com:443"'
 			vr.Port = parsedUrl.Port()
 		}
 	}
