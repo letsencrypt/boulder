@@ -258,7 +258,7 @@ func TestTickShardWithRetry(t *testing.T) {
 	test.AssertEquals(t, cu.clk.Now(), startTime)
 
 	// Ensure that having MaxAttempts set to 5 results in the clock moving forward
-	// by 1+2+4+8=15 seconds. The core.RetryBackoff system has some jitter built
+	// by 1+2+4+8=15 seconds. The core.RetryBackoff system has 20% jitter built
 	// in, so we have to be approximate.
 	cu.maxAttempts = 5
 	startTime = cu.clk.Now()
@@ -267,8 +267,8 @@ func TestTickShardWithRetry(t *testing.T) {
 	test.AssertErrorIs(t, err, sentinelErr)
 	t.Logf("start: %v", startTime)
 	t.Logf("now: %v", cu.clk.Now())
-	test.Assert(t, startTime.Add(12*time.Second).Before(cu.clk.Now()), "retries didn't sleep enough")
-	test.Assert(t, startTime.Add(18*time.Second).After(cu.clk.Now()), "retries slept too much")
+	test.Assert(t, startTime.Add(15*0.8*time.Second).Before(cu.clk.Now()), "retries didn't sleep enough")
+	test.Assert(t, startTime.Add(15*1.2*time.Second).After(cu.clk.Now()), "retries slept too much")
 }
 
 func TestTickIssuer(t *testing.T) {
