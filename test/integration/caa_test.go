@@ -28,9 +28,9 @@ func TestCAALogChecker(t *testing.T) {
 	stdErr := new(bytes.Buffer)
 	cmd.Stderr = stdErr
 	out, err := cmd.Output()
-	test.AssertNotError(t, err, "caa-log-checker failed")
-	test.AssertEquals(t, stdErr.String(), "")
 	test.AssertEquals(t, string(out), "")
+	test.AssertEquals(t, stdErr.String(), "")
+	test.AssertNotError(t, err, "caa-log-checker failed")
 
 	// Should be output, issuances in boulder-ra.log won't match an empty
 	// va log. Because we can't control what happens before this test

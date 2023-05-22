@@ -209,193 +209,199 @@ func TestCAAChecking(t *testing.T) {
 	testCases := []struct {
 		Name    string
 		Domain  string
-		Present bool
+		FoundAt string
 		Valid   bool
 	}{
 		{
 			Name:    "Bad (Reserved)",
 			Domain:  "reserved.com",
-			Present: true,
+			FoundAt: "reserved.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (Reserved, Mixed case Issue)",
 			Domain:  "mixedcase.com",
-			Present: true,
+			FoundAt: "mixedcase.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (Critical)",
 			Domain:  "critical.com",
-			Present: true,
+			FoundAt: "critical.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (NX Critical)",
 			Domain:  "nx.critical.com",
-			Present: true,
+			FoundAt: "critical.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Good (absent)",
 			Domain:  "absent.com",
-			Present: false,
+			FoundAt: "",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (example.co.uk, absent)",
 			Domain:  "example.co.uk",
-			Present: false,
+			FoundAt: "",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (present and valid)",
 			Domain:  "present.com",
-			Present: true,
+			FoundAt: "present.com",
+			Valid:   true,
+		},
+		{
+			Name:    "Good (present on parent)",
+			Domain:  "child.present.com",
+			FoundAt: "present.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (present w/ servfail exception?)",
 			Domain:  "present.servfail.com",
-			Present: true,
+			FoundAt: "present.servfail.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (multiple critical, one matching)",
 			Domain:  "multi-crit-present.com",
-			Present: true,
+			FoundAt: "multi-crit-present.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Bad (unknown critical)",
 			Domain:  "unknown-critical.com",
-			Present: true,
+			FoundAt: "unknown-critical.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (unknown critical 2)",
 			Domain:  "unknown-critical2.com",
-			Present: true,
+			FoundAt: "unknown-critical2.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Good (unknown non-critical, no issue/issuewild)",
 			Domain:  "unknown-noncritical.com",
-			Present: true,
+			FoundAt: "unknown-noncritical.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (issue rec with unknown params)",
 			Domain:  "present-with-parameter.com",
-			Present: true,
+			FoundAt: "present-with-parameter.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Bad (issue rec with invalid tag)",
 			Domain:  "present-with-invalid-tag.com",
-			Present: true,
+			FoundAt: "present-with-invalid-tag.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (issue rec with invalid value)",
 			Domain:  "present-with-invalid-value.com",
-			Present: true,
+			FoundAt: "present-with-invalid-value.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (restricts to dns-01, but tested with http-01)",
 			Domain:  "present-dns-only.com",
-			Present: true,
+			FoundAt: "present-dns-only.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Good (restricts to http-01, tested with http-01)",
 			Domain:  "present-http-only.com",
-			Present: true,
+			FoundAt: "present-http-only.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (restricts to http-01 or dns-01, tested with http-01)",
 			Domain:  "present-http-or-dns.com",
-			Present: true,
+			FoundAt: "present-http-or-dns.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (restricts to accounturi, tested with correct account)",
 			Domain:  "present-correct-accounturi.com",
-			Present: true,
+			FoundAt: "present-correct-accounturi.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (restricts to http-01 and accounturi, tested with correct account)",
 			Domain:  "present-http-only-correct-accounturi.com",
-			Present: true,
+			FoundAt: "present-http-only-correct-accounturi.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Bad (restricts to dns-01 and accounturi, tested with http-01)",
 			Domain:  "present-dns-only-correct-accounturi.com",
-			Present: true,
+			FoundAt: "present-dns-only-correct-accounturi.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (restricts to http-01 and accounturi, tested with incorrect account)",
 			Domain:  "present-http-only-incorrect-accounturi.com",
-			Present: true,
+			FoundAt: "present-http-only-incorrect-accounturi.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (restricts to accounturi, tested with incorrect account)",
 			Domain:  "present-incorrect-accounturi.com",
-			Present: true,
+			FoundAt: "present-incorrect-accounturi.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Good (restricts to multiple accounturi, tested with a correct account)",
 			Domain:  "present-multiple-accounturi.com",
-			Present: true,
+			FoundAt: "present-multiple-accounturi.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Bad (unsatisfiable issue record)",
 			Domain:  "unsatisfiable.com",
-			Present: true,
+			FoundAt: "unsatisfiable.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (unsatisfiable issue, wildcard)",
 			Domain:  "*.unsatisfiable.com",
-			Present: true,
+			FoundAt: "unsatisfiable.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (unsatisfiable wildcard)",
 			Domain:  "*.unsatisfiable-wildcard.com",
-			Present: true,
+			FoundAt: "unsatisfiable-wildcard.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Bad (unsatisfiable wildcard override)",
 			Domain:  "*.unsatisfiable-wildcard-override.com",
-			Present: true,
+			FoundAt: "unsatisfiable-wildcard-override.com",
 			Valid:   false,
 		},
 		{
 			Name:    "Good (satisfiable wildcard)",
 			Domain:  "*.satisfiable-wildcard.com",
-			Present: true,
+			FoundAt: "satisfiable-wildcard.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (multiple issuewild, one satisfiable)",
 			Domain:  "*.satisfiable-multi-wildcard.com",
-			Present: true,
+			FoundAt: "satisfiable-multi-wildcard.com",
 			Valid:   true,
 		},
 		{
 			Name:    "Good (satisfiable wildcard override)",
 			Domain:  "*.satisfiable-wildcard-override.com",
-			Present: true,
+			FoundAt: "satisfiable-wildcard-override.com",
 			Valid:   true,
 		},
 	}
@@ -415,12 +421,12 @@ func TestCAAChecking(t *testing.T) {
 		mockLog.Clear()
 		t.Run(caaTest.Name, func(t *testing.T) {
 			ident := identifier.DNSIdentifier(caaTest.Domain)
-			present, valid, _, err := va.checkCAARecords(ctx, ident, params)
+			foundAt, valid, _, err := va.checkCAARecords(ctx, ident, params)
 			if err != nil {
 				t.Errorf("checkCAARecords error for %s: %s", caaTest.Domain, err)
 			}
-			if present != caaTest.Present {
-				t.Errorf("checkCAARecords presence mismatch for %s: got %t expected %t", caaTest.Domain, present, caaTest.Present)
+			if foundAt != caaTest.FoundAt {
+				t.Errorf("checkCAARecords presence mismatch for %s: got %q expected %q", caaTest.Domain, foundAt, caaTest.FoundAt)
 			}
 			if valid != caaTest.Valid {
 				t.Errorf("checkCAARecords validity mismatch for %s: got %t expected %t", caaTest.Domain, valid, caaTest.Valid)
@@ -433,28 +439,28 @@ func TestCAAChecking(t *testing.T) {
 
 	// present-dns-only.com should now be valid even with http-01
 	ident := identifier.DNSIdentifier("present-dns-only.com")
-	present, valid, _, err := va.checkCAARecords(ctx, ident, params)
+	foundAt, valid, _, err := va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-dns-only.com")
-	test.Assert(t, present, "Present should be true")
+	test.AssertEquals(t, foundAt, "present-dns-only.com")
 	test.Assert(t, valid, "Valid should be true")
 
 	// present-incorrect-accounturi.com should now be also be valid
 	ident = identifier.DNSIdentifier("present-incorrect-accounturi.com")
-	present, valid, _, err = va.checkCAARecords(ctx, ident, params)
+	foundAt, valid, _, err = va.checkCAARecords(ctx, ident, params)
 	test.AssertNotError(t, err, "present-incorrect-accounturi.com")
-	test.Assert(t, present, "Present should be true")
+	test.AssertEquals(t, foundAt, "present-incorrect-accounturi.com")
 	test.Assert(t, valid, "Valid should be true")
 
 	// nil params should be valid, too
-	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
-	test.AssertNotError(t, err, "present-dns-only.com")
-	test.Assert(t, present, "Present should be true")
+	foundAt, valid, _, err = va.checkCAARecords(ctx, ident, nil)
+	test.AssertNotError(t, err, "present-incorrect-accounturi.com")
+	test.AssertEquals(t, foundAt, "present-incorrect-accounturi.com")
 	test.Assert(t, valid, "Valid should be true")
 
 	ident.Value = "servfail.com"
-	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
+	foundAt, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.com")
-	test.Assert(t, !present, "Present should be false")
+	test.AssertEquals(t, foundAt, "")
 	test.Assert(t, !valid, "Valid should be false")
 
 	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
@@ -462,9 +468,9 @@ func TestCAAChecking(t *testing.T) {
 	}
 
 	ident.Value = "servfail.present.com"
-	present, valid, _, err = va.checkCAARecords(ctx, ident, nil)
+	foundAt, valid, _, err = va.checkCAARecords(ctx, ident, nil)
 	test.AssertError(t, err, "servfail.present.com")
-	test.Assert(t, !present, "Present should be false")
+	test.AssertEquals(t, foundAt, "")
 	test.Assert(t, !valid, "Valid should be false")
 
 	if _, _, _, err := va.checkCAARecords(ctx, ident, nil); err == nil {
@@ -487,49 +493,55 @@ func TestCAALogging(t *testing.T) {
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"foo\"",
 		},
 		{
 			Domain:          "reserved.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeDNS01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for reserved.com, [Present: true, Account ID: 12345, Challenge: dns-01, Valid for issuance: false, Found at: \"reserved.com\"] Response=\"foo\"",
 		},
 		{
 			Domain:          "mixedcase.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for mixedcase.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"mixedcase.com\"] Response=\"foo\"",
 		},
 		{
 			Domain:          "critical.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for critical.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"critical.com\"] Response=\"foo\"",
 		},
 		{
 			Domain:          "present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"foo\"",
+		},
+		{
+			Domain:          "not.here.but.still.present.com",
+			AccountURIID:    12345,
+			ChallengeType:   core.ChallengeTypeHTTP01,
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for not.here.but.still.present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present.com\"] Response=\"foo\"",
 		},
 		{
 			Domain:          "multi-crit-present.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for multi-crit-present.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"multi-crit-present.com\"] Response=\"foo\"",
 		},
 		{
 			Domain:          "present-with-parameter.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for present-with-parameter.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: true, Found at: \"present-with-parameter.com\"] Response=\"foo\"",
 		},
 		{
 			Domain:          "satisfiable-wildcard-override.com",
 			AccountURIID:    12345,
 			ChallengeType:   core.ChallengeTypeHTTP01,
-			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false] Response=\"foo\"",
+			ExpectedLogline: "INFO: [AUDIT] Checked CAA records for satisfiable-wildcard-override.com, [Present: true, Account ID: 12345, Challenge: http-01, Valid for issuance: false, Found at: \"satisfiable-wildcard-override.com\"] Response=\"foo\"",
 		},
 	}
 
@@ -625,57 +637,60 @@ func TestCAAFailure(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.CAAProblem)
 }
 
-func TestParseResults(t *testing.T) {
-	// An empty slice of caaResults should return nil, "", nil
+func TestSelectCAA(t *testing.T) {
+	expected := dns.CAA{Tag: "issue", Value: "foo"}
+
+	// An empty slice of caaResults should return nil, nil
 	r := []caaResult{}
-	s, response, err := parseResults(r)
+	s, err := selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
-	test.Assert(t, err == nil, "error is not nil")
-	test.Assert(t, response == "", "records is not nil")
+	test.AssertNotError(t, err, "error is not nil")
+
 	// A slice of empty caaResults should return nil, "", nil
 	r = []caaResult{
-		{[]*dns.CAA{}, "", nil},
-		{[]*dns.CAA{}, "", nil},
-		{[]*dns.CAA{}, "", nil},
+		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil},
+		{"", false, nil, nil, false, "", nil},
 	}
-	s, response, err = parseResults(r)
+	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
-	test.Assert(t, err == nil, "error is not nil")
-	test.AssertEquals(t, response, "")
+	test.AssertNotError(t, err, "error is not nil")
+
 	// A slice of caaResults containing an error followed by a CAA
 	// record should return the error
 	r = []caaResult{
-		{nil, "", errors.New("")},
-		{[]*dns.CAA{{Value: "test"}}, "", nil},
+		{"foo.com", false, nil, nil, false, "", errors.New("oops")},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
 	}
-	s, response, err = parseResults(r)
+	s, err = selectCAA(r)
 	test.Assert(t, s == nil, "set is not nil")
-	test.AssertEquals(t, err.Error(), "")
-	test.AssertEquals(t, response, "")
+	test.AssertError(t, err, "error is nil")
+	test.AssertEquals(t, err.Error(), "oops")
+
 	//  A slice of caaResults containing a good record that precedes an
 	//  error, should return that good record, not the error
-	expected := dns.CAA{Value: "foo"}
 	r = []caaResult{
-		{[]*dns.CAA{&expected}, "foo", nil},
-		{nil, "", errors.New("")},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", false, nil, nil, false, "", errors.New("")},
 	}
-	s, response, err = parseResults(r)
-	test.AssertEquals(t, len(s.Unknown), 1)
-	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, response, "foo")
+	s, err = selectCAA(r)
+	test.AssertEquals(t, len(s.issue), 1)
+	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
+	test.AssertEquals(t, s.dig, "foo")
 	test.Assert(t, err == nil, "error is not nil")
+
 	// A slice of caaResults containing multiple CAA records should
 	// return the first non-empty CAA record
 	r = []caaResult{
-		{[]*dns.CAA{}, "", nil},
-		{[]*dns.CAA{&expected}, "foo", nil},
-		{[]*dns.CAA{{Value: "bar"}}, "bar", nil},
+		{"bar.foo.com", false, []*dns.CAA{}, []*dns.CAA{}, false, "", nil},
+		{"foo.com", true, []*dns.CAA{&expected}, nil, false, "foo", nil},
+		{"com", true, []*dns.CAA{&expected}, nil, false, "bar", nil},
 	}
-	s, response, err = parseResults(r)
-	test.AssertEquals(t, len(s.Unknown), 1)
-	test.Assert(t, s.Unknown[0] == &expected, "Incorrect record returned")
-	test.AssertEquals(t, response, "foo")
-	test.AssertNotError(t, err, "no error should be returned")
+	s, err = selectCAA(r)
+	test.AssertEquals(t, len(s.issue), 1)
+	test.Assert(t, s.issue[0] == &expected, "Incorrect record returned")
+	test.AssertEquals(t, s.dig, "foo")
+	test.AssertNotError(t, err, "expect nil error")
 }
 
 func TestAccountURIMatches(t *testing.T) {
