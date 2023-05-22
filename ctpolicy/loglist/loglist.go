@@ -296,18 +296,6 @@ func (ll List) GetGroupSize(operator string) float64 {
 			return float64(len(group))
 		}
 	}
-
-	return float64(0)
-}
-
-// GetTemporalShardEndExlusive returns the end_exclusive date expressed as Unix
-// epoch time for the given temporal shard.
-func (ll List) GetTemporalShardEndExlusive(logID string) float64 {
-	for _, group := range ll {
-		if shard, found := group[logID]; found {
-			return float64(shard.EndExclusive.Unix())
-		}
-	}
 	return float64(0)
 }
 

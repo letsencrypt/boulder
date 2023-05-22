@@ -88,6 +88,14 @@ type result struct {
 // the same operator. As such, it enforces Google's current CT Policy, which
 // requires that certs have two SCTs from logs run by different operators.
 func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration time.Time) (core.SCTDERs, error) {
+	for op, group := range ctp.sctLogs {
+		groupSize := ctp.sctLogs.GetGroupSize(op)
+		ctp.opGroupSize.WithLabelValues(op).Set(groupSize)
+		for _, log := range group {
+			ctp.shardExpiryTimestamp.WithLabelValues(op, log.Name).Set(float64(log.EndExclusive.Unix()))
+		}
+	}
+
 	// We'll cancel this sub-context when we have the two SCTs we need, to cause
 	// any other ongoing submission attempts to quit.
 	subCtx, cancel := context.WithCancel(ctx)
@@ -130,16 +138,6 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	// we're kicking off, so that they're all guaranteed to be able to write to
 	// it and exit without blocking and leaking.
 	results := make(chan result, len(ctp.sctLogs))
-
-	// Increment various prometheus metrics.
-	for i, group := range ctp.sctLogs {
-		groupSize := ctp.sctLogs.GetGroupSize(i)
-		ctp.opGroupSize.WithLabelValues(i).Set(groupSize)
-		for _, log := range group {
-			shardExpiry := ctp.sctLogs.GetTemporalShardEndExlusive(log.Name)
-			ctp.shardExpiryTimestamp.WithLabelValues(i, log.Name).Set(shardExpiry)
-		}
-	}
 
 	// Kick off a collection of goroutines to try to submit the precert to each
 	// log operator group. Randomize the order of the groups so that we're not
