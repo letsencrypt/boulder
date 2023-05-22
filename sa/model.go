@@ -492,7 +492,7 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 		} else if parsedUrl.Port() != "80" && parsedUrl.Port() != "443" {
 			return fmt.Errorf("only ports 80/tcp and 443/tcp are allowed in URL %q", vr.URL)
 		} else {
-			// If :80 or :443 were embeded in the URL field
+			// If :80 or :443 were embedded in the URL field
 			// e.g. '"url":"https://example.com:443"'
 			vr.Port = parsedUrl.Port()
 		}
