@@ -189,12 +189,17 @@ func TestRetryBackoff(t *testing.T) {
 	base := time.Minute
 	max := 10 * time.Minute
 
+	backoff := RetryBackoff(0, base, max, factor)
+	assertBetween(float64(backoff), 0, 0)
+
 	expected := base
-	backoff := RetryBackoff(1, base, max, factor)
+	backoff = RetryBackoff(1, base, max, factor)
 	assertBetween(float64(backoff), float64(expected)*0.8, float64(expected)*1.2)
+
 	expected = time.Second * 90
 	backoff = RetryBackoff(2, base, max, factor)
 	assertBetween(float64(backoff), float64(expected)*0.8, float64(expected)*1.2)
+
 	expected = time.Minute * 10
 	// should be truncated
 	backoff = RetryBackoff(7, base, max, factor)
