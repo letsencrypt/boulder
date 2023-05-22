@@ -227,7 +227,7 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 // records, and a string indicating the name at which the CAA records allowing
 // issuance were found (if any -- since finding no records at all allows
 // issuance).
-func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool, params *caaParams) (valid bool, presentAt string) {
+func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool, params *caaParams) (bool, string) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.metrics.caaCounter.WithLabelValues("no records").Inc()
