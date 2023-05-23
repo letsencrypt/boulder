@@ -364,6 +364,13 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		"OperB": {
 			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
 		},
+	}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
 	}, nil, nil, 0, log, metrics.NoopRegisterer)
 
 	ra := NewRegistrationAuthorityImpl(
@@ -3302,6 +3309,13 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	defer cleanup()
 
 	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
+	}, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
 		},
