@@ -357,14 +357,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		Status:    string(core.StatusValid),
 	})
 
-	ctp := ctpolicy.New(&mocks.PublisherClient{}, loglist.List{
-		"OperA": {
-			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
-		},
-		"OperB": {
-			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
-		},
-	}, loglist.List{
+	ctp := ctpolicy.New(&mocks.PublisherClient{}, nil, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
 		},
@@ -3308,14 +3301,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	_, ssa, ra, _, cleanup := initAuthorities(t)
 	defer cleanup()
 
-	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, loglist.List{
-		"OperA": {
-			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
-		},
-		"OperB": {
-			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
-		},
-	}, loglist.List{
+	ra.ctpolicy = ctpolicy.New(&timeoutPub{}, nil, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
 		},

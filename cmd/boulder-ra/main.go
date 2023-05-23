@@ -199,6 +199,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to load final logs")
 
 	ctp = ctpolicy.New(pubc, allLogs, sctLogs, infoLogs, finalLogs, c.RA.CTLogs.Stagger.Duration, logger, scope)
+	ctp.ExposeLoglistMetrics()
 
 	// Baseline Requirements v1.8.1 section 4.2.1: "any reused data, document,
 	// or completed validation MUST be obtained no more than 398 days prior

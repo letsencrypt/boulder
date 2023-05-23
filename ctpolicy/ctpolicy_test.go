@@ -111,7 +111,7 @@ func TestGetSCTs(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctp := New(tc.mock, tc.groups, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+			ctp := New(tc.mock, nil, tc.groups, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 			ret, err := ctp.GetSCTs(tc.ctx, []byte{0}, time.Time{})
 			if tc.result != nil {
 				test.AssertDeepEquals(t, ret, tc.result)
@@ -139,7 +139,7 @@ func (mp *mockFailOnePub) SubmitToSingleCTWithResult(_ context.Context, req *pub
 }
 
 func TestGetSCTsMetrics(t *testing.T) {
-	ctp := New(&mockFailOnePub{badURL: "UrlA1"}, loglist.List{
+	ctp := New(&mockFailOnePub{badURL: "UrlA1"}, nil, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
 		},
@@ -158,7 +158,7 @@ func TestGetSCTsMetrics(t *testing.T) {
 
 func TestGetSCTsFailMetrics(t *testing.T) {
 	// Ensure the proper metrics are incremented when GetSCTs fails.
-	ctp := New(&mockFailOnePub{badURL: "UrlA1"}, loglist.List{
+	ctp := New(&mockFailOnePub{badURL: "UrlA1"}, nil, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
 		},
@@ -172,7 +172,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
-	ctp = New(&mockSlowPub{}, loglist.List{
+	ctp = New(&mockSlowPub{}, nil, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
 		},
@@ -184,7 +184,7 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"url": "UrlA1", "result": failed}, 1)
 }
 
-func TestCTOpGroupMetric(t *testing.T) {
+func TestLogListMetrics(t *testing.T) {
 	// Multiple operator groups with configured logs.
 	ctp := New(&mockPub{}, loglist.List{
 		"OperA": {
@@ -197,12 +197,11 @@ func TestCTOpGroupMetric(t *testing.T) {
 		"OperC": {
 			"LogC1": {Url: "UrlC1", Key: "KeyC1"},
 		},
-	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
-	test.AssertNotError(t, err, "GetSCTs failed")
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA"}, 2)
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB"}, 1)
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperC"}, 1)
+	}, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	ctp.ExposeLoglistMetrics()
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA", "source": "allLogs"}, 2)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB", "source": "allLogs"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperC", "source": "allLogs"}, 1)
 
 	// Multiple operator groups, no configured logs in one group
 	ctp = New(&mockPub{}, loglist.List{
@@ -214,39 +213,50 @@ func TestCTOpGroupMetric(t *testing.T) {
 			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
 		},
 		"OperC": {},
+	}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {},
+		"OperC": {
+			"LogC1": {Url: "UrlC1", Key: "KeyC1"},
+		},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	_, err = ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
-	test.AssertNotError(t, err, "GetSCTs failed")
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA"}, 2)
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB"}, 1)
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperC"}, 0)
+	ctp.ExposeLoglistMetrics()
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA", "source": "allLogs"}, 2)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB", "source": "allLogs"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperC", "source": "allLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA", "source": "sctLogs"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB", "source": "sctLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperC", "source": "sctLogs"}, 1)
 
 	// Multiple operator groups with no configured logs.
 	ctp = New(&mockPub{}, loglist.List{
 		"OperA": {},
 		"OperB": {},
+	}, loglist.List{
+		"OperA": {},
+		"OperB": {},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	_, err = ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
-	test.AssertError(t, err, "GetSCTs failed")
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA"}, 0)
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB"}, 0)
+	ctp.ExposeLoglistMetrics()
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA", "source": "allLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB", "source": "allLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA", "source": "sctLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperB", "source": "sctLogs"}, 0)
 
 	// Single operator group with no configured logs.
 	ctp = New(&mockPub{}, loglist.List{
 		"OperA": {},
-	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	_, err = ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
-	test.AssertError(t, err, "GetSCTs failed")
-	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA"}, 0)
-}
+	}, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	ctp.ExposeLoglistMetrics()
+	test.AssertMetricWithLabelsEquals(t, ctp.opGroupSize, prometheus.Labels{"operator": "OperA", "source": "allLogs"}, 0)
 
-func TestCTEndExclusiveMetric(t *testing.T) {
 	fc := clock.NewFake()
 	Tomorrow := fc.Now().Add(24 * time.Hour)
 	NextWeek := fc.Now().Add(7 * 24 * time.Hour)
 
 	// Multiple operator groups with configured logs.
-	ctp := New(&mockPub{}, loglist.List{
+	ctp = New(&mockPub{}, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1", Name: "LogA1", EndExclusive: Tomorrow},
 			"LogA2": {Url: "UrlA2", Key: "KeyA2", Name: "LogA2", EndExclusive: NextWeek},
@@ -254,9 +264,8 @@ func TestCTEndExclusiveMetric(t *testing.T) {
 		"OperB": {
 			"LogB1": {Url: "UrlB1", Key: "KeyB1", Name: "LogB1", EndExclusive: Tomorrow},
 		},
-	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	_, err := ctp.GetSCTs(context.Background(), []byte{0}, time.Time{})
-	test.AssertNotError(t, err, "GetSCTs failed")
+	}, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	ctp.ExposeLoglistMetrics()
 	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperA", "logID": "LogA1"}, 86400)
 	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperA", "logID": "LogA2"}, 604800)
 	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperB", "logID": "LogB1"}, 86400)

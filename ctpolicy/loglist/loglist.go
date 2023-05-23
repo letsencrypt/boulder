@@ -288,17 +288,6 @@ func (ll List) Permute() []string {
 	return result
 }
 
-// GetGroupSize returns the number of logs managed by provided CT operator group
-// as a float64 for prometheus.
-func (ll List) GetGroupSize(operator string) float64 {
-	for op, group := range ll {
-		if op == operator {
-			return float64(len(group))
-		}
-	}
-	return float64(0)
-}
-
 // PickOne returns the URI and Public Key of a single randomly-selected log
 // which is run by the given operator and whose temporal interval includes the
 // given expiry time. It returns an error if no such log can be found.
