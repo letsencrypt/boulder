@@ -98,7 +98,7 @@ services:
         ipv4_address: 10.33.33.3
 
   bconsul:
-    image: hashicorp/consul:1.13.1
+    image: hashicorp/consul:1.14.2
     volumes:
      - ./test/:/test/:cached
     networks:
