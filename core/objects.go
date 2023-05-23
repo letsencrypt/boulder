@@ -125,7 +125,7 @@ type ValidationRecord struct {
 	URL string `json:"url,omitempty"`
 
 	// Shared
-	Hostname          string   `json:"hostname"`
+	Hostname          string   `json:"hostname,omitempty"`
 	Port              string   `json:"port,omitempty"`
 	AddressesResolved []net.IP `json:"addressesResolved,omitempty"`
 	AddressUsed       net.IP   `json:"addressUsed,omitempty"`

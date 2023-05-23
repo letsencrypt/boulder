@@ -1,6 +1,20 @@
-client_addr = "10.55.55.10"
+client_addr = "0.0.0.0"
 bind_addr   = "10.55.55.10"
 log_level   = "INFO"
+// When set, uses a subset of the agent's TLS configuration (key_file,
+// cert_file, ca_file, ca_path, and server_name) to set up the client for HTTP
+// or gRPC health checks. This allows services requiring 2-way TLS to be checked
+// using the agent's credentials.
+enable_agent_tls_for_checks = true
+tls {
+  defaults {
+    ca_file         = "test/grpc-creds/minica.pem"
+    ca_path         = "test/grpc-creds/minica-key.pem"
+    cert_file       = "test/grpc-creds/consul.boulder/cert.pem"
+    key_file        = "test/grpc-creds/consul.boulder/key.pem"
+    verify_incoming = false
+  }
+}
 ui_config {
   enabled = true
 }
@@ -218,6 +232,15 @@ services {
   address = "10.77.77.77"
   port    = 9095
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  check {
+    id              = "sa-a-grpc"
+    name            = "sa-a-grpc"
+    grpc            = "10.77.77.77:9095"
+    grpc_use_tls    = true
+    tls_server_name = "sa.boulder"
+    tls_skip_verify = false
+    interval        = "5s"
+  }
 }
 
 services {
@@ -226,6 +249,15 @@ services {
   address = "10.88.88.88"
   port    = 9095
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  check {
+    id              = "sa-b-grpc"
+    name            = "sa-b-grpc"
+    grpc            = "10.88.88.88:9095"
+    grpc_use_tls    = true
+    tls_server_name = "sa.boulder"
+    tls_skip_verify = false
+    interval        = "5s"
+  }
 }
 
 services {

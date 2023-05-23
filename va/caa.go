@@ -63,31 +63,48 @@ func (va *ValidationAuthorityImpl) checkCAA(
 		return probs.ServerInternal("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
-	present, valid, response, err := va.checkCAARecords(ctx, identifier, params)
+	foundAt, valid, response, err := va.checkCAARecords(ctx, identifier, params)
 	if err != nil {
 		return probs.DNS(err.Error())
 	}
 
-	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t] Response=%q",
-		identifier.Value, present, params.accountURIID, params.validationMethod, valid, response)
+	va.log.AuditInfof("Checked CAA records for %s, [Present: %t, Account ID: %d, Challenge: %s, Valid for issuance: %t, Found at: %q] Response=%q",
+		identifier.Value, foundAt != "", params.accountURIID, params.validationMethod, valid, foundAt, response)
 	if !valid {
-		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", identifier.Value))
+		return probs.CAA(fmt.Sprintf("CAA record for %s prevents issuance", foundAt))
 	}
 	return nil
 }
 
-// CAASet consists of filtered CAA records
-type CAASet struct {
-	Issue     []*dns.CAA
-	Issuewild []*dns.CAA
-	Iodef     []*dns.CAA
-	Unknown   []*dns.CAA
+// caaResult represents the result of querying CAA for a single name. It breaks
+// the CAA resource records down by category, keeping only the issue and
+// issuewild records. It also records whether any unrecognized RRs were marked
+// critical, and stores the raw response text for logging and debugging.
+type caaResult struct {
+	name            string
+	present         bool
+	issue           []*dns.CAA
+	issuewild       []*dns.CAA
+	criticalUnknown bool
+	dig             string
+	err             error
 }
 
-// returns true if any CAA records have unknown tag properties and are flagged critical.
-func (caaSet CAASet) criticalUnknown() bool {
-	if len(caaSet.Unknown) > 0 {
-		for _, caaRecord := range caaSet.Unknown {
+// filterCAA processes a set of CAA resource records and picks out the only bits
+// we care about. It returns two slices of CAA records, representing the issue
+// records and the issuewild records respectively, and a boolean indicating
+// whether any unrecognized records had the critical bit set.
+func filterCAA(rrs []*dns.CAA) ([]*dns.CAA, []*dns.CAA, bool) {
+	var issue, issuewild []*dns.CAA
+	var criticalUnknown bool
+
+	for _, caaRecord := range rrs {
+		switch strings.ToLower(caaRecord.Tag) {
+		case "issue":
+			issue = append(issue, caaRecord)
+		case "issuewild":
+			issuewild = append(issuewild, caaRecord)
+		default:
 			// The critical flag is the bit with significance 128. However, many CAA
 			// record users have misinterpreted the RFC and concluded that the bit
 			// with significance 1 is the critical bit. This is sufficiently
@@ -95,53 +112,18 @@ func (caaSet CAASet) criticalUnknown() bool {
 			// the critical bit. The remaining bits are 0/ignore as proscribed by the
 			// RFC.
 			if (caaRecord.Flag & (128 | 1)) != 0 {
-				return true
+				criticalUnknown = true
 			}
 		}
 	}
 
-	return false
+	return issue, issuewild, criticalUnknown
 }
 
-// Filter CAA records by property
-func newCAASet(CAAs []*dns.CAA) *CAASet {
-	var filtered CAASet
-
-	for _, caaRecord := range CAAs {
-		switch strings.ToLower(caaRecord.Tag) {
-		case "issue":
-			filtered.Issue = append(filtered.Issue, caaRecord)
-		case "issuewild":
-			filtered.Issuewild = append(filtered.Issuewild, caaRecord)
-		case "iodef":
-			filtered.Iodef = append(filtered.Iodef, caaRecord)
-		default:
-			filtered.Unknown = append(filtered.Unknown, caaRecord)
-		}
-	}
-
-	return &filtered
-}
-
-type caaResult struct {
-	records  []*dns.CAA
-	response string
-	err      error
-}
-
-func parseResults(results []caaResult) (*CAASet, string, error) {
-	// Return first result
-	for _, res := range results {
-		if res.err != nil {
-			return nil, "", res.err
-		}
-		if len(res.records) > 0 {
-			return newCAASet(res.records), res.response, nil
-		}
-	}
-	return nil, "", nil
-}
-
+// parallelCAALookup makes parallel requests for the target name and all parent
+// names. It returns a slice of CAA results, with the results from querying the
+// FQDN in the zeroth index, and the results from querying the TLD in the last
+// index.
 func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name string) []caaResult {
 	labels := strings.Split(name, ".")
 	results := make([]caaResult, len(labels))
@@ -151,7 +133,13 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 		// Start the concurrent DNS lookup.
 		wg.Add(1)
 		go func(name string, r *caaResult) {
-			r.records, r.response, r.err = va.dnsClient.LookupCAA(ctx, name)
+			r.name = name
+			var records []*dns.CAA
+			records, r.dig, r.err = va.dnsClient.LookupCAA(ctx, name)
+			if len(records) > 0 {
+				r.present = true
+			}
+			r.issue, r.issuewild, r.criticalUnknown = filterCAA(records)
 			wg.Done()
 		}(strings.Join(labels[i:], "."), &results[i])
 	}
@@ -160,7 +148,31 @@ func (va *ValidationAuthorityImpl) parallelCAALookup(ctx context.Context, name s
 	return results
 }
 
-func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname string) (*CAASet, string, error) {
+// selectCAA picks the relevant CAA resource record set to be used, i.e. the set
+// for the "closest parent" of the FQDN in question, including the domain
+// itself. If we encountered an error for a lookup before we found a successful,
+// non-empty response, assume there could have been real records hidden by it,
+// and return that error.
+func selectCAA(rrs []caaResult) (*caaResult, error) {
+	for _, res := range rrs {
+		if res.err != nil {
+			return nil, res.err
+		}
+		if res.present {
+			return &res, nil
+		}
+	}
+	return nil, nil
+}
+
+// getCAA returns the CAA Relevant Resource Set[1] for the given FQDN, i.e. the
+// first CAA RRSet found by traversing upwards from the FQDN by removing the
+// leftmost label. It returns nil if no RRSet is found on any parent of the
+// given FQDN. The returned result also contains the raw CAA response, and an
+// error if one is encountered while querying or parsing the records.
+//
+// [1]: https://datatracker.ietf.org/doc/html/rfc8659#name-relevant-resource-record-se
+func (va *ValidationAuthorityImpl) getCAA(ctx context.Context, hostname string) (*caaResult, error) {
 	hostname = strings.TrimRight(hostname, ".")
 
 	// See RFC 6844 "Certification Authority Processing" for pseudocode, as
@@ -173,15 +185,15 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 	//
 	// We depend on our resolver to snap CNAME and DNAME records.
 	results := va.parallelCAALookup(ctx, hostname)
-	return parseResults(results)
+	return selectCAA(results)
 }
 
 // checkCAARecords fetches the CAA records for the given identifier and then
 // validates them. If the identifier argument's value has a wildcard prefix then
 // the prefix is stripped and validation will be performed against the base
 // domain, honouring any issueWild CAA records encountered as appropriate.
-// checkCAARecords returns four values: the first is a bool indicating whether
-// CAA records were present after filtering for known/supported CAA tags. The
+// checkCAARecords returns four values: the first is a string indicating at
+// which name (i.e. FQDN or parent thereof) CAA records were found, if any. The
 // second is a bool indicating whether issuance for the identifier is valid. The
 // unmodified *dns.CAA records that were processed/filtered are returned as the
 // third argument. Any  errors encountered are returned as the fourth return
@@ -189,7 +201,7 @@ func (va *ValidationAuthorityImpl) getCAASet(ctx context.Context, hostname strin
 func (va *ValidationAuthorityImpl) checkCAARecords(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
-	params *caaParams) (bool, bool, string, error) {
+	params *caaParams) (string, bool, string, error) {
 	hostname := strings.ToLower(identifier.Value)
 	// If this is a wildcard name, remove the prefix
 	var wildcard bool
@@ -197,39 +209,44 @@ func (va *ValidationAuthorityImpl) checkCAARecords(
 		hostname = strings.TrimPrefix(identifier.Value, `*.`)
 		wildcard = true
 	}
-	caaSet, response, err := va.getCAASet(ctx, hostname)
+	caaSet, err := va.getCAA(ctx, hostname)
 	if err != nil {
-		return false, false, "", err
+		return "", false, "", err
 	}
-	present, valid := va.validateCAASet(caaSet, wildcard, params)
-	return present, valid, response, nil
+	raw := ""
+	if caaSet != nil {
+		raw = caaSet.dig
+	}
+	valid, foundAt := va.validateCAA(caaSet, wildcard, params)
+	return foundAt, valid, raw, nil
 }
 
-// validateCAASet checks a provided *CAASet. When the wildcard argument is true
-// this means the CAASet's issueWild records must be validated as well. This
-// function returns two booleans: the first indicates whether the CAASet was
-// empty, the second indicates whether the CAASet is valid for issuance to
-// proceed.
-func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool, params *caaParams) (present, valid bool) {
+// validateCAA checks a provided *caaResult. When the wildcard argument is true
+// this means the issueWild records must be validated as well. This function
+// returns a boolean indicating whether issuance is allowed by this set of CAA
+// records, and a string indicating the name at which the CAA records allowing
+// issuance were found (if any -- since finding no records at all allows
+// issuance).
+func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool, params *caaParams) (bool, string) {
 	if caaSet == nil {
 		// No CAA records found, can issue
 		va.metrics.caaCounter.WithLabelValues("no records").Inc()
-		return false, true
+		return true, ""
 	}
 
-	if caaSet.criticalUnknown() {
+	if caaSet.criticalUnknown {
 		// Contains unknown critical directives
 		va.metrics.caaCounter.WithLabelValues("record with unknown critical directive").Inc()
-		return true, false
+		return false, caaSet.name
 	}
 
-	if len(caaSet.Issue) == 0 && !wildcard {
+	if len(caaSet.issue) == 0 && !wildcard {
 		// Although CAA records exist, none of them pertain to issuance in this case.
 		// (e.g. there is only an issuewild directive, but we are checking for a
 		// non-wildcard identifier, or there is only an iodef or non-critical unknown
 		// directive.)
 		va.metrics.caaCounter.WithLabelValues("no relevant records").Inc()
-		return true, true
+		return true, caaSet.name
 	}
 
 	// Per RFC 8659 Section 5.3:
@@ -241,9 +258,9 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 	// So we default to checking the `caaSet.Issue` records and only check
 	// `caaSet.Issuewild` when `wildcard` is true and there are 1 or more
 	// `Issuewild` records.
-	records := caaSet.Issue
-	if wildcard && len(caaSet.Issuewild) > 0 {
-		records = caaSet.Issuewild
+	records := caaSet.issue
+	if wildcard && len(caaSet.issuewild) > 0 {
+		records = caaSet.issuewild
 	}
 
 	// There are CAA records pertaining to issuance in our case. Note that this
@@ -273,12 +290,12 @@ func (va *ValidationAuthorityImpl) validateCAASet(caaSet *CAASet, wildcard bool,
 		}
 
 		va.metrics.caaCounter.WithLabelValues("authorized").Inc()
-		return true, true
+		return true, caaSet.name
 	}
 
 	// The list of authorized issuers is non-empty, but we are not in it. Fail.
 	va.metrics.caaCounter.WithLabelValues("unauthorized").Inc()
-	return true, false
+	return false, caaSet.name
 }
 
 // parseCAARecord extracts the domain and parameters (if any) from a

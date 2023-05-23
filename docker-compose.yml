@@ -104,6 +104,10 @@ services:
     networks:
       consulnet:
         ipv4_address: 10.55.55.10
+      bluenet:
+        ipv4_address: 10.77.77.10
+      rednet:
+        ipv4_address: 10.88.88.10
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
 
   netaccess:
@@ -134,6 +138,7 @@ networks:
       driver: default
       config:
         - subnet: 10.77.77.0/24
+
   rednet:
     driver: bridge
     ipam:

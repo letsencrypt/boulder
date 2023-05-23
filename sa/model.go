@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -450,6 +451,56 @@ type authzModel struct {
 	ValidationRecord []byte     `db:"validationRecord"`
 }
 
+// rehydrateHostPort mutates a validation record. If the URL in the validation
+// record cannot be parsed, an error will be returned. If the Hostname and Port
+// fields already exist in the validation record, they will be retained.
+// Otherwise, the Hostname and Port will be derived and set from the URL field
+// of the validation record.
+func rehydrateHostPort(vr *core.ValidationRecord) error {
+	if vr.URL == "" {
+		return fmt.Errorf("rehydrating validation record, URL field cannot be empty")
+	}
+
+	parsedUrl, err := url.Parse(vr.URL)
+	if err != nil {
+		return fmt.Errorf("parsing validation record URL %q: %w", vr.URL, err)
+	}
+
+	if vr.Hostname == "" {
+		hostname := parsedUrl.Hostname()
+		if hostname == "" {
+			return fmt.Errorf("hostname missing in URL %q", vr.URL)
+		}
+		vr.Hostname = hostname
+	}
+
+	if vr.Port == "" {
+		// CABF BRs section 1.6.1: Authorized Ports: One of the following ports: 80
+		// (http), 443 (https)
+		if parsedUrl.Port() == "" {
+			// If there is only a scheme, then we'll determine the appropriate port.
+			switch parsedUrl.Scheme {
+			case "https":
+				vr.Port = "443"
+			case "http":
+				vr.Port = "80"
+			default:
+				// This should never happen since the VA should have already
+				// checked the scheme.
+				return fmt.Errorf("unknown scheme %q in URL %q", parsedUrl.Scheme, vr.URL)
+			}
+		} else if parsedUrl.Port() == "80" || parsedUrl.Port() == "443" {
+			// If :80 or :443 were embedded in the URL field
+			// e.g. '"url":"https://example.com:443"'
+			vr.Port = parsedUrl.Port()
+		} else {
+			return fmt.Errorf("only ports 80/tcp and 443/tcp are allowed in URL %q", vr.URL)
+		}
+	}
+
+	return nil
+}
+
 // SelectAuthzsMatchingIssuance looks for a set of authzs that would have
 // authorized a given issuance that is known to have occurred. The returned
 // authzs will all belong to the given regID, will have potentially been valid
@@ -581,6 +632,12 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 			// can marshal them to JSON.
 			records := make([]core.ValidationRecord, len(chall.Validationrecords))
 			for i, recordPB := range chall.Validationrecords {
+				if chall.Type == string(core.ChallengeTypeHTTP01) {
+					// Remove these fields because they can be rehydrated later
+					// on from the URL field.
+					recordPB.Hostname = ""
+					recordPB.Port = ""
+				}
 				var err error
 				records[i], err = grpc.PBToValidationRecord(recordPB)
 				if err != nil {
@@ -616,7 +673,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 }
 
 // populateAttemptedFields takes a challenge and populates it with the validation fields status,
-// validation records, and error (the latter only if the validation failed) from a authzModel.
+// validation records, and error (the latter only if the validation failed) from an authzModel.
 func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	if len(am.ValidationError) != 0 {
 		// If the error is non-empty the challenge must be invalid.
@@ -647,6 +704,15 @@ func populateAttemptedFields(am authzModel, challenge *corepb.Challenge) error {
 	}
 	challenge.Validationrecords = make([]*corepb.ValidationRecord, len(records))
 	for i, r := range records {
+		// Fixes implicit memory aliasing in for loop so we can deference r
+		// later on for rehydrateHostPort.
+		r := r
+		if challenge.Type == string(core.ChallengeTypeHTTP01) {
+			err := rehydrateHostPort(&r)
+			if err != nil {
+				return err
+			}
+		}
 		challenge.Validationrecords[i], err = grpc.ValidationRecordToPB(r)
 		if err != nil {
 			return err
