@@ -413,16 +413,16 @@ func TestSetupHTTPValidation(t *testing.T) {
 			Name:     "target with no IPs",
 			InputURL: httpInputURL,
 			InputTarget: &httpValidationTarget{
-				host: "foobar",
+				host: "ipv4.and.ipv6.localhost",
 				port: va.httpPort,
 				path: "idk",
 			},
 			ExpectedRecord: core.ValidationRecord{
 				URL:      "http://ipv4.and.ipv6.localhost/yellow/brick/road",
-				Hostname: "foobar",
+				Hostname: "ipv4.and.ipv6.localhost",
 				Port:     strconv.Itoa(va.httpPort),
 			},
-			ExpectedError: fmt.Errorf(`host "foobar" has no IP addresses remaining to use`),
+			ExpectedError: fmt.Errorf(`host "ipv4.and.ipv6.localhost" has no IP addresses remaining to use`),
 		},
 		{
 			Name:        "HTTP input req",
@@ -815,7 +815,7 @@ func TestFetchHTTP(t *testing.T) {
 			ExpectedRecords: nil,
 		},
 		{
-			Name: "Timeout for host",
+			Name: "Timeout for host with standard ACME allowed port",
 			Host: "example.com",
 			Path: "/timeout",
 			ExpectedProblem: probs.Connection(
@@ -826,6 +826,23 @@ func TestFetchHTTP(t *testing.T) {
 					Hostname:          "example.com",
 					Port:              strconv.Itoa(httpPort),
 					URL:               "http://example.com/timeout",
+					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
+					AddressUsed:       net.ParseIP("127.0.0.1"),
+				},
+			},
+		},
+		{
+			Name: "Connecting to bad port",
+			Host: "example.com:" + strconv.Itoa(httpPort),
+			Path: "/timeout",
+			ExpectedProblem: probs.Connection(
+				"127.0.0.1: Fetching http://example.com:" + strconv.Itoa(httpPort) + "/timeout: " +
+					"Error getting validation data"),
+			ExpectedRecords: []core.ValidationRecord{
+				{
+					Hostname:          "example.com:" + strconv.Itoa(httpPort),
+					Port:              strconv.Itoa(httpPort),
+					URL:               "http://example.com:" + strconv.Itoa(httpPort) + "/timeout",
 					AddressesResolved: []net.IP{net.ParseIP("127.0.0.1")},
 					AddressUsed:       net.ParseIP("127.0.0.1"),
 				},

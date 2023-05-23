@@ -2354,9 +2354,9 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:    "aaa",
-				Port:        "123",
-				Url:         "http://asd",
+				Hostname:    "example.com",
+				Port:        "80",
+				Url:         "http://example.com",
 				AddressUsed: ip,
 			},
 		},
@@ -2373,6 +2373,8 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, time.Unix(0, dbVer.Expires).UTC(), fc.Now().Add(time.Hour*2).UTC())
 	test.AssertEquals(t, dbVer.Challenges[0].Status, string(core.StatusValid))
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
 	test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), fc.Now().UTC())
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
@@ -2382,9 +2384,9 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		Id: authzID,
 		ValidationRecords: []*corepb.ValidationRecord{
 			{
-				Hostname:    "aaa",
-				Port:        "123",
-				Url:         "http://asd",
+				Hostname:    "example.com",
+				Port:        "80",
+				Url:         "http://example.com",
 				AddressUsed: ip,
 			},
 		},
@@ -2400,7 +2402,124 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	test.AssertEquals(t, dbVer.Status, string(core.StatusInvalid))
 	test.AssertEquals(t, dbVer.Challenges[0].Status, string(core.StatusInvalid))
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
+	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
 	test.AssertDeepEquals(t, dbVer.Challenges[0].Error, prob)
+}
+
+func TestRehydrateHostPort(t *testing.T) {
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
+
+	expires := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	attemptedAt := fc.Now().UnixNano()
+	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
+
+	// Implicit good port with good scheme
+	authzID := createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
+	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: authzID,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    "example.com",
+				Port:        "80",
+				Url:         "http://example.com",
+				AddressUsed: ip,
+			},
+		},
+		Status:      string(core.StatusValid),
+		Expires:     expires,
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: attemptedAt,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "rehydration failed in some fun and interesting way")
+
+	// Explicit good port with good scheme
+	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: authzID,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    "example.com",
+				Port:        "80",
+				Url:         "http://example.com:80",
+				AddressUsed: ip,
+			},
+		},
+		Status:      string(core.StatusValid),
+		Expires:     expires,
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: attemptedAt,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertNotError(t, err, "rehydration failed in some fun and interesting way")
+
+	// Explicit bad port with good scheme
+	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: authzID,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    "example.com",
+				Port:        "444",
+				Url:         "http://example.com:444",
+				AddressUsed: ip,
+			},
+		},
+		Status:      string(core.StatusValid),
+		Expires:     expires,
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: attemptedAt,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertError(t, err, "only ports 80/tcp and 443/tcp are allowed in URL \"http://example.com:444\"")
+
+	// Explicit bad port with bad scheme
+	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: authzID,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    "example.com",
+				Port:        "80",
+				Url:         "httpx://example.com",
+				AddressUsed: ip,
+			},
+		},
+		Status:      string(core.StatusValid),
+		Expires:     expires,
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: attemptedAt,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertError(t, err, "unknown scheme \"httpx\" in URL \"httpx://example.com\"")
+
+	// Missing URL field
+	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
+	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
+		Id: authzID,
+		ValidationRecords: []*corepb.ValidationRecord{
+			{
+				Hostname:    "example.com",
+				Port:        "80",
+				AddressUsed: ip,
+			},
+		},
+		Status:      string(core.StatusValid),
+		Expires:     expires,
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: attemptedAt,
+	})
+	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
+	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
+	test.AssertError(t, err, "URL field cannot be empty")
 }
 
 func TestGetPendingAuthorization2(t *testing.T) {
