@@ -256,7 +256,7 @@ func TestLogListMetrics(t *testing.T) {
 	NextWeek := fc.Now().Add(7 * 24 * time.Hour)
 
 	// Multiple operator groups with configured logs.
-	ctp = New(&mockPub{}, loglist.List{
+	ctp = New(&mockPub{}, nil, loglist.List{
 		"OperA": {
 			"LogA1": {Url: "UrlA1", Key: "KeyA1", Name: "LogA1", EndExclusive: Tomorrow},
 			"LogA2": {Url: "UrlA2", Key: "KeyA2", Name: "LogA2", EndExclusive: NextWeek},
@@ -264,7 +264,7 @@ func TestLogListMetrics(t *testing.T) {
 		"OperB": {
 			"LogB1": {Url: "UrlB1", Key: "KeyB1", Name: "LogB1", EndExclusive: Tomorrow},
 		},
-	}, nil, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
 	ctp.ExposeLoglistMetrics()
 	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperA", "logID": "LogA1"}, 86400)
 	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryTimestamp, prometheus.Labels{"operator": "OperA", "logID": "LogA2"}, 604800)
