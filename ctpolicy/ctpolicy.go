@@ -30,8 +30,8 @@ type CTPolicy struct {
 	stagger              time.Duration
 	log                  blog.Logger
 	winnerCounter        *prometheus.CounterVec
-	opGroupSize          *prometheus.GaugeVec
-	shardExpiryTimestamp *prometheus.GaugeVec
+	operatorGroupsGauge *prometheus.GaugeVec
+	shardExpiryGauge    *prometheus.GaugeVec
 }
 
 // New creates a new CTPolicy struct
