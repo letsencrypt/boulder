@@ -425,6 +425,12 @@ bracewel.net.	0	IN	CAA	1 issue "letsencrypt.org"
 	expectedResp = ""
 	test.AssertEquals(t, resp, expectedResp)
 
+	caas, resp, err = obj.LookupCAA(context.Background(), "nxdomain.letsencrypt.org")
+	test.AssertNotError(t, err, "CAA lookup failed")
+	test.Assert(t, len(caas) == 0, "Shouldn't have CAA records")
+	expectedResp = ""
+	test.AssertEquals(t, resp, expectedResp)
+
 	caas, resp, err = obj.LookupCAA(context.Background(), "cname.example.com")
 	test.AssertNotError(t, err, "CAA lookup failed")
 	test.Assert(t, len(caas) > 0, "Should follow CNAME to find CAA")
