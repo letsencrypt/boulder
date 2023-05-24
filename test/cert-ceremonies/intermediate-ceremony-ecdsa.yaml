@@ -16,7 +16,6 @@ certificate-profile:
     country: US
     not-before: 2020-01-01 12:00:00
     not-after: 2040-01-01 12:00:00
-    ocsp-url: http://example.com/ocsp
     crl-url:  http://example.com/crl
     issuer-url:  http://example.com/root
     policies:
