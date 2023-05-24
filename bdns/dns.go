@@ -529,6 +529,16 @@ func (dnsClient *impl) LookupHost(ctx context.Context, hostname string) ([]net.I
 func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.CAA, string, error) {
 	dnsType := dns.TypeCAA
 	r, err := dnsClient.exchangeOne(ctx, hostname, dnsType)
+
+	// Special case: for CAA, treat NXDOMAIN as a successful response
+	// containing an empty set of records. This can come up in
+	// situations where records were provisioned for validation (e.g.
+	// TXT records for DNS-01 challenge) and then removed after
+	// validation but before CAA rechecking.
+	if err == nil && r.Rcode == dns.RcodeNameError {
+		return nil, "", nil
+	}
+
 	errWrap := wrapErr(dnsType, hostname, r, err)
 	if errWrap != nil {
 		return nil, "", errWrap
