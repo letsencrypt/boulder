@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -181,4 +182,81 @@ func TestGetSCTsFailMetrics(t *testing.T) {
 	test.AssertErrorIs(t, err, berrors.MissingSCTs)
 	test.AssertContains(t, err.Error(), context.DeadlineExceeded.Error())
 	test.AssertMetricWithLabelsEquals(t, ctp.winnerCounter, prometheus.Labels{"url": "UrlA1", "result": failed}, 1)
+}
+
+func TestLogListMetrics(t *testing.T) {
+	// Multiple operator groups with configured logs.
+	ctp := New(&mockPub{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+			"LogA2": {Url: "UrlA2", Key: "KeyA2"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
+		"OperC": {
+			"LogC1": {Url: "UrlC1", Key: "KeyC1"},
+		},
+	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperA", "source": "sctLogs"}, 2)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperB", "source": "sctLogs"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperC", "source": "sctLogs"}, 1)
+
+	// Multiple operator groups, no configured logs in one group
+	ctp = New(&mockPub{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+			"LogA2": {Url: "UrlA2", Key: "KeyA2"},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1"},
+		},
+		"OperC": {},
+	}, nil, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1"},
+		},
+		"OperB": {},
+		"OperC": {
+			"LogC1": {Url: "UrlC1", Key: "KeyC1"},
+		},
+	}, 0, blog.NewMock(), metrics.NoopRegisterer)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperA", "source": "sctLogs"}, 2)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperB", "source": "sctLogs"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperC", "source": "sctLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperA", "source": "finalLogs"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperB", "source": "finalLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperC", "source": "finalLogs"}, 1)
+
+	// Multiple operator groups with no configured logs.
+	ctp = New(&mockPub{}, loglist.List{
+		"OperA": {},
+		"OperB": {},
+	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperA", "source": "sctLogs"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperB", "source": "sctLogs"}, 0)
+
+	// Single operator group with no configured logs.
+	ctp = New(&mockPub{}, loglist.List{
+		"OperA": {},
+	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	test.AssertMetricWithLabelsEquals(t, ctp.operatorGroupsGauge, prometheus.Labels{"operator": "OperA", "source": "allLogs"}, 0)
+
+	fc := clock.NewFake()
+	Tomorrow := fc.Now().Add(24 * time.Hour)
+	NextWeek := fc.Now().Add(7 * 24 * time.Hour)
+
+	// Multiple operator groups with configured logs.
+	ctp = New(&mockPub{}, loglist.List{
+		"OperA": {
+			"LogA1": {Url: "UrlA1", Key: "KeyA1", Name: "LogA1", EndExclusive: Tomorrow},
+			"LogA2": {Url: "UrlA2", Key: "KeyA2", Name: "LogA2", EndExclusive: NextWeek},
+		},
+		"OperB": {
+			"LogB1": {Url: "UrlB1", Key: "KeyB1", Name: "LogB1", EndExclusive: Tomorrow},
+		},
+	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
+	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA1"}, 86400)
+	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA2"}, 604800)
+	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryGauge, prometheus.Labels{"operator": "OperB", "logID": "LogB1"}, 86400)
 }

@@ -22,13 +22,15 @@ const (
 // CTPolicy is used to hold information about SCTs required from various
 // groupings
 type CTPolicy struct {
-	pub           pubpb.PublisherClient
-	sctLogs       loglist.List
-	infoLogs      loglist.List
-	finalLogs     loglist.List
-	stagger       time.Duration
-	log           blog.Logger
-	winnerCounter *prometheus.CounterVec
+	pub                 pubpb.PublisherClient
+	sctLogs             loglist.List
+	infoLogs            loglist.List
+	finalLogs           loglist.List
+	stagger             time.Duration
+	log                 blog.Logger
+	winnerCounter       *prometheus.CounterVec
+	operatorGroupsGauge *prometheus.GaugeVec
+	shardExpiryGauge    *prometheus.GaugeVec
 }
 
 // New creates a new CTPolicy struct
@@ -42,14 +44,55 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 	)
 	stats.MustRegister(winnerCounter)
 
+	operatorGroupsGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ct_operator_group_size_gauge",
+			Help: "Gauge for CT operators group size, by operator and log source (capable of providing SCT, informational logs, logs we submit final certs to).",
+		},
+		[]string{"operator", "source"},
+	)
+	stats.MustRegister(operatorGroupsGauge)
+
+	shardExpiryGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ct_shard_expiration_seconds",
+			Help: "CT shard end_exclusive field expressed as Unix epoch time, by operator and logID.",
+		},
+		[]string{"operator", "logID"},
+	)
+	stats.MustRegister(shardExpiryGauge)
+
+	for op, group := range sctLogs {
+		operatorGroupsGauge.WithLabelValues(op, "sctLogs").Set(float64(len(group)))
+
+		for _, log := range group {
+			if log.EndExclusive.IsZero() {
+				// Handles the case for non-temporally sharded logs too.
+				shardExpiryGauge.WithLabelValues(op, log.Name).Set(float64(0))
+			} else {
+				shardExpiryGauge.WithLabelValues(op, log.Name).Set(float64(log.EndExclusive.Unix()))
+			}
+		}
+	}
+
+	for op, group := range infoLogs {
+		operatorGroupsGauge.WithLabelValues(op, "infoLogs").Set(float64(len(group)))
+	}
+
+	for op, group := range finalLogs {
+		operatorGroupsGauge.WithLabelValues(op, "finalLogs").Set(float64(len(group)))
+	}
+
 	return &CTPolicy{
-		pub:           pub,
-		sctLogs:       sctLogs,
-		infoLogs:      infoLogs,
-		finalLogs:     finalLogs,
-		stagger:       stagger,
-		log:           log,
-		winnerCounter: winnerCounter,
+		pub:                 pub,
+		sctLogs:             sctLogs,
+		infoLogs:            infoLogs,
+		finalLogs:           finalLogs,
+		stagger:             stagger,
+		log:                 log,
+		winnerCounter:       winnerCounter,
+		operatorGroupsGauge: operatorGroupsGauge,
+		shardExpiryGauge:    shardExpiryGauge,
 	}
 }
 
