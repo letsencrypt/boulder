@@ -118,7 +118,7 @@ func AssertEquals(t *testing.T, one interface{}, two interface{}) {
 func AssertDeepEquals(t *testing.T, one interface{}, two interface{}) {
 	t.Helper()
 	if !reflect.DeepEqual(one, two) {
-		t.Fatalf("[%+v] !(deep)= [%+v]", one, two)
+		t.Fatalf("[%#v] !(deep)= [%#v]", one, two)
 	}
 }
 
