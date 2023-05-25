@@ -317,7 +317,3 @@ func (ll List) PickOne(operator string, expiry time.Time) (string, string, error
 	log := candidates[rand.Intn(len(candidates))]
 	return log.Url, log.Key, nil
 }
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
