@@ -171,12 +171,6 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 	// instead of the number of rows changed by the UPDATE.
 	conf.ClientFoundRows = true
 
-	// Ensures that MySQL/MariaDB warnings are treated as errors. This
-	// avoids a number of nasty edge conditions we could wander into.
-	// Common things this discovers includes places where data being sent
-	// had a different type than what is in the schema, strings being
-	// truncated, writing null to a NOT NULL column, and so on. See
-	// <https://dev.mysql.com/doc/refman/5.0/en/sql-mode.html#sql-mode-strict>.
 	if conf.Params == nil {
 		conf.Params = make(map[string]string)
 	}
@@ -196,6 +190,12 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 		}
 	}
 
+	// Ensures that MySQL/MariaDB warnings are treated as errors. This
+	// avoids a number of nasty edge conditions we could wander into.
+	// Common things this discovers includes places where data being sent
+	// had a different type than what is in the schema, strings being
+	// truncated, writing null to a NOT NULL column, and so on. See
+	// <https://dev.mysql.com/doc/refman/5.0/en/sql-mode.html#sql-mode-strict>.
 	setDefault("sql_mode", "'STRICT_ALL_TABLES'")
 
 	// If a read timeout is set, we set max_statement_time to 95% of that, and
