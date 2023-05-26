@@ -61,7 +61,7 @@ descriptions:
                          provided private key. Then adds the hash to the blocked keys
                          table. <priv-key-path> is expected to be the path to a PEM
                          formatted file containing an RSA or ECDSA private key.
-  email-clear			 Delete all instances of a given email from all accounts (slow).
+  clear-email			 Delete all instances of a given email from all accounts (slow).
 
 flags:
   all:
@@ -221,27 +221,29 @@ func (r *revoker) revokeSerialBatchFile(ctx context.Context, serialPath string, 
 }
 
 // clearEmailAddress clears the given email address from all accounts that have it.
-// Because it does not use an index to find the relevant accounts, it is very slow.
+// Finding relevant accounts will be very slow because it does not use an index.
 func (r *revoker) clearEmailAddress(ctx context.Context, email string) error {
-	r.log.AuditInfof("Searching database for accounts with email addresses matching %q in order to clear the email addresses", email)
+	r.log.AuditInfof("Scanning database for accounts with email addresses matching %q in order to clear the email addresses.", email)
 	regIDs, err := r.getRegIDsMatchingEmail(email)
 	if err != nil {
 		return err
 	}
 
 	failures := 0
-	r.log.Debugf("Found %d registration IDs matching email %q: %v", len(regIDs), email, regIDs)
+	r.log.Infof("Found %d registration IDs matching email %q.", len(regIDs), email, regIDs)
 	for _, regID := range regIDs {
 		err := sa.ClearEmail(r.dbMap, ctx, regID, email)
 		if err != nil {
 			// Log, but don't fail, because it took a long time to find the relevant registration IDs
 			// and we don't want to have to redo that work.
-			r.log.AuditErrf("failed to clear email %q for registration %d: %s", email, regID, err)
+			r.log.AuditErrf("failed to clear email %q for registration ID %d: %s", email, regID, err)
 			failures++
+		} else {
+			r.log.AuditErrf("cleared email %q for registration ID %d: %s", email, regID, err)
 		}
 	}
 	if failures > 0 {
-		return fmt.Errorf("failed to clear email for %d out of %d registrations", failures, len(regIDs))
+		return fmt.Errorf("failed to clear email for %d out of %d registration IDs", failures, len(regIDs))
 	}
 	return nil
 }

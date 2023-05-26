@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
@@ -63,7 +64,7 @@ const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt
 
 // ClearEmail removes the provided email address from one specified registration. If
 // there are multiple email addresses present, it does not modify other ones. If the email
-// address is not present, it does not modify the registration and return nil error.
+// address is not present, it does not modify the registration and will return a nil error.
 func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email string) error {
 	_, overallError := db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		curr, err := selectRegistration(txWithCtx, "id", regID)
@@ -76,18 +77,17 @@ func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email st
 			return nil, err
 		}
 
+		// newContacts will be a copy of currPb.Contact with the email address removed.
 		var newContacts []string
-		modified := false
 		for _, contact := range currPb.Contact {
 			if contact == "mailto:"+email {
 				fmt.Fprintf(os.Stderr, "Skipping %s\n", contact)
-				modified = true
 			} else {
 				newContacts = append(newContacts, contact)
 			}
 		}
 
-		if !modified {
+		if slices.Equal(currPb.Contact, newContacts) {
 			return nil, nil
 		}
 
