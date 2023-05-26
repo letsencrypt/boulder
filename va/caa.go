@@ -104,6 +104,11 @@ func filterCAA(rrs []*dns.CAA) ([]*dns.CAA, []*dns.CAA, bool) {
 			issue = append(issue, caaRecord)
 		case "issuewild":
 			issuewild = append(issuewild, caaRecord)
+		case "iodef":
+			// We "know about" but do not "support" the iodef property tag. Therefore
+			// we don't keep track of it, but do avoid setting the criticalUnknown bit
+			// if there are critical iodef records.
+			continue
 		default:
 			// The critical flag is the bit with significance 128. However, many CAA
 			// record users have misinterpreted the RFC and concluded that the bit
