@@ -230,7 +230,7 @@ func (r *revoker) clearEmailAddress(ctx context.Context, email string) error {
 	}
 
 	failures := 0
-	r.log.Infof("Found %d registration IDs matching email %q.", len(regIDs), email, regIDs)
+	r.log.Infof("Found %d registration IDs matching email %q.", len(regIDs), email)
 	for _, regID := range regIDs {
 		err := sa.ClearEmail(r.dbMap, ctx, regID, email)
 		if err != nil {
