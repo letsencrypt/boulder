@@ -646,16 +646,17 @@ func TestFilterCAA(t *testing.T) {
 		expectedCU        bool
 	}{
 		{
-			name: "happy path",
+			name: "recognized non-critical",
 			input: []*dns.CAA{
 				{Tag: "issue", Value: "a"},
 				{Tag: "issuewild", Value: "b"},
+				{Tag: "iodef", Value: "c"},
 			},
 			expectedIssueVals: []string{"a"},
 			expectedWildVals:  []string{"b"},
 		},
 		{
-			name: "recognized criticals",
+			name: "recognized critical",
 			input: []*dns.CAA{
 				{Tag: "issue", Value: "a", Flag: 128},
 				{Tag: "issuewild", Value: "b", Flag: 128},
@@ -665,15 +666,29 @@ func TestFilterCAA(t *testing.T) {
 			expectedWildVals:  []string{"b"},
 		},
 		{
-			name: "uncritical unknown",
+			name: "unrecognized non-critical",
 			input: []*dns.CAA{
 				{Tag: "unknown", Flag: 2},
 			},
 		},
 		{
-			name: "critical unknown",
+			name: "unrecognized critical",
 			input: []*dns.CAA{
 				{Tag: "unknown", Flag: 128},
+			},
+			expectedCU: true,
+		},
+		{
+			name: "unrecognized improper critical",
+			input: []*dns.CAA{
+				{Tag: "unknown", Flag: 1},
+			},
+			expectedCU: true,
+		},
+		{
+			name: "unrecognized very improper critical",
+			input: []*dns.CAA{
+				{Tag: "unknown", Flag: 9},
 			},
 			expectedCU: true,
 		},
