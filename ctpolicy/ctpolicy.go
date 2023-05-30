@@ -30,7 +30,8 @@ type CTPolicy struct {
 	log                 blog.Logger
 	winnerCounter       *prometheus.CounterVec
 	operatorGroupsGauge *prometheus.GaugeVec
-	shardExpiryGauge    *prometheus.GaugeVec
+	startInclusiveGauge *prometheus.GaugeVec
+	endExclusiveGauge   *prometheus.GaugeVec
 }
 
 // New creates a new CTPolicy struct
@@ -53,24 +54,39 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 	)
 	stats.MustRegister(operatorGroupsGauge)
 
-	shardExpiryGauge := prometheus.NewGaugeVec(
+	startInclusiveGauge := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "ct_shard_expiration_seconds",
+			Name: "ct_start_inclusive_seconds",
+			Help: "CT shard start_inclusive field expressed as Unix epoch time, by operator and logID.",
+		},
+		[]string{"operator", "logID"},
+	)
+	stats.MustRegister(startInclusiveGauge)
+
+	endExclusiveGauge := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "ct_end_exclusive_seconds",
 			Help: "CT shard end_exclusive field expressed as Unix epoch time, by operator and logID.",
 		},
 		[]string{"operator", "logID"},
 	)
-	stats.MustRegister(shardExpiryGauge)
+	stats.MustRegister(endExclusiveGauge)
 
 	for op, group := range sctLogs {
 		operatorGroupsGauge.WithLabelValues(op, "sctLogs").Set(float64(len(group)))
 
 		for _, log := range group {
+			if log.StartInclusive.IsZero() {
+				// Handles the case for non-temporally sharded logs too.
+				startInclusiveGauge.WithLabelValues(op, log.Name).Set(float64(0))
+			} else {
+				startInclusiveGauge.WithLabelValues(op, log.Name).Set(float64(log.StartInclusive.Unix()))
+			}
 			if log.EndExclusive.IsZero() {
 				// Handles the case for non-temporally sharded logs too.
-				shardExpiryGauge.WithLabelValues(op, log.Name).Set(float64(0))
+				endExclusiveGauge.WithLabelValues(op, log.Name).Set(float64(0))
 			} else {
-				shardExpiryGauge.WithLabelValues(op, log.Name).Set(float64(log.EndExclusive.Unix()))
+				endExclusiveGauge.WithLabelValues(op, log.Name).Set(float64(log.EndExclusive.Unix()))
 			}
 		}
 	}
@@ -92,7 +108,8 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		log:                 log,
 		winnerCounter:       winnerCounter,
 		operatorGroupsGauge: operatorGroupsGauge,
-		shardExpiryGauge:    shardExpiryGauge,
+		startInclusiveGauge: startInclusiveGauge,
+		endExclusiveGauge:   endExclusiveGauge,
 	}
 }
 

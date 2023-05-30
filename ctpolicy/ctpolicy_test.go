@@ -244,19 +244,24 @@ func TestLogListMetrics(t *testing.T) {
 
 	fc := clock.NewFake()
 	Tomorrow := fc.Now().Add(24 * time.Hour)
+	TomorrowPlusHour := Tomorrow.Add(1 * time.Hour)
 	NextWeek := fc.Now().Add(7 * 24 * time.Hour)
+	NextWeekPlusHour := NextWeek.Add(1 * time.Hour)
 
 	// Multiple operator groups with configured logs.
 	ctp = New(&mockPub{}, loglist.List{
 		"OperA": {
-			"LogA1": {Url: "UrlA1", Key: "KeyA1", Name: "LogA1", EndExclusive: Tomorrow},
-			"LogA2": {Url: "UrlA2", Key: "KeyA2", Name: "LogA2", EndExclusive: NextWeek},
+			"LogA1": {Url: "UrlA1", Key: "KeyA1", Name: "LogA1", StartInclusive: Tomorrow, EndExclusive: TomorrowPlusHour},
+			"LogA2": {Url: "UrlA2", Key: "KeyA2", Name: "LogA2", StartInclusive: NextWeek, EndExclusive: NextWeekPlusHour},
 		},
 		"OperB": {
-			"LogB1": {Url: "UrlB1", Key: "KeyB1", Name: "LogB1", EndExclusive: Tomorrow},
+			"LogB1": {Url: "UrlB1", Key: "KeyB1", Name: "LogB1", StartInclusive: Tomorrow, EndExclusive: TomorrowPlusHour},
 		},
 	}, nil, nil, 0, blog.NewMock(), metrics.NoopRegisterer)
-	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA1"}, 86400)
-	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA2"}, 604800)
-	test.AssertMetricWithLabelsEquals(t, ctp.shardExpiryGauge, prometheus.Labels{"operator": "OperB", "logID": "LogB1"}, 86400)
+	test.AssertMetricWithLabelsEquals(t, ctp.startInclusiveGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA1"}, 86400)
+	test.AssertMetricWithLabelsEquals(t, ctp.startInclusiveGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA2"}, 604800)
+	test.AssertMetricWithLabelsEquals(t, ctp.startInclusiveGauge, prometheus.Labels{"operator": "OperB", "logID": "LogB1"}, 86400)
+	test.AssertMetricWithLabelsEquals(t, ctp.endExclusiveGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA1"}, 90000)
+	test.AssertMetricWithLabelsEquals(t, ctp.endExclusiveGauge, prometheus.Labels{"operator": "OperA", "logID": "LogA2"}, 608400)
+	test.AssertMetricWithLabelsEquals(t, ctp.endExclusiveGauge, prometheus.Labels{"operator": "OperB", "logID": "LogB1"}, 90000)
 }
