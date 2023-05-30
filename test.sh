@@ -16,6 +16,7 @@ STAGE="starting"
 STATUS="FAILURE"
 RUN=()
 UNIT_PACKAGES=()
+UNIT_FLAGS=()
 FILTER=()
 
 #
@@ -75,19 +76,7 @@ function run_and_expect_silence() {
 # Testing Helpers
 #
 function run_unit_tests() {
-  if [ "${RACE}" == true ]; then
-    # Run the full suite of tests once with the -race flag.
-    go test -race "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
-  else
-    # When running locally, we skip the -race flag for speedier test runs. We
-    # also pass -p 1 to require the tests to run serially instead of in
-    # parallel. This is because our unittests depend on mutating a database and
-    # then cleaning up after themselves. If they run in parallel, they can fail
-    # spuriously because one test is modifying a table (especially
-    # registrations) while another test is reading it.
-    # https://github.com/letsencrypt/boulder/issues/1499
-    go test "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
-  fi
+  go test "${UNIT_FLAGS[@]}" "${UNIT_PACKAGES[@]}" "${FILTER[@]}"
 }
 
 #
@@ -104,12 +93,14 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 
     -l, --lints                           Adds lint to the list of tests to run
     -u, --unit                            Adds unit to the list of tests to run
+    -v, --unit-verbose                    Enables verbose output for unit tests
+    -w, --unit-without-cache              Disables go test caching for unit tests
     -p <DIR>, --unit-test-package=<DIR>   Run unit tests for specific go package(s)
-    -e, --enable-race-detection           Enables -race flag for all unit and integration tests
+    -e, --enable-race-detection           Enables race detection for unit and integration tests
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -i, --integration                     Adds integration to the list of tests to run
     -s, --start-py                        Adds start to the list of tests to run
-    -v, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
+    -m, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
     -o, --list-integration-tests          Outputs a list of the available integration tests
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
@@ -127,7 +118,7 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
 EOM
 )"
 
-while getopts lueciosvgnhp:f:-: OPT; do
+while getopts luvweciosmgnhp:f:-: OPT; do
   if [ "$OPT" = - ]; then     # long option: reformulate OPT and OPTARG
     OPT="${OPTARG%%=*}"       # extract long option name
     OPTARG="${OPTARG#$OPT}"   # extract long option argument (may be empty)
@@ -136,13 +127,15 @@ while getopts lueciosvgnhp:f:-: OPT; do
   case "$OPT" in
     l | lints )                      RUN+=("lints") ;;
     u | unit )                       RUN+=("unit") ;;
+    v | unit-verbose )               UNIT_FLAGS+=("-v") ;;
+    w | unit-without-cache )         UNIT_FLAGS+=("-count=1") ;;
     p | unit-test-package )          check_arg; UNIT_PACKAGES+=("${OPTARG}") ;;
-    e | enable-race-detection )      RACE="true" ;;
+    e | enable-race-detection )      RACE="true"; UNIT_FLAGS+=("-race") ;;
     i | integration )                RUN+=("integration") ;;
     o | list-integration-tests )     print_list_of_integration_tests ;;
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start-py )                   RUN+=("start") ;;
-    v | gomod-vendor )               RUN+=("gomod-vendor") ;;
+    m | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
@@ -182,7 +175,15 @@ fi
 # for all boulder packages
 if [ -z "${UNIT_PACKAGES[@]+x}" ]
 then
-  UNIT_PACKAGES+=("-p" "1" "./...")
+  # '-p=1' configures unit tests to run serially, rather than in parallel. Our
+  # unit tests depend on mutating a database and then cleaning up after
+  # themselves. If these test were run in parallel, they could fail spuriously
+  # due to one test modifying a table (especially registrations) while another
+  # test is reading from it.
+  # https://github.com/letsencrypt/boulder/issues/1499
+  # https://pkg.go.dev/cmd/go#hdr-Testing_flags
+  UNIT_FLAGS+=("-p=1")
+  UNIT_PACKAGES+=("./...")
 fi
 
 print_heading "Boulder Test Suite CLI"
@@ -195,7 +196,7 @@ settings="$(cat -- <<-EOM
     RUN:                ${RUN[@]}
     BOULDER_CONFIG_DIR: $BOULDER_CONFIG_DIR
     UNIT_PACKAGES:      ${UNIT_PACKAGES[@]}
-    RACE:               $RACE
+    UNIT_FLAGS:         ${UNIT_FLAGS[@]}
     FILTER:             ${FILTER[@]}
 
 EOM
