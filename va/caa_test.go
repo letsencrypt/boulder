@@ -637,6 +637,77 @@ func TestCAAFailure(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.CAAProblem)
 }
 
+func TestFilterCAA(t *testing.T) {
+	testCases := []struct {
+		name              string
+		input             []*dns.CAA
+		expectedIssueVals []string
+		expectedWildVals  []string
+		expectedCU        bool
+	}{
+		{
+			name: "recognized non-critical",
+			input: []*dns.CAA{
+				{Tag: "issue", Value: "a"},
+				{Tag: "issuewild", Value: "b"},
+				{Tag: "iodef", Value: "c"},
+			},
+			expectedIssueVals: []string{"a"},
+			expectedWildVals:  []string{"b"},
+		},
+		{
+			name: "recognized critical",
+			input: []*dns.CAA{
+				{Tag: "issue", Value: "a", Flag: 128},
+				{Tag: "issuewild", Value: "b", Flag: 128},
+				{Tag: "iodef", Value: "c", Flag: 128},
+			},
+			expectedIssueVals: []string{"a"},
+			expectedWildVals:  []string{"b"},
+		},
+		{
+			name: "unrecognized non-critical",
+			input: []*dns.CAA{
+				{Tag: "unknown", Flag: 2},
+			},
+		},
+		{
+			name: "unrecognized critical",
+			input: []*dns.CAA{
+				{Tag: "unknown", Flag: 128},
+			},
+			expectedCU: true,
+		},
+		{
+			name: "unrecognized improper critical",
+			input: []*dns.CAA{
+				{Tag: "unknown", Flag: 1},
+			},
+			expectedCU: true,
+		},
+		{
+			name: "unrecognized very improper critical",
+			input: []*dns.CAA{
+				{Tag: "unknown", Flag: 9},
+			},
+			expectedCU: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			issue, wild, cu := filterCAA(tc.input)
+			for _, tag := range issue {
+				test.AssertSliceContains(t, tc.expectedIssueVals, tag.Value)
+			}
+			for _, tag := range wild {
+				test.AssertSliceContains(t, tc.expectedWildVals, tag.Value)
+			}
+			test.AssertEquals(t, tc.expectedCU, cu)
+		})
+	}
+}
+
 func TestSelectCAA(t *testing.T) {
 	expected := dns.CAA{Tag: "issue", Value: "foo"}
 
