@@ -98,7 +98,9 @@ func (p TLSProbe) checkRoot(rootOrg, rootCN string) error {
 
 // Export expiration timestamp and reason to Prometheus.
 func (p TLSProbe) exportMetrics(notAfter time.Time, reason reason) {
-	p.notAfter.WithLabelValues(p.hostname).Set(float64(notAfter.Unix()))
+	if !notAfter.IsZero() {
+		p.notAfter.WithLabelValues(p.hostname).Set(float64(notAfter.Unix()))
+	}
 	p.reason.WithLabelValues(p.hostname, reasonToString[reason]).Inc()
 }
 
