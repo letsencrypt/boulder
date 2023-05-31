@@ -11,7 +11,6 @@ import (
 	"math"
 	"net"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -77,12 +76,10 @@ func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email st
 			return nil, err
 		}
 
-		// newContacts will be a copy of currPb.Contact with the email address removed.
+		// newContacts will be a copy of all emails in currPb.Contact _except_ the oneto be removed
 		var newContacts []string
 		for _, contact := range currPb.Contact {
-			if contact == "mailto:"+email {
-				fmt.Fprintf(os.Stderr, "Skipping %s\n", contact)
-			} else {
+			if contact != "mailto:"+email {
 				newContacts = append(newContacts, contact)
 			}
 		}

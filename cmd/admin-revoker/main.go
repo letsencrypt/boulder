@@ -229,8 +229,9 @@ func (r *revoker) clearEmailAddress(ctx context.Context, email string) error {
 		return err
 	}
 
-	failures := 0
 	r.log.Infof("Found %d registration IDs matching email %q.", len(regIDs), email)
+
+	failures := 0
 	for _, regID := range regIDs {
 		err := sa.ClearEmail(r.dbMap, ctx, regID, email)
 		if err != nil {
@@ -239,7 +240,7 @@ func (r *revoker) clearEmailAddress(ctx context.Context, email string) error {
 			r.log.AuditErrf("failed to clear email %q for registration ID %d: %s", email, regID, err)
 			failures++
 		} else {
-			r.log.AuditErrf("cleared email %q for registration ID %d: %s", email, regID, err)
+			r.log.AuditInfof("cleared email %q for registration ID %d: %s", email, regID, err)
 		}
 	}
 	if failures > 0 {
