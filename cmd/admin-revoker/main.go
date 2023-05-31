@@ -50,7 +50,7 @@ descriptions:
   malformed-revoke       Revoke a single certificate by the hex serial number. Works even
                          if the certificate cannot be parsed from the database.
                          Note: This does not purge the Akamai cache.
-			 Note: This cannot be used to revoke for key compromise.
+                         Note: This cannot be used to revoke for key compromise.
   batched-serial-revoke  Revoke all certificates contained in a file of hex serial numbers.
   incident-table-revoke  Revoke all certificates in the provided incident table.
   reg-revoke             Revoke all certificates associated with a registration ID.
@@ -61,7 +61,7 @@ descriptions:
                          provided private key. Then adds the hash to the blocked keys
                          table. <priv-key-path> is expected to be the path to a PEM
                          formatted file containing an RSA or ECDSA private key.
-  clear-email			 Delete all instances of a given email from all accounts (slow).
+  clear-email            Delete all instances of a given email from all accounts (slow).
 
 flags:
   all:
