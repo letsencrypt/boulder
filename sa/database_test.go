@@ -134,7 +134,7 @@ func TestStrictness(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
-	dbMap, err := NewDbMap(vars.DBConnSA+"?readTimeout=1s", DbSettings{1, 0, 0, 0})
+	dbMap, err := NewDbMap(vars.DBConnSA+"?max_statement_time=1", DbSettings{1, 0, 0, 0})
 	if err != nil {
 		t.Fatal("Error setting up DB:", err)
 	}
