@@ -76,7 +76,7 @@ func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email st
 			return nil, err
 		}
 
-		// newContacts will be a copy of all emails in currPb.Contact _except_ the oneto be removed
+		// newContacts will be a copy of all emails in currPb.Contact _except_ the one to be removed
 		var newContacts []string
 		for _, contact := range currPb.Contact {
 			if contact != "mailto:"+email {
@@ -260,33 +260,6 @@ type regModel struct {
 	Status    string `db:"status"`
 }
 
-// contactsToJSON converts a slice of contact addresses to a JSON array.
-// If the slice is empty, it returns the empty JSON array "[]". It never returns
-// "null".
-func contactsToJSON(contacts []string) ([]byte, error) {
-	// We don't want to write literal JSON "null" strings into the database if the
-	// list of contact addresses is empty. Replace any possibly-`nil` slice with
-	// an empty JSON array. We don't need to check reg.ContactPresent, because
-	// we're going to write the whole object to the database anyway.
-	if len(contacts) == 0 {
-		return []byte("[]"), nil
-	}
-	return json.Marshal(contacts)
-}
-
-// jsonToContacts attempts to parse a JSON array into a slice of contacts.
-// If the input is empty, it returns an empty slice of contacts (not an error).
-func jsonToContacts(input []byte) ([]string, error) {
-	var contacts []string
-	if len(input) > 0 {
-		err := json.Unmarshal(input, &contacts)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return contacts, nil
-}
-
 func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// Even though we don't need to convert from JSON to an in-memory JSONWebKey
 	// for the sake of the `Key` field, we do need to do the conversion in order
@@ -301,9 +274,16 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 		return nil, err
 	}
 
-	jsonContact, err := contactsToJSON(reg.Contact)
-	if err != nil {
-		return nil, err
+	// We don't want to write literal JSON "null" strings into the database if the
+	// list of contact addresses is empty. Replace any possibly-`nil` slice with
+	// an empty JSON array. We don't need to check reg.ContactPresent, because
+	// we're going to write the whole object to the database anyway.
+	jsonContact := []byte("[]")
+	if len(reg.Contact) != 0 {
+		jsonContact, err = json.Marshal(reg.Contact)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// For some reason we use different serialization formats for InitialIP
@@ -340,9 +320,16 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		return nil, errors.New("incomplete Registration retrieved from DB")
 	}
 
-	contacts, err := jsonToContacts([]byte(reg.Contact))
-	if err != nil {
-		return nil, err
+	contact := []string{}
+	contactsPresent := false
+	if len(reg.Contact) > 0 {
+		err := json.Unmarshal([]byte(reg.Contact), &contact)
+		if err != nil {
+			return nil, err
+		}
+		if len(contact) > 0 {
+			contactsPresent = true
+		}
 	}
 
 	// For some reason we use different serialization formats for InitialIP
@@ -356,8 +343,8 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 	return &corepb.Registration{
 		Id:              reg.ID,
 		Key:             reg.Key,
-		Contact:         contacts,
-		ContactsPresent: len(contacts) > 0,
+		Contact:         contact,
+		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
 		CreatedAt:       reg.CreatedAt.UTC().UnixNano(),
