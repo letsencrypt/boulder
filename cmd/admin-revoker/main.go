@@ -41,6 +41,7 @@ usage:
   reg-revoke             -config <path> <registration-id>  <reason-code>
   private-key-block      -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
   private-key-revoke     -config <path> -comment="<string>" -dry-run=<bool>    <priv-key-path>
+  clear-email            -config <path> <email-address>
 
 
 descriptions:
@@ -49,7 +50,7 @@ descriptions:
   malformed-revoke       Revoke a single certificate by the hex serial number. Works even
                          if the certificate cannot be parsed from the database.
                          Note: This does not purge the Akamai cache.
-			 Note: This cannot be used to revoke for key compromise.
+                         Note: This cannot be used to revoke for key compromise.
   batched-serial-revoke  Revoke all certificates contained in a file of hex serial numbers.
   incident-table-revoke  Revoke all certificates in the provided incident table.
   reg-revoke             Revoke all certificates associated with a registration ID.
@@ -60,6 +61,7 @@ descriptions:
                          provided private key. Then adds the hash to the blocked keys
                          table. <priv-key-path> is expected to be the path to a PEM
                          formatted file containing an RSA or ECDSA private key.
+  clear-email            Delete all instances of a given email from all accounts (slow).
 
 flags:
   all:
@@ -215,6 +217,35 @@ func (r *revoker) revokeSerialBatchFile(ctx context.Context, serialPath string, 
 	close(work)
 	wg.Wait()
 
+	return nil
+}
+
+// clearEmailAddress clears the given email address from all accounts that have it.
+// Finding relevant accounts will be very slow because it does not use an index.
+func (r *revoker) clearEmailAddress(ctx context.Context, email string) error {
+	r.log.AuditInfof("Scanning database for accounts with email addresses matching %q in order to clear the email addresses.", email)
+	regIDs, err := r.getRegIDsMatchingEmail(email)
+	if err != nil {
+		return err
+	}
+
+	r.log.Infof("Found %d registration IDs matching email %q.", len(regIDs), email)
+
+	failures := 0
+	for _, regID := range regIDs {
+		err := sa.ClearEmail(r.dbMap, ctx, regID, email)
+		if err != nil {
+			// Log, but don't fail, because it took a long time to find the relevant registration IDs
+			// and we don't want to have to redo that work.
+			r.log.AuditErrf("failed to clear email %q for registration ID %d: %s", email, regID, err)
+			failures++
+		} else {
+			r.log.AuditInfof("cleared email %q for registration ID %d: %s", email, regID, err)
+		}
+	}
+	if failures > 0 {
+		return fmt.Errorf("failed to clear email for %d out of %d registration IDs", failures, len(regIDs))
+	}
 	return nil
 }
 
@@ -397,6 +428,21 @@ func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 		return 0, err
 	}
 	return count, nil
+}
+
+// getRegIDsMatchingEmail returns a list of registration IDs where the contacts list
+// contains the given email address. Since this uses a substring match, it is important
+// to subsequently parse the JSON list of addresses and look for exact matches.
+// Note: Since this does not use an index, it is very slow.
+func (r *revoker) getRegIDsMatchingEmail(email string) ([]int64, error) {
+	// We use SQL `CONCAT` rather than interpolating with `+` or `%s` because we want to
+	// use a `?` placeholder for the email, which prevents SQL injection.
+	var regIDs []int64
+	_, err := r.dbMap.Select(&regIDs, "SELECT id FROM registrations WHERE contact LIKE CONCAT('%\"mailto:', ?, '\"%')", email)
+	if err != nil {
+		return nil, err
+	}
+	return regIDs, nil
 }
 
 // TODO(#5899) Use an non-wrapped sql.Db client to iterate over results and
@@ -624,11 +670,20 @@ func main() {
 		err = r.revokeIncidentTableSerials(ctx, tableName, revocation.Reason(reasonCode), parallelism)
 		cmd.FailOnError(err, "Couldn't revoke serials in incident table")
 
+	case command == "clear-email" && len(args) == 1:
+		email := args[0]
+		err := r.clearEmailAddress(ctx, email)
+		cmd.FailOnError(err, "Clearing email address")
+
 	default:
+		fmt.Fprintf(os.Stderr, "unrecognized subcommand %q\n\n", command)
 		usage()
 	}
 }
 
 func init() {
+	// admin-revoker is the old name. Now that this can also clear email addresses,
+	// admin is the new name
 	cmd.RegisterCommand("admin-revoker", main, &cmd.ConfigValidator{Config: &Config{}})
+	cmd.RegisterCommand("admin", main, &cmd.ConfigValidator{Config: &Config{}})
 }

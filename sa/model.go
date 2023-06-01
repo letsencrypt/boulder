@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
@@ -58,6 +60,48 @@ func badJSONError(msg string, jsonData []byte, err error) error {
 }
 
 const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt, LockCol, status"
+
+// ClearEmail removes the provided email address from one specified registration. If
+// there are multiple email addresses present, it does not modify other ones. If the email
+// address is not present, it does not modify the registration and will return a nil error.
+func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email string) error {
+	_, overallError := db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		curr, err := selectRegistration(txWithCtx, "id", regID)
+		if err != nil {
+			return nil, err
+		}
+
+		currPb, err := registrationModelToPb(curr)
+		if err != nil {
+			return nil, err
+		}
+
+		// newContacts will be a copy of all emails in currPb.Contact _except_ the one to be removed
+		var newContacts []string
+		for _, contact := range currPb.Contact {
+			if contact != "mailto:"+email {
+				newContacts = append(newContacts, contact)
+			}
+		}
+
+		if slices.Equal(currPb.Contact, newContacts) {
+			return nil, nil
+		}
+
+		currPb.Contact = newContacts
+		newModel, err := registrationPbToModel(currPb)
+		if err != nil {
+			return nil, err
+		}
+
+		return txWithCtx.Update(newModel)
+	})
+	if overallError != nil {
+		return overallError
+	}
+
+	return nil
+}
 
 // selectRegistration selects all fields of one registration model
 func selectRegistration(s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
