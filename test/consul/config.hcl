@@ -19,7 +19,8 @@ ui_config {
   enabled = true
 }
 ports {
-  dns = 53
+  dns      = 53
+  grpc_tls = 8503
 }
 
 services {
