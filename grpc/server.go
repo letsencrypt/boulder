@@ -37,15 +37,22 @@ type service struct {
 // serverBuilder implements a builder pattern for constructing new gRPC servers
 // and registering gRPC services on those servers.
 type serverBuilder struct {
-	cfg      *cmd.GRPCServerConfig
-	services map[string]service
-	err      error
+	cfg       *cmd.GRPCServerConfig
+	services  map[string]service
+	healthSrv *health.Server
+	err       error
 }
 
 // NewServer returns an object which can be used to build gRPC servers. It
-// takes the server's configuration to perform initialization.
+// takes the server's configuration to perform initialization. An optional
+// *health.Server can be provided.
 func NewServer(c *cmd.GRPCServerConfig) *serverBuilder {
 	return &serverBuilder{cfg: c, services: make(map[string]service)}
+}
+
+func (sb *serverBuilder) WithHealthSrv(h *health.Server) *serverBuilder {
+	sb.healthSrv = h
+	return sb
 }
 
 // Add registers a new service (consisting of its description and its
@@ -71,9 +78,14 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 // gracefully stop the server if one is caught, causing the start() function to
 // exit.
 func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
-	// Add the health service to all servers.
-	healthSrv := health.NewServer()
-	sb = sb.Add(&healthpb.Health_ServiceDesc, healthSrv)
+	// Check if we've already populated the health service.
+	if sb.healthSrv == nil {
+		// If not, create one.
+		sb.healthSrv = health.NewServer()
+	}
+
+	// Register the health service with the server.
+	sb = sb.Add(&healthpb.Health_ServiceDesc, sb.healthSrv)
 
 	// Check to see if any of the calls to .Add() resulted in an error.
 	if sb.err != nil {
@@ -173,7 +185,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// gracefully stops the gRPC server. This in turn causes the start() function
 	// to exit, allowing its caller (generally a main() function) to exit.
 	go cmd.CatchSignals(func() {
-		healthSrv.Shutdown()
+		sb.healthSrv.Shutdown()
 		server.GracefulStop()
 	})
 
