@@ -104,11 +104,6 @@ def main():
         run_cert_checker()
         check_balance()
 
-        # Run the load-generator last. run_loadtest will stop the
-        # pebble-challtestsrv before running the load-generator and will not restart
-        # it.
-        run_loadtest()
-
     if not startservers.check():
         raise(Exception("startservers.check failed"))
 
@@ -160,20 +155,6 @@ def run_chisel(test_case_filter):
     for key, value in globals().items():
       if callable(value) and key.startswith('test_') and re.search(test_case_filter, key):
         value()
-
-def run_loadtest():
-    """Run the ACME v2 load generator."""
-    latency_data_file = "%s/integration-test-latency.json" % tempdir
-
-    # Stop the global pebble-challtestsrv - it will conflict with the
-    # load-generator's internal challtestsrv. We don't restart it because
-    # run_loadtest() is called last and there are no remaining tests to run that
-    # might benefit from the pebble-challtestsrv being restarted.
-    startservers.stopChallSrv()
-
-    run(["./bin/load-generator",
-        "-config", "test/load-generator/config/integration-test-config.json",
-        "-results", latency_data_file])
 
 def check_balance():
     """Verify that gRPC load balancing across backends is working correctly.
