@@ -94,9 +94,9 @@ func main() {
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	start, err := bgrpc.NewServer(c.SA.GRPC).Add(
-		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
-		&sapb.StorageAuthority_ServiceDesc, sai).Build(
+	start, err := bgrpc.NewServer(c.SA.GRPC).AddWithCheckInterval(
+		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi, c.SA.HealthCheckInterval.Duration).AddWithCheckInterval(
+		&sapb.StorageAuthority_ServiceDesc, sai, c.SA.HealthCheckInterval.Duration).Build(
 		tls, scope, clk, logger)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
 

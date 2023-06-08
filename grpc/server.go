@@ -77,8 +77,8 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 	return sb
 }
 
-// AddWithCheckInterval is the same as Add() but also sets the interval used for
-// long-running health checks.
+// AddWithCheckInterval is the same as Add() but also sets the interval
+// used for long-running health checks.
 func (sb *serverBuilder) AddWithCheckInterval(desc *grpc.ServiceDesc, impl any, interval time.Duration) *serverBuilder {
 	if _, found := sb.services[desc.ServiceName]; found {
 		// We've already registered a service with this same name, error out.
@@ -194,8 +194,8 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return server.Serve(listener)
 	}
 
-	// Initialize all of our long running service specific health checks.
-	healthCtx, stopHealthCheck := context.WithCancel(context.Background())
+	// Initialize long-running health checks.
+	healthCtx, stopHealthChecks := context.WithCancel(context.Background())
 	for _, s := range sb.services {
 		check, ok := s.impl.(checker)
 		if !ok {
@@ -208,7 +208,7 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	// gracefully stops the gRPC server. This in turn causes the start() function
 	// to exit, allowing its caller (generally a main() function) to exit.
 	go cmd.CatchSignals(func() {
-		stopHealthCheck()
+		stopHealthChecks()
 		sb.healthSrv.Shutdown()
 		server.GracefulStop()
 	})
