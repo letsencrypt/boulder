@@ -310,7 +310,7 @@ func main() {
 		srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
 	}
 
-	start, err := srv.Build(tlsConfig, scope, clk)
+	start, err := srv.Build(tlsConfig, scope, clk, logger)
 	cmd.FailOnError(err, "Unable to setup CA gRPC server")
 
 	cmd.FailOnError(start(), "CA gRPC service failed")

@@ -11,7 +11,6 @@ import (
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
-	"google.golang.org/grpc/health"
 )
 
 type Config struct {
@@ -88,7 +87,6 @@ func main() {
 	tls, err := c.SA.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
-	healthSrv := health.NewServer()
 	saroi, err := sa.NewSQLStorageAuthorityRO(
 		dbReadOnlyMap, dbIncidentsMap, scope, parallel, c.SA.LagFactor.Duration, clk, logger)
 	cmd.FailOnError(err, "Failed to create read-only SA impl")
@@ -96,14 +94,11 @@ func main() {
 	sai, err := sa.NewSQLStorageAuthorityWrapping(saroi, dbMap, scope)
 	cmd.FailOnError(err, "Failed to create SA impl")
 
-	start, err := bgrpc.NewServer(c.SA.GRPC).WithHealthSrv(healthSrv).Add(
+	start, err := bgrpc.NewServer(c.SA.GRPC).Add(
 		&sapb.StorageAuthorityReadOnly_ServiceDesc, saroi).Add(
 		&sapb.StorageAuthority_ServiceDesc, sai).Build(
-		tls, scope, clk)
+		tls, scope, clk, logger)
 	cmd.FailOnError(err, "Unable to setup SA gRPC server")
-
-	saroi.InitDeepHealthCheck(0, healthSrv)
-	sai.InitDeepHealthCheck(0, healthSrv)
 
 	cmd.FailOnError(start(), "SA gRPC service failed")
 }

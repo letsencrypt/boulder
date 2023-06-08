@@ -13,7 +13,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc/health"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
@@ -1355,30 +1354,20 @@ func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *empty
 	return ssa.SQLStorageAuthorityRO.GetMaxExpiration(ctx, req)
 }
 
-// InitDeepHealthCheck initializes a long running health check of the read-write
-// database connection. The check repeats every interval and modifies the status
-// of the inner health server accordingly. If interval is 0 it defaults to 5
-// seconds.
-func (ssa *SQLStorageAuthority) InitDeepHealthCheck(interval time.Duration, healthSrv *health.Server) {
-	initDeepHealthCheck(
-		sapb.StorageAuthority_ServiceDesc.ServiceName,
-		healthSrv,
-		ssa.dbMap,
-		interval,
-		ssa.log,
-	)
+// Health implements the grpc.checker interface.
+func (ssa *SQLStorageAuthority) Health(ctx context.Context) error {
+	err := ssa.dbMap.WithContext(ctx).SelectOne(new(int), "SELECT 1")
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-// InitDeepHealthCheck initializes a long running health check of the read-only
-// database connection. The check repeats every interval and modifies the status
-// of the inner health server accordingly. If interval is 0 it defaults to 5
-// seconds.
-func (ssa *SQLStorageAuthorityRO) InitDeepHealthCheck(interval time.Duration, h *health.Server) {
-	initDeepHealthCheck(
-		sapb.StorageAuthorityReadOnly_ServiceDesc.ServiceName,
-		h,
-		ssa.dbReadOnlyMap,
-		interval,
-		ssa.log,
-	)
+// Health implements the grpc.checker interface.
+func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(new(int), "SELECT 1")
+	if err != nil {
+		return err
+	}
+	return nil
 }

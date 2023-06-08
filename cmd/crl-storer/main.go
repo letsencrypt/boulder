@@ -126,7 +126,7 @@ func main() {
 	cmd.FailOnError(err, "Failed to create CRLStorer impl")
 
 	start, err := bgrpc.NewServer(c.CRLStorer.GRPC).Add(
-		&cspb.CRLStorer_ServiceDesc, csi).Build(tlsConfig, scope, clk)
+		&cspb.CRLStorer_ServiceDesc, csi).Build(tlsConfig, scope, clk, logger)
 	cmd.FailOnError(err, "Unable to setup CRLStorer gRPC server")
 
 	cmd.FailOnError(start(), "CRLStorer gRPC service failed")

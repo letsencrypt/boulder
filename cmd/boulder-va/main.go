@@ -157,7 +157,7 @@ func main() {
 
 	start, err := bgrpc.NewServer(c.VA.GRPC).Add(
 		&vapb.VA_ServiceDesc, vai).Add(
-		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
+		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk, logger)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")
 
 	cmd.FailOnError(start(), "VA gRPC service failed")

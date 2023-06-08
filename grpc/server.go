@@ -1,15 +1,18 @@
 package grpc
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
@@ -27,11 +30,21 @@ var CodedError = status.Errorf
 
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
+// checker is an interface for checking the health of a grpc service
+// implementation.
+type checker interface {
+	// Health returns nil if the service is healthy, or an error if it is not.
+	// If the passed context is canceled, it should return immediately with an
+	// error.
+	Health(context.Context) error
+}
+
 // service represents a single gRPC service that can be registered with a gRPC
 // server.
 type service struct {
-	desc *grpc.ServiceDesc
-	impl any
+	desc     *grpc.ServiceDesc
+	impl     any
+	interval time.Duration
 }
 
 // serverBuilder implements a builder pattern for constructing new gRPC servers
@@ -44,15 +57,9 @@ type serverBuilder struct {
 }
 
 // NewServer returns an object which can be used to build gRPC servers. It
-// takes the server's configuration to perform initialization. An optional
-// *health.Server can be provided.
+// takes the server's configuration to perform initialization.
 func NewServer(c *cmd.GRPCServerConfig) *serverBuilder {
 	return &serverBuilder{cfg: c, services: make(map[string]service)}
-}
-
-func (sb *serverBuilder) WithHealthSrv(h *health.Server) *serverBuilder {
-	sb.healthSrv = h
-	return sb
 }
 
 // Add registers a new service (consisting of its description and its
@@ -66,8 +73,19 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 		sb.err = fmt.Errorf("attempted double-registration of gRPC service %q", desc.ServiceName)
 		return sb
 	}
+	sb.services[desc.ServiceName] = service{desc: desc, impl: impl}
+	return sb
+}
 
-	sb.services[desc.ServiceName] = service{desc, impl}
+// AddWithCheckInterval is the same as Add() but also sets the interval used for
+// long-running health checks.
+func (sb *serverBuilder) AddWithCheckInterval(desc *grpc.ServiceDesc, impl any, interval time.Duration) *serverBuilder {
+	if _, found := sb.services[desc.ServiceName]; found {
+		// We've already registered a service with this same name, error out.
+		sb.err = fmt.Errorf("attempted double-registration of gRPC service %q", desc.ServiceName)
+		return sb
+	}
+	sb.services[desc.ServiceName] = service{desc, impl, interval}
 	return sb
 }
 
@@ -77,14 +95,9 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 // the server. It spawns a goroutine which will listen for OS signals and
 // gracefully stop the server if one is caught, causing the start() function to
 // exit.
-func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
-	// Check if we've already populated the health service.
-	if sb.healthSrv == nil {
-		// If not, create one.
-		sb.healthSrv = health.NewServer()
-	}
-
+func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, logger blog.Logger) (func() error, error) {
 	// Register the health service with the server.
+	sb.healthSrv = health.NewServer()
 	sb = sb.Add(&healthpb.Health_ServiceDesc, sb.healthSrv)
 
 	// Check to see if any of the calls to .Add() resulted in an error.
@@ -181,15 +194,77 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return server.Serve(listener)
 	}
 
+	// Initialize all of our long running service specific health checks.
+	healthCtx, stopHealthCheck := context.WithCancel(context.Background())
+	for _, s := range sb.services {
+		check, ok := s.impl.(checker)
+		if !ok {
+			continue
+		}
+		sb.initLongRunningCheck(healthCtx, s.desc.ServiceName, 0, check, logger)
+	}
+
 	// Start a goroutine which listens for a termination signal, and then
 	// gracefully stops the gRPC server. This in turn causes the start() function
 	// to exit, allowing its caller (generally a main() function) to exit.
 	go cmd.CatchSignals(func() {
+		stopHealthCheck()
 		sb.healthSrv.Shutdown()
 		server.GracefulStop()
 	})
 
 	return start, nil
+}
+
+func (sb *serverBuilder) initLongRunningCheck(healthCtx context.Context, service string, interval time.Duration, check checker, log blog.Logger) {
+	if interval <= 0 {
+		interval = 5 * time.Second
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		// Set the initial health status for the service.
+		sb.healthSrv.SetServingStatus(service, healthpb.HealthCheckResponse_NOT_SERVING)
+		lastStatus := healthpb.HealthCheckResponse_NOT_SERVING
+
+		check := func() (healthpb.HealthCheckResponse_ServingStatus, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), interval*9/10)
+			defer cancel()
+			err := check.Health(ctx)
+			if err != nil {
+				return healthpb.HealthCheckResponse_NOT_SERVING, err
+			}
+			return healthpb.HealthCheckResponse_SERVING, nil
+		}
+
+		updateStatus := func(nextStatus healthpb.HealthCheckResponse_ServingStatus, checkErr error) {
+			// Update the health status if necessary.
+			if lastStatus != nextStatus {
+				if nextStatus == healthpb.HealthCheckResponse_SERVING {
+					log.Infof("transitioning health of %q from %q to %q", service, lastStatus, nextStatus)
+				} else {
+					log.Errf("transitioning health of %q from %q to %q, due to: %s", service, lastStatus, nextStatus, checkErr)
+				}
+
+				// Update the health status for the service.
+				sb.healthSrv.SetServingStatus(service, nextStatus)
+				lastStatus = nextStatus
+			}
+		}
+
+		// Check immediately, and then at the specified interval.
+		updateStatus(check())
+		for {
+			select {
+			case <-healthCtx.Done():
+				return
+			case <-ticker.C:
+				updateStatus(check())
+			}
+		}
+	}()
 }
 
 // serverMetrics is a struct type used to return a few registered metrics from
