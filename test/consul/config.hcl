@@ -244,8 +244,8 @@ services {
       interval        = "2s"
     },
     {
-      id              = "sa-a-grpc-sai"
-      name            = "sa-a-grpc-sai"
+      id              = "sa-a-grpc-sa"
+      name            = "sa-a-grpc-sa"
       grpc            = "10.77.77.77:9095/sa.StorageAuthority"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
@@ -281,8 +281,8 @@ services {
       interval        = "2s"
     },
     {
-      id              = "sa-b-grpc-sai"
-      name            = "sa-b-grpc-sai"
+      id              = "sa-b-grpc-sa"
+      name            = "sa-b-grpc-sa"
       grpc            = "10.88.88.88:9095/sa.StorageAuthority"
       grpc_use_tls    = true
       tls_server_name = "sa.boulder"
