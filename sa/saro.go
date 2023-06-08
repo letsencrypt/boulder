@@ -1355,15 +1355,6 @@ func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *empty
 }
 
 // Health implements the grpc.checker interface.
-func (ssa *SQLStorageAuthority) Health(ctx context.Context) error {
-	err := ssa.dbMap.WithContext(ctx).SelectOne(new(int), "SELECT 1")
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-// Health implements the grpc.checker interface.
 func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
 	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(new(int), "SELECT 1")
 	if err != nil {

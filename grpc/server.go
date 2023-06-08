@@ -42,24 +42,33 @@ type checker interface {
 // service represents a single gRPC service that can be registered with a gRPC
 // server.
 type service struct {
-	desc     *grpc.ServiceDesc
-	impl     any
-	interval time.Duration
+	desc *grpc.ServiceDesc
+	impl any
 }
 
 // serverBuilder implements a builder pattern for constructing new gRPC servers
 // and registering gRPC services on those servers.
 type serverBuilder struct {
-	cfg       *cmd.GRPCServerConfig
-	services  map[string]service
-	healthSrv *health.Server
-	err       error
+	cfg           *cmd.GRPCServerConfig
+	services      map[string]service
+	healthSrv     *health.Server
+	checkInterval time.Duration
+	logger        blog.Logger
+	err           error
 }
 
 // NewServer returns an object which can be used to build gRPC servers. It
 // takes the server's configuration to perform initialization.
-func NewServer(c *cmd.GRPCServerConfig) *serverBuilder {
-	return &serverBuilder{cfg: c, services: make(map[string]service)}
+func NewServer(c *cmd.GRPCServerConfig, logger blog.Logger) *serverBuilder {
+	return &serverBuilder{cfg: c, services: make(map[string]service), logger: logger}
+}
+
+// WithCheckInterval sets the interval at which the server will check the health
+// of its registered services. If this is not called, a default interval of 5
+// seconds will be used.
+func (sb *serverBuilder) WithCheckInterval(i time.Duration) *serverBuilder {
+	sb.checkInterval = i
+	return sb
 }
 
 // Add registers a new service (consisting of its description and its
@@ -77,25 +86,13 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 	return sb
 }
 
-// AddWithCheckInterval is the same as Add() but also sets the interval
-// used for long-running health checks.
-func (sb *serverBuilder) AddWithCheckInterval(desc *grpc.ServiceDesc, impl any, interval time.Duration) *serverBuilder {
-	if _, found := sb.services[desc.ServiceName]; found {
-		// We've already registered a service with this same name, error out.
-		sb.err = fmt.Errorf("attempted double-registration of gRPC service %q", desc.ServiceName)
-		return sb
-	}
-	sb.services[desc.ServiceName] = service{desc, impl, interval}
-	return sb
-}
-
 // Build creates a gRPC server that uses the provided *tls.Config and exposes
 // all of the services added to the builder. It also exposes a health check
 // service. It returns one functions, start(), which should be used to start
 // the server. It spawns a goroutine which will listen for OS signals and
 // gracefully stop the server if one is caught, causing the start() function to
 // exit.
-func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock, logger blog.Logger) (func() error, error) {
+func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
 	// Register the health service with the server.
 	sb.healthSrv = health.NewServer()
 	sb = sb.Add(&healthpb.Health_ServiceDesc, sb.healthSrv)
@@ -194,14 +191,18 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return server.Serve(listener)
 	}
 
-	// Initialize long-running health checks.
+	// Initialize long-running health checks of all services which implement the
+	// checker interface.
+	if sb.checkInterval <= 0 {
+		sb.checkInterval = 5 * time.Second
+	}
 	healthCtx, stopHealthChecks := context.WithCancel(context.Background())
 	for _, s := range sb.services {
 		check, ok := s.impl.(checker)
 		if !ok {
 			continue
 		}
-		sb.initLongRunningCheck(healthCtx, s.desc.ServiceName, 0, check, logger)
+		sb.initLongRunningCheck(healthCtx, s.desc.ServiceName, check.Health)
 	}
 
 	// Start a goroutine which listens for a termination signal, and then
@@ -216,54 +217,53 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 	return start, nil
 }
 
-func (sb *serverBuilder) initLongRunningCheck(healthCtx context.Context, service string, interval time.Duration, check checker, log blog.Logger) {
-	if interval <= 0 {
-		interval = 5 * time.Second
-	}
-
+// initLongRunningCheck initializes a goroutine which will periodically check
+// the health of the provided service and update the health server accordingly.
+func (sb *serverBuilder) initLongRunningCheck(healthCtx context.Context, service string, checkImpl func(context.Context) error) {
 	go func() {
-		ticker := time.NewTicker(interval)
+		ticker := time.NewTicker(sb.checkInterval)
 		defer ticker.Stop()
 
 		// Set the initial health status for the service.
 		sb.healthSrv.SetServingStatus(service, healthpb.HealthCheckResponse_NOT_SERVING)
 		lastStatus := healthpb.HealthCheckResponse_NOT_SERVING
 
+		// check is a helper function which performs the health check for the
+		// service.
 		check := func() (healthpb.HealthCheckResponse_ServingStatus, error) {
-			// Make a context with a timeout which is 90% of the interval.
-			ctx, cancel := context.WithTimeout(context.Background(), interval*9/10)
+			// Make a context with a timeout at 90% of the interval.
+			checkCtx, cancel := context.WithTimeout(context.Background(), sb.checkInterval*9/10)
 			defer cancel()
 
-			err := check.Health(ctx)
-			if err != nil {
-				return healthpb.HealthCheckResponse_NOT_SERVING, err
+			checkImplErr := checkImpl(checkCtx)
+			if checkImplErr != nil {
+				return healthpb.HealthCheckResponse_NOT_SERVING, checkImplErr
 			}
 			return healthpb.HealthCheckResponse_SERVING, nil
 		}
 
-		updateStatus := func(nextStatus healthpb.HealthCheckResponse_ServingStatus, checkErr error) {
-			// Update the health status if necessary.
+		// update is a helper function which updates the health status of the
+		// service if it has changed.
+		update := func(nextStatus healthpb.HealthCheckResponse_ServingStatus, checkErr error) {
 			if lastStatus != nextStatus {
 				if nextStatus == healthpb.HealthCheckResponse_SERVING {
-					log.Infof("transitioning health of %q from %q to %q", service, lastStatus, nextStatus)
+					sb.logger.Infof("transitioning health of %q from %q to %q", service, lastStatus, nextStatus)
 				} else {
-					log.Errf("transitioning health of %q from %q to %q, due to: %s", service, lastStatus, nextStatus, checkErr)
+					sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", service, lastStatus, nextStatus, checkErr)
 				}
-
-				// Update the health status for the service.
 				sb.healthSrv.SetServingStatus(service, nextStatus)
 				lastStatus = nextStatus
 			}
 		}
 
 		// Check immediately, and then at the specified interval.
-		updateStatus(check())
+		update(check())
 		for {
 			select {
 			case <-healthCtx.Done():
 				return
 			case <-ticker.C:
-				updateStatus(check())
+				update(check())
 			}
 		}
 	}()

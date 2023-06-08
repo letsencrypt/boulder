@@ -417,8 +417,8 @@ func daemon(c Config, ap *akamaiPurger, logger blog.Logger, scope prometheus.Reg
 		}
 	}()
 
-	start, err := bgrpc.NewServer(c.AkamaiPurger.GRPC).Add(
-		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk, logger)
+	start, err := bgrpc.NewServer(c.AkamaiPurger.GRPC, logger).Add(
+		&akamaipb.AkamaiPurger_ServiceDesc, ap).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Akamai purger gRPC server")
 
 	cmd.FailOnError(start(), "akamai-purger gRPC service failed")
