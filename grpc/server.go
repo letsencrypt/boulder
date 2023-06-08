@@ -230,8 +230,10 @@ func (sb *serverBuilder) initLongRunningCheck(healthCtx context.Context, service
 		lastStatus := healthpb.HealthCheckResponse_NOT_SERVING
 
 		check := func() (healthpb.HealthCheckResponse_ServingStatus, error) {
+			// Make a context with a timeout which is 90% of the interval.
 			ctx, cancel := context.WithTimeout(context.Background(), interval*9/10)
 			defer cancel()
+
 			err := check.Health(ctx)
 			if err != nil {
 				return healthpb.HealthCheckResponse_NOT_SERVING, err
