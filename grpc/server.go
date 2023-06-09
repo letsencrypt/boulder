@@ -232,7 +232,7 @@ func (sb *serverBuilder) initLongRunningCheck(healthCtx context.Context, service
 		// service.
 		check := func() (healthpb.HealthCheckResponse_ServingStatus, error) {
 			// Make a context with a timeout at 90% of the interval.
-			checkCtx, cancel := context.WithTimeout(context.Background(), sb.checkInterval*9/10)
+			checkCtx, cancel := context.WithTimeout(healthCtx, sb.checkInterval*9/10)
 			defer cancel()
 
 			checkImplErr := checkImpl(checkCtx)
