@@ -96,7 +96,7 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
 	// Register the health service with the server.
 	sb.healthSrv = health.NewServer()
-	sb = sb.Add(&healthpb.Health_ServiceDesc, sb.healthSrv)
+	sb.Add(&healthpb.Health_ServiceDesc, sb.healthSrv)
 
 	// Check to see if any of the calls to .Add() resulted in an error.
 	if sb.err != nil {
