@@ -51,7 +51,7 @@ func makeClient() (*rocsp.RWClient, clock.Clock) {
 
 func TestGetStartingID(t *testing.T) {
 	clk := clock.NewFake()
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
 	sa.SetSQLDebug(dbMap, blog.Get())
@@ -121,7 +121,7 @@ func (mog mockOCSPGenerator) GenerateOCSP(ctx context.Context, in *capb.Generate
 func TestLoadFromDB(t *testing.T) {
 	redisClient, clk := makeClient()
 
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}

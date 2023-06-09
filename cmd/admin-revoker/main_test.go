@@ -84,7 +84,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 	entries, _ := setupUniqueTestEntries(t)
 	testCtx.createAndRegisterEntries(t, entries)
 
-	testIncidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidentsFullPerms, sa.DbSettings{})
+	testIncidentsDbMap, err := sa.DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 
 	// Ensure that an empty incident table results in the expected log output.
@@ -440,11 +440,11 @@ func setup(t *testing.T) testCtx {
 	// Set some non-zero time for GRPC requests to be non-nil.
 	fc.Set(time.Now())
 
-	dbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
-	incidentsDbMap, err := sa.NewDbMap(vars.DBConnIncidents, sa.DbSettings{})
+	incidentsDbMap, err := sa.DBMapForTest(vars.DBConnIncidents)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, incidentsDbMap, 1, 0, fc, log, metrics.NoopRegisterer)
