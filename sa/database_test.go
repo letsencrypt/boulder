@@ -75,11 +75,11 @@ func TestDbSettings(t *testing.T) {
 	}
 	dsnFile := path.Join(t.TempDir(), "dbconnect")
 	err := os.WriteFile(dsnFile,
-	    []byte("sa@tcp(boulder-proxysql:6033)/boulder_sa_integration"),
-	    os.ModeAppend)
+		[]byte("sa@tcp(boulder-proxysql:6033)/boulder_sa_integration"),
+		os.ModeAppend)
 
-	config := cmd.DBConfig {
-		DBConnectFile: dsnFile,
+	config := cmd.DBConfig{
+		DBConnectFile:   dsnFile,
 		MaxOpenConns:    100,
 		MaxIdleConns:    100,
 		ConnMaxLifetime: config.Duration{Duration: 100 * time.Second},
@@ -95,10 +95,10 @@ func TestDbSettings(t *testing.T) {
 	if maxIdleConns != 100 {
 		t.Errorf("maxIdleConns was not set: expected 100, got %d", maxIdleConns)
 	}
-	if connMaxLifetime != 100 * time.Second {
+	if connMaxLifetime != 100*time.Second {
 		t.Errorf("connMaxLifetime was not set: expected 100s, got %s", connMaxLifetime)
 	}
-	if connMaxIdleTime != 100 * time.Second {
+	if connMaxIdleTime != 100*time.Second {
 		t.Errorf("connMaxIdleTime was not set: expected 100s, got %s", connMaxIdleTime)
 	}
 }
@@ -145,7 +145,7 @@ func TestStrictness(t *testing.T) {
 }
 
 func TestTimeouts(t *testing.T) {
-	dbMap, err := DBMapForTest(vars.DBConnSA+"?max_statement_time=1")
+	dbMap, err := DBMapForTest(vars.DBConnSA + "?max_statement_time=1")
 	if err != nil {
 		t.Fatal("Error setting up DB:", err)
 	}
