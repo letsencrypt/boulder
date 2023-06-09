@@ -57,8 +57,9 @@ type serverBuilder struct {
 	err           error
 }
 
-// NewServer returns an object which can be used to build gRPC servers. It
-// takes the server's configuration to perform initialization.
+// NewServer returns an object which can be used to build gRPC servers. It takes
+// the server's configuration to perform initialization and a logger for deep
+// health checks.
 func NewServer(c *cmd.GRPCServerConfig, logger blog.Logger) *serverBuilder {
 	return &serverBuilder{cfg: c, services: make(map[string]service), logger: logger}
 }
@@ -219,51 +220,55 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 
 // initLongRunningCheck initializes a goroutine which will periodically check
 // the health of the provided service and update the health server accordingly.
-func (sb *serverBuilder) initLongRunningCheck(healthCtx context.Context, service string, checkImpl func(context.Context) error) {
+func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, service string, checkImpl func(context.Context) error) {
+	// Set the initial health status for the service.
+	sb.healthSrv.SetServingStatus(service, healthpb.HealthCheckResponse_NOT_SERVING)
+
+	// check is a helper function that checks the health of the service and, if
+	// necessary, updates its status in the health server.
+	checkAndMaybeUpdate := func(checkCtx context.Context, last healthpb.HealthCheckResponse_ServingStatus) healthpb.HealthCheckResponse_ServingStatus {
+		// Make a context with a timeout at 90% of the interval.
+		checkImplCtx, cancel := context.WithTimeout(checkCtx, sb.checkInterval*9/10)
+		defer cancel()
+
+		var next healthpb.HealthCheckResponse_ServingStatus
+		err := checkImpl(checkImplCtx)
+		if err != nil {
+			next = healthpb.HealthCheckResponse_NOT_SERVING
+		} else {
+			next = healthpb.HealthCheckResponse_SERVING
+		}
+
+		if last == next {
+			// No change in health status.
+			return next
+		}
+
+		if next != healthpb.HealthCheckResponse_SERVING {
+			sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
+		} else {
+			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)
+		}
+		sb.healthSrv.SetServingStatus(service, next)
+		return next
+	}
+
 	go func() {
 		ticker := time.NewTicker(sb.checkInterval)
 		defer ticker.Stop()
 
-		// Set the initial health status for the service.
-		sb.healthSrv.SetServingStatus(service, healthpb.HealthCheckResponse_NOT_SERVING)
-		lastStatus := healthpb.HealthCheckResponse_NOT_SERVING
-
-		// check is a helper function which performs the health check for the
-		// service.
-		check := func() (healthpb.HealthCheckResponse_ServingStatus, error) {
-			// Make a context with a timeout at 90% of the interval.
-			checkCtx, cancel := context.WithTimeout(healthCtx, sb.checkInterval*9/10)
-			defer cancel()
-
-			checkImplErr := checkImpl(checkCtx)
-			if checkImplErr != nil {
-				return healthpb.HealthCheckResponse_NOT_SERVING, checkImplErr
-			}
-			return healthpb.HealthCheckResponse_SERVING, nil
-		}
-
-		// update is a helper function which updates the health status of the
-		// service if it has changed.
-		update := func(nextStatus healthpb.HealthCheckResponse_ServingStatus, checkErr error) {
-			if lastStatus != nextStatus {
-				if nextStatus == healthpb.HealthCheckResponse_SERVING {
-					sb.logger.Infof("transitioning health of %q from %q to %q", service, lastStatus, nextStatus)
-				} else {
-					sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", service, lastStatus, nextStatus, checkErr)
-				}
-				sb.healthSrv.SetServingStatus(service, nextStatus)
-				lastStatus = nextStatus
-			}
-		}
+		// Assume the service is not healthy to start.
+		last := healthpb.HealthCheckResponse_NOT_SERVING
 
 		// Check immediately, and then at the specified interval.
-		update(check())
+		last = checkAndMaybeUpdate(shutdownCtx, last)
 		for {
 			select {
-			case <-healthCtx.Done():
+			case <-shutdownCtx.Done():
+				// The server is shutting down.
 				return
 			case <-ticker.C:
-				update(check())
+				last = checkAndMaybeUpdate(shutdownCtx, last)
 			}
 		}
 	}()
