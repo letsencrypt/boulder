@@ -12,6 +12,7 @@ import (
 )
 
 func Test_serverBuilder_initLongRunningCheck(t *testing.T) {
+	t.Parallel()
 	hs := health.NewServer()
 	mockLogger := blog.NewMock()
 	sb := &serverBuilder{
