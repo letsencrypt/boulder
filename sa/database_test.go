@@ -77,6 +77,7 @@ func TestDbSettings(t *testing.T) {
 	err := os.WriteFile(dsnFile,
 		[]byte("sa@tcp(boulder-proxysql:6033)/boulder_sa_integration"),
 		os.ModeAppend)
+	test.AssertNotError(t, err, "writing dbconnect file")
 
 	config := cmd.DBConfig{
 		DBConnectFile:   dsnFile,

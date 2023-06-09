@@ -145,9 +145,9 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 // is usually provided from JSON config.
 //
 // This function also:
-//  - pings the database (and errors if it's unreachable)
-//  - wraps the connection in a gorp.DbMap so we can use the handy Get/Insert methods gorp provides
-//  - wraps that in a db.WrappedMap to get more useful error messages
+//   - pings the database (and errors if it's unreachable)
+//   - wraps the connection in a gorp.DbMap so we can use the handy Get/Insert methods gorp provides
+//   - wraps that in a db.WrappedMap to get more useful error messages
 func newDbMapFromMysqlConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
 	if err != nil {
