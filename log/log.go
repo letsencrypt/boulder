@@ -278,7 +278,7 @@ func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...interface{
 func (log *impl) AuditPanic() {
 	err := recover()
 	if err != nil {
-		buf := make([]byte, 8192)
+		var buf []byte
 		log.AuditErrf("Panic caused by err: %s", err)
 
 		runtime.Stack(buf, false)
