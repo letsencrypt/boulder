@@ -1,6 +1,6 @@
 client_addr = "0.0.0.0"
 bind_addr   = "10.55.55.10"
-log_level   = "INFO"
+log_level   = "ERROR"
 // When set, uses a subset of the agent's TLS configuration (key_file,
 // cert_file, ca_file, ca_path, and server_name) to set up the client for HTTP
 // or gRPC health checks. This allows services requiring 2-way TLS to be checked
@@ -233,15 +233,35 @@ services {
   address = "10.77.77.77"
   port    = 9095
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-  check {
-    id              = "sa-a-grpc"
-    name            = "sa-a-grpc"
-    grpc            = "10.77.77.77:9095"
-    grpc_use_tls    = true
-    tls_server_name = "sa.boulder"
-    tls_skip_verify = false
-    interval        = "5s"
-  }
+  checks = [
+    {
+      id              = "sa-a-grpc"
+      name            = "sa-a-grpc"
+      grpc            = "10.77.77.77:9095"
+      grpc_use_tls    = true
+      tls_server_name = "sa.boulder"
+      tls_skip_verify = false
+      interval        = "2s"
+    },
+    {
+      id              = "sa-a-grpc-sa"
+      name            = "sa-a-grpc-sa"
+      grpc            = "10.77.77.77:9095/sa.StorageAuthority"
+      grpc_use_tls    = true
+      tls_server_name = "sa.boulder"
+      tls_skip_verify = false
+      interval        = "2s"
+    },
+    {
+      id              = "sa-a-grpc-saro"
+      name            = "sa-a-grpc-saro"
+      grpc            = "10.77.77.77:9095/sa.StorageAuthorityReadOnly"
+      grpc_use_tls    = true
+      tls_server_name = "sa.boulder"
+      tls_skip_verify = false
+      interval        = "2s"
+    }
+  ]
 }
 
 services {
@@ -250,15 +270,35 @@ services {
   address = "10.88.88.88"
   port    = 9095
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
-  check {
-    id              = "sa-b-grpc"
-    name            = "sa-b-grpc"
-    grpc            = "10.88.88.88:9095"
-    grpc_use_tls    = true
-    tls_server_name = "sa.boulder"
-    tls_skip_verify = false
-    interval        = "5s"
-  }
+  checks = [
+    {
+      id              = "sa-b-grpc"
+      name            = "sa-b-grpc"
+      grpc            = "10.88.88.88:9095"
+      grpc_use_tls    = true
+      tls_server_name = "sa.boulder"
+      tls_skip_verify = false
+      interval        = "2s"
+    },
+    {
+      id              = "sa-b-grpc-sa"
+      name            = "sa-b-grpc-sa"
+      grpc            = "10.88.88.88:9095/sa.StorageAuthority"
+      grpc_use_tls    = true
+      tls_server_name = "sa.boulder"
+      tls_skip_verify = false
+      interval        = "2s"
+    },
+    {
+      id              = "sa-b-grpc-saro"
+      name            = "sa-b-grpc-saro"
+      grpc            = "10.88.88.88:9095/sa.StorageAuthorityReadOnly"
+      grpc_use_tls    = true
+      tls_server_name = "sa.boulder"
+      tls_skip_verify = false
+      interval        = "2s"
+    }
+  ]
 }
 
 services {

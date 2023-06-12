@@ -1353,3 +1353,12 @@ func (ssa *SQLStorageAuthorityRO) GetMaxExpiration(ctx context.Context, req *emp
 func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
 	return ssa.SQLStorageAuthorityRO.GetMaxExpiration(ctx, req)
 }
+
+// Health implements the grpc.checker interface.
+func (ssa *SQLStorageAuthorityRO) Health(ctx context.Context) error {
+	err := ssa.dbReadOnlyMap.WithContext(ctx).SelectOne(new(int), "SELECT 1")
+	if err != nil {
+		return err
+	}
+	return nil
+}

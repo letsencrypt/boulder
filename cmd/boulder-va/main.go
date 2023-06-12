@@ -155,7 +155,7 @@ func main() {
 		c.VA.AccountURIPrefixes)
 	cmd.FailOnError(err, "Unable to create VA server")
 
-	start, err := bgrpc.NewServer(c.VA.GRPC).Add(
+	start, err := bgrpc.NewServer(c.VA.GRPC, logger).Add(
 		&vapb.VA_ServiceDesc, vai).Add(
 		&vapb.CAA_ServiceDesc, vai).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup VA gRPC server")

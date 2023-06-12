@@ -250,7 +250,7 @@ func main() {
 		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
 	}
 
-	srv := bgrpc.NewServer(c.CA.GRPCCA)
+	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)
 
 	if !c.CA.DisableOCSPService {
 		ocspi, err := ca.NewOCSPImpl(

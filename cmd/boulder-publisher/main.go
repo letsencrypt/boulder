@@ -94,7 +94,7 @@ func main() {
 
 	pubi := publisher.New(bundles, c.Publisher.UserAgent, logger, scope)
 
-	start, err := bgrpc.NewServer(c.Publisher.GRPC).Add(
+	start, err := bgrpc.NewServer(c.Publisher.GRPC, logger).Add(
 		&pubpb.Publisher_ServiceDesc, pubi).Build(tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Unable to setup Publisher gRPC server")
 

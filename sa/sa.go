@@ -901,3 +901,17 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	}
 	return &emptypb.Empty{}, nil
 }
+
+// Health implements the grpc.checker interface.
+func (ssa *SQLStorageAuthority) Health(ctx context.Context) error {
+	err := ssa.dbMap.WithContext(ctx).SelectOne(new(int), "SELECT 1")
+	if err != nil {
+		return err
+	}
+
+	err = ssa.SQLStorageAuthorityRO.Health(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}

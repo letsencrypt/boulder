@@ -1,15 +1,18 @@
 package grpc
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/jmhodges/clock"
 	bcreds "github.com/letsencrypt/boulder/grpc/creds"
+	blog "github.com/letsencrypt/boulder/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
@@ -27,6 +30,15 @@ var CodedError = status.Errorf
 
 var errNilTLS = errors.New("boulder/grpc: received nil tls.Config")
 
+// checker is an interface for checking the health of a grpc service
+// implementation.
+type checker interface {
+	// Health returns nil if the service is healthy, or an error if it is not.
+	// If the passed context is canceled, it should return immediately with an
+	// error.
+	Health(context.Context) error
+}
+
 // service represents a single gRPC service that can be registered with a gRPC
 // server.
 type service struct {
@@ -37,15 +49,27 @@ type service struct {
 // serverBuilder implements a builder pattern for constructing new gRPC servers
 // and registering gRPC services on those servers.
 type serverBuilder struct {
-	cfg      *cmd.GRPCServerConfig
-	services map[string]service
-	err      error
+	cfg           *cmd.GRPCServerConfig
+	services      map[string]service
+	healthSrv     *health.Server
+	checkInterval time.Duration
+	logger        blog.Logger
+	err           error
 }
 
-// NewServer returns an object which can be used to build gRPC servers. It
-// takes the server's configuration to perform initialization.
-func NewServer(c *cmd.GRPCServerConfig) *serverBuilder {
-	return &serverBuilder{cfg: c, services: make(map[string]service)}
+// NewServer returns an object which can be used to build gRPC servers. It takes
+// the server's configuration to perform initialization and a logger for deep
+// health checks.
+func NewServer(c *cmd.GRPCServerConfig, logger blog.Logger) *serverBuilder {
+	return &serverBuilder{cfg: c, services: make(map[string]service), logger: logger}
+}
+
+// WithCheckInterval sets the interval at which the server will check the health
+// of its registered services. If this is not called, a default interval of 5
+// seconds will be used.
+func (sb *serverBuilder) WithCheckInterval(i time.Duration) *serverBuilder {
+	sb.checkInterval = i
+	return sb
 }
 
 // Add registers a new service (consisting of its description and its
@@ -59,8 +83,7 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 		sb.err = fmt.Errorf("attempted double-registration of gRPC service %q", desc.ServiceName)
 		return sb
 	}
-
-	sb.services[desc.ServiceName] = service{desc, impl}
+	sb.services[desc.ServiceName] = service{desc: desc, impl: impl}
 	return sb
 }
 
@@ -71,9 +94,9 @@ func (sb *serverBuilder) Add(desc *grpc.ServiceDesc, impl any) *serverBuilder {
 // gracefully stop the server if one is caught, causing the start() function to
 // exit.
 func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.Registerer, clk clock.Clock) (func() error, error) {
-	// Add the health service to all servers.
-	healthSrv := health.NewServer()
-	sb = sb.Add(&healthpb.Health_ServiceDesc, healthSrv)
+	// Register the health service with the server.
+	sb.healthSrv = health.NewServer()
+	sb.Add(&healthpb.Health_ServiceDesc, sb.healthSrv)
 
 	// Check to see if any of the calls to .Add() resulted in an error.
 	if sb.err != nil {
@@ -169,15 +192,86 @@ func (sb *serverBuilder) Build(tlsConfig *tls.Config, statsRegistry prometheus.R
 		return server.Serve(listener)
 	}
 
+	// Initialize long-running health checks of all services which implement the
+	// checker interface.
+	if sb.checkInterval <= 0 {
+		sb.checkInterval = 5 * time.Second
+	}
+	healthCtx, stopHealthChecks := context.WithCancel(context.Background())
+	for _, s := range sb.services {
+		check, ok := s.impl.(checker)
+		if !ok {
+			continue
+		}
+		sb.initLongRunningCheck(healthCtx, s.desc.ServiceName, check.Health)
+	}
+
 	// Start a goroutine which listens for a termination signal, and then
 	// gracefully stops the gRPC server. This in turn causes the start() function
 	// to exit, allowing its caller (generally a main() function) to exit.
 	go cmd.CatchSignals(func() {
-		healthSrv.Shutdown()
+		stopHealthChecks()
+		sb.healthSrv.Shutdown()
 		server.GracefulStop()
 	})
 
 	return start, nil
+}
+
+// initLongRunningCheck initializes a goroutine which will periodically check
+// the health of the provided service and update the health server accordingly.
+func (sb *serverBuilder) initLongRunningCheck(shutdownCtx context.Context, service string, checkImpl func(context.Context) error) {
+	// Set the initial health status for the service.
+	sb.healthSrv.SetServingStatus(service, healthpb.HealthCheckResponse_NOT_SERVING)
+
+	// check is a helper function that checks the health of the service and, if
+	// necessary, updates its status in the health server.
+	checkAndMaybeUpdate := func(checkCtx context.Context, last healthpb.HealthCheckResponse_ServingStatus) healthpb.HealthCheckResponse_ServingStatus {
+		// Make a context with a timeout at 90% of the interval.
+		checkImplCtx, cancel := context.WithTimeout(checkCtx, sb.checkInterval*9/10)
+		defer cancel()
+
+		var next healthpb.HealthCheckResponse_ServingStatus
+		err := checkImpl(checkImplCtx)
+		if err != nil {
+			next = healthpb.HealthCheckResponse_NOT_SERVING
+		} else {
+			next = healthpb.HealthCheckResponse_SERVING
+		}
+
+		if last == next {
+			// No change in health status.
+			return next
+		}
+
+		if next != healthpb.HealthCheckResponse_SERVING {
+			sb.logger.Errf("transitioning health of %q from %q to %q, due to: %s", service, last, next, err)
+		} else {
+			sb.logger.Infof("transitioning health of %q from %q to %q", service, last, next)
+		}
+		sb.healthSrv.SetServingStatus(service, next)
+		return next
+	}
+
+	go func() {
+		ticker := time.NewTicker(sb.checkInterval)
+		defer ticker.Stop()
+
+		// Assume the service is not healthy to start.
+		last := healthpb.HealthCheckResponse_NOT_SERVING
+
+		// Check immediately, and then at the specified interval.
+		last = checkAndMaybeUpdate(shutdownCtx, last)
+		for {
+			select {
+			case <-shutdownCtx.Done():
+				// The server is shutting down.
+				return
+			case <-ticker.C:
+				last = checkAndMaybeUpdate(shutdownCtx, last)
+			}
+		}
+	}()
 }
 
 // serverMetrics is a struct type used to return a few registered metrics from

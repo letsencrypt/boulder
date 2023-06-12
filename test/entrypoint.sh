@@ -13,6 +13,9 @@ service rsyslog start
 # make sure we can reach the mysqldb.
 ./test/wait-for-it.sh boulder-mysql 3306
 
+# make sure we can reach the proxysql.
+./test/wait-for-it.sh bproxysql 6032
+
 # create the database
 MYSQL_CONTAINER=1 $DIR/create_db.sh
 
