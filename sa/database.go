@@ -67,7 +67,7 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 		return nil, err
 	}
 
-	dbMap, err := newDbMapFromMysqlConfig(mysqlConfig, settings)
+	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
 		return nil, err
 	}
 
-	return newDbMapFromMysqlConfig(config, DbSettings{})
+	return newDbMapFromMySQLConfig(config, DbSettings{})
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -140,7 +140,7 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 	}
 }
 
-// newDbMapFromMysqlConfig opens a database connection given the provided *mysql.Config, plus some Boulder-specific
+// newDbMapFromMySQLConfig opens a database connection given the provided *mysql.Config, plus some Boulder-specific
 // required and default settings, plus some additional config in the sa.DbSettings object. The sa.DbSettings object
 // is usually provided from JSON config.
 //
@@ -148,7 +148,7 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 //   - pings the database (and errors if it's unreachable)
 //   - wraps the connection in a gorp.DbMap so we can use the handy Get/Insert methods gorp provides
 //   - wraps that in a db.WrappedMap to get more useful error messages
-func newDbMapFromMysqlConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
+func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
 	if err != nil {
 		return nil, err
