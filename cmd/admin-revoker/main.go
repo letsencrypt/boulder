@@ -573,7 +573,6 @@ func main() {
 
 	ctx := context.Background()
 	r := newRevoker(c)
-	defer r.log.AuditPanic()
 
 	args := flagSet.Args()
 	switch {

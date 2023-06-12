@@ -287,7 +287,6 @@ func main() {
 	}
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.WFE.DebugAddr)
-	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
 	clk := cmd.Clock()
