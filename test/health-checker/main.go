@@ -21,6 +21,8 @@ type config struct {
 }
 
 func main() {
+	defer cmd.AuditPanic()
+
 	// Flag and config parsing and validation.
 	configFile := flag.String("config", "", "Path to the TLS configuration file")
 	serverAddr := flag.String("addr", "", "Address of the gRPC server to check")

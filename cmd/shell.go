@@ -376,6 +376,10 @@ type failure struct {
 	msg string
 }
 
+func (f failure) String() string {
+	return f.msg
+}
+
 // Fail raises a panic with a special type that causes `AuditPanic` to audit log the provided message
 // and then exit nonzero (without printing a stack trace).
 func Fail(msg string) {
