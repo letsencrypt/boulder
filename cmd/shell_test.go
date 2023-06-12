@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"testing"
@@ -227,4 +228,50 @@ func TestFailedConfigValidation(t *testing.T) {
 	err = ValidateYAMLConfig(&ConfigValidator{&FooConfig{}, nil}, cf)
 	test.AssertError(t, err, "Expected validation error")
 	test.AssertContains(t, err.Error(), "'required'")
+}
+
+func TestFailExit(t *testing.T) {
+	// Test that when Fail is called with a `defer AuditPanic()`,
+	// the program exits with a non-zero exit code and logs
+	// the result (but not stack trace).
+	// Inspired by https://go.dev/talks/2014/testing.slide#23
+    if os.Getenv("TIME_TO_DIE") == "1" {
+		defer AuditPanic()
+		Fail("tears in the rain")
+        return
+    }
+    cmd := exec.Command(os.Args[0], "-test.run=TestFailExit")
+    cmd.Env = append(os.Environ(), "TIME_TO_DIE=1")
+    output, err := cmd.CombinedOutput()
+	test.AssertError(t, err, "running a failing program")
+	test.AssertContains(t, string(output), "[AUDIT] tears in the rain")
+	// "goroutine" usually shows up in stack traces, so we check it
+	// to make sure we didn't print a stack trace.
+	test.AssertNotContains(t, string(output), "goroutine")
+}
+
+func testPanicStackTraceHelper() {
+	var x *int
+	*x = 1
+}
+
+func TestPanicStackTrace(t *testing.T) {
+	// Test that when a nil pointer dereference is hit after a
+	// `defer AuditPanic()`, the program exits with a non-zero
+	// exit code and prints the result (but not stack trace).
+	// Inspired by https://go.dev/talks/2014/testing.slide#23
+    if os.Getenv("AT_THE_DISCO") == "1" {
+		defer AuditPanic()
+		testPanicStackTraceHelper()
+        return
+    }
+    cmd := exec.Command(os.Args[0], "-test.run=TestPanicStackTrace")
+    cmd.Env = append(os.Environ(), "AT_THE_DISCO=1")
+    output, err := cmd.CombinedOutput()
+	test.AssertError(t, err, "running a failing program")
+	test.AssertContains(t, string(output), "nil pointer dereference")
+	// Note: we can confirm that we attempted to print a stack trace,
+	// though for some reason the actual lines of the stack trace don't
+	// appear to show up when calling `runtime.Stack()` in a unittest.
+	test.AssertContains(t, string(output), "Stack Trace")
 }

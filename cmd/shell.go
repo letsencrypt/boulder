@@ -186,6 +186,11 @@ func StatsAndLogging(logConf SyslogConfig, otConf OpenTelemetryConfig, addr stri
 	return newStatsRegistry(addr, logger), logger, shutdown
 }
 
+// NewLogger creates a logger object with the provided settings, sets it as
+// the global logger, and returns it.
+//
+// It also sets the logging systems for various packages we use to go through
+// the created logger, and sets up a periodic log event for the current timestamp.
 func NewLogger(logConf SyslogConfig) blog.Logger {
 	var logger blog.Logger
 	if logConf.SyslogLevel >= 0 {
@@ -356,7 +361,6 @@ func AuditPanic() {
 	fail, ok := err.(failure)
 	if ok {
 		log.AuditErr(fail.msg)
-		os.Exit(1)
 	} else if err != nil {
 		// For all other values passed to `panic`, log them and a stack trace
 		log.AuditErrf("Panic caused by err: %s", err)
@@ -368,6 +372,7 @@ func AuditPanic() {
 		runtime.Stack(buf, true)
 		log.Warningf("Stack Trace (All frames): %s", buf)
 	}
+	os.Exit(1)
 }
 
 // failure is a sentinel type that `Fail` passes to `panic` so `AuditPanic` can exit
