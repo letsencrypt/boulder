@@ -344,18 +344,48 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 	}
 }
 
-// Fail prints a message to the audit log, then panics, causing the process to exit but
-// allowing deferred cleanup functions to run on the way out.
-func Fail(msg string) {
-	logger := blog.Get()
-	logger.AuditErr(msg)
-	panic(msg)
+// AuditPanic catches panicking executables. This method should be added
+// in a defer statement as early as possible
+func AuditPanic() {
+	err := recover()
+	// Get the global logger if it's initialized, or create a default one if not.
+	// We could wind up creating a default logger if we panic so early in a process'
+	// lifetime that we haven't yet parsed the config and created a logger.
+	log := blog.Get()
+	// For the special type `failure`, audit log the message and exit quietly
+	fail, ok := err.(failure)
+	if ok {
+		log.AuditErr(fail.msg)
+		os.Exit(1)
+	} else if err != nil {
+		// For all other values passed to `panic`, log them and a stack trace
+		log.AuditErrf("Panic caused by err: %s", err)
+
+		var buf []byte
+		runtime.Stack(buf, false)
+		log.AuditErrf("Stack Trace (Current frame) %s", buf)
+
+		runtime.Stack(buf, true)
+		log.Warningf("Stack Trace (All frames): %s", buf)
+	}
 }
 
-// FailOnError prints an error message and panics, but only if the provided
-// error is actually non-nil. This is useful for one-line error handling in
-// top-level executables, but should generally be avoided in libraries. The
-// message argument is optional.
+// failure is a sentinel type that `Fail` passes to `panic` so `AuditPanic` can exit
+// quietly and print the msg.
+type failure struct {
+	msg string
+}
+
+// Fail raises a panic with a special type that causes `AuditPanic` to audit log the provided message
+// and then exit nonzero (without printing a stack trace).
+func Fail(msg string) {
+	panic(failure{msg})
+}
+
+// FailOnError calls Fail if the provided error is non-nil.
+
+// This is useful for one-line error handling in top-level executables,
+// but should generally be avoided in libraries. The message argument is optional.
 func FailOnError(err error, msg string) {
 	if err == nil {
 		return

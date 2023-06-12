@@ -123,14 +123,6 @@ func TestSyslogMethods(t *testing.T) {
 	impl.Warningf("audit-logger_test.go: %s", "warning")
 }
 
-func TestPanic(t *testing.T) {
-	t.Parallel()
-	impl := setup(t)
-	defer impl.AuditPanic()
-	panic("Test panic")
-	// Can't assert anything here or golint gets angry
-}
-
 func TestAuditObject(t *testing.T) {
 	t.Parallel()
 
