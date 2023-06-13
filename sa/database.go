@@ -46,8 +46,8 @@ type DbSettings struct {
 }
 
 // InitWrappedDb constructs a wrapped gorp mapping object with the provided
-// settings. If scope is non-Nil database metrics will be initialized. If logger
-// is non-Nil (gorp) SQL debugging will be enabled. The only required parameter
+// settings. If scope is non-nil, Prometheus metrics will be exported. If logger
+// is non-nil, SQL debug-level logging will be enabled. The only required parameter
 // is config.
 func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	url, err := config.URL()
@@ -62,9 +62,14 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 		ConnMaxIdleTime: config.ConnMaxIdleTime.Duration,
 	}
 
-	dbMap, err := NewDbMap(url, settings)
+	mysqlConfig, err := mysql.ParseDSN(url)
 	if err != nil {
-		return nil, fmt.Errorf("while initializing database connection: %s", err)
+		return nil, err
+	}
+
+	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings)
+	if err != nil {
+		return nil, err
 	}
 
 	if logger != nil {
@@ -77,7 +82,7 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	}
 
 	if scope != nil {
-		err = InitDBMetrics(dbMap.Db, scope, settings, addr, user)
+		err = initDBMetrics(dbMap.Db, scope, settings, addr, user)
 		if err != nil {
 			return nil, fmt.Errorf("while initializing metrics: %w", err)
 		}
@@ -85,11 +90,11 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	return dbMap, nil
 }
 
-// NewDbMap creates a wrapped root gorp mapping object. Create one of these for
+// DBMapForTest creates a wrapped root gorp mapping object. Create one of these for
 // each database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
-func NewDbMap(dbConnect string, settings DbSettings) (*boulderDB.WrappedMap, error) {
+func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
 	var err error
 	var config *mysql.Config
 
@@ -98,7 +103,7 @@ func NewDbMap(dbConnect string, settings DbSettings) (*boulderDB.WrappedMap, err
 		return nil, err
 	}
 
-	return NewDbMapFromConfig(config, settings)
+	return newDbMapFromMySQLConfig(config, DbSettings{})
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -135,9 +140,15 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 	}
 }
 
-// NewDbMapFromConfig functions similarly to NewDbMap, but it takes the
-// decomposed form of the connection string, a *mysql.Config.
-func NewDbMapFromConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
+// newDbMapFromMySQLConfig opens a database connection given the provided *mysql.Config, plus some Boulder-specific
+// required and default settings, plus some additional config in the sa.DbSettings object. The sa.DbSettings object
+// is usually provided from JSON config.
+//
+// This function also:
+//   - pings the database (and errors if it's unreachable)
+//   - wraps the connection in a gorp.DbMap so we can use the handy Get/Insert methods gorp provides
+//   - wraps that in a db.WrappedMap to get more useful error messages
+func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
 	if err != nil {
 		return nil, err

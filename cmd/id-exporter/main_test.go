@@ -442,7 +442,7 @@ func setup(t *testing.T) testCtx {
 	fc := clock.NewFake()
 
 	// Using DBConnSAFullPerms to be able to insert registrations and certificates
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}

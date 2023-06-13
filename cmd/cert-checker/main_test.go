@@ -91,7 +91,7 @@ func BenchmarkCheckCert(b *testing.B) {
 }
 
 func TestCheckWildcardCert(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {
@@ -137,7 +137,7 @@ func TestCheckWildcardCert(t *testing.T) {
 }
 
 func TestCheckCertReturnsDNSNames(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {
@@ -186,7 +186,7 @@ func (*rsa2048Generator) genKey() (crypto.Signer, error) {
 }
 
 func TestCheckCert(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {
@@ -326,7 +326,7 @@ func TestCheckCert(t *testing.T) {
 }
 
 func TestGetAndProcessCerts(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	fc := clock.NewFake()
 	fc.Set(fc.Now().Add(time.Hour))
@@ -419,7 +419,7 @@ func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{
  * 0: https://github.com/letsencrypt/boulder/issues/2004
  */
 func TestGetCertsEmptyResults(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	checker.dbMap = mismatchedCountDB{}
@@ -447,7 +447,7 @@ func (db emptyDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, erro
 // expected if the DB finds no certificates to match the SELECT query and
 // should return an error.
 func TestGetCertsNullResults(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	checker.dbMap = emptyDB{}
@@ -521,7 +521,7 @@ func TestIsForbiddenDomain(t *testing.T) {
 }
 
 func TestIgnoredLint(t *testing.T) {
-	saDbMap, err := sa.NewDbMap(vars.DBConnSA, sa.DbSettings{})
+	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	test.AssertNotError(t, err, "Couldn't connect to database")
 	saCleanup := test.ResetBoulderTestDatabase(t)
 	defer func() {

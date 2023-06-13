@@ -66,12 +66,12 @@ func initSA(t *testing.T) (*SQLStorageAuthority, clock.FakeClock, func()) {
 	t.Helper()
 	features.Reset()
 
-	dbMap, err := NewDbMap(vars.DBConnSA, DbSettings{})
+	dbMap, err := DBMapForTest(vars.DBConnSA)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
 
-	dbIncidentsMap, err := NewDbMap(vars.DBConnIncidents, DbSettings{})
+	dbIncidentsMap, err := DBMapForTest(vars.DBConnIncidents)
 	if err != nil {
 		t.Fatalf("Failed to create dbMap: %s", err)
 	}
@@ -2918,10 +2918,10 @@ func TestIncidentsForSerial(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	testSADbMap, err := NewDbMap(vars.DBConnSAFullPerms, DbSettings{})
+	testSADbMap, err := DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 
-	testIncidentsDbMap, err := NewDbMap(vars.DBConnIncidentsFullPerms, DbSettings{})
+	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 
@@ -3013,7 +3013,7 @@ func TestSerialsForIncident(t *testing.T) {
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
-	testIncidentsDbMap, err := NewDbMap(vars.DBConnIncidentsFullPerms, DbSettings{})
+	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 

@@ -348,7 +348,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	err = insertCertificate(cert, time.Time{})
 	test.AssertNotError(t, err, "inserting certificate")
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
 	err = setupDBMap.Insert(&core.FQDNSet{
 		SetHash: sa.HashNames(names),
@@ -503,7 +503,7 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 		return err
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	if err != nil {
 		return err
 	}
@@ -597,7 +597,7 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 	err = insertCertificate(certD, ctx.fc.Now().Add(-36*time.Hour))
 	test.AssertNotError(t, err, "inserting certD")
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
 	err = setupDBMap.Insert(fqdnStatusD)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
@@ -723,7 +723,7 @@ func TestCertIsRenewed(t *testing.T) {
 		},
 	}
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -858,7 +858,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 	err = insertCertificate(certA, time.Time{})
 	test.AssertNotError(t, err, "inserting certificate")
 
-	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
 	_, err = setupDBMap.Exec("UPDATE certificateStatus SET status = ? WHERE serial = ?",
 		string(core.OCSPStatusRevoked), core.SerialToString(serial1))
@@ -933,7 +933,7 @@ type testCtx struct {
 func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
 	// We use the test_setup user (which has full permissions to everything)
 	// because the SA we return is used for inserting data to set up the test.
-	dbMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
+	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
