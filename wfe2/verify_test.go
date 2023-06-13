@@ -1499,9 +1499,6 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 	wfe, _, signer := setupWFE(t)
 
-	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
-	request := makePostRequestWithPath("test", validJWSBody)
-
 	timeoutErrCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
 		return false, context.DeadlineExceeded
 	}
@@ -1510,6 +1507,9 @@ func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 	test.AssertNotError(t, err, "making key policy")
 
 	wfe.keyPolicy = kp
+
+	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
+	request := makePostRequestWithPath("test", validJWSBody)
 
 	_, _, prob := wfe.validSelfAuthenticatedPOST(context.Background(), request)
 	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
@@ -1521,9 +1521,11 @@ func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{}, badKeyCheckFunc)
 	test.AssertNotError(t, err, "making key policy")
 
-	wfe.keyPolicy = kp
+	wfe.keyPolicy =  kp
+
 	_, _, validJWSBody = signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
 	request = makePostRequestWithPath("test", validJWSBody)
+
 	_, _, prob = wfe.validSelfAuthenticatedPOST(context.Background(), request)
 	test.AssertEquals(t, prob.Type, probs.BadPublicKeyProblem)
 }
