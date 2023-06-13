@@ -349,8 +349,8 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 	}
 }
 
-// AuditPanic catches panicking executables. This method should be added
-// in a defer statement as early as possible
+// AuditPanic catches and logs panics, then exits with exit code 1.
+// This method should be called in a defer statement as early as possible.
 func AuditPanic() {
 	err := recover()
 	// No panic, no problem
@@ -398,7 +398,6 @@ func Fail(msg string) {
 }
 
 // FailOnError calls Fail if the provided error is non-nil.
-
 // This is useful for one-line error handling in top-level executables,
 // but should generally be avoided in libraries. The message argument is optional.
 func FailOnError(err error, msg string) {
