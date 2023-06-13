@@ -18,6 +18,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -682,8 +683,11 @@ func (wfe *WebFrontEndImpl) validSelfAuthenticatedPOST(
 	// If the key doesn't meet the GoodKey policy return a problem
 	err := wfe.keyPolicy.GoodKey(ctx, pubKey.Key)
 	if err != nil {
-		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
-		return nil, nil, probs.BadPublicKey(err.Error())
+		if errors.Is(err, goodkey.ErrBadKey) {
+			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWKRejectedByGoodKey"}).Inc()
+			return nil, nil, probs.BadPublicKey(err.Error())
+		}
+		return nil, nil, probs.ServerInternal("error checking key quality")
 	}
 
 	return payload, pubKey, nil
