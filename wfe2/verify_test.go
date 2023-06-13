@@ -1521,7 +1521,7 @@ func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
 	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{}, badKeyCheckFunc)
 	test.AssertNotError(t, err, "making key policy")
 
-	wfe.keyPolicy =  kp
+	wfe.keyPolicy = kp
 
 	_, _, validJWSBody = signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
 	request = makePostRequestWithPath("test", validJWSBody)
