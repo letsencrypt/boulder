@@ -376,8 +376,8 @@ func AuditPanic() {
 		runtime.Stack(buf, true)
 		log.Warningf("Stack Trace (All frames): %s", buf)
 	}
-      // Because this function is deferred as early as possible, there's no further defers to run after this one
-      // So it is safe to os.Exit to set the exit code and exit without losing any defers we haven't executed.
+	// Because this function is deferred as early as possible, there's no further defers to run after this one
+	// So it is safe to os.Exit to set the exit code and exit without losing any defers we haven't executed.
 	os.Exit(1)
 }
 
