@@ -2067,6 +2067,14 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
+	// Log size reduction: Polling for orders is (as of Jun 2023) our most loggiest request path,
+	// so we want to optimize for log size a bit.
+	// Slug: since the URL format for orders is `<account ID>/<order ID>`, and logs already include
+	// the account ID, we can simplify the slug to `<order ID>` and save a few bytes.
+	logEvent.Slug = fmt.Sprintf("%d", orderID)
+	// We don't need to log the Contacts on each poll
+	logEvent.Contacts = nil
+
 	order, err := wfe.sa.GetOrder(ctx, &sapb.OrderRequest{Id: orderID})
 	if err != nil {
 		if errors.Is(err, berrors.NotFound) {
