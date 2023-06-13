@@ -353,6 +353,10 @@ func NewOpenTelemetry(config OpenTelemetryConfig, logger blog.Logger) func(ctx c
 // in a defer statement as early as possible
 func AuditPanic() {
 	err := recover()
+	// No panic, no problem
+	if err == nil {
+		return
+	}
 	// Get the global logger if it's initialized, or create a default one if not.
 	// We could wind up creating a default logger if we panic so early in a process'
 	// lifetime that we haven't yet parsed the config and created a logger.
@@ -361,7 +365,7 @@ func AuditPanic() {
 	fail, ok := err.(failure)
 	if ok {
 		log.AuditErr(fail.msg)
-	} else if err != nil {
+	} else {
 		// For all other values passed to `panic`, log them and a stack trace
 		log.AuditErrf("Panic caused by err: %s", err)
 
