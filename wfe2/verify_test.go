@@ -1429,19 +1429,16 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 		ExpectedLogEvent web.RequestEvent
 	}{
 		{
-			Name:            "Non-empty JWS payload",
-			Request:         makePostRequestWithPath("test", invalidPayloadRequest),
-			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
-			ExpectedLogEvent: web.RequestEvent{
-				Contacts: []string{"mailto:person@mail.com"},
-			},
+			Name:             "Non-empty JWS payload",
+			Request:          makePostRequestWithPath("test", invalidPayloadRequest),
+			ExpectedProblem:  probs.Malformed("POST-as-GET requests must have an empty payload"),
+			ExpectedLogEvent: web.RequestEvent{},
 		},
 		{
 			Name:    "Valid POST-as-GET",
 			Request: makePostRequestWithPath("test", validRequest),
 			ExpectedLogEvent: web.RequestEvent{
-				Contacts: []string{"mailto:person@mail.com"},
-				Method:   "POST-as-GET",
+				Method: "POST-as-GET",
 			},
 		},
 	}
