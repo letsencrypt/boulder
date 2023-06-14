@@ -660,6 +660,9 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			return
 		}
 		prepAccountForDisplay(&acct)
+		if acct.Contact != nil {
+			logEvent.Contacts = *acct.Contact
+		}
 
 		err = wfe.writeJsonResponse(response, logEvent, http.StatusOK, acct)
 		if err != nil {
@@ -1293,6 +1296,10 @@ func (wfe *WebFrontEndImpl) Account(
 		wfe.sendError(response, logEvent,
 			probs.Unauthorized("Request signing key did not match account key"), nil)
 		return
+	}
+
+	if currAcct.Contact != nil {
+		logEvent.Contacts = *currAcct.Contact
 	}
 
 	// If the body was not empty, then this is an account update request.

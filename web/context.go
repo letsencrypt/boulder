@@ -36,7 +36,6 @@ type RequestEvent struct {
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
 	Error          string   `json:",omitempty"`
-	Contacts       []string `json:",omitempty"`
 	UserAgent      string   `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
 	Origin string                 `json:",omitempty"`
@@ -44,6 +43,10 @@ type RequestEvent struct {
 
 	// For endpoints that create objects, the ID of the newly created object.
 	Created string `json:",omitempty"`
+
+	// For endpoints that return or update accounts, the pre-existing (at the time
+	// of the request) contact addresses for that account.
+	Contacts []string `json:",omitempty"`
 
 	// For challenge and authorization GETs and POSTs:
 	// the status of the authorization at the time the request began.
