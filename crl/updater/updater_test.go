@@ -50,12 +50,12 @@ func (f *fakeGRCC) Recv() (*corepb.CRLEntry, error) {
 // fakeGRCC to be used as the return value for calls to GetRevokedCerts, and a
 // fake timestamp to serve as the database's maximum notAfter value.
 type fakeSAC struct {
-	mocks.StorageAuthorityReadOnly
+	mocks.StorageAuthority
 	grcc        fakeGRCC
 	maxNotAfter time.Time
 }
 
-func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthorityReadOnly_GetRevokedCertsClient, error) {
+func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
 	return &f.grcc, nil
 }
 
@@ -146,7 +146,7 @@ func TestTickShard(t *testing.T) {
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, 1*time.Minute, 1, 1,
+		6*time.Hour, 1*time.Minute, 1*time.Hour, 1, 1,
 		&fakeSAC{grcc: fakeGRCC{}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
@@ -237,7 +237,7 @@ func TestTickShardWithRetry(t *testing.T) {
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, 1*time.Minute, 1, 1,
+		6*time.Hour, 1*time.Minute, 1*time.Hour, 1, 1,
 		&fakeSAC{grcc: fakeGRCC{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
@@ -283,7 +283,7 @@ func TestTickIssuer(t *testing.T) {
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, 1*time.Minute, 1, 1,
+		6*time.Hour, 1*time.Minute, 1*time.Hour, 1, 1,
 		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
@@ -319,7 +319,7 @@ func TestTick(t *testing.T) {
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, 1*time.Minute, 1, 1,
+		6*time.Hour, 1*time.Minute, 1*time.Hour, 1, 1,
 		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},

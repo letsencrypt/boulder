@@ -75,6 +75,11 @@ const (
 	// was issued even if there is a power outage or other error between
 	// signing the precertificate and writing it to the database.
 	StoreLintingCertificateInsteadOfPrecertificate
+
+	// LeaseCRLShards causes the crl-updater to use the database to control which
+	// instance of crl-updater is responsible for updating each shard. This flag
+	// should only be enabled if the `crlShards` table exists in the database.
+	LeaseCRLShards
 )
 
 // List of features and their default value, protected by fMu
@@ -95,6 +100,7 @@ var features = map[FeatureFlag]bool{
 	CertCheckerRequiresValidations: false,
 	AsyncFinalize:                  false,
 	RequireCommonName:              true,
+	LeaseCRLShards:                 false,
 
 	StoreLintingCertificateInsteadOfPrecertificate: false,
 }

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/core"
@@ -26,6 +27,9 @@ func runUpdater(t *testing.T, configFile string) {
 
 	c := exec.Command(binPath, "crl-updater", "-config", configFile, "-debug-addr", ":8022", "-runOnce")
 	out, err := c.CombinedOutput()
+	for _, line := range strings.Split(string(out), "\n") {
+		t.Log(line)
+	}
 	test.AssertNotError(t, err, fmt.Sprintf("crl-updater failed: %s", out))
 }
 
