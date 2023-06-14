@@ -1168,3 +1168,14 @@ func namesForOrder(s db.Selector, orderID int64) ([]string, error) {
 	}
 	return reversedNames, nil
 }
+
+// crlShardModel represents one row in the crlShards table. The ThisUpdate and
+// NextUpdate fields are pointers because they are NULL-able columns.
+type crlShardModel struct {
+	ID          int64      `db:"id"`
+	IssuerID    int64      `db:"issuerID"`
+	Idx         int        `db:"idx"`
+	ThisUpdate  *time.Time `db:"thisUpdate"`
+	NextUpdate  *time.Time `db:"nextUpdate"`
+	LeasedUntil time.Time  `db:"leasedUntil"`
+}
