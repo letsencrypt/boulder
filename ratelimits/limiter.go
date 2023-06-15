@@ -3,10 +3,21 @@ package ratelimits
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
 )
+
+// ErrInvalidCostForCheck is returned when a cost is less than zero.
+var ErrInvalidCostForCheck = fmt.Errorf("cost must be greater than zero")
+
+// ErrInvalidCostForSpend is returned when a cost is less than or equal to zero.
+var ErrInvalidCostForSpend = fmt.Errorf("cost must be greater than zero")
+
+// ErrInvalidCostForLimit is returned when the specified cost is greater than
+// the limit's possible maximum capacity.
+var ErrInvalidCostForLimit = fmt.Errorf("cost must be less than or equal to the limit's burst")
 
 // RateLimit specifies the frequency of requests allowed from a client over a
 // period of time. All fields are required and MUST be greater than zero.
@@ -33,13 +44,21 @@ type Limiter struct {
 	// an override limit for that prefix.
 	overrides map[string]RateLimit
 
-	// buckets is a map of each bucket, identified by 'prefix:id' to a
-	// theoretical arrival time (TAT) of the next request for that client.
-	buckets map[string]time.Time
+	buckets struct {
+		sync.RWMutex
+		// m is a map of each bucket, identified by 'prefix:id' to a theoretical
+		// arrival time (TAT) of the next request for that client.
+		m map[string]time.Time
+	}
 }
 
 func NewLimiter(limitsPath, overridesPath string, clk clock.Clock) (*Limiter, error) {
-	limiter := &Limiter{buckets: make(map[string]time.Time)}
+	limiter := &Limiter{
+		buckets: struct {
+			sync.RWMutex
+			m map[string]time.Time
+		}{m: map[string]time.Time{}},
+	}
 
 	defaults, err := loadLimits(limitsPath)
 	if err != nil {
@@ -81,42 +100,85 @@ type Decision struct {
 	TAT time.Time
 }
 
-// GetLimit returns the default limit, unless an override limit has defined for
-// the client.
-func (l *Limiter) GetLimit(prefix, id string) (RateLimit, error) {
+func (l *Limiter) Check(prefix, id string, cost int) (Decision, error) {
+	if cost < 0 {
+		return Decision{}, ErrInvalidCostForCheck
+	}
 
-	override := prefix + ":" + id
-	ol, ok := l.overrides[override]
-	if ok {
-		// Found override limit.
-		return ol, nil
+	limit, err := l.getLimit(prefix, id)
+	if err != nil {
+		return Decision{}, err
+	}
+
+	tat, err := l.getTAT(prefix, id)
+	if err != nil {
+		return Decision{}, err
+	}
+	return maybeSpend(clock.New(), limit, tat, int64(cost)), nil
+}
+
+func (l *Limiter) Spend(prefix, id string, cost int) (Decision, error) {
+	if cost <= 0 {
+		return Decision{}, ErrInvalidCostForSpend
+	}
+	d, err := l.Check(prefix, id, cost)
+	if err != nil {
+		return Decision{}, err
+	}
+	if d.Allowed {
+		l.setTAT(prefix, id, d.TAT)
+	}
+	return d, nil
+
+}
+
+func (l *Limiter) Refund(prefix, id string, cost int) error {
+	return nil
+}
+
+func (l *Limiter) Reset(prefix, id string) error {
+	return nil
+}
+
+func (l *Limiter) getTAT(prefix, id string) (time.Time, error) {
+	key := prefix + ":" + id
+	l.buckets.RLock()
+	defer l.buckets.RUnlock()
+	tat, ok := l.buckets.m[key]
+	if !ok {
+		return time.Time{}, fmt.Errorf("bucket %q does not exist", key)
+	}
+	return tat, nil
+}
+
+func (l *Limiter) setTAT(prefix, id string, tat time.Time) {
+	l.buckets.Lock()
+	defer l.buckets.Unlock()
+	l.buckets.m[prefix+":"+id] = tat
+}
+
+// GetLimit returns the default limit, unless an override limit has defined for
+// the client. Prefix is the limit type, and id is the client identifier. Prefix
+// MUST be a valid limit type but id is optional.
+func (l *Limiter) getLimit(prefix, id string) (RateLimit, error) {
+	ok := isPrefix(prefix)
+	if !ok {
+		return RateLimit{}, fmt.Errorf("invalid limit prefix %q", prefix)
+	}
+
+	if id != "" {
+		// Check for key limit.
+		key := prefix + ":" + id
+		ol, ok := l.overrides[key]
+		if ok {
+			return ol, nil
+		}
 	}
 	dl, ok := l.limits[prefix]
 	if ok {
-		// Return default limit.
 		return dl, nil
 	}
 	return RateLimit{}, fmt.Errorf("limit %q does not exist", prefix)
-}
-
-func (l *Limiter) Check(id string, cost int) (Decision, error) {
-	return Decision{}, nil
-}
-
-func (l *Limiter) Spend(id string, cost int) (Decision, error) {
-	return Decision{}, nil
-}
-
-func (l *Limiter) CheckAndSpend(id string, cost int) (Decision, error) {
-	return Decision{}, nil
-}
-
-func (l *Limiter) Refund(id string, cost int) error {
-	return nil
-}
-
-func (l *Limiter) Reset(id string) error {
-	return nil
 }
 
 // maybeSpend implements the Generic Cell Rate Algorithm (GCRA). It returns a
