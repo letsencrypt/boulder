@@ -737,3 +737,5 @@ k8s.io/klog/v2 v2.80.1/go.mod h1:y1WjHnz7Dj687irZUWR/WLkLc5N1YHtjLdmgWjndZn0=
 rsc.io/binaryregexp v0.2.0/go.mod h1:qTv7/COck+e2FymRvadv62gMdZztPaShugOCi3I+8D8=
 rsc.io/quote/v3 v3.1.0/go.mod h1:yEA65RcK8LyAZtP9Kv3t0HmxON59tX3rD+tICJqUlj0=
 rsc.io/sampler v1.3.0/go.mod h1:T1hPZKmBbMNahiBKFy5HrXp6adAjACjK9JXDnKaTXpA=
+software.sslmate.com/src/certspotter v0.16.0 h1:l4bGY1r/GZtexxyB9H5k49fdIVjTUTv57brlyvmp2tw=
+software.sslmate.com/src/certspotter v0.16.0/go.mod h1:UBTYJFx0U925uIxHTpGIufF1m3k5dbRqm2UVvFPKTCU=

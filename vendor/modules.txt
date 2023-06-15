@@ -535,3 +535,7 @@ k8s.io/klog/v2/internal/clock
 k8s.io/klog/v2/internal/dbg
 k8s.io/klog/v2/internal/serialize
 k8s.io/klog/v2/internal/severity
+# software.sslmate.com/src/certspotter v0.16.0
+## explicit; go 1.19
+software.sslmate.com/src/certspotter
+software.sslmate.com/src/certspotter/ct

@@ -90,6 +90,7 @@ require (
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	k8s.io/klog/v2 v2.80.1 // indirect
+	software.sslmate.com/src/certspotter v0.16.0 // indirect
 )
 
 // This version is required by parts of the honeycombio/beeline-go package

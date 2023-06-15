@@ -18,6 +18,7 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+	"software.sslmate.com/src/certspotter"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -330,11 +331,16 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert: serial=[%s] regID=[%d] names=[%s] precert=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(precert.Raw))
 
-	_, issuanceToken, err := issuer.Prepare(issuanceReq)
+	lintCertDER, issuanceToken, err := issuer.Prepare(issuanceReq)
 	if err != nil {
 		ca.log.AuditErrf("Preparing cert failed: serial=[%s] regID=[%d] names=[%s] err=[%v]",
 			serialHex, req.RegistrationID, names, err)
 		return nil, berrors.InternalServerError("failed to prepare certificate signing: %s", err)
+	}
+
+	err = checkFinalLintCertAgainstPrecert(lintCertDER, req.DER)
+	if err != nil {
+		return nil, err
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)
@@ -362,6 +368,30 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Issued:         precert.NotBefore.UnixNano(),
 		Expires:        precert.NotAfter.UnixNano(),
 	}, nil
+}
+
+func checkFinalLintCertAgainstPrecert(lintCertDER []byte, preCertDER []byte) error {
+	lintCert, err := x509.ParseCertificate(lintCertDER)
+	if err != nil {
+		return fmt.Errorf("parsing final lint certificate: %w", err)
+	}
+
+	lintCertTBSParsed, err := certspotter.ParseTBSCertificate(lintCert.RawTBSCertificate)
+	if err != nil {
+		return fmt.Errorf("parsing final lint certificate TBS: %w", err)
+	}
+
+	precertTBS, err := certspotter.ReconstructPrecertTBS(lintCertTBSParsed)
+	if err != nil {
+		return fmt.Errorf("reconstructing precertificate TBS: %w", err)
+	}
+
+	_, err = certspotter.ValidatePrecert(preCertDER, precertTBS.Raw)
+	if err != nil {
+		return fmt.Errorf("checking final lint certificate against precertificate: %w", err)
+	}
+
+	return nil
 }
 
 type validity struct {
