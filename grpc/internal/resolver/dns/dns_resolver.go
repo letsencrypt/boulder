@@ -87,7 +87,7 @@ func NewDefaultSRVBuilder() resolver.Builder {
 	return &srvBuilder{scheme: "srv"}
 }
 
-// NewSRVBuilder creates a srvBuilder which is used to factory SRV DNS resolvers
+// NewNonceSRVBuilder creates a srvBuilder which is used to factory SRV DNS resolvers
 // with a custom grpc.Balancer use by nonce-service clients.
 func NewNonceSRVBuilder() resolver.Builder {
 	return &srvBuilder{scheme: noncebalancer.SRVResolverScheme, balancer: noncebalancer.Name}
