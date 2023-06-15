@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -369,12 +370,7 @@ func AuditPanic() {
 		// For all other values passed to `panic`, log them and a stack trace
 		log.AuditErrf("Panic caused by err: %s", err)
 
-		var buf []byte
-		runtime.Stack(buf, false)
-		log.AuditErrf("Stack Trace (Current frame) %s", buf)
-
-		runtime.Stack(buf, true)
-		log.Warningf("Stack Trace (All frames): %s", buf)
+		log.AuditErrf("Stack Trace (Current koroutine) %s", debug.Stack())
 	}
 	// Because this function is deferred as early as possible, there's no further defers to run after this one
 	// So it is safe to os.Exit to set the exit code and exit without losing any defers we haven't executed.

@@ -278,8 +278,6 @@ func TestPanicStackTrace(t *testing.T) {
 	output, err := cmd.CombinedOutput()
 	test.AssertError(t, err, "running a failing program")
 	test.AssertContains(t, string(output), "nil pointer dereference")
-	// Note: we can confirm that we attempted to print a stack trace,
-	// though for some reason the actual lines of the stack trace don't
-	// appear to show up when calling `runtime.Stack()` in a unittest.
 	test.AssertContains(t, string(output), "Stack Trace")
+	test.AssertContains(t, string(output), "cmd/shell_test.go:")
 }
