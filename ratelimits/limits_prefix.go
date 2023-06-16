@@ -33,20 +33,15 @@ const (
 	CertificatesPerFQDNSet
 )
 
-var prefixToString = map[Prefix]string{
-	UsageRequestsPerIPv4Address:     "UsageRequestsPerIPv4Address",
-	InfoRequestsPerIPv4Address:      "InfoRequestsPerIPv4Address",
-	NewRegistrationsPerIPv4Address:  "NewRegistrationsPerIPv4Address",
-	NewRegistrationsPerIPv6Range:    "NewRegistrationsPerIPv6Range",
-	NewOrdersPerAccount:             "NewOrdersPerAccount",
-	FailedAuthorizationsPerAccount:  "FailedAuthorizationsPerAccount",
-	CertificatesPerRegisteredDomain: "CertificatesPerRegisteredDomain",
-	CertificatesPerFQDNSet:          "CertificatesPerFQDNSet",
-}
-
-func isIntPrefix(s int) bool {
-	_, exists := prefixToString[Prefix(s)]
-	return exists
+var stringToPrefix = map[string]Prefix{
+	"UsageRequestsPerIPv4Address":     UsageRequestsPerIPv4Address,
+	"InfoRequestsPerIPv4Address":      InfoRequestsPerIPv4Address,
+	"NewRegistrationsPerIPv4Address":  NewRegistrationsPerIPv4Address,
+	"NewRegistrationsPerIPv6Range":    NewRegistrationsPerIPv6Range,
+	"NewOrdersPerAccount":             NewOrdersPerAccount,
+	"FailedAuthorizationsPerAccount":  FailedAuthorizationsPerAccount,
+	"CertificatesPerRegisteredDomain": CertificatesPerRegisteredDomain,
+	"CertificatesPerFQDNSet":          CertificatesPerFQDNSet,
 }
 
 func prefixToIntString(s Prefix) string {

@@ -8,119 +8,20 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func Test_maybeSpend(t *testing.T) {
+func Test_Limiter_with_defaults(t *testing.T) {
 	clk := clock.NewFake()
-	limit := RateLimit{Burst: 10, Count: 1, Period: 1 * time.Second}
 
-	// Begin by using 1 of our 10 requests.
-	r := maybeSpend(clk, limit, clk.Now(), 1)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 9)
-	test.AssertEquals(t, r.RetryIn, time.Duration(0))
-	test.AssertEquals(t, r.ResetIn, time.Second)
+	// Create a new limiter with our test configuration.
+	// UsageRequestsPerIPv4Address: burst: 20 count: 20 period: 1s
+	// UsageRequestsPerIPv4Address:10.0.0.2: burst: 40 count: 40 period: 1s
+	l, err := NewLimiter("./test/defaults.yml", "./test/overrides.yml", clk)
+	test.AssertNotError(t, err, "should not error")
 
-	// Immediately use another 9 of our remaining requests.
-	r = maybeSpend(clk, limit, r.TAT, 9)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 0)
-	test.AssertEquals(t, r.RetryIn, time.Second)
-	test.AssertEquals(t, r.ResetIn, time.Second*10)
-
-	// Our new TAT should be 10 seconds (limit.Burst) in the future.
-	test.AssertEquals(t, r.TAT, clk.Now().Add(time.Second*10))
-
-	// Let's try using just 1 more request without waiting.
-	r = maybeSpend(clk, limit, r.TAT, 1)
-	test.Assert(t, !r.Allowed, "should not be allowed")
-	test.AssertEquals(t, r.Remaining, 0)
-	test.AssertEquals(t, r.RetryIn, time.Second)
-	test.AssertEquals(t, r.ResetIn, time.Second*10)
-
-	// Let's try being exactly as patient as we're told to be.
-	clk.Add(r.RetryIn)
-
-	// We are 1 second in the future, we should have 1 new request.
-	r = maybeSpend(clk, limit, r.TAT, 1)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 0)
-	test.AssertEquals(t, r.RetryIn, time.Second)
-	test.AssertEquals(t, r.ResetIn, time.Second*10)
-
-	// Let's try waiting (10 seconds) for our whole bucket to refill.
-	clk.Add(r.ResetIn)
-
-	// We should have 10 new requests. If we use 1 we should have 9 remaining.
-	r = maybeSpend(clk, limit, r.TAT, 1)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 9)
-	test.AssertEquals(t, r.RetryIn, time.Duration(0))
-	test.AssertEquals(t, r.ResetIn, time.Second)
-
-	// Have you ever tried spending 0, like, just to see what happens?
-	r = maybeSpend(clk, limit, r.TAT, 0)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 9)
-	test.AssertEquals(t, r.RetryIn, time.Duration(0))
-	test.AssertEquals(t, r.ResetIn, time.Second)
-
-	// Spending 0 simply informed us that we still have 9 remaining, let's see
-	// what we have after waiting 20 hours.
-	clk.Add(20 * time.Hour)
-
-	// C'mon, big money, no whammies, no whammies, STOP!
-	r = maybeSpend(clk, limit, r.TAT, 0)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 10)
-	test.AssertEquals(t, r.RetryIn, time.Duration(0))
-	test.AssertEquals(t, r.ResetIn, time.Duration(0))
-
-	// Turns out that the most we can accrue is 10 (limit.Burst). Let's empty
-	// this bucket out so we can try something else.
-	r = maybeSpend(clk, limit, r.TAT, 10)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 0)
-	test.AssertEquals(t, r.RetryIn, time.Second)
-	test.AssertEquals(t, r.ResetIn, time.Second*10)
-
-	// If you spend 0 while you have 0 you should get 0.
-	r = maybeSpend(clk, limit, r.TAT, 0)
-	test.Assert(t, !r.Allowed, "should not be allowed")
-	test.AssertEquals(t, r.Remaining, 0)
-	test.AssertEquals(t, r.RetryIn, time.Second)
-	test.AssertEquals(t, r.ResetIn, time.Second*10)
-
-	// We don't play by the rules, we spend 1 when we have 0.
-	r = maybeSpend(clk, limit, r.TAT, 1)
-	test.Assert(t, !r.Allowed, "should not be allowed")
-	test.AssertEquals(t, r.Remaining, 0)
-	test.AssertEquals(t, r.RetryIn, time.Second)
-	test.AssertEquals(t, r.ResetIn, time.Second*10)
-
-	// Okay, maybe we should play by the rules if we want to get anywhere.
-	clk.Add(r.RetryIn)
-
-	// Our patience pays off, we should have 1 new request. Let's use it.
-	r = maybeSpend(clk, limit, r.TAT, 1)
-	test.Assert(t, r.Allowed, "should be allowed")
-	test.AssertEquals(t, r.Remaining, 0)
-	test.AssertEquals(t, r.RetryIn, time.Second)
-	test.AssertEquals(t, r.ResetIn, time.Second*10)
-}
-
-func Test_Limiter(t *testing.T) {
-	UsageRequestsPerIPv4AddressStr := prefixToIntString(UsageRequestsPerIPv4Address)
-	clk := clock.NewFake()
-	l := Limiter{
-		limits: map[string]RateLimit{
-			UsageRequestsPerIPv4AddressStr: {Burst: 20, Count: 20, Period: time.Second},
-		},
-		source: newInmem(),
-		clk:    clk,
-	}
 	// Set our starting TAT to now; we should have 20 requests available.
 	l.source.Set(UsageRequestsPerIPv4Address, "10.0.0.1", clk.Now())
 
-	// Attempt to spend 21 requests, this should fail with a specific error.
+	// Attempt to spend 21 requests (a cost > the limit burst capacity), this
+	// should fail with a specific error.
 	d, err := l.Spend(UsageRequestsPerIPv4Address, "10.0.0.1", 21)
 	test.AssertErrorIs(t, err, ErrInvalidCostForLimit)
 
@@ -160,4 +61,73 @@ func Test_Limiter(t *testing.T) {
 		test.Assert(t, d.Allowed, "should be allowed")
 		test.AssertEquals(t, d.Remaining, 19-i)
 	}
+
+	// Attempting to spend 1 more, this should fail.
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.1", 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, !d.Allowed, "should not be allowed")
+	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.ResetIn, time.Second)
+}
+
+func Test_Limiter_with_limit_overrides(t *testing.T) {
+	clk := clock.NewFake()
+
+	// Create a new limiter with our test configuration.
+	// UsageRequestsPerIPv4Address: burst: 20 count: 20 period: 1s
+	// UsageRequestsPerIPv4Address:10.0.0.2: burst: 40 count: 40 period: 1s
+	l, err := NewLimiter("./test/defaults.yml", "./test/overrides.yml", clk)
+	test.AssertNotError(t, err, "should not error")
+
+	// Set our starting TAT to now; we should have 40 requests available.
+	l.source.Set(UsageRequestsPerIPv4Address, "10.0.0.2", clk.Now())
+
+	// Attempt to spend  41 requests (a cost > the limit burst capacity), this
+	// should fail with a specific error.
+	d, err := l.Spend(UsageRequestsPerIPv4Address, "10.0.0.2", 41)
+	test.AssertErrorIs(t, err, ErrInvalidCostForLimit)
+
+	// Attempt to spend all 40 requests, this should succeed.
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.2", 40)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+
+	// Attempting to spend 1 more, this should fail.
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.2", 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, !d.Allowed, "should not be allowed")
+	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.ResetIn, time.Second)
+
+	// Verify our RetryIn timing is correct.
+	// 1 second == 1000 milliseconds and 1000/40 = 25 milliseconds per request.
+	test.AssertEquals(t, d.RetryIn, time.Millisecond*25)
+
+	// Wait 50 milliseconds and try again.
+	clk.Add(d.RetryIn)
+
+	// We should be allowed to spend 1 more request.
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.2", 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.ResetIn, time.Second)
+
+	// Wait 1 second for a full bucket reset.
+	clk.Add(d.ResetIn)
+
+	// Quickly spend 40 requests in a row.
+	for i := 0; i < 40; i++ {
+		d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.2", 1)
+		test.AssertNotError(t, err, "should not error")
+		test.Assert(t, d.Allowed, "should be allowed")
+		test.AssertEquals(t, d.Remaining, 39-i)
+	}
+
+	// Attempting to spend 1 more, this should fail.
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.2", 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, !d.Allowed, "should not be allowed")
+	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.ResetIn, time.Second)
 }
