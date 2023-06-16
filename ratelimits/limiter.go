@@ -99,6 +99,10 @@ func (l *Limiter) Check(prefix Prefix, id string, cost int) (Decision, error) {
 		return Decision{}, err
 	}
 
+	if int64(cost) > limit.Burst {
+		return Decision{}, ErrInvalidCostForLimit
+	}
+
 	tat, err := l.source.Get(prefix, id)
 	if err != nil {
 		return Decision{}, err
