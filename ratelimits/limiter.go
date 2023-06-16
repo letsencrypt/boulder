@@ -5,49 +5,29 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/config"
 )
 
-// ErrInvalidCostForCheck is returned when a cost is less than zero.
-var ErrInvalidCostForCheck = fmt.Errorf("cost must be greater than zero")
+// ErrInvalidCost indicates that the cost specified was <= 0.
+var ErrInvalidCost = fmt.Errorf("invalid cost, must be > 0")
 
-// ErrInvalidCostForSpend is returned when a cost is less than or equal to zero.
-var ErrInvalidCostForSpend = fmt.Errorf("cost must be greater than zero")
+// ErrInvalidCostForCheck indicates that the check cost specified was < 0.
+var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 
-// ErrInvalidCostForLimit is returned when the specified cost is greater than
-// the limit's possible maximum capacity.
-var ErrInvalidCostForLimit = fmt.Errorf("cost must be less than or equal to the limit's burst")
-
-// RateLimit specifies the frequency of requests allowed from a client over a
-// period of time. All fields are required and MUST be greater than zero.
-type RateLimit struct {
-	// Burst specifies maximum concurrent (allowed) requests at any given time.
-	// It MUST be greater than zero.
-	Burst int64
-
-	// Count is the number of requests allowed per period duration. It MUST be
-	// greater than zero.
-	Count int64
-
-	// Period is the duration of time in which the count (of requests) is
-	// allowed. It MUST be greater than zero.
-	Period config.Duration
-}
+// ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
+var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
 type Limiter struct {
-	// limits is a map of each limit, identified by 'prefix' to a default limit
-	// for that prefix.
+	// limits is a map of each limit, identified by name.
 	limits limits
 
-	// overrides is a map of each limit override, identified by 'prefix:id' to
-	// an override limit for that prefix.
+	// overrides is a map of each override limit, identified by name:id.
 	overrides limits
 	source    source
 	clk       clock.Clock
 }
 
-func NewLimiter(limitsPath, overridesPath string, clk clock.Clock) (*Limiter, error) {
-	limiter := &Limiter{source: newInmem(), clk: clk}
+func NewLimiter(source source, limitsPath, overridesPath string, clk clock.Clock) (*Limiter, error) {
+	limiter := &Limiter{source: source, clk: clk}
 
 	defaults, err := loadLimits(limitsPath)
 	if err != nil {
@@ -56,7 +36,7 @@ func NewLimiter(limitsPath, overridesPath string, clk clock.Clock) (*Limiter, er
 	limiter.limits = defaults
 
 	if overridesPath == "" {
-		// No overrides file.
+		// No overrides specified.
 		limiter.overrides = make(limits)
 		return limiter, nil
 	}
@@ -71,82 +51,128 @@ func NewLimiter(limitsPath, overridesPath string, clk clock.Clock) (*Limiter, er
 }
 
 type Decision struct {
-	// Allowed if the cost was consumed from the bucket.
+	// Allowed is true if the bucket has/had the capacity to allow the request.
 	Allowed bool
 
 	// Remaining is the number of requests remaining in the bucket.
 	Remaining int
 
-	// RetryIn is the duration the client SHOULD wait before they're allowed to
-	// make another request.
+	// RetryIn is the duration the client must wait before they're allowed to
+	// make a request.
 	RetryIn time.Duration
 
 	// ResetIn is the duration the client would need to wait before the bucket
-	// reaches maximum (burst) capacity of requests.
+	// reaches it's maximum capacity.
 	ResetIn time.Duration
 
-	// TAT is the Theoretical Arrival Time of the next possible request.
-	TAT time.Time
+	// nextTAT is the Theoretical Arrival Time of the next possible request.
+	nextTAT time.Time
 }
 
-func (l *Limiter) Check(prefix Prefix, id string, cost int) (Decision, error) {
+// Check returns a decision indicating whether the request will be allowed but
+// does not spend the cost of the request. Most callers should use MaybeSpend.
+func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 	if cost < 0 {
-		return Decision{}, ErrInvalidCostForCheck
+		return nil, ErrInvalidCostForCheck
 	}
 
-	limit, err := l.getLimit(prefix, id)
+	limit, err := l.getLimit(name, id)
 	if err != nil {
-		return Decision{}, err
+		return nil, err
 	}
 
 	if int64(cost) > limit.Burst {
-		return Decision{}, ErrInvalidCostForLimit
+		return nil, ErrInvalidCostOverLimit
 	}
 
-	tat, err := l.source.Get(prefix, id)
+	tat, err := l.source.Get(name, id)
 	if err != nil {
-		return Decision{}, err
+		if err == ErrBucketNotFound {
+			// First request from this client.
+			return l.Initialize(name, id, cost)
+		}
+		return nil, err
 	}
-	return maybeSpend(l.clk, limit, tat, int64(cost)), nil
+	return decide(l.clk, limit, tat, int64(cost)), nil
 }
 
-func (l *Limiter) Spend(prefix Prefix, id string, cost int) (Decision, error) {
+// MaybeSpend returns a decision indicating whether the request was allowed. If
+// so, the cost of the request is spent, otherwise 0 cost is spent.
+func (l *Limiter) MaybeSpend(name Name, id string, cost int) (*Decision, error) {
 	if cost <= 0 {
-		return Decision{}, ErrInvalidCostForSpend
+		return nil, ErrInvalidCost
 	}
-	d, err := l.Check(prefix, id, cost)
+
+	d, err := l.Check(name, id, cost)
 	if err != nil {
-		return Decision{}, err
+		return nil, err
 	}
-	if d.Allowed {
-		l.source.Set(prefix, id, d.TAT)
+
+	if !d.Allowed {
+		return d, nil
 	}
-	return d, nil
+	return d, l.source.Set(name, id, d.nextTAT)
 
 }
 
-func (l *Limiter) Refund(prefix, id string, cost int) error {
-	return nil
+// Initialize creates a new bucket, specified by name and id, with the cost of
+// the request factored into the initial state.
+func (l *Limiter) Initialize(name Name, id string, cost int) (*Decision, error) {
+	if cost < 0 {
+		return nil, ErrInvalidCostForCheck
+	}
+
+	limit, err := l.getLimit(name, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if int64(cost) > limit.Burst {
+		return nil, ErrInvalidCostOverLimit
+	}
+	d := decide(l.clk, limit, l.clk.Now(), int64(cost))
+	return d, l.source.Set(name, id, d.nextTAT)
+
 }
 
-func (l *Limiter) Reset(prefix, id string) error {
-	return nil
+// Refund refunds the cost to the bucket specified.
+func (l *Limiter) Refund(name Name, id string, cost int) error {
+	if cost <= 0 {
+		return ErrInvalidCost
+	}
+
+	limit, err := l.getLimit(name, id)
+	if err != nil {
+		return err
+	}
+
+	tat, err := l.source.Get(name, id)
+	if err != nil {
+		return err
+	}
+	nextTAT := maybeRefund(l.clk, limit, tat, int64(cost))
+	return l.source.Set(name, id, nextTAT)
 }
 
-// GetLimit returns the default limit, unless an override limit has defined for
-// the client. Prefix is the limit type, and id is the client identifier. Prefix
-// MUST be a valid limit type but id is optional.
-func (l *Limiter) getLimit(prefix Prefix, id string) (RateLimit, error) {
+// Reset resets the specified bucket.
+func (l *Limiter) Reset(name Name, id string) error {
+	return l.source.Delete(name, id)
+}
+
+// GetLimit returns the limit for the specified by name and id, name is
+// required, id is optional. If id is left unspecified, the default limit for
+// the limit specified by name is returned.
+func (l *Limiter) getLimit(name Name, id string) (rateLimit, error) {
 	if id != "" {
 		// Check for override.
-		ol, ok := l.overrides[overrideKey(prefix, id)]
+		ol, ok := l.overrides[overrideKey(name, id)]
 		if ok {
 			return ol, nil
 		}
 	}
-	dl, ok := l.limits[prefixToIntString(prefix)]
+	dl, ok := l.limits[nameToIntString(name)]
 	if ok {
 		return dl, nil
 	}
-	return RateLimit{}, fmt.Errorf("limit %q does not exist", prefix)
+	return rateLimit{}, fmt.Errorf("limit %q does not exist", name)
 }

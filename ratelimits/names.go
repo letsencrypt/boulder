@@ -2,12 +2,13 @@ package ratelimits
 
 import "strconv"
 
-type Prefix int
+// Name is a rate limit name.
+type Name int
 
 const (
 	// Each unique IPv4 address can make 20 requests, per second, to /new-nonce,
 	// /new-account, /new-order, or /revoke-cert
-	UsageRequestsPerIPv4Address Prefix = iota
+	UsageRequestsPerIPv4Address Name = iota
 
 	// Each unique IPv4 address can make 40 requests, per second, to
 	// /directory and /acme.
@@ -33,7 +34,10 @@ const (
 	CertificatesPerFQDNSet
 )
 
-var stringToPrefix = map[string]Prefix{
+// stringToName is a map of string names to Name values.
+//
+// IMPORTANT: If you add a new rate limit Name, you must add it to this map.
+var stringToName = map[string]Name{
 	"UsageRequestsPerIPv4Address":     UsageRequestsPerIPv4Address,
 	"InfoRequestsPerIPv4Address":      InfoRequestsPerIPv4Address,
 	"NewRegistrationsPerIPv4Address":  NewRegistrationsPerIPv4Address,
@@ -44,14 +48,23 @@ var stringToPrefix = map[string]Prefix{
 	"CertificatesPerFQDNSet":          CertificatesPerFQDNSet,
 }
 
-func prefixToIntString(s Prefix) string {
+// limitNames is a list of all rate limit names.
+var limitNames = func() []string {
+	var names []string
+	for name := range stringToName {
+		names = append(names, name)
+	}
+	return names
+}()
+
+func nameToIntString(s Name) string {
 	return strconv.Itoa(int(s))
 }
 
-func overrideKey(prefix Prefix, id string) string {
-	return bucketKey(prefix, id)
+func bucketKey(name Name, id string) string {
+	return nameToIntString(name) + ":" + id
 }
 
-func bucketKey(prefix Prefix, id string) string {
-	return prefixToIntString(prefix) + ":" + id
+func overrideKey(name Name, id string) string {
+	return bucketKey(name, id)
 }

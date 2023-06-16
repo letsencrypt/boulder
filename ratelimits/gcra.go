@@ -7,7 +7,13 @@ import (
 	"github.com/jmhodges/clock"
 )
 
-// maybeSpend implements the Generic Cell Rate Algorithm (GCRA). It returns a
+// divThenRound divides two int64s and rounds the result to the nearest integer.
+// This is used to calculate request intervals and costs in nanoseconds.
+func divThenRound(x, y int64) int64 {
+	return int64(math.Round(float64(x) / float64(y)))
+}
+
+// decide implements the Generic Cell Rate Algorithm (GCRA). It returns a
 // decision indicating whether the request is allowed or denied. The decision
 // will always include the new theoretical arrival time (TAT) of the next
 // possible request, the number of requests remaining in the bucket, the
@@ -15,7 +21,7 @@ import (
 // and the duration the client would need top wait before the bucket resets
 // (reaches max capacity). The cost must be 0 or greater and cannot exceed the
 // burst capacity of the bucket.
-func maybeSpend(clk clock.Clock, limit RateLimit, tat time.Time, cost int64) Decision {
+func decide(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *Decision {
 	nowUnix := clk.Now().UnixNano()
 	tatUnix := tat.UnixNano()
 
@@ -26,14 +32,7 @@ func maybeSpend(clk clock.Clock, limit RateLimit, tat time.Time, cost int64) Dec
 		tatUnix = nowUnix
 	}
 
-	// divThenRound divides two int64s and rounds the result to the nearest
-	// integer. This is used to calculate request intervals and costs in
-	// nanoseconds.
-	divThenRound := func(x, y int64) int64 {
-		return int64(math.Round(float64(x) / float64(y)))
-	}
-
-	// Compute the total cost.
+	// Compute the cost increment.
 	emissionInterval := divThenRound(limit.Period.Nanoseconds(), limit.Count)
 	costIncrement := emissionInterval * cost
 
@@ -45,24 +44,24 @@ func maybeSpend(clk clock.Clock, limit RateLimit, tat time.Time, cost int64) Dec
 
 	if costIncrement <= 0 && residual == 0 {
 		// Edge case: no cost to consume and no capacity to consume it from.
-		return Decision{
+		return &Decision{
 			Allowed:   false,
 			Remaining: 0,
 			RetryIn:   time.Duration(emissionInterval),
 			ResetIn:   time.Duration(tatUnix - nowUnix),
-			TAT:       time.Unix(0, tatUnix).UTC(),
+			nextTAT:   time.Unix(0, tatUnix).UTC(),
 		}
 	}
 
 	if residual < 0 {
 		// Too little capacity to satisfy the cost, deny the request.
 		remaining := divThenRound(nowUnix-(tatUnix-burstOffset), emissionInterval)
-		return Decision{
+		return &Decision{
 			Allowed:   false,
 			Remaining: int(remaining),
 			RetryIn:   -time.Duration(difference),
 			ResetIn:   time.Duration(tatUnix - nowUnix),
-			TAT:       time.Unix(0, tatUnix).UTC(),
+			nextTAT:   time.Unix(0, tatUnix).UTC(),
 		}
 	}
 
@@ -72,11 +71,38 @@ func maybeSpend(clk clock.Clock, limit RateLimit, tat time.Time, cost int64) Dec
 		// This request will empty the bucket.
 		retryIn = time.Duration(emissionInterval)
 	}
-	return Decision{
+	return &Decision{
 		Allowed:   true,
 		Remaining: int(residual),
 		RetryIn:   retryIn,
 		ResetIn:   time.Duration(nextTAT - nowUnix),
-		TAT:       time.Unix(0, nextTAT).UTC(),
+		nextTAT:   time.Unix(0, nextTAT).UTC(),
 	}
+}
+
+// maybeRefund attempts to refund the cost of a request which was previously
+// spent. The cost must be 0 or greater and cannot exceed the burst capacity of
+// the bucket. The returned time is the new theoretical arrival time (TAT) of
+// the next possible request.
+func maybeRefund(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) time.Time {
+	nowUnix := clk.Now().UnixNano()
+	tatUnix := tat.UnixNano()
+
+	// If the TAT is in the past, use the current time as the starting point.
+	if nowUnix > tatUnix {
+		tatUnix = nowUnix
+	}
+
+	// Compute the cost increment.
+	emissionInterval := divThenRound(limit.Period.Nanoseconds(), limit.Count)
+	costIncrement := emissionInterval * cost
+
+	// Subtract the cost increment from the TAT to find the new TAT.
+	nextTAT := tatUnix - costIncrement
+
+	// Ensure the new TAT is not earlier than now.
+	if nextTAT < nowUnix {
+		nextTAT = nowUnix
+	}
+	return time.Unix(0, nextTAT).UTC()
 }
