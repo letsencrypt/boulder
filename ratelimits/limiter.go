@@ -3,7 +3,6 @@ package ratelimits
 import (
 	"fmt"
 	"math"
-	"sync"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -43,22 +42,12 @@ type Limiter struct {
 	// overrides is a map of each limit override, identified by 'prefix:id' to
 	// an override limit for that prefix.
 	overrides map[string]RateLimit
-
-	buckets struct {
-		sync.RWMutex
-		// m is a map of each bucket, identified by 'prefix:id' to a theoretical
-		// arrival time (TAT) of the next request for that client.
-		m map[string]time.Time
-	}
+	source    source
+	clk       clock.Clock
 }
 
 func NewLimiter(limitsPath, overridesPath string, clk clock.Clock) (*Limiter, error) {
-	limiter := &Limiter{
-		buckets: struct {
-			sync.RWMutex
-			m map[string]time.Time
-		}{m: map[string]time.Time{}},
-	}
+	limiter := &Limiter{source: newInmem(), clk: clk}
 
 	defaults, err := loadLimits(limitsPath)
 	if err != nil {
@@ -67,7 +56,7 @@ func NewLimiter(limitsPath, overridesPath string, clk clock.Clock) (*Limiter, er
 	limiter.limits = defaults
 
 	if overridesPath == "" {
-		// No overrides file, so we're done.
+		// No overrides file.
 		limiter.overrides = make(map[string]RateLimit)
 		return limiter, nil
 	}
@@ -100,7 +89,7 @@ type Decision struct {
 	TAT time.Time
 }
 
-func (l *Limiter) Check(prefix, id string, cost int) (Decision, error) {
+func (l *Limiter) Check(prefix Prefix, id string, cost int) (Decision, error) {
 	if cost < 0 {
 		return Decision{}, ErrInvalidCostForCheck
 	}
@@ -110,14 +99,14 @@ func (l *Limiter) Check(prefix, id string, cost int) (Decision, error) {
 		return Decision{}, err
 	}
 
-	tat, err := l.getTAT(prefix, id)
+	tat, err := l.source.Get(prefix, id)
 	if err != nil {
 		return Decision{}, err
 	}
-	return maybeSpend(clock.New(), limit, tat, int64(cost)), nil
+	return maybeSpend(l.clk, limit, tat, int64(cost)), nil
 }
 
-func (l *Limiter) Spend(prefix, id string, cost int) (Decision, error) {
+func (l *Limiter) Spend(prefix Prefix, id string, cost int) (Decision, error) {
 	if cost <= 0 {
 		return Decision{}, ErrInvalidCostForSpend
 	}
@@ -126,7 +115,7 @@ func (l *Limiter) Spend(prefix, id string, cost int) (Decision, error) {
 		return Decision{}, err
 	}
 	if d.Allowed {
-		l.setTAT(prefix, id, d.TAT)
+		l.source.Set(prefix, id, d.TAT)
 	}
 	return d, nil
 
@@ -140,41 +129,18 @@ func (l *Limiter) Reset(prefix, id string) error {
 	return nil
 }
 
-func (l *Limiter) getTAT(prefix, id string) (time.Time, error) {
-	key := prefix + ":" + id
-	l.buckets.RLock()
-	defer l.buckets.RUnlock()
-	tat, ok := l.buckets.m[key]
-	if !ok {
-		return time.Time{}, fmt.Errorf("bucket %q does not exist", key)
-	}
-	return tat, nil
-}
-
-func (l *Limiter) setTAT(prefix, id string, tat time.Time) {
-	l.buckets.Lock()
-	defer l.buckets.Unlock()
-	l.buckets.m[prefix+":"+id] = tat
-}
-
 // GetLimit returns the default limit, unless an override limit has defined for
 // the client. Prefix is the limit type, and id is the client identifier. Prefix
 // MUST be a valid limit type but id is optional.
-func (l *Limiter) getLimit(prefix, id string) (RateLimit, error) {
-	ok := isPrefix(prefix)
-	if !ok {
-		return RateLimit{}, fmt.Errorf("invalid limit prefix %q", prefix)
-	}
-
+func (l *Limiter) getLimit(prefix Prefix, id string) (RateLimit, error) {
 	if id != "" {
-		// Check for key limit.
-		key := prefix + ":" + id
-		ol, ok := l.overrides[key]
+		// Check for override.
+		ol, ok := l.overrides[overrideKey(prefix, id)]
 		if ok {
 			return ol, nil
 		}
 	}
-	dl, ok := l.limits[prefix]
+	dl, ok := l.limits[prefixToIntString(prefix)]
 	if ok {
 		return dl, nil
 	}

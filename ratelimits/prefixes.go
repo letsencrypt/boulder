@@ -1,11 +1,13 @@
 package ratelimits
 
-const (
-	Prefix = iota
+import "strconv"
 
+type Prefix int
+
+const (
 	// Each unique IPv4 address can make 20 requests, per second, to /new-nonce,
 	// /new-account, /new-order, or /revoke-cert
-	UsageRequestsPerIPv4Address
+	UsageRequestsPerIPv4Address Prefix = iota
 
 	// Each unique IPv4 address can make 40 requests, per second, to
 	// /directory and /acme.
@@ -31,8 +33,7 @@ const (
 	CertificatesPerFQDNSet
 )
 
-var PrefixToString = map[int]string{
-	Prefix:                          "Prefix",
+var prefixToString = map[Prefix]string{
 	UsageRequestsPerIPv4Address:     "UsageRequestsPerIPv4Address",
 	InfoRequestsPerIPv4Address:      "InfoRequestsPerIPv4Address",
 	NewRegistrationsPerIPv4Address:  "NewRegistrationsPerIPv4Address",
@@ -43,19 +44,19 @@ var PrefixToString = map[int]string{
 	CertificatesPerFQDNSet:          "CertificatesPerFQDNSet",
 }
 
-var StringToPrefix = map[string]int{
-	"Prefix":                          Prefix,
-	"UsageRequestsPerIPv4Address":     UsageRequestsPerIPv4Address,
-	"InfoRequestsPerIPv4Address":      InfoRequestsPerIPv4Address,
-	"NewRegistrationsPerIPv4Address":  NewRegistrationsPerIPv4Address,
-	"NewRegistrationsPerIPv6Range":    NewRegistrationsPerIPv6Range,
-	"NewOrdersPerAccount":             NewOrdersPerAccount,
-	"FailedAuthorizationsPerAccount":  FailedAuthorizationsPerAccount,
-	"CertificatesPerRegisteredDomain": CertificatesPerRegisteredDomain,
-	"CertificatesPerFQDNSet":          CertificatesPerFQDNSet,
+func isIntPrefix(s int) bool {
+	_, exists := prefixToString[Prefix(s)]
+	return exists
 }
 
-func isPrefix(s string) bool {
-	_, exists := StringToPrefix[s]
-	return exists
+func prefixToIntString(s Prefix) string {
+	return strconv.Itoa(int(s))
+}
+
+func overrideKey(prefix Prefix, id string) string {
+	return bucketKey(prefix, id)
+}
+
+func bucketKey(prefix Prefix, id string) string {
+	return prefixToIntString(prefix) + ":" + id
 }

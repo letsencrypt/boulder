@@ -8,9 +8,9 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-func TestLimiter_maybeSpend(t *testing.T) {
+func Test_maybeSpend(t *testing.T) {
 	clk := clock.NewFake()
-	limit := RateLimit{Count: 1, Burst: 10, Period: 1 * time.Second}
+	limit := RateLimit{Burst: 10, Count: 1, Period: 1 * time.Second}
 
 	// Begin by using 1 of our 10 requests.
 	r := maybeSpend(clk, limit, clk.Now(), 1)
@@ -105,4 +105,45 @@ func TestLimiter_maybeSpend(t *testing.T) {
 	test.AssertEquals(t, r.Remaining, 0)
 	test.AssertEquals(t, r.RetryIn, time.Second)
 	test.AssertEquals(t, r.ResetIn, time.Second*10)
+}
+
+func Test_Limiter(t *testing.T) {
+	UsageRequestsPerIPv4AddressStr := prefixToIntString(UsageRequestsPerIPv4Address)
+	clk := clock.NewFake()
+	l := Limiter{
+		limits: map[string]RateLimit{
+			UsageRequestsPerIPv4AddressStr: {Burst: 20, Count: 20, Period: time.Second},
+		},
+		source: newInmem(),
+		clk:    clk,
+	}
+	l.source.Set(UsageRequestsPerIPv4Address, "10.0.0.1", clk.Now())
+
+	d, err := l.Spend(UsageRequestsPerIPv4Address, "10.0.0.1", 20)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.1", 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, !d.Allowed, "should not be allowed")
+	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.ResetIn, time.Second)
+
+	clk.Add(d.RetryIn)
+
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.1", 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.ResetIn, time.Second)
+
+	clk.Add(d.ResetIn)
+
+	for i := 0; i < 20; i++ {
+		// Quickly spend 20 requests.
+		d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.1", 1)
+		test.AssertNotError(t, err, "should not error")
+		test.Assert(t, d.Allowed, "should be allowed")
+		test.AssertEquals(t, d.Remaining, 19-i)
+	}
 }

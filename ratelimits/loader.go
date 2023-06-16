@@ -3,6 +3,7 @@ package ratelimits
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -26,7 +27,11 @@ func validateLimits(limits map[string]RateLimit) error {
 				return fmt.Errorf("invalid prefix: %q", k)
 			}
 			// Ensure prefix is a valid limit type.
-			if !isPrefix(p) {
+			pInt, err := strconv.Atoi(p)
+			if err != nil {
+				return fmt.Errorf("converting override prefix %q as int: %w", k, err)
+			}
+			if !isIntPrefix(pInt) {
 				return fmt.Errorf("prefix %q of override %q is not a recognized limit type", p, k)
 			}
 		}
