@@ -17,23 +17,23 @@ var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
 type Limiter struct {
-	// limits is a map of each limit, identified by name.
-	limits limits
+	// defaults stores default limits by 'name'.
+	defaults limits
 
-	// overrides is a map of each override limit, identified by name:id.
+	// overrides stores override limits by 'name:id'.
 	overrides limits
 	source    source
 	clk       clock.Clock
 }
 
-func NewLimiter(source source, limitsPath, overridesPath string, clk clock.Clock) (*Limiter, error) {
+func NewLimiter(clk clock.Clock, source source, limitsPath, overridesPath string) (*Limiter, error) {
 	limiter := &Limiter{source: source, clk: clk}
 
 	defaults, err := loadLimits(limitsPath)
 	if err != nil {
 		return nil, err
 	}
-	limiter.limits = defaults
+	limiter.defaults = defaults
 
 	if overridesPath == "" {
 		// No overrides specified.
@@ -51,7 +51,7 @@ func NewLimiter(source source, limitsPath, overridesPath string, clk clock.Clock
 }
 
 type Decision struct {
-	// Allowed is true if the bucket has/had the capacity to allow the request.
+	// Allowed is true if the bucket has the capacity to allow the request.
 	Allowed bool
 
 	// Remaining is the number of requests remaining in the bucket.
@@ -65,8 +65,8 @@ type Decision struct {
 	// reaches it's maximum capacity.
 	ResetIn time.Duration
 
-	// nextTAT is the Theoretical Arrival Time of the next possible request.
-	nextTAT time.Time
+	// newTAT is the Theoretical Arrival Time of the next possible request.
+	newTAT time.Time
 }
 
 // Check returns a decision indicating whether the request will be allowed but
@@ -85,11 +85,11 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 		return nil, ErrInvalidCostOverLimit
 	}
 
-	tat, err := l.source.Get(name, id)
+	tat, err := l.source.Get(bucketKey(name, id))
 	if err != nil {
 		if err == ErrBucketNotFound {
 			// First request from this client.
-			return l.Initialize(name, id, cost)
+			return l.initialize(limit, name, id, cost)
 		}
 		return nil, err
 	}
@@ -111,27 +111,7 @@ func (l *Limiter) MaybeSpend(name Name, id string, cost int) (*Decision, error) 
 	if !d.Allowed {
 		return d, nil
 	}
-	return d, l.source.Set(name, id, d.nextTAT)
-
-}
-
-// Initialize creates a new bucket, specified by name and id, with the cost of
-// the request factored into the initial state.
-func (l *Limiter) Initialize(name Name, id string, cost int) (*Decision, error) {
-	if cost < 0 {
-		return nil, ErrInvalidCostForCheck
-	}
-
-	limit, err := l.getLimit(name, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if int64(cost) > limit.Burst {
-		return nil, ErrInvalidCostOverLimit
-	}
-	d := decide(l.clk, limit, l.clk.Now(), int64(cost))
-	return d, l.source.Set(name, id, d.nextTAT)
+	return d, l.source.Set(bucketKey(name, id), d.newTAT)
 
 }
 
@@ -146,17 +126,25 @@ func (l *Limiter) Refund(name Name, id string, cost int) error {
 		return err
 	}
 
-	tat, err := l.source.Get(name, id)
+	tat, err := l.source.Get(bucketKey(name, id))
 	if err != nil {
 		return err
 	}
 	nextTAT := maybeRefund(l.clk, limit, tat, int64(cost))
-	return l.source.Set(name, id, nextTAT)
+	return l.source.Set(bucketKey(name, id), nextTAT)
 }
 
 // Reset resets the specified bucket.
 func (l *Limiter) Reset(name Name, id string) error {
-	return l.source.Delete(name, id)
+	return l.source.Delete(bucketKey(name, id))
+}
+
+// initialize creates a new bucket, specified by name and id, with the cost of
+// the request factored into the initial state.
+func (l *Limiter) initialize(limit rateLimit, name Name, id string, cost int) (*Decision, error) {
+	d := decide(l.clk, limit, l.clk.Now(), int64(cost))
+	return d, l.source.Set(bucketKey(name, id), d.newTAT)
+
 }
 
 // GetLimit returns the limit for the specified by name and id, name is
@@ -170,7 +158,7 @@ func (l *Limiter) getLimit(name Name, id string) (rateLimit, error) {
 			return ol, nil
 		}
 	}
-	dl, ok := l.limits[nameToIntString(name)]
+	dl, ok := l.defaults[nameToIntString(name)]
 	if ok {
 		return dl, nil
 	}

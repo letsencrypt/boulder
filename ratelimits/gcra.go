@@ -36,10 +36,10 @@ func decide(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *Decisi
 	emissionInterval := divThenRound(limit.Period.Nanoseconds(), limit.Count)
 	costIncrement := emissionInterval * cost
 
-	// Deduct the cost to find the next TAT and residual capacity.
-	nextTAT := tatUnix + costIncrement
+	// Deduct the cost to find the new TAT and residual capacity.
+	newTAT := tatUnix + costIncrement
 	burstOffset := emissionInterval * limit.Burst
-	difference := nowUnix - (nextTAT - burstOffset)
+	difference := nowUnix - (newTAT - burstOffset)
 	residual := divThenRound(difference, emissionInterval)
 
 	if costIncrement <= 0 && residual == 0 {
@@ -49,7 +49,7 @@ func decide(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *Decisi
 			Remaining: 0,
 			RetryIn:   time.Duration(emissionInterval),
 			ResetIn:   time.Duration(tatUnix - nowUnix),
-			nextTAT:   time.Unix(0, tatUnix).UTC(),
+			newTAT:    time.Unix(0, tatUnix).UTC(),
 		}
 	}
 
@@ -61,7 +61,7 @@ func decide(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *Decisi
 			Remaining: int(remaining),
 			RetryIn:   -time.Duration(difference),
 			ResetIn:   time.Duration(tatUnix - nowUnix),
-			nextTAT:   time.Unix(0, tatUnix).UTC(),
+			newTAT:    time.Unix(0, tatUnix).UTC(),
 		}
 	}
 
@@ -75,8 +75,8 @@ func decide(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *Decisi
 		Allowed:   true,
 		Remaining: int(residual),
 		RetryIn:   retryIn,
-		ResetIn:   time.Duration(nextTAT - nowUnix),
-		nextTAT:   time.Unix(0, nextTAT).UTC(),
+		ResetIn:   time.Duration(newTAT - nowUnix),
+		newTAT:    time.Unix(0, newTAT).UTC(),
 	}
 }
 
@@ -98,11 +98,11 @@ func maybeRefund(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) ti
 	costIncrement := emissionInterval * cost
 
 	// Subtract the cost increment from the TAT to find the new TAT.
-	nextTAT := tatUnix - costIncrement
+	newTAT := tatUnix - costIncrement
 
 	// Ensure the new TAT is not earlier than now.
-	if nextTAT < nowUnix {
-		nextTAT = nowUnix
+	if newTAT < nowUnix {
+		newTAT = nowUnix
 	}
-	return time.Unix(0, nextTAT).UTC()
+	return time.Unix(0, newTAT).UTC()
 }

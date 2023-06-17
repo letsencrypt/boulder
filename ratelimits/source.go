@@ -9,10 +9,16 @@ import (
 // ErrBucketNotFound indicates that the bucket was not found.
 var ErrBucketNotFound = fmt.Errorf("bucket not found")
 
+// source is an interface for creating and modifying TATs.
 type source interface {
-	Set(name Name, id string, tat time.Time) error
-	Get(name Name, id string) (time.Time, error)
-	Delete(name Name, id string) error
+	// Set stores the TAT at the specified bucketKey ('name:id').
+	Set(bucketKey string, tat time.Time) error
+
+	// Set retrieves the TAT at the specified bucketKey ('name:id').
+	Get(bucketKey string) (time.Time, error)
+
+	// Set deletes the TAT at the specified bucket key ('name:id').
+	Delete(bucketKey string) error
 }
 
 // inmem is an in-memory implementation of the source interface used for
@@ -26,28 +32,26 @@ func newInmem() *inmem {
 	return &inmem{m: make(map[string]time.Time)}
 }
 
-func (in *inmem) Set(name Name, id string, tat time.Time) error {
+func (in *inmem) Set(bucketKey string, tat time.Time) error {
 	in.Lock()
 	defer in.Unlock()
-	in.m[bucketKey(name, id)] = tat
+	in.m[bucketKey] = tat
 	return nil
 }
 
-func (in *inmem) Get(name Name, id string) (time.Time, error) {
-	key := bucketKey(name, id)
+func (in *inmem) Get(bucketKey string) (time.Time, error) {
 	in.RLock()
 	defer in.RUnlock()
-	tat, ok := in.m[key]
+	tat, ok := in.m[bucketKey]
 	if !ok {
 		return time.Time{}, ErrBucketNotFound
 	}
 	return tat, nil
 }
 
-func (in *inmem) Delete(name Name, id string) error {
-	key := bucketKey(name, id)
+func (in *inmem) Delete(bucketKey string) error {
 	in.Lock()
 	defer in.Unlock()
-	delete(in.m, key)
+	delete(in.m, bucketKey)
 	return nil
 }
