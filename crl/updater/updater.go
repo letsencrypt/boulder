@@ -479,7 +479,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	}
 
 	if features.Enabled(features.LeaseCRLShards) {
-		// Notify the databasethat that we're done.
+		// Notify the database that that we're done.
 		_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
 			IssuerNameID: int64(issuerNameID),
 			ShardIdx:     int64(shardIdx),

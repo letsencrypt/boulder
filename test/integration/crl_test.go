@@ -28,6 +28,7 @@ func runUpdater(t *testing.T, configFile string) {
 	c := exec.Command(binPath, "crl-updater", "-config", configFile, "-debug-addr", ":8022", "-runOnce")
 	out, err := c.CombinedOutput()
 	for _, line := range strings.Split(string(out), "\n") {
+		// Print the updater's stdout for debugging, but only if the test fails.
 		t.Log(line)
 	}
 	test.AssertNotError(t, err, fmt.Sprintf("crl-updater failed: %s", out))
