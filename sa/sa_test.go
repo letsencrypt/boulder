@@ -3255,6 +3255,10 @@ func TestGetMaxExpiration(t *testing.T) {
 }
 
 func TestLeaseOldestCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3371,6 +3375,10 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 }
 
 func TestLeaseSpecificCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3475,6 +3483,10 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 }
 
 func TestUpdateCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
