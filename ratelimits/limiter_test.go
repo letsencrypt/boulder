@@ -33,7 +33,7 @@ func newTestLimiterWithOverrides(t *testing.T) (*Limiter, clock.FakeClock) {
 	return l, clk
 }
 
-func Test_Limiter_Check_and_Spend_initialization(t *testing.T) {
+func Test_Limiter_initialization_via_Check_and_Spend_(t *testing.T) {
 	l, _ := newTestLimiter(t)
 
 	// Check on an empty bucket should initialize it and return the theoretical
@@ -80,6 +80,26 @@ func Test_Limiter_Check_and_Spend_initialization(t *testing.T) {
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+}
+
+func Test_Limiter_Refund_and_Spend_cost_err(t *testing.T) {
+	l, _ := newTestLimiter(t)
+
+	// Spend a cost of 0, which should fail.
+	_, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 0)
+	test.AssertErrorIs(t, err, ErrInvalidCost)
+
+	// Spend a negative cost, which should fail.
+	_, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, -1)
+	test.AssertErrorIs(t, err, ErrInvalidCost)
+
+	// Refund a cost of 0, which should fail.
+	_, err = l.Refund(UsageRequestsPerIPv4Address, tenZeroZeroOne, 0)
+	test.AssertErrorIs(t, err, ErrInvalidCost)
+
+	// Refund a negative cost, which should fail.
+	_, err = l.Refund(UsageRequestsPerIPv4Address, tenZeroZeroOne, -1)
+	test.AssertErrorIs(t, err, ErrInvalidCost)
 }
 
 func Test_Limiter_with_bad_limits_path(t *testing.T) {

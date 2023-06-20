@@ -23,10 +23,10 @@ type rateLimit struct {
 	Period config.Duration
 }
 
-type limits map[string]rateLimit
+type rateLimits map[string]rateLimit
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *rateLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var lm map[string]rateLimit
 	err := unmarshal(&lm)
 	if err != nil {
@@ -72,13 +72,13 @@ func (l *limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			lm[nameToIntString(Name(nameInt))+":"+id] = v
 		}
 	}
-	*l = limits(lm)
+	*l = rateLimits(lm)
 	return nil
 }
 
 // loadLimits loads both default and override limits from YAML.
-func loadLimits(path string) (limits, error) {
-	lm := make(limits)
+func loadLimits(path string) (rateLimits, error) {
+	lm := make(rateLimits)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

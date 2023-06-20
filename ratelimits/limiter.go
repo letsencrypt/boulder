@@ -21,10 +21,10 @@ var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
 
 type Limiter struct {
 	// defaults stores default limits by 'name'.
-	defaults limits
+	defaults rateLimits
 
 	// overrides stores override limits by 'name:id'.
-	overrides limits
+	overrides rateLimits
 	source    source
 	clk       clock.Clock
 }
@@ -40,7 +40,7 @@ func NewLimiter(clk clock.Clock, source source, limitsPath, overridesPath string
 
 	if overridesPath == "" {
 		// No overrides specified.
-		limiter.overrides = make(limits)
+		limiter.overrides = make(rateLimits)
 		return limiter, nil
 	}
 

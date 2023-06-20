@@ -6,31 +6,13 @@ import "strconv"
 type Name int
 
 const (
-	// Each unique IPv4 address can make 20 requests, per second, to /new-nonce,
-	// /new-account, /new-order, or /revoke-cert
 	UsageRequestsPerIPv4Address Name = iota
-
-	// Each unique IPv4 address can make 40 requests, per second, to
-	// /directory and /acme.
 	InfoRequestsPerIPv4Address
-
-	// Each IPv4 address can create 10 accounts every 3 hours.
 	NewRegistrationsPerIPv4Address
-
-	// Each /48 IPv6 range can create 500 accounts every 3 hours.
 	NewRegistrationsPerIPv6Range
-
-	// Each account can create 300 orders per 3 hour period.
 	NewOrdersPerAccount
-
-	// Each account can fail 5 authorizations (validations) per hostname per
-	// hour.
 	FailedAuthorizationsPerAccount
-
-	// 50 certificates per domain name every 7 days.
 	CertificatesPerRegisteredDomain
-
-	// 5 certificates per unique set of names every 7 days.
 	CertificatesPerFQDNSet
 )
 
