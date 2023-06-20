@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -71,8 +72,15 @@ type Decision struct {
 	newTAT time.Time
 }
 
-// Check returns a decision indicating whether the request will be allowed but
-// does not spend the cost of the request. Most callers should use MaybeSpend.
+// Check returns a *Decision indicating whether capacity exists to service the
+// cost of the request for the provided limit Name and client id, but does not
+// spend the cost of the request. Most callers should use Spend instead. The
+// *Decision returned will always include the number of requests remaining in
+// the bucket, the duration the client must wait before they're allowed to make
+// another request, and the duration the client should wait before the bucket
+// reaches max capacity (resets). If no bucket exists for the provided limit
+// Name and client id, one will be created without the cost of the request
+// factored in.
 func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 	if cost < 0 {
 		return nil, ErrInvalidCostForCheck
@@ -89,30 +97,51 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 
 	tat, err := l.source.Get(bucketKey(name, id))
 	if err != nil {
-		if err == ErrBucketNotFound {
-			// First request from this client.
-			return l.initialize(limit, name, id, cost)
+		if !errors.Is(err, ErrBucketNotFound) {
+			return nil, err
 		}
-		return nil, err
+		// First request from this client.
+		d, err := l.initialize(limit, name, id, 0)
+		if err != nil {
+			return nil, err
+		}
+		return maybeSpend(l.clk, limit, d.newTAT, int64(cost)), nil
 	}
 	return maybeSpend(l.clk, limit, tat, int64(cost)), nil
 }
 
-// Spend returns a decision indicating whether the request was allowed. If so,
-// the cost of the request is spent, otherwise 0 cost is spent. The Decision
+// Spend returns a *Decision indicating whether capacity existed to service the
+// cost of the request for the provided limit Name and client id. If so, the
+// cost of the request is spent, otherwise 0 cost is spent. The Decision
 // returned will always include the number of requests remaining in the bucket,
 // the duration the client must wait before they're allowed to make another
 // request, and the duration the client should wait before the bucket reaches
-// max capacity (resets).
+// max capacity (resets). If no bucket exists for the provided limit Name and
+// client id, one will be created with the cost of the request factored in.
 func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
 	}
 
-	d, err := l.Check(name, id, cost)
+	limit, err := l.getLimit(name, id)
 	if err != nil {
 		return nil, err
 	}
+
+	if int64(cost) > limit.Burst {
+		return nil, ErrInvalidCostOverLimit
+	}
+
+	tat, err := l.source.Get(bucketKey(name, id))
+	if err != nil {
+		if errors.Is(err, ErrBucketNotFound) {
+			// First request from this client.
+			return l.initialize(limit, name, id, cost)
+		}
+		return nil, err
+	}
+
+	d := maybeSpend(l.clk, limit, tat, int64(cost))
 
 	if !d.Allowed {
 		return d, nil
@@ -158,7 +187,11 @@ func (l *Limiter) Reset(name Name, id string) error {
 // the request factored into the initial state.
 func (l *Limiter) initialize(limit rateLimit, name Name, id string, cost int) (*Decision, error) {
 	d := maybeSpend(l.clk, limit, l.clk.Now(), int64(cost))
-	return d, l.source.Set(bucketKey(name, id), d.newTAT)
+	err := l.source.Set(bucketKey(name, id), d.newTAT)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
 
 }
 

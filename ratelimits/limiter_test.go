@@ -33,6 +33,55 @@ func newTestLimiterWithOverrides(t *testing.T) (*Limiter, clock.FakeClock) {
 	return l, clk
 }
 
+func Test_Limiter_Check_and_Spend_initialization(t *testing.T) {
+	l, _ := newTestLimiter(t)
+
+	// Check on an empty bucket should initialize it and return the theoretical
+	// next state of that bucket if the cost were spent.
+	d, err := l.Check(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+	test.AssertEquals(t, d.Remaining, 19)
+	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// 1000/20 = 50 milliseconds per request.
+	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+
+	// However, that cost should not be spent yet, a 0 cost check should tell us
+	// that we actually have 20 remaining.
+	d, err = l.Check(UsageRequestsPerIPv4Address, tenZeroZeroOne, 0)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+	test.AssertEquals(t, d.Remaining, 20)
+	test.AssertEquals(t, d.ResetIn, time.Duration(0))
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+
+	// Reset our bucket.
+	l.Reset(UsageRequestsPerIPv4Address, tenZeroZeroOne)
+
+	// Similar to above, but we'll use Spend() instead of Check() to initialize
+	// the bucket. Spend should return the same result as Check.
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+	test.AssertEquals(t, d.Remaining, 19)
+	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// 1000/20 = 50 milliseconds per request.
+	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+
+	// However, that cost should not be spent yet, a 0 cost check should tell us
+	// that we actually have 19 remaining.
+	d, err = l.Check(UsageRequestsPerIPv4Address, tenZeroZeroOne, 0)
+	test.AssertNotError(t, err, "should not error")
+	test.Assert(t, d.Allowed, "should be allowed")
+	test.AssertEquals(t, d.Remaining, 19)
+	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// 1000/20 = 50 milliseconds per request.
+	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+}
+
 func Test_Limiter_with_bad_limits_path(t *testing.T) {
 	_, err := NewLimiter(clock.NewFake(), newInmem(), "./test/does-not-exist.yml", "")
 	test.AssertError(t, err, "should error")
@@ -117,9 +166,14 @@ func Test_Limiter_with_defaults(t *testing.T) {
 func Test_Limiter_with_limit_overrides(t *testing.T) {
 	l, clk := newTestLimiterWithOverrides(t)
 
-	// Attempt to spend  41 requests (a cost > the limit burst capacity), this
+	// Attempt to check a spend of 41 requests (a cost > the limit burst
+	// capacity), this should fail with a specific error.
+	_, err := l.Check(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 41)
+	test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
+
+	// Attempt to spend 41 requests (a cost > the limit burst capacity), this
 	// should fail with a specific error.
-	_, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 41)
+	_, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 41)
 	test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 	// Attempt to spend all 40 requests, this should succeed.

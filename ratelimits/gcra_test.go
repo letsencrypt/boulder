@@ -123,6 +123,7 @@ func Test_maybeRefund(t *testing.T) {
 	d = maybeRefund(clk, limit, d.newTAT, 1)
 	test.AssertEquals(t, d.Remaining, 10)
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+	test.AssertEquals(t, d.ResetIn, time.Duration(0))
 
 	// Spend 1 more of our 10 requests.
 	d = maybeSpend(clk, limit, d.newTAT, 1)
@@ -138,6 +139,8 @@ func Test_maybeRefund(t *testing.T) {
 	d = maybeRefund(clk, limit, d.newTAT, 1)
 	test.Assert(t, !d.Allowed, "should not be allowed")
 	test.AssertEquals(t, d.Remaining, 10)
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+	test.AssertEquals(t, d.ResetIn, time.Duration(0))
 
 	// Spend 10 all 10 of our requests.
 	d = maybeSpend(clk, limit, d.newTAT, 10)
@@ -149,6 +152,8 @@ func Test_maybeRefund(t *testing.T) {
 	// Attempt a refund of 100.
 	d = maybeRefund(clk, limit, d.newTAT, 100)
 	test.AssertEquals(t, d.Remaining, 10)
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+	test.AssertEquals(t, d.ResetIn, time.Duration(0))
 
 	// Wait 11 seconds to catching up to TAT.
 	clk.Add(11 * time.Second)
