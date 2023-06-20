@@ -186,7 +186,7 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 }
 
 // Comma-separated list of HTTP clients involved in making this
-// request, starting with the original requestor and ending with the
+// request, starting with the original requester and ending with the
 // remote end of our TCP connection (which is typically our own
 // proxy).
 func GetClientAddr(r *http.Request) string {
