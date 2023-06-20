@@ -6,10 +6,8 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -86,8 +84,6 @@ func main2() error {
 	if *configFile == "" || len(flag.Args()) < 1 {
 		helpExit()
 	}
-
-	rand.Seed(time.Now().UnixNano())
 
 	var conf Config
 	err := cmd.ReadConfigFile(*configFile, &conf)
