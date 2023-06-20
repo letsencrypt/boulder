@@ -3255,6 +3255,10 @@ func TestGetMaxExpiration(t *testing.T) {
 }
 
 func TestLeaseOldestCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3314,7 +3318,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3337,7 +3341,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3362,7 +3366,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3371,6 +3375,10 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 }
 
 func TestLeaseSpecificCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3418,7 +3426,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3441,7 +3449,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3475,6 +3483,10 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 }
 
 func TestUpdateCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 

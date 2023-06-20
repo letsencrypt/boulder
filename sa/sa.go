@@ -935,26 +935,26 @@ func (ssa *SQLStorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.Lea
 	}
 }
 
-// leaseOldestCRLShard finds and then leases the crl shard for the given issuer
-// which is not currently leased and hasn't been updated in the longest. It
-// returns an error if all shards for that issuer are already leased.
+// leaseOldestCRLShard finds the oldest unleased crl shard for the given issuer
+// and then leases it. Shards within the requested range which have never been
+// leased or are previously-unknown indices are considered older than any other
+// shard. It returns an error if all shards for the issuer are already leased.
 func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sapb.LeaseCRLShardRequest) (*sapb.LeaseCRLShardResponse, error) {
 	shardIdx, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
 		var shards []*crlShardModel
 		_, err := txWithCtx.Select(
 			&shards,
 			`SELECT id, issuerID, idx, thisUpdate, nextUpdate, leasedUntil
-			FROM crlShards
-			WHERE issuerID = ?`,
+				FROM crlShards
+				WHERE issuerID = ?`,
 			req.IssuerNameID,
 		)
 		if err != nil {
 			return -1, err
 		}
 
-		// Convert the slice to a map, so we can easily detect shards that we expect
-		// to exist, but don't. At the same time, keep track of the oldest shard
-		// we've seen, so we can work on that one if none are missing.
+		// Convert the slice to a map to detect shards that we expect to exist, but
+		// don't. At the same time, determine the oldest known shard.
 		shardMap := make(map[int]*crlShardModel, len(shards))
 		var oldest *crlShardModel
 		for _, shard := range shards {
@@ -992,7 +992,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 		if needToInsert {
 			_, err = txWithCtx.Exec(
 				`INSERT INTO crlShards (issuerID, idx, leasedUntil)
-				VALUES (?, ?, ?)`,
+					VALUES (?, ?, ?)`,
 				req.IssuerNameID,
 				shardIdx,
 				req.Until.AsTime(),
@@ -1000,9 +1000,10 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 		} else {
 			_, err = txWithCtx.Exec(
 				`UPDATE crlShards
-				SET leasedUntil = ?
-				WHERE issuerID = ?
-				AND idx = ?`,
+					SET leasedUntil = ?
+					WHERE issuerID = ?
+					AND idx = ?
+					LIMIT 1`,
 				req.Until.AsTime(),
 				req.IssuerNameID,
 				shardIdx,
@@ -1029,30 +1030,41 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 // and shard index. It returns an error if the specified shard is already
 // leased.
 func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *sapb.LeaseCRLShardRequest) (*sapb.LeaseCRLShardResponse, error) {
-	res, err := ssa.dbMap.WithContext(ctx).Exec(
-		`UPDATE crlShards
-			SET leasedUntil = ?
-			WHERE issuerID = ?
-			AND idx = ?
-			AND (leasedUntil IS NULL OR leasedUntil < ?)`,
-		req.Until.AsTime(),
-		req.IssuerNameID,
-		req.MinShardIdx,
-		ssa.clk.Now(),
-	)
-	if err != nil {
-		return nil, err
+	if req.MinShardIdx != req.MaxShardIdx {
+		return nil, fmt.Errorf("request must identify a single shard index: %d != %d", req.MinShardIdx, req.MaxShardIdx)
 	}
 
-	rowsAffected, err := res.RowsAffected()
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		res, err := txWithCtx.Exec(
+			`UPDATE crlShards
+				SET leasedUntil = ?
+				WHERE issuerID = ?
+				AND idx = ?
+				AND leasedUntil < ?
+				LIMIT 1`,
+			req.Until.AsTime(),
+			req.IssuerNameID,
+			req.MinShardIdx,
+			ssa.clk.Now(),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if rowsAffected == 0 {
+			return nil, fmt.Errorf("shard %d for issuer %d already leased", req.MinShardIdx, req.IssuerNameID)
+		}
+		if rowsAffected != 1 {
+			return nil, errors.New("update affected unexpected number of rows")
+		}
+		return nil, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	if rowsAffected == 0 {
-		return nil, fmt.Errorf("shard %d for issuer %d already leased", req.MinShardIdx, req.IssuerNameID)
-	}
-	if rowsAffected != 1 {
-		return nil, errors.New("update affected unexpected number of rows")
 	}
 
 	return &sapb.LeaseCRLShardResponse{
@@ -1074,28 +1086,38 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 		return nil, errIncompleteRequest
 	}
 
-	res, err := ssa.dbMap.WithContext(ctx).Exec(
-		`UPDATE crlShards
-			SET thisUpdate = ?, nextUpdate = ?
-			WHERE issuerID = ?
-			AND idx = ?
-			AND thisUpdate < ?`,
-		req.ThisUpdate.AsTime(),
-		req.NextUpdate.AsTime(),
-		req.IssuerNameID,
-		req.ShardIdx,
-		req.ThisUpdate.AsTime(),
-	)
-	if err != nil {
-		return nil, err
-	}
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+		res, err := txWithCtx.Exec(
+			`UPDATE crlShards
+				SET thisUpdate = ?, nextUpdate = ?
+				WHERE issuerID = ?
+				AND idx = ?
+				AND thisUpdate < ?
+				LIMIT 1`,
+			req.ThisUpdate.AsTime(),
+			req.NextUpdate.AsTime(),
+			req.IssuerNameID,
+			req.ShardIdx,
+			req.ThisUpdate.AsTime(),
+		)
+		if err != nil {
+			return nil, err
+		}
 
-	rowsAffected, err := res.RowsAffected()
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if rowsAffected == 0 {
+			return nil, fmt.Errorf("unable to update shard %d for issuer %d", req.ShardIdx, req.IssuerNameID)
+		}
+		if rowsAffected != 1 {
+			return nil, errors.New("update affected unexpected number of rows")
+		}
+		return nil, nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	if rowsAffected == 0 {
-		return nil, fmt.Errorf("unable to update shard %d for issuer %d", req.ShardIdx, req.IssuerNameID)
 	}
 
 	return &emptypb.Empty{}, nil
