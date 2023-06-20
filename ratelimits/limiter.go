@@ -16,6 +16,8 @@ var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 // ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
+var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
+
 type Limiter struct {
 	// defaults stores default limits by 'name'.
 	defaults limits
@@ -93,12 +95,16 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 		}
 		return nil, err
 	}
-	return decide(l.clk, limit, tat, int64(cost)), nil
+	return maybeSpend(l.clk, limit, tat, int64(cost)), nil
 }
 
-// MaybeSpend returns a decision indicating whether the request was allowed. If
-// so, the cost of the request is spent, otherwise 0 cost is spent.
-func (l *Limiter) MaybeSpend(name Name, id string, cost int) (*Decision, error) {
+// Spend returns a decision indicating whether the request was allowed. If so,
+// the cost of the request is spent, otherwise 0 cost is spent. The Decision
+// returned will always include the number of requests remaining in the bucket,
+// the duration the client must wait before they're allowed to make another
+// request, and the duration the client should wait before the bucket reaches
+// max capacity (resets).
+func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
 	}
@@ -115,23 +121,32 @@ func (l *Limiter) MaybeSpend(name Name, id string, cost int) (*Decision, error) 
 
 }
 
-// Refund refunds the cost to the bucket specified.
-func (l *Limiter) Refund(name Name, id string, cost int) error {
+// Refund returns a decision indicating whether the refund was possible. If so,
+// the cost of the request is refunded, otherwise 0 cost is refunded. Refunds
+// are never allowed to exceed the capacity of the bucket. Partial refunds are
+// still considered successful (e.g. if the bucket has a capacity of 10 and
+// there are 5 requests remaining, a refund of 7 will be successful and the
+// bucket will have 10 requests remaining).
+func (l *Limiter) Refund(name Name, id string, cost int) (*Decision, error) {
 	if cost <= 0 {
-		return ErrInvalidCost
+		return nil, ErrInvalidCost
 	}
 
 	limit, err := l.getLimit(name, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	tat, err := l.source.Get(bucketKey(name, id))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	nextTAT := maybeRefund(l.clk, limit, tat, int64(cost))
-	return l.source.Set(bucketKey(name, id), nextTAT)
+	d := maybeRefund(l.clk, limit, tat, int64(cost))
+	if !d.Allowed {
+		return d, ErrBucketAlreadyFull
+	}
+	return d, l.source.Set(bucketKey(name, id), d.newTAT)
+
 }
 
 // Reset resets the specified bucket.
@@ -142,7 +157,7 @@ func (l *Limiter) Reset(name Name, id string) error {
 // initialize creates a new bucket, specified by name and id, with the cost of
 // the request factored into the initial state.
 func (l *Limiter) initialize(limit rateLimit, name Name, id string, cost int) (*Decision, error) {
-	d := decide(l.clk, limit, l.clk.Now(), int64(cost))
+	d := maybeSpend(l.clk, limit, l.clk.Now(), int64(cost))
 	return d, l.source.Set(bucketKey(name, id), d.newTAT)
 
 }

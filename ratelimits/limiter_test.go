@@ -64,18 +64,18 @@ func Test_Limiter_with_defaults(t *testing.T) {
 
 	// Attempt to spend 21 requests (a cost > the limit burst capacity), this
 	// should fail with a specific error.
-	_, err := l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 21)
+	_, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 21)
 	test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 	// Attempt to spend all 20 requests, this should succeed.
-	d, err := l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
+	d, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Attempting to spend 1 more, this should fail.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
@@ -89,7 +89,7 @@ func Test_Limiter_with_defaults(t *testing.T) {
 	clk.Add(d.RetryIn)
 
 	// We should be allowed to spend 1 more request.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
@@ -100,14 +100,14 @@ func Test_Limiter_with_defaults(t *testing.T) {
 
 	// Quickly spend 20 requests in a row.
 	for i := 0; i < 20; i++ {
-		d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+		d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
 		test.AssertNotError(t, err, "should not error")
 		test.Assert(t, d.Allowed, "should be allowed")
 		test.AssertEquals(t, d.Remaining, 19-i)
 	}
 
 	// Attempting to spend 1 more, this should fail.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
@@ -119,16 +119,16 @@ func Test_Limiter_with_limit_overrides(t *testing.T) {
 
 	// Attempt to spend  41 requests (a cost > the limit burst capacity), this
 	// should fail with a specific error.
-	_, err := l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 41)
+	_, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 41)
 	test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 	// Attempt to spend all 40 requests, this should succeed.
-	d, err := l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 40)
+	d, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 40)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 
 	// Attempting to spend 1 more, this should fail.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
@@ -142,7 +142,7 @@ func Test_Limiter_with_limit_overrides(t *testing.T) {
 	clk.Add(d.RetryIn)
 
 	// We should be allowed to spend 1 more request.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
@@ -153,14 +153,14 @@ func Test_Limiter_with_limit_overrides(t *testing.T) {
 
 	// Quickly spend 40 requests in a row.
 	for i := 0; i < 40; i++ {
-		d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
+		d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
 		test.AssertNotError(t, err, "should not error")
 		test.Assert(t, d.Allowed, "should be allowed")
 		test.AssertEquals(t, d.Remaining, 39-i)
 	}
 
 	// Attempting to spend 1 more, this should fail.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroTwo, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
@@ -171,14 +171,14 @@ func Test_Limiter_with_new_clients(t *testing.T) {
 	l, _ := newTestLimiter(t)
 
 	// Attempt to spend all 20 requests, this should succeed.
-	d, err := l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
+	d, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Another new client, spend 1 and check our remaining.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, "10.0.0.100", 1)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, "10.0.0.100", 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 19)
@@ -189,34 +189,42 @@ func Test_Limiter_with_new_clients(t *testing.T) {
 }
 
 func Test_Limiter_Refund_and_Reset(t *testing.T) {
-	l, _ := newTestLimiter(t)
+	l, clk := newTestLimiter(t)
 
 	// Attempt to spend all 20 requests, this should succeed.
-	d, err := l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
+	d, err := l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Refund 10 requests.
-	err = l.Refund(UsageRequestsPerIPv4Address, tenZeroZeroOne, 10)
+	d, err = l.Refund(UsageRequestsPerIPv4Address, tenZeroZeroOne, 10)
 	test.AssertNotError(t, err, "should not error")
+	test.AssertEquals(t, d.Remaining, 10)
 
 	// Spend 10 requests, this should succeed.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 10)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 10)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
-	err = l.Reset(UsageRequestsPerIPv4Address, "10.0.0.1")
+	err = l.Reset(UsageRequestsPerIPv4Address, tenZeroZeroOne)
 	test.AssertNotError(t, err, "should not error")
 
 	// Attempt to spend 20 more requests, this should succeed.
-	d, err = l.MaybeSpend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
+	d, err = l.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
+	// Reset to full.
+	clk.Add(d.ResetIn)
+
+	// Refund 1 requests above our limit, this should fail.
+	d, err = l.Refund(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	test.AssertErrorIs(t, err, ErrBucketAlreadyFull)
+	test.AssertEquals(t, d.Remaining, 20)
 }
