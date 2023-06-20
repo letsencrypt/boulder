@@ -3318,7 +3318,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3341,7 +3341,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3366,7 +3366,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3426,7 +3426,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
@@ -3449,7 +3449,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		&untilModel,
-		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ?  LIMIT 1`,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
 		res.IssuerNameID,
 		res.ShardIdx,
 	)
