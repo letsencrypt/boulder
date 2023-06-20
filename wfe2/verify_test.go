@@ -14,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
@@ -1493,6 +1494,40 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	test.Assert(t, prob != nil, "No error returned for request signed by wrong key")
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 	test.AssertEquals(t, prob.Detail, "JWS verification error")
+}
+
+func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+
+	timeoutErrCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
+		return false, context.DeadlineExceeded
+	}
+
+	kp, err := goodkey.NewKeyPolicy(&goodkey.Config{}, timeoutErrCheckFunc)
+	test.AssertNotError(t, err, "making key policy")
+
+	wfe.keyPolicy = kp
+
+	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
+	request := makePostRequestWithPath("test", validJWSBody)
+
+	_, _, prob := wfe.validSelfAuthenticatedPOST(context.Background(), request)
+	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
+
+	badKeyCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
+		return false, fmt.Errorf("oh no: %w", goodkey.ErrBadKey)
+	}
+
+	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{}, badKeyCheckFunc)
+	test.AssertNotError(t, err, "making key policy")
+
+	wfe.keyPolicy = kp
+
+	_, _, validJWSBody = signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
+	request = makePostRequestWithPath("test", validJWSBody)
+
+	_, _, prob = wfe.validSelfAuthenticatedPOST(context.Background(), request)
+	test.AssertEquals(t, prob.Type, probs.BadPublicKeyProblem)
 }
 
 func TestValidSelfAuthenticatedPOST(t *testing.T) {
