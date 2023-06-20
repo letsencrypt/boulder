@@ -21,10 +21,10 @@ var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
 
 type Limiter struct {
 	// defaults stores default limits by 'name'.
-	defaults rateLimits
+	defaults limits
 
 	// overrides stores override limits by 'name:id'.
-	overrides rateLimits
+	overrides limits
 	source    source
 	clk       clock.Clock
 }
@@ -40,7 +40,7 @@ func NewLimiter(clk clock.Clock, source source, limitsPath, overridesPath string
 
 	if overridesPath == "" {
 		// No overrides specified.
-		limiter.overrides = make(rateLimits)
+		limiter.overrides = make(limits)
 		return limiter, nil
 	}
 
@@ -185,8 +185,8 @@ func (l *Limiter) Reset(name Name, id string) error {
 
 // initialize creates a new bucket, specified by name and id, with the cost of
 // the request factored into the initial state.
-func (l *Limiter) initialize(limit rateLimit, name Name, id string, cost int) (*Decision, error) {
-	d := maybeSpend(l.clk, limit, l.clk.Now(), int64(cost))
+func (l *Limiter) initialize(rl limit, name Name, id string, cost int) (*Decision, error) {
+	d := maybeSpend(l.clk, rl, l.clk.Now(), int64(cost))
 	err := l.source.Set(bucketKey(name, id), d.newTAT)
 	if err != nil {
 		return nil, err
@@ -198,7 +198,7 @@ func (l *Limiter) initialize(limit rateLimit, name Name, id string, cost int) (*
 // GetLimit returns the limit for the specified by name and id, name is
 // required, id is optional. If id is left unspecified, the default limit for
 // the limit specified by name is returned.
-func (l *Limiter) getLimit(name Name, id string) (rateLimit, error) {
+func (l *Limiter) getLimit(name Name, id string) (limit, error) {
 	if id != "" {
 		// Check for override.
 		ol, ok := l.overrides[overrideKey(name, id)]
@@ -210,5 +210,5 @@ func (l *Limiter) getLimit(name Name, id string) (rateLimit, error) {
 	if ok {
 		return dl, nil
 	}
-	return rateLimit{}, fmt.Errorf("limit %q does not exist", name)
+	return limit{}, fmt.Errorf("limit %q does not exist", name)
 }

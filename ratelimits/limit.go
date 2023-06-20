@@ -9,25 +9,25 @@ import (
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
-type rateLimit struct {
-	// Burst specifies maximum concurrent (allowed) requests at any given time.
-	// It MUST be greater than zero.
+type limit struct {
+	// Burst specifies maximum concurrent allowed requests at any given time. It
+	// must be greater than zero.
 	Burst int64
 
-	// Count is the number of requests allowed per period. It MUST be greater
+	// Count is the number of requests allowed per period. It must be greater
 	// than zero.
 	Count int64
 
 	// Period is the duration of time in which the count (of requests) is
-	// allowed. It MUST be greater than zero.
+	// allowed. It must be greater than zero.
 	Period config.Duration
 }
 
-type rateLimits map[string]rateLimit
+type limits map[string]limit
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *rateLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var lm map[string]rateLimit
+func (l *limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var lm map[string]limit
 	err := unmarshal(&lm)
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func (l *rateLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 					"unrecognized limit %q, valid names=%q", k, limitNames)
 			}
 			delete(lm, k)
-			lm[nameToIntString(Name(nameInt))] = v
+			lm[nameToIntString(nameInt)] = v
 		} else {
 			// Override limit
 			nameAndId := strings.Split(k, ":")
@@ -69,16 +69,16 @@ func (l *rateLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 					"unrecognized limit %q, valid names=%q", k, limitNames)
 			}
 			delete(lm, k)
-			lm[nameToIntString(Name(nameInt))+":"+id] = v
+			lm[nameToIntString(nameInt)+":"+id] = v
 		}
 	}
-	*l = rateLimits(lm)
+	*l = limits(lm)
 	return nil
 }
 
 // loadLimits loads both default and override limits from YAML.
-func loadLimits(path string) (rateLimits, error) {
-	lm := make(rateLimits)
+func loadLimits(path string) (limits, error) {
+	lm := make(limits)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

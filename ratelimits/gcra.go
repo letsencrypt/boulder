@@ -16,7 +16,7 @@ func divThenRound(x, y int64) int64 {
 // maybeSpend uses the GCRA algorithm to decide whether to allow a request. It
 // returns a Decision struct with the result of the decision and the updated
 // TAT. The cost must be 0 or greater and <= the burst capacity of the limit.
-func maybeSpend(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *Decision {
+func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
 	nowUnix := clk.Now().UnixNano()
 	tatUnix := tat.UnixNano()
 
@@ -28,12 +28,12 @@ func maybeSpend(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *De
 	}
 
 	// Compute the cost increment.
-	emissionInterval := divThenRound(limit.Period.Nanoseconds(), limit.Count)
+	emissionInterval := divThenRound(rl.Period.Nanoseconds(), rl.Count)
 	costIncrement := emissionInterval * cost
 
 	// Deduct the cost to find the new TAT and residual capacity.
 	newTAT := tatUnix + costIncrement
-	burstOffset := emissionInterval * limit.Burst
+	burstOffset := emissionInterval * rl.Burst
 	difference := nowUnix - (newTAT - burstOffset)
 	residual := divThenRound(difference, emissionInterval)
 
@@ -79,7 +79,7 @@ func maybeSpend(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *De
 // the cost of a request which was previously spent. The refund cost must be 0
 // or greater. A cost will only be refunded up to the burst capacity of the
 // limit. A partial refund is still considered successful.
-func maybeRefund(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *Decision {
+func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
 	nowUnix := clk.Now().UnixNano()
 	tatUnix := tat.UnixNano()
 
@@ -89,7 +89,7 @@ func maybeRefund(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *D
 	}
 
 	// Compute the refund increment.
-	emissionInterval := divThenRound(limit.Period.Nanoseconds(), limit.Count)
+	emissionInterval := divThenRound(rl.Period.Nanoseconds(), rl.Count)
 	refundIncrement := emissionInterval * cost
 
 	// Subtract the refund increment from the TAT to find the new TAT.
@@ -101,7 +101,7 @@ func maybeRefund(clk clock.Clock, limit rateLimit, tat time.Time, cost int64) *D
 	}
 
 	// Calculate the new capacity.
-	burstOffset := emissionInterval * limit.Burst
+	burstOffset := emissionInterval * rl.Burst
 	difference := nowUnix - (newTAT - burstOffset)
 	residual := divThenRound(difference, emissionInterval)
 

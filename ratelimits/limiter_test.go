@@ -33,7 +33,7 @@ func newTestLimiterWithOverrides(t *testing.T) (*Limiter, clock.FakeClock) {
 	return l, clk
 }
 
-func Test_Limiter_initialization_via_Check_and_Spend_(t *testing.T) {
+func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	l, _ := newTestLimiter(t)
 
 	// Check on an empty bucket should initialize it and return the theoretical
@@ -57,7 +57,8 @@ func Test_Limiter_initialization_via_Check_and_Spend_(t *testing.T) {
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 
 	// Reset our bucket.
-	l.Reset(UsageRequestsPerIPv4Address, tenZeroZeroOne)
+	err = l.Reset(UsageRequestsPerIPv4Address, tenZeroZeroOne)
+	test.AssertNotError(t, err, "should not error")
 
 	// Similar to above, but we'll use Spend() instead of Check() to initialize
 	// the bucket. Spend should return the same result as Check.
@@ -112,8 +113,8 @@ func Test_Limiter_with_bad_limits_path(t *testing.T) {
 
 func Test_Limiter_Check_bad_cost(t *testing.T) {
 	l, _ := newTestLimiter(t)
-	l.Check(UsageRequestsPerIPv4Address, tenZeroZeroOne, -1)
-	test.AssertErrorIs(t, ErrInvalidCostForCheck, ErrInvalidCostForCheck)
+	_, err := l.Check(UsageRequestsPerIPv4Address, tenZeroZeroOne, -1)
+	test.AssertErrorIs(t, err, ErrInvalidCostForCheck)
 }
 
 func Test_Limiter_Check_limit_no_exist(t *testing.T) {

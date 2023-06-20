@@ -11,7 +11,7 @@ import (
 
 func Test_decide(t *testing.T) {
 	clk := clock.NewFake()
-	limit := rateLimit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
+	limit := limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
 
 	// Begin by using 1 of our 10 requests.
 	d := maybeSpend(clk, limit, clk.Now(), 1)
@@ -110,7 +110,7 @@ func Test_decide(t *testing.T) {
 
 func Test_maybeRefund(t *testing.T) {
 	clk := clock.NewFake()
-	limit := rateLimit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
+	limit := limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
 
 	// Begin by using 1 of our 10 requests.
 	d := maybeSpend(clk, limit, clk.Now(), 1)
