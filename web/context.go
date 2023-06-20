@@ -33,11 +33,9 @@ type RequestEvent struct {
 	Latency   float64 `json:"-"`
 	RealIP    string  `json:"-"`
 
-	TLS            string   `json:",omitempty"`
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
 	Error          string   `json:",omitempty"`
-	Contacts       []string `json:",omitempty"`
 	UserAgent      string   `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
 	Origin string                 `json:",omitempty"`

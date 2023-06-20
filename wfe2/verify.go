@@ -488,9 +488,6 @@ func (wfe *WebFrontEndImpl) lookupJWK(
 
 	// Update the logEvent with the account information and return the JWK
 	logEvent.Requester = account.Id
-	if account.Contact != nil {
-		logEvent.Contacts = account.Contact
-	}
 
 	acct, err := grpc.PbToRegistration(account)
 	if err != nil {

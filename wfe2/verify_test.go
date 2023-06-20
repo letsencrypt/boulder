@@ -1181,7 +1181,6 @@ func TestLookupJWK(t *testing.T) {
 				test.AssertDeepEquals(t, inThumb, outThumb)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAccount)
 				test.AssertEquals(t, inputLogEvent.Requester, acct.ID)
-				test.AssertEquals(t, fmt.Sprint(inputLogEvent.Contacts), fmt.Sprint(*acct.Contact))
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
@@ -1431,19 +1430,16 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 		ExpectedLogEvent web.RequestEvent
 	}{
 		{
-			Name:            "Non-empty JWS payload",
-			Request:         makePostRequestWithPath("test", invalidPayloadRequest),
-			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
-			ExpectedLogEvent: web.RequestEvent{
-				Contacts: []string{"mailto:person@mail.com"},
-			},
+			Name:             "Non-empty JWS payload",
+			Request:          makePostRequestWithPath("test", invalidPayloadRequest),
+			ExpectedProblem:  probs.Malformed("POST-as-GET requests must have an empty payload"),
+			ExpectedLogEvent: web.RequestEvent{},
 		},
 		{
 			Name:    "Valid POST-as-GET",
 			Request: makePostRequestWithPath("test", validRequest),
 			ExpectedLogEvent: web.RequestEvent{
-				Contacts: []string{"mailto:person@mail.com"},
-				Method:   "POST-as-GET",
+				Method: "POST-as-GET",
 			},
 		},
 	}

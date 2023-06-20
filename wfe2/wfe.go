@@ -769,9 +769,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 	logEvent.Requester = acct.ID
 	addRequesterHeader(response, acct.ID)
-	if acct.Contact != nil {
-		logEvent.Contacts = *acct.Contact
-	}
 
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
 
