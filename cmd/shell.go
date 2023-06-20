@@ -370,7 +370,7 @@ func AuditPanic() {
 		// For all other values passed to `panic`, log them and a stack trace
 		log.AuditErrf("Panic caused by err: %s", err)
 
-		log.AuditErrf("Stack Trace (Current koroutine) %s", debug.Stack())
+		log.AuditErrf("Stack Trace (Current goroutine) %s", debug.Stack())
 	}
 	// Because this function is deferred as early as possible, there's no further defers to run after this one
 	// So it is safe to os.Exit to set the exit code and exit without losing any defers we haven't executed.
