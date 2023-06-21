@@ -144,7 +144,7 @@ func (e *extensionParser) Next() (cryptobyte.String, error) {
 	return next, nil
 }
 
-// unwrapExtensions taks a given a sequence of bytes representing the `extensions` field
+// unwrapExtensions takes a given a sequence of bytes representing the `extensions` field
 // of a TBSCertificate and parses away the outermost two layers, returning the inner bytes
 // of a SEQUENCE, which can then be parsed as a list of extensions.
 func unwrapExtensions(field cryptobyte.String) (cryptobyte.String, error) {
@@ -181,7 +181,7 @@ func readIdenticalElement(a, b *cryptobyte.String) error {
 	return nil
 }
 
-// tbsDERFromCertDER takes a Certficate object encoded as DER, and parses
+// tbsDERFromCertDER takes a Certificate object encoded as DER, and parses
 // away the outermost two SEQUENCEs to get the TBSCertificate.
 func tbsDERFromCertDER(certDER []byte) (cryptobyte.String, error) {
 	var inner cryptobyte.String

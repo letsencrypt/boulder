@@ -32,6 +32,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policyasn1"
+	"github.com/letsencrypt/boulder/precert"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/pkcs11key/v4"
 )
@@ -596,7 +597,14 @@ type IssuanceRequest struct {
 
 	IncludeMustStaple bool
 	IncludeCTPoison   bool
-	SCTList           []ct.SignedCertificateTimestamp
+
+	// SCTList is a list of SCTs to include in a final certificate.
+	// If it is non-empty, PrecertDER must also be non-empty.
+	SCTList []ct.SignedCertificateTimestamp
+	// PrecertDER is the encoded bytes of the precertificate that a
+	// final certificate is expected to correspond to. If it is non-empty,
+	// SCTList must also be non-empty.
+	PrecertDER []byte
 }
 
 // An issuanceToken represents an assertion that Issuer.Lint has generated
@@ -648,9 +656,19 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		template.KeyUsage = x509.KeyUsageDigitalSignature
 	}
 
+	if req.IncludeMustStaple {
+		template.ExtraExtensions = append(template.ExtraExtensions, mustStapleExt)
+	}
+
 	if req.IncludeCTPoison {
+		if len(req.SCTList) > 0 || len(req.PrecertDER) > 0 {
+			return nil, nil, fmt.Errorf("inconsistent request contains both precertificate and final certificate fields")
+		}
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
-	} else if req.SCTList != nil {
+	} else if len(req.SCTList) > 0 {
+		if len(req.PrecertDER) == 0 {
+			return nil, nil, fmt.Errorf("inconsistent request contains SCTList but no PrecertDER")
+		}
 		sctListExt, err := generateSCTListExt(req.SCTList)
 		if err != nil {
 			return nil, nil, err
@@ -658,15 +676,18 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	}
 
-	if req.IncludeMustStaple {
-		template.ExtraExtensions = append(template.ExtraExtensions, mustStapleExt)
-	}
-
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
 	lintCertBytes, err := i.Linter.Check(template, req.PublicKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
+	}
+
+	if len(req.PrecertDER) > 0 {
+		err = precert.Correspond(req.PrecertDER, lintCertBytes)
+		if err != nil {
+			return nil, nil, fmt.Errorf("precert does not correspond to linted final cert: %w", err)
+		}
 	}
 
 	token := &issuanceToken{sync.Mutex{}, template, req.PublicKey, i}
