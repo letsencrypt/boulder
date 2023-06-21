@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -200,9 +199,6 @@ func TestTLSALPNTimeoutAfterConnect(t *testing.T) {
 	test.AssertEquals(t, prob.Type, probs.ConnectionProblem)
 
 	expected := "127.0.0.1: Timeout during read (your server may be slow or overloaded)"
-	if strings.HasPrefix(runtime.Version(), "go1.21") {
-		expected = "127.0.0.1: Timeout after connect (your server may be slow or overloaded)"
-	}
 	if prob.Detail != expected {
 		t.Errorf("Wrong error detail. Expected %q, got %q", expected, prob.Detail)
 	}
