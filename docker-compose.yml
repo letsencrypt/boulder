@@ -10,6 +10,8 @@ services:
       FAKE_DNS: 10.77.77.77
       BOULDER_CONFIG_DIR: &boulder_config_dir test/config
       GOFLAGS: -mod=vendor
+      # Forward the parent env's GOEXPERIMENT value into the container.
+      GOEXPERIMENT: ${GOEXPERIMENT}
     volumes:
       - .:/boulder:cached
       - ./.gocache:/root/.cache/go-build:cached
