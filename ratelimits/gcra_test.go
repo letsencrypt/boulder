@@ -149,8 +149,8 @@ func Test_maybeRefund(t *testing.T) {
 	test.AssertEquals(t, d.RetryIn, time.Second)
 	test.AssertEquals(t, d.ResetIn, time.Second*10)
 
-	// Attempt a refund of 100.
-	d = maybeRefund(clk, limit, d.newTAT, 100)
+	// Attempt a refund of 10.
+	d = maybeRefund(clk, limit, d.newTAT, 10)
 	test.AssertEquals(t, d.Remaining, 10)
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 	test.AssertEquals(t, d.ResetIn, time.Duration(0))

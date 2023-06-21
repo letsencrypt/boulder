@@ -17,6 +17,9 @@ func divThenRound(x, y int64) int64 {
 // returns a Decision struct with the result of the decision and the updated
 // TAT. The cost must be 0 or greater and <= the burst capacity of the limit.
 func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
+	if cost < 0 || cost > rl.Burst {
+		panic("invalid cost for maybeSpend")
+	}
 	nowUnix := clk.Now().UnixNano()
 	tatUnix := tat.UnixNano()
 
@@ -80,6 +83,9 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 // or greater. A cost will only be refunded up to the burst capacity of the
 // limit. A partial refund is still considered successful.
 func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
+	if cost <= 0 || cost > rl.Burst {
+		panic("invalid cost for maybeRefund")
+	}
 	nowUnix := clk.Now().UnixNano()
 	tatUnix := tat.UnixNano()
 
