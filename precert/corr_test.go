@@ -23,8 +23,8 @@ func TestCorrespondIncorrectArgumentOrder(t *testing.T) {
 
 	// The final cert is in the precert position and vice versa.
 	err = Correspond(final, pre)
-	if err != nil {
-		t.Errorf("expected testdata/good/ certs to correspond, got %s", err)
+	if err == nil {
+		t.Errorf("expected failure when final and precertificates were in wrong order, got success")
 	}
 }
 
@@ -34,7 +34,7 @@ func TestCorrespondGood(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = Correspond(final, pre)
+	err = Correspond(pre, final)
 	if err != nil {
 		t.Errorf("expected testdata/good/ certs to correspond, got %s", err)
 	}
