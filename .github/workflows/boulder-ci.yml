@@ -98,7 +98,7 @@ jobs:
 
       # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
       # go1.21rc2 or higher. This experiment value is unknown in lower versions.
-      - if: startsWith(${{ matrix.BOULDER_TOOLS_TAG }}, "go1.21")
+      - if: startsWith(matrix.BOULDER_TOOLS_TAG, "go1.21")
         run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
       # Run the test matrix. This will run
