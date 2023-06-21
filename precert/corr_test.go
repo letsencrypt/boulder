@@ -15,13 +15,26 @@ import (
 	"time"
 )
 
+func TestCorrespondIncorrectArgumentOrder(t *testing.T) {
+	pre, final, err := readPair("testdata/good/precert.pem", "testdata/good/final.pem")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The final cert is in the precert position and vice versa.
+	err = Correspond(final, pre)
+	if err != nil {
+		t.Errorf("expected testdata/good/ certs to correspond, got %s", err)
+	}
+}
+
 func TestCorrespondGood(t *testing.T) {
 	pre, final, err := readPair("testdata/good/precert.pem", "testdata/good/final.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = Correspond(pre, final)
+	err = Correspond(final, pre)
 	if err != nil {
 		t.Errorf("expected testdata/good/ certs to correspond, got %s", err)
 	}

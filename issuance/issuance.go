@@ -657,9 +657,6 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	}
 
 	if req.IncludeCTPoison {
-		if len(req.sctList) > 0 || len(req.precertDER) > 0 {
-			return nil, nil, fmt.Errorf("inconsistent request contains both precertificate and final certificate fields")
-		}
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
 	} else if len(req.sctList) > 0 {
 		if len(req.precertDER) == 0 {

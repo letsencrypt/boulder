@@ -939,3 +939,46 @@ func TestIssuanceToken(t *testing.T) {
 	test.AssertError(t, err, "expected redeeming an issuance token with the wrong issuer to fail")
 	test.AssertContains(t, err.Error(), "wrong issuer")
 }
+
+func TestInvalidProfile(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
+	test.AssertNotError(t, err, "failed to load log list")
+	linter, err := linter.New(
+		issuerCert.Certificate,
+		issuerSigner,
+		[]string{},
+	)
+	test.AssertNotError(t, err, "failed to create linter")
+	signer, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
+	test.AssertNotError(t, err, "NewIssuer failed")
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
+	_, _, err = signer.Prepare(&IssuanceRequest{
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+		precertDER:      []byte{6, 6, 6},
+	})
+	test.AssertError(t, err, "Invalid IssuanceRequest")
+
+	_, _, err = signer.Prepare(&IssuanceRequest{
+		PublicKey: pk.Public(),
+		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:  []string{"example.com"},
+		NotBefore: fc.Now(),
+		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+		sctList: []ct.SignedCertificateTimestamp{
+			{
+				SCTVersion: ct.V1,
+				LogID:      ct.LogID{KeyID: *(*[32]byte)(mustDecodeB64("OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM="))},
+			},
+		},
+		precertDER: []byte{},
+	})
+	test.AssertError(t, err, "Invalid IssuanceRequest")
+}
