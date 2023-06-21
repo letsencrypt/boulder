@@ -3285,7 +3285,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "setting up test shards")
 
-	until := time.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	until := clk.Now().Add(time.Hour).Truncate(time.Second).UTC()
 	var untilModel struct {
 		LeasedUntil time.Time `db:"leasedUntil"`
 	}
@@ -3405,7 +3405,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "setting up test shards")
 
-	until := time.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	until := clk.Now().Add(time.Hour).Truncate(time.Second).UTC()
 	var untilModel struct {
 		LeasedUntil time.Time `db:"leasedUntil"`
 	}
@@ -3513,7 +3513,7 @@ func TestUpdateCRLShard(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "setting up test shards")
 
-	thisUpdate := time.Now().Truncate(time.Second).UTC()
+	thisUpdate := clk.Now().Truncate(time.Second).UTC()
 	var thisUpdateModel struct {
 		ThisUpdate time.Time `db:"thisUpdate"`
 	}
