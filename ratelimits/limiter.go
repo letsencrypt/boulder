@@ -19,68 +19,80 @@ var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
 var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
 
+// Limiter provides a high-level interface for rate limiting requests by
+// utilizing a leaky bucket-style approach.
 type Limiter struct {
 	// defaults stores default limits by 'name'.
 	defaults limits
 
 	// overrides stores override limits by 'name:id'.
 	overrides limits
-	source    source
-	clk       clock.Clock
+
+	// source is used to store buckets. It must be safe for concurrent use.
+	source source
+	clk    clock.Clock
 }
 
-func NewLimiter(clk clock.Clock, source source, limitsPath, overridesPath string) (*Limiter, error) {
+// NewLimiter returns a new *Limiter. The provided source must be safe for
+// concurrent use. The defaults and overrides paths are expected to be paths to
+// YAML files that contain the default and override limits, respectively. The
+// overrides file is optional, all other arguments are required.
+func NewLimiter(clk clock.Clock, source source, defaults, overrides string) (*Limiter, error) {
 	limiter := &Limiter{source: source, clk: clk}
 
-	defaults, err := loadLimits(limitsPath)
+	dl, err := loadLimits(defaults)
 	if err != nil {
 		return nil, err
 	}
-	limiter.defaults = defaults
+	limiter.defaults = dl
 
-	if overridesPath == "" {
+	if overrides == "" {
 		// No overrides specified.
 		limiter.overrides = make(limits)
 		return limiter, nil
 	}
 
-	overrides, err := loadLimits(overridesPath)
+	ol, err := loadLimits(overrides)
 	if err != nil {
 		return nil, err
 	}
-	limiter.overrides = overrides
+	limiter.overrides = ol
 
 	return limiter, nil
 }
 
 type Decision struct {
-	// Allowed is true if the bucket has the capacity to allow the request.
+	// Allowed is true if the bucket posessed enough capacity to allow the
+	// request given the cost.
 	Allowed bool
 
-	// Remaining is the number of requests remaining in the bucket.
+	// Remaining is the number of requests the client is allowed to make before
+	// they're rate limited.
 	Remaining int
 
-	// RetryIn is the duration the client must wait before they're allowed to
+	// RetryIn is the duration the client MUST wait before they're allowed to
 	// make a request.
 	RetryIn time.Duration
 
-	// ResetIn is the duration the client would need to wait before the bucket
-	// reaches it's maximum capacity.
+	// ResetIn is the duration the bucket will take to refill to its maximum
+	// capacity, assuming no further requests are made.
 	ResetIn time.Duration
 
-	// newTAT is the Theoretical Arrival Time of the next possible request.
+	// newTAT is the next theoretical arrival time (TAT) of the next possible
+	// request.
 	newTAT time.Time
 }
 
-// Check returns a *Decision indicating whether capacity exists to service the
-// cost of the request for the provided limit Name and client id, but does not
-// spend the cost of the request. Most callers should use Spend instead. The
-// *Decision returned will always include the number of requests remaining in
-// the bucket, the duration the client must wait before they're allowed to make
-// another request, and the duration the client should wait before the bucket
-// reaches max capacity (resets). If no bucket exists for the provided limit
-// Name and client id, one will be created without the cost of the request
-// factored in.
+// Check returns a *Decision that indicates whether there's enough capacity to
+// allow the request given the cost, for the specified limit Name and client id.
+// However, it DOES NOT deduct the cost of the request from the bucket's
+// capacity. Hence, the returned *Decision represents the hypothetical state of
+// the bucket if the cost WERE to be deducted. The returned *Decision will
+// always include the number of remaining requests in the bucket, the required
+// wait time before the client can make another request, and the time until the
+// bucket refills to its maximum capacity (resets). If no bucket exists for the
+// given limit Name and client id, a new one will be created WITHOUT the
+// request's cost deducted from its initial capacity.
 func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 	if cost < 0 {
 		return nil, ErrInvalidCostForCheck
@@ -110,14 +122,15 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 	return maybeSpend(l.clk, limit, tat, int64(cost)), nil
 }
 
-// Spend returns a *Decision indicating whether capacity existed to service the
-// cost of the request for the provided limit Name and client id. If so, the
-// cost of the request is spent, otherwise 0 cost is spent. The Decision
-// returned will always include the number of requests remaining in the bucket,
-// the duration the client must wait before they're allowed to make another
-// request, and the duration the client should wait before the bucket reaches
-// max capacity (resets). If no bucket exists for the provided limit Name and
-// client id, one will be created with the cost of the request factored in.
+// Spend returns a *Decision that indicates if enough capacity was available to
+// process the request given the cost, for the specified limit Name and client
+// id. If capacity existed, the cost of the request HAS been deducted from the
+// bucket's capacity, otherwise no cost was deducted. The returned *Decision
+// will always include the number of remaining requests in the bucket, the
+// required wait time before the client can make another request, and the time
+// until the bucket refills to its maximum capacity (resets). If no bucket
+// exists for the given limit Name and client id, a new one will be created WITH
+// the request's cost deducted from its inital capacity.
 func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
@@ -147,15 +160,19 @@ func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
 		return d, nil
 	}
 	return d, l.source.Set(bucketKey(name, id), d.newTAT)
-
 }
 
-// Refund returns a decision indicating whether the refund was possible. If so,
-// the cost of the request is refunded, otherwise 0 cost is refunded. Refunds
-// are never allowed to exceed the capacity of the bucket. Partial refunds are
-// still considered successful (e.g. if the bucket has a capacity of 10 and
-// there are 5 requests remaining, a refund of 7 will be successful and the
-// bucket will have 10 requests remaining).
+// Refund attempts to refund the cost to the bucket identified by limit name and
+// client id. The returned *Decision indicates whether the refund was successful
+// or not. If the refund was successful, the cost of the request was added back
+// to the bucket's capacity. If the refund is not possible (i.e., the bucket is
+// already full or the refund amount is invalid), no cost is refunded.
+//
+// Note: The amount refunded cannot cause the bucket to exceed its maximum
+// capacity. However, partial refunds are allowed and are considered successful.
+// For instance, if a bucket has a maximum capacity of 10 and currently has 5
+// requests remaining, a refund request of 7 will result in the bucket reaching
+// its maximum capacity of 10, not 12.
 func (l *Limiter) Refund(name Name, id string, cost int) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
@@ -183,8 +200,8 @@ func (l *Limiter) Reset(name Name, id string) error {
 	return l.source.Delete(bucketKey(name, id))
 }
 
-// initialize creates a new bucket, specified by name and id, with the cost of
-// the request factored into the initial state.
+// initialize creates a new bucket, specified by limit name and id, with the
+// cost of the request factored into the initial state.
 func (l *Limiter) initialize(rl limit, name Name, id string, cost int) (*Decision, error) {
 	d := maybeSpend(l.clk, rl, l.clk.Now(), int64(cost))
 	err := l.source.Set(bucketKey(name, id), d.newTAT)
@@ -201,7 +218,7 @@ func (l *Limiter) initialize(rl limit, name Name, id string, cost int) (*Decisio
 func (l *Limiter) getLimit(name Name, id string) (limit, error) {
 	if id != "" {
 		// Check for override.
-		ol, ok := l.overrides[overrideKey(name, id)]
+		ol, ok := l.overrides[bucketKey(name, id)]
 		if ok {
 			return ol, nil
 		}

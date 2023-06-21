@@ -17,7 +17,7 @@ const (
 //   - 'UsageRequestsPerIPv4Address' burst: 20 count: 20 period: 1s
 func newTestLimiter(t *testing.T) (*Limiter, clock.FakeClock) {
 	clk := clock.NewFake()
-	l, err := NewLimiter(clk, newInmem(), "./test/defaults.yml", "")
+	l, err := NewLimiter(clk, newInmem(), "testdata/defaults.yml", "")
 	test.AssertNotError(t, err, "should not error")
 	return l, clk
 }
@@ -28,7 +28,7 @@ func newTestLimiter(t *testing.T) (*Limiter, clock.FakeClock) {
 //   - 'UsageRequestsPerIPv4Address:10.0.0.2' burst: 40 count: 40 period: 1s
 func newTestLimiterWithOverrides(t *testing.T) (*Limiter, clock.FakeClock) {
 	clk := clock.NewFake()
-	l, err := NewLimiter(clk, newInmem(), "./test/defaults.yml", "./test/overrides.yml")
+	l, err := NewLimiter(clk, newInmem(), "testdata/defaults.yml", "testdata/overrides.yml")
 	test.AssertNotError(t, err, "should not error")
 	return l, clk
 }
@@ -104,10 +104,10 @@ func Test_Limiter_Refund_and_Spend_cost_err(t *testing.T) {
 }
 
 func Test_Limiter_with_bad_limits_path(t *testing.T) {
-	_, err := NewLimiter(clock.NewFake(), newInmem(), "./test/does-not-exist.yml", "")
+	_, err := NewLimiter(clock.NewFake(), newInmem(), "testdata/does-not-exist.yml", "")
 	test.AssertError(t, err, "should error")
 
-	_, err = NewLimiter(clock.NewFake(), newInmem(), "./test/defaults.yml", "./test/does-not-exist.yml")
+	_, err = NewLimiter(clock.NewFake(), newInmem(), "testdata/defaults.yml", "testdata/does-not-exist.yml")
 	test.AssertError(t, err, "should error")
 }
 

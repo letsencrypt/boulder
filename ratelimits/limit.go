@@ -2,6 +2,7 @@ package ratelimits
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -25,54 +26,99 @@ type limit struct {
 
 type limits map[string]limit
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func parseDefaultName(k string) (string, error) {
+	name, ok := stringToName[k]
+	if !ok {
+		return "", fmt.Errorf(
+			"unrecognized limit %q, must be one in %q", k, limitNames)
+	}
+	return nameToIntString(name), nil
+}
+
+func parseOverrideNameId(k string) (string, string, error) {
+	nameAndId := strings.SplitN(k, ":", 2)
+	nameStr := nameAndId[0]
+	if nameStr == "" {
+		return "", "", fmt.Errorf("empty name in override %q, must be 'name:id'", k)
+	}
+	id := nameAndId[1]
+	if id == "" {
+		return "", "", fmt.Errorf("empty id in override %q, must be 'name:id'", k)
+	}
+
+	name, ok := stringToName[nameStr]
+	if !ok {
+		return "", "", fmt.Errorf(
+			"unrecognized limit %q, must be one in %q", nameStr, limitNames)
+	}
+
+	if ipv4AddrNameId(name) {
+		ip := net.ParseIP(id)
+		if ip == nil || ip.To4() == nil {
+			return "", "", fmt.Errorf(
+				"invalid addr %q, in override %q, must be IPv4", id, k)
+		}
+	}
+
+	if ipv6RangeNameId(name) {
+		_, net, err := net.ParseCIDR(id)
+		if err != nil {
+			return "", "", fmt.Errorf(
+				"invalid id %q, in override %q, must be IPv6 CIDR range", id, k)
+		}
+		if net.IP.To4() != nil {
+			return "", "", fmt.Errorf(
+				"invalid CIDR %q, in override %q, must be IPv6 CIDR range", id, k)
+		}
+		ones, _ := net.Mask.Size()
+		if ones != 48 {
+			return "", "", fmt.Errorf(
+				"invalid range %q, in override %q, must be /48,", id, k)
+		}
+	}
+	return nameToIntString(name), id, nil
+}
+
+// UnmarshalYAML implements go-yaml's yaml.Unmarshaler interface. This method
+// will be called by strictyaml.Unmarshal() when unmarshaling the limits map. It
+// validates the limits map and interns the limit names to their integer
+// representation and returns an error if any of the limits are invalid.
 func (l *limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var lm map[string]limit
-	err := unmarshal(&lm)
+	var file map[string]limit
+
+	err := unmarshal(&file)
 	if err != nil {
 		return err
 	}
-	for k, v := range lm {
+	final := make(map[string]limit, len(file))
+
+	for k, v := range file {
 		if v.Burst <= 0 {
-			return fmt.Errorf("invalid burst %q !<= 0", k)
+			return fmt.Errorf("invalid burst %q, in limit %q, must be <= 0", v.Burst, k)
 		}
 		if v.Count <= 0 {
-			return fmt.Errorf("invalid count %q !<= 0", k)
+			return fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Count, k)
 		}
 		if v.Period.Duration <= 0 {
-			return fmt.Errorf("invalid period %q !<= 0", k)
+			return fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Period, k)
 		}
-		if !strings.Contains(k, ":") {
-			// Default limit
-			nameInt, ok := stringToName[k]
-			if !ok {
-				return fmt.Errorf(
-					"unrecognized limit %q, valid names=%q", k, limitNames)
-			}
-			delete(lm, k)
-			lm[nameToIntString(nameInt)] = v
-		} else {
+		if strings.Contains(k, ":") {
 			// Override limit
-			nameAndId := strings.Split(k, ":")
-			name := nameAndId[0]
-			if name == "" {
-				return fmt.Errorf("empty limit name %q, must be 'name:id'", k)
+			name, id, err := parseOverrideNameId(k)
+			if err != nil {
+				return err
 			}
-			id := nameAndId[1]
-			if id == "" {
-				return fmt.Errorf("empty id %q, must be 'name:id'", k)
+			final[name+":"+id] = v
+		} else {
+			// Default limit
+			name, err := parseDefaultName(k)
+			if err != nil {
+				return err
 			}
-
-			nameInt, ok := stringToName[name]
-			if !ok {
-				return fmt.Errorf(
-					"unrecognized limit %q, valid names=%q", k, limitNames)
-			}
-			delete(lm, k)
-			lm[nameToIntString(nameInt)+":"+id] = v
+			final[name] = v
 		}
 	}
-	*l = limits(lm)
+	*l = limits(final)
 	return nil
 }
 
