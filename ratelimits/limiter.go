@@ -62,7 +62,7 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string) (*Li
 }
 
 type Decision struct {
-	// Allowed is true if the bucket posessed enough capacity to allow the
+	// Allowed is true if the bucket possessed enough capacity to allow the
 	// request given the cost.
 	Allowed bool
 
@@ -130,7 +130,7 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 // required wait time before the client can make another request, and the time
 // until the bucket refills to its maximum capacity (resets). If no bucket
 // exists for the given limit Name and client id, a new one will be created WITH
-// the request's cost deducted from its inital capacity.
+// the request's cost deducted from its initial capacity.
 func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
