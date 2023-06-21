@@ -14,10 +14,10 @@ type source interface {
 	// Set stores the TAT at the specified bucketKey ('name:id').
 	Set(bucketKey string, tat time.Time) error
 
-	// Set retrieves the TAT at the specified bucketKey ('name:id').
+	// Get retrieves the TAT at the specified bucketKey ('name:id').
 	Get(bucketKey string) (time.Time, error)
 
-	// Set deletes the TAT at the specified bucket key ('name:id').
+	// Delete deletes the TAT at the specified bucketKey ('name:id').
 	Delete(bucketKey string) error
 }
 
