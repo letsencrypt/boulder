@@ -16,7 +16,10 @@ jobs:
       matrix:
         GO_VERSION:
           - "1.20.5"
+          - "1.21rc2"
     runs-on: ubuntu-20.04
+    env:
+      GOEXPERIMENT: "loopvar"
     permissions:
       contents: write
     steps:
