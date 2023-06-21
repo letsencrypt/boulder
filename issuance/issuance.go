@@ -656,10 +656,6 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		template.KeyUsage = x509.KeyUsageDigitalSignature
 	}
 
-	if req.IncludeMustStaple {
-		template.ExtraExtensions = append(template.ExtraExtensions, mustStapleExt)
-	}
-
 	if req.IncludeCTPoison {
 		if len(req.sctList) > 0 || len(req.precertDER) > 0 {
 			return nil, nil, fmt.Errorf("inconsistent request contains both precertificate and final certificate fields")
@@ -674,6 +670,10 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 			return nil, nil, err
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
+	}
+
+	if req.IncludeMustStaple {
+		template.ExtraExtensions = append(template.ExtraExtensions, mustStapleExt)
 	}
 
 	// check that the tbsCertificate is properly formed by signing it
