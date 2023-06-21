@@ -12,6 +12,8 @@ import (
 
 // Correspond returns nil if the two certificates are a valid precertificate/final certificate pair.
 // Order of the arguments matters: the precertificate is first and the final certificate is second.
+// Note that RFC 6962 allows the precertificate and final certificate to have different Issuers, but
+// this function rejects such pairs.
 func Correspond(precertDER, finalDER []byte) error {
 	preTBS, err := tbsDERFromCertDER(precertDER)
 	if err != nil {
