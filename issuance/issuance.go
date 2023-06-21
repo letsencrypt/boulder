@@ -273,11 +273,11 @@ func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 		return errors.New("ct poison extension cannot be included")
 	}
 
-	if !p.allowSCTList && req.SCTList != nil {
+	if !p.allowSCTList && req.sctList != nil {
 		return errors.New("sct list extension cannot be included")
 	}
 
-	if req.IncludeCTPoison && req.SCTList != nil {
+	if req.IncludeCTPoison && req.sctList != nil {
 		return errors.New("cannot include both ct poison and sct list extensions")
 	}
 
@@ -598,13 +598,13 @@ type IssuanceRequest struct {
 	IncludeMustStaple bool
 	IncludeCTPoison   bool
 
-	// SCTList is a list of SCTs to include in a final certificate.
+	// sctList is a list of SCTs to include in a final certificate.
 	// If it is non-empty, PrecertDER must also be non-empty.
-	SCTList []ct.SignedCertificateTimestamp
-	// PrecertDER is the encoded bytes of the precertificate that a
+	sctList []ct.SignedCertificateTimestamp
+	// precertDER is the encoded bytes of the precertificate that a
 	// final certificate is expected to correspond to. If it is non-empty,
 	// SCTList must also be non-empty.
-	PrecertDER []byte
+	precertDER []byte
 }
 
 // An issuanceToken represents an assertion that Issuer.Lint has generated
@@ -661,15 +661,15 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	}
 
 	if req.IncludeCTPoison {
-		if len(req.SCTList) > 0 || len(req.PrecertDER) > 0 {
+		if len(req.sctList) > 0 || len(req.precertDER) > 0 {
 			return nil, nil, fmt.Errorf("inconsistent request contains both precertificate and final certificate fields")
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
-	} else if len(req.SCTList) > 0 {
-		if len(req.PrecertDER) == 0 {
+	} else if len(req.sctList) > 0 {
+		if len(req.precertDER) == 0 {
 			return nil, nil, fmt.Errorf("inconsistent request contains SCTList but no PrecertDER")
 		}
-		sctListExt, err := generateSCTListExt(req.SCTList)
+		sctListExt, err := generateSCTListExt(req.sctList)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -683,8 +683,8 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
 
-	if len(req.PrecertDER) > 0 {
-		err = precert.Correspond(req.PrecertDER, lintCertBytes)
+	if len(req.precertDER) > 0 {
+		err = precert.Correspond(req.precertDER, lintCertBytes)
 		if err != nil {
 			return nil, nil, fmt.Errorf("precert does not correspond to linted final cert: %w", err)
 		}
@@ -749,7 +749,8 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		CommonName:        precert.Subject.CommonName,
 		DNSNames:          precert.DNSNames,
 		IncludeMustStaple: ContainsMustStaple(precert.Extensions),
-		SCTList:           scts,
+		sctList:           scts,
+		precertDER:        precert.Raw,
 	}, nil
 }
 

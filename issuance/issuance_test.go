@@ -220,7 +220,7 @@ func TestRequestValid(t *testing.T) {
 			},
 			request: &IssuanceRequest{
 				PublicKey: &ecdsa.PublicKey{},
-				SCTList:   []ct.SignedCertificateTimestamp{},
+				sctList:   []ct.SignedCertificateTimestamp{},
 			},
 			expectedError: "sct list extension cannot be included",
 		},
@@ -234,7 +234,7 @@ func TestRequestValid(t *testing.T) {
 			request: &IssuanceRequest{
 				PublicKey:       &ecdsa.PublicKey{},
 				IncludeCTPoison: true,
-				SCTList:         []ct.SignedCertificateTimestamp{},
+				sctList:         []ct.SignedCertificateTimestamp{},
 			},
 			expectedError: "cannot include both ct poison and sct list extensions",
 		},
@@ -701,6 +701,14 @@ func TestIssueCTPoison(t *testing.T) {
 	test.AssertDeepEquals(t, cert.Extensions[8], ctPoisonExt)
 }
 
+func mustDecodeB64(b string) []byte {
+	out, err := base64.StdEncoding.DecodeString(b)
+	if err != nil {
+		panic(err)
+	}
+	return out
+}
+
 func TestIssueSCTList(t *testing.T) {
 	fc := clock.NewFake()
 	fc.Set(time.Now())
@@ -716,38 +724,49 @@ func TestIssueSCTList(t *testing.T) {
 	test.AssertNotError(t, err, "NewIssuer failed")
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
-	logID1, err := base64.StdEncoding.DecodeString("OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM=")
-	test.AssertNotError(t, err, "failed to decode ct log ID")
-	logID2, err := base64.StdEncoding.DecodeString("UtToynGEyMkkXDMQei8Ll54oMwWHI0IieDEKs12/Td4=")
-	test.AssertNotError(t, err, "failed to decode ct log ID")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
-		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:  []string{"example.com"},
-		SCTList: []ct.SignedCertificateTimestamp{
-			{
-				SCTVersion: ct.V1,
-				LogID:      ct.LogID{KeyID: *(*[32]byte)(logID1)},
-			},
-			{
-				SCTVersion: ct.V1,
-				LogID:      ct.LogID{KeyID: *(*[32]byte)(logID2)},
-			},
-		},
-		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
 	})
 	test.AssertNotError(t, err, "Prepare failed")
-	certBytes, err := signer.Issue(issuanceToken)
+	precertBytes, err := signer.Issue(issuanceToken)
 	test.AssertNotError(t, err, "Issue failed")
-	cert, err := x509.ParseCertificate(certBytes)
+	precert, err := x509.ParseCertificate(precertBytes)
 	test.AssertNotError(t, err, "failed to parse certificate")
-	err = cert.CheckSignatureFrom(issuerCert.Certificate)
+
+	sctList := []ct.SignedCertificateTimestamp{
+		{
+			SCTVersion: ct.V1,
+			LogID:      ct.LogID{KeyID: *(*[32]byte)(mustDecodeB64("OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM="))},
+		},
+		{
+			SCTVersion: ct.V1,
+			LogID:      ct.LogID{KeyID: *(*[32]byte)(mustDecodeB64("UtToynGEyMkkXDMQei8Ll54oMwWHI0IieDEKs12/Td4="))},
+		},
+	}
+
+	request2, err := RequestFromPrecert(precert, sctList)
+	test.AssertNotError(t, err, "generating request from precert")
+
+	_, issuanceToken2, err := signer.Prepare(request2)
+	test.AssertNotError(t, err, "preparing final cert issuance")
+
+	finalCertBytes, err := signer.Issue(issuanceToken2)
+	test.AssertNotError(t, err, "Issue failed")
+
+	finalCert, err := x509.ParseCertificate(finalCertBytes)
+	test.AssertNotError(t, err, "failed to parse certificate")
+
+	err = finalCert.CheckSignatureFrom(issuerCert.Certificate)
 	test.AssertNotError(t, err, "signature validation failed")
-	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
-	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, SCT list
-	test.AssertDeepEquals(t, cert.Extensions[8], pkix.Extension{
+	test.AssertByteEquals(t, finalCert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	test.AssertDeepEquals(t, finalCert.PublicKey, pk.Public())
+	test.AssertEquals(t, len(finalCert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, SCT list
+	test.AssertDeepEquals(t, finalCert.Extensions[8], pkix.Extension{
 		Id: sctListOID,
 		Value: []byte{
 			4, 100, 0, 98, 0, 47, 0, 56, 152, 140, 148, 208, 53, 152, 195, 147, 45,
