@@ -24,11 +24,11 @@ const (
 	// NewRegistrationsPerIPv4Address uses bucket key 'enum:ipv4address'.
 	NewRegistrationsPerIPv4Address
 
-	// FailedAuthorizationsPerAccount uses bucket key 'enum:ipv6rangeCIDR'. The
+	// NewRegistrationsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
 	// range itself must be a /48.
 	NewRegistrationsPerIPv6Range
 
-	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId'.
+	// NewOrdersPerAccount uses bucket key 'enum:regId'.
 	NewOrdersPerAccount
 
 	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId', where regId
