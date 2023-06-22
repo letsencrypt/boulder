@@ -553,12 +553,13 @@ func TestIssue(t *testing.T) {
 			pk, err := tc.generateFunc()
 			test.AssertNotError(t, err, "failed to generate test key")
 			lintCertBytes, issuanceToken, err := signer.Prepare(&IssuanceRequest{
-				PublicKey:  pk.Public(),
-				Serial:     []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-				CommonName: "example.com",
-				DNSNames:   []string{"example.com"},
-				NotBefore:  fc.Now(),
-				NotAfter:   fc.Now().Add(time.Hour - time.Second),
+				PublicKey:       pk.Public(),
+				Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+				CommonName:      "example.com",
+				DNSNames:        []string{"example.com"},
+				NotBefore:       fc.Now(),
+				NotAfter:        fc.Now().Add(time.Hour - time.Second),
+				IncludeCTPoison: true,
 			})
 			test.AssertNotError(t, err, "Prepare failed")
 			_, err = x509.ParseCertificate(lintCertBytes)
@@ -573,7 +574,7 @@ func TestIssue(t *testing.T) {
 			test.AssertEquals(t, cert.Subject.CommonName, "example.com")
 			test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 			test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-			test.AssertEquals(t, len(cert.Extensions), 8) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies
+			test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
 			test.AssertEquals(t, cert.KeyUsage, tc.ku)
 		})
 	}
@@ -596,13 +597,14 @@ func TestIssueRSA(t *testing.T) {
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
-		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:  []string{"example.com"},
-		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
 	})
-	test.AssertNotError(t, err, "failed to parse lint certificate")
+	test.AssertNotError(t, err, "failed to prepare lint certificate")
 	certBytes, err := signer.Issue(issuanceToken)
 	test.AssertNotError(t, err, "failed to parse certificate")
 	cert, err := x509.ParseCertificate(certBytes)
@@ -611,7 +613,7 @@ func TestIssueRSA(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 8) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies
+	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Poison
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageKeyEncipherment)
 }
 
@@ -633,12 +635,13 @@ func TestIssueCommonName(t *testing.T) {
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 	ir := &IssuanceRequest{
-		PublicKey:  pk.Public(),
-		Serial:     []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		CommonName: "example.com",
-		DNSNames:   []string{"example.com", "www.example.com"},
-		NotBefore:  fc.Now(),
-		NotAfter:   fc.Now().Add(time.Hour - time.Second),
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		CommonName:      "example.com",
+		DNSNames:        []string{"example.com", "www.example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
 	}
 
 	_, issuanceToken, err := signer.Prepare(ir)
@@ -802,6 +805,7 @@ func TestIssueMustStaple(t *testing.T) {
 		IncludeMustStaple: true,
 		NotBefore:         fc.Now(),
 		NotAfter:          fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison:   true,
 	})
 	test.AssertNotError(t, err, "Prepare failed")
 	certBytes, err := signer.Issue(issuanceToken)
@@ -812,8 +816,8 @@ func TestIssueMustStaple(t *testing.T) {
 	test.AssertNotError(t, err, "signature validation failed")
 	test.AssertByteEquals(t, cert.SerialNumber.Bytes(), []byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
 	test.AssertDeepEquals(t, cert.PublicKey, pk.Public())
-	test.AssertEquals(t, len(cert.Extensions), 9) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Must-Staple
-	test.AssertDeepEquals(t, cert.Extensions[8], mustStapleExt)
+	test.AssertEquals(t, len(cert.Extensions), 10) // Constraints, KU, EKU, SKID, AKID, AIA, SAN, Policies, Must-Staple, Poison
+	test.AssertDeepEquals(t, cert.Extensions[9], mustStapleExt)
 }
 
 func TestIssueBadLint(t *testing.T) {
@@ -826,11 +830,12 @@ func TestIssueBadLint(t *testing.T) {
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, _, err = signer.Prepare(&IssuanceRequest{
-		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:  []string{"example.com"},
-		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
 	})
 	test.AssertError(t, err, "Prepare didn't fail")
 	test.AssertErrorIs(t, err, linter.ErrLinting)
@@ -909,11 +914,12 @@ func TestIssuanceToken(t *testing.T) {
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "failed to generate test key")
 	_, issuanceToken, err := signer.Prepare(&IssuanceRequest{
-		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:  []string{"example.com"},
-		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
 	})
 	test.AssertNotError(t, err, "expected Prepare to succeed")
 	_, err = signer.Issue(issuanceToken)
@@ -924,11 +930,12 @@ func TestIssuanceToken(t *testing.T) {
 	test.AssertContains(t, err.Error(), "issuance token already redeemed")
 
 	_, issuanceToken, err = signer.Prepare(&IssuanceRequest{
-		PublicKey: pk.Public(),
-		Serial:    []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:  []string{"example.com"},
-		NotBefore: fc.Now(),
-		NotAfter:  fc.Now().Add(time.Hour - time.Second),
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
 	})
 	test.AssertNotError(t, err, "expected Prepare to succeed")
 
