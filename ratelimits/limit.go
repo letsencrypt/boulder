@@ -52,7 +52,7 @@ func parseOverrideNameId(k string) (string, string, error) {
 			"unrecognized limit %q, must be one in %q", nameStr, limitNames)
 	}
 
-	if ipv4AddrNameId(name) {
+	if idIsIPv4Addr(name) {
 		ip := net.ParseIP(id)
 		if ip == nil || ip.To4() == nil {
 			return "", "", fmt.Errorf(
@@ -60,7 +60,7 @@ func parseOverrideNameId(k string) (string, string, error) {
 		}
 	}
 
-	if ipv6RangeNameId(name) {
+	if idIsIPv6Range(name) {
 		_, net, err := net.ParseCIDR(id)
 		if err != nil {
 			return "", "", fmt.Errorf(

@@ -15,26 +15,46 @@ import (
 type Name int
 
 const (
+	// UsageRequestsPerIPv4Address uses bucket key 'enum:ipv4address'.
 	UsageRequestsPerIPv4Address Name = iota
+
+	// InfoRequestsPerIPv4Address uses bucket key 'enum:ipv4address'.
 	InfoRequestsPerIPv4Address
+
+	// NewRegistrationsPerIPv4Address uses bucket key 'enum:ipv4address'.
 	NewRegistrationsPerIPv4Address
+
+	// FailedAuthorizationsPerAccount uses bucket key 'enum:ipv6rangeCIDR'. The
+	// range itself must be a /48.
 	NewRegistrationsPerIPv6Range
+
+	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId'.
 	NewOrdersPerAccount
+
+	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId', where regId
+	// is the registration id of the account.
 	FailedAuthorizationsPerAccount
-	CertificatesPerRegisteredDomain
-	CertificatesPerFQDNSet
+
+	// CertificatesPerNamePerAccount uses bucket key 'enum:regId:name', where
+	// name is the a name in a certificate issued to the account matching regId.
+	CertificatesPerNamePerAccount
+
+	// CertificatesPerNameSetPerAccount uses bucket key 'enum:regId:nameSet',
+	// where nameSet is a set of names in a certificate issued to the account
+	// matching regId.
+	CertificatesPerNameSetPerAccount
 )
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
-	UsageRequestsPerIPv4Address:     "UsageRequestsPerIPv4Address",
-	InfoRequestsPerIPv4Address:      "InfoRequestsPerIPv4Address",
-	NewRegistrationsPerIPv4Address:  "NewRegistrationsPerIPv4Address",
-	NewRegistrationsPerIPv6Range:    "NewRegistrationsPerIPv6Range",
-	NewOrdersPerAccount:             "NewOrdersPerAccount",
-	FailedAuthorizationsPerAccount:  "FailedAuthorizationsPerAccount",
-	CertificatesPerRegisteredDomain: "CertificatesPerRegisteredDomain",
-	CertificatesPerFQDNSet:          "CertificatesPerFQDNSet",
+	UsageRequestsPerIPv4Address:      "UsageRequestsPerIPv4Address",
+	InfoRequestsPerIPv4Address:       "InfoRequestsPerIPv4Address",
+	NewRegistrationsPerIPv4Address:   "NewRegistrationsPerIPv4Address",
+	NewRegistrationsPerIPv6Range:     "NewRegistrationsPerIPv6Range",
+	NewOrdersPerAccount:              "NewOrdersPerAccount",
+	FailedAuthorizationsPerAccount:   "FailedAuthorizationsPerAccount",
+	CertificatesPerNamePerAccount:    "CertificatesPerNameAccount",
+	CertificatesPerNameSetPerAccount: "CertificatesPerNameSetAccount",
 }
 
 // stringToName is a map of string names to Name values.
@@ -55,7 +75,7 @@ var limitNames = func() []string {
 	return names
 }()
 
-func ipv4AddrNameId(name Name) bool {
+func idIsIPv4Addr(name Name) bool {
 	n, ok := nameToString[name]
 	if !ok {
 		return false
@@ -66,8 +86,8 @@ func ipv4AddrNameId(name Name) bool {
 	return false
 }
 
-// ipv6RangeNameId returns true if the name is an IPv6Range rate limit name.
-func ipv6RangeNameId(name Name) bool {
+// idIsIPv6Range returns true if the name is an IPv6Range rate limit name.
+func idIsIPv6Range(name Name) bool {
 	n, ok := nameToString[name]
 	if !ok {
 		return false
