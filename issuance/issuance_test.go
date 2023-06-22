@@ -832,7 +832,7 @@ func TestIssueBadLint(t *testing.T) {
 	_, _, err = signer.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
-		DNSNames:        []string{"example.com"},
+		DNSNames:        []string{"example-com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
 		IncludeCTPoison: true,
