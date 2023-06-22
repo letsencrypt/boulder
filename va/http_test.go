@@ -21,6 +21,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/identifier"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/miekg/dns"
@@ -195,13 +196,8 @@ func TestHTTPValidationTarget(t *testing.T) {
 }
 
 func TestExtractRequestTarget(t *testing.T) {
-	mustURL := func(t *testing.T, rawURL string) *url.URL {
-		urlOb, err := url.Parse(rawURL)
-		if err != nil {
-			t.Fatalf("Unable to parse raw URL %q: %v", rawURL, err)
-			return nil
-		}
-		return urlOb
+	mustURL := func(rawURL string) *url.URL {
+		return must.Do(url.Parse(rawURL))
 	}
 
 	testCases := []struct {
@@ -218,7 +214,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "invalid protocol scheme",
 			Req: &http.Request{
-				URL: mustURL(t, "gopher://letsencrypt.org"),
+				URL: mustURL("gopher://letsencrypt.org"),
 			},
 			ExpectedError: fmt.Errorf("Invalid protocol scheme in redirect target. " +
 				`Only "http" and "https" protocol schemes are supported, ` +
@@ -227,7 +223,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "invalid explicit port",
 			Req: &http.Request{
-				URL: mustURL(t, "https://weird.port.letsencrypt.org:9999"),
+				URL: mustURL("https://weird.port.letsencrypt.org:9999"),
 			},
 			ExpectedError: fmt.Errorf("Invalid port in redirect target. Only ports 80 " +
 				"and 443 are supported, not 9999"),
@@ -235,28 +231,28 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "invalid empty hostname",
 			Req: &http.Request{
-				URL: mustURL(t, "https:///who/needs/a/hostname?not=me"),
+				URL: mustURL("https:///who/needs/a/hostname?not=me"),
 			},
 			ExpectedError: errors.New("Invalid empty hostname in redirect target"),
 		},
 		{
 			Name: "invalid .well-known hostname",
 			Req: &http.Request{
-				URL: mustURL(t, "https://my.webserver.is.misconfigured.well-known/acme-challenge/xxx"),
+				URL: mustURL("https://my.webserver.is.misconfigured.well-known/acme-challenge/xxx"),
 			},
 			ExpectedError: errors.New(`Invalid host in redirect target "my.webserver.is.misconfigured.well-known". Check webserver config for missing '/' in redirect target.`),
 		},
 		{
 			Name: "invalid non-iana hostname",
 			Req: &http.Request{
-				URL: mustURL(t, "https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo"),
+				URL: mustURL("https://my.tld.is.cpu/pretty/cool/right?yeah=Ithoughtsotoo"),
 			},
 			ExpectedError: errors.New("Invalid hostname in redirect target, must end in IANA registered TLD"),
 		},
 		{
 			Name: "bare IP",
 			Req: &http.Request{
-				URL: mustURL(t, "https://10.10.10.10"),
+				URL: mustURL("https://10.10.10.10"),
 			},
 			ExpectedError: fmt.Errorf(`Invalid host in redirect target "10.10.10.10". ` +
 				"Only domain names are supported, not IP addresses"),
@@ -264,7 +260,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "valid HTTP redirect, explicit port",
 			Req: &http.Request{
-				URL: mustURL(t, "http://cpu.letsencrypt.org:80"),
+				URL: mustURL("http://cpu.letsencrypt.org:80"),
 			},
 			ExpectedHost: "cpu.letsencrypt.org",
 			ExpectedPort: 80,
@@ -272,7 +268,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "valid HTTP redirect, implicit port",
 			Req: &http.Request{
-				URL: mustURL(t, "http://cpu.letsencrypt.org"),
+				URL: mustURL("http://cpu.letsencrypt.org"),
 			},
 			ExpectedHost: "cpu.letsencrypt.org",
 			ExpectedPort: 80,
@@ -280,7 +276,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "valid HTTPS redirect, explicit port",
 			Req: &http.Request{
-				URL: mustURL(t, "https://cpu.letsencrypt.org:443/hello.world"),
+				URL: mustURL("https://cpu.letsencrypt.org:443/hello.world"),
 			},
 			ExpectedHost: "cpu.letsencrypt.org",
 			ExpectedPort: 443,
@@ -288,7 +284,7 @@ func TestExtractRequestTarget(t *testing.T) {
 		{
 			Name: "valid HTTPS redirect, implicit port",
 			Req: &http.Request{
-				URL: mustURL(t, "https://cpu.letsencrypt.org/hello.world"),
+				URL: mustURL("https://cpu.letsencrypt.org/hello.world"),
 			},
 			ExpectedHost: "cpu.letsencrypt.org",
 			ExpectedPort: 443,

@@ -47,6 +47,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/mocks"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
@@ -400,11 +401,7 @@ func signAndPost(signer requestSigner, path, signedURL, payload string) *http.Re
 }
 
 func mustParseURL(s string) *url.URL {
-	if u, err := url.Parse(s); err != nil {
-		panic("Cannot parse URL " + s)
-	} else {
-		return u
-	}
+	return must.Do(url.Parse(s))
 }
 
 func sortHeader(s string) string {
