@@ -982,3 +982,65 @@ func TestInvalidProfile(t *testing.T) {
 	})
 	test.AssertError(t, err, "Invalid IssuanceRequest")
 }
+
+// Generate a precert from one profile and a final cert from another, and verify
+// that the final cert errors out when linted because the lint cert doesn't
+// corresponding with the precert.
+func TestMismatchedProfiles(t *testing.T) {
+	fc := clock.NewFake()
+	fc.Set(time.Now())
+	err := loglist.InitLintList("../test/ct-test-srv/log_list.json")
+	test.AssertNotError(t, err, "failed to load log list")
+	linter, err := linter.New(
+		issuerCert.Certificate,
+		issuerSigner,
+		[]string{},
+	)
+	test.AssertNotError(t, err, "failed to create linter")
+
+	issuer1, err := NewIssuer(issuerCert, issuerSigner, defaultProfile(), linter, fc)
+	test.AssertNotError(t, err, "NewIssuer failed")
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	test.AssertNotError(t, err, "failed to generate test key")
+	_, issuanceToken, err := issuer1.Prepare(&IssuanceRequest{
+		PublicKey:       pk.Public(),
+		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		DNSNames:        []string{"example.com"},
+		NotBefore:       fc.Now(),
+		NotAfter:        fc.Now().Add(time.Hour - time.Second),
+		IncludeCTPoison: true,
+	})
+	test.AssertNotError(t, err, "making IssuanceRequest")
+
+	precertDER, err := issuer1.Issue(issuanceToken)
+	test.AssertNotError(t, err, "signing precert")
+
+	// Create a new profile that differs slightly (one more PolicyInformation than the precert)
+	profileConfig := defaultProfileConfig()
+	profileConfig.Policies = append(profileConfig.Policies, PolicyInformation{OID: "1.2.3.4", Qualifiers: nil})
+	p, err := NewProfile(profileConfig, defaultIssuerConfig())
+	test.AssertNotError(t, err, "NewProfile failed")
+	issuer2, err := NewIssuer(issuerCert, issuerSigner, p, linter, fc)
+	test.AssertNotError(t, err, "NewIssuer failed")
+
+	sctList := []ct.SignedCertificateTimestamp{
+		{
+			SCTVersion: ct.V1,
+			LogID:      ct.LogID{KeyID: *(*[32]byte)(mustDecodeB64("OJiMlNA1mMOTLd/pI7q68npCDrlsQeFaqAwasPwEvQM="))},
+		},
+		{
+			SCTVersion: ct.V1,
+			LogID:      ct.LogID{KeyID: *(*[32]byte)(mustDecodeB64("UtToynGEyMkkXDMQei8Ll54oMwWHI0IieDEKs12/Td4="))},
+		},
+	}
+
+	precert, err := x509.ParseCertificate(precertDER)
+	test.AssertNotError(t, err, "parsing precert")
+
+	request2, err := RequestFromPrecert(precert, sctList)
+	test.AssertNotError(t, err, "RequestFromPrecert")
+
+	_, _, err = issuer2.Prepare(request2)
+	test.AssertError(t, err, "preparing final cert issuance")
+	test.AssertContains(t, err.Error(), "precert does not correspond to linted final cert")
+}

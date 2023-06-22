@@ -50,7 +50,7 @@ func TestCorrespondBad(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected testdata/bad/ certs to not correspond, got nil error")
 	}
-	expected := "extensions differed at position 7: '0603551d20040c300a3008060667810c010201' (precert) vs '0603551d20044530433008060667810c0102013037060b2b0601040182df130101013028302606082b06010505070201161a687474703a2f2f6370732e6c657473656e63727970742e6f7267' (final)"
+	expected := "precert extension 7 (0603551d20040c300a3008060667810c010201) not equal to final cert extension 7 (0603551d20044530433008060667810c0102013037060b2b0601040182df130101013028302606082b06010505070201161a687474703a2f2f6370732e6c657473656e63727970742e6f7267)"
 	if !strings.Contains(err.Error(), expected) {
 		t.Errorf("expected error to contain %q, got %q", expected, err.Error())
 	}
@@ -292,7 +292,7 @@ func TestMismatches(t *testing.T) {
 	if err == nil {
 		t.Errorf("expected error for mismatched extensions, got nil error")
 	}
-	expectedError := "extensions differed at position 2: '' (precert) vs '06022a030101ff040568656c6c6f' (final)"
+	expectedError := "precert extension 2 () not equal to final cert extension 2 (06022a030101ff040568656c6c6f)"
 	if err.Error() != expectedError {
 		t.Errorf("expected error %q, got %q", expectedError, err)
 	}

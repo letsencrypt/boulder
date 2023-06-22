@@ -667,6 +667,8 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 			return nil, nil, err
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
+	} else {
+		return nil, nil, fmt.Errorf("invalid request contains neither SCTList nor PrecertDER")
 	}
 
 	if req.IncludeMustStaple {

@@ -82,8 +82,8 @@ func Correspond(precertDER, finalDER []byte) error {
 		}
 
 		if !bytes.Equal(precertExtn, finalCertExtn) {
-			return fmt.Errorf("extensions differed at position %d: '%x' (precert) vs '%x' (final)",
-				i+precertParser.skipped, precertExtn, finalCertExtn)
+			return fmt.Errorf("precert extension %d (%x) not equal to final cert extension %d (%x)",
+				i+precertParser.skipped, precertExtn, i+finalCertParser.skipped, finalCertExtn)
 		}
 
 		if precertExtn == nil && finalCertExtn == nil {
@@ -148,7 +148,16 @@ func (e *extensionParser) Next() (cryptobyte.String, error) {
 
 // unwrapExtensions takes a given a sequence of bytes representing the `extensions` field
 // of a TBSCertificate and parses away the outermost two layers, returning the inner bytes
-// of a SEQUENCE, which can then be parsed as a list of extensions.
+// of the Extensions SEQUENCE.
+//
+// https://datatracker.ietf.org/doc/html/rfc5280#page-117
+//
+//	TBSCertificate  ::=  SEQUENCE  {
+//	   ...
+//	   extensions      [3]  Extensions OPTIONAL
+//	}
+//
+// Extensions  ::=  SEQUENCE SIZE (1..MAX) OF Extension
 func unwrapExtensions(field cryptobyte.String) (cryptobyte.String, error) {
 	var extensions cryptobyte.String
 	if !field.ReadASN1(&extensions, asn1.Tag(3).Constructed().ContextSpecific()) {
@@ -184,7 +193,18 @@ func readIdenticalElement(a, b *cryptobyte.String) error {
 }
 
 // tbsDERFromCertDER takes a Certificate object encoded as DER, and parses
-// away the outermost two SEQUENCEs to get the TBSCertificate.
+// away the outermost two SEQUENCEs to get the inner bytes of the TBSCertificate.
+//
+// https://datatracker.ietf.org/doc/html/rfc5280#page-116
+//
+//		Certificate  ::=  SEQUENCE  {
+//		    tbsCertificate       TBSCertificate,
+//		    ...
+//
+//		TBSCertificate  ::=  SEQUENCE  {
+//		    version         [0]  Version DEFAULT v1,
+//		    serialNumber         CertificateSerialNumber,
+//	     ...
 func tbsDERFromCertDER(certDER []byte) (cryptobyte.String, error) {
 	var inner cryptobyte.String
 	input := cryptobyte.String(certDER)
