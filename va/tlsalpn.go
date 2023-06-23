@@ -129,7 +129,11 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	// We expect a self-signed challenge certificate, do not verify it here.
 	config.InsecureSkipVerify = true
 
-	conn, err := va.tlsDial(ctx, hostPort, config)
+	dialCtx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
+	defer cancel()
+
+	dialer := &tls.Dialer{Config: config}
+	conn, err := dialer.DialContext(dialCtx, "tcp", hostPort)
 	if err != nil {
 		va.log.Infof("%s connection failure for %s. err=[%#v] errStr=[%s]", challenge.Type, identifier, err, err)
 		host, _, splitErr := net.SplitHostPort(hostPort)
@@ -143,7 +147,8 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 	}
 	defer conn.Close()
 
-	cs := conn.ConnectionState()
+	// tls.Dialer.DialContext guarantees that the *net.Conn it returns is a *tls.Conn.
+	cs := conn.(*tls.Conn).ConnectionState()
 	certs := cs.PeerCertificates
 	if len(certs) == 0 {
 		va.log.Infof("%s challenge for %s resulted in no certificates", challenge.Type, identifier.Value)
@@ -154,25 +159,6 @@ func (va *ValidationAuthorityImpl) getChallengeCert(
 			challenge.Type, identifier.Value, i+1, len(certs), hex.EncodeToString(cert.Raw))
 	}
 	return certs[0], &cs, nil
-}
-
-// tlsDial does the equivalent of tls.Dial, but obeying a context for both the
-// dial and handshake operations.
-func (va *ValidationAuthorityImpl) tlsDial(ctx context.Context, hostPort string, config *tls.Config) (*tls.Conn, error) {
-	ctx, cancel := context.WithTimeout(ctx, va.singleDialTimeout)
-	defer cancel()
-	dialer := &net.Dialer{}
-	netConn, err := dialer.DialContext(ctx, "tcp", hostPort)
-	if err != nil {
-		return nil, fmt.Errorf("during dial: %w", err)
-	}
-
-	conn := tls.Client(netConn, config)
-	err = conn.HandshakeContext(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("during handshake: %w", err)
-	}
-	return conn, nil
 }
 
 func checkExpectedSAN(cert *x509.Certificate, name identifier.ACMEIdentifier) error {
