@@ -39,6 +39,8 @@ func Test_decide(t *testing.T) {
 
 	// Let's try being exactly as patient as we're told to be.
 	clk.Add(d.RetryIn)
+	d = maybeSpend(clk, limit, d.newTAT, 0)
+	test.AssertEquals(t, d.Remaining, 1)
 
 	// We are 1 second in the future, we should have 1 new request.
 	d = maybeSpend(clk, limit, d.newTAT, 1)

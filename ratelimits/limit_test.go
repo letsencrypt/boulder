@@ -1,47 +1,103 @@
 package ratelimits
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/test"
 )
 
 func Test_parseOverrideNameId(t *testing.T) {
-	UsageRequestsPerIPv4AddressString := nameToIntString(0)
-	NewRegistrationsPerIPv6RangeString := nameToIntString(3)
+	usageRequestsPerIPv4AddressEnumStr := nameToIntString(0)
+	usageRequestsPerIPv4AddressStr := nameToString[0]
 
+	newRegistrationsPerIPv6RangeEnumStr := nameToIntString(3)
+	newRegistrationsPerIPv6RangeStr := nameToString[3]
+
+	newOrdersPerAccountEnumStr := nameToIntString(4)
+	newOrdersPerAccountStr := nameToString[4]
+
+	certificatesPerDomainPerAccountEnumStr := nameToIntString(6)
+	certificatesPerDomainPerAccountStr := nameToString[6]
+
+	certificatesPerFQDNSetPerAccountEnumStr := nameToIntString(7)
+	certificatesPerFQDNSetPerAccountStr := nameToString[7]
+
+	// 'enum:ipv4'
 	// Valid IPv4 address.
-	name, id, err := parseOverrideNameId("UsageRequestsPerIPv4Address:10.0.0.1")
+	name, id, err := parseOverrideNameId(usageRequestsPerIPv4AddressStr + ":10.0.0.1")
 	test.AssertNotError(t, err, "should not error")
-	test.AssertEquals(t, name, UsageRequestsPerIPv4AddressString)
+	test.AssertEquals(t, name, usageRequestsPerIPv4AddressEnumStr)
 	test.AssertEquals(t, id, "10.0.0.1")
 
+	// 'enum:ipv6range'
 	// Valid IPv6 address range.
-	name, id, err = parseOverrideNameId("NewRegistrationsPerIPv6Range:2001:0db8:0000::/48")
+	name, id, err = parseOverrideNameId(newRegistrationsPerIPv6RangeStr + ":2001:0db8:0000::/48")
 	test.AssertNotError(t, err, "should not error")
-	test.AssertEquals(t, name, NewRegistrationsPerIPv6RangeString)
+	test.AssertEquals(t, name, newRegistrationsPerIPv6RangeEnumStr)
 	test.AssertEquals(t, id, "2001:0db8:0000::/48")
 
 	// Invalid IPv4 address.
-	_, _, err = parseOverrideNameId("UsageRequestsPerIPv4Address:10.0.0.9000")
+	_, _, err = parseOverrideNameId(usageRequestsPerIPv4AddressStr + ":10.0.0.9000")
 	test.AssertError(t, err, "should error")
 
 	// Invalid IPv6 CIDR range.
-	_, _, err = parseOverrideNameId("NewRegistrationsPerIPv6Range:2001:0db8:0000::/128")
+	_, _, err = parseOverrideNameId(newRegistrationsPerIPv6RangeStr + ":2001:0db8:0000::/128")
 	test.AssertError(t, err, "should error")
 
 	// Invalid IPv6 CIDR.
-	_, _, err = parseOverrideNameId("NewRegistrationsPerIPv6Range:2001:0db8:0000::/48/48")
+	_, _, err = parseOverrideNameId(newRegistrationsPerIPv6RangeStr + ":2001:0db8:0000::/48/48")
 	test.AssertError(t, err, "should error")
 
 	// IPv6 address when we expect IPv4 address.
-	_, _, err = parseOverrideNameId("UsageRequestsPerIPv4Address:2001:0db8:85a3:0000:0000:8a2e:0370:7334")
+	_, _, err = parseOverrideNameId(usageRequestsPerIPv4AddressStr + ":2001:0db8:85a3:0000:0000:8a2e:0370:7334")
 	test.AssertError(t, err, "should error")
 
 	// IPv4 CIDR when we expect IPv6 CIDR range.
-	_, _, err = parseOverrideNameId("NewRegistrationsPerIPv6Range:192.168.0.0/16")
+	_, _, err = parseOverrideNameId(usageRequestsPerIPv4AddressStr + ":192.168.0.0/16")
 	test.AssertError(t, err, "should error")
+
+	// 'enum:regId'
+	// Valid regId.
+	regId := "1234567890"
+	name, id, err = parseOverrideNameId(newOrdersPerAccountStr + ":" + regId)
+	test.AssertNotError(t, err, "should not error")
+	test.AssertEquals(t, name, newOrdersPerAccountEnumStr)
+	test.AssertEquals(t, id, regId)
+
+	// Invalid regId.
+	_, _, err = parseOverrideNameId(newOrdersPerAccountStr + ":" + "lol")
+	test.AssertError(t, err, "should error")
+
+	// 'enum:regId:domain'
+	// Valid regId and domain.
+	regId = "1234567890"
+	domain := "example.com"
+	name, id, err = parseOverrideNameId(certificatesPerDomainPerAccountStr + ":" + regId + ":" + domain)
+	test.AssertNotError(t, err, "should not error")
+	test.AssertEquals(t, name, certificatesPerDomainPerAccountEnumStr)
+	test.AssertEquals(t, id, regId+":"+domain)
+
+	// Invalid regId, good domain.
+	_, _, err = parseOverrideNameId(certificatesPerDomainPerAccountStr + ":" + "lol" + ":" + domain)
+	test.AssertError(t, err, "should error")
+
+	// Good regId, invalid domain.
+	_, _, err = parseOverrideNameId(certificatesPerDomainPerAccountStr + ":" + regId + ":" + "22#%")
+	test.AssertError(t, err, "should error")
+
+	// 'enum:regId:fqdnSet'
+	// Valid regId and fqdnSet.
+	regId = "1234567890"
+	fqdns := []string{"example.com", "example.org"}
+	fqdnSet := strings.Join(fqdns, ",")
+	fqdnSetHashStr := string(sa.HashNames(fqdns))
+	name, id, err = parseOverrideNameId(certificatesPerFQDNSetPerAccountStr + ":" + regId + ":" + fqdnSet)
+	test.AssertNotError(t, err, "should not error")
+	test.AssertEquals(t, name, certificatesPerFQDNSetPerAccountEnumStr)
+	test.AssertEquals(t, id, regId+":"+fqdnSetHashStr)
 }
 
 func Test_loadLimits(t *testing.T) {

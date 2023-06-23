@@ -303,3 +303,13 @@ func Test_Limiter_Refund_and_Reset(t *testing.T) {
 	test.AssertErrorIs(t, err, ErrBucketAlreadyFull)
 	test.AssertEquals(t, d.Remaining, 20)
 }
+
+func Test_Limiter_Check_Spend_parity(t *testing.T) {
+	il, _ := newTestLimiter(t)
+	jl, _ := newTestLimiter(t)
+	i, err := il.Check(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	test.AssertNotError(t, err, "should not error")
+	j, err := jl.Spend(UsageRequestsPerIPv4Address, tenZeroZeroOne, 1)
+	test.AssertNotError(t, err, "should not error")
+	test.AssertDeepEquals(t, i.Remaining, j.Remaining)
+}

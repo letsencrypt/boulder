@@ -40,11 +40,11 @@ type Limiter struct {
 func NewLimiter(clk clock.Clock, source source, defaults, overrides string) (*Limiter, error) {
 	limiter := &Limiter{source: source, clk: clk}
 
-	dl, err := loadLimits(defaults)
+	var err error
+	limiter.defaults, err = loadLimits(defaults)
 	if err != nil {
 		return nil, err
 	}
-	limiter.defaults = dl
 
 	if overrides == "" {
 		// No overrides specified.
@@ -52,11 +52,10 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string) (*Li
 		return limiter, nil
 	}
 
-	ol, err := loadLimits(overrides)
+	limiter.overrides, err = loadLimits(overrides)
 	if err != nil {
 		return nil, err
 	}
-	limiter.overrides = ol
 
 	return limiter, nil
 }

@@ -2,11 +2,11 @@ package ratelimits
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"strings"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -30,7 +30,7 @@ func parseDefaultName(k string) (string, error) {
 	name, ok := stringToName[k]
 	if !ok {
 		return "", fmt.Errorf(
-			"unrecognized limit %q, must be one in %q", k, limitNames)
+			"unrecognized limit %q, must be one of %q", k, limitNames)
 	}
 	return nameToIntString(name), nil
 }
@@ -39,87 +39,69 @@ func parseOverrideNameId(k string) (string, string, error) {
 	nameAndId := strings.SplitN(k, ":", 2)
 	nameStr := nameAndId[0]
 	if nameStr == "" {
-		return "", "", fmt.Errorf("empty name in override %q, must be 'name:id'", k)
+		return "", "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", k)
 	}
 	id := nameAndId[1]
 	if id == "" {
-		return "", "", fmt.Errorf("empty id in override %q, must be 'name:id'", k)
+		return "", "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", k)
 	}
 
 	name, ok := stringToName[nameStr]
 	if !ok {
 		return "", "", fmt.Errorf(
-			"unrecognized limit %q, must be one in %q", nameStr, limitNames)
+			"unrecognized limit %q, must be one of %q", nameStr, limitNames)
+	}
+	err := validateIdForName(name, id)
+	if err != nil {
+		return "", "", fmt.Errorf("validating limit %q: %w", k, err)
 	}
 
-	if idIsIPv4Addr(name) {
-		ip := net.ParseIP(id)
-		if ip == nil || ip.To4() == nil {
-			return "", "", fmt.Errorf(
-				"invalid addr %q, in override %q, must be IPv4", id, k)
+	if name == CertificatesPerFQDNSetPerAccount {
+		// FQDN set hashes would be bad to ask for in a config file, so we
+		// convert them here.
+		regIdFQDNSet := strings.SplitN(id, ":", 2)
+		if len(regIdFQDNSet) != 2 {
+			// We validated the id above, so this should never happen.
+			return "", "", fmt.Errorf("parsing %q must be in the form 'regId:fqdn,...'", k)
 		}
-	}
-
-	if idIsIPv6Range(name) {
-		_, net, err := net.ParseCIDR(id)
-		if err != nil {
-			return "", "", fmt.Errorf(
-				"invalid id %q, in override %q, must be IPv6 CIDR range", id, k)
-		}
-		if net.IP.To4() != nil {
-			return "", "", fmt.Errorf(
-				"invalid CIDR %q, in override %q, must be IPv6 CIDR range", id, k)
-		}
-		ones, _ := net.Mask.Size()
-		if ones != 48 {
-			return "", "", fmt.Errorf(
-				"invalid range %q, in override %q, must be /48,", id, k)
-		}
+		fqdns := strings.Split(regIdFQDNSet[1], ",")
+		fqdnSet := sa.HashNames(fqdns)
+		id = fmt.Sprintf("%s:%s", regIdFQDNSet[0], fqdnSet)
 	}
 	return nameToIntString(name), id, nil
 }
 
-// UnmarshalYAML implements go-yaml's yaml.Unmarshaler interface. This method
-// will be called by strictyaml.Unmarshal() when unmarshaling the limits map. It
-// validates the limits map and interns the limit names to their integer
-// representation and returns an error if any of the limits are invalid.
-func (l *limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var file map[string]limit
-
-	err := unmarshal(&file)
-	if err != nil {
-		return err
-	}
-	final := make(map[string]limit, len(file))
-
-	for k, v := range file {
+// parseLimits parses the limits loaded from YAML, validates them, and returns a
+// map of limits with the limit names interned to their enum values.
+func parseLimits(fromFile limits) (limits, error) {
+	parsed := make(map[string]limit, len(fromFile))
+	for k, v := range fromFile {
 		if v.Burst <= 0 {
-			return fmt.Errorf("invalid burst %q, in limit %q, must be <= 0", v.Burst, k)
+			return nil, fmt.Errorf("invalid burst %q, in limit %q, must be <= 0", v.Burst, k)
 		}
 		if v.Count <= 0 {
-			return fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Count, k)
+			return nil, fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Count, k)
 		}
 		if v.Period.Duration <= 0 {
-			return fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Period, k)
+			return nil, fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Period, k)
 		}
 		if strings.Contains(k, ":") {
 			// Override limit
 			name, id, err := parseOverrideNameId(k)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			final[name+":"+id] = v
+			parsed[name+":"+id] = v
 		} else {
 			// Default limit
 			name, err := parseDefaultName(k)
 			if err != nil {
-				return err
+				return nil, err
 			}
-			final[name] = v
+			parsed[name] = v
 		}
 	}
-	*l = limits(final)
-	return nil
+	return parsed, nil
 }
 
 // loadLimits loads both default and override limits from YAML.
@@ -133,5 +115,5 @@ func loadLimits(path string) (limits, error) {
 	if err != nil {
 		return nil, err
 	}
-	return lm, nil
+	return parseLimits(lm)
 }
