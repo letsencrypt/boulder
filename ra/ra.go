@@ -1306,6 +1306,11 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	// Asynchronously submit the final certificate to any configured logs
 	go ra.ctpolicy.SubmitFinalCert(cert.Der, parsedCertificate.NotAfter)
 
+	err = ra.ctpolicy.ValidateFinalCert(cert.Der)
+	if err != nil {
+		return nil, wrapError(err, "bad CT, or my bad code?")
+	}
+
 	// TODO(#6587): Make this error case Very Alarming
 	err = ra.matchesCSR(parsedCertificate, csr)
 	if err != nil {

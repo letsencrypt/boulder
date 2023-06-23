@@ -6,12 +6,16 @@ import (
 	"strings"
 	"time"
 
+	ct "github.com/google/certificate-transparency-go"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/google/certificate-transparency-go/x509util"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -26,6 +30,8 @@ type CTPolicy struct {
 	sctLogs             loglist.List
 	infoLogs            loglist.List
 	finalLogs           loglist.List
+	logVerifiers        map[[32]byte]ct.SignatureVerifier
+	issuers             map[string]*ctx509.Certificate
 	stagger             time.Duration
 	log                 blog.Logger
 	winnerCounter       *prometheus.CounterVec
@@ -93,6 +99,7 @@ func New(pub pubpb.PublisherClient, sctLogs loglist.List, infoLogs loglist.List,
 		winnerCounter:       winnerCounter,
 		operatorGroupsGauge: operatorGroupsGauge,
 		shardExpiryGauge:    shardExpiryGauge,
+		/* TODO:  issuers and validators */
 	}
 }
 
@@ -239,4 +246,37 @@ func (ctp *CTPolicy) submitPrecertInformational(cert core.CertDER, expiration ti
 // to any configured "final" logs, but does not care about success.
 func (ctp *CTPolicy) SubmitFinalCert(cert core.CertDER, expiration time.Time) {
 	ctp.submitAllBestEffort(cert, false, expiration)
+}
+
+func must[T any](t T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+// ValidateFinalCert checks that this final cert has valid SCTs embedded.
+func (ctp *CTPolicy) ValidateFinalCert(certDER core.CertDER) error {
+	leaf := must(ctx509.ParseCertificate(certDER))
+	issuer := ctp.issuers[leaf.Issuer.CommonName]
+	chain := []*ctx509.Certificate{leaf, issuer}
+
+	for _, sctData := range leaf.SCTList.SCTList {
+		sct, err := x509util.ExtractSCT(&sctData)
+		if err != nil {
+			return err
+		}
+
+		merkleLeaf, err := ct.MerkleTreeLeafForEmbeddedSCT(chain, sct.Timestamp)
+		if err != nil {
+			return err
+		}
+
+		err = ctp.logVerifiers[sct.LogID.KeyID].VerifySCTSignature(*sct, ct.LogEntry{Leaf: *merkleLeaf})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
