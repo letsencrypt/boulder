@@ -69,7 +69,7 @@ func (va *ValidationAuthorityImpl) tryGetChallengeCert(ctx context.Context,
 		},
 	}
 	if err != nil {
-		return nil, nil, validationRecords, detailedError(fmt.Errorf("getting IP addrs: %w", err))
+		return nil, nil, validationRecords, detailedError(err)
 	}
 	thisRecord := &validationRecords[0]
 
