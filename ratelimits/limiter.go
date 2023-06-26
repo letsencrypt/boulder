@@ -140,7 +140,7 @@ func (l *Limiter) Spend(name Name, id string, cost int64) (*Decision, error) {
 		return nil, err
 	}
 
-	if int64(cost) > limit.Burst {
+	if cost > limit.Burst {
 		return nil, ErrInvalidCostOverLimit
 	}
 
@@ -186,7 +186,7 @@ func (l *Limiter) Refund(name Name, id string, cost int64) (*Decision, error) {
 	if err != nil {
 		return nil, err
 	}
-	d := maybeRefund(l.clk, limit, tat, int64(cost))
+	d := maybeRefund(l.clk, limit, tat, cost)
 	if !d.Allowed {
 		return d, ErrBucketAlreadyFull
 	}
