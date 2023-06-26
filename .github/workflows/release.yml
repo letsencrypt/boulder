@@ -16,6 +16,7 @@ jobs:
       matrix:
         GO_VERSION:
           - "1.20.5"
+          - "1.21rc2"
     runs-on: ubuntu-20.04
     permissions:
       contents: write
@@ -23,6 +24,11 @@ jobs:
       - uses: actions/checkout@v3
         with:
           persist-credentials: false
+
+      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
+      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
+      - if: startsWith(matrix.GO_VERSION, '1.21')
+        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
       - name: Build .deb
         id: build
