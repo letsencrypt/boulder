@@ -660,7 +660,7 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
 	} else if len(req.sctList) > 0 {
 		if len(req.precertDER) == 0 {
-			return nil, nil, fmt.Errorf("inconsistent request contains SCTList but no PrecertDER")
+			return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
 		}
 		sctListExt, err := generateSCTListExt(req.sctList)
 		if err != nil {
@@ -668,7 +668,7 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
 	} else {
-		return nil, nil, fmt.Errorf("invalid request contains neither SCTList nor PrecertDER")
+		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
 	}
 
 	if req.IncludeMustStaple {
