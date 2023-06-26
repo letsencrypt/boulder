@@ -127,7 +127,7 @@ func validateIdForName(name Name, id string) error {
 		FailedAuthorizationsPerAccount,
 		CertificatesPerDomainPerAccount,
 		CertificatesPerFQDNSetPerAccount:
-		return fmt.Errorf("overrides are not suported for limit %q", name)
+		return fmt.Errorf("overrides are not supported for limit %q", name)
 
 	default:
 		// This should never happen.
