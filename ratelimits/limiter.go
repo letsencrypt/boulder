@@ -92,7 +92,7 @@ type Decision struct {
 // bucket refills to its maximum capacity (resets). If no bucket exists for the
 // given limit Name and client id, a new one will be created WITHOUT the
 // request's cost deducted from its initial capacity.
-func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
+func (l *Limiter) Check(name Name, id string, cost int64) (*Decision, error) {
 	if cost < 0 {
 		return nil, ErrInvalidCostForCheck
 	}
@@ -102,7 +102,7 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 		return nil, err
 	}
 
-	if int64(cost) > limit.Burst {
+	if cost > limit.Burst {
 		return nil, ErrInvalidCostOverLimit
 	}
 
@@ -116,9 +116,9 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 		if err != nil {
 			return nil, err
 		}
-		return maybeSpend(l.clk, limit, d.newTAT, int64(cost)), nil
+		return maybeSpend(l.clk, limit, d.newTAT, cost), nil
 	}
-	return maybeSpend(l.clk, limit, tat, int64(cost)), nil
+	return maybeSpend(l.clk, limit, tat, cost), nil
 }
 
 // Spend returns a *Decision that indicates if enough capacity was available to
@@ -130,7 +130,7 @@ func (l *Limiter) Check(name Name, id string, cost int) (*Decision, error) {
 // until the bucket refills to its maximum capacity (resets). If no bucket
 // exists for the given limit Name and client id, a new one will be created WITH
 // the request's cost deducted from its initial capacity.
-func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
+func (l *Limiter) Spend(name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
 	}
@@ -153,7 +153,7 @@ func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
 		return nil, err
 	}
 
-	d := maybeSpend(l.clk, limit, tat, int64(cost))
+	d := maybeSpend(l.clk, limit, tat, cost)
 
 	if !d.Allowed {
 		return d, nil
@@ -172,7 +172,7 @@ func (l *Limiter) Spend(name Name, id string, cost int) (*Decision, error) {
 // For instance, if a bucket has a maximum capacity of 10 and currently has 5
 // requests remaining, a refund request of 7 will result in the bucket reaching
 // its maximum capacity of 10, not 12.
-func (l *Limiter) Refund(name Name, id string, cost int) (*Decision, error) {
+func (l *Limiter) Refund(name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
 	}
@@ -201,8 +201,8 @@ func (l *Limiter) Reset(name Name, id string) error {
 
 // initialize creates a new bucket, specified by limit name and id, with the
 // cost of the request factored into the initial state.
-func (l *Limiter) initialize(rl limit, name Name, id string, cost int) (*Decision, error) {
-	d := maybeSpend(l.clk, rl, l.clk.Now(), int64(cost))
+func (l *Limiter) initialize(rl limit, name Name, id string, cost int64) (*Decision, error) {
+	d := maybeSpend(l.clk, rl, l.clk.Now(), cost)
 	err := l.source.Set(bucketKey(name, id), d.newTAT)
 	if err != nil {
 		return nil, err
@@ -222,7 +222,7 @@ func (l *Limiter) getLimit(name Name, id string) (limit, error) {
 			return ol, nil
 		}
 	}
-	dl, ok := l.defaults[nameToIntString(name)]
+	dl, ok := l.defaults[nameToEnumString(name)]
 	if ok {
 		return dl, nil
 	}

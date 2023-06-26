@@ -32,7 +32,7 @@ func parseDefaultName(k string) (string, error) {
 		return "", fmt.Errorf(
 			"unrecognized limit %q, must be one of %q", k, limitNames)
 	}
-	return nameToIntString(name), nil
+	return nameToEnumString(name), nil
 }
 
 func parseOverrideNameId(k string) (string, string, error) {
@@ -53,7 +53,7 @@ func parseOverrideNameId(k string) (string, string, error) {
 	}
 	err := validateIdForName(name, id)
 	if err != nil {
-		return "", "", fmt.Errorf("validating limit %q: %w", k, err)
+		return "", "", fmt.Errorf("parsing limit %q: %w", k, err)
 	}
 
 	if name == CertificatesPerFQDNSetPerAccount {
@@ -62,13 +62,13 @@ func parseOverrideNameId(k string) (string, string, error) {
 		regIdFQDNSet := strings.SplitN(id, ":", 2)
 		if len(regIdFQDNSet) != 2 {
 			// We validated the id above, so this should never happen.
-			return "", "", fmt.Errorf("parsing %q must be in the form 'regId:fqdn,...'", k)
+			return "", "", fmt.Errorf("parsing limit %q must be in the form 'regId:fqdn,...'", k)
 		}
 		fqdns := strings.Split(regIdFQDNSet[1], ",")
 		fqdnSet := sa.HashNames(fqdns)
 		id = fmt.Sprintf("%s:%s", regIdFQDNSet[0], fqdnSet)
 	}
-	return nameToIntString(name), id, nil
+	return nameToEnumString(name), id, nil
 }
 
 // parseLimits parses the limits loaded from YAML, validates them, and returns a

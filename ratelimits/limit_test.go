@@ -10,19 +10,19 @@ import (
 )
 
 func Test_parseOverrideNameId(t *testing.T) {
-	usageRequestsPerIPv4AddressEnumStr := nameToIntString(0)
+	usageRequestsPerIPv4AddressEnumStr := nameToEnumString(0)
 	usageRequestsPerIPv4AddressStr := nameToString[0]
 
-	newRegistrationsPerIPv6RangeEnumStr := nameToIntString(3)
+	newRegistrationsPerIPv6RangeEnumStr := nameToEnumString(3)
 	newRegistrationsPerIPv6RangeStr := nameToString[3]
 
-	newOrdersPerAccountEnumStr := nameToIntString(4)
+	newOrdersPerAccountEnumStr := nameToEnumString(4)
 	newOrdersPerAccountStr := nameToString[4]
 
-	certificatesPerDomainPerAccountEnumStr := nameToIntString(6)
+	certificatesPerDomainPerAccountEnumStr := nameToEnumString(6)
 	certificatesPerDomainPerAccountStr := nameToString[6]
 
-	certificatesPerFQDNSetPerAccountEnumStr := nameToIntString(7)
+	certificatesPerFQDNSetPerAccountEnumStr := nameToEnumString(7)
 	certificatesPerFQDNSetPerAccountStr := nameToString[7]
 
 	// 'enum:ipv4'
@@ -85,7 +85,7 @@ func Test_parseOverrideNameId(t *testing.T) {
 	test.AssertError(t, err, "should error")
 
 	// Good regId, invalid domain.
-	_, _, err = parseOverrideNameId(certificatesPerDomainPerAccountStr + ":" + regId + ":" + "22#%")
+	_, _, err = parseOverrideNameId(certificatesPerDomainPerAccountStr + ":" + regId + ":" + "lol..lol")
 	test.AssertError(t, err, "should error")
 
 	// 'enum:regId:fqdnSet'
@@ -98,29 +98,63 @@ func Test_parseOverrideNameId(t *testing.T) {
 	test.AssertNotError(t, err, "should not error")
 	test.AssertEquals(t, name, certificatesPerFQDNSetPerAccountEnumStr)
 	test.AssertEquals(t, id, regId+":"+fqdnSetHashStr)
+
+	// Valid regId and fqdnSet with one entry.
+	fqdns = []string{"example.com"}
+	fqdnSet = strings.Join(fqdns, ",")
+	fqdnSetHashStr = string(sa.HashNames(fqdns))
+	name, id, err = parseOverrideNameId(certificatesPerFQDNSetPerAccountStr + ":" + regId + ":" + fqdnSet)
+	test.AssertNotError(t, err, "should not error")
+	test.AssertEquals(t, name, certificatesPerFQDNSetPerAccountEnumStr)
+	test.AssertEquals(t, id, regId+":"+fqdnSetHashStr)
+
+	// Valid regId and invalid fqdnSet.
+	_, _, err = parseOverrideNameId(certificatesPerFQDNSetPerAccountStr + ":" + regId + ":" + "hello..world")
+	test.AssertError(t, err, "should error")
+
+	// Invalid regId and good fqdnSet.
+	_, _, err = parseOverrideNameId(certificatesPerFQDNSetPerAccountStr + ":" + "lol" + ":" + fqdnSet)
+	test.AssertError(t, err, "should error")
+
+	// Missing regId and good fqdnSet.
+	_, _, err = parseOverrideNameId(certificatesPerFQDNSetPerAccountStr + ":" + ":" + fqdnSet)
+	test.AssertError(t, err, "should error")
+
+	// Complete missing regId and good fqdnSet.
+	_, _, err = parseOverrideNameId(certificatesPerFQDNSetPerAccountStr + ":" + fqdnSet)
+	test.AssertError(t, err, "should error")
 }
 
 func Test_loadLimits(t *testing.T) {
-	UsageRequestsPerIPv4AddressString := nameToIntString(0)
-	NewRegistrationsPerIPv6RangeString := nameToIntString(3)
+	UsageRequestsPerIPv4AddressEnumStr := nameToEnumString(0)
+	NewRegistrationsPerIPv6RangeEnumStr := nameToEnumString(3)
+	certificatesPerFQDNSetPerAccountEnumStr := nameToEnumString(7)
 
 	l, err := loadLimits("testdata/defaults.yml")
 	test.AssertNotError(t, err, "should not error")
-	expectKey := UsageRequestsPerIPv4AddressString
+	expectKey := UsageRequestsPerIPv4AddressEnumStr
 	test.AssertEquals(t, l[expectKey].Burst, int64(20))
 	test.AssertEquals(t, l[expectKey].Count, int64(20))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
 
 	l, err = loadLimits("testdata/overrides.yml")
 	test.AssertNotError(t, err, "should not error")
-	expectKey = UsageRequestsPerIPv4AddressString + ":" + "10.0.0.2"
+	expectKey = UsageRequestsPerIPv4AddressEnumStr + ":" + "10.0.0.2"
 	test.AssertEquals(t, l[expectKey].Burst, int64(40))
 	test.AssertEquals(t, l[expectKey].Count, int64(40))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
 
 	l, err = loadLimits("testdata/working_override_ipv6.yml")
 	test.AssertNotError(t, err, "should not error")
-	expectKey = NewRegistrationsPerIPv6RangeString + ":" + "2001:0db8:0000::/48"
+	expectKey = NewRegistrationsPerIPv6RangeEnumStr + ":" + "2001:0db8:0000::/48"
+	test.AssertEquals(t, l[expectKey].Burst, int64(40))
+	test.AssertEquals(t, l[expectKey].Count, int64(40))
+	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
+
+	l, err = loadLimits("testdata/working_override_regIdFQDNSet.yml")
+	test.AssertNotError(t, err, "should not error")
+	fqdnSetHashStr := string(sa.HashNames([]string{"example.org", "example.com"}))
+	expectKey = certificatesPerFQDNSetPerAccountEnumStr + ":" + "1234567890" + ":" + fqdnSetHashStr
 	test.AssertEquals(t, l[expectKey].Burst, int64(40))
 	test.AssertEquals(t, l[expectKey].Count, int64(40))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)

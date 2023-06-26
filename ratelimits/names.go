@@ -3,9 +3,10 @@ package ratelimits
 import (
 	"fmt"
 	"net"
-	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/letsencrypt/boulder/policy"
 )
 
 // Name is an enumeration of all rate limit names. It is used to intern rate
@@ -99,8 +100,6 @@ func validateRegId(id string) error {
 	return nil
 }
 
-var domainRegExp = regexp.MustCompile(`^([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$`)
-
 // validateRegIdDomain validates that the provided string is formatted
 // 'regId:domain'.
 func validateRegIdDomain(id string) error {
@@ -112,8 +111,9 @@ func validateRegIdDomain(id string) error {
 	if err != nil {
 		return err
 	}
-	if !domainRegExp.MatchString(p[1]) {
-		return fmt.Errorf("invalid regId:domain, %q must be a domain", id)
+	err = policy.ValidDomain(p[1])
+	if err != nil {
+		return fmt.Errorf("invalid regId:domain, %q must be a valid domain: %w", id, err)
 
 	}
 	return nil
@@ -124,7 +124,7 @@ func validateRegIdDomain(id string) error {
 func validateRegIdFQDNSet(id string) error {
 	p := strings.SplitN(id, ":", 2)
 	if len(p) != 2 {
-		return fmt.Errorf("invalid 'regId:fqdnSet', %q must be in the form 'regId:fqdn,...'", id)
+		return fmt.Errorf("invalid regId:fqdnSet, %q must be in the form 'regId:fqdn,...'", id)
 	}
 	err := validateRegId(p[0])
 	if err != nil {
@@ -132,11 +132,12 @@ func validateRegIdFQDNSet(id string) error {
 	}
 	fqdns := strings.Split(p[1], ",")
 	if len(fqdns) == 0 {
-		return fmt.Errorf("invalid 'regId:fqdnSet', %q must be a comma separated list of FQDNs", p[1])
+		return fmt.Errorf("invalid regId:fqdnSet, %q must be a comma separated list of FQDNs", p[1])
 	}
-	for _, fqdn := range fqdns {
-		if !domainRegExp.MatchString(fqdn) {
-			return fmt.Errorf("invalid 'regId:fqdnSet', %q must be a comma separated list of FQDNs", p[1])
+	for _, d := range fqdns {
+		err = policy.ValidDomain(d)
+		if err != nil {
+			return fmt.Errorf("invalid regId:fqdnSet, %q contains invalid domain %q: %w", p[1], d, err)
 		}
 	}
 	return nil
@@ -188,13 +189,13 @@ var limitNames = func() []string {
 	return names
 }()
 
-// nameToIntString converts the integer value of the Name enumeration to its
+// nameToEnumString converts the integer value of the Name enumeration to its
 // string representation.
-func nameToIntString(s Name) string {
+func nameToEnumString(s Name) string {
 	return strconv.Itoa(int(s))
 }
 
 // bucketKey returns the key used to store a rate limit bucket.
 func bucketKey(name Name, id string) string {
-	return nameToIntString(name) + ":" + id
+	return nameToEnumString(name) + ":" + id
 }

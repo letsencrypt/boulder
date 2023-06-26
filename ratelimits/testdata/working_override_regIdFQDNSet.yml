@@ -1,0 +1,4 @@
+CertificatesPerFQDNSetPerAccount:1234567890:example.com,example.org:
+  burst: 40
+  count: 40
+  period: 1s
