@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/config"
-	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -30,7 +29,7 @@ func parseDefaultName(k string) (string, error) {
 	name, ok := stringToName[k]
 	if !ok {
 		return "", fmt.Errorf(
-			"unrecognized limit %q, must be one of %q", k, limitNames)
+			"unrecognized limit %q, must be one of %v", k, limitNames)
 	}
 	return nameToEnumString(name), nil
 }
@@ -49,24 +48,11 @@ func parseOverrideNameId(k string) (string, string, error) {
 	name, ok := stringToName[nameStr]
 	if !ok {
 		return "", "", fmt.Errorf(
-			"unrecognized limit %q, must be one of %q", nameStr, limitNames)
+			"unrecognized limit %q, must be one of %v", nameStr, limitNames)
 	}
 	err := validateIdForName(name, id)
 	if err != nil {
 		return "", "", fmt.Errorf("parsing limit %q: %w", k, err)
-	}
-
-	if name == CertificatesPerFQDNSetPerAccount {
-		// FQDN set hashes would be bad to ask for in a config file, so we
-		// convert them here.
-		regIdFQDNSet := strings.SplitN(id, ":", 2)
-		if len(regIdFQDNSet) != 2 {
-			// We validated the id above, so this should never happen.
-			return "", "", fmt.Errorf("parsing limit %q must be in the form 'regId:fqdn,...'", k)
-		}
-		fqdns := strings.Split(regIdFQDNSet[1], ",")
-		fqdnSet := sa.HashNames(fqdns)
-		id = fmt.Sprintf("%s:%s", regIdFQDNSet[0], fqdnSet)
 	}
 	return nameToEnumString(name), id, nil
 }
