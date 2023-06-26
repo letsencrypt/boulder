@@ -317,3 +317,23 @@ func TestUnwrapExtensions(t *testing.T) {
 		t.Error("expected error for invalidExtensionsInner, got none")
 	}
 }
+
+func TestTBSFromCertDER(t *testing.T) {
+	validCertOuter := []byte{0x30, 0x3, 0x30, 0x1, 0x0}
+	_, err := tbsDERFromCertDER(validCertOuter)
+	if err != nil {
+		t.Errorf("expected success for validCertOuter, got %s", err)
+	}
+
+	invalidCertOuter := []byte{0x30, 0x99, 0x30, 0x1, 0x0}
+	_, err = tbsDERFromCertDER(invalidCertOuter)
+	if err == nil {
+		t.Error("expected error for invalidCertOuter, got none")
+	}
+
+	invalidCertInner := []byte{0x30, 0x3, 0x30, 0x99, 0x0}
+	_, err = tbsDERFromCertDER(invalidCertInner)
+	if err == nil {
+		t.Error("expected error for invalidExtensionsInner, got none")
+	}
+}
