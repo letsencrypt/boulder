@@ -87,6 +87,8 @@ service StorageAuthority {
   rpc SetOrderProcessing(OrderRequest) returns (google.protobuf.Empty) {}
   rpc UpdateRegistration(core.Registration) returns (google.protobuf.Empty) {}
   rpc UpdateRevokedCertificate(RevokeCertificateRequest) returns (google.protobuf.Empty) {}
+  rpc LeaseCRLShard(LeaseCRLShardRequest) returns (LeaseCRLShardResponse) {}
+  rpc UpdateCRLShard(UpdateCRLShardRequest) returns (google.protobuf.Empty) {}
 }
 
 message RegistrationID {
@@ -348,4 +350,23 @@ message RevocationStatus {
   int64 status = 1;
   int64 revokedReason = 2;
   google.protobuf.Timestamp revokedDate = 3; // Unix timestamp (nanoseconds)
+}
+
+message LeaseCRLShardRequest {
+  int64 issuerNameID = 1;
+  int64 minShardIdx = 2;
+  int64 maxShardIdx = 3;
+  google.protobuf.Timestamp until = 4;
+}
+
+message LeaseCRLShardResponse {
+  int64 issuerNameID = 1;
+  int64 shardIdx = 2;
+}
+
+message UpdateCRLShardRequest {
+  int64 issuerNameID = 1;
+  int64 shardIdx = 2;
+  google.protobuf.Timestamp thisUpdate = 3;
+  google.protobuf.Timestamp nextUpdate = 4;
 }

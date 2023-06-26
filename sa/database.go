@@ -281,6 +281,7 @@ func initTables(dbMap *gorp.DbMap) {
 	dbMap.AddTableWithName(keyHashModel{}, "keyHashToSerial").SetKeys(true, "ID")
 	dbMap.AddTableWithName(incidentModel{}, "incidents").SetKeys(true, "ID")
 	dbMap.AddTable(incidentSerialModel{})
+	dbMap.AddTableWithName(crlShardModel{}, "crlShards").SetKeys(true, "ID")
 
 	// Read-only maps used for selecting subsets of columns.
 	dbMap.AddTableWithName(CertStatusMetadata{}, "certificateStatus")

@@ -41,6 +41,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 )
 
@@ -3083,7 +3084,6 @@ func TestSerialsForIncident(t *testing.T) {
 		"1335": true, "1336": true, "1337": true, "1338": true,
 	}
 	for i := range expectedSerials {
-		mrand.Seed(time.Now().Unix())
 		randInt := func() int64 { return mrand.Int63() }
 		_, err := testIncidentsDbMap.Exec(
 			fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
@@ -3252,4 +3252,335 @@ func TestGetMaxExpiration(t *testing.T) {
 	lastExpiry, err := sa.GetMaxExpiration(context.Background(), &emptypb.Empty{})
 	test.AssertNotError(t, err, "getting last expriy should succeed")
 	test.Assert(t, lastExpiry.AsTime().Equal(eeCert.NotAfter), "times should be equal")
+}
+
+func TestLeaseOldestCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Create 8 shards: 4 for each of 2 issuers. For each issuer, one shard is
+	// currently leased, three are available, and one of those failed to update.
+	_, err := sa.dbMap.Exec(
+		`INSERT INTO crlShards (issuerID, idx, thisUpdate, nextUpdate, leasedUntil) VALUES
+		(1, 0, ?, ?, ?),
+		(1, 1, ?, ?, ?),
+		(1, 2, ?, ?, ?),
+		(1, 3, NULL, NULL, ?),
+		(2, 0, ?, ?, ?),
+		(2, 1, ?, ?, ?),
+		(2, 2, ?, ?, ?),
+		(2, 3, NULL, NULL, ?);`,
+		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
+		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
+		clk.Now().Add(-5*24*time.Hour), clk.Now().Add(5*24*time.Hour), clk.Now().Add(-5*24*time.Hour),
+		clk.Now().Add(-4*24*time.Hour),
+		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
+		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
+		clk.Now().Add(-5*24*time.Hour), clk.Now().Add(5*24*time.Hour), clk.Now().Add(-5*24*time.Hour),
+		clk.Now().Add(-4*24*time.Hour),
+	)
+	test.AssertNotError(t, err, "setting up test shards")
+
+	until := clk.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	var untilModel struct {
+		LeasedUntil time.Time `db:"leasedUntil"`
+	}
+
+	// Leasing from a fully-leased subset should fail.
+	_, err = sa.leaseOldestCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 1,
+			MinShardIdx:  0,
+			MaxShardIdx:  0,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertError(t, err, "leasing when all shards are leased")
+
+	// Leasing any known shard should return the never-before-leased one (3).
+	res, err := sa.leaseOldestCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 1,
+			MinShardIdx:  0,
+			MaxShardIdx:  3,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertNotError(t, err, "leasing available shard")
+	test.AssertEquals(t, res.IssuerNameID, int64(1))
+	test.AssertEquals(t, res.ShardIdx, int64(3))
+
+	err = sa.dbMap.SelectOne(
+		&untilModel,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		res.IssuerNameID,
+		res.ShardIdx,
+	)
+	test.AssertNotError(t, err, "getting updated lease timestamp")
+	test.Assert(t, untilModel.LeasedUntil.Equal(until), "checking updated lease timestamp")
+
+	// Leasing any known shard *again* should now return the oldest one (1).
+	res, err = sa.leaseOldestCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 1,
+			MinShardIdx:  0,
+			MaxShardIdx:  3,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertNotError(t, err, "leasing available shard")
+	test.AssertEquals(t, res.IssuerNameID, int64(1))
+	test.AssertEquals(t, res.ShardIdx, int64(1))
+
+	err = sa.dbMap.SelectOne(
+		&untilModel,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		res.IssuerNameID,
+		res.ShardIdx,
+	)
+	test.AssertNotError(t, err, "getting updated lease timestamp")
+	test.Assert(t, untilModel.LeasedUntil.Equal(until), "checking updated lease timestamp")
+
+	// Leasing from a superset of known shards should succeed and return one of
+	// the previously-unknown shards.
+	res, err = sa.leaseOldestCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 2,
+			MinShardIdx:  0,
+			MaxShardIdx:  7,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertNotError(t, err, "leasing available shard")
+	test.AssertEquals(t, res.IssuerNameID, int64(2))
+	test.Assert(t, res.ShardIdx >= 4, "checking leased index")
+	test.Assert(t, res.ShardIdx <= 7, "checking leased index")
+
+	err = sa.dbMap.SelectOne(
+		&untilModel,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		res.IssuerNameID,
+		res.ShardIdx,
+	)
+	test.AssertNotError(t, err, "getting updated lease timestamp")
+	test.Assert(t, untilModel.LeasedUntil.Equal(until), "checking updated lease timestamp")
+}
+
+func TestLeaseSpecificCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Create 8 shards: 4 for each of 2 issuers. For each issuer, one shard is
+	// currently leased, three are available, and one of those failed to update.
+	_, err := sa.dbMap.Exec(
+		`INSERT INTO crlShards (issuerID, idx, thisUpdate, nextUpdate, leasedUntil) VALUES
+		(1, 0, ?, ?, ?),
+		(1, 1, ?, ?, ?),
+		(1, 2, ?, ?, ?),
+		(1, 3, NULL, NULL, ?),
+		(2, 0, ?, ?, ?),
+		(2, 1, ?, ?, ?),
+		(2, 2, ?, ?, ?),
+		(2, 3, NULL, NULL, ?);`,
+		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
+		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
+		clk.Now().Add(-5*24*time.Hour), clk.Now().Add(5*24*time.Hour), clk.Now().Add(-5*24*time.Hour),
+		clk.Now().Add(-4*24*time.Hour),
+		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
+		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
+		clk.Now().Add(-5*24*time.Hour), clk.Now().Add(5*24*time.Hour), clk.Now().Add(-5*24*time.Hour),
+		clk.Now().Add(-4*24*time.Hour),
+	)
+	test.AssertNotError(t, err, "setting up test shards")
+
+	until := clk.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	var untilModel struct {
+		LeasedUntil time.Time `db:"leasedUntil"`
+	}
+
+	// Leasing an unleased shard should work.
+	res, err := sa.leaseSpecificCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 1,
+			MinShardIdx:  1,
+			MaxShardIdx:  1,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertNotError(t, err, "leasing available shard")
+	test.AssertEquals(t, res.IssuerNameID, int64(1))
+	test.AssertEquals(t, res.ShardIdx, int64(1))
+
+	err = sa.dbMap.SelectOne(
+		&untilModel,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		res.IssuerNameID,
+		res.ShardIdx,
+	)
+	test.AssertNotError(t, err, "getting updated lease timestamp")
+	test.Assert(t, untilModel.LeasedUntil.Equal(until), "checking updated lease timestamp")
+
+	// Leasing a never-before-leased shard should work.
+	res, err = sa.leaseSpecificCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 2,
+			MinShardIdx:  3,
+			MaxShardIdx:  3,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertNotError(t, err, "leasing available shard")
+	test.AssertEquals(t, res.IssuerNameID, int64(2))
+	test.AssertEquals(t, res.ShardIdx, int64(3))
+
+	err = sa.dbMap.SelectOne(
+		&untilModel,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		res.IssuerNameID,
+		res.ShardIdx,
+	)
+	test.AssertNotError(t, err, "getting updated lease timestamp")
+	test.Assert(t, untilModel.LeasedUntil.Equal(until), "checking updated lease timestamp")
+
+	// Leasing a leased shard should fail.
+	_, err = sa.leaseSpecificCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 1,
+			MinShardIdx:  0,
+			MaxShardIdx:  0,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertError(t, err, "leasing unavailable shard")
+
+	// Leasing an unknown shard should fail (because this method will only be used
+	// in the short term, and should go away before we change shard counts).
+	_, err = sa.leaseSpecificCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 1,
+			MinShardIdx:  9,
+			MaxShardIdx:  9,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertError(t, err, "leasing unknown shard")
+}
+
+func TestUpdateCRLShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires crlShards database table")
+	}
+
+	sa, clk, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Create 8 shards: 4 for each of 2 issuers. For each issuer, one shard is
+	// currently leased, three are available, and one of those failed to update.
+	_, err := sa.dbMap.Exec(
+		`INSERT INTO crlShards (issuerID, idx, thisUpdate, nextUpdate, leasedUntil) VALUES
+		(1, 0, ?, ?, ?),
+		(1, 1, ?, ?, ?),
+		(1, 2, ?, ?, ?),
+		(1, 3, NULL, NULL, ?),
+		(2, 0, ?, ?, ?),
+		(2, 1, ?, ?, ?),
+		(2, 2, ?, ?, ?),
+		(2, 3, NULL, NULL, ?);`,
+		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
+		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
+		clk.Now().Add(-5*24*time.Hour), clk.Now().Add(5*24*time.Hour), clk.Now().Add(-5*24*time.Hour),
+		clk.Now().Add(-4*24*time.Hour),
+		clk.Now().Add(-7*24*time.Hour), clk.Now().Add(3*24*time.Hour), clk.Now().Add(time.Hour),
+		clk.Now().Add(-6*24*time.Hour), clk.Now().Add(4*24*time.Hour), clk.Now().Add(-6*24*time.Hour),
+		clk.Now().Add(-5*24*time.Hour), clk.Now().Add(5*24*time.Hour), clk.Now().Add(-5*24*time.Hour),
+		clk.Now().Add(-4*24*time.Hour),
+	)
+	test.AssertNotError(t, err, "setting up test shards")
+
+	thisUpdate := clk.Now().Truncate(time.Second).UTC()
+	var thisUpdateModel struct {
+		ThisUpdate time.Time `db:"thisUpdate"`
+	}
+
+	// Updating a leased shard should work.
+	_, err = sa.UpdateCRLShard(
+		context.Background(),
+		&sapb.UpdateCRLShardRequest{
+			IssuerNameID: 1,
+			ShardIdx:     0,
+			ThisUpdate:   timestamppb.New(thisUpdate),
+			NextUpdate:   timestamppb.New(thisUpdate.Add(10 * 24 * time.Hour)),
+		},
+	)
+	test.AssertNotError(t, err, "updating leased shard")
+
+	err = sa.dbMap.SelectOne(
+		&thisUpdateModel,
+		`SELECT thisUpdate FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		1,
+		0,
+	)
+	test.AssertNotError(t, err, "getting updated thisUpdate timestamp")
+	test.Assert(t, thisUpdateModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
+
+	// Updating an unleased shard should work.
+	_, err = sa.UpdateCRLShard(
+		context.Background(),
+		&sapb.UpdateCRLShardRequest{
+			IssuerNameID: 1,
+			ShardIdx:     1,
+			ThisUpdate:   timestamppb.New(thisUpdate),
+			NextUpdate:   timestamppb.New(thisUpdate.Add(10 * 24 * time.Hour)),
+		},
+	)
+	test.AssertNotError(t, err, "updating unleased shard")
+
+	err = sa.dbMap.SelectOne(
+		&thisUpdateModel,
+		`SELECT thisUpdate FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		1,
+		1,
+	)
+	test.AssertNotError(t, err, "getting updated thisUpdate timestamp")
+	test.Assert(t, thisUpdateModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
+
+	// Updating a shard to an earlier time should fail.
+	_, err = sa.UpdateCRLShard(
+		context.Background(),
+		&sapb.UpdateCRLShardRequest{
+			IssuerNameID: 1,
+			ShardIdx:     1,
+			ThisUpdate:   timestamppb.New(thisUpdate.Add(-24 * time.Hour)),
+			NextUpdate:   timestamppb.New(thisUpdate.Add(9 * 24 * time.Hour)),
+		},
+	)
+	test.AssertError(t, err, "updating shard to an earlier time")
+
+	// Updating an unknown shard should fail.
+	_, err = sa.UpdateCRLShard(
+		context.Background(),
+		&sapb.UpdateCRLShardRequest{
+			IssuerNameID: 1,
+			ShardIdx:     4,
+			ThisUpdate:   timestamppb.New(thisUpdate),
+			NextUpdate:   timestamppb.New(thisUpdate.Add(10 * 24 * time.Hour)),
+		},
+	)
+	test.AssertError(t, err, "updating shard to an earlier time")
 }

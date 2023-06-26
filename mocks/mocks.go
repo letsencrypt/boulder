@@ -245,7 +245,7 @@ func (sa *StorageAuthorityReadOnly) GetCertificateStatus(_ context.Context, req 
 			Status: string(core.OCSPStatusRevoked),
 		}, nil
 	} else {
-		return nil, errors.New("No cert status")
+		return nil, errors.New("no cert status")
 	}
 }
 
@@ -355,7 +355,6 @@ func (sa *StorageAuthority) DeactivateRegistration(_ context.Context, _ *sapb.Re
 
 // NewOrderAndAuthzs is a mock
 func (sa *StorageAuthority) NewOrderAndAuthzs(_ context.Context, req *sapb.NewOrderAndAuthzsRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
-	rand.Seed(time.Now().UnixNano())
 	response := &corepb.Order{
 		// Fields from the input new order request.
 		RegistrationID:   req.NewOrder.RegistrationID,
@@ -556,7 +555,7 @@ func (sa *StorageAuthorityReadOnly) GetAuthorization2(ctx context.Context, id *s
 		authz.ID = fmt.Sprintf("%d", authzIdExpired)
 		return bgrpc.AuthzToPB(authz)
 	case authzIdErrorResult:
-		return nil, fmt.Errorf("Unspecified database error")
+		return nil, fmt.Errorf("unspecified database error")
 	case authzIdDiffAccount:
 		exp := sa.clk.Now().AddDate(100, 0, 0)
 		authz.RegistrationID = 2
@@ -591,6 +590,16 @@ func (sa *StorageAuthorityReadOnly) KeyBlocked(ctx context.Context, req *sapb.Ke
 // IncidentsForSerial is a mock.
 func (sa *StorageAuthorityReadOnly) IncidentsForSerial(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.Incidents, error) {
 	return &sapb.Incidents{}, nil
+}
+
+// LeaseCRLShard is a mock.
+func (sa *StorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.LeaseCRLShardRequest, _ ...grpc.CallOption) (*sapb.LeaseCRLShardResponse, error) {
+	return nil, errors.New("unimplemented")
+}
+
+// UpdateCRLShard is a mock.
+func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.UpdateCRLShardRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return nil, errors.New("unimplemented")
 }
 
 // Publisher is a mock
