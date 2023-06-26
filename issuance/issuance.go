@@ -32,6 +32,7 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/policyasn1"
+	"github.com/letsencrypt/boulder/precert"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/pkcs11key/v4"
 )
@@ -272,11 +273,11 @@ func (p *Profile) requestValid(clk clock.Clock, req *IssuanceRequest) error {
 		return errors.New("ct poison extension cannot be included")
 	}
 
-	if !p.allowSCTList && req.SCTList != nil {
+	if !p.allowSCTList && req.sctList != nil {
 		return errors.New("sct list extension cannot be included")
 	}
 
-	if req.IncludeCTPoison && req.SCTList != nil {
+	if req.IncludeCTPoison && req.sctList != nil {
 		return errors.New("cannot include both ct poison and sct list extensions")
 	}
 
@@ -596,7 +597,14 @@ type IssuanceRequest struct {
 
 	IncludeMustStaple bool
 	IncludeCTPoison   bool
-	SCTList           []ct.SignedCertificateTimestamp
+
+	// sctList is a list of SCTs to include in a final certificate.
+	// If it is non-empty, PrecertDER must also be non-empty.
+	sctList []ct.SignedCertificateTimestamp
+	// precertDER is the encoded bytes of the precertificate that a
+	// final certificate is expected to correspond to. If it is non-empty,
+	// SCTList must also be non-empty.
+	precertDER []byte
 }
 
 // An issuanceToken represents an assertion that Issuer.Lint has generated
@@ -650,12 +658,17 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 
 	if req.IncludeCTPoison {
 		template.ExtraExtensions = append(template.ExtraExtensions, ctPoisonExt)
-	} else if req.SCTList != nil {
-		sctListExt, err := generateSCTListExt(req.SCTList)
+	} else if len(req.sctList) > 0 {
+		if len(req.precertDER) == 0 {
+			return nil, nil, errors.New("inconsistent request contains sctList but no precertDER")
+		}
+		sctListExt, err := generateSCTListExt(req.sctList)
 		if err != nil {
 			return nil, nil, err
 		}
 		template.ExtraExtensions = append(template.ExtraExtensions, sctListExt)
+	} else {
+		return nil, nil, errors.New("invalid request contains neither sctList nor precertDER")
 	}
 
 	if req.IncludeMustStaple {
@@ -667,6 +680,13 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 	lintCertBytes, err := i.Linter.Check(template, req.PublicKey)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
+	}
+
+	if len(req.precertDER) > 0 {
+		err = precert.Correspond(req.precertDER, lintCertBytes)
+		if err != nil {
+			return nil, nil, fmt.Errorf("precert does not correspond to linted final cert: %w", err)
+		}
 	}
 
 	token := &issuanceToken{sync.Mutex{}, template, req.PublicKey, i}
@@ -728,7 +748,8 @@ func RequestFromPrecert(precert *x509.Certificate, scts []ct.SignedCertificateTi
 		CommonName:        precert.Subject.CommonName,
 		DNSNames:          precert.DNSNames,
 		IncludeMustStaple: ContainsMustStaple(precert.Extensions),
-		SCTList:           scts,
+		sctList:           scts,
+		precertDER:        precert.Raw,
 	}, nil
 }
 
