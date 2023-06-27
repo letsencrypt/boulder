@@ -1235,13 +1235,20 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 			return err
 		}
 
-		err = stream.Send(
-			&sapb.IncidentSerial{
-				Serial:         ism.Serial,
-				RegistrationID: ism.RegistrationID,
-				OrderID:        ism.OrderID,
-				LastNoticeSent: ism.LastNoticeSent.UnixNano(),
-			})
+		ispb := &sapb.IncidentSerial{
+			Serial: ism.Serial,
+		}
+		if ism.RegistrationID != nil {
+			ispb.RegistrationID = *ism.RegistrationID
+		}
+		if ism.OrderID != nil {
+			ispb.OrderID = *ism.OrderID
+		}
+		if ism.LastNoticeSent != nil {
+			ispb.LastNoticeSent = ism.LastNoticeSent.UnixNano()
+		}
+
+		err = stream.Send(ispb)
 		if err != nil {
 			return err
 		}

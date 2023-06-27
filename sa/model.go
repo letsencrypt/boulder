@@ -850,10 +850,10 @@ func incidentModelToPB(i incidentModel) sapb.Incident {
 
 // incidentSerialModel represents a row in an 'incident_*' table.
 type incidentSerialModel struct {
-	Serial         string    `db:"serial"`
-	RegistrationID int64     `db:"registrationID"`
-	OrderID        int64     `db:"orderID"`
-	LastNoticeSent time.Time `db:"lastNoticeSent"`
+	Serial         string     `db:"serial"`
+	RegistrationID *int64     `db:"registrationID"`
+	OrderID        *int64     `db:"orderID"`
+	LastNoticeSent *time.Time `db:"lastNoticeSent"`
 }
 
 // crlEntryModel has just the certificate status fields necessary to construct
