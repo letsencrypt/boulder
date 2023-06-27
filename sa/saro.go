@@ -814,13 +814,13 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorization2(ctx context.Context, req *sa
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	obj, err := ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
+	obj, err := ssa.dbReadOnlyMap.WithContext(ctx).Get(authzModel{}, req.Id)
 	if db.IsNoRows(err) && ssa.lagFactor != 0 {
 		// GetAuthorization2 is often called shortly after a new order is created,
 		// sometimes before the order's associated authz rows have propagated to the
 		// read replica yet. If we get a NoRows, wait a little bit and retry, once.
 		ssa.clk.Sleep(ssa.lagFactor)
-		obj, err = ssa.dbReadOnlyMap.Get(authzModel{}, req.Id)
+		obj, err = ssa.dbReadOnlyMap.WithContext(ctx).Get(authzModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				ssa.lagFactorCounter.WithLabelValues("GetAuthorization2", "notfound").Inc()

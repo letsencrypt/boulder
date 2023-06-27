@@ -426,7 +426,7 @@ func (ssa *SQLStorageAuthority) DeactivateAuthorization2(ctx context.Context, re
 		return nil, errIncompleteRequest
 	}
 
-	_, err := ssa.dbMap.Exec(
+	_, err := ssa.dbMap.WithContext(ctx).Exec(
 		`UPDATE authz2 SET status = :deactivated WHERE id = :id and status IN (:valid,:pending)`,
 		map[string]interface{}{
 			"deactivated": statusUint(core.StatusDeactivated),
@@ -770,7 +770,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		"validationError": veJSON,
 	}
 
-	res, err := ssa.dbMap.Exec(query, params)
+	res, err := ssa.dbMap.WithContext(ctx).Exec(query, params)
 	if err != nil {
 		return nil, err
 	}
@@ -795,7 +795,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 
 	revokedDate := time.Unix(0, req.Date)
 
-	res, err := ssa.dbMap.Exec(
+	res, err := ssa.dbMap.WithContext(ctx).Exec(
 		`UPDATE certificateStatus SET
 				status = ?,
 				revokedReason = ?,
@@ -838,7 +838,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 	thisUpdate := time.Unix(0, req.Date)
 	revokedDate := time.Unix(0, req.Backdate)
 
-	res, err := ssa.dbMap.Exec(
+	res, err := ssa.dbMap.WithContext(ctx).Exec(
 		`UPDATE certificateStatus SET
 				revokedReason = ?,
 				ocspLastUpdated = ?
@@ -887,7 +887,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 		qs += ", ?"
 		vals = append(vals, req.RevokedBy)
 	}
-	_, err := ssa.dbMap.Exec(
+	_, err := ssa.dbMap.WithContext(ctx).Exec(
 		fmt.Sprintf("INSERT INTO blockedKeys (%s) VALUES (%s)", cols, qs),
 		vals...,
 	)

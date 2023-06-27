@@ -63,43 +63,43 @@ type WrappedMap struct {
 	*gorp.DbMap
 }
 
-func (m *WrappedMap) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Get(holder, keys...)
+func (m *WrappedMap) Get(ctx context.Context, holder interface{}, keys ...interface{}) (interface{}, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Get(holder, keys...)
 }
 
-func (m *WrappedMap) Insert(list ...interface{}) error {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Insert(list...)
+func (m *WrappedMap) Insert(ctx context.Context, list ...interface{}) error {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Insert(list...)
 }
 
-func (m *WrappedMap) Update(list ...interface{}) (int64, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Update(list...)
+func (m *WrappedMap) Update(ctx context.Context, list ...interface{}) (int64, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Update(list...)
 }
 
-func (m *WrappedMap) Delete(list ...interface{}) (int64, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Delete(list...)
+func (m *WrappedMap) Delete(ctx context.Context, list ...interface{}) (int64, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Delete(list...)
 }
 
-func (m *WrappedMap) Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Select(holder, query, args...)
+func (m *WrappedMap) Select(ctx context.Context, holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Select(holder, query, args...)
 }
 
-func (m *WrappedMap) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.SelectOne(holder, query, args...)
+func (m *WrappedMap) SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.SelectOne(holder, query, args...)
 }
 
-func (m *WrappedMap) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Query(query, args...)
+func (m *WrappedMap) Query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Query(query, args...)
 }
 
-func (m *WrappedMap) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Exec(query, args...)
+func (m *WrappedMap) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Exec(query, args...)
 }
 
 func (m *WrappedMap) WithContext(ctx context.Context) gorp.SqlExecutor {
 	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}
 }
 
-func (m *WrappedMap) Begin() (Transaction, error) {
+func (m *WrappedMap) Begin(context context.Context) (Transaction, error) {
 	tx, err := m.DbMap.Begin()
 	if err != nil {
 		return tx, ErrDatabaseOp{
@@ -109,7 +109,7 @@ func (m *WrappedMap) Begin() (Transaction, error) {
 	}
 	return WrappedTransaction{
 		Transaction: tx,
-	}, err
+	}.WithContext(ctx), err
 }
 
 // WrappedTransaction wraps a *gorp.Transaction such that its major functions
@@ -123,15 +123,17 @@ func (tx WrappedTransaction) WithContext(ctx context.Context) gorp.SqlExecutor {
 	return WrappedExecutor{SqlExecutor: tx.Transaction.WithContext(ctx)}
 }
 
+// Commit passes along the commit call to the underlying transaction. Note that it
+// does not take a context because the transaction already has a context applied.
 func (tx WrappedTransaction) Commit() error {
 	return tx.Transaction.Commit()
 }
 
-func (tx WrappedTransaction) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
+func (tx WrappedTransaction) Get(ctx context.Context, holder interface{}, keys ...interface{}) (interface{}, error) {
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Get(holder, keys...)
 }
 
-func (tx WrappedTransaction) Insert(list ...interface{}) error {
+func (tx WrappedTransaction) Insert(ctx context.Context, list ...interface{}) error {
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Insert(list...)
 }
 
