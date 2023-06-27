@@ -50,6 +50,7 @@ type DatabaseMap interface {
 	Inserter
 	SelectExecer
 	Begin() (Transaction, error)
+	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
 // Executor offers the full combination of OneSelector, Inserter, SelectExecer

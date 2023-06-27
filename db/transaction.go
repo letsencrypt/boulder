@@ -1,6 +1,10 @@
 package db
 
-import "context"
+import (
+	"context"
+
+	"github.com/go-gorp/gorp/v3"
+)
 
 // txFunc represents a function that does work in the context of a transaction.
 type txFunc func(txWithCtx Executor) (interface{}, error)
@@ -12,7 +16,9 @@ type txFunc func(txWithCtx Executor) (interface{}, error)
 func WithTransaction(ctx context.Context, dbMap DatabaseMap, f txFunc) (interface{}, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	tx, err := dbMap.Begin()
+
+	se := dbMap.WithContext(ctx).(WrappedExecutor).SqlExecutor.(*gorp.DbMap)
+	tx, err := se.Begin()
 	if err != nil {
 		return nil, err
 	}
