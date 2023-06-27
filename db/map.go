@@ -127,10 +127,6 @@ func (tx WrappedTransaction) Commit() error {
 	return tx.Transaction.Commit()
 }
 
-func (tx WrappedTransaction) Rollback() error {
-	return tx.Transaction.Rollback()
-}
-
 func (tx WrappedTransaction) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Get(holder, keys...)
 }

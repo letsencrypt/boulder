@@ -341,7 +341,6 @@ func TestWrappedMap(t *testing.T) {
 	// Using Begin to start a transaction with the dbMap should return a
 	// transaction that continues to operate in the expected fashion.
 	tx, err := dbMap.Begin()
-	defer func() { _ = tx.Rollback() }()
 	test.AssertNotError(t, err, "unexpected error beginning transaction")
 	testWrapper(tx)
 
@@ -349,7 +348,6 @@ func TestWrappedMap(t *testing.T) {
 	// WithContext should return a transaction that continues to operate in the
 	// expected fashion.
 	tx, err = dbMap.Begin()
-	defer func() { _ = tx.Rollback() }()
 	test.AssertNotError(t, err, "unexpected error beginning transaction")
 	txWithContext := tx.WithContext(context.Background())
 	testWrapper(txWithContext)

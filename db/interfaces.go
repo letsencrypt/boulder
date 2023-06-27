@@ -72,10 +72,9 @@ type Queryer interface {
 	Query(string, ...interface{}) (*sql.Rows, error)
 }
 
-// Transaction extends an Executor and adds Rollback, Commit, and WithContext.
+// Transaction extends an Executor and adds Commit and WithContext.
 type Transaction interface {
 	Executor
-	Rollback() error
 	Commit() error
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
