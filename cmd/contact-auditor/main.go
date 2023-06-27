@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -69,7 +70,7 @@ func validateContacts(id int64, createdAt string, contacts []string) error {
 // beginAuditQuery executes the audit query and returns a cursor used to
 // stream the results.
 func (c contactAuditor) beginAuditQuery() (*sql.Rows, error) {
-	rows, err := c.db.Query(`
+	rows, err := c.db.Query(context.TODO(), `
 		SELECT DISTINCT id, contact, createdAt
 		FROM registrations
 		WHERE contact NOT IN ('[]', 'null');`)

@@ -250,105 +250,102 @@ func TestWrappedMap(t *testing.T) {
 		return dbOpErr
 	}
 
-	testWrapper := func(dbMap Executor) {
-		reg := &core.Registration{}
-
-		// Test wrapped Get
-		_, err := dbMap.Get(reg)
-		test.AssertError(t, err, "expected err Getting Registration w/o type converter")
-		dbOpErr := mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "get")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped Insert
-		err = dbMap.Insert(reg)
-		test.AssertError(t, err, "expected err Inserting Registration w/o type converter")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "insert")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped Update
-		_, err = dbMap.Update(reg)
-		test.AssertError(t, err, "expected err Updating Registration w/o type converter")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "update")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped Delete
-		_, err = dbMap.Delete(reg)
-		test.AssertError(t, err, "expected err Deleting Registration w/o type converter")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "delete")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped Select with a bogus query
-		_, err = dbMap.Select(reg, "blah")
-		test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "select")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped Select with a valid query
-		_, err = dbMap.Select(reg, "SELECT id, contact FROM registrationzzz WHERE id > 1;")
-		test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "select")
-		test.AssertEquals(t, dbOpErr.Table, "registrationzzz")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped SelectOne with a bogus query
-		err = dbMap.SelectOne(reg, "blah")
-		test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "select one")
-		test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped SelectOne with a valid query
-		err = dbMap.SelectOne(reg, "SELECT contact FROM doesNotExist WHERE id=1;")
-		test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "select one")
-		test.AssertEquals(t, dbOpErr.Table, "doesNotExist")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-
-		// Test wrapped Exec
-		_, err = dbMap.Exec("INSERT INTO whatever (id) VALUES (?) WHERE id = ?", 10)
-		test.AssertError(t, err, "expected err Exec-ing bad query")
-		dbOpErr = mustDbErr(err)
-		test.AssertEquals(t, dbOpErr.Op, "exec")
-		test.AssertEquals(t, dbOpErr.Table, "whatever")
-		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
-	}
-
-	// Create a test wrapped map. It won't have a type converted registered.
+	// Create a test wrapped map. It won't have a type converter registered.
 	dbMap := testDbMap(t)
 
-	// A top level WrappedMap should operate as expected with respect to wrapping
-	// database errors.
-	testWrapper(dbMap)
+	reg := &core.Registration{}
 
-	// Using WithContext on the WrappedMap should return a map that continues to
-	// operate in the expected fashion.
+	// Test wrapped Get
+	_, err := dbMap.Get(context.Background(), reg)
+	test.AssertError(t, err, "expected err Getting Registration w/o type converter")
+	dbOpErr := mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "get")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped Insert
+	err = dbMap.Insert(context.Background(), reg)
+	test.AssertError(t, err, "expected err Inserting Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "insert")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped Update
+	_, err = dbMap.Update(context.Background(), reg)
+	test.AssertError(t, err, "expected err Updating Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "update")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped Delete
+	_, err = dbMap.Delete(context.Background(), reg)
+	test.AssertError(t, err, "expected err Deleting Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "delete")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped Select with a bogus query
+	_, err = dbMap.Select(context.Background(), reg, "blah")
+	test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "select")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped Select with a valid query
+	_, err = dbMap.Select(context.Background(), reg, "SELECT id, contact FROM registrationzzz WHERE id > 1;")
+	test.AssertError(t, err, "expected err Selecting Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "select")
+	test.AssertEquals(t, dbOpErr.Table, "registrationzzz")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped SelectOne with a bogus query
+	err = dbMap.SelectOne(context.Background(), reg, "blah")
+	test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "select one")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration (unknown table)")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped SelectOne with a valid query
+	err = dbMap.SelectOne(context.Background(), reg, "SELECT contact FROM doesNotExist WHERE id=1;")
+	test.AssertError(t, err, "expected err SelectOne-ing Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "select one")
+	test.AssertEquals(t, dbOpErr.Table, "doesNotExist")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Test wrapped Exec
+	_, err = dbMap.Exec(context.Background(), "INSERT INTO whatever (id) VALUES (?) WHERE id = ?", 10)
+	test.AssertError(t, err, "expected err Exec-ing bad query")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "exec")
+	test.AssertEquals(t, dbOpErr.Table, "whatever")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
+
+	// Now test the variants that have a Context baked in using (a) WithContext and (b) Begin(ctx).
 	dbMapWithCtx := dbMap.WithContext(context.Background())
-	testWrapper(dbMapWithCtx)
+
+	_, err = dbMapWithCtx.Get(reg)
+	test.AssertError(t, err, "expected err Getting Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "get")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 	// Using Begin to start a transaction with the dbMap should return a
 	// transaction that continues to operate in the expected fashion.
-	tx, err := dbMap.Begin()
+	tx, err := dbMap.Begin(context.Background())
 	test.AssertNotError(t, err, "unexpected error beginning transaction")
-	testWrapper(tx)
-
-	// Using Begin to start a transaction with the dbMap and then using
-	// WithContext should return a transaction that continues to operate in the
-	// expected fashion.
-	tx, err = dbMap.Begin()
+	_, err = tx.Get(context.Background(), reg)
 	test.AssertNotError(t, err, "unexpected error beginning transaction")
-	txWithContext := tx.WithContext(context.Background())
-	testWrapper(txWithContext)
+	test.AssertError(t, err, "expected err Getting Registration w/o type converter")
+	dbOpErr = mustDbErr(err)
+	test.AssertEquals(t, dbOpErr.Op, "get")
+	test.AssertEquals(t, dbOpErr.Table, "*core.Registration")
+	test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 }

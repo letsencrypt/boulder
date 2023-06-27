@@ -383,7 +383,7 @@ type mismatchedCountDB struct{}
 // `getCerts` calls `SelectInt` first to determine how many rows there are
 // matching the `getCertsCountQuery` criteria. For this mock we return
 // a non-zero number
-func (db mismatchedCountDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
+func (db mismatchedCountDB) SelectNullInt(ctx context.Context, _ string, _ ...interface{}) (sql.NullInt64, error) {
 	return sql.NullInt64{
 			Int64: 99999,
 			Valid: true,
@@ -393,7 +393,7 @@ func (db mismatchedCountDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullI
 
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
 // a dastardly switch-a-roo here and return an empty set
-func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
+func (db mismatchedCountDB) Select(ctx context.Context, output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
 	// But actually return nothing
 	outputPtr, _ := output.(*[]sa.CertWithID)
 	*outputPtr = []sa.CertWithID{}
@@ -437,7 +437,7 @@ type emptyDB struct {
 
 // SelectNullInt is a method that returns a false sql.NullInt64 struct to
 // mock a null DB response
-func (db emptyDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
+func (db emptyDB) SelectNullInt(_ context.Context, _ string, _ ...interface{}) (sql.NullInt64, error) {
 	return sql.NullInt64{Valid: false},
 		nil
 }

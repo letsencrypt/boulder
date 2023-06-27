@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-gorp/gorp/v3"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -67,15 +66,10 @@ func (es errorSource) signAndSave(ctx context.Context, req *ocsp.Request, cause 
 
 // echoSelector always returns the given certificateStatus.
 type echoSelector struct {
-	db.MockSqlExecutor
 	status sa.RevocationStatusModel
 }
 
-func (s echoSelector) WithContext(context.Context) gorp.SqlExecutor {
-	return s
-}
-
-func (s echoSelector) SelectOne(output interface{}, _ string, _ ...interface{}) error {
+func (s echoSelector) SelectOne(ctx context.Context, output interface{}, _ string, _ ...interface{}) error {
 	outputPtr, ok := output.(*sa.RevocationStatusModel)
 	if !ok {
 		return fmt.Errorf("incorrect output type %T", output)
@@ -86,28 +80,18 @@ func (s echoSelector) SelectOne(output interface{}, _ string, _ ...interface{}) 
 
 // errorSelector always returns an error.
 type errorSelector struct {
-	db.MockSqlExecutor
 }
 
-func (s errorSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+func (s errorSelector) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
 	return errors.New("oops")
-}
-
-func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
-	return s
 }
 
 // notFoundSelector always returns an NoRows error.
 type notFoundSelector struct {
-	db.MockSqlExecutor
 }
 
-func (s notFoundSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) error {
+func (s notFoundSelector) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
 	return db.ErrDatabaseOp{Err: sql.ErrNoRows}
-}
-
-func (s notFoundSelector) WithContext(context.Context) gorp.SqlExecutor {
-	return s
 }
 
 // echoSA always returns the given revocation status.

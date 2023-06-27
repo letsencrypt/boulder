@@ -18,22 +18,17 @@ import (
 
 // A OneSelector is anything that provides a `SelectOne` function.
 type OneSelector interface {
-	SelectOne(interface{}, string, ...interface{}) error
+	SelectOne(context.Context, interface{}, string, ...interface{}) error
 }
 
 // A Selector is anything that provides a `Select` function.
 type Selector interface {
-	Select(interface{}, string, ...interface{}) ([]interface{}, error)
-}
-
-// A Inserter is anything that provides an `Insert` function
-type Inserter interface {
-	Insert(list ...interface{}) error
+	Select(context.Context, interface{}, string, ...interface{}) ([]interface{}, error)
 }
 
 // A Execer is anything that provides an `Exec` function
 type Execer interface {
-	Exec(string, ...interface{}) (sql.Result, error)
+	Exec(context.Context, string, ...interface{}) (sql.Result, error)
 }
 
 // SelectExecer offers a subset of gorp.SqlExecutor's methods: Select and
@@ -43,13 +38,14 @@ type SelectExecer interface {
 	Execer
 }
 
-// DatabaseMap offers the full combination of OneSelector, Inserter,
-// SelectExecer, and a Begin function for creating a Transaction.
+// DatabaseMap offers the full combination of OneSelector,
+// SelectExecer, a Begin function for creating a Transaction, and
+// an Insert function.
 type DatabaseMap interface {
 	OneSelector
-	Inserter
 	SelectExecer
-	Begin() (Transaction, error)
+	Insert(context.Context, ...interface{}) error
+	Begin(context.Context) (Transaction, error)
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
@@ -57,20 +53,12 @@ type DatabaseMap interface {
 // and adds a handful of other high level Gorp methods we use in Boulder.
 type Executor interface {
 	OneSelector
-	Inserter
 	SelectExecer
-	Delete(...interface{}) (int64, error)
-	Get(interface{}, ...interface{}) (interface{}, error)
-	Update(...interface{}) (int64, error)
-	Query(string, ...interface{}) (*sql.Rows, error)
-}
-
-// Queryer offers the Query method. Note that this is not read-only (i.e. not
-// Selector), since a Query can be `INSERT`, `UPDATE`, etc. The difference
-// between Query and Exec is that Query can return rows. So for instance it is
-// suitable for inserting rows and getting back ids.
-type Queryer interface {
-	Query(string, ...interface{}) (*sql.Rows, error)
+	Insert(context.Context, ...interface{}) error
+	Delete(context.Context, ...interface{}) (int64, error)
+	Get(context.Context, interface{}, ...interface{}) (interface{}, error)
+	Update(context.Context, ...interface{}) (int64, error)
+	Query(context.Context, string, ...interface{}) (*sql.Rows, error)
 }
 
 // Transaction extends an Executor and adds Commit and WithContext.

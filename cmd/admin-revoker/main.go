@@ -167,7 +167,7 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 }
 
 func (r *revoker) revokeBySerial(ctx context.Context, serial string, reasonCode revocation.Reason, skipBlockKey bool) error {
-	certObj, err := sa.SelectPrecertificate(r.dbMap, serial)
+	certObj, err := sa.SelectPrecertificate(ctx, r.dbMap, serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return berrors.NotFoundError("precertificate with serial %q not found", serial)
@@ -297,7 +297,7 @@ func (r *revoker) revokeByReg(ctx context.Context, regID int64, reasonCode revoc
 		return fmt.Errorf("couldn't fetch registration: %w", err)
 	}
 
-	certObjs, err := sa.SelectPrecertificates(r.dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
+	certObjs, err := sa.SelectPrecertificates(ctx, r.dbMap, "WHERE registrationID = :regID", map[string]interface{}{"regID": regID})
 	if err != nil {
 		return err
 	}
@@ -410,7 +410,7 @@ func (r *revoker) revokeByPrivateKey(ctx context.Context, privateKey string) err
 
 func (r *revoker) spkiHashInBlockedKeys(spkiHash []byte) (bool, error) {
 	var count int
-	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(context.TODO(), &count, "SELECT COUNT(*) as count FROM blockedKeys WHERE keyHash = ?", spkiHash)
 	if err != nil {
 		return false, err
 	}
@@ -423,7 +423,7 @@ func (r *revoker) spkiHashInBlockedKeys(spkiHash []byte) (bool, error) {
 
 func (r *revoker) countCertsMatchingSPKIHash(spkiHash []byte) (int, error) {
 	var count int
-	err := r.dbMap.SelectOne(&count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	err := r.dbMap.SelectOne(context.TODO(), &count, "SELECT COUNT(*) as count FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
 	if err != nil {
 		return 0, err
 	}
@@ -438,7 +438,7 @@ func (r *revoker) getRegIDsMatchingEmail(email string) ([]int64, error) {
 	// We use SQL `CONCAT` rather than interpolating with `+` or `%s` because we want to
 	// use a `?` placeholder for the email, which prevents SQL injection.
 	var regIDs []int64
-	_, err := r.dbMap.Select(&regIDs, "SELECT id FROM registrations WHERE contact LIKE CONCAT('%\"mailto:', ?, '\"%')", email)
+	_, err := r.dbMap.Select(context.TODO(), &regIDs, "SELECT id FROM registrations WHERE contact LIKE CONCAT('%\"mailto:', ?, '\"%')", email)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +449,7 @@ func (r *revoker) getRegIDsMatchingEmail(email string) ([]int64, error) {
 // return them on a channel.
 func (r *revoker) getCertsMatchingSPKIHash(spkiHash []byte) ([]string, error) {
 	var h []string
-	_, err := r.dbMap.Select(&h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
+	_, err := r.dbMap.Select(context.TODO(), &h, "SELECT certSerial FROM keyHashToSerial WHERE keyHash = ?", spkiHash)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("no certificates with a matching SPKI hash were found")

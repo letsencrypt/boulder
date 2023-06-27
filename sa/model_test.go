@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -287,7 +288,7 @@ func TestCertificatesTableContainsDuplicateSerials(t *testing.T) {
 	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// This should return the certificate that we just inserted.
-	certA, err := SelectCertificate(sa.dbMap, serialString)
+	certA, err := SelectCertificate(context.Background(), sa.dbMap, serialString)
 	test.AssertNotError(t, err, "received an error for a valid query")
 
 	// Insert a certificate with a serial of `1337` but for a different
@@ -296,7 +297,7 @@ func TestCertificatesTableContainsDuplicateSerials(t *testing.T) {
 	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// Despite a duplicate being present, this shouldn't error.
-	certB, err := SelectCertificate(sa.dbMap, serialString)
+	certB, err := SelectCertificate(context.Background(), sa.dbMap, serialString)
 	test.AssertNotError(t, err, "received an error for a valid query")
 
 	// Ensure that `certA` and `certB` are the same.
@@ -324,7 +325,7 @@ func insertCertificate(dbMap *db.WrappedMap, fc clock.FakeClock, hostname, cn st
 		Expires:        template.NotAfter,
 		DER:            certDer,
 	}
-	err := dbMap.Insert(cert)
+	err := dbMap.Insert(context.Background(), cert)
 	if err != nil {
 		return err
 	}

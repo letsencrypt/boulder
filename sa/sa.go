@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-gorp/gorp/v3"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
@@ -222,7 +223,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Expires:        parsed.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		// Select to see if precert exists
 		var row struct {
 			Count int64
@@ -314,7 +315,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		// Select to see if cert exists
 		var row struct {
 			Count int64
@@ -367,7 +368,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// for rate limits. Since the effects of failing these writes is slight
 	// miscalculation of rate limits we choose to not fail the AddCertificate
 	// operation if the rate limit update transaction fails.
-	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
@@ -381,6 +382,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		// Update the FQDN sets now that there is a final certificate to ensure rate
 		// limits are calculated correctly.
 		err = addFQDNSet(
+			ctx,
 			txWithCtx,
 			parsedCertificate.DNSNames,
 			core.SerialToString(parsedCertificate.SerialNumber),
@@ -451,7 +453,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
-	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
 		if len(req.NewAuthzs) != 0 {
@@ -541,7 +543,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fifth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(txWithCtx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
+		err = addOrderFQDNSet(ctx, txWithCtx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
 		if err != nil {
 			return nil, err
 		}
@@ -596,7 +598,7 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET beganProcessing = ?
@@ -627,7 +629,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 	if req.Id == 0 || req.Error == nil {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		om, err := orderToModel(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
@@ -667,7 +669,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 	if req.Id == 0 || req.CertificateSerial == "" {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		result, err := txWithCtx.Exec(`
 		UPDATE orders
 		SET certificateSerial = ?
@@ -686,7 +688,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 
 		// Delete the orderFQDNSet row for the order now that it has been finalized.
 		// We use this table for order reuse and should not reuse a finalized order.
-		err = deleteOrderFQDNSet(txWithCtx, req.Id)
+		err = deleteOrderFQDNSet(ctx, txWithCtx, req.Id)
 		if err != nil {
 			return nil, err
 		}

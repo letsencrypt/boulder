@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-gorp/gorp/v3"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -31,7 +32,7 @@ var (
 	validIncidentTableRegexp = regexp.MustCompile(`^incident_[0-9a-zA-Z_]{1,100}$`)
 )
 
-type certCountFunc func(db db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error)
+type certCountFunc func(db selector, domain string, timeRange *sapb.Range) (int64, time.Time, error)
 
 // SQLStorageAuthorityRO defines a read-only subset of a Storage Authority
 type SQLStorageAuthorityRO struct {
@@ -420,7 +421,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificate(ctx context.Context, req *sapb.
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	cert, err := SelectCertificate(ssa.dbReadOnlyMap.WithContext(ctx), req.Serial)
+	cert, err := SelectCertificate(ctx, ssa.dbReadOnlyMap, req.Serial)
 	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("certificate with serial %q not found", req.Serial)
 	}
@@ -446,7 +447,7 @@ func (ssa *SQLStorageAuthorityRO) GetCertificateStatus(ctx context.Context, req 
 		return nil, err
 	}
 
-	certStatus, err := SelectCertificateStatus(ssa.dbReadOnlyMap.WithContext(ctx), req.Serial)
+	certStatus, err := SelectCertificateStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
 	if db.IsNoRows(err) {
 		return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
 	}
@@ -472,7 +473,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevocationStatus(ctx context.Context, req *
 		return nil, fmt.Errorf("invalid certificate serial %s", req.Serial)
 	}
 
-	status, err := SelectRevocationStatus(ssa.dbReadOnlyMap.WithContext(ctx), req.Serial)
+	status, err := SelectRevocationStatus(ctx, ssa.dbReadOnlyMap, req.Serial)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return nil, berrors.NotFoundError("certificate status with serial %q not found", req.Serial)
@@ -658,7 +659,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		return nil, errIncompleteRequest
 	}
 
-	txn := func(txWithCtx db.Executor) (interface{}, error) {
+	txn := func(txWithCtx gorp.SqlExecutor) (interface{}, error) {
 		omObj, err := txWithCtx.Get(orderModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
@@ -890,6 +891,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 	)
 
 	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
 		&authzModels,
 		query,
 		params...,
@@ -1109,6 +1111,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 
 	var authzModels []authzModel
 	_, err := ssa.dbReadOnlyMap.Select(
+		ctx,
 		&authzModels,
 		query,
 		params...,
@@ -1144,7 +1147,7 @@ func (ssa *SQLStorageAuthorityRO) KeyBlocked(ctx context.Context, req *sapb.KeyB
 	}
 
 	var id int64
-	err := ssa.dbReadOnlyMap.SelectOne(&id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash)
+	err := ssa.dbReadOnlyMap.SelectOne(ctx, &id, `SELECT ID FROM blockedKeys WHERE keyHash = ?`, req.KeyHash)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return &sapb.Exists{Exists: false}, nil
@@ -1167,7 +1170,7 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 	}
 
 	var activeIncidents []incidentModel
-	_, err := ssa.dbReadOnlyMap.Select(&activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
+	_, err := ssa.dbReadOnlyMap.Select(ctx, &activeIncidents, `SELECT * FROM incidents WHERE enabled = 1`)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return &sapb.Incidents{}, nil
@@ -1178,7 +1181,7 @@ func (ssa *SQLStorageAuthorityRO) IncidentsForSerial(ctx context.Context, req *s
 	var incidentsForSerial []*sapb.Incident
 	for _, i := range activeIncidents {
 		var count int
-		err := ssa.dbIncidentsMap.SelectOne(&count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
+		err := ssa.dbIncidentsMap.SelectOne(ctx, &count, fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE serial = ?",
 			i.SerialTable), req.Serial)
 		if err != nil {
 			if db.IsNoRows(err) {

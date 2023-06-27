@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 )
@@ -100,10 +101,20 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 	return query, queryArgs
 }
 
+// Queryer offers the Query method. Note that this is not read-only (i.e. not
+// Selector), since a Query can be `INSERT`, `UPDATE`, etc. The difference
+// between Query and Exec is that Query can return rows. So for instance it is
+// suitable for inserting rows and getting back ids.
+// This expects to be run in a transaction with a context already attached.
+type Queryer interface {
+	Query(string, ...interface{}) (*sql.Rows, error)
+}
+
 // Insert inserts all the collected rows into the database represented by
 // `queryer`. `queryer` is assumed to already have a context attached. If a
 // non-empty returningColumn was provided, then it returns the list of values
 // from that column returned by the query.
+// This expects to be run in a transaction that already has a context attached.
 func (mi *MultiInserter) Insert(queryer Queryer) ([]int64, error) {
 	query, queryArgs := mi.query()
 	rows, err := queryer.Query(query, queryArgs...)

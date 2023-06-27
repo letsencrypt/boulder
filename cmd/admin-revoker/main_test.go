@@ -94,6 +94,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 	testCtx.log.Clear()
 
 	_, err = testIncidentsDbMap.Exec(
+		context.TODO(),
 		fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			core.SerialToString(entries[0].serial),

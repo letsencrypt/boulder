@@ -34,7 +34,7 @@ func randHash(t *testing.T) []byte {
 
 func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, hash []byte, by int64, checked bool) {
 	t.Helper()
-	_, err := dbMap.Exec(`INSERT INTO blockedKeys
+	_, err := dbMap.Exec(context.TODO(), `INSERT INTO blockedKeys
 		(keyHash, added, source, revokedBy, extantCertificatesChecked)
 		VALUES
 		(?, ?, ?, ?, ?)`,
@@ -93,6 +93,7 @@ func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, addr
 		contactStr = fmt.Sprintf("[%s]", strings.Join(contacts, ","))
 	}
 	res, err := dbMap.Exec(
+		context.TODO(),
 		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		[]byte{},
 		fmt.Sprintf("%x", jwkHash),
@@ -131,6 +132,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	}
 
 	_, err := dbMap.Exec(
+		context.TODO(),
 		`INSERT IGNORE INTO keyHashToSerial
 	     (keyHash, certNotAfter, certSerial) VALUES
 		 (?, ?, ?)`,
@@ -141,6 +143,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
 
 	_, err = dbMap.Exec(
+		context.TODO(),
 		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		serial,
 		status,
@@ -153,6 +156,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
 	_, err = dbMap.Exec(
+		context.TODO(),
 		"INSERT INTO precertificates (serial, registrationID, der, issued, expires) VALUES (?, ?, ?, ?, ?)",
 		serial,
 		regID,
@@ -163,6 +167,7 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
 	_, err = dbMap.Exec(
+		context.TODO(),
 		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
 		serial,
 		regID,
@@ -186,6 +191,7 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 
 	hashA := randHash(t)
 	_, err = dbMap.Exec(
+		context.TODO(),
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
 		fc.Now().Add(90*24*time.Hour-1*time.Second), // 90 days exclusive
@@ -322,6 +328,7 @@ func TestCertificateAbsent(t *testing.T) {
 	// Add an entry to keyHashToSerial but not to certificateStatus or certificate
 	// status, and expect an error.
 	_, err = dbMap.Exec(
+		context.TODO(),
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
 		fc.Now().Add(90*24*time.Hour-1*time.Second), // 90 days exclusive
@@ -388,7 +395,7 @@ func TestInvoke(t *testing.T) {
 	var checked struct {
 		ExtantCertificatesChecked bool
 	}
-	err = dbMap.SelectOne(&checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashA)
+	err = dbMap.SelectOne(context.TODO(), &checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashA)
 	test.AssertNotError(t, err, "failed to select row from blockedKeys")
 	test.AssertEquals(t, checked.ExtantCertificatesChecked, true)
 
@@ -402,7 +409,7 @@ func TestInvoke(t *testing.T) {
 	test.AssertEquals(t, noWork, false)
 
 	checked.ExtantCertificatesChecked = false
-	err = dbMap.SelectOne(&checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashB)
+	err = dbMap.SelectOne(context.TODO(), &checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashB)
 	test.AssertNotError(t, err, "failed to select row from blockedKeys")
 	test.AssertEquals(t, checked.ExtantCertificatesChecked, true)
 

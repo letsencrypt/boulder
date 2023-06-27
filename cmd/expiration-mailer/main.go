@@ -596,7 +596,7 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 			return nil, ctx.Err()
 		}
 		var cert core.Certificate
-		cert, err := sa.SelectCertificate(m.dbMap.WithContext(ctx), serial)
+		cert, err := sa.SelectCertificate(ctx, m.dbMap, serial)
 		if err != nil {
 			// We can get a NoRowsErr when processing a serial number corresponding
 			// to a precertificate with no final certificate. Since this certificate

@@ -85,6 +85,7 @@ func (ubk uncheckedBlockedKey) String() string {
 func (bkr *badKeyRevoker) countUncheckedKeys() (int, error) {
 	var count int
 	err := bkr.dbMap.SelectOne(
+		context.TODO(),
 		&count,
 		`SELECT COUNT(*)
 		FROM (SELECT 1 FROM blockedKeys
@@ -98,6 +99,7 @@ func (bkr *badKeyRevoker) countUncheckedKeys() (int, error) {
 func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
 	var row uncheckedBlockedKey
 	err := bkr.dbMap.SelectOne(
+		context.TODO(),
 		&row,
 		`SELECT keyHash, revokedBy
 		FROM blockedKeys
@@ -134,6 +136,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			CertSerial string
 		}
 		_, err := bkr.dbMap.Select(
+			context.TODO(),
 			&batch,
 			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? ORDER BY id LIMIT ?",
 			unchecked.KeyHash,
@@ -155,6 +158,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			// possible we could get multiple results for a single serial number, but they
 			// would be duplicates.
 			err = bkr.dbMap.SelectOne(
+				context.TODO(),
 				&unrevokedCert,
 				`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
 				FROM certificateStatus AS cs
@@ -182,7 +186,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 // markRowChecked updates a row in the blockedKeys table to mark a keyHash
 // as having been checked for extant unrevoked certificates.
 func (bkr *badKeyRevoker) markRowChecked(unchecked uncheckedBlockedKey) error {
-	_, err := bkr.dbMap.Exec("UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = ?", unchecked.KeyHash)
+	_, err := bkr.dbMap.Exec(context.TODO(), "UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = ?", unchecked.KeyHash)
 	return err
 }
 
@@ -193,7 +197,7 @@ func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64][]string, erro
 		var emails struct {
 			Contact []string
 		}
-		err := bkr.dbMap.SelectOne(&emails, "SELECT contact FROM registrations WHERE id = ?", id)
+		err := bkr.dbMap.SelectOne(context.TODO(), &emails, "SELECT contact FROM registrations WHERE id = ?", id)
 		if err != nil {
 			// ErrNoRows is not acceptable here since there should always be a
 			// row for the registration, even if there are no contacts

@@ -22,7 +22,7 @@ import (
 // dbSelector is a limited subset of the db.WrappedMap interface to allow for
 // easier mocking of mysql operations in tests.
 type dbSelector interface {
-	SelectOne(holder interface{}, query string, args ...interface{}) error
+	SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
@@ -42,7 +42,7 @@ type rocspSourceInterface interface {
 // TODO(#6295): Remove the dbMap after all deployments use the SA instead.
 type checkedRedisSource struct {
 	base    rocspSourceInterface
-	dbMap   dbSelector
+	dbMap   db.OneSelector
 	sac     sapb.StorageAuthorityReadOnlyClient
 	counter *prometheus.CounterVec
 	log     blog.Logger
@@ -70,7 +70,7 @@ func NewCheckedRedisSource(base *redisSource, dbMap dbSelector, sac sapb.Storage
 
 // newCheckRedisSource is an internal-only constructor that takes a private interface as a parameter.
 // We call this from tests and from NewCheckedRedisSource.
-func newCheckedRedisSource(base rocspSourceInterface, dbMap dbSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
+func newCheckedRedisSource(base rocspSourceInterface, dbMap db.OneSelector, sac sapb.StorageAuthorityReadOnlyClient, stats prometheus.Registerer, log blog.Logger) *checkedRedisSource {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "checked_rocsp_responses",
 		Help: "Count of OCSP requests/responses from checkedRedisSource, by result",
@@ -102,7 +102,7 @@ func (src *checkedRedisSource) Response(ctx context.Context, req *ocsp.Request) 
 		if src.sac != nil {
 			dbStatus, dbErr = src.sac.GetRevocationStatus(ctx, &sapb.Serial{Serial: serialString})
 		} else {
-			dbStatus, dbErr = sa.SelectRevocationStatus(src.dbMap.WithContext(ctx), serialString)
+			dbStatus, dbErr = sa.SelectRevocationStatus(ctx, src.dbMap, serialString)
 		}
 	}()
 	go func() {

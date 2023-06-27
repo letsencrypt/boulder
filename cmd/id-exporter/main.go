@@ -2,6 +2,7 @@ package notmain
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -71,6 +72,7 @@ func (i *idExporterResults) writeToFile(outfile string) error {
 func (c idExporter) findIDs() (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
+		context.Background(),
 		&holder,
 		`SELECT DISTINCT r.id
 		FROM registrations AS r
@@ -92,6 +94,7 @@ func (c idExporter) findIDs() (idExporterResults, error) {
 func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
 	var holder idExporterResults
 	_, err := c.dbMap.Select(
+		context.Background(),
 		&holder,
 		`SELECT SQL_BIG_RESULT
 			cert.registrationID AS id,
@@ -123,6 +126,7 @@ func (c idExporter) findIDsForHostnames(hostnames []string) (idExporterResults, 
 		// instead of overwriting it each time
 		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
 		_, err := c.dbMap.Select(
+			context.Background(),
 			&holder,
 			`SELECT DISTINCT c.registrationID AS id
 			FROM certificates AS c

@@ -350,7 +350,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
-	err = setupDBMap.Insert(&core.FQDNSet{
+	err = setupDBMap.Insert(context.Background(), &core.FQDNSet{
 		SetHash: sa.HashNames(names),
 		Serial:  core.SerialToString(serial2),
 		Issued:  testCtx.fc.Now().Add(time.Hour),
@@ -507,7 +507,7 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 	if err != nil {
 		return err
 	}
-	err = setupDBMap.Insert(&core.Certificate{
+	err = setupDBMap.Insert(context.Background(), &core.Certificate{
 		RegistrationID: cert.RegID,
 		Serial:         core.SerialToString(parsedCert.SerialNumber),
 		Issued:         parsedCert.NotBefore,
@@ -518,7 +518,7 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 		return fmt.Errorf("inserting certificate: %w", err)
 	}
 
-	return setupDBMap.Insert(&core.CertificateStatus{
+	return setupDBMap.Insert(context.Background(), &core.CertificateStatus{
 		Serial:                core.SerialToString(parsedCert.SerialNumber),
 		LastExpirationNagSent: lastNagSent,
 		Status:                core.OCSPStatusGood,
@@ -599,9 +599,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
-	err = setupDBMap.Insert(fqdnStatusD)
+	err = setupDBMap.Insert(context.Background(), fqdnStatusD)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
-	err = setupDBMap.Insert(fqdnStatusDRenewed)
+	err = setupDBMap.Insert(context.Background(), fqdnStatusDRenewed)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusDRenewed")
 	return []certDERWithRegID{certA, certB, certC, certD}
 }
@@ -752,7 +752,7 @@ func TestCertIsRenewed(t *testing.T) {
 		err = insertCertificate(certDERWithRegID{DER: certDer, RegID: reg.Id}, time.Time{})
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
 
-		err = setupDBMap.Insert(fqdnStatus)
+		err = setupDBMap.Insert(context.Background(), fqdnStatus)
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add fqdnStatus %s", testData.stringSerial))
 	}
 
@@ -860,7 +860,7 @@ func TestDontFindRevokedCert(t *testing.T) {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
-	_, err = setupDBMap.Exec("UPDATE certificateStatus SET status = ? WHERE serial = ?",
+	_, err = setupDBMap.Exec(context.Background(), "UPDATE certificateStatus SET status = ? WHERE serial = ?",
 		string(core.OCSPStatusRevoked), core.SerialToString(serial1))
 	test.AssertNotError(t, err, "revoking certificate")
 

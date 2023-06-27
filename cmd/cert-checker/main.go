@@ -86,8 +86,8 @@ type reportEntry struct {
 // parts of cert-checker rely on. Using this adapter shim allows tests to swap
 // out the saDbMap implementation.
 type certDB interface {
-	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error)
+	Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error)
+	SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error)
 }
 
 type certChecker struct {
@@ -139,6 +139,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	var retries int
 	for {
 		sni, err = c.dbMap.SelectNullInt(
+			context.TODO(),
 			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
 			args,
 		)
@@ -170,6 +171,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 
 	for {
 		certs, err := sa.SelectCertificates(
+			context.TODO(),
 			c.dbMap,
 			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
 			args,
@@ -246,7 +248,7 @@ var expectedExtensionContent = map[string][]byte{
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
 func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
-	authzs, err := sa.SelectAuthzsMatchingIssuance(c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
+	authzs, err := sa.SelectAuthzsMatchingIssuance(context.TODO(), c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}

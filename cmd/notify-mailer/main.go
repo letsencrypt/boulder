@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -261,14 +262,14 @@ func (m *mailer) resolveAddresses() (addressToRecipientMap, error) {
 // dbSelector abstracts over a subset of methods from `gorp.DbMap` objects to
 // facilitate mocking in unit tests.
 type dbSelector interface {
-	SelectOne(holder interface{}, query string, args ...interface{}) error
+	SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error
 }
 
 // getAddressForID queries the database for the email address associated with
 // the provided registration ID.
 func getAddressForID(id int64, dbMap dbSelector) ([]string, error) {
 	var result contactQueryResult
-	err := dbMap.SelectOne(&result,
+	err := dbMap.SelectOne(context.Background(), &result,
 		`SELECT id,
 			contact
 		FROM registrations

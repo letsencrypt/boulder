@@ -352,9 +352,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	err := tc.c.dbMap.Insert(certA)
+	err := tc.c.dbMap.Insert(context.Background(), certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
 	_, err = tc.c.dbMap.Exec(
+		context.Background(),
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-a",
 		serial1String,
@@ -377,9 +378,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
-	err = tc.c.dbMap.Insert(certB)
+	err = tc.c.dbMap.Insert(context.Background(), certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
 	_, err = tc.c.dbMap.Exec(
+		context.Background(),
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-b",
 		serial2String,
@@ -402,9 +404,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
-	err = tc.c.dbMap.Insert(certC)
+	err = tc.c.dbMap.Insert(context.Background(), certC)
 	test.AssertNotError(t, err, "Couldn't add certC")
 	_, err = tc.c.dbMap.Exec(
+		context.Background(),
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-c",
 		serial3String,
@@ -427,9 +430,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertD.NotAfter,
 		DER:            certDerD,
 	}
-	err = tc.c.dbMap.Insert(certD)
+	err = tc.c.dbMap.Insert(context.Background(), certD)
 	test.AssertNotError(t, err, "Couldn't add certD")
 	_, err = tc.c.dbMap.Exec(
+		context.Background(),
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-d",
 		serial4String,

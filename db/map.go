@@ -87,6 +87,10 @@ func (m *WrappedMap) SelectOne(ctx context.Context, holder interface{}, query st
 	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.SelectOne(holder, query, args...)
 }
 
+func (m *WrappedMap) SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.SelectNullInt(query, args...)
+}
+
 func (m *WrappedMap) Query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}.Query(query, args...)
 }
@@ -99,17 +103,17 @@ func (m *WrappedMap) WithContext(ctx context.Context) gorp.SqlExecutor {
 	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}
 }
 
-func (m *WrappedMap) Begin(context context.Context) (Transaction, error) {
+func (m *WrappedMap) Begin(context context.Context) (WrappedTransaction, error) {
 	tx, err := m.DbMap.Begin()
 	if err != nil {
-		return tx, ErrDatabaseOp{
+		return WrappedTransaction{nil}, ErrDatabaseOp{
 			Op:  "begin transaction",
 			Err: err,
 		}
 	}
 	return WrappedTransaction{
 		Transaction: tx,
-	}.WithContext(ctx), err
+	}, err
 }
 
 // WrappedTransaction wraps a *gorp.Transaction such that its major functions
