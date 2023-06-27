@@ -1,4 +1,0 @@
-UsageRequestsPerIPv6Range:2001:0db8:0000::/48:
-  burst: 40
-  count: 40
-  period: 1s

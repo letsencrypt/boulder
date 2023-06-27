@@ -23,74 +23,22 @@ type limit struct {
 	Period config.Duration
 }
 
+func validateLimit(l limit) error {
+	if l.Burst <= 0 {
+		return fmt.Errorf("invalid burst '%d', must be > 0", l.Burst)
+	}
+	if l.Count <= 0 {
+		return fmt.Errorf("invalid count '%d', must be > 0", l.Count)
+	}
+	if l.Period.Duration <= 0 {
+		return fmt.Errorf("invalid period '%s', must be > 0", l.Period)
+	}
+	return nil
+}
+
 type limits map[string]limit
 
-func parseDefaultName(k string) (string, error) {
-	name, ok := stringToName[k]
-	if !ok {
-		return "", fmt.Errorf(
-			"unrecognized limit %q, must be one of %v", k, limitNames)
-	}
-	return nameToEnumString(name), nil
-}
-
-func parseOverrideNameId(k string) (string, string, error) {
-	nameAndId := strings.SplitN(k, ":", 2)
-	nameStr := nameAndId[0]
-	if nameStr == "" {
-		return "", "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", k)
-	}
-	id := nameAndId[1]
-	if id == "" {
-		return "", "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", k)
-	}
-
-	name, ok := stringToName[nameStr]
-	if !ok {
-		return "", "", fmt.Errorf(
-			"unrecognized limit %q, must be one of %v", nameStr, limitNames)
-	}
-	err := validateIdForName(name, id)
-	if err != nil {
-		return "", "", fmt.Errorf("parsing limit %q: %w", k, err)
-	}
-	return nameToEnumString(name), id, nil
-}
-
-// parseLimits parses the limits loaded from YAML, validates them, and returns a
-// map of limits with the limit names interned to their enum values.
-func parseLimits(fromFile limits) (limits, error) {
-	parsed := make(map[string]limit, len(fromFile))
-	for k, v := range fromFile {
-		if v.Burst <= 0 {
-			return nil, fmt.Errorf("invalid burst %q, in limit %q, must be <= 0", v.Burst, k)
-		}
-		if v.Count <= 0 {
-			return nil, fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Count, k)
-		}
-		if v.Period.Duration <= 0 {
-			return nil, fmt.Errorf("invalid count %q, in limit %q, must be <= 0", v.Period, k)
-		}
-		if strings.Contains(k, ":") {
-			// Override limit
-			name, id, err := parseOverrideNameId(k)
-			if err != nil {
-				return nil, err
-			}
-			parsed[name+":"+id] = v
-		} else {
-			// Default limit
-			name, err := parseDefaultName(k)
-			if err != nil {
-				return nil, err
-			}
-			parsed[name] = v
-		}
-	}
-	return parsed, nil
-}
-
-// loadLimits loads both default and override limits from YAML.
+// loadLimits marshals the YAML file at path into a map of limis.
 func loadLimits(path string) (limits, error) {
 	lm := make(limits)
 	data, err := os.ReadFile(path)
@@ -101,5 +49,79 @@ func loadLimits(path string) (limits, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseLimits(lm)
+	return lm, nil
+}
+
+// parseOverrideNameId is broken out for ease of testing.
+func parseOverrideNameId(key string) (*Name, string, error) {
+	if !strings.Contains(key, ":") {
+		// Avoids a potential panic in strings.SplitN below.
+		return nil, "", fmt.Errorf("invalid override %q, must be formatted 'name:id'", key)
+	}
+	nameAndId := strings.SplitN(key, ":", 2)
+	nameStr := nameAndId[0]
+	if nameStr == "" {
+		return nil, "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", key)
+	}
+
+	name, ok := stringToName[nameStr]
+	if !ok {
+		return nil, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, limitNames)
+	}
+	id := nameAndId[1]
+	if id == "" {
+		return nil, "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", key)
+	}
+	return &name, id, nil
+}
+
+// loadAndParseOverrideLimits loads override limits from YAML, validates them,
+// and parses them into a map of limits keyed by 'Name:id'.
+func loadAndParseOverrideLimits(path string) (limits, error) {
+	fromFile, err := loadLimits(path)
+	if err != nil {
+		return nil, err
+	}
+	parsed := make(limits, len(fromFile))
+
+	for k, v := range fromFile {
+		err = validateLimit(v)
+		if err != nil {
+			return nil, fmt.Errorf("validating override limit %q: %w", k, err)
+		}
+		name, id, err := parseOverrideNameId(k)
+		if err != nil {
+			return nil, fmt.Errorf("parsing override limit %q: %w", k, err)
+		}
+		err = validateIdForName(*name, id)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"validating name %s and id %q for override limit %q: %w", nameToString[*name], id, k, err)
+		}
+		parsed[bucketKey(*name, id)] = v
+	}
+	return parsed, nil
+}
+
+// loadAndParseDefaultLimits loads default limits from YAML, validates them, and
+// parses them into a map of limits keyed by 'Name'.
+func loadAndParseDefaultLimits(path string) (limits, error) {
+	fromFile, err := loadLimits(path)
+	if err != nil {
+		return nil, err
+	}
+	parsed := make(limits, len(fromFile))
+
+	for k, v := range fromFile {
+		err := validateLimit(v)
+		if err != nil {
+			return nil, fmt.Errorf("parsing default limit %q: %w", k, err)
+		}
+		name, ok := stringToName[k]
+		if !ok {
+			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
+		}
+		parsed[nameToEnumString(name)] = v
+	}
+	return parsed, nil
 }

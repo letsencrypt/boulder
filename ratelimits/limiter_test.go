@@ -17,7 +17,7 @@ const (
 //   - 'UsageRequestsPerIPv4Address' burst: 20 count: 20 period: 1s
 func newTestLimiter(t *testing.T) (*Limiter, clock.FakeClock) {
 	clk := clock.NewFake()
-	l, err := NewLimiter(clk, newInmem(), "testdata/defaults.yml", "")
+	l, err := NewLimiter(clk, newInmem(), "testdata/working_default.yml", "")
 	test.AssertNotError(t, err, "should not error")
 	return l, clk
 }
@@ -28,7 +28,7 @@ func newTestLimiter(t *testing.T) (*Limiter, clock.FakeClock) {
 //   - 'UsageRequestsPerIPv4Address:10.0.0.2' burst: 40 count: 40 period: 1s
 func newTestLimiterWithOverrides(t *testing.T) (*Limiter, clock.FakeClock) {
 	clk := clock.NewFake()
-	l, err := NewLimiter(clk, newInmem(), "testdata/defaults.yml", "testdata/overrides.yml")
+	l, err := NewLimiter(clk, newInmem(), "testdata/working_default.yml", "testdata/working_override.yml")
 	test.AssertNotError(t, err, "should not error")
 	return l, clk
 }

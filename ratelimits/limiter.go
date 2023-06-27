@@ -17,6 +17,8 @@ var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 // ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
+// ErrBucketAlreadyFull indicates that the bucket already has reached its
+// maximum capacity.
 var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
 
 // Limiter provides a high-level interface for rate limiting requests by
@@ -41,18 +43,18 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string) (*Li
 	limiter := &Limiter{source: source, clk: clk}
 
 	var err error
-	limiter.defaults, err = loadLimits(defaults)
+	limiter.defaults, err = loadAndParseDefaultLimits(defaults)
 	if err != nil {
 		return nil, err
 	}
 
 	if overrides == "" {
-		// No overrides specified.
+		// No overrides specified, initialize an empty map.
 		limiter.overrides = make(limits)
 		return limiter, nil
 	}
 
-	limiter.overrides, err = loadLimits(overrides)
+	limiter.overrides, err = loadAndParseOverrideLimits(overrides)
 	if err != nil {
 		return nil, err
 	}
