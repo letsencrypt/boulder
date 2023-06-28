@@ -136,6 +136,26 @@ func Test_validateIdForName(t *testing.T) {
 	err = validateIdForName(CertificatesPerDomainPerAccount, "1234567890:lol")
 	test.AssertError(t, err, "valid regId with bad domain")
 
+	// Empty regId with good domain.
+	err = validateIdForName(CertificatesPerDomainPerAccount, ":lol")
+	test.AssertError(t, err, "valid regId with bad domain")
+
+	// Valid regId with empty domain.
+	err = validateIdForName(CertificatesPerDomainPerAccount, "1234567890:")
+	test.AssertError(t, err, "valid regId with empty domain")
+
+	// Empty regId with empty domain, no separator.
+	err = validateIdForName(CertificatesPerDomainPerAccount, "")
+	test.AssertError(t, err, "empty regId with empty domain, no separator")
+
+	// Instead of anything we would expect, we get lol.
+	err = validateIdForName(CertificatesPerDomainPerAccount, "lol")
+	test.AssertError(t, err, "instead of anything we would expect, just lol")
+
+	// Valid regId with good domain and a secret third separator.
+	err = validateIdForName(CertificatesPerDomainPerAccount, "1234567890:example.com:lol")
+	test.AssertError(t, err, "valid regId with good domain and a secret third separator")
+
 	// Valid regId with bad FQDN set.
 	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:lol..99")
 	test.AssertError(t, err, "valid regId with bad FQDN set")
@@ -143,6 +163,26 @@ func Test_validateIdForName(t *testing.T) {
 	// Bad regId with good FQDN set.
 	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "lol:example.com,example.org")
 	test.AssertError(t, err, "bad regId with good FQDN set")
+
+	// Empty regId with good FQDN set.
+	err = validateIdForName(CertificatesPerFQDNSetPerAccount, ":example.com,example.org")
+	test.AssertError(t, err, "empty regId with good FQDN set")
+
+	// Good regId with empty FQDN set.
+	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:")
+	test.AssertError(t, err, "good regId with empty FQDN set")
+
+	// Empty regId with empty FQDN set, no separator.
+	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "")
+	test.AssertError(t, err, "empty regId with empty FQDN set, no separator")
+
+	// Instead of anything we would expect, just lol.
+	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "lol")
+	test.AssertError(t, err, "instead of anything we would expect, just lol")
+
+	// Valid regId with good FQDN set and a secret third separator.
+	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:example.com,example.org:lol")
+	test.AssertError(t, err, "valid regId with good FQDN set and a secret third separator")
 }
 
 func Test_loadAndParseOverrideLimits(t *testing.T) {

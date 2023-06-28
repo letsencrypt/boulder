@@ -42,7 +42,7 @@ func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 19)
-	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// Verify our ResetIn timing is correct. 1 second == 1000 milliseconds and
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
@@ -66,7 +66,7 @@ func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 19)
-	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// Verify our ResetIn timing is correct. 1 second == 1000 milliseconds and
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
@@ -77,7 +77,7 @@ func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 19)
-	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// Verify our ResetIn is correct. 1 second == 1000 milliseconds and
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
@@ -151,7 +151,7 @@ func Test_Limiter_with_defaults(t *testing.T) {
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
-	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// Verify our ResetIn is correct. 1 second == 1000 milliseconds and
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.RetryIn, time.Millisecond*50)
 
@@ -209,7 +209,7 @@ func Test_Limiter_with_limit_overrides(t *testing.T) {
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
-	// Verify our RetryIn timing is correct. 1 second == 1000 milliseconds and
+	// Verify our ResetIn is correct. 1 second == 1000 milliseconds and
 	// 1000/40 = 25 milliseconds per request.
 	test.AssertEquals(t, d.RetryIn, time.Millisecond*25)
 
