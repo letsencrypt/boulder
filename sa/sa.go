@@ -382,7 +382,6 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		// Update the FQDN sets now that there is a final certificate to ensure rate
 		// limits are calculated correctly.
 		err = addFQDNSet(
-			ctx,
 			txWithCtx,
 			parsedCertificate.DNSNames,
 			core.SerialToString(parsedCertificate.SerialNumber),
@@ -543,7 +542,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		}
 
 		// Fifth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, txWithCtx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
+		err = addOrderFQDNSet(txWithCtx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
 		if err != nil {
 			return nil, err
 		}
@@ -688,7 +687,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 
 		// Delete the orderFQDNSet row for the order now that it has been finalized.
 		// We use this table for order reuse and should not reuse a finalized order.
-		err = deleteOrderFQDNSet(ctx, txWithCtx, req.Id)
+		err = deleteOrderFQDNSet(txWithCtx, req.Id)
 		if err != nil {
 			return nil, err
 		}

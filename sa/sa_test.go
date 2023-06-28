@@ -126,7 +126,7 @@ func createPendingAuthorization(t *testing.T, sa *SQLStorageAuthority, domain st
 		Token:           token,
 	}
 
-	err = sa.dbMap.Insert(&am)
+	err = sa.dbMap.Insert(context.Background(), &am)
 	test.AssertNotError(t, err, "creating test authorization")
 
 	return am.ID
@@ -307,6 +307,7 @@ func TestReplicationLagRetries(t *testing.T) {
 func findIssuedName(dbMap db.OneSelector, name string) (string, error) {
 	var issuedNamesSerial string
 	err := dbMap.SelectOne(
+		context.Background(),
 		&issuedNamesSerial,
 		`SELECT serial FROM issuedNames
 		WHERE reversedName = ?
@@ -510,7 +511,7 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	test.AssertNotError(t, err, "failed to add precert")
 
 	var keyHashes []keyHashModel
-	_, err = sa.dbMap.Select(&keyHashes, "SELECT * FROM keyHashToSerial")
+	_, err = sa.dbMap.Select(context.Background(), &keyHashes, "SELECT * FROM keyHashToSerial")
 	test.AssertNotError(t, err, "failed to retrieve rows from keyHashToSerial")
 	test.AssertEquals(t, len(keyHashes), 1)
 	test.AssertEquals(t, keyHashes[0].CertSerial, serial)
@@ -668,7 +669,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 	interlocker.Add(len(names))
 	sa.parallelismPerRPC = len(names)
 	oldCertCountFunc := sa.countCertificatesByName
-	sa.countCertificatesByName = func(sel db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
+	sa.countCertificatesByName = func(sel selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
 		interlocker.Done()
 		interlocker.Wait()
 		return oldCertCountFunc(sel, domain, timeRange)
@@ -851,7 +852,9 @@ func TestFQDNSets(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	tx, err := sa.dbMap.Begin()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tx, err := sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 	names := []string{"a.example.com", "B.example.com"}
 	expires := fc.Now().Add(time.Hour * 2).UTC()
@@ -877,7 +880,7 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertEquals(t, count.Count, int64(1))
 
 	// add another valid set
-	tx, err = sa.dbMap.Begin()
+	tx, err = sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 	err = addFQDNSet(tx, names, "anotherSerial", issued, expires)
 	test.AssertNotError(t, err, "Failed to add name set")
@@ -890,7 +893,7 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertEquals(t, count.Count, int64(2))
 
 	// add an expired set
-	tx, err = sa.dbMap.Begin()
+	tx, err = sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 	err = addFQDNSet(
 		tx,
@@ -912,7 +915,9 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
-	tx, err := sa.dbMap.Begin()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tx, err := sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 
 	names := []string{"a.example.com", "B.example.com"}
@@ -948,7 +953,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[len(resp.Timestamps)-1]).UTC())
 
 	// Add another issuance for names inside the window.
-	tx, err = sa.dbMap.Begin()
+	tx, err = sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 	err = addFQDNSet(tx, names, "anotherSerial", firstIssued, expires)
 	test.AssertNotError(t, err, "Failed to add name set")
@@ -962,7 +967,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertEquals(t, firstIssued, time.Unix(0, resp.Timestamps[len(resp.Timestamps)-1]).UTC())
 
 	// Add another issuance for names but just outside the window.
-	tx, err = sa.dbMap.Begin()
+	tx, err = sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 	err = addFQDNSet(tx, names, "yetAnotherSerial", firstIssued.Add(-window), expires)
 	test.AssertNotError(t, err, "Failed to add name set")
@@ -984,7 +989,7 @@ func TestFQDNSetsExists(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to check FQDN set existence")
 	test.Assert(t, !exists.Exists, "FQDN set shouldn't exist")
 
-	tx, err := sa.dbMap.Begin()
+	tx, err := sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 	expires := fc.Now().Add(time.Hour * 2).UTC()
 	issued := fc.Now()
@@ -1261,12 +1266,12 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 	test.AssertDeepEquals(t, order.V2Authorizations, []int64{1, 2, 3, 4})
 
 	var authzIDs []int64
-	_, err = sa.dbMap.Select(&authzIDs, "SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;", order.Id)
+	_, err = sa.dbMap.Select(context.Background(), &authzIDs, "SELECT authzID FROM orderToAuthz2 WHERE orderID = ?;", order.Id)
 	test.AssertNotError(t, err, "Failed to count orderToAuthz entries")
 	test.AssertEquals(t, len(authzIDs), 4)
 	test.AssertDeepEquals(t, authzIDs, []int64{1, 2, 3, 4})
 
-	names, err := namesForOrder(sa.dbReadOnlyMap, order.Id)
+	names, err := namesForOrder(sa.dbReadOnlyMap.WithContext(context.Background()), order.Id)
 	test.AssertNotError(t, err, "namesForOrder errored")
 	test.AssertEquals(t, len(names), 4)
 	test.AssertDeepEquals(t, names, []string{"com.a", "com.b", "com.c", "com.d"})
@@ -1342,7 +1347,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 	test.AssertNotError(t, err, "sa.NewOrderAndAuthzs failed")
 
 	// Safely get the authz for the order we created above.
-	obj, err := sa.dbReadOnlyMap.Get(authzModel{}, order.V2Authorizations[0])
+	obj, err := sa.dbReadOnlyMap.Get(context.Background(), authzModel{}, order.V2Authorizations[0])
 	test.AssertNotError(t, err, fmt.Sprintf("authorization %d not found", order.V2Authorizations[0]))
 
 	// To access the data stored in obj at compile time, we type assert obj
@@ -1558,17 +1563,17 @@ func TestGetAuthorizations2(t *testing.T) {
 
 	// Associate authorizations with an order so that GetAuthorizations2 thinks
 	// they are WFE2 authorizations.
-	err := sa.dbMap.Insert(&orderToAuthzModel{
+	err := sa.dbMap.Insert(context.Background(), &orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDA,
 	})
 	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(&orderToAuthzModel{
+	err = sa.dbMap.Insert(context.Background(), &orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDB,
 	})
 	test.AssertNotError(t, err, "sa.dbMap.Insert failed")
-	err = sa.dbMap.Insert(&orderToAuthzModel{
+	err = sa.dbMap.Insert(context.Background(), &orderToAuthzModel{
 		OrderID: 1,
 		AuthzID: authzIDC,
 	})
@@ -2175,7 +2180,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	serial := "thrilla"
 
 	// Add a FQDN set for the names so that it will be considered a renewal
-	tx, err := sa.dbMap.Begin()
+	tx, err := sa.dbMap.Begin(ctx)
 	test.AssertNotError(t, err, "Failed to open transaction")
 	err = addFQDNSet(tx, names, serial, issued, expires)
 	test.AssertNotError(t, err, "Failed to add name set")
@@ -2200,6 +2205,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 		t.Helper()
 		var count int
 		err := sa.dbMap.SelectOne(
+			context.Background(),
 			&count,
 			`SELECT COUNT(*) FROM issuedNames
 		WHERE reversedName = ?
@@ -2926,7 +2932,7 @@ func TestIncidentsForSerial(t *testing.T) {
 	defer test.ResetIncidentsTestDatabase(t)
 
 	// Add a disabled incident.
-	err = testSADbMap.Insert(&incidentModel{
+	err = testSADbMap.Insert(context.Background(), &incidentModel{
 		SerialTable: "incident_foo",
 		URL:         "https://example.com/foo-incident",
 		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
@@ -2940,7 +2946,7 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add an enabled incident.
-	err = testSADbMap.Insert(&incidentModel{
+	err = testSADbMap.Insert(context.Background(), &incidentModel{
 		SerialTable: "incident_bar",
 		URL:         "https://example.com/test-incident",
 		RenewBy:     sa.clk.Now().Add(time.Hour * 24 * 7),
@@ -2956,6 +2962,7 @@ func TestIncidentsForSerial(t *testing.T) {
 		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
 	}
 	_, err = testIncidentsDbMap.Exec(
+		context.Background(),
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertA.Serial,
@@ -2979,6 +2986,7 @@ func TestIncidentsForSerial(t *testing.T) {
 		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
 	}
 	_, err = testIncidentsDbMap.Exec(
+		context.Background(),
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
 			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertB.Serial,
@@ -3086,6 +3094,7 @@ func TestSerialsForIncident(t *testing.T) {
 		mrand.Seed(time.Now().Unix())
 		randInt := func() int64 { return mrand.Int63() }
 		_, err := testIncidentsDbMap.Exec(
+			context.Background(),
 			fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
 				"serial, registrationID, orderID, lastNoticeSent",
 				i,

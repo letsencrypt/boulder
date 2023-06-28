@@ -341,8 +341,7 @@ func TestWrappedMap(t *testing.T) {
 	// transaction that continues to operate in the expected fashion.
 	tx, err := dbMap.Begin(context.Background())
 	test.AssertNotError(t, err, "unexpected error beginning transaction")
-	_, err = tx.Get(context.Background(), reg)
-	test.AssertNotError(t, err, "unexpected error beginning transaction")
+	_, err = tx.Get(reg)
 	test.AssertError(t, err, "expected err Getting Registration w/o type converter")
 	dbOpErr = mustDbErr(err)
 	test.AssertEquals(t, dbOpErr.Op, "get")

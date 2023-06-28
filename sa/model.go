@@ -893,8 +893,10 @@ type orderFQDNSet struct {
 	Expires        time.Time
 }
 
-func addFQDNSet(ctx context.Context, db inserter, names []string, serial string, issued time.Time, expires time.Time) error {
-	return db.Insert(ctx,
+// addFQDNSet adds an FQDNSet to the database. It expects `db` to be a transaction
+// and therefore already have a context applied.
+func addFQDNSet(db inserter, names []string, serial string, issued time.Time, expires time.Time) error {
+	return db.Insert(
 		&core.FQDNSet{
 			SetHash: HashNames(names),
 			Serial:  serial,
@@ -904,17 +906,15 @@ func addFQDNSet(ctx context.Context, db inserter, names []string, serial string,
 }
 
 // addOrderFQDNSet creates a new OrderFQDNSet row using the provided
-// information. This function accepts a transaction so that the orderFqdnSet
-// addition can take place within the order addition transaction. The caller is
-// required to rollback the transaction if an error is returned.
+// information. This function expected `db` to be a transaction with a context
+// already applied.
 func addOrderFQDNSet(
-	ctx context.Context,
 	db inserter,
 	names []string,
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
-	return db.Insert(ctx, &orderFQDNSet{
+	return db.Insert(&orderFQDNSet{
 		SetHash:        HashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
@@ -927,7 +927,6 @@ func addOrderFQDNSet(
 // take place within the finalization transaction. The caller is required to
 // rollback the transaction if an error is returned.
 func deleteOrderFQDNSet(
-	ctx context.Context,
 	db selectExecer,
 	orderID int64) error {
 
