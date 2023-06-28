@@ -124,7 +124,7 @@ A subscriber calls the newFoo endpoint for the first time with an IP address of
     - they can make 19 more requests in the next 50ms,
     - they do not need to wait between requests,
     - if they make 19 requests in the next 50ms they will need to wait 50ms before
-      making another request and to make 20 more requests,
+      making another request and 1s to make 20 more requests,
     - thus if they make 1 request every 50ms, they will never be denied.
 
 Now, the subscriber makes another request immediately:
