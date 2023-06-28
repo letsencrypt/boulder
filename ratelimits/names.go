@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
+
+	"github.com/letsencrypt/boulder/policy"
 )
 
 // Name is an enumeration of all rate limit names. It is used to intern rate
@@ -15,25 +18,8 @@ import (
 type Name int
 
 const (
-	// UsageRequestsPerIPv4Address uses bucket key 'enum:ipv4address'. Usage
-	// related paths are: new-nonce, new-account, new-order, or revoke-cert.
-	UsageRequestsPerIPv4Address Name = iota
-
-	// UsageRequestsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
-	// address range must be a /48. Usage related paths are: new-nonce,
-	// new-account, new-order, or revoke-cert.
-	UsageRequestsPerIPv6Range
-
-	// InfoRequestsPerIPv4Address uses bucket key 'enum:ipv4address'. Info
-	// related paths are: directory and acme.
-	InfoRequestsPerIPv4Address
-
-	// InfoRequestsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
-	// address range must be a /48. Info related paths are: directory and acme.
-	InfoRequestsPerIPv6Range
-
-	// NewRegistrationsPerIPv4Address uses bucket key 'enum:ipv4address'.
-	NewRegistrationsPerIPv4Address
+	// NewRegistrationsPerIPAddress uses bucket key 'enum:ipAddress'.
+	NewRegistrationsPerIPAddress Name = iota
 
 	// NewRegistrationsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
 	// address range must be a /48.
@@ -59,11 +45,7 @@ const (
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
-	UsageRequestsPerIPv4Address:      "UsageRequestsPerIPv4Address",
-	UsageRequestsPerIPv6Range:        "UsageRequestsPerIPv6Range",
-	InfoRequestsPerIPv4Address:       "InfoRequestsPerIPv4Address",
-	InfoRequestsPerIPv6Range:         "InfoRequestsPerIPv6Range",
-	NewRegistrationsPerIPv4Address:   "NewRegistrationsPerIPv4Address",
+	NewRegistrationsPerIPAddress:     "NewRegistrationsPerIPAddress",
 	NewRegistrationsPerIPv6Range:     "NewRegistrationsPerIPv6Range",
 	NewOrdersPerAccount:              "NewOrdersPerAccount",
 	FailedAuthorizationsPerAccount:   "FailedAuthorizationsPerAccount",
@@ -71,12 +53,11 @@ var nameToString = map[Name]string{
 	CertificatesPerFQDNSetPerAccount: "CertificatesPerFQDNSetPerAccount",
 }
 
-// validIPv4Address validates that the provided string is a valid IPv4 address.
-func validIPv4Address(id string) error {
+// validIPAddress validates that the provided string is a valid IP address.
+func validIPAddress(id string) error {
 	ip := net.ParseIP(id)
-	if ip == nil || ip.To4() == nil {
-		return fmt.Errorf(
-			"invalid address, %q must be IPv4 address", id)
+	if ip == nil {
+		return fmt.Errorf("invalid IP address, %q must be an IP address", id)
 	}
 	return nil
 }
@@ -108,26 +89,74 @@ func validateRegId(id string) error {
 	return nil
 }
 
+// validateRegIdDomain validates that the provided string is formatted
+// 'regId:domain', where regId is an ACME registration Id and domain is a single
+// domain name.
+func validateRegIdDomain(id string) error {
+	parts := strings.SplitN(id, ":", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf(
+			"invalid regId:domain, %q must be formatted 'regId:domain'", id)
+	}
+	if validateRegId(parts[0]) != nil {
+		return fmt.Errorf(
+			"invalid regId, %q must be formatted 'regId:domain'", id)
+	}
+	if policy.ValidDomain(parts[1]) != nil {
+		return fmt.Errorf(
+			"invalid domain, %q must be formatted 'regId:domain'", id)
+	}
+	return nil
+}
+
+// validateRegIdFQDNSet validates that the provided string is formatted
+// 'regId:fqdnSet', where regId is an ACME registration Id and fqdnSet is a
+// comma-separated list of domain names.
+func validateRegIdFQDNSet(id string) error {
+	parts := strings.SplitN(id, ":", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf(
+			"invalid regId:fqdnSet, %q must be formatted 'regId:fqdnSet'", id)
+	}
+	if validateRegId(parts[0]) != nil {
+		return fmt.Errorf(
+			"invalid regId, %q must be formatted 'regId:fqdnSet'", id)
+	}
+	domains := strings.Split(parts[1], ",")
+	if len(domains) == 0 {
+		return fmt.Errorf(
+			"invalid fqdnSet, %q must be formatted 'regId:fqdnSet'", id)
+	}
+	for _, domain := range domains {
+		if policy.ValidDomain(domain) != nil {
+			return fmt.Errorf(
+				"invalid domain, %q must be formatted 'regId:fqdnSet'", id)
+		}
+	}
+	return nil
+}
+
 func validateIdForName(name Name, id string) error {
 	switch name {
-	case UsageRequestsPerIPv4Address, InfoRequestsPerIPv4Address:
-		// 'enum:ipv4address'
-		return validIPv4Address(id)
+	case NewRegistrationsPerIPAddress:
+		// 'enum:ipaddress'
+		return validIPAddress(id)
 
-	case UsageRequestsPerIPv6Range, InfoRequestsPerIPv6Range:
+	case NewRegistrationsPerIPv6Range:
 		// 'enum:ipv6rangeCIDR'
 		return validIPv6RangeCIDR(id)
 
-	case NewOrdersPerAccount:
+	case NewOrdersPerAccount, FailedAuthorizationsPerAccount:
 		// 'enum:regId'
 		return validateRegId(id)
 
-	case NewRegistrationsPerIPv4Address,
-		NewRegistrationsPerIPv6Range,
-		FailedAuthorizationsPerAccount,
-		CertificatesPerDomainPerAccount,
-		CertificatesPerFQDNSetPerAccount:
-		return fmt.Errorf("overrides are not supported for limit %q", name)
+	case CertificatesPerDomainPerAccount:
+		// 'enum:regId:domain'
+		return validateRegIdDomain(id)
+
+	case CertificatesPerFQDNSetPerAccount:
+		// 'enum:regId:fqdnSet'
+		return validateRegIdFQDNSet(id)
 
 	default:
 		// This should never happen.

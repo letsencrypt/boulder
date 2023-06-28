@@ -1,12 +1,12 @@
-UsageRequestsPerIPv4Address:10.0.0.2:
+NewRegistrationsPerIPAddress:10.0.0.2:
   burst: 40
   count: 40
   period: 1s
-UsageRequestsPerIPv4Address:10.0.0.5:
+NewRegistrationsPerIPAddress:10.0.0.5:
   burst: 40
   count: 40
   period: 1s
-UsageRequestsPerIPv4Address:lol:
+NewRegistrationsPerIPAddress:lol:
   burst: 40
   count: 40
   period: 1s

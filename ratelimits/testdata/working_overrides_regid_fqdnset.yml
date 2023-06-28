@@ -1,0 +1,12 @@
+CertificatesPerFQDNSetPerAccount:12345678:example.com:
+  burst: 40
+  count: 40
+  period: 1s
+CertificatesPerFQDNSetPerAccount:12345678:example.com,example.net:
+  burst: 50
+  count: 50
+  period: 2s
+CertificatesPerFQDNSetPerAccount:12345678:example.com,example.net,example.org:
+  burst: 60
+  count: 60
+  period: 3s

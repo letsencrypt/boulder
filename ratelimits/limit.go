@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/config"
+	"github.com/letsencrypt/boulder/sa"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -97,6 +98,20 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 		if err != nil {
 			return nil, fmt.Errorf(
 				"validating name %s and id %q for override limit %q: %w", nameToString[*name], id, k, err)
+		}
+		if *name == CertificatesPerFQDNSetPerAccount {
+			// FQDNSet hashes are not a nice thing to ask for in a config file,
+			// so we allow the user to specify a comma-separated list of FQDNs
+			// and compute the hash here.
+			regIdDomains := strings.SplitN(id, ":", 2)
+			if len(regIdDomains) != 2 {
+				// Should never happen, the Id format was validated above.
+				return nil, fmt.Errorf("invalid override limit %q, must be formatted 'name:id'", k)
+			}
+			regId := regIdDomains[0]
+			domains := strings.Split(regIdDomains[1], ",")
+			fqdnSet := sa.HashNames(domains)
+			id = fmt.Sprintf("%s:%s", regId, fqdnSet)
 		}
 		parsed[bucketKey(*name, id)] = v
 	}

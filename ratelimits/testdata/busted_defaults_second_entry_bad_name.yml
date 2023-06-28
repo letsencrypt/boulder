@@ -1,4 +1,4 @@
-UsageRequestsPerIPv4Address:
+NewRegistrationsPerIPAddress:
   burst: 20
   count: 20
   period: 1s
