@@ -45,7 +45,7 @@ type DatabaseMap interface {
 	OneSelector
 	SelectExecer
 	Insert(context.Context, ...interface{}) error
-	Begin(context.Context) (Transaction, error)
+	Begin(context.Context) (WrappedTransaction, error)
 	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
@@ -59,13 +59,6 @@ type Executor interface {
 	Get(context.Context, interface{}, ...interface{}) (interface{}, error)
 	Update(context.Context, ...interface{}) (int64, error)
 	Query(context.Context, string, ...interface{}) (*sql.Rows, error)
-}
-
-// Transaction extends an Executor and adds Commit and WithContext.
-type Transaction interface {
-	Executor
-	Commit() error
-	WithContext(ctx context.Context) gorp.SqlExecutor
 }
 
 // MappedExecutor is anything that can map types to tables, and which can

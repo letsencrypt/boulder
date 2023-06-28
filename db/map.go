@@ -123,21 +123,17 @@ type WrappedTransaction struct {
 	*gorp.Transaction
 }
 
-func (tx WrappedTransaction) WithContext(ctx context.Context) gorp.SqlExecutor {
-	return WrappedExecutor{SqlExecutor: tx.Transaction.WithContext(ctx)}
-}
-
 // Commit passes along the commit call to the underlying transaction. Note that it
 // does not take a context because the transaction already has a context applied.
 func (tx WrappedTransaction) Commit() error {
 	return tx.Transaction.Commit()
 }
 
-func (tx WrappedTransaction) Get(ctx context.Context, holder interface{}, keys ...interface{}) (interface{}, error) {
+func (tx WrappedTransaction) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Get(holder, keys...)
 }
 
-func (tx WrappedTransaction) Insert(ctx context.Context, list ...interface{}) error {
+func (tx WrappedTransaction) Insert(list ...interface{}) error {
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Insert(list...)
 }
 
