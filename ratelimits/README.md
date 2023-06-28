@@ -13,10 +13,6 @@ NewRegistrationsPerIPAddress:
   burst: 20
   count: 20
   period: 1s
-NewRegistrationsPerIPv6Range:
-  burst: 20
-  count: 20
-  period: 1s
 NewOrdersPerAccount:
   burst: 300
   count: 300
@@ -52,13 +48,13 @@ format:
 
 A valid IPv4 or IPv6 address.
 
-Example: `NewRegistrationsPerIPAddress:10.0.0.1:`
+Example: `NewRegistrationsPerIPAddress:10.0.0.1`
 
 #### ipv6RangeCIDR
 
 A valid IPv6 range in CIDR notation with a /48 mask.
 
-Example: `NewRegistrationsPerIPv6Range:2001:0db8:0000::/48:`
+Example: `NewRegistrationsPerIPv6Range:2001:0db8:0000::/48`
 
 #### regId
 
