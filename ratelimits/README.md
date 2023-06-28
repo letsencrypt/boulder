@@ -118,14 +118,13 @@ A subscriber calls the newFoo endpoint for the first time with an IP address of
    (which would be 1/20th of a second if we are limiting to 20 requests per
    second).
 
-3. The subscriber is informated that their request was successful. Their bucket:
+3. The subscriber is informed that their request was successful. Their bucket:
     - will reset to full in 50ms (1/20th of a second),
     - they can make another newFoo request immediately,
     - they can make 19 more requests in the next 50ms,
     - they do not need to wait between requests,
-    - if they make 20 requests in the next 50ms they will need to wait 50ms before
-      making another request,
-    - if they wait 1s they can make 20 more requests,
+    - if they make 19 requests in the next 50ms they will need to wait 50ms before
+      making another request and to make 20 more requests,
     - thus if they make 1 request every 50ms, they will never be denied.
 
 Now, the subscriber makes another request immediately:
