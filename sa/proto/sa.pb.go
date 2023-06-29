@@ -2351,9 +2351,9 @@ type IncidentSerial struct {
 	unknownFields protoimpl.UnknownFields
 
 	Serial         string `protobuf:"bytes,1,opt,name=serial,proto3" json:"serial,omitempty"`
-	RegistrationID int64  `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
-	OrderID        int64  `protobuf:"varint,3,opt,name=orderID,proto3" json:"orderID,omitempty"`
-	LastNoticeSent int64  `protobuf:"varint,4,opt,name=lastNoticeSent,proto3" json:"lastNoticeSent,omitempty"` // Unix timestamp (nanoseconds)
+	RegistrationID int64  `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"` // May be 0 (NULL)
+	OrderID        int64  `protobuf:"varint,3,opt,name=orderID,proto3" json:"orderID,omitempty"`               // May be 0 (NULL)
+	LastNoticeSent int64  `protobuf:"varint,4,opt,name=lastNoticeSent,proto3" json:"lastNoticeSent,omitempty"` // Unix timestamp (nanoseconds), may be 0 (NULL)
 }
 
 func (x *IncidentSerial) Reset() {

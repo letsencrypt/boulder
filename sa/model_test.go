@@ -353,7 +353,7 @@ func TestIncidentSerialModel(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 
-	// Inserting a retrieving a row with only the serial populated should work.
+	// Inserting and retrieving a row with only the serial populated should work.
 	_, err = testIncidentsDbMap.Exec(
 		"INSERT INTO incident_foo (serial) VALUES (?)",
 		"1337",
@@ -373,7 +373,7 @@ func TestIncidentSerialModel(t *testing.T) {
 	test.AssertBoxedNil(t, res1.OrderID, "orderID should be NULL")
 	test.AssertBoxedNil(t, res1.LastNoticeSent, "lastNoticeSent should be NULL")
 
-	// Inserting a retrieving a row with all columns populated should work.
+	// Inserting and retrieving a row with all columns populated should work.
 	_, err = testIncidentsDbMap.Exec(
 		"INSERT INTO incident_foo (serial, registrationID, orderID, lastNoticeSent) VALUES (?, ?, ?, ?)",
 		"1338",
