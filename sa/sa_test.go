@@ -2925,6 +2925,8 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 
+	weekAgo := sa.clk.Now().Add(-time.Hour * 24 * 7)
+
 	// Add a disabled incident.
 	err = testSADbMap.Insert(&incidentModel{
 		SerialTable: "incident_foo",
@@ -2950,7 +2952,6 @@ func TestIncidentsForSerial(t *testing.T) {
 
 	// Add a row to the incident table with serial '1338'.
 	one := int64(1)
-	weekAgo := sa.clk.Now().Add(-time.Hour * 24 * 7)
 	affectedCertA := incidentSerialModel{
 		Serial:         "1338",
 		RegistrationID: &one,
@@ -2973,14 +2974,21 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "fetching from one incident")
 	test.AssertEquals(t, len(result.Incidents), 0)
 
-	// Add a row to the incident table with serial '1337' but no other details.
+	// Add a row to the incident table with serial '1337'.
+	two := int64(2)
 	affectedCertB := incidentSerialModel{
-		Serial: "1337",
+		Serial:         "1337",
+		RegistrationID: &two,
+		OrderID:        &two,
+		LastNoticeSent: &weekAgo,
 	}
 	_, err = testIncidentsDbMap.Exec(
-		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s')",
-			"serial",
+		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
+			"serial, registrationID, orderID, lastNoticeSent",
 			affectedCertB.Serial,
+			affectedCertB.RegistrationID,
+			affectedCertB.OrderID,
+			affectedCertB.LastNoticeSent.Format(time.DateTime),
 		),
 	)
 	test.AssertNotError(t, err, "Error while inserting row for '1337' into incident table")
@@ -3079,7 +3087,6 @@ func TestSerialsForIncident(t *testing.T) {
 		"1335": true, "1336": true, "1337": true, "1338": true,
 	}
 	for i := range expectedSerials {
-		mrand.Seed(time.Now().Unix())
 		randInt := func() int64 { return mrand.Int63() }
 		_, err := testIncidentsDbMap.Exec(
 			fmt.Sprintf("INSERT INTO incident_foo (%s) VALUES ('%s', %d, %d, '%s')",
