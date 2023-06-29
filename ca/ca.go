@@ -220,43 +220,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		return nil, err
 	}
 
-	precertDER, issuer, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
+	precertDER, _, err := ca.issuePrecertificateInner(ctx, issueReq, serialBigInt, validity)
 	if err != nil {
 		return nil, err
 	}
-	issuerNameID := issuer.Cert.NameID()
 
-	req := &sapb.AddCertificateRequest{
-		Der:          precertDER,
-		RegID:        regID,
-		Issued:       nowNanos,
-		IssuerNameID: int64(issuerNameID),
-	}
-
-	if features.Enabled(features.StoreLintingCertificateInsteadOfPrecertificate) {
-		_, err = ca.sa.SetCertificateStatusReady(ctx, &sapb.Serial{Serial: serialHex})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		_, err = ca.sa.AddPrecertificate(ctx, req)
-		if err != nil {
-			ca.orphanCount.With(prometheus.Labels{"type": "precert"}).Inc()
-			err = berrors.InternalServerError(err.Error())
-			// Note: This log line is parsed by cmd/orphan-finder. If you make any
-			// changes here, you should make sure they are reflected in orphan-finder.
-			ca.log.AuditErrf("Failed RPC to store at SA, orphaning precertificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-				serialHex, hex.EncodeToString(precertDER), issuerNameID, issueReq.RegistrationID, issueReq.OrderID, err)
-			if ca.orphanQueue != nil {
-				ca.queueOrphan(&orphanedCert{
-					DER:      precertDER,
-					RegID:    regID,
-					Precert:  true,
-					IssuerID: int64(issuerNameID),
-				})
-			}
-			return nil, err
-		}
+	_, err = ca.sa.SetCertificateStatusReady(ctx, &sapb.Serial{Serial: serialHex})
+	if err != nil {
+		return nil, err
 	}
 
 	return &capb.IssuePrecertificateResponse{
@@ -460,18 +431,16 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
-	if features.Enabled(features.StoreLintingCertificateInsteadOfPrecertificate) {
-		nowNanos := ca.clk.Now().UnixNano()
-		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:          lintCertBytes,
-			RegID:        issueReq.RegistrationID,
-			Issued:       nowNanos,
-			IssuerNameID: int64(issuer.Cert.NameID()),
-			OcspNotReady: true,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
+	nowNanos := ca.clk.Now().UnixNano()
+	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
+		Der:          lintCertBytes,
+		RegID:        issueReq.RegistrationID,
+		Issued:       nowNanos,
+		IssuerNameID: int64(issuer.Cert.NameID()),
+		OcspNotReady: true,
+	})
+	if err != nil {
+		return nil, nil, err
 	}
 
 	certDER, err := issuer.Issue(issuanceToken)
