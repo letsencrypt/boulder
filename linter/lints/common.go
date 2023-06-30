@@ -14,11 +14,8 @@ const (
 	BRDay time.Duration = 86400 * time.Second
 
 	// Declare our own Sources for use in zlint registry filtering.
-	LetsEncryptCPSAll          lint.LintSource = "LECPSAll"
-	LetsEncryptCPSIntermediate lint.LintSource = "LECPSIntermediate"
-	LetsEncryptCPSRoot         lint.LintSource = "LECPSRoot"
-	LetsEncryptCPSSubscriber   lint.LintSource = "LECPSSubscriber"
-	ChromeCTPolicy             lint.LintSource = "ChromeCT"
+	LetsEncryptCPS lint.LintSource = "LECPS"
+	ChromeCTPolicy lint.LintSource = "ChromeCT"
 )
 
 var (

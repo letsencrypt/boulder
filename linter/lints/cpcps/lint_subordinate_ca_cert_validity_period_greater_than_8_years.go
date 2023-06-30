@@ -1,4 +1,4 @@
-package subscriber
+package cpcps
 
 import (
 	"time"
@@ -10,28 +10,28 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-type certValidityTooLong struct{}
+type subordinateCACertValidityTooLong struct{}
 
 func init() {
 	lint.RegisterLint(&lint.Lint{
 		Name:          "e_validity_period_greater_than_8_years",
 		Description:   "Let's Encrypt Intermediate CA Certificates have Validity Periods of up to 8 years",
 		Citation:      "CPS: 7.1",
-		Source:        lints.LetsEncryptCPSIntermediate,
+		Source:        lints.LetsEncryptCPS,
 		EffectiveDate: lints.CPSV33Date,
-		Lint:          NewCertValidityTooLong,
+		Lint:          NewSubordinateCACertValidityTooLong,
 	})
 }
 
-func NewCertValidityTooLong() lint.LintInterface {
-	return &certValidityTooLong{}
+func NewSubordinateCACertValidityTooLong() lint.LintInterface {
+	return &subordinateCACertValidityTooLong{}
 }
 
-func (l *certValidityTooLong) CheckApplies(c *x509.Certificate) bool {
+func (l *subordinateCACertValidityTooLong) CheckApplies(c *x509.Certificate) bool {
 	return util.IsSubCA(c)
 }
 
-func (l *certValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
+func (l *subordinateCACertValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
 	// CPS 7.1: "Intermediate CA Certificate Validity Period: Up to 8 years."
 	maxValidity := 8 * 365 * lints.BRDay
 

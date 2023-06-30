@@ -1,4 +1,4 @@
-package subscriber
+package cpcps
 
 import (
 	"time"
@@ -10,28 +10,28 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-type certValidityTooLong struct{}
+type subscriberCertValidityTooLong struct{}
 
 func init() {
 	lint.RegisterLint(&lint.Lint{
-		Name:          "e_validity_period_greater_than_100_days",
+		Name:          "e_subscriber_cert_validity_period_greater_than_100_days",
 		Description:   "Let's Encrypt Subscriber Certificates have Validity Periods of up to 100 days",
 		Citation:      "CPS: 7.1",
-		Source:        lints.LetsEncryptCPSSubscriber,
+		Source:        lints.LetsEncryptCPS,
 		EffectiveDate: lints.CPSV33Date,
-		Lint:          NewCertValidityTooLong,
+		Lint:          NewSubscriberCertValidityTooLong,
 	})
 }
 
-func NewCertValidityTooLong() lint.LintInterface {
-	return &certValidityTooLong{}
+func NewSubscriberCertValidityTooLong() lint.LintInterface {
+	return &subscriberCertValidityTooLong{}
 }
 
-func (l *certValidityTooLong) CheckApplies(c *x509.Certificate) bool {
+func (l *subscriberCertValidityTooLong) CheckApplies(c *x509.Certificate) bool {
 	return util.IsServerAuthCert(c) && !c.IsCA
 }
 
-func (l *certValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
+func (l *subscriberCertValidityTooLong) Execute(c *x509.Certificate) *lint.LintResult {
 	// CPS 7.1: "DV SSL End Entity Certificate Validity Period: Up to 100 days."
 	maxValidity := 100 * lints.BRDay
 
