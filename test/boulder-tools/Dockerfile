@@ -18,7 +18,5 @@ RUN /tmp/build.sh
 ARG GO_VERSION
 ENV GO_VERSION=$GO_VERSION
 COPY install-go.sh /tmp/install-go.sh
-COPY setup-govulncheck.sh /tmp/setup-govulncheck.sh
 RUN /tmp/install-go.sh && \
-    /tmp/setup-govulncheck.sh && \
     sed -i -e '/imklog/s/^/#/' -e '/$ActionFileDefaultTemplate/s/^/#/' -e '/$RepeatedMsgReduction on/s/^/#/' /etc/rsyslog.conf

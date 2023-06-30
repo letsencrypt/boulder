@@ -105,6 +105,9 @@ jobs:
       - name: "Run Test: ${{ matrix.tests }}"
         run: ${{ matrix.tests }}
 
+      - id: govulncheck
+        uses: golang/govulncheck-action@v0.1.0
+
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
   # one static job name that can be used to determine success of the job

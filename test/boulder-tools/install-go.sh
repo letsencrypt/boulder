@@ -20,9 +20,5 @@ go install golang.org/x/tools/cmd/stringer@latest
 go install github.com/letsencrypt/pebble/cmd/pebble-challtestsrv@master
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 
-## TODO(@pgporada) Remove this after govulncheck is integrated into golangci-lint
-## https://github.com/golangci/golangci-lint/issues/3094
-go install golang.org/x/vuln/cmd/govulncheck@latest
-
 go clean -cache
 go clean -modcache
