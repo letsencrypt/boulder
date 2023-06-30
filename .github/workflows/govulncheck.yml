@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 jobs:
-  b:
+  govulncheck:
     runs-on: ubuntu-20.04
     strategy:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
