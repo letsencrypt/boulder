@@ -123,18 +123,6 @@ func hasIssuerName(crl *crl_x509.RevocationList) *lint.LintResult {
 // values MUST be expressed in Greenwich Mean Time (Zulu) and MUST include
 // seconds, even where the number of seconds is zero.
 
-// hasNextUpdate checks RFC 5280, Section 5.1.2.5:
-// Conforming CRL issuers MUST include the nextUpdate field in all CRLs.
-func hasNextUpdate(crl *crl_x509.RevocationList) *lint.LintResult {
-	if crl.NextUpdate.IsZero() {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "Conforming CRL issuers MUST include the nextUpdate field in all CRLs",
-		}
-	}
-	return &lint.LintResult{Status: lint.Pass}
-}
-
 // noEmptyRevokedCertificatesList checks RFC 5280, Section 5.1.2.6:
 // When there are no revoked certificates, the revoked certificates list MUST be
 // absent.
