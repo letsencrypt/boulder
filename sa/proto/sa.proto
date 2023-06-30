@@ -334,9 +334,9 @@ message SerialsForIncidentRequest {
 
 message IncidentSerial {
   string serial = 1;
-  int64 registrationID = 2;
-  int64 orderID = 3;
-  int64 lastNoticeSent = 4; // Unix timestamp (nanoseconds)
+  int64 registrationID = 2; // May be 0 (NULL)
+  int64 orderID = 3; // May be 0 (NULL)
+  int64 lastNoticeSent = 4; // Unix timestamp (nanoseconds), may be 0 (NULL)
 }
 
 message GetRevokedCertsRequest {
