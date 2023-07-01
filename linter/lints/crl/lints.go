@@ -1,19 +1,12 @@
 package crl
 
 import (
-	"crypto/x509/pkix"
-	"encoding/asn1"
 	"time"
 
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/crl/crl_x509"
-)
-
-const (
-	utcTimeFormat         = "YYMMDDHHMMSSZ"
-	generalizedTimeFormat = "YYYYMMDDHHMMSSZ"
 )
 
 type crlLint func(*crl_x509.RevocationList) *lint.LintResult
@@ -43,17 +36,6 @@ func init() {
 		"hasMozReasonCodes":              hasMozReasonCodes,
 		"hasValidTimestamps":             hasValidTimestamps,
 	}
-}
-
-// getExtWithOID is a helper for several lints in this file. It returns the
-// extension with the given OID if it exists, or nil otherwise.
-func getExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) *pkix.Extension {
-	for _, ext := range exts {
-		if ext.Id.Equal(oid) {
-			return &ext
-		}
-	}
-	return nil
 }
 
 // LintCRL examines the given lint CRL, runs it through all of our checks, and
