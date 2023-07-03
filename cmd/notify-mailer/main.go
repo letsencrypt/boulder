@@ -542,7 +542,6 @@ func main() {
 	cmd.FailOnError(err, "Couldn't unmarshal JSON config file")
 
 	log := cmd.NewLogger(cfg.Syslog)
-	defer log.AuditPanic()
 
 	dbMap, err := sa.InitWrappedDb(cfg.NotifyMailer.DB, nil, log)
 	cmd.FailOnError(err, "While initializing dbMap")

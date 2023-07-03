@@ -125,7 +125,6 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, c.RA.DebugAddr)
 	defer oTelShutdown(context.Background())
-	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
 	// Validate PA config and set defaults if needed

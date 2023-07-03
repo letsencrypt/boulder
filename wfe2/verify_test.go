@@ -14,6 +14,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/mocks"
 	"github.com/letsencrypt/boulder/probs"
@@ -1180,7 +1181,6 @@ func TestLookupJWK(t *testing.T) {
 				test.AssertDeepEquals(t, inThumb, outThumb)
 				test.AssertMarshaledEquals(t, acct, tc.ExpectedAccount)
 				test.AssertEquals(t, inputLogEvent.Requester, acct.ID)
-				test.AssertEquals(t, fmt.Sprint(inputLogEvent.Contacts), fmt.Sprint(*acct.Contact))
 			} else {
 				test.AssertMarshaledEquals(t, prob, tc.ExpectedProblem)
 			}
@@ -1430,19 +1430,16 @@ func TestValidPOSTAsGETForAccount(t *testing.T) {
 		ExpectedLogEvent web.RequestEvent
 	}{
 		{
-			Name:            "Non-empty JWS payload",
-			Request:         makePostRequestWithPath("test", invalidPayloadRequest),
-			ExpectedProblem: probs.Malformed("POST-as-GET requests must have an empty payload"),
-			ExpectedLogEvent: web.RequestEvent{
-				Contacts: []string{"mailto:person@mail.com"},
-			},
+			Name:             "Non-empty JWS payload",
+			Request:          makePostRequestWithPath("test", invalidPayloadRequest),
+			ExpectedProblem:  probs.Malformed("POST-as-GET requests must have an empty payload"),
+			ExpectedLogEvent: web.RequestEvent{},
 		},
 		{
 			Name:    "Valid POST-as-GET",
 			Request: makePostRequestWithPath("test", validRequest),
 			ExpectedLogEvent: web.RequestEvent{
-				Contacts: []string{"mailto:person@mail.com"},
-				Method:   "POST-as-GET",
+				Method: "POST-as-GET",
 			},
 		},
 	}
@@ -1493,6 +1490,40 @@ func TestValidPOSTForAccountSwappedKey(t *testing.T) {
 	test.Assert(t, prob != nil, "No error returned for request signed by wrong key")
 	test.AssertEquals(t, prob.Type, probs.MalformedProblem)
 	test.AssertEquals(t, prob.Detail, "JWS verification error")
+}
+
+func TestValidSelfAuthenticatedPOSTGoodKeyErrors(t *testing.T) {
+	wfe, _, signer := setupWFE(t)
+
+	timeoutErrCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
+		return false, context.DeadlineExceeded
+	}
+
+	kp, err := goodkey.NewKeyPolicy(&goodkey.Config{}, timeoutErrCheckFunc)
+	test.AssertNotError(t, err, "making key policy")
+
+	wfe.keyPolicy = kp
+
+	_, _, validJWSBody := signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
+	request := makePostRequestWithPath("test", validJWSBody)
+
+	_, _, prob := wfe.validSelfAuthenticatedPOST(context.Background(), request)
+	test.AssertEquals(t, prob.Type, probs.ServerInternalProblem)
+
+	badKeyCheckFunc := func(ctx context.Context, keyHash []byte) (bool, error) {
+		return false, fmt.Errorf("oh no: %w", goodkey.ErrBadKey)
+	}
+
+	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{}, badKeyCheckFunc)
+	test.AssertNotError(t, err, "making key policy")
+
+	wfe.keyPolicy = kp
+
+	_, _, validJWSBody = signer.embeddedJWK(nil, "http://localhost/test", `{"test":"passed"}`)
+	request = makePostRequestWithPath("test", validJWSBody)
+
+	_, _, prob = wfe.validSelfAuthenticatedPOST(context.Background(), request)
+	test.AssertEquals(t, prob.Type, probs.BadPublicKeyProblem)
 }
 
 func TestValidSelfAuthenticatedPOST(t *testing.T) {

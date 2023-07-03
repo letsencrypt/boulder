@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/db"
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/test/vars"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -345,4 +346,53 @@ func makeKey() rsa.PrivateKey {
 	p := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 	q := bigIntFromB64("uKE2dh-cTf6ERF4k4e_jy78GfPYUIaUyoSSJuBzp3Cubk3OCqs6grT8bR_cu0Dm1MZwWmtdqDyI95HrUeq3MP15vMMON8lHTeZu2lmKvwqW7anV5UzhM1iZ7z4yMkuUwFWoBvyY898EXvRD-hdqRxHlSqAZ192zB3pVFJ0s7pFc=")
 	return rsa.PrivateKey{PublicKey: rsa.PublicKey{N: n, E: e}, D: d, Primes: []*big.Int{p, q}}
+}
+
+func TestIncidentSerialModel(t *testing.T) {
+	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
+	test.AssertNotError(t, err, "Couldn't create test dbMap")
+	defer test.ResetIncidentsTestDatabase(t)
+
+	// Inserting and retrieving a row with only the serial populated should work.
+	_, err = testIncidentsDbMap.Exec(
+		"INSERT INTO incident_foo (serial) VALUES (?)",
+		"1337",
+	)
+	test.AssertNotError(t, err, "inserting row with only serial")
+
+	var res1 incidentSerialModel
+	err = testIncidentsDbMap.SelectOne(
+		&res1,
+		"SELECT * FROM incident_foo WHERE serial = ?",
+		"1337",
+	)
+	test.AssertNotError(t, err, "selecting row with only serial")
+
+	test.AssertEquals(t, res1.Serial, "1337")
+	test.AssertBoxedNil(t, res1.RegistrationID, "registrationID should be NULL")
+	test.AssertBoxedNil(t, res1.OrderID, "orderID should be NULL")
+	test.AssertBoxedNil(t, res1.LastNoticeSent, "lastNoticeSent should be NULL")
+
+	// Inserting and retrieving a row with all columns populated should work.
+	_, err = testIncidentsDbMap.Exec(
+		"INSERT INTO incident_foo (serial, registrationID, orderID, lastNoticeSent) VALUES (?, ?, ?, ?)",
+		"1338",
+		1,
+		2,
+		time.Date(2023, 06, 29, 16, 9, 00, 00, time.UTC),
+	)
+	test.AssertNotError(t, err, "inserting row with only serial")
+
+	var res2 incidentSerialModel
+	err = testIncidentsDbMap.SelectOne(
+		&res2,
+		"SELECT * FROM incident_foo WHERE serial = ?",
+		"1338",
+	)
+	test.AssertNotError(t, err, "selecting row with only serial")
+
+	test.AssertEquals(t, res2.Serial, "1338")
+	test.AssertEquals(t, *res2.RegistrationID, int64(1))
+	test.AssertEquals(t, *res2.OrderID, int64(2))
+	test.AssertEquals(t, *res2.LastNoticeSent, time.Date(2023, 06, 29, 16, 9, 00, 00, time.UTC))
 }

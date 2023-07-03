@@ -6,10 +6,8 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
-	"math/rand"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -87,8 +85,6 @@ func main2() error {
 		helpExit()
 	}
 
-	rand.Seed(time.Now().UnixNano())
-
 	var conf Config
 	err := cmd.ReadConfigFile(*configFile, &conf)
 	if err != nil {
@@ -97,7 +93,6 @@ func main2() error {
 
 	_, logger, oTelShutdown := cmd.StatsAndLogging(conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
 	defer oTelShutdown(context.Background())
-	defer logger.AuditPanic()
 
 	clk := cmd.Clock()
 	redisClient, err := rocsp_config.MakeClient(&conf.ROCSPTool.Redis, clk, metrics.NoopRegisterer)

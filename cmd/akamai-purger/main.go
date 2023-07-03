@@ -295,7 +295,6 @@ func main() {
 
 	scope, logger, oTelShutdown := cmd.StatsAndLogging(c.Syslog, c.OpenTelemetry, apc.DebugAddr)
 	defer oTelShutdown(context.Background())
-	defer logger.AuditPanic()
 	logger.Info(cmd.VersionString())
 
 	// Unless otherwise specified, use optimized throughput settings.

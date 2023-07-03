@@ -930,9 +930,9 @@ func (ssa *SQLStorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.Lea
 
 	if req.MinShardIdx == req.MaxShardIdx {
 		return ssa.leaseSpecificCRLShard(ctx, req)
-	} else {
-		return ssa.leaseOldestCRLShard(ctx, req)
 	}
+
+	return ssa.leaseOldestCRLShard(ctx, req)
 }
 
 // leaseOldestCRLShard finds the oldest unleased crl shard for the given issuer
@@ -1023,7 +1023,6 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 		IssuerNameID: req.IssuerNameID,
 		ShardIdx:     int64(shardIdx.(int)),
 	}, nil
-
 }
 
 // leaseSpecificCRLShard attempts to lease the crl shard for the given issuer

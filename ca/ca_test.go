@@ -39,6 +39,7 @@ import (
 	"github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/policy"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -107,11 +108,7 @@ const caCertFile = "../test/test-ca.pem"
 const caCertFile2 = "../test/test-ca2.pem"
 
 func mustRead(path string) []byte {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		panic(fmt.Sprintf("unable to read %#v: %s", path, err))
-	}
-	return b
+	return must.Do(os.ReadFile(path))
 }
 
 type testCtx struct {

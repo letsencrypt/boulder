@@ -2926,6 +2926,8 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 
+	weekAgo := sa.clk.Now().Add(-time.Hour * 24 * 7)
+
 	// Add a disabled incident.
 	err = testSADbMap.Insert(&incidentModel{
 		SerialTable: "incident_foo",
@@ -2950,11 +2952,12 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to insert enabled incident")
 
 	// Add a row to the incident table with serial '1338'.
+	one := int64(1)
 	affectedCertA := incidentSerialModel{
 		Serial:         "1338",
-		RegistrationID: 1,
-		OrderID:        1,
-		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
+		RegistrationID: &one,
+		OrderID:        &one,
+		LastNoticeSent: &weekAgo,
 	}
 	_, err = testIncidentsDbMap.Exec(
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
@@ -2973,11 +2976,12 @@ func TestIncidentsForSerial(t *testing.T) {
 	test.AssertEquals(t, len(result.Incidents), 0)
 
 	// Add a row to the incident table with serial '1337'.
+	two := int64(2)
 	affectedCertB := incidentSerialModel{
 		Serial:         "1337",
-		RegistrationID: 2,
-		OrderID:        2,
-		LastNoticeSent: sa.clk.Now().Add(time.Hour * 24 * 7),
+		RegistrationID: &two,
+		OrderID:        &two,
+		LastNoticeSent: &weekAgo,
 	}
 	_, err = testIncidentsDbMap.Exec(
 		fmt.Sprintf("INSERT INTO incident_bar (%s) VALUES ('%s', %d, %d, '%s')",
@@ -3285,7 +3289,7 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "setting up test shards")
 
-	until := time.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	until := clk.Now().Add(time.Hour).Truncate(time.Second).UTC()
 	var untilModel struct {
 		LeasedUntil time.Time `db:"leasedUntil"`
 	}
@@ -3405,7 +3409,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "setting up test shards")
 
-	until := time.Now().Add(time.Hour).Truncate(time.Second).UTC()
+	until := clk.Now().Add(time.Hour).Truncate(time.Second).UTC()
 	var untilModel struct {
 		LeasedUntil time.Time `db:"leasedUntil"`
 	}
@@ -3513,7 +3517,7 @@ func TestUpdateCRLShard(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "setting up test shards")
 
-	thisUpdate := time.Now().Truncate(time.Second).UTC()
+	thisUpdate := clk.Now().Truncate(time.Second).UTC()
 	var thisUpdateModel struct {
 		ThisUpdate time.Time `db:"thisUpdate"`
 	}
