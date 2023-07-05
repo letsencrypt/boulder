@@ -1,4 +1,4 @@
-package subscriber
+package cpcps
 
 import (
 	"time"
@@ -16,7 +16,7 @@ func init() {
 		Name:          "w_validity_period_has_extra_second",
 		Description:   "Let's Encrypt Certificates have Validity Periods that are a round number of seconds",
 		Citation:      "CPS: 7.1",
-		Source:        lints.LetsEncryptCPSAll,
+		Source:        lints.LetsEncryptCPS,
 		EffectiveDate: lints.CPSV33Date,
 		Lint:          NewCertValidityNotRound,
 	})
