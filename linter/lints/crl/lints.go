@@ -98,20 +98,6 @@ func LintCRL(lintCRL *crl_x509.RevocationList) *zlint.ResultSet {
 	return &rset
 }
 
-// isNotDelta checks that the CRL is not a Delta CRL. (RFC 5280, Section 5.2.4).
-// There's no requirement against this, but Delta CRLs come with extra
-// requirements we don't want to deal with.
-func isNotDelta(crl *crl_x509.RevocationList) *lint.LintResult {
-	deltaCRLIndicatorOID := asn1.ObjectIdentifier{2, 5, 29, 27} // id-ce-deltaCRLIndicator
-	if getExtWithOID(crl.Extensions, deltaCRLIndicatorOID) != nil {
-		return &lint.LintResult{
-			Status:  lint.Notice,
-			Details: "CRL is a Delta CRL",
-		}
-	}
-	return &lint.LintResult{Status: lint.Pass}
-}
-
 // checkIDP checks that the CRL does have an Issuing Distribution Point, that it
 // is critical, that it contains a single http distributionPointName, that it
 // asserts the onlyContainsUserCerts boolean, and that it does not contain any
