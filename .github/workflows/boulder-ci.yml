@@ -133,7 +133,6 @@ jobs:
       - name: Run govulncheck
         run: source $GITHUB_ENV && govulncheck ./...
 
-
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
   # one static job name that can be used to determine success of the job
