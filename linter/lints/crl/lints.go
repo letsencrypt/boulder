@@ -98,37 +98,6 @@ func LintCRL(lintCRL *crl_x509.RevocationList) *zlint.ResultSet {
 	return &rset
 }
 
-// hasNumber checks RFC 5280, Section 5.2.3:
-// CRL issuers conforming to this profile MUST include this extension in all
-// CRLs and MUST mark this extension as non-critical. Conforming CRL issuers
-// MUST NOT use CRLNumber values longer than 20 octets.
-func hasNumber(crl *crl_x509.RevocationList) *lint.LintResult {
-	if crl.Number == nil {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "CRLs MUST include the CRL number extension",
-		}
-	}
-
-	crlNumberOID := asn1.ObjectIdentifier{2, 5, 29, 20} // id-ce-cRLNumber
-	ext := getExtWithOID(crl.Extensions, crlNumberOID)
-	if ext != nil && ext.Critical {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "CRL Number MUST NOT be marked critical",
-		}
-	}
-
-	numBytes := crl.Number.Bytes()
-	if len(numBytes) > 20 || (len(numBytes) == 20 && numBytes[0]&0x80 != 0) {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "CRL Number MUST NOT be longer than 20 octets",
-		}
-	}
-	return &lint.LintResult{Status: lint.Pass}
-}
-
 // isNotDelta checks that the CRL is not a Delta CRL. (RFC 5280, Section 5.2.4).
 // There's no requirement against this, but Delta CRLs come with extra
 // requirements we don't want to deal with.
