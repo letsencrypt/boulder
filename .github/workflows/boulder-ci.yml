@@ -129,8 +129,9 @@ jobs:
       - name: Install govulncheck
         run: GOFLAGS='' GOBIN=/usr/local/bin go install golang.org/x/vuln/cmd/govulncheck@latest
 
+      # We source the github env variable file to reset our GOFLAGS variable.
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: source $GITHUB_ENV && govulncheck ./...
 
 
   # This is a utility build job to detect if the status of any of the
