@@ -116,6 +116,12 @@ jobs:
           - go1.20.5_2023-06-20
           - go1.21rc2_2023-06-21
 
+    env:
+      # This sets the docker image tag for the boulder-tools repository to
+      # use in tests. It will be set appropriately for each tag in the list
+      # defined in the matrix.
+      BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
+
     steps:
       # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
       # go1.21rc2 or higher. This experiment value is unknown in lower versions.
