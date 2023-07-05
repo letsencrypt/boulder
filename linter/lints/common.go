@@ -21,7 +21,8 @@ const (
 )
 
 var (
-	CPSV33Date = time.Date(2021, time.June, 8, 0, 0, 0, 0, time.UTC)
+	CPSV33Date         = time.Date(2021, time.June, 8, 0, 0, 0, 0, time.UTC)
+	CABFBRs_1_8_7_Date = time.Date(2023, time.July, 15, 0, 0, 0, 0, time.UTC)
 )
 
 // GetExtWithOID is a helper for several of our custom lints. It returns the
