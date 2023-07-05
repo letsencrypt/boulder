@@ -131,11 +131,11 @@ jobs:
         run: echo "Using BOULDER_TOOLS_TAG ${BOULDER_TOOLS_TAG}"
 
       # Pre-pull the docker containers before running the tests.
-      - name: docker compose pull
+      - name: docker compose pull boulder
         run: docker compose pull boulder
 
       - name: Install and run govulncheck
-        run: docker compose run --use-aliases netaccess bash -c 'go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
+        run: docker compose run --use-aliases netaccess bash -c 'GOFLAGS='' go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
 
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
