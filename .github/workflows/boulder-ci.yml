@@ -111,9 +111,10 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        GO_VERSION:
-          - "1.20.5"
-          - "1.21rc2"
+        # Add additional docker image tags here and all tests will be run with the additional image.
+        BOULDER_TOOLS_TAG:
+          - go1.20.5_2023-06-20
+          - go1.21rc2_2023-06-21
 
     steps:
       # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
@@ -124,14 +125,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # //test/boulder-tools/setup-go.sh sets GOBIN so that it exists and allows go packages
-      # to be installed to a known location.
-      - name: Install govulncheck
-        run: GOFLAGS='' GOBIN=/usr/local/bin go install golang.org/x/vuln/cmd/govulncheck@latest
+      # Print the env variable being used to pull the docker image. For
+      # informational use.
+      - name: Print BOULDER_TOOLS_TAG
+        run: echo "Using BOULDER_TOOLS_TAG ${BOULDER_TOOLS_TAG}"
 
-      # We source the github env variable file to reset our GOFLAGS variable.
-      - name: Run govulncheck
-        run: source $GITHUB_ENV && govulncheck ./...
+      # Pre-pull the docker containers before running the tests.
+      - name: docker compose pull
+        run: docker compose pull boulder
+
+      - name: Install and run govulncheck
+        run: docker compose run --use-aliases netaccess bash -c 'go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
 
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
