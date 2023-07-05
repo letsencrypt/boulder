@@ -5,7 +5,6 @@ import (
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/linter/lints"
 )
 
@@ -17,6 +16,11 @@ RFC 5280: 5.2.4
 Section 5.2.4 defines a Delta CRL, and all the requirements that come with it.
 These requirements are complex and do not serve our purpose, so we ensure that
 we never issue a CRL which could be construed as a Delta CRL.
+
+RFC 5280: 5.2.6
+
+Similarly, Section 5.2.6 defines the Freshest CRL extension, which is only
+applicable in the case that the CRL is a Delta CRL.
 ************************************************/
 
 func init() {
@@ -48,20 +52,14 @@ func (l *crlIsNotDelta) Execute(c *x509.RevocationList) *lint.LintResult {
 			Details: "CRL is a Delta CRL",
 		}
 	}
-	return &lint.LintResult{Status: lint.Pass}
-}
 
-// hasNoFreshest checks that the CRL is does not have a Freshest CRL extension
-// (RFC 5280, Section 5.2.6). There's no requirement against this, but Freshest
-// CRL extensions (and the Delta CRLs they imply) come with extra requirements
-// we don't want to deal with.
-func hasNoFreshest(crl *crl_x509.RevocationList) *lint.LintResult {
-	freshestOID := asn1.ObjectIdentifier{2, 5, 29, 46} // id-ce-freshestCRL
-	if getExtWithOID(crl.Extensions, freshestOID) != nil {
+	freshestCRLOID := asn1.ObjectIdentifier{2, 5, 29, 46} // id-ce-freshestCRL
+	if lints.GetExtWithOID(c.Extensions, freshestCRLOID) != nil {
 		return &lint.LintResult{
 			Status:  lint.Notice,
 			Details: "CRL has a Freshest CRL url",
 		}
 	}
+
 	return &lint.LintResult{Status: lint.Pass}
 }
