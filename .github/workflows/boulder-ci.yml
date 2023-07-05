@@ -168,8 +168,10 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     name: Boulder CI Test Matrix
-    needs: b
+    needs:
+      - b
+      - govulncheck
     steps:
       - name: Check boulder ci test matrix status
-        if: ${{ needs.b.result != 'success' }}
+        if: ${{ needs.b.result != 'success' || needs.govulncheck.result != 'success' }}
         run: exit 1
