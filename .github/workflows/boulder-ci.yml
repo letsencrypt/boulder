@@ -135,7 +135,7 @@ jobs:
         run: docker compose pull boulder
 
       - name: Install and run govulncheck
-        run: docker compose run --use-aliases netaccess bash -c 'GOFLAGS='' go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
+        run: docker compose run --use-aliases netaccess bash -c 'GOFLAGS="" GOBIN=/usr/local/bin go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
 
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
