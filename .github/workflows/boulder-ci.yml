@@ -116,16 +116,16 @@ jobs:
           - "1.21rc2"
 
     steps:
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
-      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
-      - if: startsWith(matrix.GO_VERSION, '1.21')
-        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
-
       - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Install govulncheck
-        run: GOFLAGS='' go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: GOFLAGS='' go install golang.org/x/vuln/cmd/govulncheck@latest && echo $PATH && which govulncheck
+
+      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
+      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
+      - if: startsWith(matrix.GO_VERSION, '1.21')
+        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
       - name: Run govulncheck
         run: govulncheck ./...
