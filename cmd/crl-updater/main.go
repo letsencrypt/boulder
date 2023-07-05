@@ -86,7 +86,7 @@ type Config struct {
 		// significantly longer, since a full update cycle may consist of updating
 		// many shards with varying degrees of parallelism. This value must be
 		// strictly less than the UpdatePeriod. Defaults to 1 hour.
-		UpdateTimeout config.Duration `validate:"-"`
+		UpdateTimeout config.Duration `validate:"structonly,ltcsfield=UpdatePeriod"`
 
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
