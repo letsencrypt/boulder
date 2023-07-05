@@ -100,23 +100,6 @@ func LintCRL(lintCRL *crl_x509.RevocationList) *zlint.ResultSet {
 	return &rset
 }
 
-// hasIssuerName checks RFC 5280, Section 5.1.2.3:
-// The issuer field MUST contain a non-empty X.500 distinguished name (DN).
-// This lint does not enforce that the issuer field complies with the rest of
-// the encoding rules of a certificate issuer name, because it (perhaps wrongly)
-// assumes that those were checked when the issuer was itself issued, and on all
-// certificates issued by this CRL issuer. Also because there are just a lot of
-// things to check there, and zlint doesn't expose a public helper for it.
-func hasIssuerName(crl *crl_x509.RevocationList) *lint.LintResult {
-	if len(crl.Issuer.Names) == 0 {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "CRLs MUST have a non-empty issuer field",
-		}
-	}
-	return &lint.LintResult{Status: lint.Pass}
-}
-
 // TODO(#6222): Write a lint which checks RFC 5280, Section 5.1.2.4 and 5.1.2.5:
 // CRL issuers conforming to this profile MUST encode thisUpdate and nextUpdate
 // as UTCTime for dates through the year 2049. UTCTime and GeneralizedTime
