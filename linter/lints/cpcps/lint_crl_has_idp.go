@@ -3,19 +3,49 @@ package cpcps
 import (
 	"net/url"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/zmap/zcrypto/encoding/asn1"
+	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/letsencrypt/boulder/linter/lints"
 )
 
-// checkIDP checks that the CRL does have an Issuing Distribution Point, that it
-// is critical, that it contains a single http distributionPointName, that it
-// asserts the onlyContainsUserCerts boolean, and that it does not contain any
-// of the other fields. (RFC 5280, Section 5.2.5).
-func checkIDP(crl *crl_x509.RevocationList) *lint.LintResult {
+type crlHasIDP struct{}
+
+/************************************************
+Various root programs (and the BRs, after Ballot SC-063 passes) require that
+sharded/partitioned CRLs have a specifically-encoded Issuing Distribution Point
+extension. Since there's no way to tell from the CRL itself whether or not it
+is sharded, we apply this lint universally to all CRLs, but as part of the Let's
+Encrypt-specific suite of lints.
+************************************************/
+
+func init() {
+	lint.RegisterRevocationListLint(&lint.RevocationListLint{
+		LintMetadata: lint.LintMetadata{
+			Name:          "e_crl_has_idp",
+			Description:   "Let's Encrypt issues sharded CRLs; therefore our CRLs must have an Issuing Distribution Point",
+			Citation:      "",
+			Source:        lints.LetsEncryptCPS,
+			EffectiveDate: lints.CPSV33Date,
+		},
+		Lint: NewCrlHasIDP,
+	})
+}
+
+func NewCrlHasIDP() lint.RevocationListLintInterface {
+	return &crlHasIDP{}
+}
+
+func (l *crlHasIDP) CheckApplies(c *x509.RevocationList) bool {
+	return true
+}
+
+func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	idpOID := asn1.ObjectIdentifier{2, 5, 29, 28} // id-ce-issuingDistributionPoint
-	idpe := getExtWithOID(crl.Extensions, idpOID)
+	idpe := lints.GetExtWithOID(c.Extensions, idpOID)
 	if idpe == nil {
 		return &lint.LintResult{
 			Status:  lint.Warn,
