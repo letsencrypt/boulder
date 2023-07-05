@@ -125,7 +125,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: GOFLAGS='' go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
         run: govulncheck ./...
