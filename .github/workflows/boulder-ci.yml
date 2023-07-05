@@ -116,19 +116,21 @@ jobs:
           - "1.21rc2"
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Install govulncheck
-        run: GOFLAGS='' go install golang.org/x/vuln/cmd/govulncheck@latest && echo $PATH && go env
-
       # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
       # go1.21rc2 or higher. This experiment value is unknown in lower versions.
       - if: startsWith(matrix.GO_VERSION, '1.21')
         run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # //test/boulder-tools/setup-go.sh sets GOBIN so that it exists and allows go packages
+      # to be installed to a known location.
+      - name: Install govulncheck
+        run: GOFLAGS='' GOBIN=/usr/local/bin go install golang.org/x/vuln/cmd/govulncheck@latest
+
       - name: Run govulncheck
-        run: go env && govulncheck ./...
+        run: govulncheck ./...
 
 
   # This is a utility build job to detect if the status of any of the
