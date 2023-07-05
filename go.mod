@@ -12,7 +12,7 @@ require (
 	github.com/go-gorp/gorp/v3 v3.1.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/go-sql-driver/mysql v1.5.0
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.1.4
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
