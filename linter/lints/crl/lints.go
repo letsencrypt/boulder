@@ -95,25 +95,6 @@ func LintCRL(lintCRL *crl_x509.RevocationList) *zlint.ResultSet {
 	return &rset
 }
 
-// hasAcceptableValidity checks Baseline Requirements, Section 4.9.7:
-// The value of the nextUpdate field MUST NOT be more than ten days beyond the
-// value of the thisUpdate field.
-func hasAcceptableValidity(crl *crl_x509.RevocationList) *lint.LintResult {
-	validity := crl.NextUpdate.Sub(crl.ThisUpdate)
-	if validity <= 0 {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "CRL has NextUpdate at or before ThisUpdate",
-		}
-	} else if validity > 10*24*time.Hour {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "CRL has validity period greater than ten days",
-		}
-	}
-	return &lint.LintResult{Status: lint.Pass}
-}
-
 // noZeroReasonCodes checks Baseline Requirements, Section 7.2.2.1:
 // The CRLReason indicated MUST NOT be unspecified (0). If the reason for
 // revocation is unspecified, CAs MUST omit reasonCode entry extension, if
