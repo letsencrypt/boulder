@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 import (
 	"database/sql"
@@ -168,7 +168,12 @@ func selectVal(e SqlExecutor, holder interface{}, query string, args ...interfac
 		return sql.ErrNoRows
 	}
 
-	return rows.Scan(holder)
+	err = rows.Scan(holder)
+	if err != nil {
+		return err
+	}
+
+	return rows.Close()
 }
 
 func hookedselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
@@ -349,6 +354,11 @@ func rawselect(m *DbMap, exec SqlExecutor, i interface{}, query string,
 		} else {
 			list = append(list, v.Interface())
 		}
+	}
+
+	err = rows.Close()
+	if err != nil {
+		return nil, err
 	}
 
 	if appendToSlice && sliceValue.IsNil() {

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 import (
 	"context"
@@ -14,30 +14,6 @@ import (
 	"strings"
 	"time"
 )
-
-// OracleString (empty string is null)
-// TODO: move to dialect/oracle?, rename to String?
-type OracleString struct {
-	sql.NullString
-}
-
-// Scan implements the Scanner interface.
-func (os *OracleString) Scan(value interface{}) error {
-	if value == nil {
-		os.String, os.Valid = "", false
-		return nil
-	}
-	os.Valid = true
-	return os.NullString.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (os OracleString) Value() (driver.Value, error) {
-	if !os.Valid || os.String == "" {
-		return nil, nil
-	}
-	return os.String, nil
-}
 
 // SqlTyper is a type that returns its database type.  Most of the
 // time, the type can just use "database/sql/driver".Valuer; but when
@@ -315,8 +291,8 @@ func fieldByName(val reflect.Value, fieldName string) *reflect.Value {
 		return &f
 	}
 
-	// try to find by case insensitive match - only the Postgres driver
-	// seems to require this - in the case where columns are aliased in the sql
+	// try to find by case insensitive match in the case where columns are
+	// aliased in the sql
 	fieldNameL := strings.ToLower(fieldName)
 	fieldCount := val.NumField()
 	t := val.Type()

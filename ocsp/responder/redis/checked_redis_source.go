@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/go-gorp/gorp/v3"
+	"github.com/letsencrypt/borp"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 
@@ -23,7 +23,7 @@ import (
 // easier mocking of mysql operations in tests.
 type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error
-	WithContext(ctx context.Context) gorp.SqlExecutor
+	WithContext(ctx context.Context) borp.SqlExecutor
 }
 
 // rocspSourceInterface expands on responder.Source by adding a private signAndSave method.

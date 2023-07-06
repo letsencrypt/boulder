@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 // IndexMap represents a mapping between a Go struct field and a single
 // index in a table.
@@ -17,7 +17,6 @@ type IndexMap struct {
 	Unique bool
 
 	// Index type supported by Dialect
-	// Postgres:  B-tree, Hash, GiST and GIN.
 	// Mysql: Btree, Hash.
 	// Sqlite: nil.
 	IndexType string
@@ -29,7 +28,6 @@ type IndexMap struct {
 // Rename allows you to specify the index name in the table
 //
 // Example:  table.IndMap("customer_test_idx").Rename("customer_idx")
-//
 func (idx *IndexMap) Rename(indname string) *IndexMap {
 	idx.IndexName = indname
 	return idx

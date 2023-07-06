@@ -68,7 +68,7 @@ func (mi *MultiInserter) Add(row []interface{}) error {
 }
 
 // query returns the formatted query string, and the slice of arguments for
-// for gorp to use in place of the query's question marks. Currently only
+// for borp to use in place of the query's question marks. Currently only
 // used by .Insert(), below.
 func (mi *MultiInserter) query() (string, []interface{}) {
 	var questionsBuf strings.Builder

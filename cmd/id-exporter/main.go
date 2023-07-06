@@ -119,9 +119,9 @@ func (c idExporter) findIDsWithExampleHostnames() (idExporterResults, error) {
 func (c idExporter) findIDsForHostnames(hostnames []string) (idExporterResults, error) {
 	var holder idExporterResults
 	for _, hostname := range hostnames {
-		// Pass the same list in each time, gorp will happily just append to the slice
+		// Pass the same list in each time, borp will happily just append to the slice
 		// instead of overwriting it each time
-		// https://github.com/go-gorp/gorp/blob/2ae7d174a4cf270240c4561092402affba25da5e/select.go#L348-L355
+		// https://github.com/letsencrypt/borp/blob/c87bd6443d59746a33aca77db34a60cfc344adb2/select.go#L349-L353
 		_, err := c.dbMap.Select(
 			&holder,
 			`SELECT DISTINCT c.registrationID AS id

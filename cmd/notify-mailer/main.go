@@ -258,7 +258,7 @@ func (m *mailer) resolveAddresses() (addressToRecipientMap, error) {
 	return result, nil
 }
 
-// dbSelector abstracts over a subset of methods from `gorp.DbMap` objects to
+// dbSelector abstracts over a subset of methods from `borp.DbMap` objects to
 // facilitate mocking in unit tests.
 type dbSelector interface {
 	SelectOne(holder interface{}, query string, args ...interface{}) error

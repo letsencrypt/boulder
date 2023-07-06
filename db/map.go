@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"regexp"
 
-	gorp "github.com/go-gorp/gorp/v3"
 	"github.com/go-sql-driver/mysql"
+	"github.com/letsencrypt/borp"
 )
 
 // ErrDatabaseOp wraps an underlying err with a description of the operation
@@ -44,7 +44,7 @@ func (e ErrDatabaseOp) Unwrap() error {
 
 // IsNoRows is a utility function for determining if an error wraps the go sql
 // package's ErrNoRows, which is returned when a Scan operation has no more
-// results to return, and as such is returned by many gorp methods.
+// results to return, and as such is returned by many borp methods.
 func IsNoRows(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
 }
@@ -57,10 +57,10 @@ func IsDuplicate(err error) bool {
 	return errors.As(err, &dbErr) && dbErr.Number == 1062
 }
 
-// WrappedMap wraps a *gorp.DbMap such that its major functions wrap error
+// WrappedMap wraps a *borp.DbMap such that its major functions wrap error
 // results in ErrDatabaseOp instances before returning them to the caller.
 type WrappedMap struct {
-	*gorp.DbMap
+	*borp.DbMap
 }
 
 func (m *WrappedMap) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
@@ -95,7 +95,7 @@ func (m *WrappedMap) Exec(query string, args ...interface{}) (sql.Result, error)
 	return WrappedExecutor{SqlExecutor: m.DbMap}.Exec(query, args...)
 }
 
-func (m *WrappedMap) WithContext(ctx context.Context) gorp.SqlExecutor {
+func (m *WrappedMap) WithContext(ctx context.Context) borp.SqlExecutor {
 	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}
 }
 
@@ -112,14 +112,14 @@ func (m *WrappedMap) Begin() (Transaction, error) {
 	}, err
 }
 
-// WrappedTransaction wraps a *gorp.Transaction such that its major functions
+// WrappedTransaction wraps a *borp.Transaction such that its major functions
 // wrap error results in ErrDatabaseOp instances before returning them to the
 // caller.
 type WrappedTransaction struct {
-	*gorp.Transaction
+	*borp.Transaction
 }
 
-func (tx WrappedTransaction) WithContext(ctx context.Context) gorp.SqlExecutor {
+func (tx WrappedTransaction) WithContext(ctx context.Context) borp.SqlExecutor {
 	return WrappedExecutor{SqlExecutor: tx.Transaction.WithContext(ctx)}
 }
 
@@ -163,11 +163,11 @@ func (tx WrappedTransaction) Exec(query string, args ...interface{}) (sql.Result
 	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Exec(query, args...)
 }
 
-// WrappedExecutor wraps a gorp.SqlExecutor such that its major functions
+// WrappedExecutor wraps a borp.SqlExecutor such that its major functions
 // wrap error results in ErrDatabaseOp instances before returning them to the
 // caller.
 type WrappedExecutor struct {
-	gorp.SqlExecutor
+	borp.SqlExecutor
 }
 
 func errForOp(operation string, err error, list []interface{}) ErrDatabaseOp {
@@ -271,7 +271,7 @@ var (
 
 	// tableRegexps is a list of regexps that tableFromQuery will try to use in
 	// succession to find the table name for an SQL query. While tableFromQuery
-	// isn't used by the higher level gorp Insert/Update/Select/etc functions we
+	// isn't used by the higher level borp Insert/Update/Select/etc functions we
 	// include regexps for matching inserts, updates, selects, etc because we want
 	// to match the correct table when these types of queries are run through
 	// Exec().

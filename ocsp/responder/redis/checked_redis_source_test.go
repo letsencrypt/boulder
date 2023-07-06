@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-gorp/gorp/v3"
+	"github.com/letsencrypt/borp"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -71,7 +71,7 @@ type echoSelector struct {
 	status sa.RevocationStatusModel
 }
 
-func (s echoSelector) WithContext(context.Context) gorp.SqlExecutor {
+func (s echoSelector) WithContext(context.Context) borp.SqlExecutor {
 	return s
 }
 
@@ -93,7 +93,7 @@ func (s errorSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) erro
 	return errors.New("oops")
 }
 
-func (s errorSelector) WithContext(context.Context) gorp.SqlExecutor {
+func (s errorSelector) WithContext(context.Context) borp.SqlExecutor {
 	return s
 }
 
@@ -106,7 +106,7 @@ func (s notFoundSelector) SelectOne(_ interface{}, _ string, _ ...interface{}) e
 	return db.ErrDatabaseOp{Err: sql.ErrNoRows}
 }
 
-func (s notFoundSelector) WithContext(context.Context) gorp.SqlExecutor {
+func (s notFoundSelector) WithContext(context.Context) borp.SqlExecutor {
 	return s
 }
 

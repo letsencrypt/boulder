@@ -70,7 +70,7 @@ type SQLStorageAuthorityRO struct {
 }
 
 // NewSQLStorageAuthorityRO provides persistence using a SQL backend for
-// Boulder. It will modify the given gorp.DbMap by adding relevant tables.
+// Boulder. It will modify the given borp.DbMap by adding relevant tables.
 func NewSQLStorageAuthorityRO(
 	dbReadOnlyMap *db.WrappedMap,
 	dbIncidentsMap *db.WrappedMap,
@@ -574,8 +574,8 @@ func (ssa *SQLStorageAuthority) FQDNSetExists(ctx context.Context, req *sapb.FQD
 	return ssa.SQLStorageAuthorityRO.FQDNSetExists(ctx, req)
 }
 
-// oneSelectorFunc is a func type that matches both gorp.Transaction.SelectOne
-// and gorp.DbMap.SelectOne.
+// oneSelectorFunc is a func type that matches both borp.Transaction.SelectOne
+// and borp.DbMap.SelectOne.
 type oneSelectorFunc func(holder interface{}, query string, args ...interface{}) error
 
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
