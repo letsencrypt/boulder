@@ -44,21 +44,14 @@ type ProfileConfig struct {
 	AllowSCTList    bool
 	AllowCommonName bool
 
-	Policies            []PolicyInformation `validate:"omitempty,dive"`
+	Policies            []PolicyConfig `validate:"min=1,dive"`
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
 }
 
-// PolicyInformation describes a policy
-type PolicyInformation struct {
-	OID        string
-	Qualifiers []PolicyQualifier `validate:"excluded_without=OID,dive"`
-}
-
-// PolicyQualifier describes a policy qualifier
-type PolicyQualifier struct {
-	Type  string `validate:"required"`
-	Value string `validate:"required"`
+// PolicyConfig describes a policy
+type PolicyConfig struct {
+	OID string `validate:"required"`
 }
 
 // IssuerConfig describes the constraints on and URLs used by a single issuer.
@@ -143,7 +136,7 @@ func loadSigner(location IssuerLoc, cert *Certificate) (crypto.Signer, error) {
 	if pkcs11Config.Module == "" ||
 		pkcs11Config.TokenLabel == "" ||
 		pkcs11Config.PIN == "" {
-		return nil, fmt.Errorf("Missing a field in pkcs11Config %#v", pkcs11Config)
+		return nil, fmt.Errorf("missing a field in pkcs11Config %#v", pkcs11Config)
 	}
 
 	numSessions := location.NumSessions
@@ -190,10 +183,6 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 	return oid, nil
 }
 
-var stringToQualifierType = map[string]asn1.ObjectIdentifier{
-	"id-qt-cps": policyasn1.CPSQualifierOID,
-}
-
 // NewProfile synthesizes the profile config and issuer config into a single
 // object, and checks various aspects for correctness.
 func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profile, error) {
@@ -203,6 +192,27 @@ func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profil
 	if issuerConfig.OCSPURL == "" {
 		return nil, errors.New("OCSP URL is required")
 	}
+
+	var policies []policyasn1.PolicyInformation
+	for _, policyConfig := range profileConfig.Policies {
+		id, err := parseOID(policyConfig.OID)
+		if err != nil {
+			return nil, fmt.Errorf("failed parsing policy OID %q: %s", policyConfig.OID, err)
+		}
+		policies = append(policies, policyasn1.PolicyInformation{Policy: id})
+	}
+	policyExtBytes, err := asn1.Marshal(policies)
+	if err != nil {
+		return nil, err
+	}
+	if len(policyExtBytes) == 0 {
+		return nil, errors.New("marshalled empty policy extension")
+	}
+	policyExt := &pkix.Extension{
+		Id:    policyasn1.CertificatePoliciesExtOID,
+		Value: policyExtBytes,
+	}
+
 	sp := &Profile{
 		useForRSALeaves:   issuerConfig.UseForRSALeaves,
 		useForECDSALeaves: issuerConfig.UseForECDSALeaves,
@@ -213,39 +223,11 @@ func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profil
 		issuerURL:         issuerConfig.IssuerURL,
 		crlURL:            issuerConfig.CRLURL,
 		ocspURL:           issuerConfig.OCSPURL,
+		policies:          policyExt,
 		maxBackdate:       profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:       profileConfig.MaxValidityPeriod.Duration,
 	}
-	if len(profileConfig.Policies) > 0 {
-		var policies []policyasn1.PolicyInformation
-		for _, policyConfig := range profileConfig.Policies {
-			id, err := parseOID(policyConfig.OID)
-			if err != nil {
-				return nil, fmt.Errorf("failed parsing policy OID %q: %s", policyConfig.OID, err)
-			}
-			pi := policyasn1.PolicyInformation{Policy: id}
-			for _, qualifierConfig := range policyConfig.Qualifiers {
-				qt, ok := stringToQualifierType[qualifierConfig.Type]
-				if !ok {
-					return nil, fmt.Errorf("unknown qualifier type: %s", qualifierConfig.Type)
-				}
-				pq := policyasn1.PolicyQualifier{
-					OID:   qt,
-					Value: qualifierConfig.Value,
-				}
-				pi.Qualifiers = append(pi.Qualifiers, pq)
-			}
-			policies = append(policies, pi)
-		}
-		policyExtBytes, err := asn1.Marshal(policies)
-		if err != nil {
-			return nil, err
-		}
-		sp.policies = &pkix.Extension{
-			Id:    asn1.ObjectIdentifier{2, 5, 29, 32},
-			Value: policyExtBytes,
-		}
-	}
+
 	return sp, nil
 }
 

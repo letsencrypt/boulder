@@ -183,32 +183,28 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 	"Cert Sign":         x509.KeyUsageCertSign,
 }
 
-var (
-	oidExtensionCertificatePolicies = asn1.ObjectIdentifier{2, 5, 29, 32}
-
-	oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
-)
+var oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
 
 func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
-	policyExt := pkix.Extension{Id: oidExtensionCertificatePolicies}
 	var policyInfo []policyasn1.PolicyInformation
 	for _, p := range policies {
 		oid, err := parseOID(p.OID)
 		if err != nil {
 			return pkix.Extension{}, err
 		}
-		pi := policyasn1.PolicyInformation{Policy: oid}
-		if p.CPSURI != "" {
-			pi.Qualifiers = []policyasn1.PolicyQualifier{{OID: policyasn1.CPSQualifierOID, Value: p.CPSURI}}
-		}
-		policyInfo = append(policyInfo, pi)
+		policyInfo = append(policyInfo, policyasn1.PolicyInformation{Policy: oid})
 	}
 	v, err := asn1.Marshal(policyInfo)
 	if err != nil {
 		return pkix.Extension{}, err
 	}
-	policyExt.Value = v
-	return policyExt, nil
+	if len(v) == 0 {
+		return pkix.Extension{}, errors.New("marshalled empty policy extension")
+	}
+	return pkix.Extension{
+		Id:    policyasn1.CertificatePoliciesExtOID,
+		Value: v,
+	}, nil
 }
 
 func generateSKID(pk []byte) ([]byte, error) {
