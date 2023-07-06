@@ -47,7 +47,7 @@ func TestValidate(t *testing.T) {
 	crl, err = crl_x509.ParseRevocationList(crlDER.Bytes)
 	test.AssertNotError(t, err, "parsing test crl")
 	err = Validate(crl, issuer, 100*365*24*time.Hour)
-	test.AssertError(t, err, "validaing crl with lint error")
+	test.AssertError(t, err, "validating crl with lint error")
 	test.AssertContains(t, err.Error(), "linting")
 }
 
