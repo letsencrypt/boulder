@@ -38,6 +38,15 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 	return err
 }
 
+// CheckCRL is like Check, but for CRLs.
+func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
+	linter, err := New(realIssuer, realSigner, skipLints)
+	if err != nil {
+		return err
+	}
+	return linter.CheckCRL(tbs)
+}
+
 // Linter is capable of linting a to-be-signed (TBS) certificate. It does so by
 // signing that certificate with a throwaway private key and a fake issuer whose
 // public key matches the throwaway private key, and then running the resulting
