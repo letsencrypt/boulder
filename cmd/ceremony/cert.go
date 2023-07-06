@@ -336,7 +336,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 type failReader struct{}
 
 func (fr *failReader) Read([]byte) (int, error) {
-	return 0, errors.New("Empty reader used by x509.CreateCertificate")
+	return 0, errors.New("empty reader used by x509.CreateCertificate")
 }
 
 func generateCSR(profile *certProfile, signer crypto.Signer) ([]byte, error) {

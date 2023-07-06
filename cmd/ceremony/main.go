@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/strictyaml"
@@ -721,7 +722,7 @@ func crlCeremony(configBytes []byte) error {
 		return fmt.Errorf("unable to parse crl-profile.next-update: %s", err)
 	}
 
-	var revokedCertificates []pkix.RevokedCertificate
+	var revokedCertificates []crl_x509.RevokedCertificate
 	for _, rc := range config.CRLProfile.RevokedCertificates {
 		cert, err := loadCert(rc.CertificatePath)
 		if err != nil {
@@ -731,7 +732,7 @@ func crlCeremony(configBytes []byte) error {
 		if err != nil {
 			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")
 		}
-		revokedCert := pkix.RevokedCertificate{
+		revokedCert := crl_x509.RevokedCertificate{
 			SerialNumber:   cert.SerialNumber,
 			RevocationTime: revokedAt,
 		}
