@@ -25,11 +25,14 @@ When the CRLReason code is not one of the following, then the reasonCode extensi
 func init() {
 	lint.RegisterRevocationListLint(&lint.RevocationListLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_crl_acceptable_reason_codes",
-			Description:   "CRL entry Reason Codes must be 1, 3, 4, 5, or 9",
-			Citation:      "BRs: 7.2.2.1",
-			Source:        lint.CABFBaselineRequirements,
-			EffectiveDate: lints.CABFBRs_1_8_7_Date,
+			Name:        "e_crl_acceptable_reason_codes",
+			Description: "CRL entry Reason Codes must be 1, 3, 4, 5, or 9",
+			Citation:    "BRs: 7.2.2.1",
+			Source:      lint.CABFBaselineRequirements,
+			// We use the Mozilla Root Store Policy v2.8.1 effective date here
+			// because, although this lint enforces requirements from the BRs, those
+			// same requirements were in the MRSP first.
+			EffectiveDate: lints.MozillaPolicy281Date,
 		},
 		Lint: NewCrlAcceptableReasonCodes,
 	})
