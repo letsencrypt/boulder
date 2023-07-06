@@ -6,7 +6,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-gorp/gorp/v3"
+	"github.com/letsencrypt/borp"
 )
 
 // These interfaces exist to aid in mocking database operations for unit tests.
@@ -36,7 +36,7 @@ type Execer interface {
 	Exec(string, ...interface{}) (sql.Result, error)
 }
 
-// SelectExecer offers a subset of gorp.SqlExecutor's methods: Select and
+// SelectExecer offers a subset of borp.SqlExecutor's methods: Select and
 // Exec.
 type SelectExecer interface {
 	Selector
@@ -53,7 +53,7 @@ type DatabaseMap interface {
 }
 
 // Executor offers the full combination of OneSelector, Inserter, SelectExecer
-// and adds a handful of other high level Gorp methods we use in Boulder.
+// and adds a handful of other high level borp methods we use in Boulder.
 type Executor interface {
 	OneSelector
 	Inserter
@@ -77,14 +77,14 @@ type Transaction interface {
 	Executor
 	Rollback() error
 	Commit() error
-	WithContext(ctx context.Context) gorp.SqlExecutor
+	WithContext(ctx context.Context) borp.SqlExecutor
 }
 
 // MappedExecutor is anything that can map types to tables, and which can
 // produce a SqlExecutor bound to a context.
 type MappedExecutor interface {
-	TableFor(reflect.Type, bool) (*gorp.TableMap, error)
-	WithContext(ctx context.Context) gorp.SqlExecutor
+	TableFor(reflect.Type, bool) (*borp.TableMap, error)
+	WithContext(ctx context.Context) borp.SqlExecutor
 }
 
 // MappedSelector is anything that can execute various kinds of SQL statements
@@ -106,7 +106,7 @@ type Rows[T any] interface {
 // MockSqlExecuter implement SqlExecutor by returning errors from every call.
 //
 // To mock out WithContext, we need to be able to return objects that satisfy
-// gorp.SqlExecutor. That's a pretty big interface, so we specify one no-op mock
+// borp.SqlExecutor. That's a pretty big interface, so we specify one no-op mock
 // that we can embed everywhere we need to satisfy it.
 // Note: MockSqlExecutor does *not* implement WithContext. The expectation is
 // that structs that embed MockSqlExecutor will define their own WithContext

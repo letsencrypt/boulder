@@ -82,7 +82,7 @@ type reportEntry struct {
 	Problems []string `json:"problems,omitempty"`
 }
 
-// certDB is an interface collecting the gorp.saDbMap functions that the various
+// certDB is an interface collecting the borp.DbMap functions that the various
 // parts of cert-checker rely on. Using this adapter shim allows tests to swap
 // out the saDbMap implementation.
 type certDB interface {

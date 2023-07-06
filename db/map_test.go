@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	gorp "github.com/go-gorp/gorp/v3"
+	"github.com/letsencrypt/borp"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/letsencrypt/boulder/core"
@@ -236,10 +236,10 @@ func testDbMap(t *testing.T) *WrappedMap {
 	dbConn, err := sql.Open("mysql", config.FormatDSN())
 	test.AssertNotError(t, err, "opening DB connection")
 
-	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
+	dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	// NOTE(@cpu): We avoid giving a sa.BoulderTypeConverter to the DbMap field to
 	// avoid the cyclic dep. We don't need to convert any types in the db tests.
-	dbMap := &gorp.DbMap{Db: dbConn, Dialect: dialect, TypeConverter: nil}
+	dbMap := &borp.DbMap{Db: dbConn, Dialect: dialect, TypeConverter: nil}
 	return &WrappedMap{DbMap: dbMap}
 }
 
