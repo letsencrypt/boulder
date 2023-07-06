@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
@@ -134,7 +135,7 @@ func TestStrictness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = dbMap.Exec(`insert into orderToAuthz2 set
+	_, err = dbMap.ExecContext(ctx, `insert into orderToAuthz2 set
 		orderID=999999999999999999999999999,
 		authzID=999999999999999999999999999;`)
 	if err == nil {
@@ -153,7 +154,7 @@ func TestTimeouts(t *testing.T) {
 	// SLEEP is defined to return 1 if it was interrupted, but we want to actually
 	// get an error to simulate what would happen with a slow query. So we wrap
 	// the SLEEP in a subselect.
-	_, err = dbMap.Exec(`SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
+	_, err = dbMap.ExecContext(ctx, `SELECT 1 FROM (SELECT SLEEP(5)) as subselect;`)
 	if err == nil {
 		t.Fatal("Expected error when running slow query, got none.")
 	}
@@ -175,6 +176,7 @@ func TestAutoIncrementSchema(t *testing.T) {
 
 	var count int64
 	err = dbMap.SelectOne(
+		context.Background(),
 		&count,
 		`SELECT COUNT(*) FROM columns WHERE
 			table_schema LIKE 'boulder%' AND

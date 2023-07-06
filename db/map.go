@@ -63,44 +63,40 @@ type WrappedMap struct {
 	*borp.DbMap
 }
 
-func (m *WrappedMap) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Get(holder, keys...)
+func (m *WrappedMap) Get(ctx context.Context, holder interface{}, keys ...interface{}) (interface{}, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.Get(ctx, holder, keys...)
 }
 
-func (m *WrappedMap) Insert(list ...interface{}) error {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Insert(list...)
+func (m *WrappedMap) Insert(ctx context.Context, list ...interface{}) error {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.Insert(ctx, list...)
 }
 
-func (m *WrappedMap) Update(list ...interface{}) (int64, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Update(list...)
+func (m *WrappedMap) Update(ctx context.Context, list ...interface{}) (int64, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.Update(ctx, list...)
 }
 
-func (m *WrappedMap) Delete(list ...interface{}) (int64, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Delete(list...)
+func (m *WrappedMap) Delete(ctx context.Context, list ...interface{}) (int64, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.Delete(ctx, list...)
 }
 
-func (m *WrappedMap) Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Select(holder, query, args...)
+func (m *WrappedMap) Select(ctx context.Context, holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.Select(ctx, holder, query, args...)
 }
 
-func (m *WrappedMap) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.SelectOne(holder, query, args...)
+func (m *WrappedMap) SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.SelectOne(ctx, holder, query, args...)
 }
 
-func (m *WrappedMap) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Query(query, args...)
+func (m *WrappedMap) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.QueryContext(ctx, query, args...)
 }
 
-func (m *WrappedMap) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return WrappedExecutor{SqlExecutor: m.DbMap}.Exec(query, args...)
+func (m *WrappedMap) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return WrappedExecutor{SqlExecutor: m.DbMap}.ExecContext(ctx, query, args...)
 }
 
-func (m *WrappedMap) WithContext(ctx context.Context) borp.SqlExecutor {
-	return WrappedExecutor{SqlExecutor: m.DbMap.WithContext(ctx)}
-}
-
-func (m *WrappedMap) Begin() (Transaction, error) {
-	tx, err := m.DbMap.Begin()
+func (m *WrappedMap) BeginTx(ctx context.Context) (Transaction, error) {
+	tx, err := m.DbMap.BeginTx(ctx)
 	if err != nil {
 		return tx, ErrDatabaseOp{
 			Op:  "begin transaction",
@@ -119,10 +115,6 @@ type WrappedTransaction struct {
 	*borp.Transaction
 }
 
-func (tx WrappedTransaction) WithContext(ctx context.Context) borp.SqlExecutor {
-	return WrappedExecutor{SqlExecutor: tx.Transaction.WithContext(ctx)}
-}
-
 func (tx WrappedTransaction) Commit() error {
 	return tx.Transaction.Commit()
 }
@@ -131,36 +123,36 @@ func (tx WrappedTransaction) Rollback() error {
 	return tx.Transaction.Rollback()
 }
 
-func (tx WrappedTransaction) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Get(holder, keys...)
+func (tx WrappedTransaction) Get(ctx context.Context, holder interface{}, keys ...interface{}) (interface{}, error) {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Get(ctx, holder, keys...)
 }
 
-func (tx WrappedTransaction) Insert(list ...interface{}) error {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Insert(list...)
+func (tx WrappedTransaction) Insert(ctx context.Context, list ...interface{}) error {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Insert(ctx, list...)
 }
 
-func (tx WrappedTransaction) Update(list ...interface{}) (int64, error) {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Update(list...)
+func (tx WrappedTransaction) Update(ctx context.Context, list ...interface{}) (int64, error) {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Update(ctx, list...)
 }
 
-func (tx WrappedTransaction) Delete(list ...interface{}) (int64, error) {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Delete(list...)
+func (tx WrappedTransaction) Delete(ctx context.Context, list ...interface{}) (int64, error) {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Delete(ctx, list...)
 }
 
-func (tx WrappedTransaction) Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Select(holder, query, args...)
+func (tx WrappedTransaction) Select(ctx context.Context, holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Select(ctx, holder, query, args...)
 }
 
-func (tx WrappedTransaction) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).SelectOne(holder, query, args...)
+func (tx WrappedTransaction) SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).SelectOne(ctx, holder, query, args...)
 }
 
-func (tx WrappedTransaction) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Query(query, args...)
+func (tx WrappedTransaction) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).QueryContext(ctx, query, args...)
 }
 
-func (tx WrappedTransaction) Exec(query string, args ...interface{}) (sql.Result, error) {
-	return (WrappedExecutor{SqlExecutor: tx.Transaction}).Exec(query, args...)
+func (tx WrappedTransaction) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	return (WrappedExecutor{SqlExecutor: tx.Transaction}).ExecContext(ctx, query, args...)
 }
 
 // WrappedExecutor wraps a borp.SqlExecutor such that its major functions
@@ -203,56 +195,56 @@ func errForQuery(query, operation string, err error, list []interface{}) ErrData
 	}
 }
 
-func (we WrappedExecutor) Get(holder interface{}, keys ...interface{}) (interface{}, error) {
-	res, err := we.SqlExecutor.Get(holder, keys...)
+func (we WrappedExecutor) Get(ctx context.Context, holder interface{}, keys ...interface{}) (interface{}, error) {
+	res, err := we.SqlExecutor.Get(ctx, holder, keys...)
 	if err != nil {
 		return res, errForOp("get", err, []interface{}{holder})
 	}
 	return res, err
 }
 
-func (we WrappedExecutor) Insert(list ...interface{}) error {
-	err := we.SqlExecutor.Insert(list...)
+func (we WrappedExecutor) Insert(ctx context.Context, list ...interface{}) error {
+	err := we.SqlExecutor.Insert(ctx, list...)
 	if err != nil {
 		return errForOp("insert", err, list)
 	}
 	return nil
 }
 
-func (we WrappedExecutor) Update(list ...interface{}) (int64, error) {
-	updatedRows, err := we.SqlExecutor.Update(list...)
+func (we WrappedExecutor) Update(ctx context.Context, list ...interface{}) (int64, error) {
+	updatedRows, err := we.SqlExecutor.Update(ctx, list...)
 	if err != nil {
 		return updatedRows, errForOp("update", err, list)
 	}
 	return updatedRows, err
 }
 
-func (we WrappedExecutor) Delete(list ...interface{}) (int64, error) {
-	deletedRows, err := we.SqlExecutor.Delete(list...)
+func (we WrappedExecutor) Delete(ctx context.Context, list ...interface{}) (int64, error) {
+	deletedRows, err := we.SqlExecutor.Delete(ctx, list...)
 	if err != nil {
 		return deletedRows, errForOp("delete", err, list)
 	}
 	return deletedRows, err
 }
 
-func (we WrappedExecutor) Select(holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
-	result, err := we.SqlExecutor.Select(holder, query, args...)
+func (we WrappedExecutor) Select(ctx context.Context, holder interface{}, query string, args ...interface{}) ([]interface{}, error) {
+	result, err := we.SqlExecutor.Select(ctx, holder, query, args...)
 	if err != nil {
 		return result, errForQuery(query, "select", err, []interface{}{holder})
 	}
 	return result, err
 }
 
-func (we WrappedExecutor) SelectOne(holder interface{}, query string, args ...interface{}) error {
-	err := we.SqlExecutor.SelectOne(holder, query, args...)
+func (we WrappedExecutor) SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error {
+	err := we.SqlExecutor.SelectOne(ctx, holder, query, args...)
 	if err != nil {
 		return errForQuery(query, "select one", err, []interface{}{holder})
 	}
 	return nil
 }
 
-func (we WrappedExecutor) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	rows, err := we.SqlExecutor.Query(query, args...)
+func (we WrappedExecutor) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	rows, err := we.SqlExecutor.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, errForQuery(query, "select", err, nil)
 	}
@@ -274,7 +266,7 @@ var (
 	// isn't used by the higher level borp Insert/Update/Select/etc functions we
 	// include regexps for matching inserts, updates, selects, etc because we want
 	// to match the correct table when these types of queries are run through
-	// Exec().
+	// ExecContext().
 	tableRegexps = []*regexp.Regexp{
 		selectTableRegexp,
 		insertTableRegexp,
@@ -295,8 +287,8 @@ func tableFromQuery(query string) string {
 	return ""
 }
 
-func (we WrappedExecutor) Exec(query string, args ...interface{}) (sql.Result, error) {
-	res, err := we.SqlExecutor.Exec(query, args...)
+func (we WrappedExecutor) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	res, err := we.SqlExecutor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return res, errForQuery(query, "exec", err, args)
 	}

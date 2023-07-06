@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -616,7 +617,7 @@ type mockEmailResolver struct{}
 
 // the `mockEmailResolver` select method treats the requested reg ID as an index
 // into a list of anonymous structs
-func (bs mockEmailResolver) SelectOne(output interface{}, _ string, args ...interface{}) error {
+func (bs mockEmailResolver) SelectOne(ctx context.Context, output interface{}, _ string, args ...interface{}) error {
 	// The "dbList" is just a list of contact records in memory
 	dbList := []contactQueryResult{
 		{
@@ -762,7 +763,7 @@ func TestResolveEmails(t *testing.T) {
 		clk:           clock.NewFake(),
 	}
 
-	addressesToRecipients, err := m.resolveAddresses()
+	addressesToRecipients, err := m.resolveAddresses(context.Background())
 	test.AssertNotError(t, err, "failed to resolveEmailAddresses")
 
 	expected := []string{

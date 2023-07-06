@@ -80,7 +80,7 @@ type mappedSelector[T any] struct {
 	columns []string
 }
 
-// Query performs a SELECT on the appropriate table for T. It combines the best
+// QueryContext performs a SELECT on the appropriate table for T. It combines the best
 // features of borp, the go stdlib, and generics, using the type parameter of
 // the typeSelector object to automatically look up the proper table name and
 // columns to select. It returns an iterable which yields fully-populated
@@ -94,7 +94,7 @@ type mappedSelector[T any] struct {
 // The caller is responsible for calling `Rows.Close()` when they are done with
 // the query. The caller is also responsible for ensuring that the clauses
 // argument does not contain any user-influenced input.
-func (ts mappedSelector[T]) Query(ctx context.Context, clauses string, args ...interface{}) (Rows[T], error) {
+func (ts mappedSelector[T]) QueryContext(ctx context.Context, clauses string, args ...interface{}) (Rows[T], error) {
 	// Look up the table to use based on the type of this TypeSelector.
 	var throwaway T
 	tableMap, err := ts.wrapped.TableFor(reflect.TypeOf(throwaway), false)
@@ -127,7 +127,7 @@ func (ts mappedSelector[T]) QueryFrom(ctx context.Context, tablename string, cla
 		clauses,
 	)
 
-	r, err := ts.wrapped.WithContext(ctx).Query(query, args...)
+	r, err := ts.wrapped.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("reading db: %w", err)
 	}

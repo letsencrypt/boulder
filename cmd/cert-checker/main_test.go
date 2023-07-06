@@ -86,7 +86,7 @@ func BenchmarkCheckCert(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		checker.checkCert(cert, nil)
+		checker.checkCert(context.Background(), cert, nil)
 	}
 }
 
@@ -130,7 +130,7 @@ func TestCheckWildcardCert(t *testing.T) {
 		Issued:  parsed.NotBefore,
 		DER:     wildcardCertDer,
 	}
-	_, problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(context.Background(), cert, nil)
 	for _, p := range problems {
 		t.Errorf(p)
 	}
@@ -163,7 +163,7 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 		DER:     block.Bytes,
 	}
 
-	names, problems := checker.checkCert(cert, nil)
+	names, problems := checker.checkCert(context.Background(), cert, nil)
 	if !reflect.DeepEqual(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
 		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
@@ -268,7 +268,7 @@ func TestCheckCert(t *testing.T) {
 				Expires: goodExpiry.AddDate(0, 0, 2), // Expiration doesn't match
 			}
 
-			_, problems := checker.checkCert(cert, nil)
+			_, problems := checker.checkCert(context.Background(), cert, nil)
 
 			problemsMap := map[string]int{
 				"Stored digest doesn't match certificate digest":                            1,
@@ -294,7 +294,7 @@ func TestCheckCert(t *testing.T) {
 
 			// Same settings as above, but the stored serial number in the DB is invalid.
 			cert.Serial = "not valid"
-			_, problems = checker.checkCert(cert, nil)
+			_, problems = checker.checkCert(context.Background(), cert, nil)
 			foundInvalidSerialProblem := false
 			for _, p := range problems {
 				if p == "Stored serial is invalid" {
@@ -319,7 +319,7 @@ func TestCheckCert(t *testing.T) {
 			cert.DER = goodCertDer
 			cert.Expires = parsed.NotAfter
 			cert.Issued = parsed.NotBefore
-			_, problems = checker.checkCert(cert, nil)
+			_, problems = checker.checkCert(context.Background(), cert, nil)
 			test.AssertEquals(t, len(problems), 0)
 		})
 	}
@@ -383,7 +383,7 @@ type mismatchedCountDB struct{}
 // `getCerts` calls `SelectInt` first to determine how many rows there are
 // matching the `getCertsCountQuery` criteria. For this mock we return
 // a non-zero number
-func (db mismatchedCountDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
+func (db mismatchedCountDB) SelectNullInt(_ context.Context, _ string, _ ...interface{}) (sql.NullInt64, error) {
 	return sql.NullInt64{
 			Int64: 99999,
 			Valid: true,
@@ -393,7 +393,7 @@ func (db mismatchedCountDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullI
 
 // `getCerts` then calls `Select` to retrieve the Certificate rows. We pull
 // a dastardly switch-a-roo here and return an empty set
-func (db mismatchedCountDB) Select(output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
+func (db mismatchedCountDB) Select(_ context.Context, output interface{}, _ string, _ ...interface{}) ([]interface{}, error) {
 	// But actually return nothing
 	outputPtr, _ := output.(*[]sa.CertWithID)
 	*outputPtr = []sa.CertWithID{}
@@ -437,7 +437,7 @@ type emptyDB struct {
 
 // SelectNullInt is a method that returns a false sql.NullInt64 struct to
 // mock a null DB response
-func (db emptyDB) SelectNullInt(_ string, _ ...interface{}) (sql.NullInt64, error) {
+func (db emptyDB) SelectNullInt(_ context.Context, _ string, _ ...interface{}) (sql.NullInt64, error) {
 	return sql.NullInt64{Valid: false},
 		nil
 }
@@ -592,13 +592,13 @@ func TestIgnoredLint(t *testing.T) {
 
 	// Check the certificate with a nil ignore map. This should return the
 	// expected zlint problems.
-	_, problems := checker.checkCert(cert, nil)
+	_, problems := checker.checkCert(context.Background(), cert, nil)
 	sort.Strings(problems)
 	test.AssertDeepEquals(t, problems, expectedProblems)
 
 	// Check the certificate again with an ignore map that excludes the affected
 	// lints. This should return no problems.
-	_, problems = checker.checkCert(cert, map[string]bool{
+	_, problems = checker.checkCert(context.Background(), cert, map[string]bool{
 		"e_sub_cert_aia_does_not_contain_ocsp_url": true,
 		"n_subject_common_name_included":           true,
 		"w_ct_sct_policy_count_unsatisfied":        true,

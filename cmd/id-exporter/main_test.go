@@ -41,6 +41,8 @@ const (
 )
 
 func TestFindIDs(t *testing.T) {
+	ctx := context.Background()
+
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
@@ -49,7 +51,7 @@ func TestFindIDs(t *testing.T) {
 
 	// Run findIDs - since no certificates have been added corresponding to
 	// the above registrations, no IDs should be found.
-	results, err := testCtx.c.findIDs()
+	results, err := testCtx.c.findIDs(ctx)
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 0)
 
@@ -61,7 +63,7 @@ func TestFindIDs(t *testing.T) {
 	// *not* be present since their certificate has already expired. Unlike
 	// previous versions of this test RegD is not filtered out for having a `tel:`
 	// contact field anymore - this is the duty of the notify-mailer.
-	results, err = testCtx.c.findIDs()
+	results, err = testCtx.c.findIDs(ctx)
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
@@ -76,7 +78,7 @@ func TestFindIDs(t *testing.T) {
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
-	results, err = testCtx.c.findIDs()
+	results, err = testCtx.c.findIDs(ctx)
 	test.AssertNotError(t, err, "findIDs() produced error")
 	// Now all four registration should be returned, including RegB since its
 	// certificate expired within the grace period
@@ -93,6 +95,7 @@ func TestFindIDs(t *testing.T) {
 }
 
 func TestFindIDsWithExampleHostnames(t *testing.T) {
+	ctx := context.Background()
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
@@ -102,7 +105,7 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	// Run findIDsWithExampleHostnames - since no certificates have been
 	// added corresponding to the above registrations, no IDs should be
 	// found.
-	results, err := testCtx.c.findIDsWithExampleHostnames()
+	results, err := testCtx.c.findIDsWithExampleHostnames(ctx)
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 0)
 
@@ -113,7 +116,7 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 	// registrations with unexpired certs we should get exactly three
 	// IDs back: RegA, RegC and RegD. RegB should *not* be present since
 	// their certificate has already expired.
-	results, err = testCtx.c.findIDsWithExampleHostnames()
+	results, err = testCtx.c.findIDsWithExampleHostnames(ctx)
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
@@ -131,7 +134,7 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 
 	// Allow a 1 year grace period
 	testCtx.c.grace = 360 * 24 * time.Hour
-	results, err = testCtx.c.findIDsWithExampleHostnames()
+	results, err = testCtx.c.findIDsWithExampleHostnames(ctx)
 	test.AssertNotError(t, err, "findIDs() produced error")
 
 	// Now all four registrations should be returned, including RegB
@@ -154,6 +157,8 @@ func TestFindIDsWithExampleHostnames(t *testing.T) {
 }
 
 func TestFindIDsForHostnames(t *testing.T) {
+	ctx := context.Background()
+
 	testCtx := setup(t)
 	defer testCtx.cleanUp()
 
@@ -162,14 +167,14 @@ func TestFindIDsForHostnames(t *testing.T) {
 
 	// Run findIDsForHostnames - since no certificates have been added corresponding to
 	// the above registrations, no IDs should be found.
-	results, err := testCtx.c.findIDsForHostnames([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	results, err := testCtx.c.findIDsForHostnames(ctx, []string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
 	test.AssertNotError(t, err, "findIDs() produced error")
 	test.AssertEquals(t, len(results), 0)
 
 	// Now add some certificates
 	testCtx.addCertificates(t)
 
-	results, err = testCtx.c.findIDsForHostnames([]string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
+	results, err = testCtx.c.findIDsForHostnames(ctx, []string{"example-a.com", "example-b.com", "example-c.com", "example-d.com"})
 	test.AssertNotError(t, err, "findIDsForHostnames() failed")
 	test.AssertEquals(t, len(results), 3)
 	for _, entry := range results {
@@ -314,6 +319,7 @@ func (tc testCtx) addRegistrations(t *testing.T) {
 }
 
 func (tc testCtx) addCertificates(t *testing.T) {
+	ctx := context.Background()
 	serial1 := big.NewInt(1336)
 	serial1String := core.SerialToString(serial1)
 	serial2 := big.NewInt(1337)
@@ -352,9 +358,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertA.NotAfter,
 		DER:            certDerA,
 	}
-	err := tc.c.dbMap.Insert(certA)
+	err := tc.c.dbMap.Insert(ctx, certA)
 	test.AssertNotError(t, err, "Couldn't add certA")
-	_, err = tc.c.dbMap.Exec(
+	_, err = tc.c.dbMap.ExecContext(
+		ctx,
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-a",
 		serial1String,
@@ -377,9 +384,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertB.NotAfter,
 		DER:            certDerB,
 	}
-	err = tc.c.dbMap.Insert(certB)
+	err = tc.c.dbMap.Insert(ctx, certB)
 	test.AssertNotError(t, err, "Couldn't add certB")
-	_, err = tc.c.dbMap.Exec(
+	_, err = tc.c.dbMap.ExecContext(
+		ctx,
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-b",
 		serial2String,
@@ -402,9 +410,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertC.NotAfter,
 		DER:            certDerC,
 	}
-	err = tc.c.dbMap.Insert(certC)
+	err = tc.c.dbMap.Insert(ctx, certC)
 	test.AssertNotError(t, err, "Couldn't add certC")
-	_, err = tc.c.dbMap.Exec(
+	_, err = tc.c.dbMap.ExecContext(
+		ctx,
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-c",
 		serial3String,
@@ -427,9 +436,10 @@ func (tc testCtx) addCertificates(t *testing.T) {
 		Expires:        rawCertD.NotAfter,
 		DER:            certDerD,
 	}
-	err = tc.c.dbMap.Insert(certD)
+	err = tc.c.dbMap.Insert(ctx, certD)
 	test.AssertNotError(t, err, "Couldn't add certD")
-	_, err = tc.c.dbMap.Exec(
+	_, err = tc.c.dbMap.ExecContext(
+		ctx,
 		"INSERT INTO issuedNames (reversedName, serial, notBefore) VALUES (?,?,0)",
 		"com.example-d",
 		serial4String,
