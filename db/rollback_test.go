@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"testing"
 
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -8,9 +9,10 @@ import (
 )
 
 func TestRollback(t *testing.T) {
+	ctx := context.Background()
 	dbMap := testDbMap(t)
 
-	tx, _ := dbMap.Begin()
+	tx, _ := dbMap.BeginTx(ctx)
 	// Commit the transaction so that a subsequent rollback will always fail.
 	_ = tx.Commit()
 
@@ -28,7 +30,7 @@ func TestRollback(t *testing.T) {
 
 	// Create a new transaction and don't commit it this time. The rollback should
 	// succeed.
-	tx, _ = dbMap.Begin()
+	tx, _ = dbMap.BeginTx(ctx)
 	result = rollback(tx, innerErr)
 
 	// We expect that the err is returned unwrapped.

@@ -10,12 +10,11 @@ type txFunc func(txWithCtx Executor) (interface{}, error)
 // to the transaction. WithTransaction also passes through a value returned by
 // `f`, if there is no error.
 func WithTransaction(ctx context.Context, dbMap DatabaseMap, f txFunc) (interface{}, error) {
-	tx, err := dbMap.Begin()
+	tx, err := dbMap.BeginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
-	txWithCtx := tx.WithContext(ctx)
-	result, err := f(txWithCtx)
+	result, err := f(tx)
 	if err != nil {
 		return nil, rollback(tx, err)
 	}

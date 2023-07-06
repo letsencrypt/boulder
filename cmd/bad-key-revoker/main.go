@@ -82,9 +82,10 @@ func (ubk uncheckedBlockedKey) String() string {
 		ubk.RevokedBy, ubk.KeyHash)
 }
 
-func (bkr *badKeyRevoker) countUncheckedKeys() (int, error) {
+func (bkr *badKeyRevoker) countUncheckedKeys(ctx context.Context) (int, error) {
 	var count int
 	err := bkr.dbMap.SelectOne(
+		ctx,
 		&count,
 		`SELECT COUNT(*)
 		FROM (SELECT 1 FROM blockedKeys
@@ -95,9 +96,10 @@ func (bkr *badKeyRevoker) countUncheckedKeys() (int, error) {
 	return count, err
 }
 
-func (bkr *badKeyRevoker) selectUncheckedKey() (uncheckedBlockedKey, error) {
+func (bkr *badKeyRevoker) selectUncheckedKey(ctx context.Context) (uncheckedBlockedKey, error) {
 	var row uncheckedBlockedKey
 	err := bkr.dbMap.SelectOne(
+		ctx,
 		&row,
 		`SELECT keyHash, revokedBy
 		FROM blockedKeys
@@ -125,7 +127,7 @@ func (uc unrevokedCertificate) String() string {
 // findUnrevoked looks for all unexpired, currently valid certificates which have a specific SPKI hash,
 // by looking first at the keyHashToSerial table and then the certificateStatus and certificates tables.
 // If the number of certificates it finds is larger than bkr.maxRevocations it'll error out.
-func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevokedCertificate, error) {
+func (bkr *badKeyRevoker) findUnrevoked(ctx context.Context, unchecked uncheckedBlockedKey) ([]unrevokedCertificate, error) {
 	var unrevokedCerts []unrevokedCertificate
 	initialID := 0
 	for {
@@ -134,6 +136,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			CertSerial string
 		}
 		_, err := bkr.dbMap.Select(
+			ctx,
 			&batch,
 			"SELECT id, certSerial FROM keyHashToSerial WHERE keyHash = ? AND id > ? AND certNotAfter > ? ORDER BY id LIMIT ?",
 			unchecked.KeyHash,
@@ -155,6 +158,7 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 			// possible we could get multiple results for a single serial number, but they
 			// would be duplicates.
 			err = bkr.dbMap.SelectOne(
+				ctx,
 				&unrevokedCert,
 				`SELECT cs.id, cs.serial, c.registrationID, c.der, cs.status, cs.isExpired
 				FROM certificateStatus AS cs
@@ -181,19 +185,19 @@ func (bkr *badKeyRevoker) findUnrevoked(unchecked uncheckedBlockedKey) ([]unrevo
 
 // markRowChecked updates a row in the blockedKeys table to mark a keyHash
 // as having been checked for extant unrevoked certificates.
-func (bkr *badKeyRevoker) markRowChecked(unchecked uncheckedBlockedKey) error {
-	_, err := bkr.dbMap.Exec("UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = ?", unchecked.KeyHash)
+func (bkr *badKeyRevoker) markRowChecked(ctx context.Context, unchecked uncheckedBlockedKey) error {
+	_, err := bkr.dbMap.ExecContext(ctx, "UPDATE blockedKeys SET extantCertificatesChecked = true WHERE keyHash = ?", unchecked.KeyHash)
 	return err
 }
 
 // resolveContacts builds a map of id -> email addresses
-func (bkr *badKeyRevoker) resolveContacts(ids []int64) (map[int64][]string, error) {
+func (bkr *badKeyRevoker) resolveContacts(ctx context.Context, ids []int64) (map[int64][]string, error) {
 	idToEmail := map[int64][]string{}
 	for _, id := range ids {
 		var emails struct {
 			Contact []string
 		}
-		err := bkr.dbMap.SelectOne(&emails, "SELECT contact FROM registrations WHERE id = ?", id)
+		err := bkr.dbMap.SelectOne(ctx, &emails, "SELECT contact FROM registrations WHERE id = ?", id)
 		if err != nil {
 			// ErrNoRows is not acceptable here since there should always be a
 			// row for the registration, even if there are no contacts
@@ -289,9 +293,9 @@ func (bkr *badKeyRevoker) revokeCerts(revokerEmails []string, emailToCerts map[s
 
 // invoke processes a single key in the blockedKeys table and returns whether
 // there were any rows to process or not.
-func (bkr *badKeyRevoker) invoke() (bool, error) {
+func (bkr *badKeyRevoker) invoke(ctx context.Context) (bool, error) {
 	// Gather a count of rows to be processed.
-	uncheckedCount, err := bkr.countUncheckedKeys()
+	uncheckedCount, err := bkr.countUncheckedKeys(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -307,7 +311,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	}
 
 	// select a row to process
-	unchecked, err := bkr.selectUncheckedKey()
+	unchecked, err := bkr.selectUncheckedKey(ctx)
 	if err != nil {
 		if db.IsNoRows(err) {
 			return true, nil
@@ -317,7 +321,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	bkr.logger.AuditInfo(fmt.Sprintf("found unchecked block key to work on: %s", unchecked))
 
 	// select all unrevoked, unexpired serials associated with the blocked key hash
-	unrevokedCerts, err := bkr.findUnrevoked(unchecked)
+	unrevokedCerts, err := bkr.findUnrevoked(ctx, unchecked)
 	if err != nil {
 		bkr.logger.AuditInfo(fmt.Sprintf("finding unrevoked certificates related to %s: %s",
 			unchecked, err))
@@ -326,7 +330,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	if len(unrevokedCerts) == 0 {
 		bkr.logger.AuditInfo(fmt.Sprintf("found no certificates that need revoking related to %s, marking row as checked", unchecked))
 		// mark row as checked
-		err = bkr.markRowChecked(unchecked)
+		err = bkr.markRowChecked(ctx, unchecked)
 		if err != nil {
 			return false, err
 		}
@@ -352,7 +356,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 		ids = append(ids, unchecked.RevokedBy)
 	}
 	// get contact addresses for the list of IDs
-	idToEmails, err := bkr.resolveContacts(ids)
+	idToEmails, err := bkr.resolveContacts(ctx, ids)
 	if err != nil {
 		return false, err
 	}
@@ -377,7 +381,7 @@ func (bkr *badKeyRevoker) invoke() (bool, error) {
 	}
 
 	// mark the key as checked
-	err = bkr.markRowChecked(unchecked)
+	err = bkr.markRowChecked(ctx, unchecked)
 	if err != nil {
 		return false, err
 	}
@@ -523,7 +527,7 @@ func main() {
 
 	// Run bad-key-revoker in a loop. Backoff if no work or errors.
 	for {
-		noWork, err := bkr.invoke()
+		noWork, err := bkr.invoke(context.Background())
 		if err != nil {
 			keysProcessed.WithLabelValues("error").Inc()
 			logger.AuditErrf("failed to process blockedKeys row: %s", err)

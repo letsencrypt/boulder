@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"io"
@@ -15,9 +16,9 @@ var (
 // rows in all tables in a database plus close the database
 // connection. It is satisfied by *sql.DB.
 type CleanUpDB interface {
-	Begin() (*sql.Tx, error)
-	Exec(query string, args ...interface{}) (sql.Result, error)
-	Query(query string, args ...interface{}) (*sql.Rows, error)
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
 
 	io.Closer
 }
@@ -62,7 +63,8 @@ func resetTestDatabase(t testing.TB, dbPrefix string) func() {
 // counters. See allTableNamesInDB for what is meant by "all tables
 // available". To be used only in test code.
 func deleteEverythingInAllTables(db CleanUpDB) error {
-	ts, err := allTableNamesInDB(db)
+	ctx := context.Background()
+	ts, err := allTableNamesInDB(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -72,22 +74,22 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 		// another connection to make the deletion on. Note that
 		// `alter table` statements will silently cause transactions
 		// to commit, so we do them outside of the transaction.
-		tx, err := db.Begin()
+		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("unable to start transaction to delete all rows from table %#v: %s", tn, err)
 		}
-		_, err = tx.Exec("set FOREIGN_KEY_CHECKS = 0")
+		_, err = tx.ExecContext(ctx, "set FOREIGN_KEY_CHECKS = 0")
 		if err != nil {
 			return fmt.Errorf("unable to disable FOREIGN_KEY_CHECKS to delete all rows from table %#v: %s", tn, err)
 		}
 		// 1 = 1 here prevents the MariaDB i_am_a_dummy setting from
 		// rejecting the DELETE for not having a WHERE clause.
 
-		_, err = tx.Exec("delete from `" + tn + "` where 1 = 1")
+		_, err = tx.ExecContext(ctx, "delete from `"+tn+"` where 1 = 1")
 		if err != nil {
 			return fmt.Errorf("unable to delete all rows from table %#v: %s", tn, err)
 		}
-		_, err = tx.Exec("set FOREIGN_KEY_CHECKS = 1")
+		_, err = tx.ExecContext(ctx, "set FOREIGN_KEY_CHECKS = 1")
 		if err != nil {
 			return fmt.Errorf("unable to re-enable FOREIGN_KEY_CHECKS to delete all rows from table %#v: %s", tn, err)
 		}
@@ -96,7 +98,7 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 			return fmt.Errorf("unable to commit transaction to delete all rows from table %#v: %s", tn, err)
 		}
 
-		_, err = db.Exec("alter table `" + tn + "` AUTO_INCREMENT = 1")
+		_, err = db.ExecContext(ctx, "alter table `"+tn+"` AUTO_INCREMENT = 1")
 		if err != nil {
 			return fmt.Errorf("unable to reset autoincrement on table %#v: %s", tn, err)
 		}
@@ -107,8 +109,8 @@ func deleteEverythingInAllTables(db CleanUpDB) error {
 // allTableNamesInDB returns the names of the tables available to the passed
 // CleanUpDB. Omits the 'gorp_migrations' table as this is used by sql-migrate
 // (https://github.com/rubenv/sql-migrate) to track migrations.
-func allTableNamesInDB(db CleanUpDB) ([]string, error) {
-	r, err := db.Query("select table_name from information_schema.tables t where t.table_schema = DATABASE() and t.table_name != 'gorp_migrations';")
+func allTableNamesInDB(ctx context.Context, db CleanUpDB) ([]string, error) {
+	r, err := db.QueryContext(ctx, "select table_name from information_schema.tables t where t.table_schema = DATABASE() and t.table_name != 'gorp_migrations';")
 	if err != nil {
 		return nil, err
 	}

@@ -34,7 +34,7 @@ func randHash(t *testing.T) []byte {
 
 func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, hash []byte, by int64, checked bool) {
 	t.Helper()
-	_, err := dbMap.Exec(`INSERT INTO blockedKeys
+	_, err := dbMap.ExecContext(context.Background(), `INSERT INTO blockedKeys
 		(keyHash, added, source, revokedBy, extantCertificatesChecked)
 		VALUES
 		(?, ?, ?, ?, ?)`,
@@ -48,6 +48,8 @@ func insertBlockedRow(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, hash [
 }
 
 func TestSelectUncheckedRows(t *testing.T) {
+	ctx := context.Background()
+
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
@@ -62,18 +64,18 @@ func TestSelectUncheckedRows(t *testing.T) {
 
 	hashA, hashB, hashC := randHash(t), randHash(t), randHash(t)
 	insertBlockedRow(t, dbMap, fc, hashA, 1, true)
-	count, err := bkr.countUncheckedKeys()
+	count, err := bkr.countUncheckedKeys(ctx)
 	test.AssertNotError(t, err, "countUncheckedKeys failed")
 	test.AssertEquals(t, count, 0)
-	_, err = bkr.selectUncheckedKey()
+	_, err = bkr.selectUncheckedKey(ctx)
 	test.AssertError(t, err, "selectUncheckedKey didn't fail with no rows to process")
 	test.Assert(t, db.IsNoRows(err), "returned error is not sql.ErrNoRows")
 	insertBlockedRow(t, dbMap, fc, hashB, 1, false)
 	insertBlockedRow(t, dbMap, fc, hashC, 1, false)
-	count, err = bkr.countUncheckedKeys()
+	count, err = bkr.countUncheckedKeys(ctx)
 	test.AssertNotError(t, err, "countUncheckedKeys failed")
 	test.AssertEquals(t, count, 2)
-	row, err := bkr.selectUncheckedKey()
+	row, err := bkr.selectUncheckedKey(ctx)
 	test.AssertNotError(t, err, "selectUncheckKey failed")
 	test.AssertByteEquals(t, row.KeyHash, hashB)
 	test.AssertEquals(t, row.RevokedBy, int64(1))
@@ -92,7 +94,8 @@ func insertRegistration(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, addr
 		}
 		contactStr = fmt.Sprintf("[%s]", strings.Join(contacts, ","))
 	}
-	res, err := dbMap.Exec(
+	res, err := dbMap.ExecContext(
+		context.Background(),
 		"INSERT INTO registrations (jwk, jwk_sha256, contact, agreement, initialIP, createdAt, status, LockCol) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
 		[]byte{},
 		fmt.Sprintf("%x", jwkHash),
@@ -124,13 +127,15 @@ func insertGoodCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash 
 
 func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []byte, serial string, regID int64, expiredStatus ExpiredStatus, status core.OCSPStatus) {
 	t.Helper()
+	ctx := context.Background()
 
 	expiresOffset := 0 * time.Second
 	if !expiredStatus {
 		expiresOffset = 90*24*time.Hour - 1*time.Second // 90 days exclusive
 	}
 
-	_, err := dbMap.Exec(
+	_, err := dbMap.ExecContext(
+		ctx,
 		`INSERT IGNORE INTO keyHashToSerial
 	     (keyHash, certNotAfter, certSerial) VALUES
 		 (?, ?, ?)`,
@@ -140,7 +145,8 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	)
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
 
-	_, err = dbMap.Exec(
+	_, err = dbMap.ExecContext(
+		ctx,
 		"INSERT INTO certificateStatus (serial, status, isExpired, ocspLastUpdated, revokedDate, revokedReason, lastExpirationNagSent) VALUES (?, ?, ?, ?, ?, ?, ?)",
 		serial,
 		status,
@@ -152,7 +158,8 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
-	_, err = dbMap.Exec(
+	_, err = dbMap.ExecContext(
+		ctx,
 		"INSERT INTO precertificates (serial, registrationID, der, issued, expires) VALUES (?, ?, ?, ?, ?)",
 		serial,
 		regID,
@@ -162,7 +169,8 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 	)
 	test.AssertNotError(t, err, "failed to insert test certificateStatus row")
 
-	_, err = dbMap.Exec(
+	_, err = dbMap.ExecContext(
+		ctx,
 		"INSERT INTO certificates (serial, registrationID, der, digest, issued, expires) VALUES (?, ?, ?, ?, ?, ?)",
 		serial,
 		regID,
@@ -178,6 +186,8 @@ func insertCert(t *testing.T, dbMap *db.WrappedMap, fc clock.Clock, keyHash []by
 // does not have a corresponding entry in the certificateStatus and
 // precertificates table.
 func TestFindUnrevokedNoRows(t *testing.T) {
+	ctx := context.Background()
+
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
@@ -185,7 +195,8 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	fc := clock.NewFake()
 
 	hashA := randHash(t)
-	_, err = dbMap.Exec(
+	_, err = dbMap.ExecContext(
+		ctx,
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
 		fc.Now().Add(90*24*time.Hour-1*time.Second), // 90 days exclusive
@@ -194,11 +205,13 @@ func TestFindUnrevokedNoRows(t *testing.T) {
 	test.AssertNotError(t, err, "failed to insert test keyHashToSerial row")
 
 	bkr := &badKeyRevoker{dbMap: dbMap, serialBatchSize: 1, maxRevocations: 10, clk: fc}
-	_, err = bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
+	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
 	test.Assert(t, db.IsNoRows(err), "expected NoRows error")
 }
 
 func TestFindUnrevoked(t *testing.T) {
+	ctx := context.Background()
+
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
@@ -219,7 +232,7 @@ func TestFindUnrevoked(t *testing.T) {
 	// insert revoked
 	insertCert(t, dbMap, fc, hashA, "dd", regID, Unexpired, Revoked)
 
-	rows, err := bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
+	rows, err := bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertNotError(t, err, "findUnrevoked failed")
 	test.AssertEquals(t, len(rows), 1)
 	test.AssertEquals(t, rows[0].Serial, "ff")
@@ -227,7 +240,7 @@ func TestFindUnrevoked(t *testing.T) {
 	test.AssertByteEquals(t, rows[0].DER, []byte{1, 2, 3})
 
 	bkr.maxRevocations = 0
-	_, err = bkr.findUnrevoked(uncheckedBlockedKey{KeyHash: hashA})
+	_, err = bkr.findUnrevoked(ctx, uncheckedBlockedKey{KeyHash: hashA})
 	test.AssertError(t, err, "findUnrevoked didn't fail with 0 maxRevocations")
 	test.AssertEquals(t, err.Error(), fmt.Sprintf("too many certificates to revoke associated with %x: got 1, max 0", hashA))
 }
@@ -246,7 +259,7 @@ func TestResolveContacts(t *testing.T) {
 	regIDC := insertRegistration(t, dbMap, fc, "example.com")
 	regIDD := insertRegistration(t, dbMap, fc, "example-2.com")
 
-	idToEmail, err := bkr.resolveContacts([]int64{regIDA, regIDB, regIDC, regIDD})
+	idToEmail, err := bkr.resolveContacts(context.Background(), []int64{regIDA, regIDB, regIDC, regIDD})
 	test.AssertNotError(t, err, "resolveContacts failed")
 	test.AssertDeepEquals(t, idToEmail, map[int64][]string{
 		regIDA: {""},
@@ -308,6 +321,8 @@ func TestRevokeCerts(t *testing.T) {
 }
 
 func TestCertificateAbsent(t *testing.T) {
+	ctx := context.Background()
+
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
@@ -321,7 +336,8 @@ func TestCertificateAbsent(t *testing.T) {
 
 	// Add an entry to keyHashToSerial but not to certificateStatus or certificate
 	// status, and expect an error.
-	_, err = dbMap.Exec(
+	_, err = dbMap.ExecContext(
+		ctx,
 		"INSERT INTO keyHashToSerial (keyHash, certNotAfter, certSerial) VALUES (?, ?, ?)",
 		hashA,
 		fc.Now().Add(90*24*time.Hour-1*time.Second), // 90 days exclusive
@@ -340,11 +356,13 @@ func TestCertificateAbsent(t *testing.T) {
 		logger:          blog.NewMock(),
 		clk:             fc,
 	}
-	_, err = bkr.invoke()
+	_, err = bkr.invoke(ctx)
 	test.AssertError(t, err, "expected error when row in keyHashToSerial didn't have a matching cert")
 }
 
 func TestInvoke(t *testing.T) {
+	ctx := context.Background()
+
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
@@ -377,7 +395,7 @@ func TestInvoke(t *testing.T) {
 	insertGoodCert(t, dbMap, fc, hashA, "dd", regIDC)
 	insertGoodCert(t, dbMap, fc, hashA, "cc", regIDD)
 
-	noWork, err := bkr.invoke()
+	noWork, err := bkr.invoke(ctx)
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 	test.AssertEquals(t, mr.revoked, 4)
@@ -388,7 +406,7 @@ func TestInvoke(t *testing.T) {
 	var checked struct {
 		ExtantCertificatesChecked bool
 	}
-	err = dbMap.SelectOne(&checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashA)
+	err = dbMap.SelectOne(ctx, &checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashA)
 	test.AssertNotError(t, err, "failed to select row from blockedKeys")
 	test.AssertEquals(t, checked.ExtantCertificatesChecked, true)
 
@@ -397,16 +415,16 @@ func TestInvoke(t *testing.T) {
 	insertBlockedRow(t, dbMap, fc, hashB, regIDC, false)
 	insertCert(t, dbMap, fc, hashB, "bb", regIDA, Expired, Revoked)
 
-	noWork, err = bkr.invoke()
+	noWork, err = bkr.invoke(ctx)
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 
 	checked.ExtantCertificatesChecked = false
-	err = dbMap.SelectOne(&checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashB)
+	err = dbMap.SelectOne(ctx, &checked, "SELECT extantCertificatesChecked FROM blockedKeys WHERE keyHash = ?", hashB)
 	test.AssertNotError(t, err, "failed to select row from blockedKeys")
 	test.AssertEquals(t, checked.ExtantCertificatesChecked, true)
 
-	noWork, err = bkr.invoke()
+	noWork, err = bkr.invoke(ctx)
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, true)
 }
@@ -450,7 +468,7 @@ func TestInvokeRevokerHasNoExtantCerts(t *testing.T) {
 	insertGoodCert(t, dbMap, fc, hashA, "cc", regIDC)
 	insertGoodCert(t, dbMap, fc, hashA, "bb", regIDC)
 
-	noWork, err := bkr.invoke()
+	noWork, err := bkr.invoke(context.Background())
 	test.AssertNotError(t, err, "invoke failed")
 	test.AssertEquals(t, noWork, false)
 	test.AssertEquals(t, mr.revoked, 4)

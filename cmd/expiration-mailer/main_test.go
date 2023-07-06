@@ -329,6 +329,8 @@ func TestNoContactCertIsNotRenewed(t *testing.T) {
 // An account with no contact info has a certificate that is expiring but has been renewed.
 // We should only examine that certificate once.
 func TestNoContactCertIsRenewed(t *testing.T) {
+	ctx := context.Background()
+
 	testCtx := setup(t, []time.Duration{time.Hour * 24 * 7})
 
 	reg, err := makeRegistration(testCtx.ssa, 1, jsonKeyA, []string{})
@@ -350,7 +352,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
-	err = setupDBMap.Insert(&core.FQDNSet{
+	err = setupDBMap.Insert(ctx, &core.FQDNSet{
 		SetHash: sa.HashNames(names),
 		Serial:  core.SerialToString(serial2),
 		Issued:  testCtx.fc.Now().Add(time.Hour),
@@ -358,7 +360,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "inserting FQDNSet for renewal")
 
-	err = testCtx.m.findExpiringCertificates(context.Background())
+	err = testCtx.m.findExpiringCertificates(ctx)
 	test.AssertNotError(t, err, "finding expired certificates")
 
 	// We should have examined exactly one certificate
@@ -370,7 +372,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 
 	// Run findExpiringCertificates again. The count of examined certificates
 	// should not increase again.
-	err = testCtx.m.findExpiringCertificates(context.Background())
+	err = testCtx.m.findExpiringCertificates(ctx)
 	test.AssertNotError(t, err, "finding expired certificates")
 	test.AssertMetricWithLabelsEquals(t, certsExamined, prometheus.Labels{}, 1.0)
 	test.AssertMetricWithLabelsEquals(t, certsAlreadyRenewed, prometheus.Labels{}, 1.0)
@@ -498,6 +500,8 @@ func makeCertificate(regID int64, serial *big.Int, dnsNames []string, expires ti
 }
 
 func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
+	ctx := context.Background()
+
 	parsedCert, err := x509.ParseCertificate(cert.DER)
 	if err != nil {
 		return err
@@ -507,7 +511,7 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 	if err != nil {
 		return err
 	}
-	err = setupDBMap.Insert(&core.Certificate{
+	err = setupDBMap.Insert(ctx, &core.Certificate{
 		RegistrationID: cert.RegID,
 		Serial:         core.SerialToString(parsedCert.SerialNumber),
 		Issued:         parsedCert.NotBefore,
@@ -518,7 +522,7 @@ func insertCertificate(cert certDERWithRegID, lastNagSent time.Time) error {
 		return fmt.Errorf("inserting certificate: %w", err)
 	}
 
-	return setupDBMap.Insert(&core.CertificateStatus{
+	return setupDBMap.Insert(ctx, &core.CertificateStatus{
 		Serial:                core.SerialToString(parsedCert.SerialNumber),
 		LastExpirationNagSent: lastNagSent,
 		Status:                core.OCSPStatusGood,
@@ -599,9 +603,9 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "setting up DB")
-	err = setupDBMap.Insert(fqdnStatusD)
+	err = setupDBMap.Insert(context.Background(), fqdnStatusD)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusD")
-	err = setupDBMap.Insert(fqdnStatusDRenewed)
+	err = setupDBMap.Insert(context.Background(), fqdnStatusDRenewed)
 	test.AssertNotError(t, err, "Couldn't add fqdnStatusDRenewed")
 	return []certDERWithRegID{certA, certB, certC, certD}
 }
@@ -752,7 +756,7 @@ func TestCertIsRenewed(t *testing.T) {
 		err = insertCertificate(certDERWithRegID{DER: certDer, RegID: reg.Id}, time.Time{})
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add cert %s", testData.stringSerial))
 
-		err = setupDBMap.Insert(fqdnStatus)
+		err = setupDBMap.Insert(context.Background(), fqdnStatus)
 		test.AssertNotError(t, err, fmt.Sprintf("Couldn't add fqdnStatus %s", testData.stringSerial))
 	}
 
@@ -858,13 +862,15 @@ func TestDontFindRevokedCert(t *testing.T) {
 	err = insertCertificate(certA, time.Time{})
 	test.AssertNotError(t, err, "inserting certificate")
 
+	ctx := context.Background()
+
 	setupDBMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "sa.NewDbMap failed")
-	_, err = setupDBMap.Exec("UPDATE certificateStatus SET status = ? WHERE serial = ?",
+	_, err = setupDBMap.ExecContext(ctx, "UPDATE certificateStatus SET status = ? WHERE serial = ?",
 		string(core.OCSPStatusRevoked), core.SerialToString(serial1))
 	test.AssertNotError(t, err, "revoking certificate")
 
-	err = testCtx.m.findExpiringCertificates(context.Background())
+	err = testCtx.m.findExpiringCertificates(ctx)
 	test.AssertNotError(t, err, "err from findExpiringCertificates")
 
 	if len(testCtx.mc.Messages) != 0 {
