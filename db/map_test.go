@@ -240,7 +240,7 @@ func testDbMap(t *testing.T) *WrappedMap {
 	// NOTE(@cpu): We avoid giving a sa.BoulderTypeConverter to the DbMap field to
 	// avoid the cyclic dep. We don't need to convert any types in the db tests.
 	dbMap := &borp.DbMap{Db: dbConn, Dialect: dialect, TypeConverter: nil}
-	return &WrappedMap{DbMap: dbMap}
+	return &WrappedMap{dbMap: dbMap}
 }
 
 func TestWrappedMap(t *testing.T) {
