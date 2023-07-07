@@ -16,10 +16,8 @@ import (
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	crllints "github.com/letsencrypt/boulder/linter/lints/crl"
 
-	_ "github.com/letsencrypt/boulder/linter/lints/all"
-	_ "github.com/letsencrypt/boulder/linter/lints/intermediate"
-	_ "github.com/letsencrypt/boulder/linter/lints/root"
-	_ "github.com/letsencrypt/boulder/linter/lints/subscriber"
+	_ "github.com/letsencrypt/boulder/linter/lints/chrome"
+	_ "github.com/letsencrypt/boulder/linter/lints/cpcps"
 )
 
 var ErrLinting = fmt.Errorf("failed lint(s)")

@@ -12,25 +12,25 @@ func _() {
 	_ = x[StoreRevokerInfo-1]
 	_ = x[ROCSPStage6-2]
 	_ = x[ROCSPStage7-3]
-	_ = x[CAAValidationMethods-4]
-	_ = x[CAAAccountURI-5]
-	_ = x[EnforceMultiVA-6]
-	_ = x[MultiVAFullResults-7]
-	_ = x[ECDSAForAll-8]
-	_ = x[ServeRenewalInfo-9]
-	_ = x[AllowUnrecognizedFeatures-10]
-	_ = x[ExpirationMailerUsesJoin-11]
-	_ = x[CertCheckerChecksValidations-12]
-	_ = x[CertCheckerRequiresValidations-13]
-	_ = x[AsyncFinalize-14]
-	_ = x[RequireCommonName-15]
-	_ = x[StoreLintingCertificateInsteadOfPrecertificate-16]
+	_ = x[StoreLintingCertificateInsteadOfPrecertificate-4]
+	_ = x[CAAValidationMethods-5]
+	_ = x[CAAAccountURI-6]
+	_ = x[EnforceMultiVA-7]
+	_ = x[MultiVAFullResults-8]
+	_ = x[ECDSAForAll-9]
+	_ = x[ServeRenewalInfo-10]
+	_ = x[AllowUnrecognizedFeatures-11]
+	_ = x[ExpirationMailerUsesJoin-12]
+	_ = x[CertCheckerChecksValidations-13]
+	_ = x[CertCheckerRequiresValidations-14]
+	_ = x[AsyncFinalize-15]
+	_ = x[RequireCommonName-16]
 	_ = x[LeaseCRLShards-17]
 }
 
-const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6ROCSPStage7CAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonNameStoreLintingCertificateInsteadOfPrecertificateLeaseCRLShards"
+const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6ROCSPStage7StoreLintingCertificateInsteadOfPrecertificateCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonNameLeaseCRLShards"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 44, 64, 77, 91, 109, 120, 136, 161, 185, 213, 243, 256, 273, 319, 333}
+var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 44, 90, 110, 123, 137, 155, 166, 182, 207, 231, 259, 289, 302, 319, 333}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

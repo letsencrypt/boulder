@@ -24,8 +24,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -150,7 +148,7 @@ func (m *mockSA) GetCertificate(ctx context.Context, req *sapb.Serial, _ ...grpc
 }
 
 func (m *mockSA) SetCertificateStatusReady(ctx context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	return nil, status.Error(codes.Unimplemented, "unimplemented mock")
+	return &emptypb.Empty{}, nil
 }
 
 var caKey crypto.Signer
@@ -944,74 +942,6 @@ func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertific
 	}
 	qsa.issuedPrecert = time.Unix(0, req.Issued).UTC()
 	return nil, nil
-}
-
-// TestPrecertOrphanQueue tests that IssuePrecertificate writes precertificates
-// to the orphan queue if storage fails, and that `integrateOrphan` later
-// successfully writes those precertificates to the database. To do this, it
-// uses the `queueSA` mock, which allows us to flip on and off a "fail" bit that
-// decides whether it errors in response to storage requests.
-func TestPrecertOrphanQueue(t *testing.T) {
-	tmpDir := t.TempDir()
-	orphanQueue, err := goque.OpenQueue(tmpDir)
-	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
-
-	qsa := &queueSA{fail: true}
-	testCtx := setup(t)
-	fakeNow := time.Date(2019, 9, 20, 0, 0, 0, 0, time.UTC)
-	testCtx.fc.Set(fakeNow)
-	ca, err := NewCertificateAuthorityImpl(
-		qsa,
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		nil,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		orphanQueue,
-		testCtx.logger,
-		testCtx.stats,
-		testCtx.signatureCount,
-		testCtx.signErrorCount,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	_, err = ca.IssuePrecertificate(context.Background(), &capb.IssueCertificateRequest{
-		RegistrationID: 1,
-		OrderID:        1,
-		Csr:            CNandSANCSR,
-	})
-	test.AssertError(t, err, "Expected IssuePrecertificate to fail with `qsa.fail = true`")
-
-	matches := testCtx.logger.GetAllMatching(`orphaning precertificate.* regID=\[1\], orderID=\[1\]`)
-	if len(matches) != 1 {
-		t.Errorf("no log line, or incorrect log line for orphaned precertificate:\n%s",
-			strings.Join(testCtx.logger.GetAllMatching(".*"), "\n"))
-	}
-
-	test.AssertMetricWithLabelsEquals(
-		t, ca.orphanCount, prometheus.Labels{"type": "precert"}, 1)
-
-	qsa.fail = false
-	err = ca.integrateOrphan()
-	test.AssertNotError(t, err, "integrateOrphan failed")
-	if !qsa.issuedPrecert.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issuedPrecert)
-	}
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	test.AssertMetricWithLabelsEquals(
-		t, ca.adoptedOrphanCount, prometheus.Labels{"type": "precert"}, 1)
 }
 
 func TestOrphanQueue(t *testing.T) {

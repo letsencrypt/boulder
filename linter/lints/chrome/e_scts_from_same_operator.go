@@ -1,4 +1,4 @@
-package subscriber
+package chrome
 
 import (
 	"time"
