@@ -520,7 +520,7 @@ func (ca *certificateAuthorityImpl) OrphanIntegrationLoop() {
 	}
 }
 
-// integrateOrpan removes an orphan from the queue and adds it to the database. The
+// integrateOrphan removes an orphan from the queue and adds it to the database. The
 // item isn't dequeued until it is actually added to the database to prevent items from
 // being lost if the CA is restarted between the item being dequeued and being added to
 // the database. It calculates the issuance time by subtracting the backdate period from

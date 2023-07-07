@@ -426,7 +426,7 @@ func noZeroReasonCodes(crl *crl_x509.RevocationList) *lint.LintResult {
 	return &lint.LintResult{Status: lint.Pass}
 }
 
-// noCrticialReasons checks Baseline Requirements, Section 7.2.2.1:
+// noCriticalReasons checks Baseline Requirements, Section 7.2.2.1:
 // If present, [the reasonCode] extension MUST NOT be marked critical.
 func noCriticalReasons(crl *crl_x509.RevocationList) *lint.LintResult {
 	reasonCodeOID := asn1.ObjectIdentifier{2, 5, 29, 21} // id-ce-reasonCode
