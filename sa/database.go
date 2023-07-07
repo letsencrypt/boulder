@@ -82,7 +82,7 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	}
 
 	if scope != nil {
-		err = initDBMetrics(dbMap.Db, scope, settings, addr, user)
+		err = initDBMetrics(dbMap.SQLDb(), scope, settings, addr, user)
 		if err != nil {
 			return nil, fmt.Errorf("while initializing metrics: %w", err)
 		}
@@ -170,7 +170,7 @@ func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulde
 	dbmap := &borp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
-	return &boulderDB.WrappedMap{DbMap: dbmap}, nil
+	return boulderDB.NewWrappedMap(dbmap), nil
 }
 
 // adjustMySQLConfig sets certain flags that we want on every connection.
@@ -241,7 +241,7 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 
 // SetSQLDebug enables borp SQL-level Debugging
 func SetSQLDebug(dbMap *boulderDB.WrappedMap, log blog.Logger) {
-	dbMap.TraceOn("SQL: ", &SQLLogger{log})
+	dbMap.BorpDB().TraceOn("SQL: ", &SQLLogger{log})
 }
 
 // SQLLogger adapts the Boulder Logger to a format borp can use.
