@@ -155,8 +155,8 @@ jobs:
       - if: startsWith(matrix.BOULDER_TOOLS_TAG, 'go1.21')
         run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
-      - name: Install and run govulncheck
-        run: docker compose run --use-aliases netaccess bash -c 'GOFLAGS="" GOBIN=/usr/local/bin go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
+      - name: Run govulncheck
+        run: docker compose run -e GOFLAGS= netaccess go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
