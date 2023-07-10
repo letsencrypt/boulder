@@ -155,6 +155,11 @@ jobs:
       - if: startsWith(matrix.BOULDER_TOOLS_TAG, 'go1.21')
         run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
+      # Unset the GOFLAGS environment variable because, by default, it will be
+      # set to "GOFLAGS='-mod=vendor'" which all go subcommands will utilize. In
+      # this instance, we want to run a package that isn't vendored in our
+      # repository because 1) we don't need this package for CA operations and
+      # 2) we want the benefits of vulnerability checking.
       - name: Run govulncheck
         run: docker compose run -e GOFLAGS= netaccess go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
