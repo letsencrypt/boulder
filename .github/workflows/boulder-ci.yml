@@ -105,6 +105,64 @@ jobs:
       - name: "Run Test: ${{ matrix.tests }}"
         run: ${{ matrix.tests }}
 
+  govulncheck:
+    runs-on: ubuntu-20.04
+    strategy:
+      # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
+      fail-fast: false
+      matrix:
+        # Add additional docker image tags here and all tests will be run with the additional image.
+        BOULDER_TOOLS_TAG:
+          - go1.20.5_2023-06-20
+          - go1.21rc2_2023-06-21
+
+    env:
+      # This sets the docker image tag for the boulder-tools repository to
+      # use in tests. It will be set appropriately for each tag in the list
+      # defined in the matrix.
+      BOULDER_TOOLS_TAG: ${{ matrix.BOULDER_TOOLS_TAG }}
+
+    steps:
+      # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      - name: Docker Login
+        # You may pin to the exact commit or the version.
+        # uses: docker/login-action@f3364599c6aa293cdc2b8391b1b56d0c30e45c8a
+        uses: docker/login-action@v2.1.0
+        with:
+          # Username used to log against the Docker registry
+          username: ${{ secrets.DOCKER_USERNAME}}
+          # Password or personal access token used to log against the Docker registry
+          password: ${{ secrets.DOCKER_PASSWORD}}
+          # Log out from the Docker registry at the end of a job
+          logout: true
+        continue-on-error: true
+
+      # Print the env variable being used to pull the docker image. For
+      # informational use.
+      - name: Print BOULDER_TOOLS_TAG
+        run: echo "Using BOULDER_TOOLS_TAG ${BOULDER_TOOLS_TAG}"
+
+      # Pre-pull the docker containers before running the tests.
+      - name: docker compose pull netaccess
+        run: docker compose pull netaccess
+
+      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
+      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
+      - if: startsWith(matrix.BOULDER_TOOLS_TAG, 'go1.21')
+        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
+
+      # Unset the GOFLAGS environment variable because, by default, it will be
+      # set to "GOFLAGS='-mod=vendor'" which all go subcommands will utilize. In
+      # this instance, we want to run a package that isn't vendored in our
+      # repository because 1) we don't need this package for CA operations and
+      # 2) we want the benefits of vulnerability checking.
+      - name: Run govulncheck
+        run: docker compose run -e GOFLAGS= netaccess go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
   # one static job name that can be used to determine success of the job
@@ -115,8 +173,10 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-latest
     name: Boulder CI Test Matrix
-    needs: b
+    needs:
+      - b
+      - govulncheck
     steps:
       - name: Check boulder ci test matrix status
-        if: ${{ needs.b.result != 'success' }}
+        if: ${{ needs.b.result != 'success' || needs.govulncheck.result != 'success' }}
         run: exit 1
