@@ -365,12 +365,12 @@ func TestGetAndProcessCerts(t *testing.T) {
 	}
 
 	batchSize = 2
-	err = checker.getCerts(false)
+	err = checker.getCerts(context.Background(), false)
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	checker.processCerts(wg, false, nil)
+	checker.processCerts(context.Background(), wg, false, nil)
 	test.AssertEquals(t, checker.issuedReport.BadCerts, int64(5))
 	test.AssertEquals(t, len(checker.issuedReport.Entries), 5)
 }
@@ -425,7 +425,7 @@ func TestGetCertsEmptyResults(t *testing.T) {
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
-	err = checker.getCerts(false)
+	err = checker.getCerts(context.Background(), false)
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 }
 
@@ -452,7 +452,7 @@ func TestGetCertsNullResults(t *testing.T) {
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	checker.dbMap = emptyDB{}
 
-	err = checker.getCerts(false)
+	err = checker.getCerts(context.Background(), false)
 	test.AssertError(t, err, "Should have gotten error from empty DB")
 }
 

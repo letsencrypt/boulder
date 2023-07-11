@@ -125,7 +125,7 @@ func newChecker(saDbMap certDB,
 	}
 }
 
-func (c *certChecker) getCerts(unexpiredOnly bool) error {
+func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
 
@@ -139,7 +139,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	var retries int
 	for {
 		sni, err = c.dbMap.SelectNullInt(
-			context.Background(),
+			ctx,
 			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
 			args,
 		)
@@ -171,7 +171,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 
 	for {
 		certs, err := sa.SelectCertificates(
-			context.Background(),
+			ctx,
 			c.dbMap,
 			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
 			args,
@@ -201,9 +201,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool, ignoredLints map[string]bool) {
+func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool, ignoredLints map[string]bool) {
 	for cert := range c.certs {
-		dnsNames, problems := c.checkCert(context.Background(), cert, ignoredLints)
+		dnsNames, problems := c.checkCert(ctx, cert, ignoredLints)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
@@ -388,7 +388,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 		}
-		err = c.kp.GoodKey(context.Background(), p.PublicKey)
+		err = c.kp.GoodKey(ctx, p.PublicKey)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
@@ -533,7 +533,7 @@ func main() {
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err := checker.getCerts(config.CertChecker.UnexpiredOnly)
+		err := checker.getCerts(context.TODO(), config.CertChecker.UnexpiredOnly)
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 
@@ -543,7 +543,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			s := checker.clock.Now()
-			checker.processCerts(wg, config.CertChecker.BadResultsOnly, ignoredLintsMap)
+			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly, ignoredLintsMap)
 			checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		}()
 	}
