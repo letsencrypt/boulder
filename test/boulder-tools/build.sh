@@ -14,6 +14,12 @@ apt-get install -y --no-install-recommends \
   ca-certificates \
   softhsm2
 
+sed -i \
+    -e '/imklog/s/^/#/' /etc/rsyslog.conf \
+    -e '/$ActionFileDefaultTemplate/s/^/#/' \
+    -e '/$RepeatedMsgReduction on/s/^/#/' \
+    /etc/rsyslog.conf
+
 PROTO_ARCH=x86_64
 if [ "${TARGETPLATFORM}" = linux/arm64 ]
 then

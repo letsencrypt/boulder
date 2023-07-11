@@ -28,10 +28,12 @@ build_and_push_image() {
   TAG_NAME="${DOCKER_REPO}:go${GO_VERSION}_${DATESTAMP}"
   echo "Building boulder-tools image ${TAG_NAME}"
 
-  # build, tag, and push the image.
-  docker buildx build --build-arg "GO_VERSION=${GO_VERSION}" \
+ # build, tag, and push the image.
+  docker buildx build \
+    --build-arg "GO_VERSION=${GO_VERSION}" \
     --progress plain \
-    --push --tag "${TAG_NAME}" \
+    --push \
+    --tag "${TAG_NAME}" \
     --platform "${PLATFORMS}" \
     .
 }
