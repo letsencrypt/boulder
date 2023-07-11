@@ -17,7 +17,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v1.2.0
-	github.com/letsencrypt/borp v0.0.0-20230706175304-c87bd6443d59
+	github.com/letsencrypt/borp v0.0.0-20230707160741-6cc6ce580243
 	github.com/letsencrypt/challtestsrv v1.2.1
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
 	github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158

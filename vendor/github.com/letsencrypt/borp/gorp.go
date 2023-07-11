@@ -37,7 +37,6 @@ func (nt *dummyField) Scan(value interface{}) error {
 	return nil
 }
 
-var zeroVal reflect.Value
 var versFieldConst = "[gorp_ver_field]"
 
 // The TypeConverter interface provides a way to map a value of one
@@ -277,6 +276,7 @@ func fieldByName(val reflect.Value, fieldName string) *reflect.Value {
 	// try to find field by exact match
 	f := val.FieldByName(fieldName)
 
+	var zeroVal reflect.Value
 	if f != zeroVal {
 		return &f
 	}

@@ -822,7 +822,7 @@ func (m *DbMap) trace(started time.Time, query string, args ...interface{}) {
 
 	if m.logger != nil {
 		var margs = argsString(args...)
-		m.logger.Printf("%s%s [%s] (%v)", m.logPrefix, query, margs, (time.Now().Sub(started)))
+		m.logger.Printf("%s%s [%s] (%v)", m.logPrefix, query, margs, (time.Since(started)))
 	}
 }
 
