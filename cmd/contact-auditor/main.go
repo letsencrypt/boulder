@@ -99,9 +99,9 @@ func (c contactAuditor) writeResults(result string) {
 // run retrieves a cursor from `beginAuditQuery` and then audits the
 // `contact` column of all returned rows for abnormalities or policy
 // violations.
-func (c contactAuditor) run(resChan chan *result) error {
+func (c contactAuditor) run(ctx context.Context, resChan chan *result) error {
 	c.logger.Infof("Beginning database query")
-	rows, err := c.beginAuditQuery(context.Background())
+	rows, err := c.beginAuditQuery(ctx)
 	if err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func main() {
 
 	logger.Info("Running contact-auditor")
 
-	err = auditor.run(nil)
+	err = auditor.run(context.TODO(), nil)
 	cmd.FailOnError(err, "Audit was interrupted, results may be incomplete")
 
 	logger.Info("Audit finished successfully")

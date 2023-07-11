@@ -120,7 +120,7 @@ func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
 	return messageBody.String(), nil
 }
 
-func (m *mailer) run() error {
+func (m *mailer) run(ctx context.Context) error {
 	err := m.ok()
 	if err != nil {
 		return err
@@ -129,7 +129,7 @@ func (m *mailer) run() error {
 	totalRecipients := len(m.recipients)
 	m.log.Infof("Resolving addresses for (%d) recipients", totalRecipients)
 
-	addressToRecipient, err := m.resolveAddresses(context.Background())
+	addressToRecipient, err := m.resolveAddresses(ctx)
 	if err != nil {
 		return err
 	}
@@ -607,7 +607,7 @@ func main() {
 		parallelSends: *parallelSends,
 	}
 
-	err = m.run()
+	err = m.run(context.TODO())
 	cmd.FailOnError(err, "Couldn't complete")
 
 	log.Info("Completed successfully")

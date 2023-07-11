@@ -283,15 +283,15 @@ func main() {
 		hostnames, err := unmarshalHostnames(*hostnamesFile)
 		cmd.FailOnError(err, "Problem unmarshalling hostnames")
 
-		results, err = exporter.findIDsForHostnames(context.Background(), hostnames)
+		results, err = exporter.findIDsForHostnames(context.TODO(), hostnames)
 		cmd.FailOnError(err, "Could not find IDs for hostnames")
 
 	} else if *withExampleHostnames {
-		results, err = exporter.findIDsWithExampleHostnames(context.Background())
+		results, err = exporter.findIDsWithExampleHostnames(context.TODO())
 		cmd.FailOnError(err, "Could not find IDs with hostnames")
 
 	} else {
-		results, err = exporter.findIDs(context.Background())
+		results, err = exporter.findIDs(context.TODO())
 		cmd.FailOnError(err, "Could not find IDs")
 	}
 
