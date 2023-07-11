@@ -2063,7 +2063,7 @@ func TestNewOrderReuse(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			// If the testcase specifies, advance the clock before adding the order
 			if tc.AdvanceClock != nil {
-				fc.Now().Add(*tc.AdvanceClock)
+				_ = fc.Now().Add(*tc.AdvanceClock)
 			}
 			// Add the order for the test request
 			order, err := ra.NewOrder(ctx, tc.OrderReq)
