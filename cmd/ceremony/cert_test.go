@@ -6,7 +6,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -31,16 +30,6 @@ func realRand(_ pkcs11.SessionHandle, length int) ([]byte, error) {
 	r := make([]byte, length)
 	_, err := rand.Read(r)
 	return r, err
-}
-
-func TestParseOID(t *testing.T) {
-	_, err := parseOID("")
-	test.AssertError(t, err, "parseOID accepted an empty OID")
-	_, err = parseOID("a.b.c")
-	test.AssertError(t, err, "parseOID accepted an OID containing non-ints")
-	oid, err := parseOID("1.2.3")
-	test.AssertNotError(t, err, "parseOID failed with a valid OID")
-	test.Assert(t, oid.Equal(asn1.ObjectIdentifier{1, 2, 3}), "parseOID returned incorrect OID")
 }
 
 func TestMakeSubject(t *testing.T) {
@@ -95,11 +84,6 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
-	profile.Policies = []policyInfoConfig{{}}
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
-	test.AssertError(t, err, "makeTemplate didn't fail with invalid (empty) policy OID")
-
-	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4"}}
 	profile.CommonName = "common name"
 	profile.Organization = "organization"
 	profile.Country = "country"
@@ -120,7 +104,7 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, len(cert.IssuingCertificateURL), 1)
 	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageCRLSign)
-	test.AssertEquals(t, len(cert.PolicyIdentifiers), 2)
+	test.AssertEquals(t, len(cert.PolicyIdentifiers), 1)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
 	cert, err = makeTemplate(randReader, profile, pubKey, intermediateCert)
@@ -466,14 +450,6 @@ func TestVerifyProfile(t *testing.T) {
 			},
 			certType:    requestCert,
 			expectedErr: "issuer-url cannot be set for a CSR",
-		},
-		{
-			profile: certProfile{
-				Policies: []policyInfoConfig{
-					{OID: "1.2.3"}, {OID: "1.2.3.4", CPSURI: "hello"}},
-			},
-			certType:    requestCert,
-			expectedErr: "policies cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{

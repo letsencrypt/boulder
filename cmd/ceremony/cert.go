@@ -10,17 +10,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
-	"strconv"
-	"strings"
 	"time"
 )
-
-type policyInfoConfig struct {
-	OID string
-	// Deprecated: we do not include the id-qt-cps policy qualifier in our
-	// certificate policy extensions anymore.
-	CPSURI string `yaml:"cps-uri"`
-}
 
 // certProfile contains the information required to generate a certificate
 type certProfile struct {
@@ -54,10 +45,6 @@ type certProfile struct {
 	// can be found, this is only required if generating an intermediate
 	// certificate
 	IssuerURL string `yaml:"issuer-url"`
-
-	// PolicyOIDs should contain any OIDs to be inserted in a certificate
-	// policies extension.
-	Policies []policyInfoConfig `yaml:"policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
@@ -113,9 +100,6 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		if profile.IssuerURL != "" {
 			return errors.New("issuer-url cannot be set for a CSR")
 		}
-		if profile.Policies != nil {
-			return errors.New("policies cannot be set for a CSR")
-		}
 		if profile.KeyUsages != nil {
 			return errors.New("key-usages cannot be set for a CSR")
 		}
@@ -161,18 +145,6 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 	}
 	return nil
-}
-
-func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
-	var oid asn1.ObjectIdentifier
-	for _, a := range strings.Split(oidStr, ".") {
-		i, err := strconv.Atoi(a)
-		if err != nil {
-			return nil, err
-		}
-		oid = append(oid, i)
-	}
-	return oid, nil
 }
 
 var stringToKeyUsage = map[string]x509.KeyUsage{
@@ -248,6 +220,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		IssuingCertificateURL: issuingCertificateURL,
 		KeyUsage:              ku,
 		SubjectKeyId:          subjectKeyID,
+		// Baseline Requirements, Section 7.1.6.1: domain-validated
+		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
 
 	if ct != requestCert {
@@ -286,14 +260,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		// it in our end-entity certificates.
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
-	}
-
-	for _, policyConfig := range profile.Policies {
-		oid, err := parseOID(policyConfig.OID)
-		if err != nil {
-			return nil, err
-		}
-		cert.PolicyIdentifiers = append(cert.PolicyIdentifiers, oid)
 	}
 
 	return cert, nil
