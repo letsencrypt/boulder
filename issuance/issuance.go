@@ -31,7 +31,6 @@ import (
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
-	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/precert"
 	"github.com/letsencrypt/boulder/privatekey"
 	"github.com/letsencrypt/pkcs11key/v4"
@@ -162,7 +161,7 @@ type Profile struct {
 	ocspURL   string
 	crlURL    string
 	issuerURL string
-	policies  *pkix.Extension
+	policies  []asn1.ObjectIdentifier
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
@@ -193,24 +192,13 @@ func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profil
 		return nil, errors.New("OCSP URL is required")
 	}
 
-	var policies []policyasn1.PolicyInformation
+	var policies []asn1.ObjectIdentifier
 	for _, policyConfig := range profileConfig.Policies {
-		id, err := parseOID(policyConfig.OID)
+		oid, err := parseOID(policyConfig.OID)
 		if err != nil {
-			return nil, fmt.Errorf("failed parsing policy OID %q: %s", policyConfig.OID, err)
+			return nil, fmt.Errorf("failed parsing policy OID %q: %w", policyConfig.OID, err)
 		}
-		policies = append(policies, policyasn1.PolicyInformation{Policy: id})
-	}
-	policyExtBytes, err := asn1.Marshal(policies)
-	if err != nil {
-		return nil, err
-	}
-	if len(policyExtBytes) == 0 {
-		return nil, errors.New("marshalled empty policy extension")
-	}
-	policyExt := &pkix.Extension{
-		Id:    policyasn1.CertificatePoliciesExtOID,
-		Value: policyExtBytes,
+		policies = append(policies, oid)
 	}
 
 	sp := &Profile{
@@ -223,7 +211,7 @@ func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profil
 		issuerURL:         issuerConfig.IssuerURL,
 		crlURL:            issuerConfig.CRLURL,
 		ocspURL:           issuerConfig.OCSPURL,
-		policies:          policyExt,
+		policies:          policies,
 		maxBackdate:       profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:       profileConfig.MaxValidityPeriod.Duration,
 	}
@@ -306,14 +294,11 @@ func (p *Profile) generateTemplate() *x509.Certificate {
 		OCSPServer:            []string{p.ocspURL},
 		IssuingCertificateURL: []string{p.issuerURL},
 		BasicConstraintsValid: true,
+		PolicyIdentifiers:     p.policies,
 	}
 
 	if p.crlURL != "" {
 		template.CRLDistributionPoints = []string{p.crlURL}
-	}
-
-	if p.policies != nil {
-		template.ExtraExtensions = []pkix.Extension{*p.policies}
 	}
 
 	return template

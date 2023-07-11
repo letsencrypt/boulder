@@ -27,7 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
-	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -90,32 +89,7 @@ func TestNewProfilePolicies(t *testing.T) {
 	})
 	profile, err := NewProfile(config, defaultIssuerConfig())
 	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertDeepEquals(t, *profile, Profile{
-		useForRSALeaves:   true,
-		useForECDSALeaves: true,
-		allowMustStaple:   true,
-		allowCTPoison:     true,
-		allowSCTList:      true,
-		allowCommonName:   true,
-		issuerURL:         "http://issuer-url",
-		ocspURL:           "http://ocsp-url",
-		policies: &pkix.Extension{
-			Id:    asn1.ObjectIdentifier{2, 5, 29, 32},
-			Value: []byte{0x30, 0x0d, 0x30, 0x04, 0x06, 0x02, 0x2a, 0x03, 0x30, 0x05, 0x06, 0x03, 0x2a, 0x03, 0x04},
-		},
-		maxBackdate: time.Hour,
-		maxValidity: time.Hour,
-	})
-	var policies []policyasn1.PolicyInformation
-	_, err = asn1.Unmarshal(profile.policies.Value, &policies)
-	test.AssertNotError(t, err, "failed to parse policies extension")
-	test.AssertEquals(t, len(policies), 2)
-	test.AssertDeepEquals(t, policies[0], policyasn1.PolicyInformation{
-		Policy: asn1.ObjectIdentifier{1, 2, 3},
-	})
-	test.AssertDeepEquals(t, policies[1], policyasn1.PolicyInformation{
-		Policy: asn1.ObjectIdentifier{1, 2, 3, 4},
-	})
+	test.AssertDeepEquals(t, profile.policies, []asn1.ObjectIdentifier{{1, 2, 3}, {1, 2, 3, 4}})
 }
 
 func TestNewProfileNoIssuerURL(t *testing.T) {
@@ -374,11 +348,8 @@ func TestGenerateTemplate(t *testing.T) {
 		{
 			name: "include policies",
 			profile: &Profile{
-				sigAlg: x509.SHA256WithRSA,
-				policies: &pkix.Extension{
-					Id:    asn1.ObjectIdentifier{1, 2, 3},
-					Value: []byte{4, 5, 6},
-				},
+				sigAlg:   x509.SHA256WithRSA,
+				policies: []asn1.ObjectIdentifier{{4, 5, 6}},
 			},
 			expectedTemplate: &x509.Certificate{
 				BasicConstraintsValid: true,
@@ -386,12 +357,7 @@ func TestGenerateTemplate(t *testing.T) {
 				ExtKeyUsage:           defaultEKU,
 				IssuingCertificateURL: []string{""},
 				OCSPServer:            []string{""},
-				ExtraExtensions: []pkix.Extension{
-					{
-						Id:    asn1.ObjectIdentifier{1, 2, 3},
-						Value: []byte{4, 5, 6},
-					},
-				},
+				PolicyIdentifiers:     []asn1.ObjectIdentifier{{4, 5, 6}},
 			},
 		},
 	}

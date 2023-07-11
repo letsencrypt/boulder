@@ -13,12 +13,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/letsencrypt/boulder/policyasn1"
 )
 
 type policyInfoConfig struct {
-	OID    string
+	OID string
+	// Deprecated: we do not include the id-qt-cps policy qualifier in our
+	// certificate policy extensions anymore.
 	CPSURI string `yaml:"cps-uri"`
 }
 
@@ -56,9 +56,7 @@ type certProfile struct {
 	IssuerURL string `yaml:"issuer-url"`
 
 	// PolicyOIDs should contain any OIDs to be inserted in a certificate
-	// policies extension. If the CPSURI field of a policyInfoConfig element
-	// is set it will result in a PolicyInformation structure containing a
-	// single id-qt-cps type qualifier indicating the CPS URI.
+	// policies extension.
 	Policies []policyInfoConfig `yaml:"policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
@@ -185,28 +183,6 @@ var stringToKeyUsage = map[string]x509.KeyUsage{
 
 var oidOCSPNoCheck = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 5}
 
-func buildPolicies(policies []policyInfoConfig) (pkix.Extension, error) {
-	var policyInfo []policyasn1.PolicyInformation
-	for _, p := range policies {
-		oid, err := parseOID(p.OID)
-		if err != nil {
-			return pkix.Extension{}, err
-		}
-		policyInfo = append(policyInfo, policyasn1.PolicyInformation{Policy: oid})
-	}
-	v, err := asn1.Marshal(policyInfo)
-	if err != nil {
-		return pkix.Extension{}, err
-	}
-	if len(v) == 0 {
-		return pkix.Extension{}, errors.New("marshalled empty policy extension")
-	}
-	return pkix.Extension{
-		Id:    policyasn1.CertificatePoliciesExtOID,
-		Value: v,
-	}, nil
-}
-
 func generateSKID(pk []byte) ([]byte, error) {
 	var pkixPublicKey struct {
 		Algo      pkix.AlgorithmIdentifier
@@ -312,12 +288,12 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		cert.MaxPathLenZero = true
 	}
 
-	if len(profile.Policies) > 0 {
-		policyExt, err := buildPolicies(profile.Policies)
+	for _, policyConfig := range profile.Policies {
+		oid, err := parseOID(policyConfig.OID)
 		if err != nil {
 			return nil, err
 		}
-		cert.ExtraExtensions = append(cert.ExtraExtensions, policyExt)
+		cert.PolicyIdentifiers = append(cert.PolicyIdentifiers, oid)
 	}
 
 	return cert, nil
@@ -332,7 +308,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 type failReader struct{}
 
 func (fr *failReader) Read([]byte) (int, error) {
-	return 0, errors.New("Empty reader used by x509.CreateCertificate")
+	return 0, errors.New("empty reader used by x509.CreateCertificate")
 }
 
 func generateCSR(profile *certProfile, signer crypto.Signer) ([]byte, error) {
