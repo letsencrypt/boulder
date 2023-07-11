@@ -3,7 +3,7 @@ package db
 import "context"
 
 // txFunc represents a function that does work in the context of a transaction.
-type txFunc func(txWithCtx Executor) (interface{}, error)
+type txFunc func(tx Executor) (interface{}, error)
 
 // WithTransaction runs the given function in a transaction, rolling back if it
 // returns an error and committing if not. The provided context is also attached

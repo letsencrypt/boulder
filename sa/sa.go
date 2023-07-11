@@ -222,12 +222,12 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Expires:        parsed.NotAfter,
 	}
 
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// Select to see if precert exists
 		var row struct {
 			Count int64
 		}
-		err := txWithCtx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=?", serialHex)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM precertificates WHERE serial=?", serialHex)
 		if err != nil {
 			return nil, err
 		}
@@ -235,7 +235,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 			return nil, berrors.DuplicateError("cannot add a duplicate cert")
 		}
 
-		err = txWithCtx.Insert(ctx, preCertModel)
+		err = tx.Insert(ctx, preCertModel)
 		if err != nil {
 			return nil, err
 		}
@@ -268,18 +268,18 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		// not for the purpose of rate limiting is the least of our troubles.
 		isRenewal, err := ssa.checkFQDNSetExists(
 			ctx,
-			txWithCtx.SelectOne,
+			tx.SelectOne,
 			parsed.DNSNames)
 		if err != nil {
 			return nil, err
 		}
 
-		err = addIssuedNames(ctx, txWithCtx, parsed, isRenewal)
+		err = addIssuedNames(ctx, tx, parsed, isRenewal)
 		if err != nil {
 			return nil, err
 		}
 
-		err = addKeyHash(ctx, txWithCtx, parsed)
+		err = addKeyHash(ctx, tx, parsed)
 		if err != nil {
 			return nil, err
 		}
@@ -315,12 +315,12 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		Expires:        parsedCertificate.NotAfter,
 	}
 
-	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	isRenewalRaw, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// Select to see if cert exists
 		var row struct {
 			Count int64
 		}
-		err := txWithCtx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=?", serial)
+		err := tx.SelectOne(ctx, &row, "SELECT COUNT(*) as count FROM certificates WHERE serial=?", serial)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +329,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		}
 
 		// Save the final certificate
-		err = txWithCtx.Insert(ctx, cert)
+		err = tx.Insert(ctx, cert)
 		if err != nil {
 			return nil, err
 		}
@@ -342,7 +342,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		// not for the purpose of rate limiting is the least of our troubles.
 		isRenewal, err := ssa.checkFQDNSetExists(
 			ctx,
-			txWithCtx.SelectOne,
+			tx.SelectOne,
 			parsedCertificate.DNSNames)
 		if err != nil {
 			return nil, err
@@ -369,12 +369,12 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 	// for rate limits. Since the effects of failing these writes is slight
 	// miscalculation of rate limits we choose to not fail the AddCertificate
 	// operation if the rate limit update transaction fails.
-	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, rlTransactionErr := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// Add to the rate limit table, but only for new certificates. Renewals
 		// don't count against the certificatesPerName limit.
 		if !isRenewal {
 			timeToTheHour := parsedCertificate.NotBefore.Round(time.Hour)
-			err := ssa.addCertificatesPerName(ctx, txWithCtx, parsedCertificate.DNSNames, timeToTheHour)
+			err := ssa.addCertificatesPerName(ctx, tx, parsedCertificate.DNSNames, timeToTheHour)
 			if err != nil {
 				return nil, err
 			}
@@ -384,7 +384,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		// limits are calculated correctly.
 		err = addFQDNSet(
 			ctx,
-			txWithCtx,
+			tx,
 			parsedCertificate.DNSNames,
 			core.SerialToString(parsedCertificate.SerialNumber),
 			parsedCertificate.NotBefore,
@@ -454,7 +454,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		return nil, errIncompleteRequest
 	}
 
-	output, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	output, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		// First, insert all of the new authorizations and record their IDs.
 		newAuthzIDs := make([]int64, 0)
 		if len(req.NewAuthzs) != 0 {
@@ -488,7 +488,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 					return nil, err
 				}
 			}
-			newAuthzIDs, err = inserter.Insert(ctx, txWithCtx)
+			newAuthzIDs, err = inserter.Insert(ctx, tx)
 			if err != nil {
 				return nil, err
 			}
@@ -500,7 +500,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			Expires:        time.Unix(0, req.NewOrder.Expires),
 			Created:        ssa.clk.Now(),
 		}
-		err := txWithCtx.Insert(ctx, order)
+		err := tx.Insert(ctx, order)
 		if err != nil {
 			return nil, err
 		}
@@ -522,7 +522,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 				return nil, err
 			}
 		}
-		_, err = inserter.Insert(ctx, txWithCtx)
+		_, err = inserter.Insert(ctx, tx)
 		if err != nil {
 			return nil, err
 		}
@@ -538,13 +538,13 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 				return nil, err
 			}
 		}
-		_, err = inserter.Insert(ctx, txWithCtx)
+		_, err = inserter.Insert(ctx, tx)
 		if err != nil {
 			return nil, err
 		}
 
 		// Fifth, insert the FQDNSet entry for the order.
-		err = addOrderFQDNSet(ctx, txWithCtx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
+		err = addOrderFQDNSet(ctx, tx, req.NewOrder.Names, order.ID, order.RegistrationID, order.Expires)
 		if err != nil {
 			return nil, err
 		}
@@ -566,7 +566,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 
 		// Calculate the order status before returning it. Since it may have reused
 		// all valid authorizations the order may be "born" in a ready status.
-		status, err := statusForOrder(ctx, txWithCtx, res, ssa.clk.Now())
+		status, err := statusForOrder(ctx, tx, res, ssa.clk.Now())
 		if err != nil {
 			return nil, err
 		}
@@ -599,8 +599,8 @@ func (ssa *SQLStorageAuthority) SetOrderProcessing(ctx context.Context, req *sap
 	if req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		result, err := txWithCtx.ExecContext(ctx, `
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET beganProcessing = ?
 		WHERE id = ?
@@ -630,7 +630,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 	if req.Id == 0 || req.Error == nil {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		om, err := orderToModel(&corepb.Order{
 			Id:    req.Id,
 			Error: req.Error,
@@ -639,7 +639,7 @@ func (ssa *SQLStorageAuthority) SetOrderError(ctx context.Context, req *sapb.Set
 			return nil, err
 		}
 
-		result, err := txWithCtx.ExecContext(ctx, `
+		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET error = ?
 		WHERE id = ?`,
@@ -670,8 +670,8 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 	if req.Id == 0 || req.CertificateSerial == "" {
 		return nil, errIncompleteRequest
 	}
-	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		result, err := txWithCtx.ExecContext(ctx, `
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET certificateSerial = ?
 		WHERE id = ? AND
@@ -689,7 +689,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 
 		// Delete the orderFQDNSet row for the order now that it has been finalized.
 		// We use this table for order reuse and should not reuse a finalized order.
-		err = deleteOrderFQDNSet(ctx, txWithCtx, req.Id)
+		err = deleteOrderFQDNSet(ctx, tx, req.Id)
 		if err != nil {
 			return nil, err
 		}
@@ -942,9 +942,9 @@ func (ssa *SQLStorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.Lea
 // leased or are previously-unknown indices are considered older than any other
 // shard. It returns an error if all shards for the issuer are already leased.
 func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sapb.LeaseCRLShardRequest) (*sapb.LeaseCRLShardResponse, error) {
-	shardIdx, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
+	shardIdx, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		var shards []*crlShardModel
-		_, err := txWithCtx.Select(
+		_, err := tx.Select(
 			ctx,
 			&shards,
 			`SELECT id, issuerID, idx, thisUpdate, nextUpdate, leasedUntil
@@ -993,7 +993,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 		}
 
 		if needToInsert {
-			_, err = txWithCtx.ExecContext(ctx,
+			_, err = tx.ExecContext(ctx,
 				`INSERT INTO crlShards (issuerID, idx, leasedUntil)
 					VALUES (?, ?, ?)`,
 				req.IssuerNameID,
@@ -1001,7 +1001,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 				req.Until.AsTime(),
 			)
 		} else {
-			_, err = txWithCtx.ExecContext(ctx,
+			_, err = tx.ExecContext(ctx,
 				`UPDATE crlShards
 					SET leasedUntil = ?
 					WHERE issuerID = ?
@@ -1036,8 +1036,8 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 		return nil, fmt.Errorf("request must identify a single shard index: %d != %d", req.MinShardIdx, req.MaxShardIdx)
 	}
 
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		res, err := txWithCtx.ExecContext(ctx,
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
 				SET leasedUntil = ?
 				WHERE issuerID = ?
@@ -1088,8 +1088,8 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 		return nil, errIncompleteRequest
 	}
 
-	_, err := db.WithTransaction(ctx, ssa.dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		res, err := txWithCtx.ExecContext(ctx,
+	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
 				SET thisUpdate = ?, nextUpdate = ?
 				WHERE issuerID = ?

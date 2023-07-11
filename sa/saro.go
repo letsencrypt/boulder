@@ -666,8 +666,8 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		return nil, errIncompleteRequest
 	}
 
-	txn := func(txWithCtx db.Executor) (interface{}, error) {
-		omObj, err := txWithCtx.Get(ctx, orderModel{}, req.Id)
+	txn := func(tx db.Executor) (interface{}, error) {
+		omObj, err := tx.Get(ctx, orderModel{}, req.Id)
 		if err != nil {
 			if db.IsNoRows(err) {
 				return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
@@ -688,13 +688,13 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
 
-		v2AuthzIDs, err := authzForOrder(ctx, txWithCtx, order.Id)
+		v2AuthzIDs, err := authzForOrder(ctx, tx, order.Id)
 		if err != nil {
 			return nil, err
 		}
 		order.V2Authorizations = v2AuthzIDs
 
-		names, err := namesForOrder(ctx, txWithCtx, order.Id)
+		names, err := namesForOrder(ctx, tx, order.Id)
 		if err != nil {
 			return nil, err
 		}
@@ -708,7 +708,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 		order.Names = reversedNames
 
 		// Calculate the status for the order
-		status, err := statusForOrder(ctx, txWithCtx, order, ssa.clk.Now())
+		status, err := statusForOrder(ctx, tx, order, ssa.clk.Now())
 		if err != nil {
 			return nil, err
 		}

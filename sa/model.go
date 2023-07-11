@@ -65,8 +65,8 @@ const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt
 // there are multiple email addresses present, it does not modify other ones. If the email
 // address is not present, it does not modify the registration and will return a nil error.
 func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email string) error {
-	_, overallError := db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		curr, err := selectRegistration(ctx, txWithCtx, "id", regID)
+	_, overallError := db.WithTransaction(ctx, dbMap, func(tx db.Executor) (interface{}, error) {
+		curr, err := selectRegistration(ctx, tx, "id", regID)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +94,7 @@ func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email st
 			return nil, err
 		}
 
-		return txWithCtx.Update(ctx, newModel)
+		return tx.Update(ctx, newModel)
 	})
 	if overallError != nil {
 		return overallError
