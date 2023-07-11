@@ -28,7 +28,7 @@ type CleanUpDB interface {
 // table as this is used by sql-migrate (https://github.com/rubenv/sql-migrate)
 // to track migrations. If it encounters an error it fails the tests.
 func ResetBoulderTestDatabase(t testing.TB) func() {
-	return resetTestDatabase(t, "boulder")
+	return resetTestDatabase(t, context.Background(), "boulder")
 }
 
 // ResetIncidentsTestDatabase returns a cleanup function which deletes all rows
@@ -37,20 +37,20 @@ func ResetBoulderTestDatabase(t testing.TB) func() {
 // (https://github.com/rubenv/sql-migrate) to track migrations. If it encounters
 // an error it fails the tests.
 func ResetIncidentsTestDatabase(t testing.TB) func() {
-	return resetTestDatabase(t, "incidents")
+	return resetTestDatabase(t, context.Background(), "incidents")
 }
 
-func resetTestDatabase(t testing.TB, dbPrefix string) func() {
+func resetTestDatabase(t testing.TB, ctx context.Context, dbPrefix string) func() {
 	db, err := sql.Open("mysql", fmt.Sprintf("test_setup@tcp(boulder-proxysql:6033)/%s_sa_test", dbPrefix))
 	if err != nil {
 		t.Fatalf("Couldn't create db: %s", err)
 	}
-	err = deleteEverythingInAllTables(db)
+	err = deleteEverythingInAllTables(ctx, db)
 	if err != nil {
 		t.Fatalf("Failed to delete everything: %s", err)
 	}
 	return func() {
-		err := deleteEverythingInAllTables(db)
+		err := deleteEverythingInAllTables(ctx, db)
 		if err != nil {
 			t.Fatalf("Failed to truncate tables after the test: %s", err)
 		}
@@ -62,8 +62,7 @@ func resetTestDatabase(t testing.TB, dbPrefix string) func() {
 // available to the CleanUpDB passed in and resets the autoincrement
 // counters. See allTableNamesInDB for what is meant by "all tables
 // available". To be used only in test code.
-func deleteEverythingInAllTables(db CleanUpDB) error {
-	ctx := context.Background()
+func deleteEverythingInAllTables(ctx context.Context, db CleanUpDB) error {
 	ts, err := allTableNamesInDB(ctx, db)
 	if err != nil {
 		return err

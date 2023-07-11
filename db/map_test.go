@@ -321,7 +321,6 @@ func TestWrappedMap(t *testing.T) {
 		test.AssertError(t, dbOpErr.Err, "expected non-nil underlying err")
 
 		// Test wrapped Exec
-		t.Logf("testing %T", dbMap)
 		_, err = dbMap.ExecContext(ctx, "INSERT INTO whatever (id) VALUES (?) WHERE id = ?", 10)
 		test.AssertError(t, err, "expected err Exec-ing bad query")
 		dbOpErr = mustDbErr(err)

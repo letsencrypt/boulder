@@ -98,5 +98,3 @@ require (
 // that we do not rely upon. It appears to introduce performance regressions
 // for us.
 exclude github.com/go-sql-driver/mysql v1.6.0
-
-exclude github.com/go-sql-driver/mysql v1.7.1

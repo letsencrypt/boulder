@@ -79,8 +79,7 @@ type Transaction interface {
 	Commit() error
 }
 
-// MappedExecutor is anything that can map types to tables, and which can
-// produce a SqlExecutor bound to a context.
+// MappedExecutor is anything that can map types to tables
 type MappedExecutor interface {
 	TableFor(reflect.Type, bool) (*borp.TableMap, error)
 	QueryContext(ctx context.Context, clauses string, args ...interface{}) (*sql.Rows, error)

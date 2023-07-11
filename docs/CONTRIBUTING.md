@@ -254,14 +254,14 @@ func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
 
 func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
   if features.Enabled(features.AllowWizards) { // Added!
-    return ssa.dbMap.Insert(personModelv2{
+    return ssa.dbMap.Insert(context.Background(), personModelv2{
       personModelv1: {
         HatSize:  p.HatSize,
       },
       IsWizard: p.IsWizard,
     })
   } else {
-    return ssa.dbMap.Insert(personModelv1{
+    return ssa.dbMap.Insert(context.Background(), personModelv1{
       HatSize:  p.HatSize,
       // p.IsWizard ignored
     })

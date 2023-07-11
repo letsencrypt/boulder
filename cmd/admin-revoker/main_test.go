@@ -107,14 +107,14 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "while inserting row into incident table")
 
-	err = testCtx.revoker.revokeIncidentTableSerials(context.Background(), "incident_foo", 0, 1)
+	err = testCtx.revoker.revokeIncidentTableSerials(ctx, "incident_foo", 0, 1)
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
 
 	// Ensure that a populated incident table results in the expected log output.
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
 	test.Assert(t, len(testCtx.log.GetAllMatching("No serials found in incident table")) <= 0, "Expected log output not found")
 
-	status, err := testCtx.ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(entries[0].serial)})
+	status, err := testCtx.ssa.GetCertificateStatus(ctx, &sapb.Serial{Serial: core.SerialToString(entries[0].serial)})
 	test.AssertNotError(t, err, "failed to retrieve certificate status")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 }
