@@ -294,7 +294,7 @@ func formatIP(addr string) (addrIP string, ok bool) {
 	return "[" + addr + "]", true
 }
 
-// parseTarget takes the user input target string and parses the service domain
+// parseServiceDomain takes the user input target string and parses the service domain
 // names for SRV lookup. Input is expected to be a hostname containing at least
 // two labels (e.g. "foo.bar", "foo.bar.baz"). The first label is the service
 // name and the rest is the domain name. If the target is not in the expected
