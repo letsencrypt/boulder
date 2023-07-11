@@ -14,10 +14,11 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/crl/crl_x509"
-	crllints "github.com/letsencrypt/boulder/linter/lints/crl"
 
+	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
 	_ "github.com/letsencrypt/boulder/linter/lints/chrome"
 	_ "github.com/letsencrypt/boulder/linter/lints/cpcps"
+	_ "github.com/letsencrypt/boulder/linter/lints/rfc"
 )
 
 var ErrLinting = fmt.Errorf("failed lint(s)")
@@ -35,6 +36,15 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 	}
 	_, err = linter.Check(tbs, subjectPubKey)
 	return err
+}
+
+// CheckCRL is like Check, but for CRLs.
+func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
+	linter, err := New(realIssuer, realSigner, skipLints)
+	if err != nil {
+		return err
+	}
+	return linter.CheckCRL(tbs)
 }
 
 // Linter is capable of linting a to-be-signed (TBS) certificate. It does so by
@@ -93,7 +103,7 @@ func (l Linter) CheckCRL(tbs *crl_x509.RevocationList) error {
 	if err != nil {
 		return err
 	}
-	lintRes := crllints.LintCRL(crl)
+	lintRes := zlint.LintRevocationListEx(crl, l.registry)
 	return ProcessResultSet(lintRes)
 }
 
@@ -209,12 +219,12 @@ func ProcessResultSet(lintRes *zlint.ResultSet) error {
 	return nil
 }
 
-func makeLintCRL(tbs *crl_x509.RevocationList, issuer *x509.Certificate, signer crypto.Signer) (*crl_x509.RevocationList, error) {
+func makeLintCRL(tbs *crl_x509.RevocationList, issuer *x509.Certificate, signer crypto.Signer) (*zlintx509.RevocationList, error) {
 	lintCRLBytes, err := crl_x509.CreateRevocationList(rand.Reader, tbs, issuer, signer)
 	if err != nil {
 		return nil, err
 	}
-	lintCRL, err := crl_x509.ParseRevocationList(lintCRLBytes)
+	lintCRL, err := zlintx509.ParseRevocationList(lintCRLBytes)
 	if err != nil {
 		return nil, err
 	}

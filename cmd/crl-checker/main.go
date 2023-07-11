@@ -100,7 +100,14 @@ func main() {
 
 		totalBytes += len(crl.Raw)
 
-		err = checker.Validate(crl, issuer, ageLimit)
+		zcrl, err := crl_x509.ParseRevocationList(crl.Raw)
+		if err != nil {
+			errCount += 1
+			logger.Errf("parsing CRL %q failed: %s", u, err)
+			continue
+		}
+
+		err = checker.Validate(zcrl, issuer, ageLimit)
 		if err != nil {
 			errCount += 1
 			logger.Errf("checking CRL %q failed: %s", u, err)

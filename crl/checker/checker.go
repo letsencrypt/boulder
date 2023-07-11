@@ -8,9 +8,11 @@ import (
 	"sort"
 	"time"
 
+	zlint_x509 "github.com/zmap/zcrypto/x509"
+	"github.com/zmap/zlint/v3"
+
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/linter"
-	crlint "github.com/letsencrypt/boulder/linter/lints/crl"
 )
 
 // Validate runs the given CRL through our set of lints, ensures its signature
@@ -18,7 +20,12 @@ import (
 // less than ageLimit old. It returns an error if any of these conditions are
 // not met.
 func Validate(crl *crl_x509.RevocationList, issuer *x509.Certificate, ageLimit time.Duration) error {
-	err := linter.ProcessResultSet(crlint.LintCRL(crl))
+	zcrl, err := zlint_x509.ParseRevocationList(crl.Raw)
+	if err != nil {
+		return fmt.Errorf("parsing CRL: %w", err)
+	}
+
+	err = linter.ProcessResultSet(zlint.LintRevocationList(zcrl))
 	if err != nil {
 		return fmt.Errorf("linting CRL: %w", err)
 	}
