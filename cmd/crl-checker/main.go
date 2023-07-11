@@ -103,7 +103,7 @@ func main() {
 		zcrl, err := crl_x509.ParseRevocationList(crl.Raw)
 		if err != nil {
 			errCount += 1
-			logger.Errf("checking CRL %q failed: %s", u, err)
+			logger.Errf("parsing CRL %q failed: %s", u, err)
 			continue
 		}
 
