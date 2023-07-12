@@ -34,7 +34,17 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 	if err != nil {
 		return err
 	}
-	_, err = linter.Check(tbs, subjectPubKey)
+
+	// If the provided pubkey is identical to the public half of the provided
+	// signing key, then we're being asked to lint a self-signed cert. Replace the
+	// pubkey with the fake lint issuer's pubkey, so that the resulting lint cert
+	// is also self-signed.
+	lintSubjectPubKey := subjectPubKey
+	if realSigner.Public() == subjectPubKey {
+		lintSubjectPubKey = linter.signer.Public()
+	}
+
+	_, err = linter.Check(tbs, lintSubjectPubKey)
 	return err
 }
 
@@ -87,11 +97,13 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]
 	if err != nil {
 		return nil, err
 	}
+
 	lintRes := zlint.LintCertificateEx(cert, l.registry)
 	err = ProcessResultSet(lintRes)
 	if err != nil {
 		return nil, err
 	}
+
 	return lintCertBytes, nil
 }
 
