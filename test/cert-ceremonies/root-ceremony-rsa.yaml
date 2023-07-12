@@ -21,10 +21,12 @@ certificate-profile:
         - Cert Sign
         - CRL Sign
 skip-lints:
+   # These lints only apply to non-root certs. But our linting certs are signed
+   # with a dummy key, so they don't appear self-signed, so zlint thinks these
+   # lints should apply to our root certs too.
    - e_ext_authority_key_identifier_missing
    - e_ext_authority_key_identifier_no_key_identifier
    - e_sub_ca_aia_missing
-   - e_sub_ca_certificate_policies_missing
    - e_sub_ca_crl_distribution_points_missing
    - n_ca_digital_signature_not_set
    - n_mp_allowed_eku
