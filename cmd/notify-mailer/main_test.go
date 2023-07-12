@@ -537,7 +537,7 @@ func TestMessageContentInterpolated(t *testing.T) {
 
 	// Run the mailer, one message should have been created with the content
 	// expected
-	err := m.run()
+	err := m.run(context.Background())
 	test.AssertNotError(t, err, "error calling mailer run()")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
@@ -595,7 +595,7 @@ func TestMessageContentInterpolatedMultiple(t *testing.T) {
 
 	// Run the mailer, one message should have been created with the content
 	// expected
-	err := m.run()
+	err := m.run(context.Background())
 	test.AssertNotError(t, err, "error calling mailer run()")
 	test.AssertEquals(t, len(mc.Messages), 1)
 	test.AssertEquals(t, mocks.MailerMessage{
