@@ -677,7 +677,7 @@ func (i *Issuer) Prepare(req *IssuanceRequest) ([]byte, *issuanceToken, error) {
 
 	// check that the tbsCertificate is properly formed by signing it
 	// with a throwaway key and then linting it using zlint
-	lintCertBytes, err := i.Linter.Check(template, req.PublicKey)
+	lintCertBytes, err := i.Linter.Check(template, req.PublicKey, false)
 	if err != nil {
 		return nil, nil, fmt.Errorf("tbsCertificate linting failed: %w", err)
 	}
