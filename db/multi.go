@@ -102,9 +102,8 @@ func (mi *MultiInserter) query() (string, []interface{}) {
 }
 
 // Insert inserts all the collected rows into the database represented by
-// `queryer`. `queryer` is assumed to already have a context attached. If a
-// non-empty returningColumn was provided, then it returns the list of values
-// from that column returned by the query.
+// `queryer`. If a non-empty returningColumn was provided, then it returns
+// the list of values from that column returned by the query.
 func (mi *MultiInserter) Insert(ctx context.Context, queryer Queryer) ([]int64, error) {
 	query, queryArgs := mi.query()
 	rows, err := queryer.QueryContext(ctx, query, queryArgs...)

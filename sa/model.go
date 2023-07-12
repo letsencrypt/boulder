@@ -1002,8 +1002,7 @@ var blockedKeysColumns = "keyHash, added, source, comment"
 //   - If all of the order's authorizations are valid, and we haven't begun
 //     processing, then the order is status ready.
 //
-// An error is returned for any other case. It assumes that the provided
-// database selector already has a context associated with it.
+// An error is returned for any other case.
 func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now time.Time) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
@@ -1119,8 +1118,7 @@ type authzValidity struct {
 }
 
 // getAuthorizationStatuses takes a sequence of authz IDs, and returns the
-// status and expiration date of each of them. It assumes that the provided
-// database selector already has a context associated with it.
+// status and expiration date of each of them.
 func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) ([]authzValidity, error) {
 	var params []interface{}
 	for _, id := range ids {
@@ -1151,8 +1149,7 @@ func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) (
 	return allAuthzValidity, nil
 }
 
-// authzForOrder retrieves the authorization IDs for an order. It assumes that
-// the provided database selector already has a context associated with it.
+// authzForOrder retrieves the authorization IDs for an order.
 func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, error) {
 	var v2IDs []int64
 	_, err := s.Select(
@@ -1165,8 +1162,7 @@ func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, 
 }
 
 // namesForOrder finds all of the requested names associated with an order. The
-// names are returned in their reversed form (see `sa.ReverseName`). It assumes
-// that the provided database selector already has a context associated with it.
+// names are returned in their reversed form (see `sa.ReverseName`).
 func namesForOrder(ctx context.Context, s db.Selector, orderID int64) ([]string, error) {
 	var reversedNames []string
 	_, err := s.Select(

@@ -30,8 +30,7 @@ func baseDomain(name string) string {
 
 // addCertificatesPerName adds 1 to the rate limit count for the provided
 // domains, in a specific time bucket. It must be executed in a transaction, and
-// the input timeToTheHour must be a time rounded to an hour. It assumes that
-// the given db already has a context associated with it.
+// the input timeToTheHour must be a time rounded to an hour.
 func (ssa *SQLStorageAuthority) addCertificatesPerName(ctx context.Context, db db.SelectExecer, names []string, timeToTheHour time.Time) error {
 	// De-duplicate the base domains.
 	baseDomainsMap := make(map[string]bool)
@@ -57,8 +56,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(ctx context.Context, db d
 }
 
 // countCertificates returns the count of certificates issued for a domain's
-// eTLD+1 (aka base domain), during a given time range. It assumes that the
-// given db already has a context associated with it.
+// eTLD+1 (aka base domain), during a given time range.
 func (ssa *SQLStorageAuthorityRO) countCertificates(ctx context.Context, dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
 	latest := time.Unix(0, timeRange.Latest)
 	var results []struct {
@@ -102,8 +100,7 @@ func (ssa *SQLStorageAuthorityRO) countCertificates(ctx context.Context, dbMap d
 
 // addNewOrdersRateLimit adds 1 to the rate limit count for the provided ID, in
 // a specific time bucket. It must be executed in a transaction, and the input
-// timeToTheMinute must be a time rounded to a minute. It assumes that the given
-// db already has a context associated with it.
+// timeToTheMinute must be a time rounded to a minute.
 func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int64, timeToTheMinute time.Time) error {
 	_, err := dbMap.ExecContext(ctx, `INSERT INTO newOrdersRL
 		(regID, time, count)
@@ -119,8 +116,7 @@ func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int
 }
 
 // countNewOrders returns the count of orders created in the given time range
-// for the given registration ID. It assumes that the given db already has a
-// context associated with it.
+// for the given registration ID.
 func countNewOrders(ctx context.Context, dbMap db.Selector, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
 	var counts []int64
 	_, err := dbMap.Select(
