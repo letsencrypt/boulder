@@ -45,7 +45,7 @@ type ProfileConfig struct {
 	MaxValidityBackdate config.Duration
 
 	// Deprecated: we do not respect this field.
-	Policies []PolicyConfig `validate:"-""`
+	Policies []PolicyConfig `validate:"-"`
 }
 
 // PolicyConfig describes a policy
