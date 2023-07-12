@@ -37,17 +37,7 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 		return err
 	}
 
-	selfSigned := false
-	switch k := subjectPubKey.(type) {
-	case *rsa.PublicKey:
-		selfSigned = k.Equal(realSigner.Public())
-	case *ecdsa.PublicKey:
-		selfSigned = k.Equal(realSigner.Public())
-	default:
-		return fmt.Errorf("unsupported lint signer type: %T", k)
-	}
-
-	_, err = linter.Check(tbs, subjectPubKey, selfSigned)
+	_, err = linter.Check(tbs, subjectPubKey)
 	return err
 }
 
@@ -65,9 +55,10 @@ func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSi
 // public key matches the throwaway private key, and then running the resulting
 // throwaway certificate through a registry of zlint lints.
 type Linter struct {
-	issuer   *x509.Certificate
-	signer   crypto.Signer
-	registry lint.Registry
+	issuer     *x509.Certificate
+	signer     crypto.Signer
+	registry   lint.Registry
+	realPubKey crypto.PublicKey
 }
 
 // New constructs a Linter. It uses the provided real certificate and signer
@@ -88,19 +79,29 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []str
 	if err != nil {
 		return nil, err
 	}
-	return &Linter{lintIssuer, lintSigner, reg}, nil
+	return &Linter{lintIssuer, lintSigner, reg, realSigner.Public()}, nil
 }
 
 // Check signs the given TBS certificate using the Linter's fake issuer cert and
 // private key, then runs the resulting certificate through all non-filtered
-// lints. If selfSigned is true, the throwaway cert will have its pubkey
+// lints. If the subjectPubKey is identical to the public key of the real signer
+// used to create this linter, then the throwaway cert will have its pubkey
 // replaced with the linter's pubkey so that it appears self-signed. It returns
 // an error if any lint fails. On success it also returns the DER bytes of the
 // linting certificate.
-func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, selfSigned bool) ([]byte, error) {
+func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]byte, error) {
 	lintPubKey := subjectPubKey
-	if selfSigned {
-		lintPubKey = l.signer.Public()
+	switch k := subjectPubKey.(type) {
+	case *rsa.PublicKey:
+		if k.Equal(l.realPubKey) {
+			lintPubKey = l.signer.Public()
+		}
+	case *ecdsa.PublicKey:
+		if k.Equal(l.realPubKey) {
+			lintPubKey = l.signer.Public()
+		}
+	default:
+		return nil, fmt.Errorf("unsupported lint signer type: %T", k)
 	}
 
 	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer)
