@@ -469,8 +469,7 @@ func TestVerifyProfile(t *testing.T) {
 		},
 		{
 			profile: certProfile{
-				Policies: []policyInfoConfig{
-					{OID: "1.2.3"}, {OID: "1.2.3.4", CPSURI: "hello"}},
+				Policies: []policyInfoConfig{{OID: "1.2.3"}},
 			},
 			certType:    requestCert,
 			expectedErr: "policies cannot be set for a CSR",
