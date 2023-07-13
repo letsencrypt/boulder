@@ -33,11 +33,9 @@ type RequestEvent struct {
 	Latency   float64 `json:"-"`
 	RealIP    string  `json:"-"`
 
-	TLS            string   `json:",omitempty"`
 	Slug           string   `json:",omitempty"`
 	InternalErrors []string `json:",omitempty"`
 	Error          string   `json:",omitempty"`
-	Contacts       []string `json:",omitempty"`
 	UserAgent      string   `json:"ua,omitempty"`
 	// Origin is sent by the browser from XHR-based clients.
 	Origin string                 `json:",omitempty"`
@@ -186,7 +184,7 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 }
 
 // Comma-separated list of HTTP clients involved in making this
-// request, starting with the original requestor and ending with the
+// request, starting with the original requester and ending with the
 // remote end of our TCP connection (which is typically our own
 // proxy).
 func GetClientAddr(r *http.Request) string {

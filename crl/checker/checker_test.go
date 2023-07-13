@@ -39,9 +39,15 @@ func TestValidate(t *testing.T) {
 	test.AssertError(t, err, "validating crl from wrong issuer")
 	test.AssertContains(t, err.Error(), "signature")
 
-	crl.Number = nil
+	crlFile, err = os.Open("../../linter/lints/cabf_br/testdata/crl_long_validity.pem")
+	test.AssertNotError(t, err, "opening test crl file")
+	crlPEM, err = io.ReadAll(crlFile)
+	test.AssertNotError(t, err, "reading test crl file")
+	crlDER, _ = pem.Decode(crlPEM)
+	crl, err = crl_x509.ParseRevocationList(crlDER.Bytes)
+	test.AssertNotError(t, err, "parsing test crl")
 	err = Validate(crl, issuer, 100*365*24*time.Hour)
-	test.AssertError(t, err, "validaint crl with lint error")
+	test.AssertError(t, err, "validating crl with lint error")
 	test.AssertContains(t, err.Error(), "linting")
 }
 

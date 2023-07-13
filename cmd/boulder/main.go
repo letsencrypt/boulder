@@ -85,6 +85,7 @@ var boulderUsage = fmt.Sprintf(`Usage: %s <subcommand> [flags]
 	core.Command())
 
 func main() {
+	defer cmd.AuditPanic()
 	var command string
 	if core.Command() == "boulder" {
 		// Operator passed the boulder component as a subcommand.

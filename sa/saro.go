@@ -1205,7 +1205,9 @@ func (ssa *SQLStorageAuthority) IncidentsForSerial(ctx context.Context, req *sap
 // SerialsForIncident queries the provided incident table and returns the
 // resulting rows as a stream of `*sapb.IncidentSerial`s. An `io.EOF` error
 // signals that there are no more serials to send. If the incident table in
-// question contains zero rows, only an `io.EOF` error is returned.
+// question contains zero rows, only an `io.EOF` error is returned. The
+// IncidentSerial messages returned may have the zero-value for their OrderID,
+// RegistrationID, and LastNoticeSent fields, if those are NULL in the database.
 func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForIncidentRequest, stream sapb.StorageAuthorityReadOnly_SerialsForIncidentServer) error {
 	if req.IncidentTable == "" {
 		return errIncompleteRequest
@@ -1235,13 +1237,20 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 			return err
 		}
 
-		err = stream.Send(
-			&sapb.IncidentSerial{
-				Serial:         ism.Serial,
-				RegistrationID: ism.RegistrationID,
-				OrderID:        ism.OrderID,
-				LastNoticeSent: ism.LastNoticeSent.UnixNano(),
-			})
+		ispb := &sapb.IncidentSerial{
+			Serial: ism.Serial,
+		}
+		if ism.RegistrationID != nil {
+			ispb.RegistrationID = *ism.RegistrationID
+		}
+		if ism.OrderID != nil {
+			ispb.OrderID = *ism.OrderID
+		}
+		if ism.LastNoticeSent != nil {
+			ispb.LastNoticeSent = ism.LastNoticeSent.UnixNano()
+		}
+
+		err = stream.Send(ispb)
 		if err != nil {
 			return err
 		}

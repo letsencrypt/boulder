@@ -61,10 +61,11 @@ func (dbc dbMetricsCollector) Collect(ch chan<- prometheus.Metric) {
 	writeCounter(dbc.maxLifetimeClosed, float64(dbMapStats.MaxLifetimeClosed))
 }
 
-// InitDBMetrics will register a Collector that translates the provided dbMap's
-// stats and DbSettings into Prometheus metrics on the fly. The stat values will
-// be translated from the gorp dbMap's inner sql.DBMap's DBStats structure values
-func InitDBMetrics(db *sql.DB, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) error {
+// initDBMetrics will register a Collector that translates the provided dbMap's
+// stats and DbSettings into Prometheus metrics on the fly. The exported metrics
+// all start with `db_`. The underlying data comes from sql.DBStats:
+// https://pkg.go.dev/database/sql#DBStats
+func initDBMetrics(db *sql.DB, stats prometheus.Registerer, dbSettings DbSettings, address string, user string) error {
 	// Create a dbMetricsCollector and register it
 	dbc := dbMetricsCollector{db: db, dbSettings: dbSettings}
 

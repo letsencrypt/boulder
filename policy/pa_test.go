@@ -9,6 +9,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/letsencrypt/boulder/must"
 	"github.com/letsencrypt/boulder/test"
 	"gopkg.in/yaml.v3"
 )
@@ -394,19 +395,13 @@ func TestChallengesForWildcard(t *testing.T) {
 		Value: "*.zombo.com",
 	}
 
-	mustConstructPA := func(t *testing.T, enabledChallenges map[core.AcmeChallenge]bool) *AuthorityImpl {
-		pa, err := New(enabledChallenges, blog.NewMock())
-		test.AssertNotError(t, err, "Couldn't create policy implementation")
-		return pa
-	}
-
 	// First try to get a challenge for the wildcard ident without the
 	// DNS-01 challenge type enabled. This should produce an error
 	var enabledChallenges = map[core.AcmeChallenge]bool{
 		core.ChallengeTypeHTTP01: true,
 		core.ChallengeTypeDNS01:  false,
 	}
-	pa := mustConstructPA(t, enabledChallenges)
+	pa := must.Do(New(enabledChallenges, blog.NewMock()))
 	_, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertError(t, err, "ChallengesFor did not error for a wildcard ident "+
 		"when DNS-01 was disabled")
@@ -416,7 +411,7 @@ func TestChallengesForWildcard(t *testing.T) {
 	// Try again with DNS-01 enabled. It should not error and
 	// should return only one DNS-01 type challenge
 	enabledChallenges[core.ChallengeTypeDNS01] = true
-	pa = mustConstructPA(t, enabledChallenges)
+	pa = must.Do(New(enabledChallenges, blog.NewMock()))
 	challenges, err := pa.ChallengesFor(wildcardIdent)
 	test.AssertNotError(t, err, "ChallengesFor errored for a wildcard ident "+
 		"unexpectedly")

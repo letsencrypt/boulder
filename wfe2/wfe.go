@@ -769,9 +769,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 	logEvent.Requester = acct.ID
 	addRequesterHeader(response, acct.ID)
-	if acct.Contact != nil {
-		logEvent.Contacts = *acct.Contact
-	}
 
 	acctURL := web.RelativeEndpoint(request, fmt.Sprintf("%s%d", acctPath, acct.ID))
 
@@ -1586,9 +1583,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 
 	cert, err := wfe.sa.GetCertificate(ctx, &sapb.Serial{Serial: serial})
 	if err != nil {
-		if strings.HasPrefix(err.Error(), "gorp: multiple rows returned") {
-			wfe.sendError(response, logEvent, probs.Conflict("Multiple certificates with same serial"), nil)
-		} else if errors.Is(err, berrors.NotFound) {
+		if errors.Is(err, berrors.NotFound) {
 			wfe.sendError(response, logEvent, probs.NotFound("Certificate not found"), nil)
 		} else {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Failed to retrieve certificate"), err)
@@ -1695,7 +1690,7 @@ func (wfe *WebFrontEndImpl) Certificate(ctx context.Context, logEvent *web.Reque
 	}
 }
 
-// BuildID tells the requestor what build we're running.
+// BuildID tells the requester what build we're running.
 func (wfe *WebFrontEndImpl) BuildID(ctx context.Context, logEvent *web.RequestEvent, response http.ResponseWriter, request *http.Request) {
 	response.Header().Set("Content-Type", "text/plain")
 	response.WriteHeader(http.StatusOK)

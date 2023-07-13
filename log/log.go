@@ -10,7 +10,6 @@ import (
 	"io"
 	"log/syslog"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -34,7 +33,6 @@ type Logger interface {
 	InfoObject(string, interface{})
 	Debug(msg string)
 	Debugf(format string, a ...interface{})
-	AuditPanic()
 	AuditInfo(msg string)
 	AuditInfof(format string, a ...interface{})
 	AuditObject(string, interface{})
@@ -271,22 +269,6 @@ func (w *stdoutWriter) logAtLevel(level syslog.Priority, msg string, a ...interf
 func (log *impl) auditAtLevel(level syslog.Priority, msg string, a ...interface{}) {
 	msg = fmt.Sprintf("%s %s", auditTag, msg)
 	log.w.logAtLevel(level, msg, a...)
-}
-
-// AuditPanic catches panicking executables. This method should be added
-// in a defer statement as early as possible
-func (log *impl) AuditPanic() {
-	err := recover()
-	if err != nil {
-		var buf []byte
-		log.AuditErrf("Panic caused by err: %s", err)
-
-		runtime.Stack(buf, false)
-		log.AuditErrf("Stack Trace (Current frame) %s", buf)
-
-		runtime.Stack(buf, true)
-		log.Warningf("Stack Trace (All frames): %s", buf)
-	}
 }
 
 // Err level messages are always marked with the audit tag, for special handling
