@@ -351,7 +351,7 @@ func TestNoContactCertIsRenewed(t *testing.T) {
 	setupDBMap, err := sa.NewDbMap(vars.DBConnSAFullPerms, sa.DbSettings{})
 	test.AssertNotError(t, err, "setting up DB")
 	err = setupDBMap.Insert(&core.FQDNSet{
-		SetHash: sa.HashNames(names),
+		SetHash: core.HashNames(names),
 		Serial:  core.SerialToString(serial2),
 		Issued:  testCtx.fc.Now().Add(time.Hour),
 		Expires: expires.Add(time.Hour),
@@ -576,13 +576,13 @@ func addExpiringCerts(t *testing.T, ctx *testCtx) []certDERWithRegID {
 	test.AssertNotError(t, err, "creating cert D")
 
 	fqdnStatusD := &core.FQDNSet{
-		SetHash: sa.HashNames(certDNames),
+		SetHash: core.HashNames(certDNames),
 		Serial:  serial4String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -87),
 		Expires: ctx.fc.Now().AddDate(0, 0, 3),
 	}
 	fqdnStatusDRenewed := &core.FQDNSet{
-		SetHash: sa.HashNames(certDNames),
+		SetHash: core.HashNames(certDNames),
 		Serial:  serial5String,
 		Issued:  ctx.fc.Now().AddDate(0, 0, -3),
 		Expires: ctx.fc.Now().AddDate(0, 0, 87),
@@ -743,7 +743,7 @@ func TestCertIsRenewed(t *testing.T) {
 			t.Fatal(err)
 		}
 		fqdnStatus := &core.FQDNSet{
-			SetHash: sa.HashNames(testData.DNS),
+			SetHash: core.HashNames(testData.DNS),
 			Serial:  testData.stringSerial,
 			Issued:  testData.NotBefore,
 			Expires: testData.NotAfter,

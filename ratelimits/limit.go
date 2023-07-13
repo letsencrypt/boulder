@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/letsencrypt/boulder/config"
-	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
@@ -128,7 +128,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			}
 			regId := regIdDomains[0]
 			domains := strings.Split(regIdDomains[1], ",")
-			fqdnSet := sa.HashNames(domains)
+			fqdnSet := core.HashNames(domains)
 			id = fmt.Sprintf("%s:%s", regId, fqdnSet)
 		}
 		parsed[bucketKey(name, id)] = precomputeLimit(v)

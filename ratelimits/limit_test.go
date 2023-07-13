@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/config"
-	"github.com/letsencrypt/boulder/sa"
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -221,9 +221,9 @@ func Test_loadAndParseOverrideLimits(t *testing.T) {
 	//   - CertificatesPerFQDNSetPerAccount:12345678:example.com
 	//   - CertificatesPerFQDNSetPerAccount:12345678:example.com,example.net
 	//   - CertificatesPerFQDNSetPerAccount:12345678:example.com,example.net,example.org
-	firstEntryFQDNSetHash := string(sa.HashNames([]string{"example.com"}))
-	secondEntryFQDNSetHash := string(sa.HashNames([]string{"example.com", "example.net"}))
-	thirdEntryFQDNSetHash := string(sa.HashNames([]string{"example.com", "example.net", "example.org"}))
+	firstEntryFQDNSetHash := string(core.HashNames([]string{"example.com"}))
+	secondEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net"}))
+	thirdEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net", "example.org"}))
 	firstEntryKey := nameToEnumString(CertificatesPerFQDNSetPerAccount) + ":" + "12345678:" + firstEntryFQDNSetHash
 	secondEntryKey := nameToEnumString(CertificatesPerFQDNSetPerAccount) + ":" + "12345678:" + secondEntryFQDNSetHash
 	thirdEntryKey := nameToEnumString(CertificatesPerFQDNSetPerAccount) + ":" + "12345678:" + thirdEntryFQDNSetHash

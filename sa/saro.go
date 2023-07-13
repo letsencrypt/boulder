@@ -512,7 +512,7 @@ func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.C
 		`SELECT COUNT(*) FROM fqdnSets
 		WHERE setHash = ?
 		AND issued > ?`,
-		HashNames(req.Domains),
+		core.HashNames(req.Domains),
 		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)
 	return &sapb.Count{Count: count}, err
@@ -539,7 +539,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		WHERE setHash = ?
 		AND issued > ?
 		ORDER BY issued DESC`,
-		HashNames(req.Domains),
+		core.HashNames(req.Domains),
 		ssa.clk.Now().Add(-time.Duration(req.Window)),
 	)
 	if err != nil {
@@ -581,7 +581,7 @@ type oneSelectorFunc func(holder interface{}, query string, args ...interface{})
 // checkFQDNSetExists uses the given oneSelectorFunc to check whether an fqdnSet
 // for the given names exists.
 func (ssa *SQLStorageAuthorityRO) checkFQDNSetExists(selector oneSelectorFunc, names []string) (bool, error) {
-	namehash := HashNames(names)
+	namehash := core.HashNames(names)
 	var exists bool
 	err := selector(
 		&exists,
@@ -753,7 +753,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrderForNames(ctx context.Context, req *sap
 	}
 
 	// Hash the names requested for lookup in the orderFqdnSets table
-	fqdnHash := HashNames(req.Names)
+	fqdnHash := core.HashNames(req.Names)
 
 	// Find a possibly-suitable order. We don't include the account ID or order
 	// status in this query because there's no index that includes those, so

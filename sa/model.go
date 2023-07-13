@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -865,14 +864,6 @@ type crlEntryModel struct {
 	RevokedDate   time.Time         `db:"revokedDate"`
 }
 
-// HashNames returns a hash of the names requested. This is intended for use
-// when interacting with the orderFqdnSets table.
-func HashNames(names []string) []byte {
-	names = core.UniqueLowerNames(names)
-	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
-	return hash[:]
-}
-
 // orderFQDNSet contains the SHA256 hash of the lowercased, comma joined names
 // from a new-order request, along with the corresponding orderID, the
 // registration ID, and the order expiry. This is used to find
@@ -887,7 +878,7 @@ type orderFQDNSet struct {
 
 func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
 	return db.Insert(&core.FQDNSet{
-		SetHash: HashNames(names),
+		SetHash: core.HashNames(names),
 		Serial:  serial,
 		Issued:  issued,
 		Expires: expires,
@@ -905,7 +896,7 @@ func addOrderFQDNSet(
 	regID int64,
 	expires time.Time) error {
 	return db.Insert(&orderFQDNSet{
-		SetHash:        HashNames(names),
+		SetHash:        core.HashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
 		Expires:        expires,
