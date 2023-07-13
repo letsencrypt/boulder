@@ -633,11 +633,23 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 // checkNewOrdersPerAccountLimit enforces the rlPolicies `NewOrdersPerAccount`
 // rate limit. This rate limit ensures a client can not create more than the
 // specified threshold of new orders within the specified time window.
-func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64) error {
+func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.Context, acctID int64, names []string) error {
 	limit := ra.rlPolicies.NewOrdersPerAccount()
 	if !limit.Enabled() {
 		return nil
 	}
+
+	// Check if there is already an existing certificate for the exact name set we
+	// are issuing for. If so bypass the the newOrders limit.
+	exists, err := ra.SA.FQDNSetExists(ctx, &sapb.FQDNSetExistsRequest{Domains: names})
+	if err != nil {
+		return fmt.Errorf("checking renewal exemption for %q: %s", names, err)
+	}
+	if exists.Exists {
+		ra.rateLimitCounter.WithLabelValues("new_order_by_registration_id", "FQDN set bypass").Inc()
+		return nil
+	}
+
 	now := ra.clk.Now()
 	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
 		AccountID: acctID,
@@ -1492,7 +1504,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 
 func (ra *RegistrationAuthorityImpl) checkLimits(ctx context.Context, names []string, regID int64) error {
 	// Check if there is rate limit space for a new order within the current window.
-	err := ra.checkNewOrdersPerAccountLimit(ctx, regID)
+	err := ra.checkNewOrdersPerAccountLimit(ctx, regID, names)
 	if err != nil {
 		return err
 	}
