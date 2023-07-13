@@ -18,6 +18,9 @@ func divThenRound(x, y int64) int64 {
 // TAT. The cost must be 0 or greater and <= the burst capacity of the limit.
 func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
 	if cost < 0 || cost > rl.Burst {
+		// The condition above is the union of the conditions checked in Check
+		// and Spend methods of Limiter. If this panic is reached, it means that
+		// the caller has introduced a bug.
 		panic("invalid cost for maybeSpend")
 	}
 	nowUnix := clk.Now().UnixNano()
@@ -31,32 +34,19 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 	}
 
 	// Compute the cost increment.
-	emissionInterval := divThenRound(rl.Period.Nanoseconds(), rl.Count)
-	costIncrement := emissionInterval * cost
+	costIncrement := rl.emissionInterval * cost
 
 	// Deduct the cost to find the new TAT and residual capacity.
 	newTAT := tatUnix + costIncrement
-	burstOffset := emissionInterval * rl.Burst
-	difference := nowUnix - (newTAT - burstOffset)
-	residual := divThenRound(difference, emissionInterval)
+	difference := nowUnix - (newTAT - rl.burstOffset)
 
-	if costIncrement <= 0 && residual == 0 {
-		// Edge case: no cost to consume and no capacity to consume it from.
-		return &Decision{
-			Allowed:   false,
-			Remaining: 0,
-			RetryIn:   time.Duration(emissionInterval),
-			ResetIn:   time.Duration(tatUnix - nowUnix),
-			newTAT:    time.Unix(0, tatUnix).UTC(),
-		}
-	}
-
-	if residual < 0 {
+	var residual int64
+	if difference < 0 {
 		// Too little capacity to satisfy the cost, deny the request.
-		remaining := divThenRound(nowUnix-(tatUnix-burstOffset), emissionInterval)
+		residual = divThenRound(nowUnix-(tatUnix-rl.burstOffset), rl.emissionInterval)
 		return &Decision{
 			Allowed:   false,
-			Remaining: int(remaining),
+			Remaining: int(residual),
 			RetryIn:   -time.Duration(difference),
 			ResetIn:   time.Duration(tatUnix - nowUnix),
 			newTAT:    time.Unix(0, tatUnix).UTC(),
@@ -65,9 +55,10 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 
 	// There is enough capacity to satisfy the cost, allow the request.
 	var retryIn time.Duration
+	residual = divThenRound(difference, rl.emissionInterval)
 	if residual == 0 {
 		// This request will empty the bucket.
-		retryIn = time.Duration(emissionInterval)
+		retryIn = time.Duration(rl.emissionInterval)
 	}
 	return &Decision{
 		Allowed:   true,
@@ -84,19 +75,27 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 // limit. A partial refund is still considered successful.
 func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision {
 	if cost <= 0 || cost > rl.Burst {
+		// The condition above is checked in the Refund method of Limiter. If
+		// this panic is reached, it means that the caller has introduced a bug.
 		panic("invalid cost for maybeRefund")
 	}
 	nowUnix := clk.Now().UnixNano()
 	tatUnix := tat.UnixNano()
 
-	// If the TAT is in the past, use the current time as the starting point.
+	// The TAT must be in the future to refund capacity.
 	if nowUnix > tatUnix {
-		tatUnix = nowUnix
+		// The TAT is in the past, therefore the bucket is full.
+		return &Decision{
+			Allowed:   false,
+			Remaining: int(rl.Burst),
+			RetryIn:   time.Duration(0),
+			ResetIn:   time.Duration(0),
+			newTAT:    tat,
+		}
 	}
 
 	// Compute the refund increment.
-	emissionInterval := divThenRound(rl.Period.Nanoseconds(), rl.Count)
-	refundIncrement := emissionInterval * cost
+	refundIncrement := rl.emissionInterval * cost
 
 	// Subtract the refund increment from the TAT to find the new TAT.
 	newTAT := tatUnix - refundIncrement
@@ -107,9 +106,8 @@ func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision
 	}
 
 	// Calculate the new capacity.
-	burstOffset := emissionInterval * rl.Burst
-	difference := nowUnix - (newTAT - burstOffset)
-	residual := divThenRound(difference, emissionInterval)
+	difference := nowUnix - (newTAT - rl.burstOffset)
+	residual := divThenRound(difference, rl.emissionInterval)
 
 	return &Decision{
 		Allowed:   (newTAT != tatUnix),

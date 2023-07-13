@@ -79,14 +79,15 @@ type Decision struct {
 	// capacity, assuming no further requests are made.
 	ResetIn time.Duration
 
-	// newTAT is the next theoretical arrival time (TAT) of the next possible
-	// request.
+	// newTAT indicates the time at which the bucket will be full. It is the
+	// theoretical arrival time (TAT) of next request. It must be no more than
+	// (burst * (period / count)) in the future at any single point in time.
 	newTAT time.Time
 }
 
 // Check returns a *Decision that indicates whether there's enough capacity to
-// allow the request given the cost, for the specified limit Name and client id.
-// However, it DOES NOT deduct the cost of the request from the bucket's
+// allow the request, given the cost, for the specified limit Name and client
+// id. However, it DOES NOT deduct the cost of the request from the bucket's
 // capacity. Hence, the returned *Decision represents the hypothetical state of
 // the bucket if the cost WERE to be deducted. The returned *Decision will
 // always include the number of remaining requests in the bucket, the required
@@ -113,7 +114,8 @@ func (l *Limiter) Check(name Name, id string, cost int64) (*Decision, error) {
 		if !errors.Is(err, ErrBucketNotFound) {
 			return nil, err
 		}
-		// First request from this client.
+		// First request from this client. The cost is not deducted from the
+		// initial capacity because this is only a check.
 		d, err := l.initialize(limit, name, id, 0)
 		if err != nil {
 			return nil, err
@@ -124,7 +126,7 @@ func (l *Limiter) Check(name Name, id string, cost int64) (*Decision, error) {
 }
 
 // Spend returns a *Decision that indicates if enough capacity was available to
-// process the request given the cost, for the specified limit Name and client
+// process the request, given the cost, for the specified limit Name and client
 // id. If capacity existed, the cost of the request HAS been deducted from the
 // bucket's capacity, otherwise no cost was deducted. The returned *Decision
 // will always include the number of remaining requests in the bucket, the

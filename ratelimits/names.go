@@ -18,8 +18,12 @@ import (
 type Name int
 
 const (
+	// Unknown is the zero value of Name and is used to indicate an unknown
+	// limit name.
+	Unknown Name = iota
+
 	// NewRegistrationsPerIPAddress uses bucket key 'enum:ipAddress'.
-	NewRegistrationsPerIPAddress Name = iota
+	NewRegistrationsPerIPAddress
 
 	// NewRegistrationsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
 	// address range must be a /48.
@@ -45,6 +49,7 @@ const (
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
+	Unknown:                          "Unknown",
 	NewRegistrationsPerIPAddress:     "NewRegistrationsPerIPAddress",
 	NewRegistrationsPerIPv6Range:     "NewRegistrationsPerIPv6Range",
 	NewOrdersPerAccount:              "NewOrdersPerAccount",
@@ -158,9 +163,13 @@ func validateIdForName(name Name, id string) error {
 		// 'enum:regId:fqdnSet'
 		return validateRegIdFQDNSet(id)
 
+	case Unknown:
+		// This should never happen.
+		return fmt.Errorf("unknown limit enum %q", name)
+
 	default:
 		// This should never happen.
-		return fmt.Errorf("invalid limit enum %q", name)
+		return fmt.Errorf("unknown limit enum %q", name)
 	}
 }
 

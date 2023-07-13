@@ -11,7 +11,9 @@ import (
 
 func Test_decide(t *testing.T) {
 	clk := clock.NewFake()
-	limit := limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
+	limit := precomputeLimit(
+		limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}},
+	)
 
 	// Begin by using 1 of our 10 requests.
 	d := maybeSpend(clk, limit, clk.Now(), 1)
@@ -87,7 +89,7 @@ func Test_decide(t *testing.T) {
 
 	// If you spend 0 while you have 0 you should get 0.
 	d = maybeSpend(clk, limit, d.newTAT, 0)
-	test.Assert(t, !d.Allowed, "should not be allowed")
+	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, 0)
 	test.AssertEquals(t, d.RetryIn, time.Second)
 	test.AssertEquals(t, d.ResetIn, time.Second*10)
@@ -112,7 +114,9 @@ func Test_decide(t *testing.T) {
 
 func Test_maybeRefund(t *testing.T) {
 	clk := clock.NewFake()
-	limit := limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}}
+	limit := precomputeLimit(
+		limit{Burst: 10, Count: 1, Period: config.Duration{Duration: time.Second}},
+	)
 
 	// Begin by using 1 of our 10 requests.
 	d := maybeSpend(clk, limit, clk.Now(), 1)

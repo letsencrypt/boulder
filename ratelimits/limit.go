@@ -22,6 +22,24 @@ type limit struct {
 	// Period is the duration of time in which the count (of requests) is
 	// allowed. It must be greater than zero.
 	Period config.Duration
+
+	// emissionInterval is the interval, in nanoseconds, at which tokens are
+	// added to a bucket (period / count). This is also the steady-state rate at
+	// which requests can be made without being denied even once the burst has
+	// been exhausted. This is precomputed to avoid doing the same calculation
+	// on every request.
+	emissionInterval int64
+
+	// burstOffset is the duration of time, in nanoseconds, it takes for a
+	// bucket to go from empty to full (burst * (period / count)). This is
+	// precomputed to avoid doing the same calculation on every request.
+	burstOffset int64
+}
+
+func precomputeLimit(l limit) limit {
+	l.emissionInterval = divThenRound(l.Period.Nanoseconds(), l.Count)
+	l.burstOffset = l.emissionInterval * l.Burst
+	return l
 }
 
 func validateLimit(l limit) error {
@@ -54,26 +72,26 @@ func loadLimits(path string) (limits, error) {
 }
 
 // parseOverrideNameId is broken out for ease of testing.
-func parseOverrideNameId(key string) (*Name, string, error) {
+func parseOverrideNameId(key string) (Name, string, error) {
 	if !strings.Contains(key, ":") {
 		// Avoids a potential panic in strings.SplitN below.
-		return nil, "", fmt.Errorf("invalid override %q, must be formatted 'name:id'", key)
+		return Unknown, "", fmt.Errorf("invalid override %q, must be formatted 'name:id'", key)
 	}
 	nameAndId := strings.SplitN(key, ":", 2)
 	nameStr := nameAndId[0]
 	if nameStr == "" {
-		return nil, "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", key)
+		return Unknown, "", fmt.Errorf("empty name in override %q, must be formatted 'name:id'", key)
 	}
 
 	name, ok := stringToName[nameStr]
 	if !ok {
-		return nil, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, limitNames)
+		return Unknown, "", fmt.Errorf("unrecognized name %q in override limit %q, must be one of %v", nameStr, key, limitNames)
 	}
 	id := nameAndId[1]
 	if id == "" {
-		return nil, "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", key)
+		return Unknown, "", fmt.Errorf("empty id in override %q, must be formatted 'name:id'", key)
 	}
-	return &name, id, nil
+	return name, id, nil
 }
 
 // loadAndParseOverrideLimits loads override limits from YAML, validates them,
@@ -94,12 +112,12 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing override limit %q: %w", k, err)
 		}
-		err = validateIdForName(*name, id)
+		err = validateIdForName(name, id)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"validating name %s and id %q for override limit %q: %w", nameToString[*name], id, k, err)
+				"validating name %s and id %q for override limit %q: %w", nameToString[name], id, k, err)
 		}
-		if *name == CertificatesPerFQDNSetPerAccount {
+		if name == CertificatesPerFQDNSetPerAccount {
 			// FQDNSet hashes are not a nice thing to ask for in a config file,
 			// so we allow the user to specify a comma-separated list of FQDNs
 			// and compute the hash here.
@@ -113,7 +131,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			fqdnSet := sa.HashNames(domains)
 			id = fmt.Sprintf("%s:%s", regId, fqdnSet)
 		}
-		parsed[bucketKey(*name, id)] = v
+		parsed[bucketKey(name, id)] = precomputeLimit(v)
 	}
 	return parsed, nil
 }
@@ -136,7 +154,7 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 		if !ok {
 			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
 		}
-		parsed[nameToEnumString(name)] = v
+		parsed[nameToEnumString(name)] = precomputeLimit(v)
 	}
 	return parsed, nil
 }

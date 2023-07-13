@@ -18,14 +18,14 @@ func Test_parseOverrideNameId(t *testing.T) {
 	// Valid IPv4 address.
 	name, id, err := parseOverrideNameId(newRegistrationsPerIPAddressStr + ":10.0.0.1")
 	test.AssertNotError(t, err, "should not error")
-	test.AssertEquals(t, *name, NewRegistrationsPerIPAddress)
+	test.AssertEquals(t, name, NewRegistrationsPerIPAddress)
 	test.AssertEquals(t, id, "10.0.0.1")
 
 	// 'enum:ipv6range'
 	// Valid IPv6 address range.
 	name, id, err = parseOverrideNameId(newRegistrationsPerIPv6RangeStr + ":2001:0db8:0000::/48")
 	test.AssertNotError(t, err, "should not error")
-	test.AssertEquals(t, *name, NewRegistrationsPerIPv6Range)
+	test.AssertEquals(t, name, NewRegistrationsPerIPv6Range)
 	test.AssertEquals(t, id, "2001:0db8:0000::/48")
 
 	// Missing colon (this should never happen but we should avoid panicking).

@@ -1,12 +1,26 @@
 # Configuring and Storing Key-Value Rate Limits
 
+## Rate Limit Structure
+
+All rate limits use a token-bucket model. The metaphor is that each limit is
+represented by a bucket which holds tokens. Each request removes some number of
+tokens from the bucket, or is denied if there aren't enough tokens to remove.
+Over time, new tokens are added to the bucket at a steady rate, until the bucket
+is full. The _burst_ parameter of a rate limit indicates the maximum capacity of
+a bucket: how many tokens can it hold before new ones stop being added.
+Therefore, this also indicates how many requests can be made in a single burst
+before a full bucket is completely emptied. The _count_ and _period_ parameters
+indicate the rate at which new tokens are added to a bucket: every period, count
+tokens will be added. Therefore, these also indicate the steady-state rate at
+which a client which has exhausted its quota can make requests: one token every
+(period / count) duration.
+
 ## Default Limit Settings
 
-Each root key directly corresponds to a `Name` enumeration as detailed in
-`name.go`. The `Name` enum is used to identify the particular limit. The `count`
-value is used to determine the maximum number of requests allowed, within the
-given `period` of time. The `burst` value is used to determine the maximum
-number of requests allowed, at any given time.
+Each key directly corresponds to a `Name` enumeration as detailed in `name.go`.
+The Name enum is used to identify the particular limit. The parameters of a
+default limit are the values that will be used for all buckets that do not have
+an explicit override (see below).
 
 ```yaml
 NewRegistrationsPerIPAddress:
@@ -21,27 +35,31 @@ NewOrdersPerAccount:
 
 ## Override Limit Settings
 
-Each root key represents a specific bucket, consisting of two elements: `name`
-and `id`. The `name` here refers to the `Name` of the particular limit, while
-the `id` is the client's identifier. The format of the `id` is dependent on the
-limit. For example, the `id` for 'NewRegistrationsPerIPAddress' is a subscriber
-IP address, while the `id` for 'NewOrdersPerAccount' is the subscriber's
-registration ID.
+Each override key represents a specific bucket, consisting of two elements:
+_name_ and _id_. The name here refers to the Name of the particular limit, while
+the id is a client identifier. The format of the id is dependent on the limit.
+For example, the id for 'NewRegistrationsPerIPAddress' is a subscriber IP
+address, while the id for 'NewOrdersPerAccount' is the subscriber's registration
+ID.
 
 ```yaml
 NewRegistrationsPerIPAddress:10.0.0.2:
-  burst: 40
+  burst: 20
   count: 40
   period: 1s
-NewOrdersPerAccount:12345678
-  burst: 600
+NewOrdersPerAccount:12345678:
+  burst: 300
   count: 600
   period: 180m
 ```
 
+The above example overrides the default limits for specific subscribers. They
+will be allowed to make twice as many requests as the default limits but will
+still be limited to the same burst as a regular subscriber.
+
 ### Id Formats in Limit Override Settings
 
-Id formats vary based on the 'Name' enumeration. Below are examples for each
+Id formats vary based on the Name enumeration. Below are examples for each
 format:
 
 #### ipAddress
@@ -52,7 +70,8 @@ Example: `NewRegistrationsPerIPAddress:10.0.0.1`
 
 #### ipv6RangeCIDR
 
-A valid IPv6 range in CIDR notation with a /48 mask.
+A valid IPv6 range in CIDR notation with a /48 mask. A /48 range is typically
+assigned to a single subscriber.
 
 Example: `NewRegistrationsPerIPv6Range:2001:0db8:0000::/48`
 
@@ -79,7 +98,7 @@ Example: `CertificatesPerFQDNSetPerAccount:12345678:example.com,example.org`
 
 Bucket keys are the key used to lookup the bucket for a given limit and
 subscriber. Bucket keys are formatted similarly to the overrides but with a
-slight difference: the limit `Names` do not carry the string form of each limit.
+slight difference: the limit Names do not carry the string form of each limit.
 Instead, they apply the Name enum equivalent for every limit.
 
 So, instead of:
@@ -101,6 +120,25 @@ default/override limit.
 
 ## How Limits are Applied
 
+Although rate limit buckets are configured in terms of tokens, we do not
+actually keep track of the number of tokens in each bucket. Instead, we track
+the Theoretical Arrival Time (TAT) at which the bucket will be full again. If
+the TAT is in the past, the bucket is full. If the TAT is in the future, some
+number of tokens have been spent and the bucket is slowly refilling. If the TAT
+is far enough in the future (specifically, more than `burst * (period / count)`)
+in the future), then the bucket is completely empty and requests will be denied.
+
+Additional terminology:
+
+  - **burst offset** is the duration of time it takes for a bucket to go from
+    empty to full (`burst * (period / count)`).
+  - **emission interval** is the interval at which tokens are added to a bucket
+    (`period / count`). This is also the steady-state rate at which requests can
+    be made without being denied even once the burst has been exhausted.
+  - **cost** is the number of tokens removed from a bucket for a single request.
+  - **cost increment** is the duration of time the TAT is advanced to account
+    for the cost of the request (`cost * emission interval`).
+
 For the purposes of this example, subscribers originating from a specific IPv4
 address are allowed 20 requests to the newFoo endpoint per second, with a
 maximum burst of 20 requests at any point-in-time.
@@ -109,43 +147,35 @@ A subscriber calls the newFoo endpoint for the first time with an IP address of
 172.23.45.22. Here's what happens:
 
 1. The subscriber's IP address is used to generate a bucket key in the form of
-   `NewFoosPerIPAddress:172.23.45.22`. The Theoretical Arrival Time (TAT) for
-   this bucket is set to the current time.
+   'NewFoosPerIPAddress:172.23.45.22'.
 
-2. The subscriber's bucket is initialized with 19 tokens, as 1 token is removed
-   to account for the current request. The request is approved, and the TAT is
-   updated. The TAT is set to the current time, plus the inter-request time
-   (which would be 1/20th of a second if we are limiting to 20 requests per
-   second).
+2. The request is approved and the 'NewFoosPerIPAddress:172.23.45.22' bucket is
+   initialized with 19 tokens, as 1 token has been removed to account for the
+   cost of the current request. To accomplish this, the initial TAT is set to
+   the current time plus the _cost increment_ (which is 1/20th of a second if we
+   are limiting to 20 requests per second).
 
-3. The subscriber is informed that their request was successful. Their bucket:
+3. Bucket 'NewFoosPerIPAddress:172.23.45.22':
     - will reset to full in 50ms (1/20th of a second),
-    - they can make another newFoo request immediately,
-    - they can make 19 more requests in the next 50ms,
-    - they do not need to wait between requests,
-    - if they make 19 requests in the next 50ms they will need to wait 50ms before
-      making another request and 1s to make 20 more requests,
-    - thus if they make 1 request every 50ms, they will never be denied.
+    - will allow another newFoo request immediately,
+    - will allow between 1 and 19 more requests in the next 50ms,
+    - will reject the 20th request made in the next 50ms,
+    - and will allow 1 request every 50ms, indefinitely.
 
-Now, the subscriber makes another request immediately:
+The subscriber makes another request 5ms later:
 
-4. The TAT at bucket key `NewFoosPerIPAddress:172.23.45.22` is compared against
-   the current time and the burst offset. If the current time is less than the
-   TAT minus the burst offset, this implies the request would surpass the rate
-   limit and thus, it's rejected. If the current time is equal to or greater
-   than the TAT minus the burst offset, the request is allowed.
+4. The TAT at bucket key 'NewFoosPerIPAddress:172.23.45.22' is compared against
+   the current time and the _burst offset_. The current time is greater than the
+   TAT minus the cost increment. Therefore, the request is approved.
 
-5. A token is deducted from the subscriber's bucket and the TAT is updated
-   similarly to the first request.
+5. The TAT at bucket key 'NewFoosPerIPAddress:172.23.45.22' is advanced by the
+   cost increment to account for the cost of the request.
 
-If the subscriber makes requests rapidly, causing the token count to hit 0
-before 50ms has passed, here's what would happen during their next request:
+The subscriber makes a total of 18 requests over the next 44ms:
 
-6. The rate limiter checks the TAT. If the current time is less than (TAT -
-   burst offset), the request is rejected. Since the subscriber has already
-   exhausted their 20 requests in <50ms, the current time is indeed less than
-   (TAT - burst offset). Therefore, the request is rejected to maintain the rate
-   limit.
+6. The current time is less than the TAT at bucket key
+   'NewFoosPerIPAddress:172.23.45.22' minus the burst offset, thus the request
+   is rejected.
 
 This mechanism allows for bursts of traffic but also ensures that the average
 rate of requests stays within the prescribed limits over time.
