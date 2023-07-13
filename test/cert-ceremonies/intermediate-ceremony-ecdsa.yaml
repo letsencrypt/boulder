@@ -16,8 +16,8 @@ certificate-profile:
     country: US
     not-before: 2020-01-01 12:00:00
     not-after: 2040-01-01 12:00:00
-    crl-url:  http://ecdsa.root.ca/crl
-    issuer-url:  http://ecdsa.root.ca/cert
+    crl-url:  http://ecdsa.example.com/crl
+    issuer-url:  http://ecdsa.example.com/cert
     policies:
         - oid: 2.23.140.1.2.1
     key-usages:
