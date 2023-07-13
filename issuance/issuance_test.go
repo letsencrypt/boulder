@@ -10,6 +10,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"fmt"
 	"math/big"
@@ -319,6 +320,7 @@ func TestGenerateTemplate(t *testing.T) {
 				IssuingCertificateURL: []string{""},
 				OCSPServer:            []string{""},
 				CRLDistributionPoints: []string{"crl-url"},
+				PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 			},
 		},
 	}

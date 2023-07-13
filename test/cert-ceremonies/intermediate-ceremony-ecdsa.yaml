@@ -18,6 +18,8 @@ certificate-profile:
     not-after: 2040-01-01 12:00:00
     crl-url:  http://ecdsa.root.ca/crl
     issuer-url:  http://ecdsa.root.ca/cert
+    policies:
+        - oid: 2.23.140.1.2.1
     key-usages:
         - Digital Signature
         - Cert Sign
