@@ -127,7 +127,7 @@ func TestGenerateCRL(t *testing.T) {
 	close(ins)
 	err = <-errs
 	test.AssertError(t, err, "can't generate CRL with bad serials")
-	test.AssertContains(t, err.Error(), "Invalid serial number")
+	test.AssertContains(t, err.Error(), "invalid serial number")
 
 	// Test that we get an error when an entry has a bad revocation time.
 	ins = make(chan *capb.GenerateCRLRequest)
