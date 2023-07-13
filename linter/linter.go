@@ -13,6 +13,7 @@ import (
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
@@ -91,17 +92,12 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []str
 // linting certificate.
 func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]byte, error) {
 	lintPubKey := subjectPubKey
-	switch k := subjectPubKey.(type) {
-	case *rsa.PublicKey:
-		if k.Equal(l.realPubKey) {
-			lintPubKey = l.signer.Public()
-		}
-	case *ecdsa.PublicKey:
-		if k.Equal(l.realPubKey) {
-			lintPubKey = l.signer.Public()
-		}
-	default:
-		return nil, fmt.Errorf("unsupported lint signer type: %T", k)
+	selfSigned, err := core.PublicKeysEqual(subjectPubKey, l.realPubKey)
+	if err != nil {
+		return nil, err
+	}
+	if selfSigned {
+		lintPubKey = l.signer.Public()
 	}
 
 	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer)
