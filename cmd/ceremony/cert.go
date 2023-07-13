@@ -114,6 +114,9 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		if profile.IssuerURL != "" {
 			return errors.New("issuer-url cannot be set for a CSR")
 		}
+		if profile.Policies != nil {
+			return errors.New("policies cannot be set for a CSR")
+		}
 		if profile.KeyUsages != nil {
 			return errors.New("key-usages cannot be set for a CSR")
 		}
@@ -258,8 +261,6 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		IssuingCertificateURL: issuingCertificateURL,
 		KeyUsage:              ku,
 		SubjectKeyId:          subjectKeyID,
-		// Baseline Requirements, Section 7.1.6.1: domain-validated
-		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
 
 	if ct != requestCert {

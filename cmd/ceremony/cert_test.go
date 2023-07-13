@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -30,6 +31,16 @@ func realRand(_ pkcs11.SessionHandle, length int) ([]byte, error) {
 	r := make([]byte, length)
 	_, err := rand.Read(r)
 	return r, err
+}
+
+func TestParseOID(t *testing.T) {
+	_, err := parseOID("")
+	test.AssertError(t, err, "parseOID accepted an empty OID")
+	_, err = parseOID("a.b.c")
+	test.AssertError(t, err, "parseOID accepted an OID containing non-ints")
+	oid, err := parseOID("1.2.3")
+	test.AssertNotError(t, err, "parseOID failed with a valid OID")
+	test.Assert(t, oid.Equal(asn1.ObjectIdentifier{1, 2, 3}), "parseOID returned incorrect OID")
 }
 
 func TestMakeSubject(t *testing.T) {
@@ -455,6 +466,13 @@ func TestVerifyProfile(t *testing.T) {
 			},
 			certType:    requestCert,
 			expectedErr: "issuer-url cannot be set for a CSR",
+		},
+		{
+			profile: certProfile{
+				Policies: []policyInfoConfig{{OID: "1.2.3"}},
+			},
+			certType:    requestCert,
+			expectedErr: "policies cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
