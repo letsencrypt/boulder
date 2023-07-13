@@ -1,4 +1,4 @@
-package notmain
+package main
 
 import (
 	"bytes"
@@ -14,7 +14,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -835,8 +834,4 @@ func main() {
 	default:
 		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, crl-signer, key, ocsp-response")
 	}
-}
-
-func init() {
-	cmd.RegisterCommand("ceremony", main, nil)
 }

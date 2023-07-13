@@ -1,4 +1,4 @@
-package notmain
+package main
 
 import (
 	"crypto/ecdsa"
