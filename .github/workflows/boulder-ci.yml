@@ -74,6 +74,7 @@ jobs:
         with:
           persist-credentials: false
       
+      # TODO(#6998): Remove this step.
       - name: Update docker compose plugin
         run: mkdir -p ${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins && curl -SL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o ${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins/docker-compose && chmod +x ${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins/docker-compose
 
