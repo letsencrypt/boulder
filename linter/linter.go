@@ -13,6 +13,7 @@ import (
 	"github.com/zmap/zlint/v3"
 	"github.com/zmap/zlint/v3/lint"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/crl_x509"
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
@@ -25,15 +26,18 @@ var ErrLinting = fmt.Errorf("failed lint(s)")
 
 // Check accomplishes the entire process of linting: it generates a throwaway
 // signing key, uses that to create a throwaway cert, and runs a default set
-// of lints (everything except for the ETSI and EV lints) against it. This is
+// of lints (everything except for the ETSI and EV lints) against it. If the
+// subjectPubKey and realSigner indicate that this is a self-signed cert, the
+// throwaway cert will have its pubkey replaced to also be self-signed. This is
 // the primary public interface of this package, but it can be inefficient;
 // creating a new signer and a new lint registry are expensive operations which
-// performance-sensitive clients may want to cache.
+// performance-sensitive clients may want to cache via linter.New().
 func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
 	linter, err := New(realIssuer, realSigner, skipLints)
 	if err != nil {
 		return err
 	}
+
 	_, err = linter.Check(tbs, subjectPubKey)
 	return err
 }
@@ -52,9 +56,10 @@ func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSi
 // public key matches the throwaway private key, and then running the resulting
 // throwaway certificate through a registry of zlint lints.
 type Linter struct {
-	issuer   *x509.Certificate
-	signer   crypto.Signer
-	registry lint.Registry
+	issuer     *x509.Certificate
+	signer     crypto.Signer
+	registry   lint.Registry
+	realPubKey crypto.PublicKey
 }
 
 // New constructs a Linter. It uses the provided real certificate and signer
@@ -75,23 +80,37 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []str
 	if err != nil {
 		return nil, err
 	}
-	return &Linter{lintIssuer, lintSigner, reg}, nil
+	return &Linter{lintIssuer, lintSigner, reg, realSigner.Public()}, nil
 }
 
 // Check signs the given TBS certificate using the Linter's fake issuer cert and
 // private key, then runs the resulting certificate through all non-filtered
-// lints. It returns an error if any lint fails. On success it also returns the
-// DER bytes of the linting certificate.
+// lints. If the subjectPubKey is identical to the public key of the real signer
+// used to create this linter, then the throwaway cert will have its pubkey
+// replaced with the linter's pubkey so that it appears self-signed. It returns
+// an error if any lint fails. On success it also returns the DER bytes of the
+// linting certificate.
 func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]byte, error) {
-	lintCertBytes, cert, err := makeLintCert(tbs, subjectPubKey, l.issuer, l.signer)
+	lintPubKey := subjectPubKey
+	selfSigned, err := core.PublicKeysEqual(subjectPubKey, l.realPubKey)
 	if err != nil {
 		return nil, err
 	}
+	if selfSigned {
+		lintPubKey = l.signer.Public()
+	}
+
+	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer)
+	if err != nil {
+		return nil, err
+	}
+
 	lintRes := zlint.LintCertificateEx(cert, l.registry)
 	err = ProcessResultSet(lintRes)
 	if err != nil {
 		return nil, err
 	}
+
 	return lintCertBytes, nil
 }
 
