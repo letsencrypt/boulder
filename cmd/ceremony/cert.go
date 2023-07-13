@@ -10,8 +10,17 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strconv"
+	"strings"
 	"time"
 )
+
+type policyInfoConfig struct {
+	OID string
+	// Deprecated: we do not include the id-qt-cps policy qualifier in our
+	// certificate policy extensions anymore.
+	CPSURI string `yaml:"cps-uri"`
+}
 
 // certProfile contains the information required to generate a certificate
 type certProfile struct {
@@ -45,6 +54,11 @@ type certProfile struct {
 	// can be found, this is only required if generating an intermediate
 	// certificate
 	IssuerURL string `yaml:"issuer-url"`
+
+	// Policies should contain any OIDs to be inserted in a certificate
+	// policies extension. It should be empty for Root certs, and contain the
+	// BRs "domain-validated" Reserved Policy Identifier for Intermediates.
+	Policies []policyInfoConfig `yaml:"policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
 	KeyUsages []string `yaml:"key-usages"`
@@ -124,12 +138,21 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		return errors.New("country is required")
 	}
 
+	if ct == rootCert {
+		if len(profile.Policies) != 0 {
+			return errors.New("policies should not be set on root certs")
+		}
+	}
+
 	if ct == intermediateCert {
 		if profile.CRLURL == "" {
 			return errors.New("crl-url is required for intermediates")
 		}
 		if profile.IssuerURL == "" {
 			return errors.New("issuer-url is required for intermediates")
+		}
+		if len(profile.Policies) != 1 || profile.Policies[0].OID != "2.23.140.1.2.1" {
+			return errors.New("policy should be exactly BRs domain-validated for intermediates")
 		}
 	}
 
@@ -145,6 +168,21 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 	}
 	return nil
+}
+
+func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
+	var oid asn1.ObjectIdentifier
+	for _, a := range strings.Split(oidStr, ".") {
+		i, err := strconv.Atoi(a)
+		if err != nil {
+			return nil, err
+		}
+		if i <= 0 {
+			return nil, errors.New("OID components must be >= 1")
+		}
+		oid = append(oid, i)
+	}
+	return oid, nil
 }
 
 var stringToKeyUsage = map[string]x509.KeyUsage{
@@ -260,6 +298,14 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		// it in our end-entity certificates.
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
+	}
+
+	for _, policyConfig := range profile.Policies {
+		oid, err := parseOID(policyConfig.OID)
+		if err != nil {
+			return nil, err
+		}
+		cert.PolicyIdentifiers = append(cert.PolicyIdentifiers, oid)
 	}
 
 	return cert, nil

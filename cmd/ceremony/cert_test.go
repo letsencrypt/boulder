@@ -84,6 +84,11 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
+	profile.Policies = []policyInfoConfig{{}}
+	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	test.AssertError(t, err, "makeTemplate didn't fail with invalid (empty) policy OID")
+
+	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4"}}
 	profile.CommonName = "common name"
 	profile.Organization = "organization"
 	profile.Country = "country"
@@ -104,7 +109,7 @@ func TestMakeTemplate(t *testing.T) {
 	test.AssertEquals(t, len(cert.IssuingCertificateURL), 1)
 	test.AssertEquals(t, cert.IssuingCertificateURL[0], profile.IssuerURL)
 	test.AssertEquals(t, cert.KeyUsage, x509.KeyUsageDigitalSignature|x509.KeyUsageCRLSign)
-	test.AssertEquals(t, len(cert.PolicyIdentifiers), 1)
+	test.AssertEquals(t, len(cert.PolicyIdentifiers), 2)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
 	cert, err = makeTemplate(randReader, profile, pubKey, intermediateCert)

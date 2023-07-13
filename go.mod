@@ -12,7 +12,7 @@ require (
 	github.com/go-gorp/gorp/v3 v3.1.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/go-sql-driver/mysql v1.5.0
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.1.4
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
@@ -27,8 +27,8 @@ require (
 	github.com/prometheus/client_model v0.3.0
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.30.1-0.20230620154423-38c92ad2d5c6
-	github.com/zmap/zcrypto v0.0.0-20220402174210-599ec18ecbac
-	github.com/zmap/zlint/v3 v3.4.0
+	github.com/zmap/zcrypto v0.0.0-20230310154051-c8b263fd8300
+	github.com/zmap/zlint/v3 v3.5.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.41.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.41.0
 	go.opentelemetry.io/otel v1.15.0
