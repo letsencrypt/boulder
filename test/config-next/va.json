@@ -40,8 +40,6 @@
 			}
 		},
 		"features": {
-			"CAAValidationMethods": true,
-			"CAAAccountURI": true,
 			"EnforceMultiVA": true,
 			"MultiVAFullResults": true
 		},
