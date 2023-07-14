@@ -38,6 +38,8 @@ func TestParseOID(t *testing.T) {
 	test.AssertError(t, err, "parseOID accepted an empty OID")
 	_, err = parseOID("a.b.c")
 	test.AssertError(t, err, "parseOID accepted an OID containing non-ints")
+	_, err = parseOID("1.0.2")
+	test.AssertError(t, err, "parseOID accepted an OID containing zero")
 	oid, err := parseOID("1.2.3")
 	test.AssertNotError(t, err, "parseOID failed with a valid OID")
 	test.Assert(t, oid.Equal(asn1.ObjectIdentifier{1, 2, 3}), "parseOID returned incorrect OID")
