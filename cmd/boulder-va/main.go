@@ -36,7 +36,7 @@ type Config struct {
 
 		Features map[string]bool
 
-		AccountURIPrefixes []string
+		AccountURIPrefixes []string `validate:"min=1,dive,required,url"`
 	}
 
 	Syslog        cmd.SyslogConfig
