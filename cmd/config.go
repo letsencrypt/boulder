@@ -525,10 +525,7 @@ type DNSProvider struct {
 	// a hostname it will be resolved via the system DNS. If the port is left
 	// unspecified it will default to '53'. If this field is left unspecified
 	// the system DNS will be used for resolution of DNS backends.
-	//
-	// TODO(#6868): Make this field required once 'dnsResolver' is removed from
-	// the boulder-va JSON config in favor of 'dnsProvider'.
-	DNSAuthority string `validate:"omitempty,ip|hostname|hostname_port"`
+	DNSAuthority string `validate:"required,ip|hostname|hostname_port"`
 
 	// SRVLookup contains the service and domain name used to construct a SRV
 	// DNS query to lookup DNS backends. 'Domain' is required. 'Service' is
