@@ -359,6 +359,9 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 			MaxShardIdx:  int64(shardIdx),
 			Until:        timestamppb.New(deadline.Add(-time.Second)),
 		})
+		if err != nil {
+			return fmt.Errorf("leasing shard: %w", err)
+		}
 	}
 
 	// Get the full list of CRL Entries for this shard from the SA.

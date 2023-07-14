@@ -15,6 +15,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -53,6 +54,7 @@ type fakeSAC struct {
 	mocks.StorageAuthority
 	grcc        fakeGRCC
 	maxNotAfter time.Time
+	leaseError  error
 }
 
 func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRequest, _ ...grpc.CallOption) (sapb.StorageAuthority_GetRevokedCertsClient, error) {
@@ -61,6 +63,13 @@ func (f *fakeSAC) GetRevokedCerts(ctx context.Context, _ *sapb.GetRevokedCertsRe
 
 func (f *fakeSAC) GetMaxExpiration(_ context.Context, req *emptypb.Empty, _ ...grpc.CallOption) (*timestamppb.Timestamp, error) {
 	return timestamppb.New(f.maxNotAfter), nil
+}
+
+func (f *fakeSAC) LeaseCRLShard(_ context.Context, req *sapb.LeaseCRLShardRequest, _ ...grpc.CallOption) (*sapb.LeaseCRLShardResponse, error) {
+	if f.leaseError != nil {
+		return nil, f.leaseError
+	}
+	return &sapb.LeaseCRLShardResponse{IssuerNameID: req.IssuerNameID, ShardIdx: req.MinShardIdx}, nil
 }
 
 // fakeGCC is a fake capb.CRLGenerator_GenerateCRLClient which can be
@@ -140,6 +149,8 @@ func TestTickShard(t *testing.T) {
 	test.AssertNotError(t, err, "loading test issuer")
 
 	sentinelErr := errors.New("oops")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
 	clk := clock.NewFake()
 	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
@@ -159,16 +170,29 @@ func TestTickShard(t *testing.T) {
 	}
 
 	// Ensure that getting no results from the SA still works.
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertNotError(t, err, "empty CRL")
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "success",
 	}, 1)
 	cu.updatedCounter.Reset()
 
+	// With leasing enabled, errors while leasing should bubble up early.
+	_ = features.Set(map[string]bool{"LeaseCRLShards": true})
+	cu.sa.(*fakeSAC).leaseError = sentinelErr
+	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	test.AssertError(t, err, "leasing error")
+	test.AssertContains(t, err.Error(), "leasing shard")
+	test.AssertErrorIs(t, err, sentinelErr)
+	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
+		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
+	}, 1)
+	cu.updatedCounter.Reset()
+	features.Reset()
+
 	// Errors closing the Storer upload stream should bubble up.
 	cu.cs = &fakeCSC{ucc: fakeUCC{recvErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "closing CRLStorer upload stream")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -179,7 +203,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors sending to the Storer should bubble up sooner.
 	cu.cs = &fakeCSC{ucc: fakeUCC{sendErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "sending CRLStorer metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -190,7 +214,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors reading from the CA should bubble up sooner.
 	cu.ca = &fakeCGC{gcc: fakeGCC{recvErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "receiving CRL bytes")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -201,7 +225,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors sending to the CA should bubble up sooner.
 	cu.ca = &fakeCGC{gcc: fakeGCC{sendErr: sentinelErr}}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "sending CA metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -212,7 +236,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors reading from the SA should bubble up soonest.
 	cu.sa = &fakeSAC{grcc: fakeGRCC{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)}
-	err = cu.tickShard(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "retrieving entry from SA")
 	test.AssertErrorIs(t, err, sentinelErr)
