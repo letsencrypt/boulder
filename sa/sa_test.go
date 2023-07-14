@@ -3472,8 +3472,8 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	)
 	test.AssertError(t, err, "leasing unavailable shard")
 
-	// Leasing an unknown shard should fail (because this method will only be used
-	// in the short term, and should go away before we change shard counts).
+	// Leasing a previously-unknown specific shard should work (to ease the
+	// transition into using leasing).
 	_, err = sa.leaseSpecificCRLShard(
 		context.Background(),
 		&sapb.LeaseCRLShardRequest{
@@ -3483,7 +3483,7 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 			Until:        timestamppb.New(until),
 		},
 	)
-	test.AssertError(t, err, "leasing unknown shard")
+	test.AssertNotError(t, err, "leasing unknown shard")
 }
 
 func TestUpdateCRLShard(t *testing.T) {
