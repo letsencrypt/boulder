@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -92,16 +93,18 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	t.Parallel()
 	os.Setenv("DIRECTORY", "http://boulder.service.consul:4001/directory")
 
+	ctx := context.Background()
+
 	// This test is gated on the StoreLintingCertificateInsteadOfPrecertificate
 	// feature flag.
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		t.Skip("Skipping test because it requires the StoreLintingCertificateInsteadOfPrecertificate feature flag")
 	}
-	
+
 	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
 	test.AssertNotError(t, err, "failed to open db connection")
 
-	_, err = db.Exec(`DROP TRIGGER IF EXISTS fail_ready`)
+	_, err = db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
 	test.AssertNotError(t, err, "failed to drop trigger")
 
 	// Make a specific update to certificateStatus fail, for this test but not others.
@@ -114,7 +117,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	// NOTE: CREATE and DROP TRIGGER do not work in prepared statements. Go's
 	// database/sql will automatically try to use a prepared statement if you pass
 	// any arguments to Exec besides the query itself, so don't do that.
-	_, err = db.Exec(`
+	_, err = db.ExecContext(ctx, `
 		CREATE TRIGGER fail_ready
 		BEFORE UPDATE ON certificateStatus
 		FOR EACH ROW BEGIN
@@ -130,8 +133,8 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 		END
 	`)
 	test.AssertNotError(t, err, "failed to create trigger")
-	
-	defer db.Exec(`DROP TRIGGER IF EXISTS fail_ready`)
+
+	defer db.ExecContext(ctx, `DROP TRIGGER IF EXISTS fail_ready`)
 
 	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")
@@ -157,7 +160,7 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 	test.AssertNotError(t, err, fmt.Sprintf("revoking via admin-revoker: %s", string(output)))
 
 	_, err = ocsp_helper.Req(cert,
-			ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.Unspecified))
+		ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.Unspecified))
 
 	// ---- Test revocation by key ----
 	blockMyKeyDomain := "blockmykey.wantserror.com"
@@ -186,10 +189,10 @@ func TestIssuanceCertStorageFailed(t *testing.T) {
 		1,
 	)
 	test.AssertNotError(t, err, "revoking second certificate")
-	
+
 	for i := 0; i < 300; i++ {
 		_, err = ocsp_helper.Req(successfulCert,
-			 ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
+			ocsp_helper.DefaultConfig.WithExpectStatus(ocsp.Revoked).WithExpectReason(ocsp.KeyCompromise))
 		if err == nil {
 			break
 		}

@@ -64,9 +64,9 @@ const regFields = "id, jwk, jwk_sha256, contact, agreement, initialIP, createdAt
 // ClearEmail removes the provided email address from one specified registration. If
 // there are multiple email addresses present, it does not modify other ones. If the email
 // address is not present, it does not modify the registration and will return a nil error.
-func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email string) error {
-	_, overallError := db.WithTransaction(ctx, dbMap, func(txWithCtx db.Executor) (interface{}, error) {
-		curr, err := selectRegistration(txWithCtx, "id", regID)
+func ClearEmail(ctx context.Context, dbMap db.DatabaseMap, regID int64, email string) error {
+	_, overallError := db.WithTransaction(ctx, dbMap, func(tx db.Executor) (interface{}, error) {
+		curr, err := selectRegistration(ctx, tx, "id", regID)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +94,7 @@ func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email st
 			return nil, err
 		}
 
-		return txWithCtx.Update(newModel)
+		return tx.Update(ctx, newModel)
 	})
 	if overallError != nil {
 		return overallError
@@ -104,13 +104,14 @@ func ClearEmail(dbMap db.DatabaseMap, ctx context.Context, regID int64, email st
 }
 
 // selectRegistration selects all fields of one registration model
-func selectRegistration(s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
+func selectRegistration(ctx context.Context, s db.OneSelector, whereCol string, args ...interface{}) (*regModel, error) {
 	if whereCol != "id" && whereCol != "jwk_sha256" {
 		return nil, fmt.Errorf("column name %q invalid for registrations table WHERE clause", whereCol)
 	}
 
 	var model regModel
 	err := s.SelectOne(
+		ctx,
 		&model,
 		"SELECT "+regFields+" FROM registrations WHERE "+whereCol+" = ? LIMIT 1",
 		args...,
@@ -123,9 +124,10 @@ const certFields = "registrationID, serial, digest, der, issued, expires"
 // SelectCertificate selects all fields of one certificate object identified by
 // a serial. If more than one row contains the same serial only the first is
 // returned.
-func SelectCertificate(s db.OneSelector, serial string) (core.Certificate, error) {
+func SelectCertificate(ctx context.Context, s db.OneSelector, serial string) (core.Certificate, error) {
 	var model core.Certificate
 	err := s.SelectOne(
+		ctx,
 		&model,
 		"SELECT "+certFields+" FROM certificates WHERE serial = ? LIMIT 1",
 		serial,
@@ -137,9 +139,10 @@ const precertFields = "registrationID, serial, der, issued, expires"
 
 // SelectPrecertificate selects all fields of one precertificate object
 // identified by serial.
-func SelectPrecertificate(s db.OneSelector, serial string) (core.Certificate, error) {
+func SelectPrecertificate(ctx context.Context, s db.OneSelector, serial string) (core.Certificate, error) {
 	var model precertificateModel
 	err := s.SelectOne(
+		ctx,
 		&model,
 		"SELECT "+precertFields+" FROM precertificates WHERE serial = ? LIMIT 1",
 		serial)
@@ -158,18 +161,20 @@ type CertWithID struct {
 }
 
 // SelectCertificates selects all fields of multiple certificate objects
-func SelectCertificates(s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
+func SelectCertificates(ctx context.Context, s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
 	var models []CertWithID
 	_, err := s.Select(
+		ctx,
 		&models,
 		"SELECT id, "+certFields+" FROM certificates "+q, args)
 	return models, err
 }
 
 // SelectPrecertificates selects all fields of multiple precertificate objects.
-func SelectPrecertificates(s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
+func SelectPrecertificates(ctx context.Context, s db.Selector, q string, args map[string]interface{}) ([]CertWithID, error) {
 	var models []CertWithID
 	_, err := s.Select(
+		ctx,
 		&models,
 		"SELECT id, "+precertFields+" FROM precertificates "+q, args)
 	return models, err
@@ -192,9 +197,10 @@ const certStatusFields = "id, serial, status, ocspLastUpdated, revokedDate, revo
 
 // SelectCertificateStatus selects all fields of one certificate status model
 // identified by serial
-func SelectCertificateStatus(s db.OneSelector, serial string) (core.CertificateStatus, error) {
+func SelectCertificateStatus(ctx context.Context, s db.OneSelector, serial string) (core.CertificateStatus, error) {
 	var model core.CertificateStatus
 	err := s.SelectOne(
+		ctx,
 		&model,
 		"SELECT "+certStatusFields+" FROM certificateStatus WHERE serial = ? LIMIT 1",
 		serial,
@@ -213,9 +219,10 @@ type RevocationStatusModel struct {
 
 // SelectRevocationStatus returns the authoritative revocation information for
 // the certificate with the given serial.
-func SelectRevocationStatus(s db.OneSelector, serial string) (*sapb.RevocationStatus, error) {
+func SelectRevocationStatus(ctx context.Context, s db.OneSelector, serial string) (*sapb.RevocationStatus, error) {
 	var model RevocationStatusModel
 	err := s.SelectOne(
+		ctx,
 		&model,
 		"SELECT status, revokedDate, revokedReason FROM certificateStatus WHERE serial = ? LIMIT 1",
 		serial,
@@ -560,6 +567,7 @@ func rehydrateHostPort(vr *core.ValidationRecord) error {
 // the past. If the stored authz has a valid status, it is returned with a
 // valid status regardless of whether it is also expired.
 func SelectAuthzsMatchingIssuance(
+	ctx context.Context,
 	s db.Selector,
 	regID int64,
 	issued time.Time,
@@ -588,7 +596,7 @@ func SelectAuthzsMatchingIssuance(
 	}
 
 	var authzModels []authzModel
-	_, err := s.Select(&authzModels, query, args...)
+	_, err := s.Select(ctx, &authzModels, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -885,8 +893,8 @@ type orderFQDNSet struct {
 	Expires        time.Time
 }
 
-func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
-	return db.Insert(&core.FQDNSet{
+func addFQDNSet(ctx context.Context, db db.Inserter, names []string, serial string, issued time.Time, expires time.Time) error {
+	return db.Insert(ctx, &core.FQDNSet{
 		SetHash: HashNames(names),
 		Serial:  serial,
 		Issued:  issued,
@@ -899,12 +907,13 @@ func addFQDNSet(db db.Inserter, names []string, serial string, issued time.Time,
 // addition can take place within the order addition transaction. The caller is
 // required to rollback the transaction if an error is returned.
 func addOrderFQDNSet(
+	ctx context.Context,
 	db db.Inserter,
 	names []string,
 	orderID int64,
 	regID int64,
 	expires time.Time) error {
-	return db.Insert(&orderFQDNSet{
+	return db.Insert(ctx, &orderFQDNSet{
 		SetHash:        HashNames(names),
 		OrderID:        orderID,
 		RegistrationID: regID,
@@ -917,10 +926,11 @@ func addOrderFQDNSet(
 // take place within the finalization transaction. The caller is required to
 // rollback the transaction if an error is returned.
 func deleteOrderFQDNSet(
+	ctx context.Context,
 	db db.Execer,
 	orderID int64) error {
 
-	result, err := db.Exec(`
+	result, err := db.ExecContext(ctx, `
 	  DELETE FROM orderFqdnSets
 		WHERE orderID = ?`,
 		orderID)
@@ -940,7 +950,7 @@ func deleteOrderFQDNSet(
 	return nil
 }
 
-func addIssuedNames(queryer db.Queryer, cert *x509.Certificate, isRenewal bool) error {
+func addIssuedNames(ctx context.Context, queryer db.Queryer, cert *x509.Certificate, isRenewal bool) error {
 	if len(cert.DNSNames) == 0 {
 		return berrors.InternalServerError("certificate has no DNSNames")
 	}
@@ -960,11 +970,11 @@ func addIssuedNames(queryer db.Queryer, cert *x509.Certificate, isRenewal bool) 
 			return err
 		}
 	}
-	_, err = multiInserter.Insert(queryer)
+	_, err = multiInserter.Insert(ctx, queryer)
 	return err
 }
 
-func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
+func addKeyHash(ctx context.Context, db db.Inserter, cert *x509.Certificate) error {
 	if cert.RawSubjectPublicKeyInfo == nil {
 		return errors.New("certificate has a nil RawSubjectPublicKeyInfo")
 	}
@@ -974,7 +984,7 @@ func addKeyHash(db db.Inserter, cert *x509.Certificate) error {
 		CertNotAfter: cert.NotAfter,
 		CertSerial:   core.SerialToString(cert.SerialNumber),
 	}
-	return db.Insert(khm)
+	return db.Insert(ctx, khm)
 }
 
 var blockedKeysColumns = "keyHash, added, source, comment"
@@ -992,9 +1002,8 @@ var blockedKeysColumns = "keyHash, added, source, comment"
 //   - If all of the order's authorizations are valid, and we haven't begun
 //     processing, then the order is status ready.
 //
-// An error is returned for any other case. It assumes that the provided
-// database selector already has a context associated with it.
-func statusForOrder(s db.Selector, order *corepb.Order, now time.Time) (string, error) {
+// An error is returned for any other case.
+func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now time.Time) (string, error) {
 	// Without any further work we know an order with an error is invalid
 	if order.Error != nil {
 		return string(core.StatusInvalid), nil
@@ -1013,7 +1022,7 @@ func statusForOrder(s db.Selector, order *corepb.Order, now time.Time) (string, 
 	}
 
 	// Get the full Authorization objects for the order
-	authzValidityInfo, err := getAuthorizationStatuses(s, order.V2Authorizations)
+	authzValidityInfo, err := getAuthorizationStatuses(ctx, s, order.V2Authorizations)
 	// If there was an error getting the authorizations, return it immediately
 	if err != nil {
 		return "", err
@@ -1109,9 +1118,8 @@ type authzValidity struct {
 }
 
 // getAuthorizationStatuses takes a sequence of authz IDs, and returns the
-// status and expiration date of each of them. It assumes that the provided
-// database selector already has a context associated with it.
-func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, error) {
+// status and expiration date of each of them.
+func getAuthorizationStatuses(ctx context.Context, s db.Selector, ids []int64) ([]authzValidity, error) {
 	var params []interface{}
 	for _, id := range ids {
 		params = append(params, id)
@@ -1121,6 +1129,7 @@ func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, erro
 		Expires time.Time
 	}
 	_, err := s.Select(
+		ctx,
 		&validityInfo,
 		fmt.Sprintf("SELECT status, expires FROM authz2 WHERE id IN (%s)",
 			db.QuestionMarks(len(ids))),
@@ -1140,11 +1149,11 @@ func getAuthorizationStatuses(s db.Selector, ids []int64) ([]authzValidity, erro
 	return allAuthzValidity, nil
 }
 
-// authzForOrder retrieves the authorization IDs for an order. It assumes that
-// the provided database selector already has a context associated with it.
-func authzForOrder(s db.Selector, orderID int64) ([]int64, error) {
+// authzForOrder retrieves the authorization IDs for an order.
+func authzForOrder(ctx context.Context, s db.Selector, orderID int64) ([]int64, error) {
 	var v2IDs []int64
 	_, err := s.Select(
+		ctx,
 		&v2IDs,
 		"SELECT authzID FROM orderToAuthz2 WHERE orderID = ?",
 		orderID,
@@ -1153,11 +1162,11 @@ func authzForOrder(s db.Selector, orderID int64) ([]int64, error) {
 }
 
 // namesForOrder finds all of the requested names associated with an order. The
-// names are returned in their reversed form (see `sa.ReverseName`). It assumes
-// that the provided database selector already has a context associated with it.
-func namesForOrder(s db.Selector, orderID int64) ([]string, error) {
+// names are returned in their reversed form (see `sa.ReverseName`).
+func namesForOrder(ctx context.Context, s db.Selector, orderID int64) ([]string, error) {
 	var reversedNames []string
 	_, err := s.Select(
+		ctx,
 		&reversedNames,
 		`SELECT reversedName
 	   FROM requestedNames

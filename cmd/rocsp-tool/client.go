@@ -44,7 +44,8 @@ func getStartingID(ctx context.Context, clk clock.Clock, db *db.WrappedMap) (int
 	// certificates.
 	startTime := clk.Now().Add(-24 * time.Hour)
 	var minID *int64
-	err := db.WithContext(ctx).QueryRow(
+	err := db.QueryRowContext(
+		ctx,
 		"SELECT MIN(id) FROM certificateStatus WHERE notAfter >= ?",
 		startTime,
 	).Scan(&minID)
@@ -70,7 +71,8 @@ func (cl *client) loadFromDB(ctx context.Context, speed ProcessingSpeed, startFr
 	// Find the current maximum id in certificateStatus. We do this because the table is always
 	// growing. If we scanned until we saw a batch with no rows, we would scan forever.
 	var maxID *int64
-	err = cl.db.WithContext(ctx).QueryRow(
+	err = cl.db.QueryRowContext(
+		ctx,
 		"SELECT MAX(id) FROM certificateStatus",
 	).Scan(&maxID)
 	if err != nil {
@@ -162,7 +164,7 @@ func (cl *client) scanFromDBOneBatch(ctx context.Context, prevID int64, frequenc
 		return -1, fmt.Errorf("initializing db map: %w", err)
 	}
 
-	rows, err := selector.Query(ctx, clauses, params...)
+	rows, err := selector.QueryContext(ctx, clauses, params...)
 	if err != nil {
 		return -1, fmt.Errorf("scanning certificateStatus: %w", err)
 	}

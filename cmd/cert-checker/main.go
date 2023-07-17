@@ -82,12 +82,12 @@ type reportEntry struct {
 	Problems []string `json:"problems,omitempty"`
 }
 
-// certDB is an interface collecting the gorp.saDbMap functions that the various
+// certDB is an interface collecting the borp.DbMap functions that the various
 // parts of cert-checker rely on. Using this adapter shim allows tests to swap
 // out the saDbMap implementation.
 type certDB interface {
-	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error)
+	Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error)
+	SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error)
 }
 
 type certChecker struct {
@@ -125,7 +125,7 @@ func newChecker(saDbMap certDB,
 	}
 }
 
-func (c *certChecker) getCerts(unexpiredOnly bool) error {
+func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 	c.issuedReport.end = c.clock.Now()
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
 
@@ -139,6 +139,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	var retries int
 	for {
 		sni, err = c.dbMap.SelectNullInt(
+			ctx,
 			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
 			args,
 		)
@@ -170,6 +171,7 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 
 	for {
 		certs, err := sa.SelectCertificates(
+			ctx,
 			c.dbMap,
 			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
 			args,
@@ -199,9 +201,9 @@ func (c *certChecker) getCerts(unexpiredOnly bool) error {
 	return nil
 }
 
-func (c *certChecker) processCerts(wg *sync.WaitGroup, badResultsOnly bool, ignoredLints map[string]bool) {
+func (c *certChecker) processCerts(ctx context.Context, wg *sync.WaitGroup, badResultsOnly bool, ignoredLints map[string]bool) {
 	for cert := range c.certs {
-		dnsNames, problems := c.checkCert(cert, ignoredLints)
+		dnsNames, problems := c.checkCert(ctx, cert, ignoredLints)
 		valid := len(problems) == 0
 		c.rMu.Lock()
 		if !badResultsOnly || (badResultsOnly && !valid) {
@@ -245,8 +247,8 @@ var expectedExtensionContent = map[string][]byte{
 // likely valid at the time the certificate was issued. Authorizations with
 // status = "deactivated" are counted for this, so long as their validatedAt
 // is before the issuance and expiration is after.
-func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string) error {
-	authzs, err := sa.SelectAuthzsMatchingIssuance(c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
+func (c *certChecker) checkValidations(ctx context.Context, cert core.Certificate, dnsNames []string) error {
+	authzs, err := sa.SelectAuthzsMatchingIssuance(ctx, c.dbMap, cert.RegistrationID, cert.Issued, dnsNames)
 	if err != nil {
 		return fmt.Errorf("error checking authzs for certificate %s: %w", cert.Serial, err)
 	}
@@ -277,7 +279,7 @@ func (c *certChecker) checkValidations(cert core.Certificate, dnsNames []string)
 }
 
 // checkCert returns a list of DNS names in the certificate and a list of problems with the certificate.
-func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]bool) ([]string, []string) {
+func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, ignoredLints map[string]bool) ([]string, []string) {
 	var dnsNames []string
 	var problems []string
 
@@ -386,13 +388,13 @@ func (c *certChecker) checkCert(cert core.Certificate, ignoredLints map[string]b
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Couldn't parse stored certificate: %s", err))
 		}
-		err = c.kp.GoodKey(context.Background(), p.PublicKey)
+		err = c.kp.GoodKey(ctx, p.PublicKey)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
 		}
 
 		if features.Enabled(features.CertCheckerChecksValidations) {
-			err = c.checkValidations(cert, parsedCert.DNSNames)
+			err = c.checkValidations(ctx, cert, parsedCert.DNSNames)
 			if err != nil {
 				if features.Enabled(features.CertCheckerRequiresValidations) {
 					problems = append(problems, err.Error())
@@ -531,7 +533,7 @@ func main() {
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err := checker.getCerts(config.CertChecker.UnexpiredOnly)
+		err := checker.getCerts(context.TODO(), config.CertChecker.UnexpiredOnly)
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 
@@ -541,7 +543,7 @@ func main() {
 		wg.Add(1)
 		go func() {
 			s := checker.clock.Now()
-			checker.processCerts(wg, config.CertChecker.BadResultsOnly, ignoredLintsMap)
+			checker.processCerts(context.TODO(), wg, config.CertChecker.BadResultsOnly, ignoredLintsMap)
 			checkerLatency.Observe(checker.clock.Since(s).Seconds())
 		}()
 	}

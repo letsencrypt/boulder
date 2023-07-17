@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -278,33 +279,35 @@ func TestPopulateAttemptedFieldsBadJSON(t *testing.T) {
 }
 
 func TestCertificatesTableContainsDuplicateSerials(t *testing.T) {
+	ctx := context.Background()
+
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
 	serialString := core.SerialToString(big.NewInt(1337))
 
 	// Insert a certificate with a serial of `1337`.
-	err := insertCertificate(sa.dbMap, fc, "1337.com", "leet", 1337, 1)
+	err := insertCertificate(ctx, sa.dbMap, fc, "1337.com", "leet", 1337, 1)
 	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// This should return the certificate that we just inserted.
-	certA, err := SelectCertificate(sa.dbMap, serialString)
+	certA, err := SelectCertificate(ctx, sa.dbMap, serialString)
 	test.AssertNotError(t, err, "received an error for a valid query")
 
 	// Insert a certificate with a serial of `1337` but for a different
 	// hostname.
-	err = insertCertificate(sa.dbMap, fc, "1337.net", "leet", 1337, 1)
+	err = insertCertificate(ctx, sa.dbMap, fc, "1337.net", "leet", 1337, 1)
 	test.AssertNotError(t, err, "couldn't insert valid certificate")
 
 	// Despite a duplicate being present, this shouldn't error.
-	certB, err := SelectCertificate(sa.dbMap, serialString)
+	certB, err := SelectCertificate(ctx, sa.dbMap, serialString)
 	test.AssertNotError(t, err, "received an error for a valid query")
 
 	// Ensure that `certA` and `certB` are the same.
 	test.AssertByteEquals(t, certA.DER, certB.DER)
 }
 
-func insertCertificate(dbMap *db.WrappedMap, fc clock.FakeClock, hostname, cn string, serial, regID int64) error {
+func insertCertificate(ctx context.Context, dbMap *db.WrappedMap, fc clock.FakeClock, hostname, cn string, serial, regID int64) error {
 	serialBigInt := big.NewInt(serial)
 	serialString := core.SerialToString(serialBigInt)
 
@@ -325,7 +328,7 @@ func insertCertificate(dbMap *db.WrappedMap, fc clock.FakeClock, hostname, cn st
 		Expires:        template.NotAfter,
 		DER:            certDer,
 	}
-	err := dbMap.Insert(cert)
+	err := dbMap.Insert(ctx, cert)
 	if err != nil {
 		return err
 	}
@@ -349,12 +352,14 @@ func makeKey() rsa.PrivateKey {
 }
 
 func TestIncidentSerialModel(t *testing.T) {
+	ctx := context.Background()
+
 	testIncidentsDbMap, err := DBMapForTest(vars.DBConnIncidentsFullPerms)
 	test.AssertNotError(t, err, "Couldn't create test dbMap")
 	defer test.ResetIncidentsTestDatabase(t)
 
 	// Inserting and retrieving a row with only the serial populated should work.
-	_, err = testIncidentsDbMap.Exec(
+	_, err = testIncidentsDbMap.ExecContext(ctx,
 		"INSERT INTO incident_foo (serial) VALUES (?)",
 		"1337",
 	)
@@ -362,6 +367,7 @@ func TestIncidentSerialModel(t *testing.T) {
 
 	var res1 incidentSerialModel
 	err = testIncidentsDbMap.SelectOne(
+		ctx,
 		&res1,
 		"SELECT * FROM incident_foo WHERE serial = ?",
 		"1337",
@@ -374,7 +380,7 @@ func TestIncidentSerialModel(t *testing.T) {
 	test.AssertBoxedNil(t, res1.LastNoticeSent, "lastNoticeSent should be NULL")
 
 	// Inserting and retrieving a row with all columns populated should work.
-	_, err = testIncidentsDbMap.Exec(
+	_, err = testIncidentsDbMap.ExecContext(ctx,
 		"INSERT INTO incident_foo (serial, registrationID, orderID, lastNoticeSent) VALUES (?, ?, ?, ?)",
 		"1338",
 		1,
@@ -385,6 +391,7 @@ func TestIncidentSerialModel(t *testing.T) {
 
 	var res2 incidentSerialModel
 	err = testIncidentsDbMap.SelectOne(
+		ctx,
 		&res2,
 		"SELECT * FROM incident_foo WHERE serial = ?",
 		"1338",

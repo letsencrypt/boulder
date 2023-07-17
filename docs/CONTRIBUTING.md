@@ -191,10 +191,10 @@ Specifically, that means that all of our `SELECT` statements should enumerate
 columns to select, and not use `*`. Also, generally speaking, we will need a
 separate model `struct` for serializing and deserializing data before and
 after the migration. This is because the ORM package we use,
-[`gorp`](https://github.com/go-gorp/gorp), expects every field in a struct to
+[`borp`](https://github.com/letsencrypt/borp), expects every field in a struct to
 map to a column in the table. If we add a new field to a model struct and
 Boulder attempts to write that struct to a table that doesn't yet have the
-corresponding column (case 1), gorp will fail with `Insert failed table posts
+corresponding column (case 1), borp will fail with `Insert failed table posts
 has no column named Foo`. There are examples of such models in sa/model.go,
 along with code to turn a model into a `struct` used internally.
 
@@ -254,14 +254,14 @@ func (ssa *SQLStorageAuthority) GetPerson() (Person, error) {
 
 func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
   if features.Enabled(features.AllowWizards) { // Added!
-    return ssa.dbMap.Insert(personModelv2{
+    return ssa.dbMap.Insert(context.Background(), personModelv2{
       personModelv1: {
         HatSize:  p.HatSize,
       },
       IsWizard: p.IsWizard,
     })
   } else {
-    return ssa.dbMap.Insert(personModelv1{
+    return ssa.dbMap.Insert(context.Background(), personModelv1{
       HatSize:  p.HatSize,
       // p.IsWizard ignored
     })
@@ -270,14 +270,14 @@ func (ssa *SQLStorageAuthority) AddPerson(p Person) (error) {
 ```
 
 You will also need to update the `initTables` function from `sa/database.go` to
-tell Gorp which table to use for your versioned model structs. Make sure to
+tell borp which table to use for your versioned model structs. Make sure to
 consult the flag you defined so that only **one** of the table maps is added at
-any given time, otherwise Gorp will error.  Depending on your table you may also
+any given time, otherwise borp will error.  Depending on your table you may also
 need to add `SetKeys` and `SetVersionCol` entries for your versioned models.
 Example:
 
 ```go
-func initTables(dbMap *gorp.DbMap) {
+func initTables(dbMap *borp.DbMap) {
  // < unrelated lines snipped for brevity >
 
  if features.Enabled(features.AllowWizards) {
