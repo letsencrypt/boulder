@@ -339,11 +339,31 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 	}
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
-	noncePrefix := "mlem"
-	nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
-	test.AssertNotError(t, err, "making nonceService")
-	nonceGRPCService := &inmemnonce.Service{
-		NonceService: nonceService,
+
+	var gnc nonce.Getter
+	var noncePrefixMap map[string]nonce.Redeemer
+	var rnc nonce.Redeemer
+	var rncKey string
+	var inmemNonceService *inmemnonce.Service
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Use derived nonces.
+		noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
+		nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
+		test.AssertNotError(t, err, "making nonceService")
+
+		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
+		gnc = inmemNonceService
+		rnc = inmemNonceService
+	} else {
+		// TODO(#6610): Remove this once we've moved to derived to prefixes.
+		noncePrefix := "mlem"
+		nonceService, err := nonce.NewNonceService(metrics.NoopRegisterer, 100, noncePrefix)
+		test.AssertNotError(t, err, "making nonceService")
+
+		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
+		gnc = inmemNonceService
+		noncePrefixMap = map[string]nonce.Redeemer{noncePrefix: inmemNonceService}
+		rnc = inmemNonceService
 	}
 
 	wfe, err := NewWebFrontEndImpl(
@@ -359,16 +379,16 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		7*24*time.Hour,
 		&MockRegistrationAuthority{},
 		mockSA,
-		nonceGRPCService,
-		map[string]nonce.Redeemer{noncePrefix: nonceGRPCService},
-		nonceGRPCService,
-		"",
+		gnc,
+		noncePrefixMap,
+		rnc,
+		rncKey,
 		mockSA)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL
 
-	return wfe, fc, requestSigner{t, nonceGRPCService.AsSource()}
+	return wfe, fc, requestSigner{t, inmemNonceService.AsSource()}
 }
 
 // makePostRequestWithPath creates an http.Request for localhost with method

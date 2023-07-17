@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -215,6 +216,39 @@ func (rs requestSigner) invalidNonce() *jose.JSONWebSignature {
 
 	opts := &jose.SignerOptions{
 		NonceSource: badNonceProvider{},
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": "https://example.com/acme/foo",
+		},
+	}
+
+	signer, err := jose.NewSigner(signerKey, opts)
+	test.AssertNotError(rs.t, err, "Failed to make signer")
+	jws, err := signer.Sign([]byte(""))
+	test.AssertNotError(rs.t, err, "Failed to sign req")
+
+	body := jws.FullSerialize()
+	parsedJWS, err := jose.ParseSigned(body)
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
+
+	return parsedJWS
+}
+
+// malformedNonce returns an otherwise well-signed request with a malformed
+// nonce.
+func (rs requestSigner) malformedNonce() *jose.JSONWebSignature {
+	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
+	jwk := &jose.JSONWebKey{
+		Key:       privateKey,
+		Algorithm: keyAlgForKey(rs.t, privateKey),
+		KeyID:     "http://localhost/acme/acct/1",
+	}
+	signerKey := jose.SigningKey{
+		Key:       jwk,
+		Algorithm: jose.RS256,
+	}
+
+	opts := &jose.SignerOptions{
+		NonceSource: badNonceProvider{malformed: true},
 		ExtraHeaders: map[jose.HeaderKey]interface{}{
 			"url": "https://example.com/acme/foo",
 		},
@@ -630,10 +664,18 @@ func TestEnforceJWSAuthType(t *testing.T) {
 }
 
 type badNonceProvider struct {
+	malformed bool
 }
 
-func (badNonceProvider) Nonce() (string, error) {
-	return "im-a-nonce", nil
+func (b badNonceProvider) Nonce() (string, error) {
+	if b.malformed {
+		return "im-a-nonce", nil
+	}
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		// TODO(#6610): Remove this.
+		return "mlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA", nil
+	}
+	return "mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA", nil
 }
 
 func TestValidNonce(t *testing.T) {
@@ -646,6 +688,10 @@ func TestValidNonce(t *testing.T) {
 		JWS            *jose.JSONWebSignature
 		ExpectedResult *probs.ProblemDetails
 		ErrorStatType  string
+		// TODO(#6610): Remove this.
+		SkipConfigNext bool
+		// TODO(#6610): Remove this.
+		SkipConfig bool
 	}{
 		{
 			Name: "No nonce in JWS",
@@ -658,14 +704,36 @@ func TestValidNonce(t *testing.T) {
 			ErrorStatType: "JWSMissingNonce",
 		},
 		{
-			Name: "Invalid nonce in JWS",
-			JWS:  signer.invalidNonce(),
+			Name: "Malformed nonce in JWS",
+			JWS:  signer.malformedNonce(),
 			ExpectedResult: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
 				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
+			ErrorStatType: "JWSMalformedNonce",
+		},
+		{
+			Name: "Invalid nonce in JWS (test/config)",
+			JWS:  signer.invalidNonce(),
+			ExpectedResult: &probs.ProblemDetails{
+				Type:       probs.BadNonceProblem,
+				Detail:     "JWS has an invalid anti-replay nonce: \"mlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
+				HTTPStatus: http.StatusBadRequest,
+			},
+			ErrorStatType:  "JWSInvalidNonce",
+			SkipConfigNext: true,
+		},
+		{
+			Name: "Invalid nonce in JWS (test/config-next)",
+			JWS:  signer.invalidNonce(),
+			ExpectedResult: &probs.ProblemDetails{
+				Type:       probs.BadNonceProblem,
+				Detail:     "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
+				HTTPStatus: http.StatusBadRequest,
+			},
 			ErrorStatType: "JWSInvalidNonce",
+			SkipConfig:    true,
 		},
 		{
 			Name:           "Valid nonce in JWS",
@@ -675,6 +743,16 @@ func TestValidNonce(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// TODO(#6610): Remove this.
+		if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+			if tc.SkipConfigNext {
+				continue
+			}
+		} else {
+			if tc.SkipConfig {
+				continue
+			}
+		}
 		t.Run(tc.Name, func(t *testing.T) {
 			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.validNonce(context.Background(), tc.JWS.Signatures[0].Header)
