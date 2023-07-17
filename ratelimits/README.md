@@ -96,7 +96,7 @@ Example: `CertificatesPerFQDNSetPerAccount:12345678:example.com,example.org`
 
 ## Bucket Key Definitions
 
-Bucket keys are the key used to lookup the bucket for a given limit and
+A bucket key is used to lookup the bucket for a given limit and
 subscriber. Bucket keys are formatted similarly to the overrides but with a
 slight difference: the limit Names do not carry the string form of each limit.
 Instead, they apply the Name enum equivalent for every limit.
