@@ -18,7 +18,7 @@ which a client which has exhausted its quota can make requests: one token every
 ## Default Limit Settings
 
 Each key directly corresponds to a `Name` enumeration as detailed in `//ratelimits/names.go`.
-The Name enum is used to identify the particular limit. The parameters of a
+The `Name` enum is used to identify the particular limit. The parameters of a
 default limit are the values that will be used for all buckets that do not have
 an explicit override (see below).
 
