@@ -59,7 +59,7 @@ still be limited to the same burst as a regular subscriber.
 
 ### Id Formats in Limit Override Settings
 
-Id formats vary based on the Name enumeration. Below are examples for each
+Id formats vary based on the `Name` enumeration. Below are examples for each
 format:
 
 #### ipAddress
