@@ -17,12 +17,10 @@ const (
 	ROCSPStage6
 	ROCSPStage7
 	StoreLintingCertificateInsteadOfPrecertificate
+	CAAValidationMethods
+	CAAAccountURI
 
 	//   Currently in-use features
-	// Check CAA and respect validationmethods parameter.
-	CAAValidationMethods
-	// Check CAA and respect accounturi parameter.
-	CAAAccountURI
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
 	// requests in order to make a valid/invalid decision with the results.
 	EnforceMultiVA

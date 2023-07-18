@@ -27,7 +27,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	"github.com/letsencrypt/boulder/linter"
-	"github.com/letsencrypt/boulder/policyasn1"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -37,7 +36,7 @@ func defaultProfileConfig() ProfileConfig {
 		AllowCTPoison:   true,
 		AllowSCTList:    true,
 		AllowMustStaple: true,
-		Policies: []PolicyInformation{
+		Policies: []PolicyConfig{
 			{OID: "1.2.3"},
 		},
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
@@ -85,47 +84,12 @@ func TestMain(m *testing.M) {
 
 func TestNewProfilePolicies(t *testing.T) {
 	config := defaultProfileConfig()
-	config.Policies = append(config.Policies, PolicyInformation{
+	config.Policies = append(config.Policies, PolicyConfig{
 		OID: "1.2.3.4",
-		Qualifiers: []PolicyQualifier{
-			{
-				Type:  "id-qt-cps",
-				Value: "cps-url",
-			},
-		},
 	})
 	profile, err := NewProfile(config, defaultIssuerConfig())
 	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertDeepEquals(t, *profile, Profile{
-		useForRSALeaves:   true,
-		useForECDSALeaves: true,
-		allowMustStaple:   true,
-		allowCTPoison:     true,
-		allowSCTList:      true,
-		allowCommonName:   true,
-		issuerURL:         "http://issuer-url",
-		ocspURL:           "http://ocsp-url",
-		policies: &pkix.Extension{
-			Id:    asn1.ObjectIdentifier{2, 5, 29, 32},
-			Value: []byte{48, 36, 48, 4, 6, 2, 42, 3, 48, 28, 6, 3, 42, 3, 4, 48, 21, 48, 19, 6, 8, 43, 6, 1, 5, 5, 7, 2, 1, 22, 7, 99, 112, 115, 45, 117, 114, 108},
-		},
-		maxBackdate: time.Hour,
-		maxValidity: time.Hour,
-	})
-	var policies []policyasn1.PolicyInformation
-	_, err = asn1.Unmarshal(profile.policies.Value, &policies)
-	test.AssertNotError(t, err, "failed to parse policies extension")
-	test.AssertEquals(t, len(policies), 2)
-	test.AssertDeepEquals(t, policies[0], policyasn1.PolicyInformation{
-		Policy: asn1.ObjectIdentifier{1, 2, 3},
-	})
-	test.AssertDeepEquals(t, policies[1], policyasn1.PolicyInformation{
-		Policy: asn1.ObjectIdentifier{1, 2, 3, 4},
-		Qualifiers: []policyasn1.PolicyQualifier{{
-			OID:   asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 2, 1},
-			Value: "cps-url",
-		}},
-	})
+	test.AssertDeepEquals(t, profile.policies, []asn1.ObjectIdentifier{{1, 2, 3}, {1, 2, 3, 4}})
 }
 
 func TestNewProfileNoIssuerURL(t *testing.T) {
@@ -142,26 +106,12 @@ func TestNewProfileNoOCSPURL(t *testing.T) {
 
 func TestNewProfileInvalidOID(t *testing.T) {
 	_, err := NewProfile(ProfileConfig{
-		Policies: []PolicyInformation{{
+		Policies: []PolicyConfig{{
 			OID: "a.b.c",
 		}},
 	}, defaultIssuerConfig())
-	test.AssertError(t, err, "NewProfile didn't fail with unknown policy qualifier type")
+	test.AssertError(t, err, "NewProfile didn't fail with malformed policy OID")
 	test.AssertEquals(t, err.Error(), "failed parsing policy OID \"a.b.c\": strconv.Atoi: parsing \"a\": invalid syntax")
-}
-
-func TestNewProfileUnknownQualifierType(t *testing.T) {
-	_, err := NewProfile(ProfileConfig{
-		Policies: []PolicyInformation{{
-			OID: "1.2.3",
-			Qualifiers: []PolicyQualifier{{
-				Type:  "asd",
-				Value: "bad",
-			}},
-		}},
-	}, defaultIssuerConfig())
-	test.AssertError(t, err, "NewProfile didn't fail with unknown policy qualifier type")
-	test.AssertEquals(t, err.Error(), "unknown qualifier type: asd")
 }
 
 func TestRequestValid(t *testing.T) {
@@ -398,11 +348,8 @@ func TestGenerateTemplate(t *testing.T) {
 		{
 			name: "include policies",
 			profile: &Profile{
-				sigAlg: x509.SHA256WithRSA,
-				policies: &pkix.Extension{
-					Id:    asn1.ObjectIdentifier{1, 2, 3},
-					Value: []byte{4, 5, 6},
-				},
+				sigAlg:   x509.SHA256WithRSA,
+				policies: []asn1.ObjectIdentifier{{4, 5, 6}},
 			},
 			expectedTemplate: &x509.Certificate{
 				BasicConstraintsValid: true,
@@ -410,12 +357,7 @@ func TestGenerateTemplate(t *testing.T) {
 				ExtKeyUsage:           defaultEKU,
 				IssuingCertificateURL: []string{""},
 				OCSPServer:            []string{""},
-				ExtraExtensions: []pkix.Extension{
-					{
-						Id:    asn1.ObjectIdentifier{1, 2, 3},
-						Value: []byte{4, 5, 6},
-					},
-				},
+				PolicyIdentifiers:     []asn1.ObjectIdentifier{{4, 5, 6}},
 			},
 		},
 	}
@@ -1024,7 +966,7 @@ func TestMismatchedProfiles(t *testing.T) {
 
 	// Create a new profile that differs slightly (one more PolicyInformation than the precert)
 	profileConfig := defaultProfileConfig()
-	profileConfig.Policies = append(profileConfig.Policies, PolicyInformation{OID: "1.2.3.4", Qualifiers: nil})
+	profileConfig.Policies = append(profileConfig.Policies, PolicyConfig{OID: "1.2.3.4"})
 	p, err := NewProfile(profileConfig, defaultIssuerConfig())
 	test.AssertNotError(t, err, "NewProfile failed")
 	issuer2, err := NewIssuer(issuerCert, issuerSigner, p, linter, fc)

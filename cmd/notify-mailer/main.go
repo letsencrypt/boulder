@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -119,7 +120,7 @@ func (m *mailer) makeMessageBody(recipients []recipient) (string, error) {
 	return messageBody.String(), nil
 }
 
-func (m *mailer) run() error {
+func (m *mailer) run(ctx context.Context) error {
 	err := m.ok()
 	if err != nil {
 		return err
@@ -128,7 +129,7 @@ func (m *mailer) run() error {
 	totalRecipients := len(m.recipients)
 	m.log.Infof("Resolving addresses for (%d) recipients", totalRecipients)
 
-	addressToRecipient, err := m.resolveAddresses()
+	addressToRecipient, err := m.resolveAddresses(ctx)
 	if err != nil {
 		return err
 	}
@@ -238,10 +239,10 @@ func (m *mailer) run() error {
 
 // resolveAddresses creates a mapping of email addresses to (a list of)
 // `recipient`s that resolve to that email address.
-func (m *mailer) resolveAddresses() (addressToRecipientMap, error) {
+func (m *mailer) resolveAddresses(ctx context.Context) (addressToRecipientMap, error) {
 	result := make(addressToRecipientMap, len(m.recipients))
 	for _, recipient := range m.recipients {
-		addresses, err := getAddressForID(recipient.id, m.dbMap)
+		addresses, err := getAddressForID(ctx, recipient.id, m.dbMap)
 		if err != nil {
 			return nil, err
 		}
@@ -258,17 +259,17 @@ func (m *mailer) resolveAddresses() (addressToRecipientMap, error) {
 	return result, nil
 }
 
-// dbSelector abstracts over a subset of methods from `gorp.DbMap` objects to
+// dbSelector abstracts over a subset of methods from `borp.DbMap` objects to
 // facilitate mocking in unit tests.
 type dbSelector interface {
-	SelectOne(holder interface{}, query string, args ...interface{}) error
+	SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error
 }
 
 // getAddressForID queries the database for the email address associated with
 // the provided registration ID.
-func getAddressForID(id int64, dbMap dbSelector) ([]string, error) {
+func getAddressForID(ctx context.Context, id int64, dbMap dbSelector) ([]string, error) {
 	var result contactQueryResult
-	err := dbMap.SelectOne(&result,
+	err := dbMap.SelectOne(ctx, &result,
 		`SELECT id,
 			contact
 		FROM registrations
@@ -606,7 +607,7 @@ func main() {
 		parallelSends: *parallelSends,
 	}
 
-	err = m.run()
+	err = m.run(context.TODO())
 	cmd.FailOnError(err, "Couldn't complete")
 
 	log.Info("Completed successfully")

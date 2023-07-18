@@ -52,7 +52,7 @@ func TestSerialUtils(t *testing.T) {
 	}
 
 	badSerial, err := StringToSerial("doop!!!!000")
-	test.AssertEquals(t, fmt.Sprintf("%v", err), "Invalid serial number")
+	test.AssertContains(t, err.Error(), "invalid serial number")
 	fmt.Println(badSerial)
 }
 
@@ -166,7 +166,7 @@ func TestLoadCert(t *testing.T) {
 
 	_, err = LoadCert("../test/test-ca.der")
 	test.AssertError(t, err, "Loading non-PEM file did not error")
-	test.AssertEquals(t, err.Error(), "No data in cert PEM file ../test/test-ca.der")
+	test.AssertEquals(t, err.Error(), "no data in cert PEM file \"../test/test-ca.der\"")
 
 	_, err = LoadCert("../test/test-ca.key")
 	test.AssertError(t, err, "Loading non-cert file did not error")

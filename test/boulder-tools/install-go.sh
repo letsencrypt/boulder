@@ -18,8 +18,7 @@ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2.0
 go install github.com/rubenv/sql-migrate/...@v1.1.2
 go install golang.org/x/tools/cmd/stringer@latest
 go install github.com/letsencrypt/pebble/cmd/pebble-challtestsrv@master
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.0
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
 
 go clean -cache
 go clean -modcache
-

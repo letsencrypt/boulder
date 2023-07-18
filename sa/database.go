@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-gorp/gorp/v3"
 	"github.com/go-sql-driver/mysql"
+	"github.com/letsencrypt/borp"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -45,7 +45,7 @@ type DbSettings struct {
 	ConnMaxIdleTime time.Duration
 }
 
-// InitWrappedDb constructs a wrapped gorp mapping object with the provided
+// InitWrappedDb constructs a wrapped borp mapping object with the provided
 // settings. If scope is non-nil, Prometheus metrics will be exported. If logger
 // is non-nil, SQL debug-level logging will be enabled. The only required parameter
 // is config.
@@ -82,7 +82,7 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	}
 
 	if scope != nil {
-		err = initDBMetrics(dbMap.Db, scope, settings, addr, user)
+		err = initDBMetrics(dbMap.SQLDb(), scope, settings, addr, user)
 		if err != nil {
 			return nil, fmt.Errorf("while initializing metrics: %w", err)
 		}
@@ -90,7 +90,7 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 	return dbMap, nil
 }
 
-// DBMapForTest creates a wrapped root gorp mapping object. Create one of these for
+// DBMapForTest creates a wrapped root borp mapping object. Create one of these for
 // each database schema you wish to map. Each DbMap contains a list of mapped
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
@@ -146,7 +146,7 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 //
 // This function also:
 //   - pings the database (and errors if it's unreachable)
-//   - wraps the connection in a gorp.DbMap so we can use the handy Get/Insert methods gorp provides
+//   - wraps the connection in a borp.DbMap so we can use the handy Get/Insert methods borp provides
 //   - wraps that in a db.WrappedMap to get more useful error messages
 func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
@@ -166,11 +166,11 @@ func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulde
 	setConnMaxLifetime(db, settings.ConnMaxLifetime)
 	setConnMaxIdleTime(db, settings.ConnMaxIdleTime)
 
-	dialect := gorp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
-	dbmap := &gorp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
+	dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
+	dbmap := &borp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
 
 	initTables(dbmap)
-	return &boulderDB.WrappedMap{DbMap: dbmap}, nil
+	return boulderDB.NewWrappedMap(dbmap), nil
 }
 
 // adjustMySQLConfig sets certain flags that we want on every connection.
@@ -239,17 +239,17 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 	return nil
 }
 
-// SetSQLDebug enables GORP SQL-level Debugging
+// SetSQLDebug enables borp SQL-level Debugging
 func SetSQLDebug(dbMap *boulderDB.WrappedMap, log blog.Logger) {
-	dbMap.TraceOn("SQL: ", &SQLLogger{log})
+	dbMap.BorpDB().TraceOn("SQL: ", &SQLLogger{log})
 }
 
-// SQLLogger adapts the Boulder Logger to a format GORP can use.
+// SQLLogger adapts the Boulder Logger to a format borp can use.
 type SQLLogger struct {
 	blog.Logger
 }
 
-// Printf adapts the AuditLogger to GORP's interface
+// Printf adapts the AuditLogger to borp's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.Debugf(format, v...)
 }
@@ -259,8 +259,8 @@ func (log *SQLLogger) Printf(format string, v ...interface{}) {
 // it is very important to declare them as a such here. It produces a side
 // effect in Insert() where the inserted object has its id field set to the
 // autoincremented value that resulted from the insert. See
-// https://godoc.org/github.com/coopernurse/gorp#DbMap.Insert
-func initTables(dbMap *gorp.DbMap) {
+// https://godoc.org/github.com/coopernurse/borp#DbMap.Insert
+func initTables(dbMap *borp.DbMap) {
 	regTable := dbMap.AddTableWithName(regModel{}, "registrations").SetKeys(true, "ID")
 
 	regTable.SetVersionCol("LockCol")

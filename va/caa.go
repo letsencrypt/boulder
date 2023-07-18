@@ -11,7 +11,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -284,15 +283,12 @@ func (va *ValidationAuthorityImpl) validateCAA(caaSet *caaResult, wildcard bool,
 			continue
 		}
 
-		if features.Enabled(features.CAAAccountURI) {
-			if !caaAccountURIMatches(parsedParams, va.accountURIPrefixes, params.accountURIID) {
-				continue
-			}
+		if !caaAccountURIMatches(parsedParams, va.accountURIPrefixes, params.accountURIID) {
+			continue
 		}
-		if features.Enabled(features.CAAValidationMethods) {
-			if !caaValidationMethodMatches(parsedParams, params.validationMethod) {
-				continue
-			}
+
+		if !caaValidationMethodMatches(parsedParams, params.validationMethod) {
+			continue
 		}
 
 		va.metrics.caaCounter.WithLabelValues("authorized").Inc()

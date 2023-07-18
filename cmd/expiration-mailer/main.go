@@ -296,7 +296,7 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 	)
 	params[0] = m.clk.Now()
 
-	_, err := m.dbMap.WithContext(ctx).Exec(query, params...)
+	_, err := m.dbMap.ExecContext(ctx, query, params...)
 	if err != nil {
 		m.log.AuditErrf("Error updating certificate status for %d certs: %s", len(certs), err)
 		m.stats.errorCount.With(prometheus.Labels{"type": "UpdateCertificateStatus"}).Inc()
@@ -307,7 +307,8 @@ func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.
 	namehash := sa.HashNames(names)
 
 	var present bool
-	err := m.dbMap.WithContext(ctx).SelectOne(
+	err := m.dbMap.SelectOne(
+		ctx,
 		&present,
 		`SELECT EXISTS (SELECT id FROM fqdnSets WHERE setHash = ? AND issued > ? LIMIT 1)`,
 		namehash,
@@ -530,7 +531,8 @@ func (m *mailer) getCertsWithJoin(ctx context.Context, left, right time.Time, ex
 	// sequentially fetch the certificate details. This avoids an expensive
 	// JOIN.
 	var certs []certDERWithRegID
-	_, err := m.dbMap.WithContext(ctx).Select(
+	_, err := m.dbMap.Select(
+		ctx,
 		&certs,
 		`SELECT
 				cert.der as der, cert.registrationID as regID
@@ -564,7 +566,8 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 	// sequentially fetch the certificate details. This avoids an expensive
 	// JOIN.
 	var serials []string
-	_, err := m.dbMap.WithContext(ctx).Select(
+	_, err := m.dbMap.Select(
+		ctx,
 		&serials,
 		`SELECT
 				cs.serial
@@ -596,7 +599,7 @@ func (m *mailer) getCerts(ctx context.Context, left, right time.Time, expiresIn 
 			return nil, ctx.Err()
 		}
 		var cert core.Certificate
-		cert, err := sa.SelectCertificate(m.dbMap.WithContext(ctx), serial)
+		cert, err := sa.SelectCertificate(ctx, m.dbMap, serial)
 		if err != nil {
 			// We can get a NoRowsErr when processing a serial number corresponding
 			// to a precertificate with no final certificate. Since this certificate

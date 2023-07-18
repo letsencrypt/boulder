@@ -192,7 +192,7 @@ func setup(t *testing.T) *testCtx {
 				AllowCTPoison:   true,
 				AllowSCTList:    true,
 				AllowCommonName: true,
-				Policies: []issuance.PolicyInformation{
+				Policies: []issuance.PolicyConfig{
 					{OID: "2.23.140.1.2.1"},
 				},
 				MaxValidityPeriod:   config.Duration{Duration: time.Hour * 8760},

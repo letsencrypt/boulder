@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -29,9 +30,8 @@ func baseDomain(name string) string {
 
 // addCertificatesPerName adds 1 to the rate limit count for the provided
 // domains, in a specific time bucket. It must be executed in a transaction, and
-// the input timeToTheHour must be a time rounded to an hour. It assumes that
-// the given db already has a context associated with it.
-func (ssa *SQLStorageAuthority) addCertificatesPerName(db db.SelectExecer, names []string, timeToTheHour time.Time) error {
+// the input timeToTheHour must be a time rounded to an hour.
+func (ssa *SQLStorageAuthority) addCertificatesPerName(ctx context.Context, db db.SelectExecer, names []string, timeToTheHour time.Time) error {
 	// De-duplicate the base domains.
 	baseDomainsMap := make(map[string]bool)
 	var qmarks []string
@@ -45,7 +45,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(db db.SelectExecer, names
 		}
 	}
 
-	_, err := db.Exec(`INSERT INTO certificatesPerName (eTLDPlusOne, time, count) VALUES `+
+	_, err := db.ExecContext(ctx, `INSERT INTO certificatesPerName (eTLDPlusOne, time, count) VALUES `+
 		strings.Join(qmarks, ", ")+` ON DUPLICATE KEY UPDATE count=count+1;`,
 		values...)
 	if err != nil {
@@ -56,15 +56,15 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(db db.SelectExecer, names
 }
 
 // countCertificates returns the count of certificates issued for a domain's
-// eTLD+1 (aka base domain), during a given time range. It assumes that the
-// given db already has a context associated with it.
-func (ssa *SQLStorageAuthorityRO) countCertificates(dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
+// eTLD+1 (aka base domain), during a given time range.
+func (ssa *SQLStorageAuthorityRO) countCertificates(ctx context.Context, dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
 	latest := time.Unix(0, timeRange.Latest)
 	var results []struct {
 		Count int64
 		Time  time.Time
 	}
 	_, err := dbMap.Select(
+		ctx,
 		&results,
 		`SELECT count, time FROM certificatesPerName
 		 WHERE eTLDPlusOne = :baseDomain AND
@@ -100,10 +100,9 @@ func (ssa *SQLStorageAuthorityRO) countCertificates(dbMap db.Selector, domain st
 
 // addNewOrdersRateLimit adds 1 to the rate limit count for the provided ID, in
 // a specific time bucket. It must be executed in a transaction, and the input
-// timeToTheMinute must be a time rounded to a minute. It assumes that the given
-// db already has a context associated with it.
-func addNewOrdersRateLimit(dbMap db.SelectExecer, regID int64, timeToTheMinute time.Time) error {
-	_, err := dbMap.Exec(`INSERT INTO newOrdersRL
+// timeToTheMinute must be a time rounded to a minute.
+func addNewOrdersRateLimit(ctx context.Context, dbMap db.SelectExecer, regID int64, timeToTheMinute time.Time) error {
+	_, err := dbMap.ExecContext(ctx, `INSERT INTO newOrdersRL
 		(regID, time, count)
 		VALUES (?, ?, 1)
 		ON DUPLICATE KEY UPDATE count=count+1;`,
@@ -117,11 +116,11 @@ func addNewOrdersRateLimit(dbMap db.SelectExecer, regID int64, timeToTheMinute t
 }
 
 // countNewOrders returns the count of orders created in the given time range
-// for the given registration ID. It assumes that the given db already has a
-// context associated with it.
-func countNewOrders(dbMap db.Selector, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+// for the given registration ID.
+func countNewOrders(ctx context.Context, dbMap db.Selector, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
 	var counts []int64
 	_, err := dbMap.Select(
+		ctx,
 		&counts,
 		`SELECT count FROM newOrdersRL
 		WHERE regID = :regID AND

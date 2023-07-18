@@ -1,6 +1,7 @@
 package sa
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -10,6 +11,8 @@ import (
 )
 
 func TestCertsPerNameRateLimitTable(t *testing.T) {
+	ctx := context.Background()
+
 	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -41,11 +44,11 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 	}
 
 	for _, input := range inputs {
-		tx, err := sa.dbMap.Begin()
+		tx, err := sa.dbMap.BeginTx(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = sa.addCertificatesPerName(tx, input.names, input.time)
+		err = sa.addCertificatesPerName(ctx, tx, input.names, input.time)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +81,7 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 				Earliest: aprilFirst.Add(-1 * time.Second).UnixNano(),
 				Latest:   aprilFirst.Add(aWeek).UnixNano(),
 			}
-			count, earliest, err := sa.countCertificatesByName(sa.dbMap, tc.domainName, timeRange)
+			count, earliest, err := sa.countCertificatesByName(ctx, sa.dbMap, tc.domainName, timeRange)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,27 +113,27 @@ func TestNewOrdersRateLimitTable(t *testing.T) {
 	}
 
 	for i := 0; i <= 10; i++ {
-		tx, err := sa.dbMap.Begin()
+		tx, err := sa.dbMap.BeginTx(ctx)
 		test.AssertNotError(t, err, "failed to open tx")
 		for j := 0; j < i+1; j++ {
-			err = addNewOrdersRateLimit(tx, manyCountRegID, start.Add(time.Minute*time.Duration(i)))
+			err = addNewOrdersRateLimit(ctx, tx, manyCountRegID, start.Add(time.Minute*time.Duration(i)))
 		}
 		test.AssertNotError(t, err, "addNewOrdersRateLimit failed")
 		test.AssertNotError(t, tx.Commit(), "failed to commit tx")
 	}
 
-	count, err := countNewOrders(sa.dbMap, req)
+	count, err := countNewOrders(ctx, sa.dbMap, req)
 	test.AssertNotError(t, err, "countNewOrders failed")
 	test.AssertEquals(t, count.Count, int64(0))
 
 	req.AccountID = manyCountRegID
-	count, err = countNewOrders(sa.dbMap, req)
+	count, err = countNewOrders(ctx, sa.dbMap, req)
 	test.AssertNotError(t, err, "countNewOrders failed")
 	test.AssertEquals(t, count.Count, int64(65))
 
 	req.Range.Earliest = start.Add(time.Minute * 5).UnixNano()
 	req.Range.Latest = start.Add(time.Minute * 10).UnixNano()
-	count, err = countNewOrders(sa.dbMap, req)
+	count, err = countNewOrders(ctx, sa.dbMap, req)
 	test.AssertNotError(t, err, "countNewOrders failed")
 	test.AssertEquals(t, count.Count, int64(45))
 }
