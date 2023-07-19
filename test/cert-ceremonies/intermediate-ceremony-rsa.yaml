@@ -16,12 +16,10 @@ certificate-profile:
     country: US
     not-before: 2020-01-01 12:00:00
     not-after: 2040-01-01 12:00:00
-    crl-url:  http://example.com/crl
-    issuer-url:  http://example.com/root
+    crl-url:  http://rsa.example.com/crl
+    issuer-url:  http://rsa.example.com/cert
     policies:
-        - oid: 1.2.3
-        - oid: 1.5.6
-          cps-uri: "http://example.com/cps"
+        - oid: 2.23.140.1.2.1
     key-usages:
         - Digital Signature
         - Cert Sign

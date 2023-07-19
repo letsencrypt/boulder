@@ -1,6 +1,7 @@
 package notmain
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -68,8 +69,8 @@ func validateContacts(id int64, createdAt string, contacts []string) error {
 
 // beginAuditQuery executes the audit query and returns a cursor used to
 // stream the results.
-func (c contactAuditor) beginAuditQuery() (*sql.Rows, error) {
-	rows, err := c.db.Query(`
+func (c contactAuditor) beginAuditQuery(ctx context.Context) (*sql.Rows, error) {
+	rows, err := c.db.QueryContext(ctx, `
 		SELECT DISTINCT id, contact, createdAt
 		FROM registrations
 		WHERE contact NOT IN ('[]', 'null');`)
@@ -98,9 +99,9 @@ func (c contactAuditor) writeResults(result string) {
 // run retrieves a cursor from `beginAuditQuery` and then audits the
 // `contact` column of all returned rows for abnormalities or policy
 // violations.
-func (c contactAuditor) run(resChan chan *result) error {
+func (c contactAuditor) run(ctx context.Context, resChan chan *result) error {
 	c.logger.Infof("Beginning database query")
-	rows, err := c.beginAuditQuery()
+	rows, err := c.beginAuditQuery(ctx)
 	if err != nil {
 		return err
 	}
@@ -193,7 +194,7 @@ func main() {
 
 	logger.Info("Running contact-auditor")
 
-	err = auditor.run(nil)
+	err = auditor.run(context.TODO(), nil)
 	cmd.FailOnError(err, "Audit was interrupted, results may be incomplete")
 
 	logger.Info("Audit finished successfully")

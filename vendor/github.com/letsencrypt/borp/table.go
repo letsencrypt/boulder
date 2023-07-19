@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 import (
 	"bytes"
@@ -47,7 +47,6 @@ func (t *TableMap) ResetSql() {
 // Automatically calls ResetSql() to ensure SQL statements are regenerated.
 //
 // Panics if isAutoIncr is true, and fieldNames length != 1
-//
 func (t *TableMap) SetKeys(isAutoIncr bool, fieldNames ...string) *TableMap {
 	if isAutoIncr && len(fieldNames) != 1 {
 		panic(fmt.Sprintf(
@@ -73,17 +72,13 @@ func (t *TableMap) SetKeys(isAutoIncr bool, fieldNames ...string) *TableMap {
 // Automatically calls ResetSql() to ensure SQL statements are regenerated.
 //
 // Panics if fieldNames length < 2.
-//
 func (t *TableMap) SetUniqueTogether(fieldNames ...string) *TableMap {
 	if len(fieldNames) < 2 {
-		panic(fmt.Sprintf(
-			"gorp: SetUniqueTogether: must provide at least two fieldNames to set uniqueness constraint."))
+		panic("gorp: SetUniqueTogether: must provide at least two fieldNames to set uniqueness constraint.")
 	}
 
 	columns := make([]string, 0, len(fieldNames))
-	for _, name := range fieldNames {
-		columns = append(columns, name)
-	}
+	columns = append(columns, fieldNames...)
 
 	for _, existingColumns := range t.uniqueTogether {
 		if equal(existingColumns, columns) {
@@ -135,7 +130,6 @@ func (t *TableMap) IdxMap(field string) *IndexMap {
 // Function will panic if one of the given for index columns does not exists
 //
 // Automatically calls ResetSql() to ensure SQL statements are regenerated.
-//
 func (t *TableMap) AddIndex(name string, idxtype string, columns []string) *IndexMap {
 	// check if we have a index with this name already
 	for _, idx := range t.indexes {

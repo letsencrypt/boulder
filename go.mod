@@ -9,7 +9,6 @@ require (
 	github.com/aws/smithy-go v1.13.5
 	github.com/beeker1121/goque v1.0.3-0.20191103205551-d618510128af
 	github.com/eggsampler/acme/v3 v3.4.0
-	github.com/go-gorp/gorp/v3 v3.1.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/go-sql-driver/mysql v1.7.1
@@ -18,6 +17,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v1.2.0
+	github.com/letsencrypt/borp v0.0.0-20230707160741-6cc6ce580243
 	github.com/letsencrypt/challtestsrv v1.2.1
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
 	github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
@@ -73,11 +73,12 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.2 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/pelletier/go-toml v1.9.3 // indirect
+	github.com/poy/onpar v1.1.2 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
-	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.15.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.15.0 // indirect
@@ -87,6 +88,7 @@ require (
 	golang.org/x/sys v0.9.0 // indirect
 	golang.org/x/tools v0.8.0 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	k8s.io/klog/v2 v2.80.1 // indirect

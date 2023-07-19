@@ -2,9 +2,10 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 )
@@ -39,11 +40,11 @@ func (e OptimisticLockError) Error() string {
 	return fmt.Sprintf("gorp: OptimisticLockError no row found for table=%s keys=%v", e.TableName, e.Keys)
 }
 
-func lockError(m *DbMap, exec SqlExecutor, tableName string,
+func lockError(ctx context.Context, m *DbMap, exec SqlExecutor, tableName string,
 	existingVer int64, elem reflect.Value,
 	keys ...interface{}) (int64, error) {
 
-	existing, err := get(m, exec, elem.Interface(), keys...)
+	existing, err := get(ctx, m, exec, elem.Interface(), keys...)
 	if err != nil {
 		return -1, err
 	}

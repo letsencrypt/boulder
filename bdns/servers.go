@@ -105,9 +105,6 @@ type dynamicProvider struct {
 	// a hostname it will be resolved via the system DNS. If the port is left
 	// unspecified it will default to '53'. If this field is left unspecified
 	// the system DNS will be used for resolution of DNS backends.
-	//
-	// TODO(#6868): Make this field required once 'dnsResolver' is removed from
-	// the boulder-va JSON config in favor of 'dnsProvider'.
 	dnsAuthority string
 	// service is the service name to look up SRV records for within the domain.
 	// If this field is left unspecified 'dns' will be used as the service name.
@@ -189,19 +186,15 @@ func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicPr
 		service = "dns"
 	}
 
-	// TODO(#6868): Make dnsAuthority required once 'dnsResolver' is removed
-	// from the boulder-va JSON config in favor of 'dnsProvider'.
-	dnsAuthority := c.DNSAuthority
-	if dnsAuthority != "" {
-		host, port, err := ParseTarget(dnsAuthority, "53")
-		if err != nil {
-			return nil, err
-		}
-		dnsAuthority = net.JoinHostPort(host, port)
-		err = validateServerAddress(dnsAuthority)
-		if err != nil {
-			return nil, err
-		}
+	host, port, err := ParseTarget(c.DNSAuthority, "53")
+	if err != nil {
+		return nil, err
+	}
+
+	dnsAuthority := net.JoinHostPort(host, port)
+	err = validateServerAddress(dnsAuthority)
+	if err != nil {
+		return nil, err
 	}
 
 	dp := dynamicProvider{
@@ -222,7 +215,7 @@ func StartDynamicProvider(c *cmd.DNSProvider, refresh time.Duration) (*dynamicPr
 
 	// Update once immediately, so we can know whether that was successful, then
 	// kick off the long-running update goroutine.
-	err := dp.update()
+	err = dp.update()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start dynamic provider: %w", err)
 	}
@@ -261,17 +254,12 @@ func (dp *dynamicProvider) update() error {
 	ctx, cancel := context.WithTimeout(context.Background(), dp.refresh/2)
 	defer cancel()
 
-	// If dnsAuthority is specified, setup a custom resolver to use it
-	// otherwise use a default system resolver.
-	resolver := net.DefaultResolver
-	if dp.dnsAuthority != "" {
-		resolver = &net.Resolver{
-			PreferGo: true,
-			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				d := &net.Dialer{}
-				return d.DialContext(ctx, network, dp.dnsAuthority)
-			},
-		}
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := &net.Dialer{}
+			return d.DialContext(ctx, network, dp.dnsAuthority)
+		},
 	}
 
 	// RFC 2782 formatted SRV record being queried e.g. "_service._proto.name."

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 import (
 	"context"
@@ -14,30 +14,6 @@ import (
 	"strings"
 	"time"
 )
-
-// OracleString (empty string is null)
-// TODO: move to dialect/oracle?, rename to String?
-type OracleString struct {
-	sql.NullString
-}
-
-// Scan implements the Scanner interface.
-func (os *OracleString) Scan(value interface{}) error {
-	if value == nil {
-		os.String, os.Valid = "", false
-		return nil
-	}
-	os.Valid = true
-	return os.NullString.Scan(value)
-}
-
-// Value implements the driver Valuer interface.
-func (os OracleString) Value() (driver.Value, error) {
-	if !os.Valid || os.String == "" {
-		return nil, nil
-	}
-	return os.String, nil
-}
 
 // SqlTyper is a type that returns its database type.  Most of the
 // time, the type can just use "database/sql/driver".Valuer; but when
@@ -61,7 +37,6 @@ func (nt *dummyField) Scan(value interface{}) error {
 	return nil
 }
 
-var zeroVal reflect.Value
 var versFieldConst = "[gorp_ver_field]"
 
 // The TypeConverter interface provides a way to map a value of one
@@ -90,22 +65,28 @@ type TypeConverter interface {
 // See the DbMap function docs for each of the functions below for more
 // information.
 type SqlExecutor interface {
-	WithContext(ctx context.Context) SqlExecutor
-	Get(i interface{}, keys ...interface{}) (interface{}, error)
-	Insert(list ...interface{}) error
-	Update(list ...interface{}) (int64, error)
-	Delete(list ...interface{}) (int64, error)
-	Exec(query string, args ...interface{}) (sql.Result, error)
-	Select(i interface{}, query string, args ...interface{}) ([]interface{}, error)
-	SelectInt(query string, args ...interface{}) (int64, error)
-	SelectNullInt(query string, args ...interface{}) (sql.NullInt64, error)
-	SelectFloat(query string, args ...interface{}) (float64, error)
-	SelectNullFloat(query string, args ...interface{}) (sql.NullFloat64, error)
-	SelectStr(query string, args ...interface{}) (string, error)
-	SelectNullStr(query string, args ...interface{}) (sql.NullString, error)
-	SelectOne(holder interface{}, query string, args ...interface{}) error
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-	QueryRow(query string, args ...interface{}) *sql.Row
+	Get(ctx context.Context, i interface{}, keys ...interface{}) (interface{}, error)
+	Insert(ctx context.Context, list ...interface{}) error
+	Update(ctx context.Context, list ...interface{}) (int64, error)
+	Delete(ctx context.Context, list ...interface{}) (int64, error)
+	Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error)
+	SelectInt(ctx context.Context, query string, args ...interface{}) (int64, error)
+	SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error)
+	SelectFloat(ctx context.Context, query string, args ...interface{}) (float64, error)
+	SelectNullFloat(ctx context.Context, query string, args ...interface{}) (sql.NullFloat64, error)
+	SelectStr(ctx context.Context, query string, args ...interface{}) (string, error)
+	SelectNullStr(ctx context.Context, query string, args ...interface{}) (sql.NullString, error)
+	SelectOne(ctx context.Context, holder interface{}, query string, args ...interface{}) error
+
+	// These method signatures are shared with *sql.DB.
+	// Stylistically, `Context` in the name is redundant. It is the future, everything takes a context.
+	// But since these three functions delegate to functions of the same name on *sql.DB, it would be
+	// a little confusing if we had, e.g. `Exec` (taking a context), which delegates to
+	// `sql.DB.ExecContext` (taking a context) as opposed to `sql.DB.Exec` (taking no context).
+	// So we don't bother with `Context` in the name for Get, Insert, etc., but we do for these.
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
 // DynamicTable allows the users of gorp to dynamically
@@ -156,14 +137,21 @@ func argsString(args ...interface{}) string {
 
 // Calls the Exec function on the executor, but attempts to expand any eligible named
 // query arguments first.
-func maybeExpandNamedQueryAndExec(e SqlExecutor, query string, args ...interface{}) (sql.Result, error) {
+func maybeExpandNamedQueryAndExec(ctx context.Context, e SqlExecutor, query string, args ...interface{}) (sql.Result, error) {
 	dbMap := extractDbMap(e)
 
 	if len(args) == 1 {
 		query, args = maybeExpandNamedQuery(dbMap, query, args)
 	}
 
-	return exec(e, query, args...)
+	switch m := e.(type) {
+	case *DbMap:
+		return m.Db.ExecContext(ctx, query, args...)
+	case *Transaction:
+		return m.tx.ExecContext(ctx, query, args...)
+	default:
+		return nil, fmt.Errorf("gorp: unknown SqlExecutor type: %T", m)
+	}
 }
 
 func extractDbMap(e SqlExecutor) *DbMap {
@@ -174,29 +162,6 @@ func extractDbMap(e SqlExecutor) *DbMap {
 		return m.dbmap
 	}
 	return nil
-}
-
-// executor exposes the sql.DB and sql.Tx functions so that it can be used
-// on internal functions that need to be agnostic to the underlying object.
-type executor interface {
-	Exec(query string, args ...interface{}) (sql.Result, error)
-	Prepare(query string) (*sql.Stmt, error)
-	QueryRow(query string, args ...interface{}) *sql.Row
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
-	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
-	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
-	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
-}
-
-func extractExecutorAndContext(e SqlExecutor) (executor, context.Context) {
-	switch m := e.(type) {
-	case *DbMap:
-		return m.Db, m.ctx
-	case *Transaction:
-		return m.tx, m.ctx
-	}
-	return nil, nil
 }
 
 // maybeExpandNamedQuery checks the given arg to see if it's eligible to be used
@@ -311,12 +276,13 @@ func fieldByName(val reflect.Value, fieldName string) *reflect.Value {
 	// try to find field by exact match
 	f := val.FieldByName(fieldName)
 
+	var zeroVal reflect.Value
 	if f != zeroVal {
 		return &f
 	}
 
-	// try to find by case insensitive match - only the Postgres driver
-	// seems to require this - in the case where columns are aliased in the sql
+	// try to find by case insensitive match in the case where columns are
+	// aliased in the sql
 	fieldNameL := strings.ToLower(fieldName)
 	fieldCount := val.NumField()
 	t := val.Type()
@@ -387,7 +353,7 @@ func tableFor(m *DbMap, t reflect.Type, i interface{}) (*foundTable, error) {
 	return &foundTable{table: table}, nil
 }
 
-func get(m *DbMap, exec SqlExecutor, i interface{},
+func get(ctx context.Context, m *DbMap, exec SqlExecutor, i interface{},
 	keys ...interface{}) (interface{}, error) {
 
 	t, err := toType(i)
@@ -427,7 +393,7 @@ func get(m *DbMap, exec SqlExecutor, i interface{},
 		dest[x] = target
 	}
 
-	row := exec.QueryRow(plan.query, keys...)
+	row := exec.QueryRowContext(ctx, plan.query, keys...)
 	err = row.Scan(dest...)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -453,7 +419,7 @@ func get(m *DbMap, exec SqlExecutor, i interface{},
 	return v.Interface(), nil
 }
 
-func delete(m *DbMap, exec SqlExecutor, list ...interface{}) (int64, error) {
+func delete(ctx context.Context, m *DbMap, exec SqlExecutor, list ...interface{}) (int64, error) {
 	count := int64(0)
 	for _, ptr := range list {
 		table, elem, err := m.tableForPointer(ptr, true)
@@ -474,7 +440,7 @@ func delete(m *DbMap, exec SqlExecutor, list ...interface{}) (int64, error) {
 			return -1, err
 		}
 
-		res, err := exec.Exec(bi.query, bi.args...)
+		res, err := exec.ExecContext(ctx, bi.query, bi.args...)
 		if err != nil {
 			return -1, err
 		}
@@ -484,7 +450,7 @@ func delete(m *DbMap, exec SqlExecutor, list ...interface{}) (int64, error) {
 		}
 
 		if rows == 0 && bi.existingVersion > 0 {
-			return lockError(m, exec, table.TableName,
+			return lockError(ctx, m, exec, table.TableName,
 				bi.existingVersion, elem, bi.keys...)
 		}
 
@@ -501,7 +467,7 @@ func delete(m *DbMap, exec SqlExecutor, list ...interface{}) (int64, error) {
 	return count, nil
 }
 
-func update(m *DbMap, exec SqlExecutor, colFilter ColumnFilter, list ...interface{}) (int64, error) {
+func update(ctx context.Context, m *DbMap, exec SqlExecutor, colFilter ColumnFilter, list ...interface{}) (int64, error) {
 	count := int64(0)
 	for _, ptr := range list {
 		table, elem, err := m.tableForPointer(ptr, true)
@@ -522,7 +488,7 @@ func update(m *DbMap, exec SqlExecutor, colFilter ColumnFilter, list ...interfac
 			return -1, err
 		}
 
-		res, err := exec.Exec(bi.query, bi.args...)
+		res, err := exec.ExecContext(ctx, bi.query, bi.args...)
 		if err != nil {
 			return -1, err
 		}
@@ -533,7 +499,7 @@ func update(m *DbMap, exec SqlExecutor, colFilter ColumnFilter, list ...interfac
 		}
 
 		if rows == 0 && bi.existingVersion > 0 {
-			return lockError(m, exec, table.TableName,
+			return lockError(ctx, m, exec, table.TableName,
 				bi.existingVersion, elem, bi.keys...)
 		}
 
@@ -553,7 +519,7 @@ func update(m *DbMap, exec SqlExecutor, colFilter ColumnFilter, list ...interfac
 	return count, nil
 }
 
-func insert(m *DbMap, exec SqlExecutor, list ...interface{}) error {
+func insert(ctx context.Context, m *DbMap, exec SqlExecutor, list ...interface{}) error {
 	for _, ptr := range list {
 		table, elem, err := m.tableForPointer(ptr, false)
 		if err != nil {
@@ -577,7 +543,7 @@ func insert(m *DbMap, exec SqlExecutor, list ...interface{}) error {
 			f := elem.FieldByName(bi.autoIncrFieldName)
 			switch inserter := m.Dialect.(type) {
 			case IntegerAutoIncrInserter:
-				id, err := inserter.InsertAutoIncr(exec, bi.query, bi.args...)
+				id, err := inserter.InsertAutoIncr(ctx, exec, bi.query, bi.args...)
 				if err != nil {
 					return err
 				}
@@ -590,7 +556,7 @@ func insert(m *DbMap, exec SqlExecutor, list ...interface{}) error {
 					return fmt.Errorf("gorp: cannot set autoincrement value on non-Int field. SQL=%s  autoIncrIdx=%d autoIncrFieldName=%s", bi.query, bi.autoIncrIdx, bi.autoIncrFieldName)
 				}
 			case TargetedAutoIncrInserter:
-				err := inserter.InsertAutoIncrToTarget(exec, bi.query, f.Addr().Interface(), bi.args...)
+				err := inserter.InsertAutoIncrToTarget(ctx, exec, bi.query, f.Addr().Interface(), bi.args...)
 				if err != nil {
 					return err
 				}
@@ -599,7 +565,7 @@ func insert(m *DbMap, exec SqlExecutor, list ...interface{}) error {
 				if idQuery == "" {
 					return fmt.Errorf("gorp: cannot set %s value if its ColumnMap.GeneratedIdQuery is empty", bi.autoIncrFieldName)
 				}
-				err := inserter.InsertQueryToTarget(exec, bi.query, idQuery, f.Addr().Interface(), bi.args...)
+				err := inserter.InsertQueryToTarget(ctx, exec, bi.query, idQuery, f.Addr().Interface(), bi.args...)
 				if err != nil {
 					return err
 				}
@@ -607,7 +573,7 @@ func insert(m *DbMap, exec SqlExecutor, list ...interface{}) error {
 				return fmt.Errorf("gorp: cannot use autoincrement fields on dialects that do not implement an autoincrementing interface")
 			}
 		} else {
-			_, err := exec.Exec(bi.query, bi.args...)
+			_, err := exec.ExecContext(ctx, bi.query, bi.args...)
 			if err != nil {
 				return err
 			}
@@ -621,52 +587,4 @@ func insert(m *DbMap, exec SqlExecutor, list ...interface{}) error {
 		}
 	}
 	return nil
-}
-
-func exec(e SqlExecutor, query string, args ...interface{}) (sql.Result, error) {
-	executor, ctx := extractExecutorAndContext(e)
-
-	if ctx != nil {
-		return executor.ExecContext(ctx, query, args...)
-	}
-
-	return executor.Exec(query, args...)
-}
-
-func prepare(e SqlExecutor, query string) (*sql.Stmt, error) {
-	executor, ctx := extractExecutorAndContext(e)
-
-	if ctx != nil {
-		return executor.PrepareContext(ctx, query)
-	}
-
-	return executor.Prepare(query)
-}
-
-func queryRow(e SqlExecutor, query string, args ...interface{}) *sql.Row {
-	executor, ctx := extractExecutorAndContext(e)
-
-	if ctx != nil {
-		return executor.QueryRowContext(ctx, query, args...)
-	}
-
-	return executor.QueryRow(query, args...)
-}
-
-func query(e SqlExecutor, query string, args ...interface{}) (*sql.Rows, error) {
-	executor, ctx := extractExecutorAndContext(e)
-
-	if ctx != nil {
-		return executor.QueryContext(ctx, query, args...)
-	}
-
-	return executor.Query(query, args...)
-}
-
-func begin(m *DbMap) (*sql.Tx, error) {
-	if m.ctx != nil {
-		return m.Db.BeginTx(m.ctx, nil)
-	}
-
-	return m.Db.Begin()
 }

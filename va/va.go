@@ -229,7 +229,7 @@ func NewValidationAuthorityImpl(
 	accountURIPrefixes []string,
 ) (*ValidationAuthorityImpl, error) {
 
-	if features.Enabled(features.CAAAccountURI) && len(accountURIPrefixes) == 0 {
+	if len(accountURIPrefixes) == 0 {
 		return nil, errors.New("no account URI prefixes configured")
 	}
 

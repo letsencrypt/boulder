@@ -2,9 +2,10 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 )
@@ -86,8 +87,8 @@ func (d SqliteDialect) BindVar(i int) string {
 	return "?"
 }
 
-func (d SqliteDialect) InsertAutoIncr(exec SqlExecutor, insertSql string, params ...interface{}) (int64, error) {
-	return standardInsertAutoIncr(exec, insertSql, params...)
+func (d SqliteDialect) InsertAutoIncr(ctx context.Context, exec SqlExecutor, insertSql string, params ...interface{}) (int64, error) {
+	return standardInsertAutoIncr(ctx, exec, insertSql, params...)
 }
 
 func (d SqliteDialect) QuoteField(f string) string {

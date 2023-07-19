@@ -2,9 +2,10 @@
 // Use of this source code is governed by a MIT-style
 // license that can be found in the LICENSE file.
 
-package gorp
+package borp
 
 import (
+	"context"
 	"reflect"
 )
 
@@ -43,8 +44,8 @@ type Dialect interface {
 	// string to truncate tables
 	TruncateClause() string
 
-	// bind variable string to use when forming SQL statements
-	// in many dbs it is "?", but Postgres appears to use $1
+	// Bind variable string to use when forming SQL statements
+	// in many dbs it is "?".
 	//
 	// i is a zero based index of the bind variable in this statement
 	//
@@ -72,7 +73,7 @@ type Dialect interface {
 // the dialect can handle automatic assignment of more than just
 // integers, see TargetedAutoIncrInserter.
 type IntegerAutoIncrInserter interface {
-	InsertAutoIncr(exec SqlExecutor, insertSql string, params ...interface{}) (int64, error)
+	InsertAutoIncr(ctx context.Context, exec SqlExecutor, insertSql string, params ...interface{}) (int64, error)
 }
 
 // TargetedAutoIncrInserter is implemented by dialects that can
@@ -83,7 +84,7 @@ type TargetedAutoIncrInserter interface {
 	// automatically generated primary key directly to the passed in
 	// target.  The target should be a pointer to the primary key
 	// field of the value being inserted.
-	InsertAutoIncrToTarget(exec SqlExecutor, insertSql string, target interface{}, params ...interface{}) error
+	InsertAutoIncrToTarget(ctx context.Context, xec SqlExecutor, insertSql string, target interface{}, params ...interface{}) error
 }
 
 // TargetQueryInserter is implemented by dialects that can perform
@@ -93,11 +94,11 @@ type TargetQueryInserter interface {
 	// TargetQueryInserter runs an insert operation and assigns the
 	// automatically generated primary key retrived by the query
 	// extracted from the GeneratedIdQuery field of the id column.
-	InsertQueryToTarget(exec SqlExecutor, insertSql, idSql string, target interface{}, params ...interface{}) error
+	InsertQueryToTarget(ctx context.Context, xec SqlExecutor, insertSql, idSql string, target interface{}, params ...interface{}) error
 }
 
-func standardInsertAutoIncr(exec SqlExecutor, insertSql string, params ...interface{}) (int64, error) {
-	res, err := exec.Exec(insertSql, params...)
+func standardInsertAutoIncr(ctx context.Context, exec SqlExecutor, insertSql string, params ...interface{}) (int64, error) {
+	res, err := exec.ExecContext(ctx, insertSql, params...)
 	if err != nil {
 		return 0, err
 	}
