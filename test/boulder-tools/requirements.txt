@@ -1,5 +1,5 @@
-acme==2.6.0
-cryptography==3.4.8
-PyOpenSSL==21.0.0
-requests==2.27.1
+acme>=2.0
+cryptography>=0.7
+PyOpenSSL
+requests
 codespell==2.2.5
