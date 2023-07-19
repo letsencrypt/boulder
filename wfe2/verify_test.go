@@ -1307,8 +1307,10 @@ func TestValidJWSForKey(t *testing.T) {
 		Body            string
 		ExpectedProblem *probs.ProblemDetails
 		ErrorStatType   string
-		SkipConfig      bool
-		SkipConfigNext  bool
+		// TODO(#6610): Remove this.
+		SkipConfig bool
+		// TODO(#6610): Remove this.
+		SkipConfigNext bool
 	}{
 		{
 			Name: "JWS with an invalid algorithm",
