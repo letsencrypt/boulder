@@ -7,10 +7,10 @@ import (
 	"github.com/jmhodges/clock"
 )
 
-// divThenRound divides two int64s and rounds the result to the nearest integer.
+// divThenFloor divides two int64s and returns the floor of the result. This
 // This is used to calculate request intervals and costs in nanoseconds.
-func divThenRound(x, y int64) int64 {
-	return int64(math.Round(float64(x) / float64(y)))
+func divThenFloor(x, y int64) int64 {
+	return int64(math.Floor(float64(x) / float64(y)))
 }
 
 // maybeSpend uses the GCRA algorithm to decide whether to allow a request. It
@@ -40,13 +40,12 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 	newTAT := tatUnix + costIncrement
 	difference := nowUnix - (newTAT - rl.burstOffset)
 
-	var residual int64
 	if difference < 0 {
 		// Too little capacity to satisfy the cost, deny the request.
-		residual = divThenRound(nowUnix-(tatUnix-rl.burstOffset), rl.emissionInterval)
+		residual := divThenFloor(nowUnix-(tatUnix-rl.burstOffset), rl.emissionInterval)
 		return &Decision{
 			Allowed:   false,
-			Remaining: int(residual),
+			Remaining: residual,
 			RetryIn:   -time.Duration(difference),
 			ResetIn:   time.Duration(tatUnix - nowUnix),
 			newTAT:    time.Unix(0, tatUnix).UTC(),
@@ -55,14 +54,13 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 
 	// There is enough capacity to satisfy the cost, allow the request.
 	var retryIn time.Duration
-	residual = divThenRound(difference, rl.emissionInterval)
-	if residual == 0 {
-		// This request will empty the bucket.
-		retryIn = time.Duration(rl.emissionInterval)
+	residual := divThenFloor(difference, rl.emissionInterval)
+	if difference < costIncrement {
+		retryIn = time.Duration(costIncrement - difference)
 	}
 	return &Decision{
 		Allowed:   true,
-		Remaining: int(residual),
+		Remaining: residual,
 		RetryIn:   retryIn,
 		ResetIn:   time.Duration(newTAT - nowUnix),
 		newTAT:    time.Unix(0, newTAT).UTC(),
@@ -87,7 +85,7 @@ func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision
 		// The TAT is in the past, therefore the bucket is full.
 		return &Decision{
 			Allowed:   false,
-			Remaining: int(rl.Burst),
+			Remaining: rl.Burst,
 			RetryIn:   time.Duration(0),
 			ResetIn:   time.Duration(0),
 			newTAT:    tat,
@@ -107,11 +105,11 @@ func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision
 
 	// Calculate the new capacity.
 	difference := nowUnix - (newTAT - rl.burstOffset)
-	residual := divThenRound(difference, rl.emissionInterval)
+	residual := divThenFloor(difference, rl.emissionInterval)
 
 	return &Decision{
 		Allowed:   (newTAT != tatUnix),
-		Remaining: int(residual),
+		Remaining: residual,
 		RetryIn:   time.Duration(0),
 		ResetIn:   time.Duration(newTAT - nowUnix),
 		newTAT:    time.Unix(0, newTAT).UTC(),

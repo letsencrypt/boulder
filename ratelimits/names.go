@@ -164,8 +164,7 @@ func validateIdForName(name Name, id string) error {
 		return validateRegIdFQDNSet(id)
 
 	case Unknown:
-		// This should never happen.
-		return fmt.Errorf("unknown limit enum %q", name)
+		fallthrough
 
 	default:
 		// This should never happen.

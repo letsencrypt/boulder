@@ -41,7 +41,7 @@ func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	d, err := l.Check(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 19)
+	test.AssertEquals(t, d.Remaining, int64(19))
 	// Verify our ResetIn timing is correct. 1 second == 1000 milliseconds and
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
@@ -52,7 +52,7 @@ func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	d, err = l.Check(NewRegistrationsPerIPAddress, tenZeroZeroOne, 0)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 20)
+	test.AssertEquals(t, d.Remaining, int64(20))
 	test.AssertEquals(t, d.ResetIn, time.Duration(0))
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 
@@ -65,7 +65,7 @@ func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 19)
+	test.AssertEquals(t, d.Remaining, int64(19))
 	// Verify our ResetIn timing is correct. 1 second == 1000 milliseconds and
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
@@ -76,7 +76,7 @@ func Test_Limiter_initialization_via_Check_and_Spend(t *testing.T) {
 	d, err = l.Check(NewRegistrationsPerIPAddress, tenZeroZeroOne, 0)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 19)
+	test.AssertEquals(t, d.Remaining, int64(19))
 	// Verify our ResetIn is correct. 1 second == 1000 milliseconds and
 	// 1000/20 = 50 milliseconds per request.
 	test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
@@ -141,14 +141,14 @@ func Test_Limiter_with_defaults(t *testing.T) {
 	d, err := l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Attempting to spend 1 more, this should fail.
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Verify our ResetIn is correct. 1 second == 1000 milliseconds and
@@ -162,7 +162,7 @@ func Test_Limiter_with_defaults(t *testing.T) {
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Wait 1 second for a full bucket reset.
@@ -173,14 +173,14 @@ func Test_Limiter_with_defaults(t *testing.T) {
 		d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 		test.AssertNotError(t, err, "should not error")
 		test.Assert(t, d.Allowed, "should be allowed")
-		test.AssertEquals(t, d.Remaining, 19-i)
+		test.AssertEquals(t, d.Remaining, int64(19-i))
 	}
 
 	// Attempting to spend 1 more, this should fail.
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 }
 
@@ -206,7 +206,7 @@ func Test_Limiter_with_limit_overrides(t *testing.T) {
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Verify our ResetIn is correct. 1 second == 1000 milliseconds and
@@ -220,7 +220,7 @@ func Test_Limiter_with_limit_overrides(t *testing.T) {
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Wait 1 second for a full bucket reset.
@@ -231,14 +231,14 @@ func Test_Limiter_with_limit_overrides(t *testing.T) {
 		d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
 		test.AssertNotError(t, err, "should not error")
 		test.Assert(t, d.Allowed, "should be allowed")
-		test.AssertEquals(t, d.Remaining, 39-i)
+		test.AssertEquals(t, d.Remaining, int64(39-i))
 	}
 
 	// Attempting to spend 1 more, this should fail.
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, !d.Allowed, "should not be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 }
 
@@ -249,14 +249,14 @@ func Test_Limiter_with_new_clients(t *testing.T) {
 	d, err := l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Another new client, spend 1 and check our remaining.
 	d, err = l.Spend(NewRegistrationsPerIPAddress, "10.0.0.100", 1)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 19)
+	test.AssertEquals(t, d.Remaining, int64(19))
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 
 	// 1 second == 1000 milliseconds and 1000/20 = 50 milliseconds per request.
@@ -270,19 +270,19 @@ func Test_Limiter_Refund_and_Reset(t *testing.T) {
 	d, err := l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Refund 10 requests.
 	d, err = l.Refund(NewRegistrationsPerIPAddress, tenZeroZeroOne, 10)
 	test.AssertNotError(t, err, "should not error")
-	test.AssertEquals(t, d.Remaining, 10)
+	test.AssertEquals(t, d.Remaining, int64(10))
 
 	// Spend 10 requests, this should succeed.
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 10)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	err = l.Reset(NewRegistrationsPerIPAddress, tenZeroZeroOne)
@@ -292,7 +292,7 @@ func Test_Limiter_Refund_and_Reset(t *testing.T) {
 	d, err = l.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 20)
 	test.AssertNotError(t, err, "should not error")
 	test.Assert(t, d.Allowed, "should be allowed")
-	test.AssertEquals(t, d.Remaining, 0)
+	test.AssertEquals(t, d.Remaining, int64(0))
 	test.AssertEquals(t, d.ResetIn, time.Second)
 
 	// Reset to full.
@@ -301,7 +301,7 @@ func Test_Limiter_Refund_and_Reset(t *testing.T) {
 	// Refund 1 requests above our limit, this should fail.
 	d, err = l.Refund(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertErrorIs(t, err, ErrBucketAlreadyFull)
-	test.AssertEquals(t, d.Remaining, 20)
+	test.AssertEquals(t, d.Remaining, int64(20))
 }
 
 func Test_Limiter_Check_Spend_parity(t *testing.T) {
@@ -311,5 +311,5 @@ func Test_Limiter_Check_Spend_parity(t *testing.T) {
 	test.AssertNotError(t, err, "should not error")
 	j, err := jl.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
-	test.AssertDeepEquals(t, i.Remaining, j.Remaining)
+	test.AssertDeepEquals(t, i.Remaining, int64(j.Remaining))
 }

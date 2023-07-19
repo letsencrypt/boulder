@@ -53,9 +53,9 @@ NewOrdersPerAccount:12345678:
   period: 180m
 ```
 
-The above example overrides the default limits for specific subscribers. They
-will be allowed to make twice as many requests as the default limits but will
-still be limited to the same burst as a regular subscriber.
+The above example overrides the default limits for specific subscribers. In both
+cases the count of requests per period are doubled, but the burst capacity is
+explicitly configured to match the default rate limit.
 
 ### Id Formats in Limit Override Settings
 
@@ -66,7 +66,9 @@ format:
 
 A valid IPv4 or IPv6 address.
 
-Example: `NewRegistrationsPerIPAddress:10.0.0.1`
+Examples:
+  - `NewRegistrationsPerIPAddress:10.0.0.1`
+  - `NewRegistrationsPerIPAddress:2001:0db8:0000:0000:0000:ff00:0042:8329`
 
 #### ipv6RangeCIDR
 
@@ -99,7 +101,7 @@ Example: `CertificatesPerFQDNSetPerAccount:12345678:example.com,example.org`
 A bucket key is used to lookup the bucket for a given limit and
 subscriber. Bucket keys are formatted similarly to the overrides but with a
 slight difference: the limit Names do not carry the string form of each limit.
-Instead, they apply the Name enum equivalent for every limit.
+Instead, they apply the `Name` enum equivalent for every limit.
 
 So, instead of:
 
@@ -141,7 +143,14 @@ Additional terminology:
 
 For the purposes of this example, subscribers originating from a specific IPv4
 address are allowed 20 requests to the newFoo endpoint per second, with a
-maximum burst of 20 requests at any point-in-time.
+maximum burst of 20 requests at any point-in-time, or:
+
+```yaml
+NewFoosPerIPAddress:172.23.45.22:
+  burst: 20
+  count: 20
+  period: 1s
+```
 
 A subscriber calls the newFoo endpoint for the first time with an IP address of
 172.23.45.22. Here's what happens:

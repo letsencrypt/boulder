@@ -37,7 +37,7 @@ type limit struct {
 }
 
 func precomputeLimit(l limit) limit {
-	l.emissionInterval = divThenRound(l.Period.Nanoseconds(), l.Count)
+	l.emissionInterval = divThenFloor(l.Period.Nanoseconds(), l.Count)
 	l.burstOffset = l.emissionInterval * l.Burst
 	return l
 }

@@ -69,7 +69,7 @@ type Decision struct {
 
 	// Remaining is the number of requests the client is allowed to make before
 	// they're rate limited.
-	Remaining int
+	Remaining int64
 
 	// RetryIn is the duration the client MUST wait before they're allowed to
 	// make a request.
