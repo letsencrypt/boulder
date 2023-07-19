@@ -32,7 +32,7 @@ const (
 // In any case, the client should retry with a new nonce. The balancer will be
 // rebuilt and DNS re-resolved at regular intervals as backends terminate client
 // connections which have reached a set maximum age.
-var ErrNoBackendsMatchPrefix = status.Errorf(codes.NotFound, "no backends match the nonce prefix")
+var ErrNoBackendsMatchPrefix = status.New(codes.Unavailable, "no backends match the nonce prefix")
 var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
 var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
 var errInvalidPrefixCtxKeyType = errors.New("nonce.PrefixCtxKey value in RPC context must be a string")
@@ -122,7 +122,7 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	if !ok {
 		// No backend SubConn was found for the destination prefix. Return an
 		// error so the client can retry with a new nonce.
-		return balancer.PickResult{}, ErrNoBackendsMatchPrefix
+		return balancer.PickResult{}, ErrNoBackendsMatchPrefix.Err()
 	}
 	return balancer.PickResult{SubConn: sc}, nil
 }

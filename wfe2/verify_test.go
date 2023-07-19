@@ -743,17 +743,15 @@ func TestValidNonce(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		// TODO(#6610): Remove this.
-		if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-			if tc.SkipConfigNext {
-				continue
-			}
-		} else {
-			if tc.SkipConfig {
-				continue
-			}
-		}
 		t.Run(tc.Name, func(t *testing.T) {
+			// TODO(#6610): Remove this.
+			if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+				if tc.SkipConfigNext {
+					t.Skip("Skipping test in config-next")
+				}
+			} else if tc.SkipConfig {
+				t.Skip("Skipping test in config")
+			}
 			wfe.stats.joseErrorCount.Reset()
 			prob := wfe.validNonce(context.Background(), tc.JWS.Signatures[0].Header)
 			if tc.ExpectedResult == nil && prob != nil {
@@ -1309,6 +1307,8 @@ func TestValidJWSForKey(t *testing.T) {
 		Body            string
 		ExpectedProblem *probs.ProblemDetails
 		ErrorStatType   string
+		SkipConfig      bool
+		SkipConfigNext  bool
 	}{
 		{
 			Name: "JWS with an invalid algorithm",
@@ -1322,15 +1322,28 @@ func TestValidJWSForKey(t *testing.T) {
 			ErrorStatType: "JWSAlgorithmCheckFailed",
 		},
 		{
-			Name: "JWS with an invalid nonce",
+			Name: "JWS with an invalid nonce (test/config)",
 			JWS:  bJSONWebSignature{signer.invalidNonce()},
 			JWK:  goodJWK,
 			ExpectedProblem: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
-				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
+				Detail:     "JWS has an invalid anti-replay nonce: \"mlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
+				HTTPStatus: http.StatusBadRequest,
+			},
+			ErrorStatType:  "JWSInvalidNonce",
+			SkipConfigNext: true,
+		},
+		{
+			Name: "JWS with an invalid nonce (test/config-next)",
+			JWS:  bJSONWebSignature{signer.invalidNonce()},
+			JWK:  goodJWK,
+			ExpectedProblem: &probs.ProblemDetails{
+				Type:       probs.BadNonceProblem,
+				Detail:     "JWS has an invalid anti-replay nonce: \"mlolmlol3ov77I5Ui-cdaY_k8IcjK58FvbG0y_BCRrx5rGQ8rjA\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSInvalidNonce",
+			SkipConfig:    true,
 		},
 		{
 			Name: "JWS with broken signature",
@@ -1373,7 +1386,16 @@ func TestValidJWSForKey(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		// TODO(#6610): Remove this.
 		t.Run(tc.Name, func(t *testing.T) {
+			// TODO(#6610): Remove this.
+			if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+				if tc.SkipConfigNext {
+					t.Skip("Skipping test in config-next")
+				}
+			} else if tc.SkipConfig {
+				t.Skip("Skipping test in config")
+			}
 			wfe.stats.joseErrorCount.Reset()
 			request := makePostRequestWithPath("test", tc.Body)
 			outPayload, prob := wfe.validJWSForKey(context.Background(), &tc.JWS, tc.JWK, request)

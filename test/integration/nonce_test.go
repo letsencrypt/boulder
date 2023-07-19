@@ -12,7 +12,7 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/grpc/noncebalancer"
+	nb "github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
@@ -64,7 +64,5 @@ func TestNonceBalancer_NoBackendMatchingPrefix(t *testing.T) {
 	// We expect to get a specific gRPC status error with code NotFound.
 	gotRPCStatus, ok := status.FromError(err)
 	test.Assert(t, ok, "Failed to convert error to status")
-	expectRPCStatus, ok := status.FromError(noncebalancer.ErrNoBackendsMatchPrefix)
-	test.Assert(t, ok, "Failed to convert expected error to status")
-	test.AssertEquals(t, gotRPCStatus, expectRPCStatus)
+	test.AssertEquals(t, gotRPCStatus, nb.ErrNoBackendsMatchPrefix)
 }

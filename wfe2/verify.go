@@ -15,7 +15,6 @@ import (
 	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/go-jose/go-jose.v2"
 
@@ -23,6 +22,7 @@ import (
 	berrors "github.com/letsencrypt/boulder/errors"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/grpc"
+	nb "github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/nonce"
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
@@ -231,10 +231,10 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 			if !ok {
 				return web.ProblemDetailsForError(err, "failed to redeem nonce")
 			}
-			if rpcStatus.Code() == codes.NotFound {
-				// NotFound indicates the provided prefix is unknown to the
-				// nonce redemption service. This is a transient failure, the
-				// client should retry with a new nonce.
+			if rpcStatus == nb.ErrNoBackendsMatchPrefix {
+				// ErrNoBackendsMatchPrefix indicates the provided prefix is
+				// unknown to the nonce redemption service. This is a transient
+				// failure, the client should retry with a new nonce.
 				resp = &noncepb.ValidMessage{Valid: false}
 				noBackend = true
 			}
