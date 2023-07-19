@@ -28,6 +28,7 @@
 					"clientNames": [
 						"admin-revoker.boulder",
 						"ca.boulder",
+						"crl-updater.boulder",
 						"expiration-mailer.boulder",
 						"orphan-finder.boulder",
 						"ra.boulder"
@@ -35,7 +36,6 @@
 				},
 				"sa.StorageAuthorityReadOnly": {
 					"clientNames": [
-						"crl-updater.boulder",
 						"ocsp-responder.boulder",
 						"wfe.boulder"
 					]

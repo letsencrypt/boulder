@@ -934,6 +934,7 @@ func (ssa *SQLStorageAuthority) LeaseCRLShard(ctx context.Context, req *sapb.Lea
 	if req.MinShardIdx == req.MaxShardIdx {
 		return ssa.leaseSpecificCRLShard(ctx, req)
 	}
+
 	return ssa.leaseOldestCRLShard(ctx, req)
 }
 
@@ -953,7 +954,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			req.IssuerNameID,
 		)
 		if err != nil {
-			return -1, err
+			return -1, fmt.Errorf("selecting candidate shards: %w", err)
 		}
 
 		// Convert the slice to a map to detect shards that we expect to exist, but
@@ -1000,6 +1001,9 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 				shardIdx,
 				req.Until.AsTime(),
 			)
+			if err != nil {
+				return -1, fmt.Errorf("inserting selected shard: %w", err)
+			}
 		} else {
 			_, err = tx.ExecContext(ctx,
 				`UPDATE crlShards
@@ -1011,15 +1015,15 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 				req.IssuerNameID,
 				shardIdx,
 			)
-		}
-		if err != nil {
-			return -1, err
+			if err != nil {
+				return -1, fmt.Errorf("updating selected shard: %w", err)
+			}
 		}
 
 		return shardIdx, err
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("leasing oldest shard: %w", err)
 	}
 
 	return &sapb.LeaseCRLShardResponse{
@@ -1037,36 +1041,57 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 	}
 
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
-		res, err := tx.ExecContext(ctx,
-			`UPDATE crlShards
-				SET leasedUntil = ?
+		needToInsert := false
+		var shardModel crlShardModel
+		err := tx.SelectOne(ctx,
+			&shardModel,
+			`SELECT leasedUntil
+			  FROM crlShards
 				WHERE issuerID = ?
 				AND idx = ?
-				AND leasedUntil < ?
 				LIMIT 1`,
-			req.Until.AsTime(),
 			req.IssuerNameID,
 			req.MinShardIdx,
-			ssa.clk.Now(),
 		)
-		if err != nil {
-			return nil, err
-		}
-
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return nil, err
-		}
-		if rowsAffected == 0 {
+		if db.IsNoRows(err) {
+			needToInsert = true
+		} else if err != nil {
+			return nil, fmt.Errorf("selecting requested shard: %w", err)
+		} else if shardModel.LeasedUntil.After(ssa.clk.Now()) {
 			return nil, fmt.Errorf("shard %d for issuer %d already leased", req.MinShardIdx, req.IssuerNameID)
 		}
-		if rowsAffected != 1 {
-			return nil, errors.New("update affected unexpected number of rows")
+
+		if needToInsert {
+			_, err = tx.ExecContext(ctx,
+				`INSERT INTO crlShards (issuerID, idx, leasedUntil)
+					VALUES (?, ?, ?)`,
+				req.IssuerNameID,
+				req.MinShardIdx,
+				req.Until.AsTime(),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("inserting selected shard: %w", err)
+			}
+		} else {
+			_, err = tx.ExecContext(ctx,
+				`UPDATE crlShards
+					SET leasedUntil = ?
+					WHERE issuerID = ?
+					AND idx = ?
+					LIMIT 1`,
+				req.Until.AsTime(),
+				req.IssuerNameID,
+				req.MinShardIdx,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("updating selected shard: %w", err)
+			}
 		}
+
 		return nil, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("leasing specific shard: %w", err)
 	}
 
 	return &sapb.LeaseCRLShardResponse{
