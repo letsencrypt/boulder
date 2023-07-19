@@ -17,8 +17,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -43,9 +41,11 @@ type ProfileConfig struct {
 	AllowSCTList    bool
 	AllowCommonName bool
 
-	Policies            []PolicyConfig `validate:"min=1,dive"`
 	MaxValidityPeriod   config.Duration
 	MaxValidityBackdate config.Duration
+
+	// Deprecated: we do not respect this field.
+	Policies []PolicyConfig `validate:"-"`
 }
 
 // PolicyConfig describes a policy
@@ -161,25 +161,9 @@ type Profile struct {
 	ocspURL   string
 	crlURL    string
 	issuerURL string
-	policies  []asn1.ObjectIdentifier
 
 	maxBackdate time.Duration
 	maxValidity time.Duration
-}
-
-func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
-	var oid asn1.ObjectIdentifier
-	for _, a := range strings.Split(oidStr, ".") {
-		i, err := strconv.Atoi(a)
-		if err != nil {
-			return nil, err
-		}
-		if i <= 0 {
-			return nil, errors.New("OID components must be >= 1")
-		}
-		oid = append(oid, i)
-	}
-	return oid, nil
 }
 
 // NewProfile synthesizes the profile config and issuer config into a single
@@ -192,15 +176,6 @@ func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profil
 		return nil, errors.New("OCSP URL is required")
 	}
 
-	var policies []asn1.ObjectIdentifier
-	for _, policyConfig := range profileConfig.Policies {
-		oid, err := parseOID(policyConfig.OID)
-		if err != nil {
-			return nil, fmt.Errorf("failed parsing policy OID %q: %w", policyConfig.OID, err)
-		}
-		policies = append(policies, oid)
-	}
-
 	sp := &Profile{
 		useForRSALeaves:   issuerConfig.UseForRSALeaves,
 		useForECDSALeaves: issuerConfig.UseForECDSALeaves,
@@ -211,7 +186,6 @@ func NewProfile(profileConfig ProfileConfig, issuerConfig IssuerConfig) (*Profil
 		issuerURL:         issuerConfig.IssuerURL,
 		crlURL:            issuerConfig.CRLURL,
 		ocspURL:           issuerConfig.OCSPURL,
-		policies:          policies,
 		maxBackdate:       profileConfig.MaxValidityBackdate.Duration,
 		maxValidity:       profileConfig.MaxValidityPeriod.Duration,
 	}
@@ -294,7 +268,8 @@ func (p *Profile) generateTemplate() *x509.Certificate {
 		OCSPServer:            []string{p.ocspURL},
 		IssuingCertificateURL: []string{p.issuerURL},
 		BasicConstraintsValid: true,
-		PolicyIdentifiers:     p.policies,
+		// Baseline Requirements, Section 7.1.6.1: domain-validated
+		PolicyIdentifiers: []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 	}
 
 	if p.crlURL != "" {
