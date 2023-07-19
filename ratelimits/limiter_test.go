@@ -311,5 +311,5 @@ func Test_Limiter_Check_Spend_parity(t *testing.T) {
 	test.AssertNotError(t, err, "should not error")
 	j, err := jl.Spend(NewRegistrationsPerIPAddress, tenZeroZeroOne, 1)
 	test.AssertNotError(t, err, "should not error")
-	test.AssertDeepEquals(t, i.Remaining, int64(j.Remaining))
+	test.AssertDeepEquals(t, i.Remaining, j.Remaining)
 }
