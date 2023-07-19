@@ -444,11 +444,25 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 	if err != nil {
 		return fmt.Errorf("failed to parse signed certificate: %s", err)
 	}
+	// TODO (Phil), this will only ever been true for a self-signed root
+	// certificate in our case. Self-signed Root X1 cross-signing Root X2 will
+	// not fall under here.
 	if tbs == issuer {
 		// If cert is self-signed we need to populate the issuer subject key to
 		// verify the signature
 		issuer.PublicKey = cert.PublicKey
 		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
+		fmt.Println("Hi Phil")
+	} else {
+		rootCertPool := x509.NewCertPool()
+		rootCertPool.AddCert(issuer)
+		opts := x509.VerifyOptions{
+			Roots: rootCertPool,
+		}
+		_, err = cert.Verify(opts)
+		if err != nil {
+			return fmt.Errorf("failed chain building: %s", err)
+		}
 	}
 
 	err = cert.CheckSignatureFrom(issuer)
@@ -537,7 +551,9 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-
+	if ct == crossCert {
+		fmt.Println("is a cross-cert")
+	}
 	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath, config.SkipLints)
 	if err != nil {
 		return err
@@ -832,6 +848,6 @@ func main() {
 			log.Fatalf("crl signer ceremony failed: %s", err)
 		}
 	default:
-		log.Fatalf("unknown ceremony-type, must be one of: root, intermediate, ocsp-signer, crl-signer, key, ocsp-response")
+		log.Fatalf("unknown ceremony-type, must be one of: root, cross-certificate, intermediate, cross-csr, ocsp-signer, key, ocsp-response, crl, crl-signer")
 	}
 }
