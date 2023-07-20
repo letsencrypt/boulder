@@ -11,7 +11,7 @@ require (
 	github.com/eggsampler/acme/v3 v3.4.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-redis/redis/v8 v8.11.5
-	github.com/go-sql-driver/mysql v1.7.1
+	github.com/go-sql-driver/mysql v1.5.0
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.1.4
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
@@ -94,7 +94,11 @@ require (
 	k8s.io/klog/v2 v2.80.1 // indirect
 )
 
+// Versions of go-sql-driver/mysql >1.5.0 introduce performance regressions for
+// us, so we exclude them.
+
 // This version is required by parts of the honeycombio/beeline-go package
-// that we do not rely upon. It appears to introduce performance regressions
-// for us.
 exclude github.com/go-sql-driver/mysql v1.6.0
+
+// This version is required by borp
+exclude github.com/go-sql-driver/mysql v1.7.1
