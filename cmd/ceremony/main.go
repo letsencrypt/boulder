@@ -195,6 +195,53 @@ func (ic intermediateConfig) validate(ct certType) error {
 	return nil
 }
 
+type crossCertConfig struct {
+	CeremonyType string              `yaml:"ceremony-type"`
+	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
+	Inputs       struct {
+		PublicKeyPath              string `yaml:"public-key-path"`
+		IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+		CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+	} `yaml:"inputs"`
+	Outputs struct {
+		CertificatePath string `yaml:"certificate-path"`
+	} `yaml:"outputs"`
+	CertProfile certProfile `yaml:"certificate-profile"`
+	SkipLints   []string    `yaml:"skip-lints"`
+}
+
+func (csc crossCertConfig) validate(ct certType) error {
+	err := csc.PKCS11.validate()
+	if err != nil {
+		return err
+	}
+
+	// Input fields
+	if csc.Inputs.PublicKeyPath == "" {
+		return errors.New("inputs.public-key-path is required")
+	}
+	if csc.Inputs.IssuerCertificatePath == "" {
+		return errors.New("inputs.issuer-certificate is required")
+	}
+	if csc.Inputs.CertificateToCrossSignPath == "" {
+		return errors.New("inputs.certificate-to-cross-sign-path is required")
+	}
+
+	// Output fields
+	err = checkOutputFile(csc.Outputs.CertificatePath, "certificate-path")
+	if err != nil {
+		return err
+	}
+
+	// Certificate profile
+	err = csc.CertProfile.verifyProfile(ct)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 type csrConfig struct {
 	CeremonyType string              `yaml:"ceremony-type"`
 	PKCS11       PKCS11SigningConfig `yaml:"pkcs11"`
@@ -444,27 +491,12 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 	if err != nil {
 		return fmt.Errorf("failed to parse signed certificate: %s", err)
 	}
-	// TODO (Phil), this will only ever been true for a self-signed root
-	// certificate in our case. Self-signed Root X1 cross-signing Root X2 will
-	// not fall under here.
 	if tbs == issuer {
 		// If cert is self-signed we need to populate the issuer subject key to
 		// verify the signature
 		issuer.PublicKey = cert.PublicKey
 		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
-		fmt.Println("Hi Phil")
-	} else {
-		rootCertPool := x509.NewCertPool()
-		rootCertPool.AddCert(issuer)
-		opts := x509.VerifyOptions{
-			Roots: rootCertPool,
-		}
-		_, err = cert.Verify(opts)
-		if err != nil {
-			return fmt.Errorf("failed chain building: %s", err)
-		}
 	}
-
 	err = cert.CheckSignatureFrom(issuer)
 	if err != nil {
 		return fmt.Errorf("failed to verify certificate signature: %s", err)
@@ -514,6 +546,10 @@ func rootCeremony(configBytes []byte) error {
 }
 
 func intermediateCeremony(configBytes []byte, ct certType) error {
+	if ct != intermediateCert && ct != ocspCert && ct != crlCert {
+		return fmt.Errorf("wrong certificate type provided")
+	}
+
 	var config intermediateConfig
 	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
@@ -551,9 +587,64 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	if ct == crossCert {
-		fmt.Println("is a cross-cert")
+	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath, config.SkipLints)
+	if err != nil {
+		return err
 	}
+
+	return nil
+}
+
+func crossCertCeremony(configBytes []byte, ct certType) error {
+	if ct != crossCert {
+		return fmt.Errorf("wrong certificate type provided")
+	}
+
+	var config crossCertConfig
+	err := strictyaml.Unmarshal(configBytes, &config)
+	if err != nil {
+		return fmt.Errorf("failed to parse config: %s", err)
+	}
+	err = config.validate(ct)
+	if err != nil {
+		return fmt.Errorf("failed to validate config: %s", err)
+	}
+
+	pubPEMBytes, err := os.ReadFile(config.Inputs.PublicKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read public key %q: %s", config.Inputs.PublicKeyPath, err)
+	}
+	pubPEM, _ := pem.Decode(pubPEMBytes)
+	if pubPEM == nil {
+		return fmt.Errorf("failed to parse public key")
+	}
+	pub, err := x509.ParsePKIXPublicKey(pubPEM.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key: %s", err)
+	}
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
+	if err != nil {
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
+	}
+	crossSignInput, err := loadCert(config.Inputs.CertificateToCrossSignPath)
+	if err != nil {
+		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.CertificateToCrossSignPath, err)
+	}
+
+	fmt.Println(crossSignInput.Issuer)
+	fmt.Println(crossSignInput.Subject)
+
+	signer, randReader, err := openSigner(config.PKCS11, issuer.PublicKey)
+	if err != nil {
+		return err
+	}
+
+	template, err := makeTemplate(randReader, &config.CertProfile, pubPEM.Bytes, ct)
+	if err != nil {
+		return fmt.Errorf("failed to create certificate profile: %s", err)
+	}
+
+	template.AuthorityKeyId = issuer.SubjectKeyId
 	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath, config.SkipLints)
 	if err != nil {
 		return err
@@ -808,7 +899,7 @@ func main() {
 			log.Fatalf("root ceremony failed: %s", err)
 		}
 	case "cross-certificate":
-		err = intermediateCeremony(configBytes, crossCert)
+		err = crossCertCeremony(configBytes, crossCert)
 		if err != nil {
 			log.Fatalf("cross-certificate ceremony failed: %s", err)
 		}
