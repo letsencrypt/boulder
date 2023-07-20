@@ -369,6 +369,7 @@ func TestIntermediateConfigValidate(t *testing.T) {
 					OCSPURL:            "g",
 					CRLURL:             "h",
 					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
 				},
 				SkipLints: []string{},
 			},

@@ -81,6 +81,13 @@ type Config struct {
 		// less than the UpdatePeriod.
 		UpdateOffset config.Duration
 
+		// UpdateTimeout controls how long a single CRL shard is allowed to attempt
+		// to update before being timed out. The total CRL updating process may take
+		// significantly longer, since a full update cycle may consist of updating
+		// many shards with varying degrees of parallelism. This value must be
+		// strictly less than the UpdatePeriod. Defaults to 1 hour.
+		UpdateTimeout config.Duration `validate:"-"`
+
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
@@ -142,10 +149,13 @@ func main() {
 	if c.CRLUpdater.LookbackPeriod.Duration == 0 {
 		c.CRLUpdater.LookbackPeriod.Duration = 24 * time.Hour
 	}
+	if c.CRLUpdater.UpdateTimeout.Duration == 0 {
+		c.CRLUpdater.UpdateTimeout.Duration = 1 * time.Hour
+	}
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to SA")
-	sac := sapb.NewStorageAuthorityReadOnlyClient(saConn)
+	sac := sapb.NewStorageAuthorityClient(saConn)
 
 	caConn, err := bgrpc.ClientSetup(c.CRLUpdater.CRLGeneratorService, tlsConfig, scope, clk)
 	cmd.FailOnError(err, "Failed to load credentials and create gRPC connection to CRLGenerator")
@@ -162,6 +172,7 @@ func main() {
 		c.CRLUpdater.LookbackPeriod.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
 		c.CRLUpdater.UpdateOffset.Duration,
+		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
 		sac,

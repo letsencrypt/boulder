@@ -3470,6 +3470,29 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	test.AssertNotError(t, err, "getting updated lease timestamp")
 	test.Assert(t, untilModel.LeasedUntil.Equal(until), "checking updated lease timestamp")
 
+	// Leasing a previously-unknown specific shard should work (to ease the
+	// transition into using leasing).
+	res, err = sa.leaseSpecificCRLShard(
+		context.Background(),
+		&sapb.LeaseCRLShardRequest{
+			IssuerNameID: 1,
+			MinShardIdx:  9,
+			MaxShardIdx:  9,
+			Until:        timestamppb.New(until),
+		},
+	)
+	test.AssertNotError(t, err, "leasing unknown shard")
+
+	err = sa.dbMap.SelectOne(
+		ctx,
+		&untilModel,
+		`SELECT leasedUntil FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
+		res.IssuerNameID,
+		res.ShardIdx,
+	)
+	test.AssertNotError(t, err, "getting updated lease timestamp")
+	test.Assert(t, untilModel.LeasedUntil.Equal(until), "checking updated lease timestamp")
+
 	// Leasing a leased shard should fail.
 	_, err = sa.leaseSpecificCRLShard(
 		context.Background(),
@@ -3482,18 +3505,17 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 	)
 	test.AssertError(t, err, "leasing unavailable shard")
 
-	// Leasing an unknown shard should fail (because this method will only be used
-	// in the short term, and should go away before we change shard counts).
+	// Leasing more than one shard should fail.
 	_, err = sa.leaseSpecificCRLShard(
 		context.Background(),
 		&sapb.LeaseCRLShardRequest{
 			IssuerNameID: 1,
-			MinShardIdx:  9,
-			MaxShardIdx:  9,
+			MinShardIdx:  1,
+			MaxShardIdx:  2,
 			Until:        timestamppb.New(until),
 		},
 	)
-	test.AssertError(t, err, "leasing unknown shard")
+	test.AssertError(t, err, "did not lease one specific shard")
 }
 
 func TestUpdateCRLShard(t *testing.T) {

@@ -55,8 +55,9 @@ type certProfile struct {
 	// certificate
 	IssuerURL string `yaml:"issuer-url"`
 
-	// PolicyOIDs should contain any OIDs to be inserted in a certificate
-	// policies extension.
+	// Policies should contain any OIDs to be inserted in a certificate
+	// policies extension. It should be empty for Root certs, and contain the
+	// BRs "domain-validated" Reserved Policy Identifier for Intermediates.
 	Policies []policyInfoConfig `yaml:"policies"`
 
 	// KeyUsages should contain the set of key usage bits to set
@@ -140,12 +141,21 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		return errors.New("country is required")
 	}
 
+	if ct == rootCert {
+		if len(profile.Policies) != 0 {
+			return errors.New("policies should not be set on root certs")
+		}
+	}
+
 	if ct == intermediateCert {
 		if profile.CRLURL == "" {
 			return errors.New("crl-url is required for intermediates")
 		}
 		if profile.IssuerURL == "" {
 			return errors.New("issuer-url is required for intermediates")
+		}
+		if len(profile.Policies) != 1 || profile.Policies[0].OID != "2.23.140.1.2.1" {
+			return errors.New("policy should be exactly BRs domain-validated for intermediates")
 		}
 	}
 
@@ -169,6 +179,9 @@ func parseOID(oidStr string) (asn1.ObjectIdentifier, error) {
 		i, err := strconv.Atoi(a)
 		if err != nil {
 			return nil, err
+		}
+		if i <= 0 {
+			return nil, errors.New("OID components must be >= 1")
 		}
 		oid = append(oid, i)
 	}

@@ -46,8 +46,12 @@
 		"lookbackPeriod": "24h",
 		"updatePeriod": "6h",
 		"updateOffset": "9120s",
+		"updateTimeout": "3600s",
 		"maxParallelism": 10,
-		"maxAttempts": 5
+		"maxAttempts": 5,
+		"features": {
+			"LeaseCRLShards": true
+		}
 	},
 	"syslog": {
 		"stdoutlevel": 6,

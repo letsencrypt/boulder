@@ -15,12 +15,14 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -33,10 +35,11 @@ type crlUpdater struct {
 	lookbackPeriod time.Duration
 	updatePeriod   time.Duration
 	updateOffset   time.Duration
+	updateTimeout  time.Duration
 	maxParallelism int
 	maxAttempts    int
 
-	sa sapb.StorageAuthorityReadOnlyClient
+	sa sapb.StorageAuthorityClient
 	ca capb.CRLGeneratorClient
 	cs cspb.CRLStorerClient
 
@@ -54,9 +57,10 @@ func NewUpdater(
 	lookbackPeriod time.Duration,
 	updatePeriod time.Duration,
 	updateOffset time.Duration,
+	updateTimeout time.Duration,
 	maxParallelism int,
 	maxAttempts int,
-	sa sapb.StorageAuthorityReadOnlyClient,
+	sa sapb.StorageAuthorityClient,
 	ca capb.CRLGeneratorClient,
 	cs cspb.CRLStorerClient,
 	stats prometheus.Registerer,
@@ -78,6 +82,10 @@ func NewUpdater(
 
 	if updateOffset >= updatePeriod {
 		return nil, fmt.Errorf("update offset must be less than period: %s !< %s", updateOffset, updatePeriod)
+	}
+
+	if updateTimeout >= updatePeriod {
+		return nil, fmt.Errorf("update timeout must be less than period: %s !< %s", updateTimeout, updatePeriod)
 	}
 
 	if lookbackPeriod < 2*updatePeriod {
@@ -112,6 +120,7 @@ func NewUpdater(
 		lookbackPeriod,
 		updatePeriod,
 		updateOffset,
+		updateTimeout,
 		maxParallelism,
 		maxAttempts,
 		sa,
@@ -250,10 +259,12 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 			case <-ctx.Done():
 				return
 			default:
+				ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
 				out <- shardResult{
 					shardIdx: idx,
 					err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
 				}
+				cancel()
 			}
 		}
 	}
@@ -334,6 +345,24 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 
 	cu.log.Infof(
 		"Generating CRL shard: id=[%s] numChunks=[%d]", crlID, len(chunks))
+
+	if features.Enabled(features.LeaseCRLShards) {
+		// Notify the database that we're working on this shard.
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return fmt.Errorf("context has no deadline")
+		}
+
+		_, err = cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
+			IssuerNameID: int64(issuerNameID),
+			MinShardIdx:  int64(shardIdx),
+			MaxShardIdx:  int64(shardIdx),
+			Until:        timestamppb.New(deadline.Add(-time.Second)),
+		})
+		if err != nil {
+			return fmt.Errorf("leasing shard: %w", err)
+		}
+	}
 
 	// Get the full list of CRL Entries for this shard from the SA.
 	var crlEntries []*proto.CRLEntry
@@ -450,6 +479,15 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	_, err = csStream.CloseAndRecv()
 	if err != nil {
 		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
+	}
+
+	if features.Enabled(features.LeaseCRLShards) {
+		// Notify the database that that we're done.
+		_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
+			IssuerNameID: int64(issuerNameID),
+			ShardIdx:     int64(shardIdx),
+			ThisUpdate:   timestamppb.New(atTime),
+		})
 	}
 
 	cu.log.Infof(

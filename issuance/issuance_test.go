@@ -32,13 +32,10 @@ import (
 
 func defaultProfileConfig() ProfileConfig {
 	return ProfileConfig{
-		AllowCommonName: true,
-		AllowCTPoison:   true,
-		AllowSCTList:    true,
-		AllowMustStaple: true,
-		Policies: []PolicyConfig{
-			{OID: "1.2.3"},
-		},
+		AllowCommonName:     true,
+		AllowCTPoison:       true,
+		AllowSCTList:        true,
+		AllowMustStaple:     true,
 		MaxValidityPeriod:   config.Duration{Duration: time.Hour},
 		MaxValidityBackdate: config.Duration{Duration: time.Hour},
 	}
@@ -82,16 +79,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestNewProfilePolicies(t *testing.T) {
-	config := defaultProfileConfig()
-	config.Policies = append(config.Policies, PolicyConfig{
-		OID: "1.2.3.4",
-	})
-	profile, err := NewProfile(config, defaultIssuerConfig())
-	test.AssertNotError(t, err, "NewProfile failed")
-	test.AssertDeepEquals(t, profile.policies, []asn1.ObjectIdentifier{{1, 2, 3}, {1, 2, 3, 4}})
-}
-
 func TestNewProfileNoIssuerURL(t *testing.T) {
 	_, err := NewProfile(ProfileConfig{}, IssuerConfig{})
 	test.AssertError(t, err, "NewProfile didn't fail with no issuer URL")
@@ -102,16 +89,6 @@ func TestNewProfileNoOCSPURL(t *testing.T) {
 	_, err := NewProfile(ProfileConfig{}, IssuerConfig{IssuerURL: "issuer-url"})
 	test.AssertError(t, err, "NewProfile didn't fail with no OCSP URL")
 	test.AssertEquals(t, err.Error(), "OCSP URL is required")
-}
-
-func TestNewProfileInvalidOID(t *testing.T) {
-	_, err := NewProfile(ProfileConfig{
-		Policies: []PolicyConfig{{
-			OID: "a.b.c",
-		}},
-	}, defaultIssuerConfig())
-	test.AssertError(t, err, "NewProfile didn't fail with malformed policy OID")
-	test.AssertEquals(t, err.Error(), "failed parsing policy OID \"a.b.c\": strconv.Atoi: parsing \"a\": invalid syntax")
 }
 
 func TestRequestValid(t *testing.T) {
@@ -343,21 +320,7 @@ func TestGenerateTemplate(t *testing.T) {
 				IssuingCertificateURL: []string{""},
 				OCSPServer:            []string{""},
 				CRLDistributionPoints: []string{"crl-url"},
-			},
-		},
-		{
-			name: "include policies",
-			profile: &Profile{
-				sigAlg:   x509.SHA256WithRSA,
-				policies: []asn1.ObjectIdentifier{{4, 5, 6}},
-			},
-			expectedTemplate: &x509.Certificate{
-				BasicConstraintsValid: true,
-				SignatureAlgorithm:    x509.SHA256WithRSA,
-				ExtKeyUsage:           defaultEKU,
-				IssuingCertificateURL: []string{""},
-				OCSPServer:            []string{""},
-				PolicyIdentifiers:     []asn1.ObjectIdentifier{{4, 5, 6}},
+				PolicyIdentifiers:     []asn1.ObjectIdentifier{{2, 23, 140, 1, 2, 1}},
 			},
 		},
 	}
@@ -943,7 +906,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	linter, err := linter.New(
 		issuerCert.Certificate,
 		issuerSigner,
-		[]string{},
+		[]string{"n_subject_common_name_included"},
 	)
 	test.AssertNotError(t, err, "failed to create linter")
 
@@ -954,6 +917,7 @@ func TestMismatchedProfiles(t *testing.T) {
 	_, issuanceToken, err := issuer1.Prepare(&IssuanceRequest{
 		PublicKey:       pk.Public(),
 		Serial:          []byte{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		CommonName:      "example.com",
 		DNSNames:        []string{"example.com"},
 		NotBefore:       fc.Now(),
 		NotAfter:        fc.Now().Add(time.Hour - time.Second),
@@ -964,9 +928,9 @@ func TestMismatchedProfiles(t *testing.T) {
 	precertDER, err := issuer1.Issue(issuanceToken)
 	test.AssertNotError(t, err, "signing precert")
 
-	// Create a new profile that differs slightly (one more PolicyInformation than the precert)
+	// Create a new profile that differs slightly (no common name)
 	profileConfig := defaultProfileConfig()
-	profileConfig.Policies = append(profileConfig.Policies, PolicyConfig{OID: "1.2.3.4"})
+	profileConfig.AllowCommonName = false
 	p, err := NewProfile(profileConfig, defaultIssuerConfig())
 	test.AssertNotError(t, err, "NewProfile failed")
 	issuer2, err := NewIssuer(issuerCert, issuerSigner, p, linter, fc)
@@ -988,6 +952,7 @@ func TestMismatchedProfiles(t *testing.T) {
 
 	request2, err := RequestFromPrecert(precert, sctList)
 	test.AssertNotError(t, err, "RequestFromPrecert")
+	request2.CommonName = ""
 
 	_, _, err = issuer2.Prepare(request2)
 	test.AssertError(t, err, "preparing final cert issuance")
