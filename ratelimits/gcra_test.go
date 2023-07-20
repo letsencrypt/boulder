@@ -201,4 +201,21 @@ func Test_maybeRefund(t *testing.T) {
 	test.Assert(t, d.Allowed, "should be allowed")
 	test.AssertEquals(t, d.Remaining, int64(6))
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+
+	// Wait, a 2.5 seconds to refill to 8.5 requests.
+	clk.Add(time.Millisecond * 2500)
+
+	// Ensure we have 8.5 requests.
+	d = maybeSpend(clk, limit, d.newTAT, 0)
+	test.Assert(t, d.Allowed, "should be allowed")
+	test.AssertEquals(t, d.Remaining, int64(8))
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+	// Check that ResetIn represents the fractional earned request.
+	test.AssertEquals(t, d.ResetIn, time.Millisecond*1500)
+
+	// Refund 2 requests, we should only have 10, not 10.5.
+	d = maybeRefund(clk, limit, d.newTAT, 2)
+	test.AssertEquals(t, d.Remaining, int64(10))
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+	test.AssertEquals(t, d.ResetIn, time.Duration(0))
 }

@@ -1,7 +1,6 @@
 package ratelimits
 
 import (
-	"math"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -10,7 +9,7 @@ import (
 // divThenFloor divides two int64s and returns the floor of the result. This
 // This is used to calculate request intervals and costs in nanoseconds.
 func divThenFloor(x, y int64) int64 {
-	return int64(math.Floor(float64(x) / float64(y)))
+	return int64(float64(x) / float64(y))
 }
 
 // maybeSpend uses the GCRA algorithm to decide whether to allow a request. It
