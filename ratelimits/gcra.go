@@ -6,12 +6,6 @@ import (
 	"github.com/jmhodges/clock"
 )
 
-// divThenFloor divides two int64s and returns the floor of the result. This
-// This is used to calculate request intervals and costs in nanoseconds.
-func divThenFloor(x, y int64) int64 {
-	return int64(float64(x) / float64(y))
-}
-
 // maybeSpend uses the GCRA algorithm to decide whether to allow a request. It
 // returns a Decision struct with the result of the decision and the updated
 // TAT. The cost must be 0 or greater and <= the burst capacity of the limit.
@@ -41,7 +35,7 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 
 	if difference < 0 {
 		// Too little capacity to satisfy the cost, deny the request.
-		residual := divThenFloor(nowUnix-(tatUnix-rl.burstOffset), rl.emissionInterval)
+		residual := (nowUnix - (tatUnix - rl.burstOffset)) / rl.emissionInterval
 		return &Decision{
 			Allowed:   false,
 			Remaining: residual,
@@ -53,7 +47,7 @@ func maybeSpend(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision 
 
 	// There is enough capacity to satisfy the cost, allow the request.
 	var retryIn time.Duration
-	residual := divThenFloor(difference, rl.emissionInterval)
+	residual := difference / rl.emissionInterval
 	if difference < costIncrement {
 		retryIn = time.Duration(costIncrement - difference)
 	}
@@ -104,7 +98,7 @@ func maybeRefund(clk clock.Clock, rl limit, tat time.Time, cost int64) *Decision
 
 	// Calculate the new capacity.
 	difference := nowUnix - (newTAT - rl.burstOffset)
-	residual := divThenFloor(difference, rl.emissionInterval)
+	residual := difference / rl.emissionInterval
 
 	return &Decision{
 		Allowed:   (newTAT != tatUnix),
