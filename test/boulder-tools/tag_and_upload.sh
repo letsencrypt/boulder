@@ -50,5 +50,5 @@ done
 
 # This needs to work with both GNU sed and BSD sed
 echo "Updating container build timestamp in docker-compose.yml"
-sed -i.bak -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go\1_${DATESTAMP}}|" ../../docker-compose.yml
+sed -i.bak -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go${GO_DEV_VERSIONS[0]}_${DATESTAMP}}|g" ../../docker-compose.yml
 rm -f ../../docker-compose.yml.bak

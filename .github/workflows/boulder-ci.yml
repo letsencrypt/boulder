@@ -36,8 +36,8 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.20.6_2023-07-11
-          - go1.21rc2_2023-07-11
+          - go1.20.6_2023-07-19
+          - go1.21rc2_2023-07-19
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -118,8 +118,8 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.20.6_2023-07-11
-          - go1.21rc2_2023-07-11
+          - go1.20.6_2023-07-19
+          - go1.21rc2_2023-07-19
 
     env:
       # This sets the docker image tag for the boulder-tools repository to
