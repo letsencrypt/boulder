@@ -242,6 +242,14 @@ func UniqueLowerNames(names []string) (unique []string) {
 	return
 }
 
+// HashNames returns a hash of the names requested. This is intended for use
+// when interacting with the orderFqdnSets table and rate limiting.
+func HashNames(names []string) []byte {
+	names = UniqueLowerNames(names)
+	hash := sha256.Sum256([]byte(strings.Join(names, ",")))
+	return hash[:]
+}
+
 // LoadCert loads a PEM certificate specified by filename or returns an error
 func LoadCert(filename string) (*x509.Certificate, error) {
 	certPEM, err := os.ReadFile(filename)
