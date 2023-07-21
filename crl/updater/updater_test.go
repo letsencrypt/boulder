@@ -15,7 +15,6 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
@@ -177,8 +176,7 @@ func TestTickShard(t *testing.T) {
 	}, 1)
 	cu.updatedCounter.Reset()
 
-	// With leasing enabled, errors while leasing should bubble up early.
-	_ = features.Set(map[string]bool{"LeaseCRLShards": true})
+	// Errors while leasing should bubble up early.
 	cu.sa.(*fakeSAC).leaseError = sentinelErr
 	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "leasing error")
@@ -188,7 +186,7 @@ func TestTickShard(t *testing.T) {
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
 	}, 1)
 	cu.updatedCounter.Reset()
-	features.Reset()
+	cu.sa.(*fakeSAC).leaseError = nil
 
 	// Errors closing the Storer upload stream should bubble up.
 	cu.cs = &fakeCSC{ucc: fakeUCC{recvErr: sentinelErr}}
@@ -253,6 +251,8 @@ func TestTickShardWithRetry(t *testing.T) {
 	test.AssertNotError(t, err, "loading test issuer")
 
 	sentinelErr := errors.New("oops")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
 
 	clk := clock.NewFake()
 	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
@@ -276,7 +276,7 @@ func TestTickShardWithRetry(t *testing.T) {
 	// Ensure that having MaxAttempts set to 1 results in the clock not moving
 	// forward at all.
 	startTime := cu.clk.Now()
-	err = cu.tickShardWithRetry(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "database error")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertEquals(t, cu.clk.Now(), startTime)
@@ -286,7 +286,7 @@ func TestTickShardWithRetry(t *testing.T) {
 	// in, so we have to be approximate.
 	cu.maxAttempts = 5
 	startTime = cu.clk.Now()
-	err = cu.tickShardWithRetry(context.Background(), cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.tickShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "database error")
 	test.AssertErrorIs(t, err, sentinelErr)
 	t.Logf("start: %v", startTime)

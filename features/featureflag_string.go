@@ -15,22 +15,22 @@ func _() {
 	_ = x[StoreLintingCertificateInsteadOfPrecertificate-4]
 	_ = x[CAAValidationMethods-5]
 	_ = x[CAAAccountURI-6]
-	_ = x[EnforceMultiVA-7]
-	_ = x[MultiVAFullResults-8]
-	_ = x[ECDSAForAll-9]
-	_ = x[ServeRenewalInfo-10]
-	_ = x[AllowUnrecognizedFeatures-11]
-	_ = x[ExpirationMailerUsesJoin-12]
-	_ = x[CertCheckerChecksValidations-13]
-	_ = x[CertCheckerRequiresValidations-14]
-	_ = x[AsyncFinalize-15]
-	_ = x[RequireCommonName-16]
-	_ = x[LeaseCRLShards-17]
+	_ = x[LeaseCRLShards-7]
+	_ = x[EnforceMultiVA-8]
+	_ = x[MultiVAFullResults-9]
+	_ = x[ECDSAForAll-10]
+	_ = x[ServeRenewalInfo-11]
+	_ = x[AllowUnrecognizedFeatures-12]
+	_ = x[ExpirationMailerUsesJoin-13]
+	_ = x[CertCheckerChecksValidations-14]
+	_ = x[CertCheckerRequiresValidations-15]
+	_ = x[AsyncFinalize-16]
+	_ = x[RequireCommonName-17]
 }
 
-const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6ROCSPStage7StoreLintingCertificateInsteadOfPrecertificateCAAValidationMethodsCAAAccountURIEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonNameLeaseCRLShards"
+const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6ROCSPStage7StoreLintingCertificateInsteadOfPrecertificateCAAValidationMethodsCAAAccountURILeaseCRLShardsEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonName"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 44, 90, 110, 123, 137, 155, 166, 182, 207, 231, 259, 289, 302, 319, 333}
+var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 44, 90, 110, 123, 137, 151, 169, 180, 196, 221, 245, 273, 303, 316, 333}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {
