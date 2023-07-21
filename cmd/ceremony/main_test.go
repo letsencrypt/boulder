@@ -387,6 +387,164 @@ func TestIntermediateConfigValidate(t *testing.T) {
 	}
 }
 
+func TestCrossCertConfigValidate(t *testing.T) {
+	cases := []struct {
+		name          string
+		config        crossCertConfig
+		expectedError string
+	}{
+		{
+			name:          "no pkcs11.module",
+			config:        crossCertConfig{},
+			expectedError: "pkcs11.module is required",
+		},
+		{
+			name: "no pkcs11.signing-key-label",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module: "module",
+				},
+			},
+			expectedError: "pkcs11.signing-key-label is required",
+		},
+		{
+			name: "no inputs.public-key-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+			},
+			expectedError: "inputs.public-key-path is required",
+		},
+		{
+			name: "no inputs.issuer-certificate-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					CertificateToCrossSignPath: "path",
+				},
+			},
+			expectedError: "inputs.issuer-certificate is required",
+		},
+		{
+			name: "no inputs.certificate-to-cross-sign-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+			},
+			expectedError: "inputs.certificate-to-cross-sign-path is required",
+		},
+		{
+			name: "no outputs.certificate-path",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+			},
+			expectedError: "outputs.certificate-path is required",
+		},
+		{
+			name: "bad certificate-profile",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+			},
+			expectedError: "not-before is required",
+		},
+		{
+			name: "good config",
+			config: crossCertConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath              string `yaml:"public-key-path"`
+					IssuerCertificatePath      string `yaml:"issuer-certificate-path"`
+					CertificateToCrossSignPath string `yaml:"certificate-to-cross-sign-path"`
+				}{
+					PublicKeyPath:              "path",
+					IssuerCertificatePath:      "path",
+					CertificateToCrossSignPath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}},
+				},
+				SkipLints: []string{},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.config.validate(crossCert)
+			if err != nil && err.Error() != tc.expectedError {
+				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
+			} else if err == nil && tc.expectedError != "" {
+				t.Fatalf("validate didn't fail, wanted: %q", err)
+			}
+		})
+	}
+}
+
 func TestCSRConfigValidate(t *testing.T) {
 	cases := []struct {
 		name          string
