@@ -316,15 +316,15 @@ func TestTickIssuer(t *testing.T) {
 	test.AssertNotError(t, err, "building test crlUpdater")
 
 	// An error that affects all shards should have every shard reflected in the
-	// combined error message.
+	// combined error message, including the bonus shard with index=numShards.
 	err = cu.tickIssuer(context.Background(), cu.clk.Now(), e1.NameID())
 	test.AssertError(t, err, "database error")
-	test.AssertContains(t, err.Error(), "2 shards failed")
-	test.AssertContains(t, err.Error(), "[0 1]")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 2)
+	test.AssertContains(t, err.Error(), "3 shards failed")
+	test.AssertContains(t, err.Error(), "[0 1 2]")
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 3)
 	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
-	}, 2)
+	}, 3)
 	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1 (Overall)", "result": "failed",
 	}, 1)
@@ -359,7 +359,7 @@ func TestTick(t *testing.T) {
 	test.AssertContains(t, err.Error(), "2 issuers failed")
 	test.AssertContains(t, err.Error(), "(TEST) Elegant Elephant E1")
 	test.AssertContains(t, err.Error(), "(TEST) Radical Rhino R3")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 4)
+	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 6)
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRLs for issuer failed:")), 2)
 	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1 (Overall)", "result": "failed",
