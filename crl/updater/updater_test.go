@@ -176,18 +176,6 @@ func TestUpdateShard(t *testing.T) {
 	}, 1)
 	cu.updatedCounter.Reset()
 
-	// Errors while leasing should bubble up early.
-	cu.sa.(*fakeSAC).leaseError = sentinelErr
-	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
-	test.AssertError(t, err, "leasing error")
-	test.AssertContains(t, err.Error(), "leasing shard")
-	test.AssertErrorIs(t, err, sentinelErr)
-	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
-		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
-	}, 1)
-	cu.updatedCounter.Reset()
-	cu.sa.(*fakeSAC).leaseError = nil
-
 	// Errors closing the Storer upload stream should bubble up.
 	cu.cs = &fakeCSC{ucc: fakeUCC{recvErr: sentinelErr}}
 	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)

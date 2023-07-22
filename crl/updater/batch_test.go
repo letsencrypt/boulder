@@ -48,6 +48,16 @@ func TestUpdateIssuer(t *testing.T) {
 		"issuer": "(TEST) Elegant Elephant E1 (Overall)", "result": "failed",
 	}, 1)
 	cu.tickHistogram.Reset()
+
+	// An error while leasing should have the same effect.
+	cu.sa = &fakeSAC{leaseError: errors.New("oops")}
+	err = cu.updateIssuer(context.Background(), cu.clk.Now(), e1.NameID())
+	test.AssertError(t, err, "leasing error")
+	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
+		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
+	}, 3)
+	cu.updatedCounter.Reset()
+	cu.sa.(*fakeSAC).leaseError = nil
 }
 
 func TestRunOnce(t *testing.T) {

@@ -174,21 +174,6 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	cu.log.Infof(
 		"Generating CRL shard: id=[%s] numChunks=[%d]", crlID, len(chunks))
 
-	// Notify the database that we're working on this shard.
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		return fmt.Errorf("context has no deadline")
-	}
-	_, err = cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
-		IssuerNameID: int64(issuerNameID),
-		MinShardIdx:  int64(shardIdx),
-		MaxShardIdx:  int64(shardIdx),
-		Until:        timestamppb.New(deadline.Add(-time.Second)),
-	})
-	if err != nil {
-		return fmt.Errorf("leasing shard: %w", err)
-	}
-
 	// Get the full list of CRL Entries for this shard from the SA.
 	var crlEntries []*proto.CRLEntry
 	for _, chunk := range chunks {
