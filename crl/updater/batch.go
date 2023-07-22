@@ -16,11 +16,11 @@ import (
 	"github.com/letsencrypt/boulder/issuance"
 )
 
-// Tick runs the entire update process once immediately. It processes each
+// RunOnce runs the entire update process once immediately. It processes each
 // configured issuer serially, and processes all of them even if an early one
 // encounters an error. All errors encountered are returned as a single combined
 // error at the end.
-func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
+func (cu *crlUpdater) RunOnce(ctx context.Context, atTime time.Time) (err error) {
 	defer func() {
 		// This func closes over the named return value `err`, so can reference it.
 		result := "success"
@@ -36,7 +36,7 @@ func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 		// For now, process each issuer serially. This keeps the worker pool system
 		// simple, and processing all of the issuers in parallel likely wouldn't
 		// meaningfully speed up the overall process.
-		err := cu.tickIssuer(ctx, atTime, id)
+		err := cu.updateIssuer(ctx, atTime, id)
 		if err != nil {
 			cu.log.AuditErrf(
 				"Generating CRLs for issuer failed: number=[%d] issuer=[%s] err=[%s]",
@@ -51,11 +51,11 @@ func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
 	return nil
 }
 
-// tickIssuer performs the full CRL issuance cycle for a single issuer cert. It
+// updateIssuer performs the full CRL issuance cycle for a single issuer cert. It
 // processes all of the shards of this issuer's CRL concurrently, and processes
 // all of them even if an early one encounters an error. All errors encountered
 // are returned as a single combined error at the end.
-func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) (err error) {
+func (cu *crlUpdater) updateIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) (err error) {
 	start := cu.clk.Now()
 	defer func() {
 		// This func closes over the named return value `err`, so can reference it.
@@ -86,7 +86,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 				ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
 				out <- shardResult{
 					shardIdx: idx,
-					err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
+					err:      cu.updateShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
 				}
 
 				// We want to renumber shard 0 to also be shard numShards (e.g. 128).
@@ -96,7 +96,7 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 				if idx == 0 {
 					out <- shardResult{
 						shardIdx: cu.numShards,
-						err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, cu.numShards, shardMap[idx]),
+						err:      cu.updateShardWithRetry(ctx, atTime, issuerNameID, cu.numShards, shardMap[idx]),
 					}
 				}
 

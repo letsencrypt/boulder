@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func TestTickIssuer(t *testing.T) {
+func TestUpdateIssuer(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
@@ -36,7 +36,7 @@ func TestTickIssuer(t *testing.T) {
 
 	// An error that affects all shards should have every shard reflected in the
 	// combined error message, including the bonus shard with index=numShards.
-	err = cu.tickIssuer(context.Background(), cu.clk.Now(), e1.NameID())
+	err = cu.updateIssuer(context.Background(), cu.clk.Now(), e1.NameID())
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "3 shards failed")
 	test.AssertContains(t, err.Error(), "[0 1 2]")
@@ -50,7 +50,7 @@ func TestTickIssuer(t *testing.T) {
 	cu.tickHistogram.Reset()
 }
 
-func TestTick(t *testing.T) {
+func TestRunOnce(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
@@ -73,7 +73,7 @@ func TestTick(t *testing.T) {
 	// An error that affects all issuers should have every issuer reflected in the
 	// combined error message.
 	now := cu.clk.Now()
-	err = cu.Tick(context.Background(), now)
+	err = cu.RunOnce(context.Background(), now)
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "2 issuers failed")
 	test.AssertContains(t, err.Error(), "(TEST) Elegant Elephant E1")

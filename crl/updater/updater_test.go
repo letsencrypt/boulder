@@ -141,7 +141,7 @@ func (f *fakeCSC) UploadCRL(ctx context.Context, opts ...grpc.CallOption) (cspb.
 	return &f.ucc, nil
 }
 
-func TestTickShard(t *testing.T) {
+func TestUpdateShard(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
@@ -169,7 +169,7 @@ func TestTickShard(t *testing.T) {
 	}
 
 	// Ensure that getting no results from the SA still works.
-	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertNotError(t, err, "empty CRL")
 	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
 		"issuer": "(TEST) Elegant Elephant E1", "result": "success",
@@ -178,7 +178,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors while leasing should bubble up early.
 	cu.sa.(*fakeSAC).leaseError = sentinelErr
-	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "leasing error")
 	test.AssertContains(t, err.Error(), "leasing shard")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -190,7 +190,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors closing the Storer upload stream should bubble up.
 	cu.cs = &fakeCSC{ucc: fakeUCC{recvErr: sentinelErr}}
-	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "closing CRLStorer upload stream")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -201,7 +201,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors sending to the Storer should bubble up sooner.
 	cu.cs = &fakeCSC{ucc: fakeUCC{sendErr: sentinelErr}}
-	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "storer error")
 	test.AssertContains(t, err.Error(), "sending CRLStorer metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -212,7 +212,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors reading from the CA should bubble up sooner.
 	cu.ca = &fakeCGC{gcc: fakeGCC{recvErr: sentinelErr}}
-	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "receiving CRL bytes")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -223,7 +223,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors sending to the CA should bubble up sooner.
 	cu.ca = &fakeCGC{gcc: fakeGCC{sendErr: sentinelErr}}
-	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "CA error")
 	test.AssertContains(t, err.Error(), "sending CA metadata")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -234,7 +234,7 @@ func TestTickShard(t *testing.T) {
 
 	// Errors reading from the SA should bubble up soonest.
 	cu.sa = &fakeSAC{grcc: fakeGRCC{err: sentinelErr}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)}
-	err = cu.tickShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShard(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "database error")
 	test.AssertContains(t, err.Error(), "retrieving entry from SA")
 	test.AssertErrorIs(t, err, sentinelErr)
@@ -244,7 +244,7 @@ func TestTickShard(t *testing.T) {
 	cu.updatedCounter.Reset()
 }
 
-func TestTickShardWithRetry(t *testing.T) {
+func TestUpdateShardWithRetry(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
 	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
@@ -276,7 +276,7 @@ func TestTickShardWithRetry(t *testing.T) {
 	// Ensure that having MaxAttempts set to 1 results in the clock not moving
 	// forward at all.
 	startTime := cu.clk.Now()
-	err = cu.tickShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "database error")
 	test.AssertErrorIs(t, err, sentinelErr)
 	test.AssertEquals(t, cu.clk.Now(), startTime)
@@ -286,7 +286,7 @@ func TestTickShardWithRetry(t *testing.T) {
 	// in, so we have to be approximate.
 	cu.maxAttempts = 5
 	startTime = cu.clk.Now()
-	err = cu.tickShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
+	err = cu.updateShardWithRetry(ctx, cu.clk.Now(), e1.NameID(), 0, testChunks)
 	test.AssertError(t, err, "database error")
 	test.AssertErrorIs(t, err, sentinelErr)
 	t.Logf("start: %v", startTime)

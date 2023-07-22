@@ -126,9 +126,9 @@ func NewUpdater(
 	}, nil
 }
 
-// tickShardWithRetry calls tickShard repeatedly (with exponential backoff
+// updateShardWithRetry calls tickShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
-func (cu *crlUpdater) tickShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
+func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
 	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
 
 	var err error
@@ -142,7 +142,7 @@ func (cu *crlUpdater) tickShardWithRetry(ctx context.Context, atTime time.Time, 
 		}
 		cu.clk.Sleep(sleepTime)
 
-		err = cu.tickShard(ctx, atTime, issuerNameID, shardIdx, chunks)
+		err = cu.updateShard(ctx, atTime, issuerNameID, shardIdx, chunks)
 		if err == nil {
 			break
 		}
@@ -150,11 +150,11 @@ func (cu *crlUpdater) tickShardWithRetry(ctx context.Context, atTime time.Time, 
 	return err
 }
 
-// tickShard processes a single shard. It computes the shard's boundaries, gets
+// updateShard processes a single shard. It computes the shard's boundaries, gets
 // the list of revoked certs in that shard from the SA, gets the CA to sign the
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) (err error) {
+func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

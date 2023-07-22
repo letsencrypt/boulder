@@ -188,7 +188,7 @@ func main() {
 	go cmd.CatchSignals(cancel)
 
 	if *runOnce {
-		err = u.Tick(ctx, clk.Now())
+		err = u.RunOnce(ctx, clk.Now())
 		if err != nil && !errors.Is(err, context.Canceled) {
 			cmd.FailOnError(err, "")
 		}
