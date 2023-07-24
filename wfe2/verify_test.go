@@ -745,10 +745,8 @@ func TestValidNonce(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			// TODO(#6610): Remove this.
-			if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-				if tc.SkipConfigNext {
-					t.Skip("Skipping test in config-next")
-				}
+			if (os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next") && tc.SkipConfigNext {
+				t.Skip("Skipping test in config-next")
 			} else if tc.SkipConfig {
 				t.Skip("Skipping test in config")
 			}
@@ -1391,10 +1389,8 @@ func TestValidJWSForKey(t *testing.T) {
 		// TODO(#6610): Remove this.
 		t.Run(tc.Name, func(t *testing.T) {
 			// TODO(#6610): Remove this.
-			if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-				if tc.SkipConfigNext {
-					t.Skip("Skipping test in config-next")
-				}
+			if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" && tc.SkipConfigNext {
+				t.Skip("Skipping test in config-next")
 			} else if tc.SkipConfig {
 				t.Skip("Skipping test in config")
 			}

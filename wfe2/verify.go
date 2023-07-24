@@ -223,21 +223,25 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 			return prob
 		}
 
+		// Populate the context with the nonce prefix and HMAC key. These are
+		// used by a custom gRPC balancer, known as "noncebalancer", to route
+		// redemption RPCs to the backend that originally issued the nonce.
 		ctx = context.WithValue(ctx, nonce.PrefixCtxKey{}, header.Nonce[:nonce.PrefixLen])
 		ctx = context.WithValue(ctx, nonce.HMACKeyCtxKey{}, wfe.rncKey)
+
 		resp, err := wfe.rnc.Redeem(ctx, &noncepb.NonceMessage{Nonce: header.Nonce})
 		if err != nil {
 			rpcStatus, ok := status.FromError(err)
-			if !ok {
+			if !ok || rpcStatus != nb.ErrNoBackendsMatchPrefix {
 				return web.ProblemDetailsForError(err, "failed to redeem nonce")
 			}
-			if rpcStatus == nb.ErrNoBackendsMatchPrefix {
-				// ErrNoBackendsMatchPrefix indicates the provided prefix is
-				// unknown to the nonce redemption service. This is a transient
-				// failure, the client should retry with a new nonce.
-				resp = &noncepb.ValidMessage{Valid: false}
-				noBackend = true
-			}
+
+			// ErrNoBackendsMatchPrefix suggests that the nonce backend, which
+			// issued this nonce, is presently unreachable or unrecognized by
+			// this WFE. As this is a transient failure, the client should retry
+			// their request with a fresh nonce.
+			resp = &noncepb.ValidMessage{Valid: false}
+			noBackend = true
 		}
 		valid = resp.Valid
 	} else {
@@ -256,11 +260,11 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		}
 	}
 	if !valid {
+		label := prometheus.Labels{"type": "JWSInvalidNonce"}
 		if noBackend {
-			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce", "reason": "nobackend"}).Inc()
-		} else {
-			wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
+			label["reason"] = "nobackend"
 		}
+		wfe.stats.joseErrorCount.With(label).Inc()
 		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", header.Nonce))
 	}
 	return nil
