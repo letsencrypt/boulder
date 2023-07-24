@@ -159,6 +159,15 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 	}
 
+	if ct == crossCert {
+		if profile.CRLURL == "" {
+			return errors.New("crl-url is required for cross-signed subordinates CAs")
+		}
+		if profile.IssuerURL == "" {
+			return errors.New("issuer-url is required for cross-signed subordiante CAs")
+		}
+	}
+
 	if ct == ocspCert || ct == crlCert {
 		if len(profile.KeyUsages) != 0 {
 			return errors.New("key-usages cannot be set for a delegated signer")
