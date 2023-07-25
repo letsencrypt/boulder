@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	b64 "encoding/base64"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -472,7 +471,7 @@ func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer
 	return signer, newRandReader(session), nil
 }
 
-// issueLintCert returns linting certificate bytes and an error.
+// issueLintCert returns a linting certificate as DER encoded bytes generated from a template certificate and an error.
 func issueLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) ([]byte, error) {
 	lintCertBytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
 	if err != nil {
@@ -482,7 +481,7 @@ func issueLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey
 	return lintCertBytes, nil
 }
 
-func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) error {
+func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
 	// x509.CreateCertificate uses a io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
 	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
@@ -490,13 +489,13 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 	// changes.
 	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, subjectPubKey, signer)
 	if err != nil {
-		return fmt.Errorf("failed to create certificate: %s", err)
+		return nil, fmt.Errorf("failed to create certificate: %s", err)
 	}
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
 	log.Printf("Signed certificate PEM:\n%s", pemBytes)
 	cert, err := x509.ParseCertificate(certBytes)
 	if err != nil {
-		return fmt.Errorf("failed to parse signed certificate: %s", err)
+		return nil, fmt.Errorf("failed to parse signed certificate: %s", err)
 	}
 	if tbs == issuer {
 		// If cert is self-signed we need to populate the issuer subject key to
@@ -507,14 +506,15 @@ func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.Public
 
 	err = cert.CheckSignatureFrom(issuer)
 	if err != nil {
-		return fmt.Errorf("failed to verify certificate signature: %s", err)
+		return nil, fmt.Errorf("failed to verify certificate signature: %s", err)
 	}
 	err = writeFile(certPath, pemBytes)
 	if err != nil {
-		return fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
+		return nil, fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
 	}
 	log.Printf("Certificate written to %q\n", certPath)
-	return nil
+
+	return cert, nil
 }
 
 func rootCeremony(configBytes []byte) error {
@@ -550,7 +550,7 @@ func rootCeremony(configBytes []byte) error {
 		return err
 	}
 
-	err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
+	_, err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
@@ -606,7 +606,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return err
 	}
 
-	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
+	_, err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
@@ -647,7 +647,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	}
 	toBeCrossSigned, err := loadCert(config.Inputs.CertificateToCrossSignPath)
 	if err != nil {
-		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.CertificateToCrossSignPath, err)
+		return fmt.Errorf("failed to load toBeCrossSigned certificate %q: %s", config.Inputs.CertificateToCrossSignPath, err)
 	}
 	signer, randReader, err := openSigner(config.PKCS11, issuer.PublicKey)
 	if err != nil {
@@ -669,17 +669,34 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return err
 	}
 
-	if !bytes.Equal(issuer.RawIssuer, lintCert.RawIssuer) {
-		return fmt.Errorf("mismatch between issuer and lintCert RawIssuer DER bytes: %s != %s", b64.StdEncoding.EncodeToString(issuer.RawIssuer), b64.StdEncoding.EncodeToString(lintCert.RawIssuer))
+	//
+	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
+		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 
+	// Ensure that we've configured the correct certificate to cross-sign compared to the profile.
+	// Example of the configuration error this checks for:
+	//
+	//	 	inputs:
+	//  		certificate-to-cross-sign-path: int-e6.cert.pem
+	//		certificate-profile:
+	//  		common-name: (FAKE) E5
+	//  		organization: (FAKE) Let's Encrypt
+	//
 	if !bytes.Equal(toBeCrossSigned.RawSubject, lintCert.RawSubject) {
-		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: %s != %s", b64.StdEncoding.EncodeToString(toBeCrossSigned.RawSubject), b64.StdEncoding.EncodeToString(lintCert.RawSubject))
+		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: \"%x\" != \"%x\"", toBeCrossSigned.RawSubject, lintCert.RawSubject)
 	}
 
-	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
+	finalCert, err := signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
+	}
+
+	// Verify that x509.CreateCertificate is deterministic and produced
+	// identical DER bytes between the lintCert and finalCert signing
+	// operations.
+	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
+		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
 
 	return nil
