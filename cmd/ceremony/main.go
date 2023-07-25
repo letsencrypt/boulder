@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	b64 "encoding/base64"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -644,16 +645,14 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
-	crossSignInput, err := loadCert(config.Inputs.CertificateToCrossSignPath)
+	toBeCrossSigned, err := loadCert(config.Inputs.CertificateToCrossSignPath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.CertificateToCrossSignPath, err)
 	}
-
 	signer, randReader, err := openSigner(config.PKCS11, issuer.PublicKey)
 	if err != nil {
 		return err
 	}
-
 	template, err := makeTemplate(randReader, &config.CertProfile, pubPEM.Bytes, ct)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
@@ -665,18 +664,18 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return err
 	}
-
 	lintCert, err := x509.ParseCertificate(lintCertBytes)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("crossSignInput Issuer: %s\n", crossSignInput.Issuer)
-	fmt.Printf("crossSignInput Subject: %s\n", crossSignInput.Subject)
-	fmt.Printf("template Issuer: %s\n", template.Issuer)
-	fmt.Printf("template Subject: %s\n", template.Subject)
-	fmt.Printf("lintCert Issuer: %s\n", lintCert.Issuer)
-	fmt.Printf("lintCert Subject: %s\n", lintCert.Subject)
+	if !bytes.Equal(issuer.RawIssuer, lintCert.RawIssuer) {
+		return fmt.Errorf("mismatch between issuer and lintCert RawIssuer DER bytes: %s != %s", b64.StdEncoding.EncodeToString(issuer.RawIssuer), b64.StdEncoding.EncodeToString(lintCert.RawIssuer))
+	}
+
+	if !bytes.Equal(toBeCrossSigned.RawSubject, lintCert.RawSubject) {
+		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: %s != %s", b64.StdEncoding.EncodeToString(toBeCrossSigned.RawSubject), b64.StdEncoding.EncodeToString(lintCert.RawSubject))
+	}
 
 	err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
