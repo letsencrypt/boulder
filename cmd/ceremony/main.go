@@ -433,6 +433,7 @@ func loadCert(filename string) (cert *x509.Certificate, err error) {
 	if err != nil {
 		return
 	}
+	log.Printf("Loaded certificate from %s\n", filename)
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
 		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
@@ -545,9 +546,18 @@ func rootCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 
-	_, err = issueLintCert(template, template, keyInfo.key, signer, config.SkipLints)
+	lintCertBytes, err := issueLintCert(template, template, template.PublicKey, signer, config.SkipLints)
 	if err != nil {
 		return err
+	}
+	lintCert, err := x509.ParseCertificate(lintCertBytes)
+	if err != nil {
+		return err
+	}
+
+	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
+	if !bytes.Equal(template.RawSubject, lintCert.RawIssuer) {
+		return fmt.Errorf("mismatch between template RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", template.RawSubject, lintCert.RawIssuer)
 	}
 
 	_, err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
@@ -601,9 +611,18 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
 
-	_, err = issueLintCert(template, issuer, pub, signer, config.SkipLints)
+	lintCertBytes, err := issueLintCert(template, issuer, pub, signer, config.SkipLints)
 	if err != nil {
 		return err
+	}
+	lintCert, err := x509.ParseCertificate(lintCertBytes)
+	if err != nil {
+		return err
+	}
+
+	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
+	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
+		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 
 	_, err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
@@ -669,19 +688,21 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return err
 	}
 
-	//
+	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
 	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 
 	// Ensure that we've configured the correct certificate to cross-sign compared to the profile.
-	// Example of the configuration error this checks for:
 	//
+	// Example of a misconfiguration below:
+	//      ...
 	//	 	inputs:
 	//  		certificate-to-cross-sign-path: int-e6.cert.pem
 	//		certificate-profile:
 	//  		common-name: (FAKE) E5
 	//  		organization: (FAKE) Let's Encrypt
+	//      ...
 	//
 	if !bytes.Equal(toBeCrossSigned.RawSubject, lintCert.RawSubject) {
 		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: \"%x\" != \"%x\"", toBeCrossSigned.RawSubject, lintCert.RawSubject)
