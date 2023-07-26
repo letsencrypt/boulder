@@ -17,7 +17,9 @@ import (
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/grpc/noncebalancer"
 	"github.com/letsencrypt/boulder/mocks"
+	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -765,6 +767,33 @@ func TestValidNonce(t *testing.T) {
 			}
 		})
 	}
+}
+
+// noBackendsNonceRedeemer is a nonce redeemer that always returns an error
+// indicating that the prefix matches no known nonce provider.
+type noBackendsNonceRedeemer struct{}
+
+func (n noBackendsNonceRedeemer) Redeem(ctx context.Context, _ *noncepb.NonceMessage, opts ...grpc.CallOption) (*noncepb.ValidMessage, error) {
+	return nil, noncebalancer.ErrNoBackendsMatchPrefix.Err()
+}
+
+func TestValidNonce_NoMatchingBackendFound(t *testing.T) {
+	// TODO(#6610): Remove this.
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Skipping test in config")
+	}
+	wfe, _, signer := setupWFE(t)
+	goodJWS, _, _ := signer.embeddedJWK(nil, "", "")
+	wfe.rnc = noBackendsNonceRedeemer{}
+
+	// A valid JWS with a nonce whose prefix matches no known nonce provider should
+	// result in a BadNonceProblem.
+	prob := wfe.validNonce(context.Background(), goodJWS.Signatures[0].Header)
+	test.Assert(t, prob != nil, "Expected error for valid nonce with no backend")
+	test.AssertEquals(t, prob.Type, probs.BadNonceProblem)
+	test.AssertEquals(t, prob.HTTPStatus, http.StatusBadRequest)
+	test.AssertContains(t, prob.Detail, "JWS has an invalid anti-replay nonce")
+	test.AssertMetricWithLabelsEquals(t, wfe.stats.nonceNoMatchingBackendCount, prometheus.Labels{}, 1)
 }
 
 func (rs requestSigner) signExtraHeaders(

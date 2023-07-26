@@ -240,7 +240,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 			// this WFE. As this is a transient failure, the client should retry
 			// their request with a fresh nonce.
 			resp = &noncepb.ValidMessage{Valid: false}
-			wfe.stats.nonceNoBackendCount.Inc()
+			wfe.stats.nonceNoMatchingBackendCount.Inc()
 		}
 		valid = resp.Valid
 	} else {
