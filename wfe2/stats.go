@@ -17,6 +17,9 @@ type wfe2Stats struct {
 	// improperECFieldLengths counts the number of ACME account EC JWKs we see
 	// with improper X and Y lengths for their curve
 	improperECFieldLengths prometheus.Counter
+	// nonceNoBackendCount counts the number of times we've received a nonce
+	// with a prefix that doesn't match a known backend.
+	nonceNoBackendCount prometheus.Counter
 }
 
 func initStats(stats prometheus.Registerer) wfe2Stats {
@@ -52,6 +55,14 @@ func initStats(stats prometheus.Registerer) wfe2Stats {
 		},
 	)
 	stats.MustRegister(improperECFieldLengths)
+
+	nonceNoBackendCount := prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "nonce_no_backend_found",
+			Help: "Number of times we've received a nonce with a prefix that doesn't match a known backend",
+		},
+	)
+	stats.MustRegister(nonceNoBackendCount)
 
 	return wfe2Stats{
 		httpErrorCount:         httpErrorCount,

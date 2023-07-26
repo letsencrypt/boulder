@@ -29,9 +29,8 @@ const (
 // the balancer, or valid but the backend has not yet been added to the
 // balancer.
 //
-// In any case, the client should retry with a new nonce. The balancer will be
-// rebuilt and DNS re-resolved at regular intervals as backends terminate client
-// connections which have reached a set maximum age.
+// In any case, when the WFE receives this error it will return a badNonce error
+// to the ACME client.
 var ErrNoBackendsMatchPrefix = status.New(codes.Unavailable, "no backends match the nonce prefix")
 var errMissingPrefixCtxKey = errors.New("nonce.PrefixCtxKey value required in RPC context")
 var errMissingHMACKeyCtxKey = errors.New("nonce.HMACKeyCtxKey value required in RPC context")
@@ -82,20 +81,17 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// Get the HMAC key from the RPC context.
 	hmacKeyVal := info.Ctx.Value(nonce.HMACKeyCtxKey{})
 	if hmacKeyVal == nil {
-		// This should never happen unless the client failed to set the HMAC key
-		// in the RPC context.
+		// This should never happen.
 		return balancer.PickResult{}, errMissingHMACKeyCtxKey
 	}
 	hmacKey, ok := hmacKeyVal.(string)
 	if !ok {
-		// This should never happen unless the client set the HMAC key in the
-		// RPC context with the wrong type.
+		// This should never happen.
 		return balancer.PickResult{}, errInvalidHMACKeyCtxKeyType
 	}
 
 	if p.prefixToBackend == nil {
-		// First call to Pick with a new Picker. Iterate over the backends and
-		// build a map of derived prefix to backend SubConn.
+		// First call to Pick with a new Picker.
 		prefixToBackend := make(map[string]balancer.SubConn)
 		for sc, scInfo := range p.backends {
 			scPrefix := nonce.DerivePrefix(scInfo.Address.Addr, hmacKey)
@@ -107,21 +103,18 @@ func (p *Picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 	// Get the destination prefix from the RPC context.
 	destPrefixVal := info.Ctx.Value(nonce.PrefixCtxKey{})
 	if destPrefixVal == nil {
-		// This should never happen unless the client failed to set the prefix
-		// in the RPC context.
+		// This should never happen.
 		return balancer.PickResult{}, errMissingPrefixCtxKey
 	}
 	destPrefix, ok := destPrefixVal.(string)
 	if !ok {
-		// This should never happen unless the client set the prefix in the RPC
-		// context with the wrong type.
+		// This should never happen.
 		return balancer.PickResult{}, errInvalidPrefixCtxKeyType
 	}
 
 	sc, ok := p.prefixToBackend[destPrefix]
 	if !ok {
-		// No backend SubConn was found for the destination prefix. Return an
-		// error so the client can retry with a new nonce.
+		// No backend SubConn was found for the destination prefix.
 		return balancer.PickResult{}, ErrNoBackendsMatchPrefix.Err()
 	}
 	return balancer.PickResult{SubConn: sc}, nil

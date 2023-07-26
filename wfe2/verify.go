@@ -212,7 +212,6 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSMissingNonce"}).Inc()
 		return probs.BadNonce("JWS has no anti-replay nonce")
 	}
-	var noBackend bool
 	var valid bool
 	var err error
 	if wfe.noncePrefixMap == nil {
@@ -241,7 +240,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 			// this WFE. As this is a transient failure, the client should retry
 			// their request with a fresh nonce.
 			resp = &noncepb.ValidMessage{Valid: false}
-			noBackend = true
+			wfe.stats.nonceNoBackendCount.Inc()
 		}
 		valid = resp.Valid
 	} else {
@@ -260,11 +259,7 @@ func (wfe *WebFrontEndImpl) validNonce(ctx context.Context, header jose.Header) 
 		}
 	}
 	if !valid {
-		label := prometheus.Labels{"type": "JWSInvalidNonce"}
-		if noBackend {
-			label["reason"] = "nobackend"
-		}
-		wfe.stats.joseErrorCount.With(label).Inc()
+		wfe.stats.joseErrorCount.With(prometheus.Labels{"type": "JWSInvalidNonce"}).Inc()
 		return probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", header.Nonce))
 	}
 	return nil
