@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -31,6 +32,40 @@ func realRand(_ pkcs11.SessionHandle, length int) ([]byte, error) {
 	r := make([]byte, length)
 	_, err := rand.Read(r)
 	return r, err
+}
+
+func TestCheckOutputFileSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	err := checkOutputFile(dir+"/example", "foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCheckOutputFileEmpty(t *testing.T) {
+	err := checkOutputFile("", "foo")
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	if err.Error() != "outputs.foo is required" {
+		t.Fatalf("wrong error: %s", err)
+	}
+}
+
+func TestCheckOutputFileExists(t *testing.T) {
+	dir := t.TempDir()
+	filename := dir + "/example"
+	err := writeFile(filename, []byte("hi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = checkOutputFile(filename, "foo")
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("wrong error: %s", err)
+	}
 }
 
 func TestParseOID(t *testing.T) {
