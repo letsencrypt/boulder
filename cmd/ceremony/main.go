@@ -196,7 +196,7 @@ type crossCertConfig struct {
 	SkipLints   []string    `yaml:"skip-lints"`
 }
 
-func (csc crossCertConfig) validate(ct certType) error {
+func (csc crossCertConfig) validate() error {
 	err := csc.PKCS11.validate()
 	if err != nil {
 		return err
@@ -220,7 +220,7 @@ func (csc crossCertConfig) validate(ct certType) error {
 	}
 
 	// Certificate profile
-	err = csc.CertProfile.verifyProfile(ct)
+	err = csc.CertProfile.verifyProfile(crossCert)
 	if err != nil {
 		return err
 	}
@@ -523,7 +523,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
-	err = config.validate(ct)
+	err = config.validate()
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}

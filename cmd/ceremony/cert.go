@@ -166,24 +166,18 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 	}
 
-	if ct == intermediateCert {
+	if ct == intermediateCert || ct == crossCert {
 		if profile.CRLURL == "" {
 			return errors.New("crl-url is required for intermediates")
 		}
 		if profile.IssuerURL == "" {
 			return errors.New("issuer-url is required for intermediates")
 		}
+
+		// BR 7.1.2.10.5 CA Certificate Certificate Policies
+		// OID 2.23.140.1.2.1 is an anyPolicy
 		if len(profile.Policies) != 1 || profile.Policies[0].OID != "2.23.140.1.2.1" {
 			return errors.New("policy should be exactly BRs domain-validated for intermediates")
-		}
-	}
-
-	if ct == crossCert {
-		if profile.CRLURL == "" {
-			return errors.New("crl-url is required for cross-signed subordinates CAs")
-		}
-		if profile.IssuerURL == "" {
-			return errors.New("issuer-url is required for cross-signed subordiante CAs")
 		}
 	}
 
@@ -310,7 +304,18 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	}
 
 	switch ct {
-	// rootCert and crossCert do not get EKU or MaxPathZero
+	// rootCert and crossCert do not get EKU or MaxPathZero. This tool currently
+	// only produces "unrestricted" cross-signs.
+	// https://github.com/cabforum/servercert/blob/a0360b61e73476959220dc328e3b68d0224fa0b3/docs/BR.md#71223-cross-certified-subordinate-ca-extensions
+	//
+	// 7.1.2.1.2 Root CA Extensions
+	// Extension 	Presence 	Critical 	Description
+	// extKeyUsage 	MUST NOT 	N 	-
+	//
+	// 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
+	// Extension 	Presence 	Critical 	Description
+	// extKeyUsage 	SHOULD	 	N 			See Section 7.1.2.2.4
+	//
 	case ocspCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
 		// ASN.1 NULL is 0x05, 0x00
