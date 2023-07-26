@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/sha256"
 	"crypto/x509"
@@ -375,7 +376,7 @@ func issueLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey
 		return nil, err
 	}
 
-	err = kp.GoodKey(nil, lintCert.PublicKey)
+	err = kp.GoodKey(context.Background(), lintCert.PublicKey)
 	if err != nil {
 		return nil, err
 	}
@@ -403,7 +404,7 @@ func pubLoadAndDecode(PublicKeyPath string) ([]byte, any, error) {
 		return nil, nil, fmt.Errorf("failed to parse public key: %s", err)
 	}
 
-	err = kp.GoodKey(nil, pub)
+	err = kp.GoodKey(context.Background(), pub)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -455,7 +456,7 @@ func loadCert(filename string) (cert *x509.Certificate, err error) {
 	}
 	cert, err = x509.ParseCertificate(block.Bytes)
 
-	goodkeyErr := kp.GoodKey(nil, cert.PublicKey)
+	goodkeyErr := kp.GoodKey(context.Background(), cert.PublicKey)
 	if goodkeyErr != nil {
 		return nil, goodkeyErr
 	}
