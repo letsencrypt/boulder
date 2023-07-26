@@ -1,0 +1,27 @@
+ceremony-type: cross-certificate
+pkcs11:
+    module: /usr/lib/softhsm/libsofthsm2.so
+    pin: 1234
+    signing-key-slot: {{ .SlotID}}
+    signing-key-label: root signing key (ecdsa)
+inputs:
+    public-key-path: /hierarchy/intermediate-signing-pub-ecdsa.pem
+    issuer-certificate-path: /hierarchy/root-cert-ecdsa.pem
+    certificate-to-cross-sign-path: {{ .InputCertPath }}
+outputs:
+    certificate-path: {{ .OutputCertPath }}
+certificate-profile:
+    signature-algorithm: ECDSAWithSHA384
+    common-name: {{ .CommonName }}
+    organization: good guys
+    country: US
+    not-before: 2020-01-01 12:00:00
+    not-after: 2040-01-01 12:00:00
+    crl-url:  http://ecdsa.example.com/crl
+    issuer-url:  http://ecdsa.example.com/cert
+    policies:
+        - oid: 2.23.140.1.2.1
+    key-usages:
+        - Digital Signature
+        - Cert Sign
+        - CRL Sign

@@ -154,6 +154,52 @@ func main() {
 	err = genCert(ecdsaTmpIntermediateB)
 	cmd.FailOnError(err, "failed to generate ECDSA intermediate cert")
 
+	// Create the A cross-signed intermediate ceremony config files with the
+	// root signing key slots and IDs
+	rsaTmpCrossIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-rsa.yaml", map[string]string{
+		"SlotID":         rsaRootKeySlot,
+		"InputCertPath":  "/hierarchy/intermediate-cert-rsa-a.pem",
+		"OutputCertPath": "/hierarchy/intermediate-cross-cert-rsa-a.pem",
+		"CommonName":     "CA intermediate (RSA) A",
+	})
+	cmd.FailOnError(err, "failed to rewrite RSA cross-signed intermediate cert config with key ID")
+	ecdsaTmpCrossIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-ecdsa.yaml", map[string]string{
+		"SlotID":         ecdsaRootKeySlot,
+		"InputCertPath":  "/hierarchy/intermediate-cert-ecdsa-a.pem",
+		"OutputCertPath": "/hierarchy/intermediate-cross-cert-ecdsa-a.pem",
+		"CommonName":     "CA intermediate (ECDSA) A",
+	})
+	cmd.FailOnError(err, "failed to rewrite ECDSA intermediate cert config with key ID")
+
+	// Create the A cross-signed intermediate certificates
+	err = genCert(rsaTmpCrossIntermediateA)
+	cmd.FailOnError(err, "failed to generate RSA cross-signed intermediate cert")
+	err = genCert(ecdsaTmpCrossIntermediateA)
+	cmd.FailOnError(err, "failed to generate ECDSA cross-signed intermediate cert")
+
+	// Create the B cross-signed intermediate ceremony config files with the
+	// root signing key slots and IDs
+	rsaTmpCrossIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-rsa.yaml", map[string]string{
+		"SlotID":         rsaRootKeySlot,
+		"InputCertPath":  "/hierarchy/intermediate-cert-rsa-a.pem",
+		"OutputCertPath": "/hierarchy/intermediate-cross-cert-rsa-b.pem",
+		"CommonName":     "CA intermediate (RSA) B",
+	})
+	cmd.FailOnError(err, "failed to rewrite RSA cross-signed intermediate cert config with key ID")
+	ecdsaTmpCrossIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-ecdsa.yaml", map[string]string{
+		"SlotID":         ecdsaRootKeySlot,
+		"InputCertPath":  "/hierarchy/intermediate-cert-ecdsa-b.pem",
+		"OutputCertPath": "/hierarchy/intermediate-cross-cert-ecdsa-b.pem",
+		"CommonName":     "CA intermediate (ECDSA) B",
+	})
+	cmd.FailOnError(err, "failed to rewrite ECDSA cross-signed intermediate cert config with key ID")
+
+	// Create the B cross-signed intermediate certificates
+	err = genCert(rsaTmpCrossIntermediateB)
+	cmd.FailOnError(err, "failed to generate RSA cross-signed intermediate cert")
+	err = genCert(ecdsaTmpCrossIntermediateB)
+	cmd.FailOnError(err, "failed to generate ECDSA cross-signed intermediate cert")
+
 	// Create CRLs stating that the intermediates are not revoked.
 	rsaTmpCRLConfig, err := rewriteConfig("test/cert-ceremonies/root-crl-rsa.yaml", map[string]string{
 		"SlotID": rsaRootKeySlot,
