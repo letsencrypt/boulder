@@ -327,7 +327,7 @@ func TestVerifyProfile(t *testing.T) {
 				OCSPURL:            "g",
 			},
 			certType:    intermediateCert,
-			expectedErr: "crl-url is required for intermediates",
+			expectedErr: "crl-url is required for subordinate CAs",
 		},
 		{
 			profile: certProfile{
@@ -341,7 +341,7 @@ func TestVerifyProfile(t *testing.T) {
 				CRLURL:             "h",
 			},
 			certType:    intermediateCert,
-			expectedErr: "issuer-url is required for intermediates",
+			expectedErr: "issuer-url is required for subordinate CAs",
 		},
 		{
 			profile: certProfile{
@@ -356,7 +356,7 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "i",
 			},
 			certType:    intermediateCert,
-			expectedErr: "policy should be exactly BRs domain-validated for intermediates",
+			expectedErr: "policy should be exactly BRs domain-validated for subordinate CAs",
 		},
 		{
 			profile: certProfile{
