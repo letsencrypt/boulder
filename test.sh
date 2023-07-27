@@ -248,11 +248,11 @@ STAGE="start"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Start Test"
   python3 start.py &
-  for I in $(seq 1 100); do
+  for I in {1..115}; do
     sleep 1
-    curl -s http://localhost:4001/directory && break
+    curl -s http://localhost:4001/directory && echo "Boulder took ${I} seconds to come up" && break
   done
-  if [[ "$I" = 100 ]]; then
+  if [ "${I}" -eq 115 ]; then
     echo "Boulder did not come up after ./start.py."
     exit 1
   fi
