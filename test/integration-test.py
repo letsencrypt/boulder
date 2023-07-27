@@ -43,7 +43,7 @@ def run_go_tests(filterPattern=None):
     cmdLine = ["go", "test"]
     if filterPattern is not None and filterPattern != "":
         cmdLine = cmdLine + ["--test.run", filterPattern]
-    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-v", "-race", "./test/integration"]
+    cmdLine = cmdLine + ["-tags", "integration", "-count=1", "-race", "./test/integration"]
     subprocess.check_call(cmdLine, stderr=subprocess.STDOUT)
 
 exit_status = 1

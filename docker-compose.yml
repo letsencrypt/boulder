@@ -100,8 +100,6 @@ services:
         ipv4_address: 10.33.33.3
 
   bconsul:
-    ports:
-      - 8500:8500
     image: hashicorp/consul:1.14.2
     volumes:
      - ./test/:/test/:cached
