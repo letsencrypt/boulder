@@ -168,16 +168,16 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 
 	if ct == intermediateCert || ct == crossCert {
 		if profile.CRLURL == "" {
-			return errors.New("crl-url is required for intermediates")
+			return errors.New("crl-url is required for subordinate CAs")
 		}
 		if profile.IssuerURL == "" {
-			return errors.New("issuer-url is required for intermediates")
+			return errors.New("issuer-url is required for subordinate CAs")
 		}
 
 		// BR 7.1.2.10.5 CA Certificate Certificate Policies
 		// OID 2.23.140.1.2.1 is an anyPolicy
 		if len(profile.Policies) != 1 || profile.Policies[0].OID != "2.23.140.1.2.1" {
-			return errors.New("policy should be exactly BRs domain-validated for intermediates")
+			return errors.New("policy should be exactly BRs domain-validated for subordinate CAs")
 		}
 	}
 
