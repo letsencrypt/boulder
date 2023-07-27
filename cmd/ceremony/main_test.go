@@ -500,7 +500,7 @@ func TestCrossCertConfigValidate(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.config.validate(crossCert)
+			err := tc.config.validate()
 			if err != nil && err.Error() != tc.expectedError {
 				t.Fatalf("Unexpected error, wanted: %q, got: %q", tc.expectedError, err)
 			} else if err == nil && tc.expectedError != "" {
