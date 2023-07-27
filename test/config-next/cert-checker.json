@@ -20,6 +20,7 @@
 		],
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
+			"CertCheckerRequiresCorrespondence": true,
 			"CertCheckerChecksValidations": true,
 			"CertCheckerRequiresValidations": true
 		}

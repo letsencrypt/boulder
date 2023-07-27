@@ -35,6 +35,7 @@ import (
 	_ "github.com/letsencrypt/boulder/linter"
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/policy"
+	"github.com/letsencrypt/boulder/precert"
 	"github.com/letsencrypt/boulder/sa"
 )
 
@@ -87,13 +88,19 @@ type reportEntry struct {
 // out the saDbMap implementation.
 type certDB interface {
 	Select(ctx context.Context, i interface{}, query string, args ...interface{}) ([]interface{}, error)
+	SelectOne(ctx context.Context, i interface{}, query string, args ...interface{}) error
 	SelectNullInt(ctx context.Context, query string, args ...interface{}) (sql.NullInt64, error)
 }
+
+// A function that looks up a precertificate by serial and returns its DER bytes. Used for
+// mocking in tests.
+type precertGetter func(context.Context, string) ([]byte, error)
 
 type certChecker struct {
 	pa                          core.PolicyAuthority
 	kp                          goodkey.KeyPolicy
 	dbMap                       certDB
+	getPrecert                  precertGetter
 	certs                       chan core.Certificate
 	clock                       clock.Clock
 	rMu                         *sync.Mutex
@@ -111,10 +118,18 @@ func newChecker(saDbMap certDB,
 	avd map[time.Duration]bool,
 	logger blog.Logger,
 ) certChecker {
+	precertGetter := func(ctx context.Context, serial string) ([]byte, error) {
+		precertPb, err := sa.SelectPrecertificate(ctx, saDbMap, serial)
+		if err != nil {
+			return nil, err
+		}
+		return precertPb.DER, nil
+	}
 	return certChecker{
 		pa:                          pa,
 		kp:                          kp,
 		dbMap:                       saDbMap,
+		getPrecert:                  precertGetter,
 		certs:                       make(chan core.Certificate, batchSize),
 		rMu:                         new(sync.Mutex),
 		clock:                       clk,
@@ -391,6 +406,20 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		err = c.kp.GoodKey(ctx, p.PublicKey)
 		if err != nil {
 			problems = append(problems, fmt.Sprintf("Key Policy isn't willing to issue for public key: %s", err))
+		}
+
+		if features.Enabled(features.CertCheckerRequiresCorrespondence) {
+			precertDER, err := c.getPrecert(ctx, cert.Serial)
+			if err != nil {
+				problems = append(problems,
+					fmt.Sprintf("fetching linting precertificate for %s: %s", cert.Serial, err))
+			} else {
+				err = precert.Correspond(precertDER, cert.DER)
+				if err != nil {
+					problems = append(problems,
+						fmt.Sprintf("checking correspondence for %s: %s", cert.Serial, err))
+				}
+			}
 		}
 
 		if features.Enabled(features.CertCheckerChecksValidations) {

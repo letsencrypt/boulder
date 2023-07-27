@@ -12,6 +12,7 @@ import (
 	"database/sql"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
 	"log"
 	"math/big"
 	mrand "math/rand"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
+	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/goodkey/sagoodkey"
 	blog "github.com/letsencrypt/boulder/log"
@@ -400,6 +402,10 @@ func (db mismatchedCountDB) Select(_ context.Context, output interface{}, _ stri
 	return nil, nil
 }
 
+func (db mismatchedCountDB) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
+	return errors.New("unimplemented")
+}
+
 /*
  * In Boulder #2004[0] we identified that there is a race in `getCerts`
  * between the first call to `SelectOne` to identify how many rows there are,
@@ -605,4 +611,45 @@ func TestIgnoredLint(t *testing.T) {
 		"e_scts_from_same_operator":                true,
 	})
 	test.AssertEquals(t, len(problems), 0)
+}
+
+func TestPrecertCorrespond(t *testing.T) {
+	err := features.Set(map[string]bool{"CertCheckerRequiresCorrespondence": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checker := newChecker(nil, clock.New(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
+	checker.getPrecert = func(_ context.Context, _ string) ([]byte, error) {
+		return []byte("hello"), nil
+	}
+	testKey, _ := rsa.GenerateKey(rand.Reader, 2048)
+	expiry := time.Now().AddDate(0, 0, 1)
+	serial := big.NewInt(1337)
+	rawCert := x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "example.com",
+		},
+		NotAfter:     expiry,
+		DNSNames:     []string{"example-a.com"},
+		SerialNumber: serial,
+	}
+	certDer, _ := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
+	cert := core.Certificate{
+		Serial:  core.SerialToString(serial),
+		Digest:  core.Fingerprint256(certDer),
+		DER:     certDer,
+		Issued:  time.Now(),
+		Expires: expiry,
+	}
+	_, problems := checker.checkCert(context.Background(), cert, nil)
+	if len(problems) == 0 {
+		t.Errorf("expected precert correspondence problem")
+	}
+	// Ensure that at least one of the problems was related to checking correspondence
+	for _, p := range problems {
+		if strings.Contains(p, "checking correspondence for") {
+			return
+		}
+	}
+	t.Fatalf("expected precert correspondence problem, but got: %v", problems)
 }
