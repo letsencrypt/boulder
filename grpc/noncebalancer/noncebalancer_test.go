@@ -80,7 +80,7 @@ func TestPickerNoMatchingSubConnAvailable(t *testing.T) {
 	info := balancer.PickInfo{Ctx: testCtx}
 
 	gotPick, err := p.Pick(info)
-	test.AssertErrorIs(t, err, balancer.ErrNoSubConnAvailable)
+	test.AssertErrorIs(t, err, ErrNoBackendsMatchPrefix.Err())
 	test.AssertNil(t, gotPick.SubConn, "subConn should be nil")
 }
 
