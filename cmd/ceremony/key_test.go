@@ -167,7 +167,7 @@ func TestLoadKey(t *testing.T) {
 	_, _, err = loadKey("../../test/hierarchy/int-e1.key.pem")
 	test.AssertError(t, err, "should have failed trying to parse a private key")
 
-	_, _, err = loadKey("/path/that/wont/exist/ever")
+	_, _, err = loadKey("/path/that/will/not/ever/exist/ever")
 	test.AssertError(t, err, "should have failed opening public key at non-existent path")
 	test.AssertErrorIs(t, err, fs.ErrNotExist)
 

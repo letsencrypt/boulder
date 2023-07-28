@@ -588,14 +588,17 @@ func TestGenerateCSR(t *testing.T) {
 }
 
 func TestLoadCert(t *testing.T) {
-	_, _, err := loadCert("../../test/hierarchy/int-e1.cert.pem")
+	_, err := loadCert("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "should not have errored")
 
-	_, _, err = loadCert("/path/that/wont/exist/ever")
+	_, err = loadCert("/path/that/will/not/ever/exist/ever")
 	test.AssertError(t, err, "should have failed opening certificate at non-existent path")
 	test.AssertErrorIs(t, err, fs.ErrNotExist)
 
-	_, _, err = loadCert("../../test/hierarchy/int-e1.key.pem")
+	_, err = loadCert("../../test/hierarchy/int-e1.key.pem")
+	test.AssertError(t, err, "should have failed when trying to parse a private key")
+
+	_, err = loadCert("../../test/test-root.pubkey.pem")
 	test.AssertError(t, err, "should have failed when trying to parse a public key")
 }
 

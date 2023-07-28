@@ -479,7 +479,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return err
 	}
 
-	issuer, _, err := loadCert(config.Inputs.IssuerCertificatePath)
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
@@ -533,12 +533,12 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return err
 	}
 
-	issuer, _, err := loadCert(config.Inputs.IssuerCertificatePath)
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 
-	toBeCrossSigned, _, err := loadCert(config.Inputs.CertificateToCrossSignPath)
+	toBeCrossSigned, err := loadCert(config.Inputs.CertificateToCrossSignPath)
 	if err != nil {
 		return fmt.Errorf("failed to load toBeCrossSigned certificate %q: %s", config.Inputs.CertificateToCrossSignPath, err)
 	}
@@ -674,18 +674,18 @@ func ocspRespCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	cert, _, err := loadCert(config.Inputs.CertificatePath)
+	cert, err := loadCert(config.Inputs.CertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load certificate %q: %s", config.Inputs.CertificatePath, err)
 	}
-	issuer, _, err := loadCert(config.Inputs.IssuerCertificatePath)
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
 	var signer crypto.Signer
 	var delegatedIssuer *x509.Certificate
 	if config.Inputs.DelegatedIssuerCertificatePath != "" {
-		delegatedIssuer, _, err = loadCert(config.Inputs.DelegatedIssuerCertificatePath)
+		delegatedIssuer, err = loadCert(config.Inputs.DelegatedIssuerCertificatePath)
 		if err != nil {
 			return fmt.Errorf("failed to load delegated issuer certificate %q: %s", config.Inputs.DelegatedIssuerCertificatePath, err)
 		}
@@ -744,7 +744,7 @@ func crlCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	issuer, _, err := loadCert(config.Inputs.IssuerCertificatePath)
+	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
@@ -764,7 +764,7 @@ func crlCeremony(configBytes []byte) error {
 
 	var revokedCertificates []crl_x509.RevokedCertificate
 	for _, rc := range config.CRLProfile.RevokedCertificates {
-		cert, _, err := loadCert(rc.CertificatePath)
+		cert, err := loadCert(rc.CertificatePath)
 		if err != nil {
 			return fmt.Errorf("failed to load revoked certificate %q: %s", rc.CertificatePath, err)
 		}

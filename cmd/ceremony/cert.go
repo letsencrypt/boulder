@@ -421,26 +421,26 @@ func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer
 
 // loadCert loads a PEM certificate specified by filename or returns an error.
 // The public key from the loaded certificate is checked by the GoodKey package.
-func loadCert(filename string) (*x509.Certificate, []byte, error) {
+func loadCert(filename string) (*x509.Certificate, error) {
 	certPEM, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	log.Printf("Loaded certificate from %s\n", filename)
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
-		return nil, nil, fmt.Errorf("No data in cert PEM file %s", filename)
+		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	goodkeyErr := kp.GoodKey(context.Background(), cert.PublicKey)
 	if goodkeyErr != nil {
-		return nil, nil, goodkeyErr
+		return nil, goodkeyErr
 	}
 
-	return cert, block.Bytes, nil
+	return cert, nil
 }
 
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
