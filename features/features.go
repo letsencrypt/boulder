@@ -52,6 +52,12 @@ const (
 	// authorizations.
 	CertCheckerRequiresValidations
 
+	// CertCheckerRequiresCorrespondence enables an extra query for each certificate
+	// checked, to find the linting precertificate in the `precertificates` table.
+	// It then checks that the final certificate "corresponds" to the precertificate
+	// using `precert.Correspond`.
+	CertCheckerRequiresCorrespondence
+
 	// AsyncFinalize enables the RA to return approximately immediately from
 	// requests to finalize orders. This allows us to take longer getting SCTs,
 	// issuing certs, and updating the database; it indirectly reduces the number
@@ -75,23 +81,24 @@ const (
 
 // List of features and their default value, protected by fMu
 var features = map[FeatureFlag]bool{
-	unused:                         false,
-	CAAValidationMethods:           false,
-	CAAAccountURI:                  false,
-	EnforceMultiVA:                 false,
-	MultiVAFullResults:             false,
-	StoreRevokerInfo:               false,
-	ECDSAForAll:                    false,
-	ServeRenewalInfo:               false,
-	AllowUnrecognizedFeatures:      false,
-	ROCSPStage6:                    false,
-	ROCSPStage7:                    false,
-	ExpirationMailerUsesJoin:       false,
-	CertCheckerChecksValidations:   false,
-	CertCheckerRequiresValidations: false,
-	AsyncFinalize:                  false,
-	RequireCommonName:              true,
-	LeaseCRLShards:                 false,
+	unused:                            false,
+	CAAValidationMethods:              false,
+	CAAAccountURI:                     false,
+	EnforceMultiVA:                    false,
+	MultiVAFullResults:                false,
+	StoreRevokerInfo:                  false,
+	ECDSAForAll:                       false,
+	ServeRenewalInfo:                  false,
+	AllowUnrecognizedFeatures:         false,
+	ROCSPStage6:                       false,
+	ROCSPStage7:                       false,
+	ExpirationMailerUsesJoin:          false,
+	CertCheckerChecksValidations:      false,
+	CertCheckerRequiresValidations:    false,
+	CertCheckerRequiresCorrespondence: false,
+	AsyncFinalize:                     false,
+	RequireCommonName:                 true,
+	LeaseCRLShards:                    false,
 
 	StoreLintingCertificateInsteadOfPrecertificate: false,
 }
