@@ -306,6 +306,76 @@ func TestIntermediateConfigValidate(t *testing.T) {
 			expectedError: "not-before is required",
 		},
 		{
+			name: "too many policy OIDs",
+			config: intermediateConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{{OID: "2.23.140.1.2.1"}, {OID: "6.6.6"}},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policy should be exactly BRs domain-validated for subordinate CAs",
+		},
+		{
+			name: "too few policy OIDs",
+			config: intermediateConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					PublicKeyPath         string `yaml:"public-key-path"`
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					PublicKeyPath:         "path",
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CertificatePath string `yaml:"certificate-path"`
+				}{
+					CertificatePath: "path",
+				},
+				CertProfile: certProfile{
+					NotBefore:          "a",
+					NotAfter:           "b",
+					SignatureAlgorithm: "c",
+					CommonName:         "d",
+					Organization:       "e",
+					Country:            "f",
+					OCSPURL:            "g",
+					CRLURL:             "h",
+					IssuerURL:          "i",
+					Policies:           []policyInfoConfig{},
+				},
+				SkipLints: []string{},
+			},
+			expectedError: "policy should be exactly BRs domain-validated for subordinate CAs",
+		},
+		{
 			name: "good config",
 			config: intermediateConfig{
 				PKCS11: PKCS11SigningConfig{

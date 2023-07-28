@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"io/fs"
 	"math/big"
 	"os"
 	"path"
@@ -157,4 +158,19 @@ func TestGenerateKeySlotHasSomethingWithDifferentLabel(t *testing.T) {
 		ECDSACurve: "P-256",
 	})
 	test.AssertNotError(t, err, "expected success even though there was an object with a different label")
+}
+
+func TestLoadKey(t *testing.T) {
+	_, _, err := loadKey("../../test/test-root.pubkey.pem")
+	test.AssertNotError(t, err, "should not have errored")
+
+	_, _, err = loadKey("../../test/hierarchy/int-e1.key.pem")
+	test.AssertError(t, err, "should have failed trying to parse a private key")
+
+	_, _, err = loadKey("/path/that/wont/exist/ever")
+	test.AssertError(t, err, "should have failed opening public key at non-existent path")
+	test.AssertErrorIs(t, err, fs.ErrNotExist)
+
+	_, _, err = loadKey("../../test/hierarchy/int-e1.cert.pem")
+	test.AssertError(t, err, "should have failed when trying to parse a certificate")
 }

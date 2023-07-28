@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 	"testing"
 
@@ -94,7 +95,7 @@ func TestMakeSubject(t *testing.T) {
 	test.AssertDeepEquals(t, profile.Subject(), expectedSubject)
 }
 
-func TestMakeTemplate(t *testing.T) {
+func TestMakeTemplateRoot(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
 	profile := &certProfile{}
 	randReader := newRandReader(s)
@@ -181,8 +182,8 @@ func TestMakeTemplateCrossCertificate(t *testing.T) {
 		OCSPURL:            "ocsp",
 		CRLURL:             "crl",
 		IssuerURL:          "issuer",
-		NotAfter:           "2018-05-18 11:31:00",
-		NotBefore:          "2018-05-18 11:31:00",
+		NotAfter:           "2020-10-10 11:31:00",
+		NotBefore:          "2020-10-10 11:31:00",
 	}
 
 	ctx.GenerateRandomFunc = realRand
@@ -263,19 +264,19 @@ func TestMakeTemplateCRL(t *testing.T) {
 func TestVerifyProfile(t *testing.T) {
 	for _, tc := range []struct {
 		profile     certProfile
-		certType    certType
+		certType    []certType
 		expectedErr string
 	}{
 		{
 			profile:     certProfile{},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "not-before is required",
 		},
 		{
 			profile: certProfile{
 				NotBefore: "a",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "not-after is required",
 		},
 		{
@@ -283,7 +284,7 @@ func TestVerifyProfile(t *testing.T) {
 				NotBefore: "a",
 				NotAfter:  "b",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "signature-algorithm is required",
 		},
 		{
@@ -292,7 +293,7 @@ func TestVerifyProfile(t *testing.T) {
 				NotAfter:           "b",
 				SignatureAlgorithm: "c",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "common-name is required",
 		},
 		{
@@ -302,7 +303,7 @@ func TestVerifyProfile(t *testing.T) {
 				SignatureAlgorithm: "c",
 				CommonName:         "d",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "organization is required",
 		},
 		{
@@ -313,7 +314,7 @@ func TestVerifyProfile(t *testing.T) {
 				CommonName:         "d",
 				Organization:       "e",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "country is required",
 		},
 		{
@@ -326,7 +327,7 @@ func TestVerifyProfile(t *testing.T) {
 				Country:            "f",
 				OCSPURL:            "g",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "crl-url is required for subordinate CAs",
 		},
 		{
@@ -340,7 +341,7 @@ func TestVerifyProfile(t *testing.T) {
 				OCSPURL:            "g",
 				CRLURL:             "h",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "issuer-url is required for subordinate CAs",
 		},
 		{
@@ -355,7 +356,23 @@ func TestVerifyProfile(t *testing.T) {
 				CRLURL:             "h",
 				IssuerURL:          "i",
 			},
-			certType:    intermediateCert,
+			certType:    []certType{intermediateCert, crossCert},
+			expectedErr: "policy should be exactly BRs domain-validated for subordinate CAs",
+		},
+		{
+			profile: certProfile{
+				NotBefore:          "a",
+				NotAfter:           "b",
+				SignatureAlgorithm: "c",
+				CommonName:         "d",
+				Organization:       "e",
+				Country:            "f",
+				OCSPURL:            "g",
+				CRLURL:             "h",
+				IssuerURL:          "i",
+				Policies:           []policyInfoConfig{{OID: "1.2.3"}, {OID: "4.5.6"}},
+			},
+			certType:    []certType{intermediateCert, crossCert},
 			expectedErr: "policy should be exactly BRs domain-validated for subordinate CAs",
 		},
 		{
@@ -367,7 +384,7 @@ func TestVerifyProfile(t *testing.T) {
 				Organization:       "e",
 				Country:            "f",
 			},
-			certType: rootCert,
+			certType: []certType{rootCert},
 		},
 		{
 			profile: certProfile{
@@ -380,7 +397,7 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "g",
 				KeyUsages:          []string{"j"},
 			},
-			certType:    ocspCert,
+			certType:    []certType{ocspCert},
 			expectedErr: "key-usages cannot be set for a delegated signer",
 		},
 		{
@@ -394,7 +411,7 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "g",
 				CRLURL:             "i",
 			},
-			certType:    ocspCert,
+			certType:    []certType{ocspCert},
 			expectedErr: "crl-url cannot be set for a delegated signer",
 		},
 		{
@@ -408,7 +425,7 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "g",
 				OCSPURL:            "h",
 			},
-			certType:    ocspCert,
+			certType:    []certType{ocspCert},
 			expectedErr: "ocsp-url cannot be set for a delegated signer",
 		},
 		{
@@ -421,7 +438,7 @@ func TestVerifyProfile(t *testing.T) {
 				Country:            "f",
 				IssuerURL:          "g",
 			},
-			certType: ocspCert,
+			certType: []certType{ocspCert},
 		},
 		{
 			profile: certProfile{
@@ -434,7 +451,7 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "g",
 				KeyUsages:          []string{"j"},
 			},
-			certType:    crlCert,
+			certType:    []certType{crlCert},
 			expectedErr: "key-usages cannot be set for a delegated signer",
 		},
 		{
@@ -448,7 +465,7 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "g",
 				CRLURL:             "i",
 			},
-			certType:    crlCert,
+			certType:    []certType{crlCert},
 			expectedErr: "crl-url cannot be set for a delegated signer",
 		},
 		{
@@ -462,7 +479,7 @@ func TestVerifyProfile(t *testing.T) {
 				IssuerURL:          "g",
 				OCSPURL:            "h",
 			},
-			certType:    crlCert,
+			certType:    []certType{crlCert},
 			expectedErr: "ocsp-url cannot be set for a delegated signer",
 		},
 		{
@@ -475,72 +492,75 @@ func TestVerifyProfile(t *testing.T) {
 				Country:            "f",
 				IssuerURL:          "g",
 			},
-			certType: crlCert,
+			certType: []certType{crlCert},
 		},
 		{
 			profile: certProfile{
 				NotBefore: "a",
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "not-before cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
 				NotAfter: "a",
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "not-after cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
 				SignatureAlgorithm: "a",
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "signature-algorithm cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
 				OCSPURL: "a",
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "ocsp-url cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
 				CRLURL: "a",
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "crl-url cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
 				IssuerURL: "a",
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "issuer-url cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
 				Policies: []policyInfoConfig{{OID: "1.2.3"}},
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "policies cannot be set for a CSR",
 		},
 		{
 			profile: certProfile{
 				KeyUsages: []string{"a"},
 			},
-			certType:    requestCert,
+			certType:    []certType{requestCert},
 			expectedErr: "key-usages cannot be set for a CSR",
 		},
 	} {
-		err := tc.profile.verifyProfile(tc.certType)
-		if err != nil {
-			if tc.expectedErr != err.Error() {
-				t.Fatalf("Expected %q, got %q", tc.expectedErr, err.Error())
+		for _, ct := range tc.certType {
+			fmt.Println(ct)
+			err := tc.profile.verifyProfile(ct)
+			if err != nil {
+				if tc.expectedErr != err.Error() {
+					t.Fatalf("Expected %q, got %q", tc.expectedErr, err.Error())
+				}
+			} else if tc.expectedErr != "" {
+				t.Fatalf("verifyProfile didn't fail, expected %q", tc.expectedErr)
 			}
-		} else if tc.expectedErr != "" {
-			t.Fatalf("verifyProfile didn't fail, expected %q", tc.expectedErr)
 		}
 	}
 }
@@ -566,3 +586,44 @@ func TestGenerateCSR(t *testing.T) {
 	test.AssertEquals(t, csr.Subject.String(), fmt.Sprintf("CN=%s,O=%s,C=%s",
 		profile.CommonName, profile.Organization, profile.Country))
 }
+
+func TestLoadCert(t *testing.T) {
+	_, _, err := loadCert("../../test/hierarchy/int-e1.cert.pem")
+	test.AssertNotError(t, err, "should not have errored")
+
+	_, _, err = loadCert("/path/that/wont/exist/ever")
+	test.AssertError(t, err, "should have failed opening certificate at non-existent path")
+	test.AssertErrorIs(t, err, fs.ErrNotExist)
+
+	_, _, err = loadCert("../../test/hierarchy/int-e1.key.pem")
+	test.AssertError(t, err, "should have failed when trying to parse a public key")
+}
+
+/*
+func TestIssueLintCert(t *testing.T) {
+	s, _ := pkcs11helpers.NewSessionWithMock()
+	randReader := newRandReader(s)
+	pubKey := samplePubkey()
+	profile := &certProfile{
+		SignatureAlgorithm: "SHA256WithRSA",
+		CommonName:         "common name",
+		Organization:       "organization",
+		Country:            "country",
+		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
+		OCSPURL:            "ocsp",
+		CRLURL:             "crl",
+		IssuerURL:          "issuer",
+		NotAfter:           "2020-10-10 11:31:00",
+		NotBefore:          "2020-10-10 11:31:00",
+	}
+
+	template, err := makeTemplate(randReader, profile, pubKey, rootCert)
+	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
+
+	signer, err := rsa.GenerateKey(rand.Reader, 1024)
+	test.AssertNotError(t, err, "failed to generate test key")
+
+	_, err = issueLintCert(template, template, pubKey, &wrappedSigner{signer}, []string{})
+	test.AssertNotError(t, err, "issueLintCert failed but should not have")
+}
+*/

@@ -389,34 +389,6 @@ func issueLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey
 	return lintCert, nil
 }
 
-// pubLoadAndDecode loads a PEM encoded certificate specified by filename and
-// returns the raw bytes, an interface containing an encoded public key, and an
-// error. The public key from the loaded certificate is checked by the GoodKey
-// package.
-func pubLoadAndDecode(PublicKeyPath string) ([]byte, any, error) {
-	pubPEMBytes, err := os.ReadFile(PublicKeyPath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read public key %q: %s", PublicKeyPath, err)
-	}
-
-	pubPEM, _ := pem.Decode(pubPEMBytes)
-	if pubPEM == nil {
-		return nil, nil, fmt.Errorf("failed to decode public key bytes")
-	}
-
-	pub, err := x509.ParsePKIXPublicKey(pubPEM.Bytes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse public key: %s", err)
-	}
-
-	err = kp.GoodKey(context.Background(), pub)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return pubPEM.Bytes, pub, nil
-}
-
 func equalPubKeys(a, b interface{}) bool {
 	aBytes, err := x509.MarshalPKIXPublicKey(a)
 	if err != nil {
@@ -449,24 +421,26 @@ func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer
 
 // loadCert loads a PEM certificate specified by filename or returns an error.
 // The public key from the loaded certificate is checked by the GoodKey package.
-func loadCert(filename string) (cert *x509.Certificate, err error) {
+func loadCert(filename string) (*x509.Certificate, []byte, error) {
 	certPEM, err := os.ReadFile(filename)
 	if err != nil {
-		return
+		return nil, nil, err
 	}
 	log.Printf("Loaded certificate from %s\n", filename)
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
-		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
+		return nil, nil, fmt.Errorf("No data in cert PEM file %s", filename)
 	}
-	cert, err = x509.ParseCertificate(block.Bytes)
-
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, nil, err
+	}
 	goodkeyErr := kp.GoodKey(context.Background(), cert.PublicKey)
 	if goodkeyErr != nil {
-		return nil, goodkeyErr
+		return nil, nil, goodkeyErr
 	}
 
-	return
+	return cert, block.Bytes, nil
 }
 
 func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {

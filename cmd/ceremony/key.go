@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/miekg/pkcs11"
@@ -81,4 +83,28 @@ func generateKey(session *pkcs11helpers.Session, label string, outputPath string
 	log.Printf("Public key written to %q\n", outputPath)
 
 	return &keyInfo{key: pubKey, der: der, id: keyID}, nil
+}
+
+// loadKey loads a PEM key specified by filename or returns an error.
+// The public key is checked by the GoodKey package.
+func loadKey(filename string) (crypto.PublicKey, []byte, error) {
+	keyPEM, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Printf("Loaded public key from %s\n", filename)
+	block, _ := pem.Decode(keyPEM)
+	if block == nil {
+		return nil, nil, fmt.Errorf("No data in cert PEM file %s", filename)
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	goodkeyErr := kp.GoodKey(context.Background(), key)
+	if goodkeyErr != nil {
+		return nil, nil, goodkeyErr
+	}
+
+	return key, block.Bytes, nil
 }
