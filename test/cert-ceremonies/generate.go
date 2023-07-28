@@ -155,19 +155,30 @@ func main() {
 	cmd.FailOnError(err, "failed to generate ECDSA intermediate cert")
 
 	// Create the A cross-signed intermediate ceremony config files with the
-	// root signing key slots and IDs
-	rsaTmpCrossIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-rsa.yaml", map[string]string{
-		"SlotID":         rsaRootKeySlot,
+	// root signing key slots and IDs. In this case, the issuer is an ECDSA
+	// root, but the subordinate is RSA.
+	rsaTmpCrossIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony.yaml", map[string]string{
+		"SlotID":         ecdsaRootKeySlot,
+		"RootAlgorithm":  "ecdsa",
+		"PublicKeyPath":  "/hierarchy/intermediate-signing-pub-rsa.pem",
+		"IssuerCertPath": "/hierarchy/root-cert-ecdsa.pem",
 		"InputCertPath":  "/hierarchy/intermediate-cert-rsa-a.pem",
 		"OutputCertPath": "/hierarchy/intermediate-cross-cert-rsa-a.pem",
 		"CommonName":     "CA intermediate (RSA) A",
+		"SigAlgorithm":   "ECDSAWithSHA384",
 	})
 	cmd.FailOnError(err, "failed to rewrite RSA cross-signed intermediate cert config with key ID")
-	ecdsaTmpCrossIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-ecdsa.yaml", map[string]string{
-		"SlotID":         ecdsaRootKeySlot,
+
+	// In this case, the issuer is an RSA root, but the subordinate is ECDSA.
+	ecdsaTmpCrossIntermediateA, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony.yaml", map[string]string{
+		"SlotID":         rsaRootKeySlot,
+		"RootAlgorithm":  "rsa",
+		"PublicKeyPath":  "/hierarchy/intermediate-signing-pub-ecdsa.pem",
+		"IssuerCertPath": "/hierarchy/root-cert-rsa.pem",
 		"InputCertPath":  "/hierarchy/intermediate-cert-ecdsa-a.pem",
 		"OutputCertPath": "/hierarchy/intermediate-cross-cert-ecdsa-a.pem",
 		"CommonName":     "CA intermediate (ECDSA) A",
+		"SigAlgorithm":   "SHA256WithRSA",
 	})
 	cmd.FailOnError(err, "failed to rewrite ECDSA intermediate cert config with key ID")
 
@@ -178,19 +189,30 @@ func main() {
 	cmd.FailOnError(err, "failed to generate ECDSA cross-signed intermediate cert A")
 
 	// Create the B cross-signed intermediate ceremony config files with the
-	// root signing key slots and IDs
-	rsaTmpCrossIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-rsa.yaml", map[string]string{
-		"SlotID":         rsaRootKeySlot,
+	// root signing key slots and IDs. In this case, the issuer is an ECDSA
+	// root, but the subordinate is RSA.
+	rsaTmpCrossIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony.yaml", map[string]string{
+		"SlotID":         ecdsaRootKeySlot,
+		"RootAlgorithm":  "ecdsa",
+		"PublicKeyPath":  "/hierarchy/intermediate-signing-pub-rsa.pem",
+		"IssuerCertPath": "/hierarchy/root-cert-ecdsa.pem",
 		"InputCertPath":  "/hierarchy/intermediate-cert-rsa-b.pem",
 		"OutputCertPath": "/hierarchy/intermediate-cross-cert-rsa-b.pem",
 		"CommonName":     "CA intermediate (RSA) B",
+		"SigAlgorithm":   "ECDSAWithSHA384",
 	})
 	cmd.FailOnError(err, "failed to rewrite RSA cross-signed intermediate cert config with key ID")
-	ecdsaTmpCrossIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony-ecdsa.yaml", map[string]string{
-		"SlotID":         ecdsaRootKeySlot,
+
+	// In this case, the issuer is an RSA root, but the subordinate is ECDSA.
+	ecdsaTmpCrossIntermediateB, err := rewriteConfig("test/cert-ceremonies/intermediate-cross-cert-ceremony.yaml", map[string]string{
+		"SlotID":         rsaRootKeySlot,
+		"RootAlgorithm":  "rsa",
+		"PublicKeyPath":  "/hierarchy/intermediate-signing-pub-ecdsa.pem",
+		"IssuerCertPath": "/hierarchy/root-cert-rsa.pem",
 		"InputCertPath":  "/hierarchy/intermediate-cert-ecdsa-b.pem",
 		"OutputCertPath": "/hierarchy/intermediate-cross-cert-ecdsa-b.pem",
 		"CommonName":     "CA intermediate (ECDSA) B",
+		"SigAlgorithm":   "SHA256WithRSA",
 	})
 	cmd.FailOnError(err, "failed to rewrite ECDSA cross-signed intermediate cert config with key ID")
 
