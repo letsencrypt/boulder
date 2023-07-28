@@ -24,7 +24,10 @@
 		"issuerCerts": [
 			"/hierarchy/intermediate-cert-rsa-a.pem",
 			"/hierarchy/intermediate-cert-rsa-b.pem",
-			"/hierarchy/intermediate-cert-ecdsa-a.pem"
+			"/hierarchy/intermediate-cert-ecdsa-a.pem",
+			"/hierarchy/intermediate-cross-cert-rsa-a.pem",
+			"/hierarchy/intermediate-cross-cert-rsa-b.pem",
+			"/hierarchy/intermediate-cross-cert-ecdsa-a.pem"
 		],
 		"numShards": 10,
 		"certificateLifetime": "2160h",

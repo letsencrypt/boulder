@@ -41,7 +41,10 @@
 		"issuerCerts": [
 			"/hierarchy/intermediate-cert-rsa-a.pem",
 			"/hierarchy/intermediate-cert-rsa-b.pem",
-			"/hierarchy/intermediate-cert-ecdsa-a.pem"
+			"/hierarchy/intermediate-cert-ecdsa-a.pem",
+			"/hierarchy/intermediate-cross-cert-rsa-a.pem",
+			"/hierarchy/intermediate-cross-cert-rsa-b.pem",
+			"/hierarchy/intermediate-cross-cert-ecdsa-a.pem"
 		],
 		"liveSigningPeriod": "60h",
 		"timeout": "4.9s",
