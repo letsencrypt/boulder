@@ -1,4 +1,4 @@
-package rocsp
+package redis
 
 import (
 	"strings"
@@ -25,7 +25,7 @@ func (mockPoolStatGetter) PoolStats() *redis.PoolStats {
 }
 
 func TestMetrics(t *testing.T) {
-	mets := newMetricsCollector(mockPoolStatGetter{},
+	mets := NewMetricsCollector(mockPoolStatGetter{},
 		prometheus.Labels{
 			"foo": "bar",
 		})
