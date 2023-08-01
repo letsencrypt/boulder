@@ -1,4 +1,4 @@
-name: Check changes in pull request
+name: Check PR for configuration changes
 
 on:
   pull_request:
@@ -7,6 +7,7 @@ on:
     - 'features/featureflag_string.go'
     - 'test/config-next/*.json'
     - 'test/config-next/*.yaml'
+    - 'test/config-next/*.yml'
 
 jobs:
   check-changes:
@@ -16,25 +17,26 @@ jobs:
         uses: actions/checkout@v2
       - name: Comment PR
         id: comment-pr
-        uses: actions/github-script@v5
+        uses: actions/github-script@v6
         with:
           script: |
             const commentMarker = '<!-- deployment_ticket_check -->';
-            const commentBody = `${commentMarker}\nPlease ensure there is a corresponding ticket for this PR to facilitate SRE in deployment.`;
+            const prAuthor = context.payload.pull_request.user.login;
+            const commentBody = `${commentMarker}\n@${prAuthor}, this PR appears to contain configuration changes. Please ensure that a corresponding deployment ticket has been filed with the new configuration values.\n`;
             const { owner, repo, number: issue_number } = context.issue;
 
-            // Get all issue comments
+            // Get all issue comments.
             const comments = await github.rest.issues.listComments({
               owner,
               repo,
               issue_number
             });
 
-            // Check if our comment already exists
+            // Check if our comment already exists.
             const ourComment = comments.data.find(c => c.body.includes(commentMarker));
 
             if (!ourComment) {
-              // If it doesn't exist, create it
+              // If it doesn't exist, create it.
               await github.rest.issues.createComment({
                 owner,
                 repo,
@@ -42,3 +44,4 @@ jobs:
                 body: commentBody
               });
             }
+          github-token: ${{ secrets.GITHUB_TOKEN }}
