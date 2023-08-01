@@ -25,12 +25,21 @@ jobs:
             const commentBody = `${commentMarker}\n@${prAuthor}, this PR appears to contain configuration changes. Please ensure that a corresponding deployment ticket has been filed with the new configuration values.\n`;
             const { owner, repo, number: issue_number } = context.issue;
 
-            // Get all issue comments.
+            // Define the JIRA issue number pattern.
+            const issueRegex = /IN-\d+/;
+
+            // Get PR body and all issue comments.
+            const prBody = context.payload.pull_request.body;
             const comments = await github.rest.issues.listComments({
               owner,
               repo,
               issue_number
             });
+
+            // Check if the PR body or any comment includes a JIRA issue number.
+            if (issueRegex.test(prBody) || comments.data.some(c => issueRegex.test(c.body))) {
+              return;
+            }
 
             // Check if our comment already exists.
             const ourComment = comments.data.find(c => c.body.includes(commentMarker));
