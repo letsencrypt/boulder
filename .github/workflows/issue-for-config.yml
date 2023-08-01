@@ -1,0 +1,44 @@
+name: Check changes in pull request
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+    - 'features/featureflag_string.go'
+    - 'test/config-next/*.json'
+    - 'test/config-next/*.yaml'
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Comment PR
+        id: comment-pr
+        uses: actions/github-script@v5
+        with:
+          script: |
+            const commentMarker = '<!-- deployment_ticket_check -->';
+            const commentBody = `${commentMarker}\nPlease ensure there is a corresponding ticket for this PR to facilitate SRE in deployment.`;
+            const { owner, repo, number: issue_number } = context.issue;
+
+            // Get all issue comments
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number
+            });
+
+            // Check if our comment already exists
+            const ourComment = comments.data.find(c => c.body.includes(commentMarker));
+
+            if (!ourComment) {
+              // If it doesn't exist, create it
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: commentBody
+              });
+            }
