@@ -24,6 +24,7 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -228,32 +229,39 @@ func (d *dnsResolver) watcher() {
 
 func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
 	var newAddrs []resolver.Address
+	var errs []error
 	for _, n := range d.names {
 		_, srvs, err := d.resolver.LookupSRV(d.ctx, n.service, "tcp", n.domain)
 		if err != nil {
 			err = handleDNSError(err, "SRV") // may become nil
-			return nil, err
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
 		}
 		for _, s := range srvs {
 			backendAddrs, err := d.resolver.LookupHost(d.ctx, s.Target)
 			if err != nil {
 				err = handleDNSError(err, "A") // may become nil
-				if err == nil {
-					// If there are other SRV records, look them up and ignore this
-					// one that does not exist.
+				if err != nil {
+					errs = append(errs, err)
 					continue
 				}
-				return nil, err
 			}
 			for _, a := range backendAddrs {
 				ip, ok := formatIP(a)
 				if !ok {
-					return nil, fmt.Errorf("srv: error parsing A record IP address %v", a)
+					errs = append(errs, fmt.Errorf("srv: error parsing A record IP address %v", a))
+					continue
 				}
 				addr := ip + ":" + strconv.Itoa(int(s.Port))
 				newAddrs = append(newAddrs, resolver.Address{Addr: addr, ServerName: s.Target})
 			}
 		}
+	}
+	// Only return an error if all lookups failed.
+	if len(errs) > 0 && len(newAddrs) == 0 {
+		return nil, errors.Join(errs...)
 	}
 	return newAddrs, nil
 }
