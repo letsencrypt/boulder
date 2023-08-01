@@ -44,13 +44,15 @@ jobs:
             // Check if our comment already exists.
             const ourComment = comments.data.find(c => c.body.includes(commentMarker));
 
-            if (!ourComment) {
-              // If it doesn't exist, create it.
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body: commentBody
-              });
+            if (ourComment) {
+              return;
             }
+
+            // Comment does not exist, post it.
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body: commentBody
+            });
           github-token: ${{ secrets.GITHUB_TOKEN }}
