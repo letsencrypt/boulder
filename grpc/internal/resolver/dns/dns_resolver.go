@@ -251,8 +251,7 @@ func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
 			for _, a := range backendAddrs {
 				ip, ok := formatIP(a)
 				if !ok {
-					err = fmt.Errorf("srv: error parsing A record IP address %v", a)
-					errs = append(errs, err)
+					errs = append(errs, fmt.Errorf("srv: error parsing A record IP address %v", a))
 					continue
 				}
 				addr := ip + ":" + strconv.Itoa(int(s.Port))
@@ -260,8 +259,9 @@ func (d *dnsResolver) lookupSRV() ([]resolver.Address, error) {
 			}
 		}
 	}
+	// Only return an error if all lookups failed.
 	if len(errs) > 0 && len(newAddrs) == 0 {
-		return newAddrs, errors.Join(errs...)
+		return nil, errors.Join(errs...)
 	}
 	return newAddrs, nil
 }

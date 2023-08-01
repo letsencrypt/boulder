@@ -37,7 +37,7 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
-        "caseThree": {
+		"caseThree": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookups": [
 				{
@@ -53,7 +53,7 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		},
-        "caseFour": {
+		"caseFour": {
 			"dnsAuthority": "consul.service.consul",
 			"srvLookups": [
 				{
@@ -69,5 +69,5 @@
 			"noWaitForReady": true,
 			"hostOverride": "nonce.boulder"
 		}
-    }
+	}
 }
