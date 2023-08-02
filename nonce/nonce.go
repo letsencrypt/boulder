@@ -38,13 +38,16 @@ import (
 const (
 	// PrefixLen is the character length of a nonce prefix.
 	PrefixLen = 8
+
 	// DeprecatedPrefixLen is the character length of a nonce prefix.
 	//
 	// DEPRECATED: Use PrefixLen instead.
 	// TODO(#6610): Remove once we've moved to derivable prefixes by default.
 	DeprecatedPrefixLen = 4
-	defaultMaxUsed      = 65536
-	nonceLen            = 32
+
+	// NonceLen is the character length of a nonce, excluding the prefix.
+	NonceLen       = 32
+	defaultMaxUsed = 65536
 )
 
 var errInvalidNonceLength = errors.New("invalid nonce length")
@@ -203,7 +206,7 @@ func (ns *NonceService) encrypt(counter int64) (string, error) {
 	copy(pt[pad:], ctr.Bytes())
 
 	// Encrypt
-	ret := make([]byte, nonceLen)
+	ret := make([]byte, NonceLen)
 	ct := ns.gcm.Seal(nil, nonce, pt, nil)
 	copy(ret, nonce[4:])
 	copy(ret[8:], ct)
@@ -228,7 +231,7 @@ func (ns *NonceService) decrypt(nonce string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if len(decoded) != nonceLen {
+	if len(decoded) != NonceLen {
 		return 0, errInvalidNonceLength
 	}
 

@@ -24,13 +24,14 @@ func _() {
 	_ = x[ExpirationMailerUsesJoin-13]
 	_ = x[CertCheckerChecksValidations-14]
 	_ = x[CertCheckerRequiresValidations-15]
-	_ = x[AsyncFinalize-16]
-	_ = x[RequireCommonName-17]
+	_ = x[CertCheckerRequiresCorrespondence-16]
+	_ = x[AsyncFinalize-17]
+	_ = x[RequireCommonName-18]
 }
 
-const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6ROCSPStage7StoreLintingCertificateInsteadOfPrecertificateCAAValidationMethodsCAAAccountURILeaseCRLShardsEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsAsyncFinalizeRequireCommonName"
+const _FeatureFlag_name = "unusedStoreRevokerInfoROCSPStage6ROCSPStage7StoreLintingCertificateInsteadOfPrecertificateCAAValidationMethodsCAAAccountURILeaseCRLShardsEnforceMultiVAMultiVAFullResultsECDSAForAllServeRenewalInfoAllowUnrecognizedFeaturesExpirationMailerUsesJoinCertCheckerChecksValidationsCertCheckerRequiresValidationsCertCheckerRequiresCorrespondenceAsyncFinalizeRequireCommonName"
 
-var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 44, 90, 110, 123, 137, 151, 169, 180, 196, 221, 245, 273, 303, 316, 333}
+var _FeatureFlag_index = [...]uint16{0, 6, 22, 33, 44, 90, 110, 123, 137, 151, 169, 180, 196, 221, 245, 273, 303, 336, 349, 366}
 
 func (i FeatureFlag) String() string {
 	if i < 0 || i >= FeatureFlag(len(_FeatureFlag_index)-1) {

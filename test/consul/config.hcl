@@ -348,3 +348,84 @@ services {
   port    = 9092
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
+
+//
+// The following services are used for testing the gRPC DNS resolver.
+//
+
+// CaseOne config will have 2 SRV records. The first will have 0 backends, the
+// second will have 1.
+services {
+  id      = "case1a"
+  name    = "case1a"
+  address = "10.77.77.77"
+  port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id       = "case1a-failing"
+      name     = "case1a-failing"
+      http     = "http://localhost:12345" // invalid url
+      method   = "GET"
+      interval = "2s"
+    }
+  ]
+}
+
+services {
+  id      = "case1b"
+  name    = "case1b"
+  address = "10.88.88.88"
+  port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+// CaseTwo config will have 2 SRV records. The first will not be configured in
+// Consul, the second will have 1 backend.
+services {
+  id      = "case2b"
+  name    = "case2b"
+  address = "10.88.88.88"
+  port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+}
+
+// CaseThree config will have 2 SRV records. Neither will be configured in
+// Consul.
+
+
+// CaseFour config will have 2 SRV records. Neither will have backends.
+services {
+  id      = "case4a"
+  name    = "case4a"
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  address = "10.77.77.77"
+  port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id       = "case4a-failing"
+      name     = "case4a-failing"
+      http     = "http://localhost:12345" // invalid url
+      method   = "GET"
+      interval = "2s"
+    }
+  ]
+}
+
+services {
+  id      = "case4b"
+  name    = "case4b"
+  address = "10.88.88.88"
+  port    = 9101
+  tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
+  checks = [
+    {
+      id       = "case4b-failing"
+      name     = "case4b-failing"
+      http     = "http://localhost:12345" // invalid url
+      method   = "GET"
+      interval = "2s"
+    }
+  ]
+}
