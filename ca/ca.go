@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/beeker1121/goque"
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	"github.com/jmhodges/clock"
@@ -58,20 +57,17 @@ type certificateAuthorityImpl struct {
 
 	// This is temporary, and will be used for testing and slow roll-out
 	// of ECDSA issuance, but will then be removed.
-	ecdsaAllowList     *ECDSAAllowList
-	prefix             int // Prepended to the serial number
-	validityPeriod     time.Duration
-	backdate           time.Duration
-	maxNames           int
-	keyPolicy          goodkey.KeyPolicy
-	orphanQueue        *goque.Queue
-	clk                clock.Clock
-	log                blog.Logger
-	signatureCount     *prometheus.CounterVec
-	orphanCount        *prometheus.CounterVec
-	adoptedOrphanCount *prometheus.CounterVec
-	signErrorCount     *prometheus.CounterVec
-	lintErrorCount     prometheus.Counter
+	ecdsaAllowList *ECDSAAllowList
+	prefix         int // Prepended to the serial number
+	validityPeriod time.Duration
+	backdate       time.Duration
+	maxNames       int
+	keyPolicy      goodkey.KeyPolicy
+	clk            clock.Clock
+	log            blog.Logger
+	signatureCount *prometheus.CounterVec
+	signErrorCount *prometheus.CounterVec
+	lintErrorCount prometheus.Counter
 }
 
 // makeIssuerMaps processes a list of issuers into a set of maps, mapping
@@ -107,7 +103,6 @@ func NewCertificateAuthorityImpl(
 	serialPrefix int,
 	maxNames int,
 	keyPolicy goodkey.KeyPolicy,
-	orphanQueue *goque.Queue,
 	logger blog.Logger,
 	stats prometheus.Registerer,
 	signatureCount *prometheus.CounterVec,
@@ -135,22 +130,6 @@ func NewCertificateAuthorityImpl(
 
 	issuers := makeIssuerMaps(boulderIssuers)
 
-	orphanCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "orphans",
-			Help: "Number of orphaned certificates labelled by type (precert, cert)",
-		},
-		[]string{"type"})
-	stats.MustRegister(orphanCount)
-
-	adoptedOrphanCount := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "adopted_orphans",
-			Help: "Number of orphaned certificates adopted from the orphan queue by type (precert, cert)",
-		},
-		[]string{"type"})
-	stats.MustRegister(adoptedOrphanCount)
-
 	lintErrorCount := prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "lint_errors",
@@ -159,23 +138,20 @@ func NewCertificateAuthorityImpl(
 	stats.MustRegister(lintErrorCount)
 
 	ca = &certificateAuthorityImpl{
-		sa:                 sa,
-		pa:                 pa,
-		issuers:            issuers,
-		validityPeriod:     certExpiry,
-		backdate:           certBackdate,
-		prefix:             serialPrefix,
-		maxNames:           maxNames,
-		keyPolicy:          keyPolicy,
-		orphanQueue:        orphanQueue,
-		log:                logger,
-		signatureCount:     signatureCount,
-		orphanCount:        orphanCount,
-		adoptedOrphanCount: adoptedOrphanCount,
-		signErrorCount:     signErrorCount,
-		lintErrorCount:     lintErrorCount,
-		clk:                clk,
-		ecdsaAllowList:     ecdsaAllowList,
+		sa:             sa,
+		pa:             pa,
+		issuers:        issuers,
+		validityPeriod: certExpiry,
+		backdate:       certBackdate,
+		prefix:         serialPrefix,
+		maxNames:       maxNames,
+		keyPolicy:      keyPolicy,
+		log:            logger,
+		signatureCount: signatureCount,
+		signErrorCount: signErrorCount,
+		lintErrorCount: lintErrorCount,
+		clk:            clk,
+		ecdsaAllowList: ecdsaAllowList,
 	}
 
 	return ca, nil
@@ -320,8 +296,14 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
 
-	err = ca.storeCertificate(ctx, req.RegistrationID, req.OrderID, precert.SerialNumber, certDER, int64(issuer.Cert.NameID()))
+	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
+		Der:    certDER,
+		RegID:  req.RegistrationID,
+		Issued: ca.clk.Now().UnixNano(),
+	})
 	if err != nil {
+		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
+			serialHex, hex.EncodeToString(certDER), int64(issuer.Cert.NameID()), req.RegistrationID, req.OrderID, err)
 		return nil, err
 	}
 
@@ -456,124 +438,4 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		serialHex, issueReq.RegistrationID, strings.Join(csr.DNSNames, ", "), hex.EncodeToString(certDER))
 
 	return certDER, issuer, nil
-}
-
-func (ca *certificateAuthorityImpl) storeCertificate(
-	ctx context.Context,
-	regID int64,
-	orderID int64,
-	serialBigInt *big.Int,
-	certDER []byte,
-	issuerID int64) error {
-	var err error
-	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  regID,
-		Issued: ca.clk.Now().UnixNano(),
-	})
-	if err != nil {
-		ca.orphanCount.With(prometheus.Labels{"type": "cert"}).Inc()
-		err = berrors.InternalServerError(err.Error())
-		// Note: This log line is parsed by cmd/orphan-finder. If you make any
-		// changes here, you should make sure they are reflected in orphan-finder.
-		ca.log.AuditErrf("Failed RPC to store at SA, orphaning certificate: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
-			core.SerialToString(serialBigInt), hex.EncodeToString(certDER), issuerID, regID, orderID, err)
-		if ca.orphanQueue != nil {
-			ca.queueOrphan(&orphanedCert{
-				DER:      certDER,
-				RegID:    regID,
-				IssuerID: issuerID,
-			})
-		}
-		return err
-	}
-	return nil
-}
-
-type orphanedCert struct {
-	DER      []byte
-	RegID    int64
-	Precert  bool
-	IssuerID int64
-}
-
-func (ca *certificateAuthorityImpl) queueOrphan(o *orphanedCert) {
-	if _, err := ca.orphanQueue.EnqueueObject(o); err != nil {
-		ca.log.AuditErrf("failed to queue orphan for integration: %s", err)
-	}
-}
-
-// OrphanIntegrationLoop runs a loop executing integrateOrphans and then waiting a minute.
-// It is split out into a separate function called directly by boulder-ca in order to make
-// testing the orphan queue functionality somewhat more simple.
-func (ca *certificateAuthorityImpl) OrphanIntegrationLoop() {
-	for {
-		err := ca.integrateOrphan()
-		if err != nil {
-			if err == goque.ErrEmpty {
-				time.Sleep(time.Minute)
-				continue
-			}
-			ca.log.AuditErrf("failed to integrate orphaned certs: %s", err)
-			time.Sleep(time.Second)
-		}
-	}
-}
-
-// integrateOrphan removes an orphan from the queue and adds it to the database. The
-// item isn't dequeued until it is actually added to the database to prevent items from
-// being lost if the CA is restarted between the item being dequeued and being added to
-// the database. It calculates the issuance time by subtracting the backdate period from
-// the notBefore time.
-func (ca *certificateAuthorityImpl) integrateOrphan() error {
-	item, err := ca.orphanQueue.Peek()
-	if err != nil {
-		if err == goque.ErrEmpty {
-			return goque.ErrEmpty
-		}
-		return fmt.Errorf("failed to peek into orphan queue: %s", err)
-	}
-	var orphan orphanedCert
-	if err = item.ToObject(&orphan); err != nil {
-		return fmt.Errorf("failed to marshal orphan: %s", err)
-	}
-	cert, err := x509.ParseCertificate(orphan.DER)
-	if err != nil {
-		return fmt.Errorf("failed to parse orphan: %s", err)
-	}
-	// When calculating the `NotBefore` at issuance time, we subtracted
-	// ca.backdate. Now, to calculate the actual issuance time from the NotBefore,
-	// we reverse the process and add ca.backdate.
-	issued := cert.NotBefore.Add(ca.backdate)
-	if orphan.Precert {
-		_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:          orphan.DER,
-			RegID:        orphan.RegID,
-			Issued:       issued.UnixNano(),
-			IssuerNameID: orphan.IssuerID,
-		})
-		if err != nil && !errors.Is(err, berrors.Duplicate) {
-			return fmt.Errorf("failed to store orphaned precertificate: %s", err)
-		}
-	} else {
-		_, err = ca.sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:    orphan.DER,
-			RegID:  orphan.RegID,
-			Issued: issued.UnixNano(),
-		})
-		if err != nil && !errors.Is(err, berrors.Duplicate) {
-			return fmt.Errorf("failed to store orphaned certificate: %s", err)
-		}
-	}
-	if _, err = ca.orphanQueue.Dequeue(); err != nil {
-		return fmt.Errorf("failed to dequeue integrated orphaned certificate: %s", err)
-	}
-	ca.log.AuditInfof("Incorporated orphaned certificate: serial=[%s] cert=[%s] regID=[%d]",
-		core.SerialToString(cert.SerialNumber), hex.EncodeToString(orphan.DER), orphan.RegID)
-	typ := "cert"
-	if orphan.Precert {
-		typ = "precert"
-	}
-	ca.adoptedOrphanCount.With(prometheus.Labels{"type": typ}).Inc()
-	return nil
 }

@@ -3,21 +3,16 @@ package ca
 import (
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
 	"fmt"
-	"math/big"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/beeker1121/goque"
 	ct "github.com/google/certificate-transparency-go"
 	cttls "github.com/google/certificate-transparency-go/tls"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -295,7 +290,6 @@ func TestFailNoSerialPrefix(t *testing.T) {
 		0,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		nil,
@@ -392,7 +386,6 @@ func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *moc
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -438,7 +431,6 @@ func TestNoIssuers(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -462,7 +454,6 @@ func TestMultipleIssuers(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -606,7 +597,6 @@ func TestInvalidCSRs(t *testing.T) {
 			testCtx.serialPrefix,
 			testCtx.maxNames,
 			testCtx.keyPolicy,
-			nil,
 			testCtx.logger,
 			testCtx.stats,
 			testCtx.signatureCount,
@@ -643,7 +633,6 @@ func TestRejectValidityTooLong(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		nil,
@@ -744,7 +733,6 @@ func TestIssueCertificateForPrecertificate(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -850,7 +838,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -892,7 +879,6 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
@@ -911,149 +897,5 @@ func TestIssueCertificateForPrecertificateDuplicateSerial(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "error checking for duplicate") {
 		t.Fatalf("Wrong type of error issuing duplicate serial. Expected 'error checking for duplicate', got '%s'", err)
-	}
-}
-
-type queueSA struct {
-	mockSA
-
-	fail      bool
-	duplicate bool
-
-	issued        time.Time
-	issuedPrecert time.Time
-}
-
-func (qsa *queueSA) AddCertificate(_ context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	if qsa.fail {
-		return nil, errors.New("bad")
-	} else if qsa.duplicate {
-		return nil, berrors.DuplicateError("is a dupe")
-	}
-	qsa.issued = time.Unix(0, req.Issued).UTC()
-	return nil, nil
-}
-
-func (qsa *queueSA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
-	if qsa.fail {
-		return nil, errors.New("bad")
-	} else if qsa.duplicate {
-		return nil, berrors.DuplicateError("is a dupe")
-	}
-	qsa.issuedPrecert = time.Unix(0, req.Issued).UTC()
-	return nil, nil
-}
-
-func TestOrphanQueue(t *testing.T) {
-	tmpDir := t.TempDir()
-	orphanQueue, err := goque.OpenQueue(tmpDir)
-	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
-
-	qsa := &queueSA{fail: true}
-	testCtx := setup(t)
-	fakeNow, err := time.Parse(time.ANSIC, "Mon Jan 2 15:04:05 2006")
-	if err != nil {
-		t.Fatal(err)
-	}
-	testCtx.fc.Set(fakeNow)
-	ca, err := NewCertificateAuthorityImpl(
-		qsa,
-		testCtx.pa,
-		testCtx.boulderIssuers,
-		nil,
-		testCtx.certExpiry,
-		testCtx.certBackdate,
-		testCtx.serialPrefix,
-		testCtx.maxNames,
-		testCtx.keyPolicy,
-		orphanQueue,
-		testCtx.logger,
-		testCtx.stats,
-		nil,
-		nil,
-		testCtx.fc)
-	test.AssertNotError(t, err, "Failed to create CA")
-
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	// generate basic test cert
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "Failed to generate test key")
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		DNSNames:     []string{"test.invalid"},
-		NotBefore:    fakeNow.Add(-time.Hour),
-	}
-	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, k.Public(), k)
-	test.AssertNotError(t, err, "Failed to generate test cert")
-	err = ca.storeCertificate(
-		context.Background(),
-		1,
-		1,
-		tmpl.SerialNumber,
-		certDER,
-		1,
-	)
-	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
-
-	qsa.fail = false
-	err = ca.integrateOrphan()
-	test.AssertNotError(t, err, "integrateOrphan failed")
-	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
-	}
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	// test with a duplicate cert
-	ca.queueOrphan(&orphanedCert{
-		DER:   certDER,
-		RegID: 1,
-	})
-
-	qsa.duplicate = true
-	err = ca.integrateOrphan()
-	test.AssertNotError(t, err, "integrateOrphan failed with duplicate cert")
-	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
-	}
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
-	}
-
-	// add cert to queue, and recreate queue to make sure it still has the cert
-	qsa.fail = true
-	qsa.duplicate = false
-	err = ca.storeCertificate(
-		context.Background(),
-		1,
-		1,
-		tmpl.SerialNumber,
-		certDER,
-		1,
-	)
-	test.AssertError(t, err, "storeCertificate didn't fail when AddCertificate failed")
-	err = orphanQueue.Close()
-	test.AssertNotError(t, err, "Failed to close the queue cleanly")
-	orphanQueue, err = goque.OpenQueue(tmpDir)
-	test.AssertNotError(t, err, "Failed to open orphaned certificate queue")
-	defer func() { _ = orphanQueue.Close() }()
-	ca.orphanQueue = orphanQueue
-
-	qsa.fail = false
-	err = ca.integrateOrphan()
-	test.AssertNotError(t, err, "integrateOrphan failed")
-	if !qsa.issued.Equal(fakeNow) {
-		t.Errorf("expected issued time to be %s, got %s", fakeNow, qsa.issued)
-	}
-	err = ca.integrateOrphan()
-	if err != goque.ErrEmpty {
-		t.Fatalf("Unexpected error, wanted %q, got %q", goque.ErrEmpty, err)
 	}
 }

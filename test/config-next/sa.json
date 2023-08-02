@@ -30,7 +30,6 @@
 						"ca.boulder",
 						"crl-updater.boulder",
 						"expiration-mailer.boulder",
-						"orphan-finder.boulder",
 						"ra.boulder"
 					]
 				},

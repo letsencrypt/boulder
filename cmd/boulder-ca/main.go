@@ -5,7 +5,6 @@ import (
 	"flag"
 	"os"
 
-	"github.com/beeker1121/goque"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/ca"
@@ -63,10 +62,6 @@ type Config struct {
 
 		// GoodKey is an embedded config stanza for the goodkey library.
 		GoodKey goodkey.Config
-
-		// Path to directory holding orphan queue files, if not provided an orphan queue
-		// is not used.
-		OrphanQueueDir string
 
 		// Maximum length (in bytes) of a line accumulating OCSP audit log entries.
 		// Recommended to be around 4000. If this is 0, do not perform OCSP audit
@@ -225,13 +220,6 @@ func main() {
 	kp, err := sagoodkey.NewKeyPolicy(&c.CA.GoodKey, sa.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
 
-	var orphanQueue *goque.Queue
-	if c.CA.OrphanQueueDir != "" {
-		orphanQueue, err = goque.OpenQueue(c.CA.OrphanQueueDir)
-		cmd.FailOnError(err, "Failed to open orphaned certificate queue")
-		defer func() { _ = orphanQueue.Close() }()
-	}
-
 	var ecdsaAllowList *ca.ECDSAAllowList
 	if c.CA.ECDSAAllowListFilename != "" {
 		// Create a gauge vector to track allow list reloads.
@@ -294,17 +282,12 @@ func main() {
 			c.CA.SerialPrefix,
 			c.CA.MaxNames,
 			kp,
-			orphanQueue,
 			logger,
 			scope,
 			signatureCount,
 			signErrorCount,
 			clk)
 		cmd.FailOnError(err, "Failed to create CA impl")
-
-		if orphanQueue != nil {
-			go cai.OrphanIntegrationLoop()
-		}
 
 		srv = srv.Add(&capb.CertificateAuthority_ServiceDesc, cai)
 	}

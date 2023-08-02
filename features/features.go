@@ -61,8 +61,9 @@ const (
 	// AsyncFinalize enables the RA to return approximately immediately from
 	// requests to finalize orders. This allows us to take longer getting SCTs,
 	// issuing certs, and updating the database; it indirectly reduces the number
-	// of "orphaned" certs we have. However, it also requires clients to properly
-	// implement polling the Order object to wait for the cert URL to appear.
+	// of issuances that fail due to timeouts during storage. However, it also
+	// requires clients to properly implement polling the Order object to wait
+	// for the cert URL to appear.
 	AsyncFinalize
 
 	// RequireCommonName defaults to true, and causes the CA to fail to issue a
