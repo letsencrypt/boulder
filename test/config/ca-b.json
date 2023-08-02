@@ -18,7 +18,6 @@
 				},
 				"ca.OCSPGenerator": {
 					"clientNames": [
-						"orphan-finder.boulder",
 						"ra.boulder"
 					]
 				},
@@ -106,7 +105,6 @@
 			"blockedKeyFile": "test/example-blocked-keys.yaml",
 			"fermatRounds": 100
 		},
-		"orphanQueueDir": "/tmp/orphaned-certificates-b",
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
 		"ecdsaAllowListFilename": "test/config/ecdsaAllowList.yml",

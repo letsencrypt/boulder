@@ -10,7 +10,7 @@ command -v minica >/dev/null 2>&1 || {
 }
 
 for SERVICE in admin-revoker expiration-mailer ocsp-responder consul \
-  orphan-finder wfe akamai-purger bad-key-revoker crl-updater crl-storer \
+  wfe akamai-purger bad-key-revoker crl-updater crl-storer \
   health-checker; do
   minica -domains "${SERVICE}.boulder"
 done
