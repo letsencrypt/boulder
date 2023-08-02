@@ -73,12 +73,10 @@ func TestCRLPipeline(t *testing.T) {
 	test.AssertEquals(t, resp.StatusCode, 200)
 
 	// Reset the "leasedUntil" column to prepare for another round of CRLs.
-	if strings.Contains(configDir, "config-next") {
-		db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
-		test.AssertNotError(t, err, "opening database connection")
-		_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
-		test.AssertNotError(t, err, "resetting leasedUntil column")
-	}
+	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	test.AssertNotError(t, err, "opening database connection")
+	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
+	test.AssertNotError(t, err, "resetting leasedUntil column")
 
 	// Confirm that the cert now *does* show up in the CRLs.
 	runUpdater(t, configFile)
