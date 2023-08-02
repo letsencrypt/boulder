@@ -14,22 +14,31 @@ import (
 func TestSubordinateCAChainsServedByWFE(t *testing.T) {
 	t.Parallel()
 
-	// Create an account.
 	client, err := makeClient("mailto:example@letsencrypt.org")
 	test.AssertNotError(t, err, "creating acme client")
 
-	// Create a private key.
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating random cert key")
 
-	// Issue a cert
 	name := random_domain()
-	_, err = authAndIssueFetchAllChains(client, key, []string{name}, true)
+	chains, err := authAndIssueFetchAllChains(client, key, []string{name}, true)
 	test.AssertNotError(t, err, "failed to issue test cert")
 
-	/*
-		cert := ir.certs[0]
-		_, err = ocsp_helper.GetIssuer(cert)
-		test.AssertNotError(t, err, "failed to get issuer cert")
-	*/
+	// An ECDSA intermediate signed by an ECDSA root, and an ECDSA cross-signed by an RSA root.
+	test.AssertEquals(t, len(chains.certs), 2)
+
+	seenECDSAIntermediate := false
+	seenECDSASubordinate := false
+	for _, certUrl := range chains.certs {
+		for _, cert := range certUrl {
+			if cert.Subject.String() == "CN=CA intermediate (ECDSA) A,O=good guys,C=US" && cert.Issuer.String() == "CN=CA root (ECDSA),O=good guys,C=US" {
+				seenECDSAIntermediate = true
+			}
+			if cert.Subject.String() == "CN=CA intermediate (ECDSA) A,O=good guys,C=US" && cert.Issuer.String() == "CN=CA root (RSA),O=good guys,C=US" {
+				seenECDSASubordinate = true
+			}
+		}
+	}
+	test.Assert(t, seenECDSAIntermediate, "did not see ECDSA intermediate and should have")
+	test.Assert(t, seenECDSASubordinate, "did not see ECDSA by RSA cross-signed subordinate and should have")
 }
