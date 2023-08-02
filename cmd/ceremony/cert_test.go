@@ -601,32 +601,3 @@ func TestLoadCert(t *testing.T) {
 	_, err = loadCert("../../test/test-root.pubkey.pem")
 	test.AssertError(t, err, "should have failed when trying to parse a public key")
 }
-
-/*
-func TestIssueLintCert(t *testing.T) {
-	s, _ := pkcs11helpers.NewSessionWithMock()
-	randReader := newRandReader(s)
-	pubKey := samplePubkey()
-	profile := &certProfile{
-		SignatureAlgorithm: "SHA256WithRSA",
-		CommonName:         "common name",
-		Organization:       "organization",
-		Country:            "country",
-		KeyUsages:          []string{"Digital Signature", "CRL Sign"},
-		OCSPURL:            "ocsp",
-		CRLURL:             "crl",
-		IssuerURL:          "issuer",
-		NotAfter:           "2020-10-10 11:31:00",
-		NotBefore:          "2020-10-10 11:31:00",
-	}
-
-	template, err := makeTemplate(randReader, profile, pubKey, rootCert)
-	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
-
-	signer, err := rsa.GenerateKey(rand.Reader, 1024)
-	test.AssertNotError(t, err, "failed to generate test key")
-
-	_, err = issueLintCert(template, template, pubKey, &wrappedSigner{signer}, []string{})
-	test.AssertNotError(t, err, "issueLintCert failed but should not have")
-}
-*/
