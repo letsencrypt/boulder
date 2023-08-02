@@ -253,7 +253,7 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
     curl -s http://localhost:4001/directory && echo "Boulder took ${I} seconds to come up" && break
   done
   if [ "${I}" -eq 115 ]; then
-    echo "Boulder did not come up after ./start.py."
+    echo "Boulder did not come up after ${I} seconds during ./start.py."
     exit 1
   fi
 fi
