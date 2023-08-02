@@ -28,17 +28,17 @@ func TestSubordinateCAChainsServedByWFE(t *testing.T) {
 	test.AssertEquals(t, len(chains.certs), 2)
 
 	seenECDSAIntermediate := false
-	seenECDSASubordinate := false
+	seenECDSACrossSignedIntermediate := false
 	for _, certUrl := range chains.certs {
 		for _, cert := range certUrl {
 			if cert.Subject.String() == "CN=CA intermediate (ECDSA) A,O=good guys,C=US" && cert.Issuer.String() == "CN=CA root (ECDSA),O=good guys,C=US" {
 				seenECDSAIntermediate = true
 			}
 			if cert.Subject.String() == "CN=CA intermediate (ECDSA) A,O=good guys,C=US" && cert.Issuer.String() == "CN=CA root (RSA),O=good guys,C=US" {
-				seenECDSASubordinate = true
+				seenECDSACrossSignedIntermediate = true
 			}
 		}
 	}
 	test.Assert(t, seenECDSAIntermediate, "did not see ECDSA intermediate and should have")
-	test.Assert(t, seenECDSASubordinate, "did not see ECDSA by RSA cross-signed subordinate and should have")
+	test.Assert(t, seenECDSACrossSignedIntermediate, "did not see ECDSA by RSA cross-signed intermediate and should have")
 }
