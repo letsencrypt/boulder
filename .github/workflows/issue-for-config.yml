@@ -13,10 +13,7 @@ jobs:
   check-changes:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
       - name: Comment PR
-        id: comment-pr
         uses: actions/github-script@v6
         with:
           script: |
@@ -24,9 +21,7 @@ jobs:
             const prAuthor = context.payload.pull_request.user.login;
             const commentBody = `${commentMarker}\n@${prAuthor}, this PR appears to contain configuration changes. Please ensure that a corresponding deployment ticket has been filed with the new configuration values.\n`;
             const { owner, repo, number: issue_number } = context.issue;
-
-            // Define the JIRA issue number pattern.
-            const issueRegex = /IN-\d+/;
+            const issueRegexp = /IN-\d+/;
 
             // Get PR body and all issue comments.
             const prBody = context.payload.pull_request.body;
@@ -36,19 +31,17 @@ jobs:
               issue_number
             });
 
-            // Check if the PR body or any comment includes a JIRA issue number.
-            if (issueRegex.test(prBody) || comments.data.some(c => issueRegex.test(c.body))) {
+            if (issueRegexp.test(prBody) || comments.data.some(c => issueRegexp.test(c.body))) {
+                // Issue number exists in PR body or comments.
+                return;
+              }
+
+            if (comments.data.find(c => c.body.includes(commentMarker))) {
+              // Comment already exists.
               return;
             }
 
-            // Check if our comment already exists.
-            const ourComment = comments.data.find(c => c.body.includes(commentMarker));
-
-            if (ourComment) {
-              return;
-            }
-
-            // Comment does not exist, post it.
+            // No issue number or comment were found, post the comment.
             await github.rest.issues.createComment({
               owner,
               repo,
