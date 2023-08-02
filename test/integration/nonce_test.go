@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type Config struct {
+type nonceBalancerTestConfig struct {
 	NotWFE struct {
 		TLS                cmd.TLSConfig
 		GetNonceService    *cmd.GRPCClientConfig
@@ -40,7 +40,7 @@ func TestNonceBalancer_NoBackendMatchingPrefix(t *testing.T) {
 	// masquerades as a wfe for the purpose of redeeming nonces.
 
 	// Load the test config.
-	var c Config
+	var c nonceBalancerTestConfig
 	err := cmd.ReadConfigFile("test/integration/testdata/nonce-client.json", &c)
 	test.AssertNotError(t, err, "Could not read config file")
 

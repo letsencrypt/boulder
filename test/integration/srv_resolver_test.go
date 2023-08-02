@@ -16,7 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-type conf struct {
+type srvResolverTestConfig struct {
 	WebFooEnd struct {
 		TLS cmd.TLSConfig
 		// CaseOne config will have 2 SRV records. The first will have 0
@@ -39,7 +39,7 @@ type conf struct {
 func TestSRVResolver_CaseOne(t *testing.T) {
 	t.Parallel()
 
-	var c conf
+	var c srvResolverTestConfig
 	err := cmd.ReadConfigFile("test/integration/testdata/srv-resolver-config.json", &c)
 	test.AssertNotError(t, err, "Could not read config file")
 
@@ -59,7 +59,7 @@ func TestSRVResolver_CaseOne(t *testing.T) {
 func TestSRVResolver_CaseTwo(t *testing.T) {
 	t.Parallel()
 
-	var c conf
+	var c srvResolverTestConfig
 	err := cmd.ReadConfigFile("test/integration/testdata/srv-resolver-config.json", &c)
 	test.AssertNotError(t, err, "Could not read config file")
 
@@ -80,7 +80,7 @@ func TestSRVResolver_CaseTwo(t *testing.T) {
 func TestSRVResolver_CaseThree(t *testing.T) {
 	t.Parallel()
 
-	var c conf
+	var c srvResolverTestConfig
 	err := cmd.ReadConfigFile("test/integration/testdata/srv-resolver-config.json", &c)
 	test.AssertNotError(t, err, "Could not read config file")
 
@@ -102,7 +102,7 @@ func TestSRVResolver_CaseThree(t *testing.T) {
 func TestSRVResolver_CaseFour(t *testing.T) {
 	t.Parallel()
 
-	var c conf
+	var c srvResolverTestConfig
 	err := cmd.ReadConfigFile("test/integration/testdata/srv-resolver-config.json", &c)
 	test.AssertNotError(t, err, "Could not read config file")
 
