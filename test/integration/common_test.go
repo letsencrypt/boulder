@@ -250,7 +250,6 @@ func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []s
 
 	// Retrieve all the certificate chains served by the WFE2.
 	certs, err := c.Client.FetchAllCertificates(c.Account, order.Certificate)
-	fmt.Printf("PHIL: %v\n", certs)
 	if err != nil {
 		return nil, fmt.Errorf("fetching certificates: %s", err)
 	}
