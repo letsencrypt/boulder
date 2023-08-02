@@ -552,7 +552,6 @@ func TestVerifyProfile(t *testing.T) {
 		},
 	} {
 		for _, ct := range tc.certType {
-			fmt.Println(ct)
 			err := tc.profile.verifyProfile(ct)
 			if err != nil {
 				if tc.expectedErr != err.Error() {
