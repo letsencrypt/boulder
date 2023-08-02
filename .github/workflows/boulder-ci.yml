@@ -73,11 +73,6 @@ jobs:
       - uses: actions/checkout@v3
         with:
           persist-credentials: false
-      
-      # TODO(#6998): Remove this step when the ubuntu-20.04 image has v2.20.0+.
-      # Install instructions copied from https://docs.docker.com/compose/install/linux/#install-the-plugin-manually
-      - name: Update docker compose plugin
-        run: mkdir -p ${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins && curl -SL https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-linux-x86_64 -o ${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins/docker-compose && chmod +x ${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins/docker-compose
 
       - name: Docker Login
         # You may pin to the exact commit or the version.
