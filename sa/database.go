@@ -67,13 +67,9 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 		return nil, err
 	}
 
-	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings)
+	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings, logger)
 	if err != nil {
 		return nil, err
-	}
-
-	if logger != nil {
-		SetSQLDebug(dbMap, logger)
 	}
 
 	addr, user, err := config.DSNAddressAndUser()
@@ -103,7 +99,7 @@ func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
 		return nil, err
 	}
 
-	return newDbMapFromMySQLConfig(config, DbSettings{})
+	return newDbMapFromMySQLConfig(config, DbSettings{}, nil)
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -148,7 +144,9 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 //   - pings the database (and errors if it's unreachable)
 //   - wraps the connection in a borp.DbMap so we can use the handy Get/Insert methods borp provides
 //   - wraps that in a db.WrappedMap to get more useful error messages
-func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
+//
+// If logger is non-nil, debug log messages from borp will be sent to it.
+func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
 	if err != nil {
 		return nil, err
@@ -168,6 +166,10 @@ func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulde
 
 	dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &borp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
+
+	if logger != nil {
+		dbmap.TraceOn("SQL: ", &SQLLogger{logger})
+	}
 
 	initTables(dbmap)
 	return boulderDB.NewWrappedMap(dbmap), nil
@@ -239,17 +241,12 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 	return nil
 }
 
-// SetSQLDebug enables borp SQL-level Debugging
-func SetSQLDebug(dbMap *boulderDB.WrappedMap, log blog.Logger) {
-	dbMap.BorpDB().TraceOn("SQL: ", &SQLLogger{log})
-}
-
 // SQLLogger adapts the Boulder Logger to a format borp can use.
 type SQLLogger struct {
 	blog.Logger
 }
 
-// Printf adapts the AuditLogger to borp's interface
+// Printf adapts the Logger to borp's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.Debugf(format, v...)
 }

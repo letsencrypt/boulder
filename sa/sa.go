@@ -56,8 +56,6 @@ func NewSQLStorageAuthorityWrapping(
 	dbMap *db.WrappedMap,
 	stats prometheus.Registerer,
 ) (*SQLStorageAuthority, error) {
-	SetSQLDebug(dbMap, ssaro.log)
-
 	rateLimitWriteErrors := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "rate_limit_write_errors",
 		Help: "number of failed ratelimit update transactions during AddCertificate",
