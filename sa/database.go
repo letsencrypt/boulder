@@ -67,22 +67,11 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 		return nil, err
 	}
 
-	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings, logger)
+	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings, scope, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	addr, user, err := config.DSNAddressAndUser()
-	if err != nil {
-		return nil, fmt.Errorf("while parsing DSN: %w", err)
-	}
-
-	if scope != nil {
-		err = initDBMetrics(dbMap.SQLDb(), scope, settings, addr, user)
-		if err != nil {
-			return nil, fmt.Errorf("while initializing metrics: %w", err)
-		}
-	}
 	return dbMap, nil
 }
 
@@ -99,7 +88,7 @@ func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
 		return nil, err
 	}
 
-	return newDbMapFromMySQLConfig(config, DbSettings{}, nil)
+	return newDbMapFromMySQLConfig(config, DbSettings{}, nil, nil)
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -146,7 +135,8 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 //   - wraps that in a db.WrappedMap to get more useful error messages
 //
 // If logger is non-nil, debug log messages from borp will be sent to it.
-func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings, logger blog.Logger) (*boulderDB.WrappedMap, error) {
+// If scope is non-nil, stats will be sent to it.
+func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
 	if err != nil {
 		return nil, err
@@ -163,6 +153,13 @@ func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings, logger b
 	setMaxIdleConns(db, settings.MaxIdleConns)
 	setConnMaxLifetime(db, settings.ConnMaxLifetime)
 	setConnMaxIdleTime(db, settings.ConnMaxIdleTime)
+
+	if scope != nil {
+		err = initDBMetrics(db, scope, settings, config.Addr, config.User)
+		if err != nil {
+			return nil, fmt.Errorf("while initializing metrics: %w", err)
+		}
+	}
 
 	dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &borp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
