@@ -93,5 +93,4 @@ func TestCRLPipeline(t *testing.T) {
 	test.AssertNotError(t, err, "reading revocation reason")
 	test.AssertEquals(t, string(reason), "5")
 	resp.Body.Close()
-
 }

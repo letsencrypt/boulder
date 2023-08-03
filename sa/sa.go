@@ -985,7 +985,7 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 					continue
 				}
 				if oldest == nil ||
-					(shard.ThisUpdate == nil && oldest.ThisUpdate != nil) ||
+					(oldest.ThisUpdate != nil && shard.ThisUpdate == nil) ||
 					(oldest.ThisUpdate != nil && shard.ThisUpdate.Before(*oldest.ThisUpdate)) {
 					oldest = shard
 				}
