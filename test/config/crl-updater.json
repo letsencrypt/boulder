@@ -27,7 +27,8 @@
 			"/hierarchy/intermediate-cert-ecdsa-a.pem"
 		],
 		"numShards": 10,
-		"certificateLifetime": "2160h",
+		"shardWidth": "240h",
+		"lookbackPeriod": "24h",
 		"updatePeriod": "6h",
 		"updateOffset": "9120s",
 		"maxParallelism": 10,

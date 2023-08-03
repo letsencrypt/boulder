@@ -1360,7 +1360,7 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 // have to look.
 func (ssa *SQLStorageAuthorityRO) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
 	var model struct {
-		MaxNotAfter time.Time `db:"maxNotAfter"`
+		MaxNotAfter *time.Time `db:"maxNotAfter"`
 	}
 	err := ssa.dbReadOnlyMap.SelectOne(
 		ctx,
@@ -1370,7 +1370,10 @@ func (ssa *SQLStorageAuthorityRO) GetMaxExpiration(ctx context.Context, req *emp
 	if err != nil {
 		return nil, fmt.Errorf("selecting max notAfter: %w", err)
 	}
-	return timestamppb.New(model.MaxNotAfter), err
+	if model.MaxNotAfter == nil {
+		return nil, errors.New("certificateStatus table notAfter column is empty")
+	}
+	return timestamppb.New(*model.MaxNotAfter), err
 }
 
 func (ssa *SQLStorageAuthority) GetMaxExpiration(ctx context.Context, req *emptypb.Empty) (*timestamppb.Timestamp, error) {
