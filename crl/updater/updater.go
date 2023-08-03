@@ -264,6 +264,18 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 					shardIdx: idx,
 					err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
 				}
+
+				// We want to renumber shard 0 to also be shard numShards (e.g. 128).
+				// To facilitate that transition, produce the same CRL with both shard
+				// indices.
+				// TODO(#7007): Collapse this when we don't need to produce both anymore.
+				if idx == 0 {
+					out <- shardResult{
+						shardIdx: cu.numShards,
+						err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, cu.numShards, shardMap[idx]),
+					}
+				}
+
 				cancel()
 			}
 		}
@@ -275,13 +287,15 @@ func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNa
 		go shardWorker(shardIdxs, shardResults)
 	}
 
+	// TODO(#7007): Iterate from 1 to numShards instead of 0 to numShards-1.
 	for shardIdx := 0; shardIdx < cu.numShards; shardIdx++ {
 		shardIdxs <- shardIdx
 	}
 	close(shardIdxs)
 
 	var errShards []int
-	for i := 0; i < cu.numShards; i++ {
+	// TODO(#7007): Reduce this to cu.numShards when we stop producing shard 0.
+	for i := 0; i < cu.numShards+1; i++ {
 		res := <-shardResults
 		if res.err != nil {
 			cu.log.AuditErrf(

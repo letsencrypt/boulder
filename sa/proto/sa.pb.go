@@ -1180,8 +1180,7 @@ type AddCertificateRequest struct {
 	Der   []byte `protobuf:"bytes,1,opt,name=der,proto3" json:"der,omitempty"`
 	RegID int64  `protobuf:"varint,2,opt,name=regID,proto3" json:"regID,omitempty"`
 	// An issued time. When not present the SA defaults to using
-	// the current time. The orphan-finder uses this parameter to add
-	// certificates with the correct historic issued date
+	// the current time.
 	Issued       int64 `protobuf:"varint,4,opt,name=issued,proto3" json:"issued,omitempty"`
 	IssuerNameID int64 `protobuf:"varint,5,opt,name=issuerNameID,proto3" json:"issuerNameID,omitempty"` // https://pkg.go.dev/github.com/letsencrypt/boulder/issuance#IssuerNameID
 	// If this is set to true, the certificateStatus.status column will be set to

@@ -304,7 +304,7 @@ func (m *mailer) updateLastNagTimestampsChunk(ctx context.Context, certs []*x509
 }
 
 func (m *mailer) certIsRenewed(ctx context.Context, names []string, issued time.Time) (bool, error) {
-	namehash := sa.HashNames(names)
+	namehash := core.HashNames(names)
 
 	var present bool
 	err := m.dbMap.SelectOne(

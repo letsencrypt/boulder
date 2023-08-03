@@ -26,7 +26,6 @@
 						"crl-updater.boulder",
 						"expiration-mailer.boulder",
 						"ocsp-responder.boulder",
-						"orphan-finder.boulder",
 						"ra.boulder",
 						"wfe.boulder"
 					]

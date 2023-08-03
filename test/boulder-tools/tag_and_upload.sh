@@ -12,11 +12,11 @@ DOCKER_REPO="letsencrypt/boulder-tools"
 # .github/workflows/release.yml,
 # .github/workflows/try-release.yml if appropriate,
 # and .github/workflows/boulder-ci.yml with the new container tag.
-GO_CI_VERSIONS=( "1.20.6" "1.21rc2" )
+GO_CI_VERSIONS=( "1.20.7" "1.21rc4" )
 # These versions are built for both platforms that boulder devs use.
 # When updating GO_DEV_VERSIONS, please also update
 # ../../docker-compose.yml's default Go version.
-GO_DEV_VERSIONS=( "1.20.6" )
+GO_DEV_VERSIONS=( "1.20.7" )
 
 echo "Please login to allow push to DockerHub"
 docker login
@@ -50,5 +50,5 @@ done
 
 # This needs to work with both GNU sed and BSD sed
 echo "Updating container build timestamp in docker-compose.yml"
-sed -i.bak -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go\1_${DATESTAMP}}|" ../../docker-compose.yml
+sed -i.bak -E "s|BOULDER_TOOLS_TAG:-go([0-9.]+)_([0-9-]+)}$|BOULDER_TOOLS_TAG:-go${GO_DEV_VERSIONS[0]}_${DATESTAMP}}|g" ../../docker-compose.yml
 rm -f ../../docker-compose.yml.bak

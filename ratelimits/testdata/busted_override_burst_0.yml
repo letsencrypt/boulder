@@ -1,0 +1,4 @@
+NewRegistrationsPerIPAddress:10.0.0.2:
+  burst: 0
+  count: 40
+  period: 1s

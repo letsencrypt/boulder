@@ -40,7 +40,6 @@ func TestOCSP(t *testing.T) {
 		testCtx.serialPrefix,
 		testCtx.maxNames,
 		testCtx.keyPolicy,
-		nil,
 		testCtx.logger,
 		testCtx.stats,
 		testCtx.signatureCount,
