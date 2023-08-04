@@ -80,6 +80,12 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
 func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
+	return DBMapForTestWithLog(dbConnect, nil)
+}
+
+// DBMapForTestWithLog does the same as DBMapFortest but also routes the debug logs
+// from the database driver to the given log (usually a `blog.NewMock`).
+func DBMapForTestWithLog(dbConnect string, log blog.Logger) (*boulderDB.WrappedMap, error) {
 	var err error
 	var config *mysql.Config
 
@@ -88,7 +94,8 @@ func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
 		return nil, err
 	}
 
-	return newDbMapFromMySQLConfig(config, DbSettings{}, nil, nil)
+	blog.NewMock()
+	return newDbMapFromMySQLConfig(config, DbSettings{}, nil, log)
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly

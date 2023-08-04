@@ -937,15 +937,16 @@ type testCtx struct {
 }
 
 func setup(t *testing.T, nagTimes []time.Duration) *testCtx {
+	log := blog.NewMock()
+
 	// We use the test_setup user (which has full permissions to everything)
 	// because the SA we return is used for inserting data to set up the test.
-	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
+	dbMap, err := sa.DBMapForTestWithLog(vars.DBConnSAFullPerms, log)
 	if err != nil {
 		t.Fatalf("Couldn't connect the database: %s", err)
 	}
 
 	fc := clock.NewFake()
-	log := blog.NewMock()
 	ssa, err := sa.NewSQLStorageAuthority(dbMap, dbMap, nil, 1, 0, fc, log, metrics.NoopRegisterer)
 	if err != nil {
 		t.Fatalf("unable to create SQLStorageAuthority: %s", err)
