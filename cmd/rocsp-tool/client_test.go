@@ -56,7 +56,6 @@ func TestGetStartingID(t *testing.T) {
 	dbMap, err := sa.DBMapForTest(vars.DBConnSAFullPerms)
 	test.AssertNotError(t, err, "failed setting up db client")
 	defer test.ResetBoulderTestDatabase(t)()
-	sa.SetSQLDebug(dbMap, blog.Get())
 
 	cs := core.CertificateStatus{
 		Serial:   "1337",
