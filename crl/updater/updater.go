@@ -22,7 +22,6 @@ import (
 	"github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/crl"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
@@ -360,22 +359,19 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	cu.log.Infof(
 		"Generating CRL shard: id=[%s] numChunks=[%d]", crlID, len(chunks))
 
-	if features.Enabled(features.LeaseCRLShards) {
-		// Notify the database that we're working on this shard.
-		deadline, ok := ctx.Deadline()
-		if !ok {
-			return fmt.Errorf("context has no deadline")
-		}
-
-		_, err = cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
-			IssuerNameID: int64(issuerNameID),
-			MinShardIdx:  int64(shardIdx),
-			MaxShardIdx:  int64(shardIdx),
-			Until:        timestamppb.New(deadline.Add(-time.Second)),
-		})
-		if err != nil {
-			return fmt.Errorf("leasing shard: %w", err)
-		}
+	// Notify the database that we're working on this shard.
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return fmt.Errorf("context has no deadline")
+	}
+	_, err = cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
+		IssuerNameID: int64(issuerNameID),
+		MinShardIdx:  int64(shardIdx),
+		MaxShardIdx:  int64(shardIdx),
+		Until:        timestamppb.New(deadline.Add(-time.Second)),
+	})
+	if err != nil {
+		return fmt.Errorf("leasing shard: %w", err)
 	}
 
 	// Get the full list of CRL Entries for this shard from the SA.
@@ -495,14 +491,12 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
 	}
 
-	if features.Enabled(features.LeaseCRLShards) {
-		// Notify the database that that we're done.
-		_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
-			IssuerNameID: int64(issuerNameID),
-			ShardIdx:     int64(shardIdx),
-			ThisUpdate:   timestamppb.New(atTime),
-		})
-	}
+	// Notify the database that that we're done.
+	_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
+		IssuerNameID: int64(issuerNameID),
+		ShardIdx:     int64(shardIdx),
+		ThisUpdate:   timestamppb.New(atTime),
+	})
 
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",

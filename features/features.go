@@ -19,6 +19,7 @@ const (
 	StoreLintingCertificateInsteadOfPrecertificate
 	CAAValidationMethods
 	CAAAccountURI
+	LeaseCRLShards
 
 	//   Currently in-use features
 	// EnforceMultiVA causes the VA to block on remote VA PerformValidation
@@ -73,11 +74,6 @@ const (
 	// According to the BRs Section 7.1.4.2.2(a), the commonName field is
 	// Deprecated, and its inclusion is discouraged but not (yet) prohibited.
 	RequireCommonName
-
-	// LeaseCRLShards causes the crl-updater to use the database to control which
-	// instance of crl-updater is responsible for updating each shard. This flag
-	// should only be enabled if the `crlShards` table exists in the database.
-	LeaseCRLShards
 )
 
 // List of features and their default value, protected by fMu

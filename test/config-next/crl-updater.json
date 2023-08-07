@@ -49,9 +49,7 @@
 		"updateTimeout": "3600s",
 		"maxParallelism": 10,
 		"maxAttempts": 5,
-		"features": {
-			"LeaseCRLShards": true
-		}
+		"features": {}
 	},
 	"syslog": {
 		"stdoutlevel": 6,
