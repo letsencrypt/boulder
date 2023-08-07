@@ -27,7 +27,6 @@ import (
 	_ "github.com/letsencrypt/boulder/cmd/nonce-service"
 	_ "github.com/letsencrypt/boulder/cmd/notify-mailer"
 	_ "github.com/letsencrypt/boulder/cmd/ocsp-responder"
-	_ "github.com/letsencrypt/boulder/cmd/orphan-finder"
 	_ "github.com/letsencrypt/boulder/cmd/reversed-hostname-checker"
 	_ "github.com/letsencrypt/boulder/cmd/rocsp-tool"
 	"github.com/letsencrypt/boulder/core"
