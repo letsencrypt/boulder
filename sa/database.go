@@ -94,7 +94,6 @@ func DBMapForTestWithLog(dbConnect string, log blog.Logger) (*boulderDB.WrappedM
 		return nil, err
 	}
 
-	blog.NewMock()
 	return newDbMapFromMySQLConfig(config, DbSettings{}, nil, log)
 }
 
