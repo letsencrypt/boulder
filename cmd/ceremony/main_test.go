@@ -1,8 +1,61 @@
 package main
 
 import (
+	"io/fs"
+	"strings"
 	"testing"
+
+	"github.com/letsencrypt/boulder/test"
 )
+
+func TestLoadPubKey(t *testing.T) {
+	_, _, err := loadPubKey("../../test/test-root.pubkey.pem")
+	test.AssertNotError(t, err, "should not have errored")
+
+	_, _, err = loadPubKey("../../test/hierarchy/int-e1.key.pem")
+	test.AssertError(t, err, "should have failed trying to parse a private key")
+
+	_, _, err = loadPubKey("/path/that/will/not/ever/exist/ever")
+	test.AssertError(t, err, "should have failed opening public key at non-existent path")
+	test.AssertErrorIs(t, err, fs.ErrNotExist)
+
+	_, _, err = loadPubKey("../../test/hierarchy/int-e1.cert.pem")
+	test.AssertError(t, err, "should have failed when trying to parse a certificate")
+}
+
+func TestCheckOutputFileSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	err := checkOutputFile(dir+"/example", "foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCheckOutputFileEmpty(t *testing.T) {
+	err := checkOutputFile("", "foo")
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	if err.Error() != "outputs.foo is required" {
+		t.Fatalf("wrong error: %s", err)
+	}
+}
+
+func TestCheckOutputFileExists(t *testing.T) {
+	dir := t.TempDir()
+	filename := dir + "/example"
+	err := writeFile(filename, []byte("hi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = checkOutputFile(filename, "foo")
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("wrong error: %s", err)
+	}
+}
 
 func TestKeyGenConfigValidate(t *testing.T) {
 	cases := []struct {

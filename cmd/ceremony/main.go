@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -15,11 +16,160 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/crl/crl_x509"
+	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/strictyaml"
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v3"
 )
+
+// issueLintCert issues a linting certificate from a given template certificate
+// signed by a given issuer and returns the certificate or an error. The public
+// key from the loaded certificate is checked by the GoodKey package.
+func issueLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (*x509.Certificate, error) {
+	lintCertBytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
+	if err != nil {
+		return nil, fmt.Errorf("certificate failed pre-issuance lint: %w", err)
+	}
+
+	lintCert, err := x509.ParseCertificate(lintCertBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	err = kp.GoodKey(context.Background(), lintCert.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return lintCert, nil
+}
+
+func equalPubKeys(a, b interface{}) bool {
+	aBytes, err := x509.MarshalPKIXPublicKey(a)
+	if err != nil {
+		return false
+	}
+	bBytes, err := x509.MarshalPKIXPublicKey(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(aBytes, bBytes)
+}
+
+func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer, *hsmRandReader, error) {
+	session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s",
+			cfg.SigningSlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", cfg.SigningSlot)
+	signer, err := session.NewSigner(cfg.SigningLabel, pubKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	if !equalPubKeys(signer.Public(), pubKey) {
+		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
+	}
+	log.Println("Retrieved private key handle")
+	return signer, newRandReader(session), nil
+}
+
+// loadCert loads a PEM certificate specified by filename or returns an error.
+// The public key from the loaded certificate is checked by the GoodKey package.
+func loadCert(filename string) (*x509.Certificate, error) {
+	certPEM, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Loaded certificate from %s\n", filename)
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	goodkeyErr := kp.GoodKey(context.Background(), cert.PublicKey)
+	if goodkeyErr != nil {
+		return nil, goodkeyErr
+	}
+
+	return cert, nil
+}
+
+func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
+	// x509.CreateCertificate uses a io.Reader here for signing methods that require
+	// a source of randomness. Since PKCS#11 based signing generates needed randomness
+	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
+	// we use one that always returns errors in case the internal usage of this reader
+	// changes.
+	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, subjectPubKey, signer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %s", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	log.Printf("Signed certificate PEM:\n%s", pemBytes)
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse signed certificate: %s", err)
+	}
+	if tbs == issuer {
+		// If cert is self-signed we need to populate the issuer subject key to
+		// verify the signature
+		issuer.PublicKey = cert.PublicKey
+		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
+	}
+
+	err = cert.CheckSignatureFrom(issuer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify certificate signature: %s", err)
+	}
+	err = writeFile(certPath, pemBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
+	}
+	log.Printf("Certificate written to %q\n", certPath)
+
+	return cert, nil
+}
+
+// checkOutputFile returns an error if the filename is empty,
+// or if a file already exists with that filename.
+func checkOutputFile(filename, fieldname string) error {
+	if filename == "" {
+		return fmt.Errorf("outputs.%s is required", fieldname)
+	}
+	if _, err := os.Stat(filename); !os.IsNotExist(err) {
+		return fmt.Errorf("outputs.%s is %q, which already exists",
+			fieldname, filename)
+	}
+	return nil
+}
+
+// loadPubKey loads a PEM public key specified by filename or returns an error.
+// The public key is checked by the GoodKey package.
+func loadPubKey(filename string) (crypto.PublicKey, []byte, error) {
+	keyPEM, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	block, _ := pem.Decode(keyPEM)
+	if block == nil {
+		return nil, nil, fmt.Errorf("No data in cert PEM file %s", filename)
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = kp.GoodKey(context.Background(), key)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return key, block.Bytes, nil
+}
 
 type keyGenConfig struct {
 	Type         string `yaml:"type"`
