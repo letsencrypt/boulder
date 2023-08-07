@@ -163,6 +163,26 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool
 	return &issuanceResult{*order, certs}, nil
 }
 
+type issuanceResultAllChains struct {
+	acme.Order
+	certs map[string][]*x509.Certificate
+}
+
+func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResultAllChains, error) {
+	c, order, err := makeClientAndOrder(c, csrKey, domains, cn)
+	if err != nil {
+		return nil, err
+	}
+
+	// Retrieve all the certificate chains served by the WFE2.
+	certs, err := c.Client.FetchAllCertificates(c.Account, order.Certificate)
+	if err != nil {
+		return nil, fmt.Errorf("fetching certificates: %s", err)
+	}
+
+	return &issuanceResultAllChains{*order, certs}, nil
+}
+
 func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateRequest, error) {
 	var err error
 	if k == nil {
