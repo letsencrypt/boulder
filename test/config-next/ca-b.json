@@ -112,9 +112,9 @@
 		},
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
-		"ecdsaAllowListFilename": "test/config-next/ecdsaAllowList.yml",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
+			"ECDSAForAll": true,
 			"RequireCommonName": false
 		}
 	},

@@ -148,8 +148,10 @@ func checkOutputFile(filename, fieldname string) error {
 	return nil
 }
 
-// loadPubKey loads a PEM public key specified by filename or returns an error.
-// The public key is checked by the GoodKey package.
+// loadPubKey loads a PEM public key specified by filename. It returns a
+// crypto.PublicKey, the PEM bytes of the public key, and an error. If an error
+// exists, no public key or bytes are returned. The public key is checked by the
+// GoodKey package.
 func loadPubKey(filename string) (crypto.PublicKey, []byte, error) {
 	keyPEM, err := os.ReadFile(filename)
 	if err != nil {
@@ -624,7 +626,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	pub, pubBytes, err := loadKey(config.Inputs.PublicKeyPath)
+	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
@@ -678,7 +680,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	pub, pubBytes, err := loadKey(config.Inputs.PublicKeyPath)
+	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
@@ -756,7 +758,7 @@ func csrCeremony(configBytes []byte) error {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
 
-	pub, _, err := loadKey(config.Inputs.PublicKeyPath)
+	pub, _, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}

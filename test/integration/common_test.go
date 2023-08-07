@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -13,11 +12,8 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"path"
-	"time"
 
 	"github.com/eggsampler/acme/v3"
 )
@@ -106,7 +102,6 @@ func makeClientAndOrder(c *client, csrKey *ecdsa.PrivateKey, domains []string, c
 	for _, domain := range domains {
 		ids = append(ids, acme.Identifier{Type: "dns", Value: domain})
 	}
-
 	order, err := c.Client.NewOrder(c.Account, ids)
 	if err != nil {
 		return nil, nil, err
@@ -166,95 +161,6 @@ func authAndIssue(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool
 		return nil, fmt.Errorf("fetching certificates: %s", err)
 	}
 	return &issuanceResult{*order, certs}, nil
-}
-
-type issuanceResultAllChains struct {
-	acme.Order
-	certs map[string][]*x509.Certificate
-}
-
-func appendAccountToECDSAAllowList(filepath string, accountID string) ([]byte, error) {
-	file, err := os.OpenFile(filepath, os.O_RDWR, 0644)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	// Get the file size so we know how many bytes to read.
-	stat, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	// Read the current file contents into a byte slice so we can later restore
-	// the file to the original state.
-	fBytes := make([]byte, stat.Size())
-	_, err = bufio.NewReader(file).Read(fBytes)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-
-	// Append the registration ID to the allow list file.
-	_, err = file.Write([]byte(fmt.Sprintf("- %s\n", accountID)))
-	if err != nil {
-		return nil, err
-	}
-
-	// Give time for the reloader to pick up the file change. Typically the
-	// change is picked up within milliseconds.
-	time.Sleep(1 * time.Second)
-
-	return fBytes, nil
-}
-
-func cleanupECDSAAllowList(filepath string, fBytes []byte) error {
-	file, err := os.OpenFile(filepath, os.O_RDWR, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Zero out the file, we'll put the original bytes back in.
-	err = file.Truncate(0)
-	if err != nil {
-		return err
-	}
-
-	// Write the original file bytes back into the file.
-	_, err = file.Write(fBytes)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func authAndIssueFetchAllChains(c *client, csrKey *ecdsa.PrivateKey, domains []string, cn bool) (*issuanceResultAllChains, error) {
-	// Edit the live-reloable ECDSA allow list to temporarily add our
-	// registration ID so that we can issue from an ECDSA intermediate.
-	ecdsaAllowListPath := "test/config/ecdsaAllowList.yml"
-	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
-		ecdsaAllowListPath = "test/config-next/ecdsaAllowList.yml"
-	}
-	accountID := path.Base(c.Account.URL)
-	fBytes, err := appendAccountToECDSAAllowList(ecdsaAllowListPath, accountID)
-	if err != nil {
-		return nil, fmt.Errorf("unable to edit running ECDSA Allow List: %v", err)
-	}
-	defer cleanupECDSAAllowList(ecdsaAllowListPath, fBytes)
-
-	c, order, err := makeClientAndOrder(c, csrKey, domains, cn)
-	if err != nil {
-		return nil, err
-	}
-
-	// Retrieve all the certificate chains served by the WFE2.
-	certs, err := c.Client.FetchAllCertificates(c.Account, order.Certificate)
-	if err != nil {
-		return nil, fmt.Errorf("fetching certificates: %s", err)
-	}
-
-	return &issuanceResultAllChains{*order, certs}, nil
 }
 
 func makeCSR(k *ecdsa.PrivateKey, domains []string, cn bool) (*x509.CertificateRequest, error) {
