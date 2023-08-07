@@ -83,7 +83,7 @@ func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
 	return DBMapForTestWithLog(dbConnect, nil)
 }
 
-// DBMapForTestWithLog does the same as DBMapFortest but also routes the debug logs
+// DBMapForTestWithLog does the same as DBMapForTest but also routes the debug logs
 // from the database driver to the given log (usually a `blog.NewMock`).
 func DBMapForTestWithLog(dbConnect string, log blog.Logger) (*boulderDB.WrappedMap, error) {
 	var err error
@@ -141,8 +141,8 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 //   - wraps the connection in a borp.DbMap so we can use the handy Get/Insert methods borp provides
 //   - wraps that in a db.WrappedMap to get more useful error messages
 //
-// If logger is non-nil, debug log messages from borp will be sent to it.
-// If scope is non-nil, stats will be sent to it.
+// If logger is non-nil, it will receive debug log messages from borp.
+// If scope is non-nil, it will be used to register Prometheus metrics.
 func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
 	if err != nil {
