@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc/resolver"
@@ -86,20 +85,6 @@ type DBConfig struct {
 func (d *DBConfig) URL() (string, error) {
 	url, err := os.ReadFile(d.DBConnectFile)
 	return strings.TrimSpace(string(url)), err
-}
-
-// DSNAddressAndUser returns the Address and User of the DBConnect DSN from
-// this object.
-func (d *DBConfig) DSNAddressAndUser() (string, string, error) {
-	dsnStr, err := d.URL()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to load DBConnect URL: %s", err)
-	}
-	config, err := mysql.ParseDSN(dsnStr)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to parse DSN from the DBConnect URL: %s", err)
-	}
-	return config.Addr, config.User, nil
 }
 
 type SMTPConfig struct {

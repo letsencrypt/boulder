@@ -67,26 +67,11 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 		return nil, err
 	}
 
-	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings)
+	dbMap, err := newDbMapFromMySQLConfig(mysqlConfig, settings, scope, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	if logger != nil {
-		SetSQLDebug(dbMap, logger)
-	}
-
-	addr, user, err := config.DSNAddressAndUser()
-	if err != nil {
-		return nil, fmt.Errorf("while parsing DSN: %w", err)
-	}
-
-	if scope != nil {
-		err = initDBMetrics(dbMap.SQLDb(), scope, settings, addr, user)
-		if err != nil {
-			return nil, fmt.Errorf("while initializing metrics: %w", err)
-		}
-	}
 	return dbMap, nil
 }
 
@@ -95,6 +80,12 @@ func InitWrappedDb(config cmd.DBConfig, scope prometheus.Registerer, logger blog
 // tables. It automatically maps the tables for the primary parts of Boulder
 // around the Storage Authority.
 func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
+	return DBMapForTestWithLog(dbConnect, nil)
+}
+
+// DBMapForTestWithLog does the same as DBMapForTest but also routes the debug logs
+// from the database driver to the given log (usually a `blog.NewMock`).
+func DBMapForTestWithLog(dbConnect string, log blog.Logger) (*boulderDB.WrappedMap, error) {
 	var err error
 	var config *mysql.Config
 
@@ -103,7 +94,7 @@ func DBMapForTest(dbConnect string) (*boulderDB.WrappedMap, error) {
 		return nil, err
 	}
 
-	return newDbMapFromMySQLConfig(config, DbSettings{})
+	return newDbMapFromMySQLConfig(config, DbSettings{}, nil, log)
 }
 
 // sqlOpen is used in the tests to check that the arguments are properly
@@ -148,7 +139,10 @@ var setConnMaxIdleTime = func(db *sql.DB, connMaxIdleTime time.Duration) {
 //   - pings the database (and errors if it's unreachable)
 //   - wraps the connection in a borp.DbMap so we can use the handy Get/Insert methods borp provides
 //   - wraps that in a db.WrappedMap to get more useful error messages
-func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulderDB.WrappedMap, error) {
+//
+// If logger is non-nil, it will receive debug log messages from borp.
+// If scope is non-nil, it will be used to register Prometheus metrics.
+func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings, scope prometheus.Registerer, logger blog.Logger) (*boulderDB.WrappedMap, error) {
 	err := adjustMySQLConfig(config)
 	if err != nil {
 		return nil, err
@@ -166,8 +160,19 @@ func newDbMapFromMySQLConfig(config *mysql.Config, settings DbSettings) (*boulde
 	setConnMaxLifetime(db, settings.ConnMaxLifetime)
 	setConnMaxIdleTime(db, settings.ConnMaxIdleTime)
 
+	if scope != nil {
+		err = initDBMetrics(db, scope, settings, config.Addr, config.User)
+		if err != nil {
+			return nil, fmt.Errorf("while initializing metrics: %w", err)
+		}
+	}
+
 	dialect := borp.MySQLDialect{Engine: "InnoDB", Encoding: "UTF8"}
 	dbmap := &borp.DbMap{Db: db, Dialect: dialect, TypeConverter: BoulderTypeConverter{}}
+
+	if logger != nil {
+		dbmap.TraceOn("SQL: ", &SQLLogger{logger})
+	}
 
 	initTables(dbmap)
 	return boulderDB.NewWrappedMap(dbmap), nil
@@ -239,17 +244,12 @@ func adjustMySQLConfig(conf *mysql.Config) error {
 	return nil
 }
 
-// SetSQLDebug enables borp SQL-level Debugging
-func SetSQLDebug(dbMap *boulderDB.WrappedMap, log blog.Logger) {
-	dbMap.BorpDB().TraceOn("SQL: ", &SQLLogger{log})
-}
-
 // SQLLogger adapts the Boulder Logger to a format borp can use.
 type SQLLogger struct {
 	blog.Logger
 }
 
-// Printf adapts the AuditLogger to borp's interface
+// Printf adapts the Logger to borp's interface
 func (log *SQLLogger) Printf(format string, v ...interface{}) {
 	log.Debugf(format, v...)
 }

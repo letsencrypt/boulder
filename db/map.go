@@ -68,14 +68,6 @@ func NewWrappedMap(dbMap *borp.DbMap) *WrappedMap {
 	return &WrappedMap{dbMap: dbMap}
 }
 
-func (m *WrappedMap) SQLDb() *sql.DB {
-	return m.dbMap.Db
-}
-
-func (m *WrappedMap) BorpDB() *borp.DbMap {
-	return m.dbMap
-}
-
 func (m *WrappedMap) TableFor(t reflect.Type, checkPK bool) (*borp.TableMap, error) {
 	return m.dbMap.TableFor(t, checkPK)
 }
