@@ -4,7 +4,6 @@ package integration
 
 import (
 	"database/sql"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -35,7 +34,7 @@ func runUpdater(t *testing.T, configFile string) {
 		// Print the updater's stdout for debugging, but only if the test fails.
 		t.Log(line)
 	}
-	test.AssertNotError(t, err, fmt.Sprintf("crl-updater failed: %s", out))
+	test.AssertNotError(t, err, "crl-updater failed")
 }
 
 // TestCRLPipeline runs an end-to-end test of the crl issuance process, ensuring
@@ -47,6 +46,13 @@ func TestCRLPipeline(t *testing.T) {
 	configDir, ok := os.LookupEnv("BOULDER_CONFIG_DIR")
 	test.Assert(t, ok, "failed to look up test config directory")
 	configFile := path.Join(configDir, "crl-updater.json")
+
+	// Reset the "leasedUntil" column so that this test isn't dependent on state
+	// like priors runs of this test.
+	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
+	test.AssertNotError(t, err, "opening database connection")
+	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
+	test.AssertNotError(t, err, "resetting leasedUntil column")
 
 	// Issue a test certificate and save its serial number.
 	client, err := makeClient()
@@ -73,8 +79,6 @@ func TestCRLPipeline(t *testing.T) {
 	test.AssertEquals(t, resp.StatusCode, 200)
 
 	// Reset the "leasedUntil" column to prepare for another round of CRLs.
-	db, err := sql.Open("mysql", vars.DBConnSAIntegrationFullPerms)
-	test.AssertNotError(t, err, "opening database connection")
 	_, err = db.Exec(`UPDATE crlShards SET leasedUntil = ?`, fc.Now().Add(-time.Minute))
 	test.AssertNotError(t, err, "resetting leasedUntil column")
 

@@ -948,47 +948,51 @@ func (ssa *SQLStorageAuthority) leaseOldestCRLShard(ctx context.Context, req *sa
 			&shards,
 			`SELECT id, issuerID, idx, thisUpdate, nextUpdate, leasedUntil
 				FROM crlShards
-				WHERE issuerID = ?`,
-			req.IssuerNameID,
+				WHERE issuerID = ?
+				AND idx BETWEEN ? AND ?`,
+			req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx,
 		)
 		if err != nil {
 			return -1, fmt.Errorf("selecting candidate shards: %w", err)
 		}
 
-		// Convert the slice to a map to detect shards that we expect to exist, but
-		// don't. At the same time, determine the oldest known shard.
-		shardMap := make(map[int]*crlShardModel, len(shards))
-		var oldest *crlShardModel
-		for _, shard := range shards {
-			if shard.Idx < int(req.MinShardIdx) || shard.Idx > int(req.MaxShardIdx) {
-				continue
+		// Determine which shard index we want to lease.
+		var shardIdx int
+		var needToInsert bool
+		if len(shards) < (int(req.MaxShardIdx + 1 - req.MinShardIdx)) {
+			// Some expected shards are missing (i.e. never-before-produced), so we
+			// pick one at random.
+			missing := make(map[int]struct{}, req.MaxShardIdx+1-req.MinShardIdx)
+			for i := req.MinShardIdx; i <= req.MaxShardIdx; i++ {
+				missing[int(i)] = struct{}{}
 			}
-			shardMap[shard.Idx] = shard
-			if shard.LeasedUntil.After(ssa.clk.Now()) {
-				continue
+			for _, shard := range shards {
+				delete(missing, shard.Idx)
 			}
-			if oldest == nil ||
-				(shard.ThisUpdate == nil && oldest.ThisUpdate != nil) ||
-				shard.ThisUpdate.Before(*oldest.ThisUpdate) {
-				oldest = shard
-			}
-		}
-
-		if oldest == nil {
-			return -1, fmt.Errorf("issuer %d has no unleased shards in range %d - %d", req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx)
-		}
-
-		// Determine which shard index we want to lease: by default the oldest, but
-		// an arbitrary missing one if any are missing.
-		shardIdx := oldest.Idx
-		needToInsert := false
-		for i := req.MaxShardIdx; i >= req.MinShardIdx; i-- {
-			_, ok := shardMap[int(i)]
-			if !ok {
-				shardIdx = int(i)
-				needToInsert = true
+			for idx := range missing {
+				// Go map iteration is guaranteed to be in randomized key order.
+				shardIdx = idx
 				break
 			}
+			needToInsert = true
+		} else {
+			// We got all the shards we expect, so we pick the oldest unleased shard.
+			var oldest *crlShardModel
+			for _, shard := range shards {
+				if shard.LeasedUntil.After(ssa.clk.Now()) {
+					continue
+				}
+				if oldest == nil ||
+					(oldest.ThisUpdate != nil && shard.ThisUpdate == nil) ||
+					(oldest.ThisUpdate != nil && shard.ThisUpdate.Before(*oldest.ThisUpdate)) {
+					oldest = shard
+				}
+			}
+			if oldest == nil {
+				return -1, fmt.Errorf("issuer %d has no unleased shards in range %d-%d", req.IssuerNameID, req.MinShardIdx, req.MaxShardIdx)
+			}
+			shardIdx = oldest.Idx
+			needToInsert = false
 		}
 
 		if needToInsert {
@@ -1105,7 +1109,8 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 // be the same as the crl-updater's context expiration), it's not inherently a
 // sign of an update that should be skipped. It does reject the update if the
 // identified CRL shard does not exist in the database (it should exist, as
-// rows are created if necessary when leased).
+// rows are created if necessary when leased). It also sets the leasedUntil time
+// to be equal to thisUpdate, to indicate that the shard is no longer leased.
 func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.UpdateCRLShardRequest) (*emptypb.Empty, error) {
 	if core.IsAnyNilOrZero(req.IssuerNameID, req.ThisUpdate, req.NextUpdate) {
 		return nil, errIncompleteRequest
@@ -1114,13 +1119,14 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
 		res, err := tx.ExecContext(ctx,
 			`UPDATE crlShards
-				SET thisUpdate = ?, nextUpdate = ?
+				SET thisUpdate = ?, nextUpdate = ?, leasedUntil = ?
 				WHERE issuerID = ?
 				AND idx = ?
 				AND thisUpdate < ?
 				LIMIT 1`,
 			req.ThisUpdate.AsTime(),
 			req.NextUpdate.AsTime(),
+			req.ThisUpdate.AsTime(),
 			req.IssuerNameID,
 			req.ShardIdx,
 			req.ThisUpdate.AsTime(),
