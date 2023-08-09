@@ -15,8 +15,7 @@ import (
 // burst and count values.
 const tenZeroZeroTwo = "10.0.0.2"
 
-// newRedisTestLimiterWithOverrides constructs a new limiter with the following
-// configuration:
+// newTestLimiter constructs a new limiter with the following configuration:
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:10.0.0.2' burst: 40 count: 40 period: 1s
 func newTestLimiter(t *testing.T, s source, clk clock.FakeClock) *Limiter {
@@ -132,7 +131,8 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.ResetIn, time.Second)
 
 			// Reset between tests.
-			l.Reset(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo)
+			err = l.Reset(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo)
+			test.AssertNotError(t, err, "should not error")
 		})
 	}
 }
