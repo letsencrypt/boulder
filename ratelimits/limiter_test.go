@@ -11,8 +11,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 )
 
-// tenZeroZeroTwo is overidden in 'testdata/working_override.yml' to have higher
-// burst and count values.
+// tenZeroZeroTwo is overridden in 'testdata/working_override.yml' to have
+// higher burst and count values.
 const tenZeroZeroTwo = "10.0.0.2"
 
 // newTestLimiter constructs a new limiter with the following configuration:
