@@ -7,9 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
+	bredis "github.com/letsencrypt/boulder/redis"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/core"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 )
@@ -40,7 +42,7 @@ func NewReadingClient(rdb *redis.Ring, timeout time.Duration, clk clock.Clock, s
 		"addresses": strings.Join(addrs, ", "),
 		"user":      rdb.Options().Username,
 	}
-	stats.MustRegister(newMetricsCollector(rdb, labels))
+	stats.MustRegister(bredis.NewMetricsCollector(rdb, labels))
 	getLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "rocsp_get_latency",

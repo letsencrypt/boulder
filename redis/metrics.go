@@ -1,4 +1,4 @@
-package rocsp
+package redis
 
 import (
 	"github.com/go-redis/redis/v8"
@@ -49,7 +49,7 @@ func (dbc metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	writeGauge(dbc.staleConns, stats.StaleConns)
 }
 
-func newMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) metricsCollector {
+func NewMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) metricsCollector {
 	return metricsCollector{
 		statGetter: statGetter,
 		lookups: prometheus.NewDesc(

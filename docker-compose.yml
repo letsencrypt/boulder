@@ -44,6 +44,8 @@ services:
       - bproxysql
       - bredis_1
       - bredis_2
+      - bredis_3
+      - bredis_4
       - bconsul
       - bjaeger
     entrypoint: test/entrypoint.sh
@@ -85,7 +87,7 @@ services:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-ocsp.config
     networks:
       redisnet:
         ipv4_address: 10.33.33.2
@@ -94,10 +96,28 @@ services:
     image: redis:6.2.7
     volumes:
       - ./test/:/test/:cached
-    command: redis-server /test/redis.config
+    command: redis-server /test/redis-ocsp.config
     networks:
       redisnet:
         ipv4_address: 10.33.33.3
+
+  bredis_3:
+    image: redis:6.2.7
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis-ratelimits.config
+    networks:
+      redisnet:
+        ipv4_address: 10.33.33.4
+
+  bredis_4:
+    image: redis:6.2.7
+    volumes:
+      - ./test/:/test/:cached
+    command: redis-server /test/redis-ratelimits.config
+    networks:
+      redisnet:
+        ipv4_address: 10.33.33.5
 
   bconsul:
     image: hashicorp/consul:1.14.2

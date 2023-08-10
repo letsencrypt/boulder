@@ -1,6 +1,7 @@
 package ratelimits
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -95,7 +96,7 @@ type Decision struct {
 // bucket refills to its maximum capacity (resets). If no bucket exists for the
 // given limit Name and client id, a new one will be created WITHOUT the
 // request's cost deducted from its initial capacity.
-func (l *Limiter) Check(name Name, id string, cost int64) (*Decision, error) {
+func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost < 0 {
 		return nil, ErrInvalidCostForCheck
 	}
@@ -109,14 +110,14 @@ func (l *Limiter) Check(name Name, id string, cost int64) (*Decision, error) {
 		return nil, ErrInvalidCostOverLimit
 	}
 
-	tat, err := l.source.Get(bucketKey(name, id))
+	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		if !errors.Is(err, ErrBucketNotFound) {
 			return nil, err
 		}
 		// First request from this client. The cost is not deducted from the
 		// initial capacity because this is only a check.
-		d, err := l.initialize(limit, name, id, 0)
+		d, err := l.initialize(ctx, limit, name, id, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +135,7 @@ func (l *Limiter) Check(name Name, id string, cost int64) (*Decision, error) {
 // until the bucket refills to its maximum capacity (resets). If no bucket
 // exists for the given limit Name and client id, a new one will be created WITH
 // the request's cost deducted from its initial capacity.
-func (l *Limiter) Spend(name Name, id string, cost int64) (*Decision, error) {
+func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
 	}
@@ -148,11 +149,11 @@ func (l *Limiter) Spend(name Name, id string, cost int64) (*Decision, error) {
 		return nil, ErrInvalidCostOverLimit
 	}
 
-	tat, err := l.source.Get(bucketKey(name, id))
+	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			// First request from this client.
-			return l.initialize(limit, name, id, cost)
+			return l.initialize(ctx, limit, name, id, cost)
 		}
 		return nil, err
 	}
@@ -162,7 +163,7 @@ func (l *Limiter) Spend(name Name, id string, cost int64) (*Decision, error) {
 	if !d.Allowed {
 		return d, nil
 	}
-	return d, l.source.Set(bucketKey(name, id), d.newTAT)
+	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
 }
 
 // Refund attempts to refund the cost to the bucket identified by limit name and
@@ -176,7 +177,7 @@ func (l *Limiter) Spend(name Name, id string, cost int64) (*Decision, error) {
 // For instance, if a bucket has a maximum capacity of 10 and currently has 5
 // requests remaining, a refund request of 7 will result in the bucket reaching
 // its maximum capacity of 10, not 12.
-func (l *Limiter) Refund(name Name, id string, cost int64) (*Decision, error) {
+func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
 	}
@@ -186,7 +187,7 @@ func (l *Limiter) Refund(name Name, id string, cost int64) (*Decision, error) {
 		return nil, err
 	}
 
-	tat, err := l.source.Get(bucketKey(name, id))
+	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		return nil, err
 	}
@@ -194,20 +195,20 @@ func (l *Limiter) Refund(name Name, id string, cost int64) (*Decision, error) {
 	if !d.Allowed {
 		return d, ErrBucketAlreadyFull
 	}
-	return d, l.source.Set(bucketKey(name, id), d.newTAT)
+	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
 
 }
 
 // Reset resets the specified bucket.
-func (l *Limiter) Reset(name Name, id string) error {
-	return l.source.Delete(bucketKey(name, id))
+func (l *Limiter) Reset(ctx context.Context, name Name, id string) error {
+	return l.source.Delete(ctx, bucketKey(name, id))
 }
 
 // initialize creates a new bucket, specified by limit name and id, with the
 // cost of the request factored into the initial state.
-func (l *Limiter) initialize(rl limit, name Name, id string, cost int64) (*Decision, error) {
+func (l *Limiter) initialize(ctx context.Context, rl limit, name Name, id string, cost int64) (*Decision, error) {
 	d := maybeSpend(l.clk, rl, l.clk.Now(), cost)
-	err := l.source.Set(bucketKey(name, id), d.newTAT)
+	err := l.source.Set(ctx, bucketKey(name, id), d.newTAT)
 	if err != nil {
 		return nil, err
 	}
