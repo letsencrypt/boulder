@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -16,6 +18,7 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/crl/crl_x509"
+	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/strictyaml"
@@ -23,154 +26,35 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// issueLintCert issues a linting certificate from a given template certificate
-// signed by a given issuer and returns the certificate or an error. The public
-// key from the loaded certificate is checked by the GoodKey package.
-func issueLintCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (*x509.Certificate, error) {
+var kp goodkey.KeyPolicy
+
+func init() {
+	var err error
+	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{FermatRounds: 100}, nil)
+	if err != nil {
+		log.Fatal("Could not create goodkey.KeyPolicy")
+	}
+}
+
+// issueLintCertAndPerformLinting issues a linting certificate from a given
+// template certificate signed by a given issuer and returns the certificate or
+// an error. The lint certificate is linted prior to being returned. The public
+// key from the just issued lint certificate is checked by the GoodKey package.
+func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (*x509.Certificate, error) {
 	lintCertBytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
 	if err != nil {
 		return nil, fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
-
 	lintCert, err := x509.ParseCertificate(lintCertBytes)
 	if err != nil {
 		return nil, err
 	}
-
 	err = kp.GoodKey(context.Background(), lintCert.PublicKey)
 	if err != nil {
 		return nil, err
 	}
 
 	return lintCert, nil
-}
-
-func equalPubKeys(a, b interface{}) bool {
-	aBytes, err := x509.MarshalPKIXPublicKey(a)
-	if err != nil {
-		return false
-	}
-	bBytes, err := x509.MarshalPKIXPublicKey(b)
-	if err != nil {
-		return false
-	}
-	return bytes.Equal(aBytes, bBytes)
-}
-
-func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer, *hsmRandReader, error) {
-	session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s",
-			cfg.SigningSlot, err)
-	}
-	log.Printf("Opened PKCS#11 session for slot %d\n", cfg.SigningSlot)
-	signer, err := session.NewSigner(cfg.SigningLabel, pubKey)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
-	}
-	if !equalPubKeys(signer.Public(), pubKey) {
-		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
-	}
-	log.Println("Retrieved private key handle")
-	return signer, newRandReader(session), nil
-}
-
-// loadCert loads a PEM certificate specified by filename or returns an error.
-// The public key from the loaded certificate is checked by the GoodKey package.
-func loadCert(filename string) (*x509.Certificate, error) {
-	certPEM, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-	log.Printf("Loaded certificate from %s\n", filename)
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	goodkeyErr := kp.GoodKey(context.Background(), cert.PublicKey)
-	if goodkeyErr != nil {
-		return nil, goodkeyErr
-	}
-
-	return cert, nil
-}
-
-func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
-	// x509.CreateCertificate uses a io.Reader here for signing methods that require
-	// a source of randomness. Since PKCS#11 based signing generates needed randomness
-	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
-	// we use one that always returns errors in case the internal usage of this reader
-	// changes.
-	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, subjectPubKey, signer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create certificate: %s", err)
-	}
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
-	log.Printf("Signed certificate PEM:\n%s", pemBytes)
-	cert, err := x509.ParseCertificate(certBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse signed certificate: %s", err)
-	}
-	if tbs == issuer {
-		// If cert is self-signed we need to populate the issuer subject key to
-		// verify the signature
-		issuer.PublicKey = cert.PublicKey
-		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
-	}
-
-	err = cert.CheckSignatureFrom(issuer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify certificate signature: %s", err)
-	}
-	err = writeFile(certPath, pemBytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
-	}
-	log.Printf("Certificate written to %q\n", certPath)
-
-	return cert, nil
-}
-
-// checkOutputFile returns an error if the filename is empty,
-// or if a file already exists with that filename.
-func checkOutputFile(filename, fieldname string) error {
-	if filename == "" {
-		return fmt.Errorf("outputs.%s is required", fieldname)
-	}
-	if _, err := os.Stat(filename); !os.IsNotExist(err) {
-		return fmt.Errorf("outputs.%s is %q, which already exists",
-			fieldname, filename)
-	}
-	return nil
-}
-
-// loadPubKey loads a PEM public key specified by filename. It returns a
-// crypto.PublicKey, the PEM bytes of the public key, and an error. If an error
-// exists, no public key or bytes are returned. The public key is checked by the
-// GoodKey package.
-func loadPubKey(filename string) (crypto.PublicKey, []byte, error) {
-	keyPEM, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, nil, err
-	}
-	block, _ := pem.Decode(keyPEM)
-	if block == nil {
-		return nil, nil, fmt.Errorf("No data in cert PEM file %s", filename)
-	}
-	key, err := x509.ParsePKIXPublicKey(block.Bytes)
-	if err != nil {
-		return nil, nil, err
-	}
-	err = kp.GoodKey(context.Background(), key)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return key, block.Bytes, nil
 }
 
 type keyGenConfig struct {
@@ -226,6 +110,20 @@ func (pkgc PKCS11KeyGenConfig) validate() error {
 	// key-slot is allowed to be 0 (which is a valid slot).
 	// PIN is allowed to be "", which will commonly happen when
 	// PIN entry is done via PED.
+	return nil
+}
+
+// checkOutputFile returns an error if the filename is empty,
+// or if a file already exists with that filename.
+func checkOutputFile(filename, fieldname string) error {
+	if filename == "" {
+		return fmt.Errorf("outputs.%s is required", fieldname)
+	}
+	if _, err := os.Stat(filename); !os.IsNotExist(err) {
+		return fmt.Errorf("outputs.%s is %q, which already exists",
+			fieldname, filename)
+	}
+
 	return nil
 }
 
@@ -353,8 +251,6 @@ func (csc crossCertConfig) validate() error {
 	if err != nil {
 		return err
 	}
-
-	// Input fields
 	if csc.Inputs.PublicKeyPath == "" {
 		return errors.New("inputs.public-key-path is required")
 	}
@@ -364,14 +260,10 @@ func (csc crossCertConfig) validate() error {
 	if csc.Inputs.CertificateToCrossSignPath == "" {
 		return errors.New("inputs.certificate-to-cross-sign-path is required")
 	}
-
-	// Output fields
 	err = checkOutputFile(csc.Outputs.CertificatePath, "certificate-path")
 	if err != nil {
 		return err
 	}
-
-	// Certificate profile
 	err = csc.CertProfile.verifyProfile(crossCert)
 	if err != nil {
 		return err
@@ -565,6 +457,122 @@ func (cc crlConfig) validate() error {
 	return nil
 }
 
+// loadCert loads a PEM certificate specified by filename or returns an error.
+// The public key from the loaded certificate is checked by the GoodKey package.
+func loadCert(filename string) (*x509.Certificate, error) {
+	certPEM, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Loaded certificate from %s\n", filename)
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return nil, fmt.Errorf("No data in cert PEM file %s", filename)
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	goodkeyErr := kp.GoodKey(context.Background(), cert.PublicKey)
+	if goodkeyErr != nil {
+		return nil, goodkeyErr
+	}
+
+	return cert, nil
+}
+
+// publicKeysEqual determines whether two public keys are identical.
+func publicKeysEqual(a, b crypto.PublicKey) (bool, error) {
+	switch ak := a.(type) {
+	case *rsa.PublicKey:
+		return ak.Equal(b), nil
+	case *ecdsa.PublicKey:
+		return ak.Equal(b), nil
+	default:
+		return false, fmt.Errorf("unsupported public key type %T", ak)
+	}
+}
+
+func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer, *hsmRandReader, error) {
+	session, err := pkcs11helpers.Initialize(cfg.Module, cfg.SigningSlot, cfg.PIN)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to setup session and PKCS#11 context for slot %d: %s",
+			cfg.SigningSlot, err)
+	}
+	log.Printf("Opened PKCS#11 session for slot %d\n", cfg.SigningSlot)
+	signer, err := session.NewSigner(cfg.SigningLabel, pubKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to retrieve private key handle: %s", err)
+	}
+	ok, err := publicKeysEqual(signer.Public(), pubKey)
+	if !ok {
+		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
+	}
+
+	return signer, newRandReader(session), nil
+}
+
+func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
+	// x509.CreateCertificate uses a io.Reader here for signing methods that require
+	// a source of randomness. Since PKCS#11 based signing generates needed randomness
+	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
+	// we use one that always returns errors in case the internal usage of this reader
+	// changes.
+	certBytes, err := x509.CreateCertificate(&failReader{}, tbs, issuer, subjectPubKey, signer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %s", err)
+	}
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	log.Printf("Signed certificate PEM:\n%s", pemBytes)
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse signed certificate: %s", err)
+	}
+	if tbs == issuer {
+		// If cert is self-signed we need to populate the issuer subject key to
+		// verify the signature
+		issuer.PublicKey = cert.PublicKey
+		issuer.PublicKeyAlgorithm = cert.PublicKeyAlgorithm
+	}
+	err = cert.CheckSignatureFrom(issuer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify certificate signature: %s", err)
+	}
+	err = writeFile(certPath, pemBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write certificate to %q: %s", certPath, err)
+	}
+	log.Printf("Certificate written to %q\n", certPath)
+
+	return cert, nil
+}
+
+// loadPubKey loads a PEM public key specified by filename. It returns a
+// crypto.PublicKey, the PEM bytes of the public key, and an error. If an error
+// exists, no public key or bytes are returned. The public key is checked by the
+// GoodKey package.
+func loadPubKey(filename string) (crypto.PublicKey, []byte, error) {
+	keyPEM, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	log.Printf("Loaded public key from %s\n", filename)
+	block, _ := pem.Decode(keyPEM)
+	if block == nil {
+		return nil, nil, fmt.Errorf("No data in cert PEM file %s", filename)
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = kp.GoodKey(context.Background(), key)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return key, block.Bytes, nil
+}
+
 func rootCeremony(configBytes []byte) error {
 	var config rootConfig
 	err := strictyaml.Unmarshal(configBytes, &config)
@@ -592,20 +600,24 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
-
-	lintCert, err := issueLintCert(template, template, keyInfo.key, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, template, keyInfo.key, signer, config.SkipLints)
 	if err != nil {
 		return err
 	}
-
 	// Verify that the lintCert is self-signed.
 	if !bytes.Equal(lintCert.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between self-signed lintCert RawSubject and RawIssuer DER bytes: \"%x\" != \"%x\"", lintCert.RawSubject, lintCert.RawIssuer)
 	}
-
-	_, err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
+	finalCert, err := signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
+	}
+	// Verify that x509.CreateCertificate is deterministic and produced
+	// identical DER bytes between the lintCert and finalCert signing
+	// operations. If this fails it's mississuance, but it's better to know
+	// about the problem sooner than later.
+	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
+		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
 
 	return nil
@@ -615,7 +627,6 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if ct != intermediateCert && ct != ocspCert && ct != crlCert {
 		return fmt.Errorf("wrong certificate type provided")
 	}
-
 	var config intermediateConfig
 	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
@@ -625,41 +636,41 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-
 	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
-
 	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
-
 	signer, randReader, err := openSigner(config.PKCS11, issuer.PublicKey)
 	if err != nil {
 		return err
 	}
-
 	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, ct)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-
-	lintCert, err := issueLintCert(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
 	if err != nil {
 		return err
 	}
-
 	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
 	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
-
-	_, err = signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
+	finalCert, err := signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
+	}
+	// Verify that x509.CreateCertificate is deterministic and produced
+	// identical DER bytes between the lintCert and finalCert signing
+	// operations. If this fails it's mississuance, but it's better to know
+	// about the problem sooner than later.
+	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
+		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
 
 	return nil
@@ -669,7 +680,6 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if ct != crossCert {
 		return fmt.Errorf("wrong certificate type provided")
 	}
-
 	var config crossCertConfig
 	err := strictyaml.Unmarshal(configBytes, &config)
 	if err != nil {
@@ -679,38 +689,31 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
 	}
-
 	pub, pubBytes, err := loadPubKey(config.Inputs.PublicKeyPath)
 	if err != nil {
 		return err
 	}
-
 	issuer, err := loadCert(config.Inputs.IssuerCertificatePath)
 	if err != nil {
 		return fmt.Errorf("failed to load issuer certificate %q: %s", config.Inputs.IssuerCertificatePath, err)
 	}
-
 	toBeCrossSigned, err := loadCert(config.Inputs.CertificateToCrossSignPath)
 	if err != nil {
 		return fmt.Errorf("failed to load toBeCrossSigned certificate %q: %s", config.Inputs.CertificateToCrossSignPath, err)
 	}
-
 	signer, randReader, err := openSigner(config.PKCS11, issuer.PublicKey)
 	if err != nil {
 		return err
 	}
-
 	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, ct)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-
-	lintCert, err := issueLintCert(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
 	if err != nil {
 		return err
 	}
-
 	// Ensure that we've configured the correct certificate to cross-sign compared to the profile.
 	//
 	// Example of a misconfiguration below:
@@ -725,17 +728,14 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if !bytes.Equal(toBeCrossSigned.RawSubject, lintCert.RawSubject) {
 		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: \"%x\" != \"%x\"", toBeCrossSigned.RawSubject, lintCert.RawSubject)
 	}
-
 	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
 	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
-
 	finalCert, err := signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
-
 	// Verify that x509.CreateCertificate is deterministic and produced
 	// identical DER bytes between the lintCert and finalCert signing
 	// operations. If this fails it's mississuance, but it's better to know

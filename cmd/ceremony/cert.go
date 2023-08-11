@@ -9,24 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/letsencrypt/boulder/goodkey"
 )
-
-var kp goodkey.KeyPolicy
-
-func init() {
-	var err error
-	kp, err = goodkey.NewKeyPolicy(&goodkey.Config{FermatRounds: 100}, nil)
-	if err != nil {
-		log.Fatal("Could not create goodkey.KeyPolicy")
-	}
-}
 
 type policyInfoConfig struct {
 	OID string
