@@ -728,7 +728,37 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if !bytes.Equal(toBeCrossSigned.RawSubject, lintCert.RawSubject) {
 		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: \"%x\" != \"%x\"", toBeCrossSigned.RawSubject, lintCert.RawSubject)
 	}
-	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
+	// CPS 7.1 Certificate Profile: Subordinate CA Certificate Validity Period
+	// Check that the cert has a valid validity period of "Up to 8 years". The
+	// validity period is computed inclusive of the whole final second indicated
+	// by notAfter.
+	parsedValidityDuration := lintCert.NotAfter.Add(time.Second).Sub(lintCert.NotBefore)
+	if time.Duration.Seconds(252288000) > parsedValidityDuration.Seconds() {
+		return fmt.Errorf("subordinate CA validity period is greater than the CPS allowed 8 calendar years (252288000 seconds): %.0f seconds\n", parsedValidityDuration.Seconds())
+	}
+	// BR 7.1.2.2.1 Cross-Certified Subordinate CA Validity
+	// The earlier of one day prior to the time of signing or the earliest
+	// notBefore date of the existing CA Certificate(s).
+	if lintCert.NotBefore.Before(issuer.NotBefore) {
+		return fmt.Errorf("subordinate CA NotBefore predates the issuer NotBefore")
+	}
+	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
+	// The extKeyUsage extension MAY be "unrestricted" as described in the
+	// following table if: the organizationName represented in the Issuer and
+	// Subject names of the corresponding certificate are either:
+	// * the same, or
+	// * the organizationName represented in the Subject name is an affiliate
+	//   of the organizationName represented in the Issuer name
+	if len(issuer.Issuer.Organization) != len(lintCert.Subject.Organization) {
+		return fmt.Errorf("issuer Issuer Organization and lintCert Subject Organization object sizes differ: %d != %d", len(issuer.Issuer.Organization), len(lintCert.Subject.Organization))
+	}
+	for idx, _ := range issuer.Issuer.Organization {
+		if issuer.Issuer.Organization[idx] != lintCert.Subject.Organization[idx] {
+			return fmt.Errorf("mismatch between issuer Issuer Organization and lintCert Subject Organization at index %d: \"%s\" != \"%s\"", idx, issuer.Issuer.Organization[idx], lintCert.Subject.Organization[idx])
+		}
+	}
+	// Verify that the lintCert (and therefore the eventual finalCert)
+	// corresponds to the specified issuer certificate.
 	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
