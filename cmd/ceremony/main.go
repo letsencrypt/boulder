@@ -15,9 +15,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/letsencrypt/boulder/crl/crl_x509"
+
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
@@ -579,6 +581,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
+	log.Printf("Preparing root ceremony for %s\n", config.Outputs.CertificatePath)
 	err = config.validate()
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
@@ -608,16 +611,9 @@ func rootCeremony(configBytes []byte) error {
 	if !bytes.Equal(lintCert.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between self-signed lintCert RawSubject and RawIssuer DER bytes: \"%x\" != \"%x\"", lintCert.RawSubject, lintCert.RawIssuer)
 	}
-	finalCert, err := signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
+	_, err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
-	}
-	// Verify that x509.CreateCertificate is deterministic and produced
-	// identical DER bytes between the lintCert and finalCert signing
-	// operations. If this fails it's mississuance, but it's better to know
-	// about the problem sooner than later.
-	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
-		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
 
 	return nil
@@ -632,6 +628,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
+	log.Printf("Preparing intermediate ceremony for %s\n", config.Outputs.CertificatePath)
 	err = config.validate(ct)
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
@@ -685,6 +682,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse config: %s", err)
 	}
+	log.Printf("Preparing cross-certificate ceremony for %s\n", config.Outputs.CertificatePath)
 	err = config.validate()
 	if err != nil {
 		return fmt.Errorf("failed to validate config: %s", err)
@@ -742,26 +740,15 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if lintCert.NotBefore.Before(issuer.NotBefore) {
 		return fmt.Errorf("subordinate CA NotBefore predates the issuer NotBefore")
 	}
-	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
-	// The extKeyUsage extension MAY be "unrestricted" as described in the
-	// following table if: the organizationName represented in the Issuer and
-	// Subject names of the corresponding certificate are either:
-	// * the same, or
-	// * the organizationName represented in the Subject name is an affiliate
-	//   of the organizationName represented in the Issuer name
-	if len(issuer.Issuer.Organization) != len(lintCert.Subject.Organization) {
-		return fmt.Errorf("issuer Issuer Organization and lintCert Subject Organization object sizes differ: %d != %d", len(issuer.Issuer.Organization), len(lintCert.Subject.Organization))
-	}
-	for idx, _ := range issuer.Issuer.Organization {
-		if issuer.Issuer.Organization[idx] != lintCert.Subject.Organization[idx] {
-			return fmt.Errorf("mismatch between issuer Issuer Organization and lintCert Subject Organization at index %d: \"%s\" != \"%s\"", idx, issuer.Issuer.Organization[idx], lintCert.Subject.Organization[idx])
-		}
-	}
-	// Verify that the lintCert (and therefore the eventual finalCert)
-	// corresponds to the specified issuer certificate.
 	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
+	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions and
+	// BR 7.1.2.2.4 Cross-Certified Subordinate CA Extended Key Usage - Unrestricted
+	if !reflect.DeepEqual(lintCert.ExtKeyUsage, issuer.ExtKeyUsage) {
+		return fmt.Errorf("lint certificate contains key usage extensions not present in issuing certificate")
+	}
+	// Issue the cross-signed certificate.
 	finalCert, err := signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
