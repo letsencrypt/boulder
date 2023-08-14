@@ -508,7 +508,7 @@ func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer
 	}
 	ok, err := publicKeysEqual(signer.Public(), pubKey)
 	if !ok {
-		return nil, nil, fmt.Errorf("signer pubkey did not match issuer pubkey")
+		return nil, nil, err
 	}
 
 	return signer, newRandReader(session), nil
