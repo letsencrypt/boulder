@@ -67,10 +67,13 @@ func rewriteConfig(path string, rewrites map[string]string) (string, error) {
 	return tmp.Name(), nil
 }
 
-// genCert is used to run ceremony when we don't actually care about,
-// any of the output and only want to verify it exits cleanly
+// genCert is used to run a key ceremony with a given config.
 func genCert(path string) error {
-	return exec.Command("bin/ceremony", "-config", path).Run()
+	output, err := exec.Command("bin/ceremony", "-config", path).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error running ceremony for %s: %s:\n%s", path, err, string(output))
+	}
+	return nil
 }
 
 func main() {
