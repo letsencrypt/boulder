@@ -11,7 +11,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math/big"
 	"testing"
+	"time"
 
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/test"
@@ -68,38 +70,38 @@ func TestMakeTemplateRoot(t *testing.T) {
 	ctx.GenerateRandomFunc = realRand
 
 	profile.NotBefore = "1234"
-	_, err := makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err := makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not before")
 
 	profile.NotBefore = "2018-05-18 11:31:00"
 	profile.NotAfter = "1234"
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid not after")
 
 	profile.NotAfter = "2018-05-18 11:31:00"
 	profile.SignatureAlgorithm = "nope"
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid signature algorithm")
 
 	profile.SignatureAlgorithm = "SHA256WithRSA"
 	ctx.GenerateRandomFunc = func(pkcs11.SessionHandle, int) ([]byte, error) {
 		return nil, errors.New("bad")
 	}
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail when GenerateRandom failed")
 
 	ctx.GenerateRandomFunc = realRand
 
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with empty key usages")
 
 	profile.KeyUsages = []string{"asd"}
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid key usages")
 
 	profile.KeyUsages = []string{"Digital Signature", "CRL Sign"}
 	profile.Policies = []policyInfoConfig{{}}
-	_, err = makeTemplate(randReader, profile, pubKey, rootCert)
+	_, err = makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertError(t, err, "makeTemplate didn't fail with invalid (empty) policy OID")
 
 	profile.Policies = []policyInfoConfig{{OID: "1.2.3"}, {OID: "1.2.3.4"}}
@@ -109,7 +111,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	profile.OCSPURL = "ocsp"
 	profile.CRLURL = "crl"
 	profile.IssuerURL = "issuer"
-	cert, err := makeTemplate(randReader, profile, pubKey, rootCert)
+	cert, err := makeTemplate(randReader, profile, pubKey, nil, rootCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.AssertEquals(t, cert.Subject.CommonName, profile.CommonName)
 	test.AssertEquals(t, len(cert.Subject.Organization), 1)
@@ -126,7 +128,7 @@ func TestMakeTemplateRoot(t *testing.T) {
 	test.AssertEquals(t, len(cert.PolicyIdentifiers), 2)
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
 
-	cert, err = makeTemplate(randReader, profile, pubKey, intermediateCert)
+	cert, err = makeTemplate(randReader, profile, pubKey, nil, intermediateCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, cert.MaxPathLenZero, "MaxPathLenZero not set in intermediate template")
 	test.AssertEquals(t, len(cert.ExtKeyUsage), 2)
@@ -134,8 +136,9 @@ func TestMakeTemplateRoot(t *testing.T) {
 	test.AssertEquals(t, cert.ExtKeyUsage[1], x509.ExtKeyUsageServerAuth)
 }
 
-func TestMakeTemplateCrossCertificate(t *testing.T) {
+func TestMakeTemplateRestrictedCrossCertificate(t *testing.T) {
 	s, ctx := pkcs11helpers.NewSessionWithMock()
+	ctx.GenerateRandomFunc = realRand
 	randReader := newRandReader(s)
 	pubKey := samplePubkey()
 	profile := &certProfile{
@@ -151,12 +154,23 @@ func TestMakeTemplateCrossCertificate(t *testing.T) {
 		NotBefore:          "2020-10-10 11:31:00",
 	}
 
-	ctx.GenerateRandomFunc = realRand
+	tbcsCert := x509.Certificate{
+		SerialNumber: big.NewInt(666),
+		Subject: pkix.Name{
+			Organization: []string{"While Eek Ayote"},
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
 
-	cert, err := makeTemplate(randReader, profile, pubKey, crossCert)
+	cert, err := makeTemplate(randReader, profile, pubKey, &tbcsCert, crossCert)
 	test.AssertNotError(t, err, "makeTemplate failed when everything worked as expected")
 	test.Assert(t, !cert.MaxPathLenZero, "MaxPathLenZero was set in cross-sign")
-	test.AssertEquals(t, len(cert.ExtKeyUsage), 0)
+	test.AssertEquals(t, len(cert.ExtKeyUsage), 1)
+	test.AssertEquals(t, cert.ExtKeyUsage[0], x509.ExtKeyUsageServerAuth)
 }
 
 func TestMakeTemplateOCSP(t *testing.T) {
@@ -176,7 +190,7 @@ func TestMakeTemplateOCSP(t *testing.T) {
 	}
 	pubKey := samplePubkey()
 
-	cert, err := makeTemplate(randReader, profile, pubKey, ocspCert)
+	cert, err := makeTemplate(randReader, profile, pubKey, nil, ocspCert)
 	test.AssertNotError(t, err, "makeTemplate failed")
 
 	test.Assert(t, !cert.IsCA, "IsCA is set")
@@ -219,7 +233,7 @@ func TestMakeTemplateCRL(t *testing.T) {
 	}
 	pubKey := samplePubkey()
 
-	cert, err := makeTemplate(randReader, profile, pubKey, crlCert)
+	cert, err := makeTemplate(randReader, profile, pubKey, nil, crlCert)
 	test.AssertNotError(t, err, "makeTemplate failed")
 
 	test.Assert(t, !cert.IsCA, "IsCA is set")
