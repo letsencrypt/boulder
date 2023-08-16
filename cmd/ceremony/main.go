@@ -599,7 +599,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to retrieve signer: %s", err)
 	}
-	template, err := makeTemplate(newRandReader(session), &config.CertProfile, keyInfo.der, rootCert)
+	template, err := makeTemplate(newRandReader(session), &config.CertProfile, keyInfo.der, nil, rootCert)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -645,7 +645,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, ct)
+	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, nil, ct)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -703,7 +703,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if err != nil {
 		return err
 	}
-	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, ct)
+	template, err := makeTemplate(randReader, &config.CertProfile, pubBytes, toBeCrossSigned, ct)
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
@@ -743,10 +743,15 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
-	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions and
-	// BR 7.1.2.2.4 Cross-Certified Subordinate CA Extended Key Usage - Unrestricted
-	if !reflect.DeepEqual(lintCert.ExtKeyUsage, issuer.ExtKeyUsage) {
-		return fmt.Errorf("lint certificate contains key usage extensions not present in issuing certificate")
+	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
+	if !reflect.DeepEqual(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
+		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
+	}
+	if len(lintCert.ExtKeyUsage) == 0 {
+		// "Unrestricted" case, the issuer and subject need to be the same or at least affiliates.
+		if !reflect.DeepEqual(lintCert.Subject.Organization, issuer.Subject.Organization) {
+			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
+		}
 	}
 	// Issue the cross-signed certificate.
 	finalCert, err := signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)

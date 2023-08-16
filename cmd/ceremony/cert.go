@@ -212,7 +212,19 @@ func generateSKID(pk []byte) ([]byte, error) {
 }
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
-func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct certType) (*x509.Certificate, error) {
+func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbcs *x509.Certificate, ct certType) (*x509.Certificate, error) {
+	// Handle "unrestricted" vs "restricted" subordinate CA profile specifics.
+	if ct == crossCert {
+		if tbcs == nil {
+			return nil, fmt.Errorf("toBeCrossSigned cert field was nil, but was required to gather EKUs for the lint cert")
+		}
+	} else {
+		// Throw this parameter away for every other ceremony type.
+		if tbcs != nil {
+			tbcs = nil
+		}
+	}
+
 	var ocspServer []string
 	if profile.OCSPURL != "" {
 		ocspServer = []string{profile.OCSPURL}
@@ -285,18 +297,10 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	}
 
 	switch ct {
-	// rootCert and crossCert do not get EKU or MaxPathZero. This tool currently
-	// only produces "unrestricted" cross-signs.
-	// https://github.com/cabforum/servercert/blob/a0360b61e73476959220dc328e3b68d0224fa0b3/docs/BR.md#71223-cross-certified-subordinate-ca-extensions
-	//
-	// 7.1.2.1.2 Root CA Extensions
-	// Extension 	Presence 	Critical 	Description
-	// extKeyUsage 	MUST NOT 	N 	-
-	//
-	// 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
-	// Extension 	Presence 	Critical 	Description
-	// extKeyUsage 	SHOULD	 	N 			See Section 7.1.2.2.4
-	//
+	// rootCert does not get EKU or MaxPathZero.
+	// 		BR 7.1.2.1.2 Root CA Extensions
+	// 		Extension 	Presence 	Critical 	Description
+	// 		extKeyUsage 	MUST NOT 	N 	-
 	case ocspCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
 		// ASN.1 NULL is 0x05, 0x00
@@ -313,6 +317,8 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		// it in our end-entity certificates.
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
+	case crossCert:
+		cert.ExtKeyUsage = tbcs.ExtKeyUsage
 	}
 
 	for _, policyConfig := range profile.Policies {
