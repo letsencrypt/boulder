@@ -38,13 +38,15 @@ func init() {
 	}
 }
 
-type lintCert *x509.Certificate
+type lintCert struct {
+	cert *x509.Certificate
+}
 
 // issueLintCertAndPerformLinting issues a linting certificate from a given
-// template certificate signed by a given issuer and returns a lintCert or an
+// template certificate signed by a given issuer and returns a *lintCert or an
 // error. The lint certificate is linted prior to being returned. The public key
 // from the just issued lint certificate is checked by the GoodKey package.
-func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (lintCert, error) {
+func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (*lintCert, error) {
 	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
 	if err != nil {
 		return nil, fmt.Errorf("certificate failed pre-issuance lint: %w", err)
@@ -58,7 +60,7 @@ func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey
 		return nil, err
 	}
 
-	return lc, nil
+	return &lintCert{lc}, nil
 }
 
 type keyGenConfig struct {
@@ -516,7 +518,7 @@ func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer
 	return signer, newRandReader(session), nil
 }
 
-func signAndWriteCert(tbs, issuer *x509.Certificate, lintCert lintCert, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
+func signAndWriteCert(tbs, issuer *x509.Certificate, lintCert *lintCert, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
 	if lintCert == nil {
 		return nil, fmt.Errorf("linting was not performed prior to issuance")
 	}
@@ -613,8 +615,8 @@ func rootCeremony(configBytes []byte) error {
 		return err
 	}
 	// Verify that the lintCert is self-signed.
-	if !bytes.Equal(lintCert.RawSubject, lintCert.RawIssuer) {
-		return fmt.Errorf("mismatch between self-signed lintCert RawSubject and RawIssuer DER bytes: \"%x\" != \"%x\"", lintCert.RawSubject, lintCert.RawIssuer)
+	if !bytes.Equal(lintCert.cert.RawSubject, lintCert.cert.RawIssuer) {
+		return fmt.Errorf("mismatch between self-signed lintCert RawSubject and RawIssuer DER bytes: \"%x\" != \"%x\"", lintCert.cert.RawSubject, lintCert.cert.RawIssuer)
 	}
 	_, err = signAndWriteCert(template, template, lintCert, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
@@ -660,8 +662,8 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return err
 	}
 	// Verify that the lintCert (and therefore the eventual finalCert) corresponds to the specified issuer certificate.
-	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
-		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
+	if !bytes.Equal(issuer.RawSubject, lintCert.cert.RawIssuer) {
+		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.cert.RawIssuer)
 	}
 	finalCert, err := signAndWriteCert(template, issuer, lintCert, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
@@ -671,8 +673,8 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	// identical DER bytes between the lintCert and finalCert signing
 	// operations. If this fails it's mississuance, but it's better to know
 	// about the problem sooner than later.
-	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
-		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
+	if !bytes.Equal(lintCert.cert.RawTBSCertificate, finalCert.RawTBSCertificate) {
+		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.cert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
 
 	return nil
@@ -728,31 +730,31 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	//  		organization: (FAKE) Let's Encrypt
 	//      ...
 	//
-	if !bytes.Equal(toBeCrossSigned.RawSubject, lintCert.RawSubject) {
-		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: \"%x\" != \"%x\"", toBeCrossSigned.RawSubject, lintCert.RawSubject)
+	if !bytes.Equal(toBeCrossSigned.RawSubject, lintCert.cert.RawSubject) {
+		return fmt.Errorf("mismatch between toBeCrossSigned and lintCert RawSubject DER bytes: \"%x\" != \"%x\"", toBeCrossSigned.RawSubject, lintCert.cert.RawSubject)
 	}
 	// BR 7.1.2.2.1 Cross-Certified Subordinate CA Validity
 	// The earlier of one day prior to the time of signing or the earliest
 	// notBefore date of the existing CA Certificate(s).
-	if lintCert.NotBefore.Before(toBeCrossSigned.NotBefore) {
+	if lintCert.cert.NotBefore.Before(toBeCrossSigned.NotBefore) {
 		return fmt.Errorf("cross-signed subordinate CA's NotBefore predates the existing CA's NotBefore")
 	}
-	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
-		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
+	if !bytes.Equal(issuer.RawSubject, lintCert.cert.RawIssuer) {
+		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.cert.RawIssuer)
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
 	// TODO(#7032) Replace reflect with slices.Equal() >= go1.21
-	if !reflect.DeepEqual(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
+	if !reflect.DeepEqual(lintCert.cert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
-	if len(lintCert.ExtKeyUsage) == 0 {
+	if len(lintCert.cert.ExtKeyUsage) == 0 {
 		// "Unrestricted" case, the issuer and subject need to be the same or at least affiliates.
-		if !reflect.DeepEqual(lintCert.Subject.Organization, issuer.Subject.Organization) {
+		if !reflect.DeepEqual(lintCert.cert.Subject.Organization, issuer.Subject.Organization) {
 			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
 		}
 	}
 	// Issue the cross-signed certificate.
-	finalCert, err := signAndWriteCert(template, lintCert, lintCert, pub, signer, config.Outputs.CertificatePath)
+	finalCert, err := signAndWriteCert(template, lintCert.cert, lintCert, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
@@ -760,8 +762,8 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 	// identical DER bytes between the lintCert and finalCert signing
 	// operations. If this fails it's mississuance, but it's better to know
 	// about the problem sooner than later.
-	if !bytes.Equal(lintCert.RawTBSCertificate, finalCert.RawTBSCertificate) {
-		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.RawTBSCertificate, finalCert.RawTBSCertificate)
+	if !bytes.Equal(lintCert.cert.RawTBSCertificate, finalCert.RawTBSCertificate) {
+		return fmt.Errorf("mismatch between lintCert and finalCert RawTBSCertificate DER bytes: \"%x\" != \"%x\"", lintCert.cert.RawTBSCertificate, finalCert.RawTBSCertificate)
 	}
 
 	return nil
