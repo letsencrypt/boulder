@@ -312,6 +312,7 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbc
 		cert.MaxPathLenZero = true
 	case crossCert:
 		cert.ExtKeyUsage = tbcs.ExtKeyUsage
+		cert.MaxPathLenZero = tbcs.MaxPathLenZero
 	}
 
 	for _, policyConfig := range profile.Policies {
