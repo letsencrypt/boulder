@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/ocsp"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -92,6 +92,7 @@ type RedisConfig struct {
 	// Default is 1 minute. -1 disables idle connections reaper,
 	// but idle connections are still discarded by the client
 	// if IdleTimeout is set.
+	// Deprecated: This field has been deprecated and will be removed.
 	IdleCheckFrequency config.Duration `validate:"-"`
 }
 
@@ -120,12 +121,11 @@ func MakeClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer) (*
 		ReadTimeout:     c.ReadTimeout.Duration,
 		WriteTimeout:    c.WriteTimeout.Duration,
 
-		PoolSize:           c.PoolSize,
-		MinIdleConns:       c.MinIdleConns,
-		MaxConnAge:         c.MaxConnAge.Duration,
-		PoolTimeout:        c.PoolTimeout.Duration,
-		IdleTimeout:        c.IdleTimeout.Duration,
-		IdleCheckFrequency: c.IdleCheckFrequency.Duration,
+		PoolSize:        c.PoolSize,
+		MinIdleConns:    c.MinIdleConns,
+		ConnMaxLifetime: c.MaxConnAge.Duration,
+		PoolTimeout:     c.PoolTimeout.Duration,
+		ConnMaxIdleTime: c.IdleTimeout.Duration,
 	})
 	return rocsp.NewWritingClient(rdb, c.Timeout.Duration, clk, stats), nil
 }
@@ -160,12 +160,11 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		DialTimeout:     c.DialTimeout.Duration,
 		ReadTimeout:     c.ReadTimeout.Duration,
 
-		PoolSize:           c.PoolSize,
-		MinIdleConns:       c.MinIdleConns,
-		MaxConnAge:         c.MaxConnAge.Duration,
-		PoolTimeout:        c.PoolTimeout.Duration,
-		IdleTimeout:        c.IdleTimeout.Duration,
-		IdleCheckFrequency: c.IdleCheckFrequency.Duration,
+		PoolSize:        c.PoolSize,
+		MinIdleConns:    c.MinIdleConns,
+		ConnMaxLifetime: c.MaxConnAge.Duration,
+		PoolTimeout:     c.PoolTimeout.Duration,
+		ConnMaxIdleTime: c.IdleTimeout.Duration,
 	})
 	return rocsp.NewReadingClient(rdb, c.Timeout.Duration, clk, stats), nil
 }

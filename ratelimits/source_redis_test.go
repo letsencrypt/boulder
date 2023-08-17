@@ -9,8 +9,8 @@ import (
 	"github.com/letsencrypt/boulder/test"
 	"golang.org/x/net/context"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
+	"github.com/redis/go-redis/v9"
 )
 
 func newTestRedisSource(clk clock.FakeClock, addrs map[string]string) *RedisSource {
