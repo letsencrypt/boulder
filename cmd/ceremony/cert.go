@@ -214,15 +214,8 @@ func generateSKID(pk []byte) ([]byte, error) {
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
 func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbcs *x509.Certificate, ct certType) (*x509.Certificate, error) {
 	// Handle "unrestricted" vs "restricted" subordinate CA profile specifics.
-	if ct == crossCert {
-		if tbcs == nil {
-			return nil, fmt.Errorf("toBeCrossSigned cert field was nil, but was required to gather EKUs for the lint cert")
-		}
-	} else {
-		// Throw this parameter away for every other ceremony type.
-		if tbcs != nil {
-			tbcs = nil
-		}
+	if ct == crossCert && tbcs == nil {
+		return nil, fmt.Errorf("toBeCrossSigned cert field was nil, but was required to gather EKUs for the lint cert")
 	}
 
 	var ocspServer []string
