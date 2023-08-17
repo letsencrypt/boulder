@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/fs"
 	"strings"
 	"testing"
@@ -1384,4 +1385,10 @@ func TestCRLConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSignAndWriteNoLintCert(t *testing.T) {
+	_, err := signAndWriteCert(nil, nil, nil, nil, nil, "")
+	test.AssertError(t, err, "should have failed opening public key at non-existent path")
+	test.AssertDeepEquals(t, err, fmt.Errorf("linting was not performed prior to issuance"))
 }

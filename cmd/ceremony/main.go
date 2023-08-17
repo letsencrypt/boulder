@@ -38,25 +38,27 @@ func init() {
 	}
 }
 
+type lintCert *x509.Certificate
+
 // issueLintCertAndPerformLinting issues a linting certificate from a given
-// template certificate signed by a given issuer and returns the certificate or
-// an error. The lint certificate is linted prior to being returned. The public
-// key from the just issued lint certificate is checked by the GoodKey package.
-func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (*x509.Certificate, error) {
-	lintCertBytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
+// template certificate signed by a given issuer and returns a lintCert or an
+// error. The lint certificate is linted prior to being returned. The public key
+// from the just issued lint certificate is checked by the GoodKey package.
+func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (lintCert, error) {
+	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
 	if err != nil {
 		return nil, fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
-	lintCert, err := x509.ParseCertificate(lintCertBytes)
+	lc, err := x509.ParseCertificate(bytes)
 	if err != nil {
 		return nil, err
 	}
-	err = kp.GoodKey(context.Background(), lintCert.PublicKey)
+	err = kp.GoodKey(context.Background(), lc.PublicKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return lintCert, nil
+	return lc, nil
 }
 
 type keyGenConfig struct {
@@ -514,7 +516,10 @@ func openSigner(cfg PKCS11SigningConfig, pubKey crypto.PublicKey) (crypto.Signer
 	return signer, newRandReader(session), nil
 }
 
-func signAndWriteCert(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
+func signAndWriteCert(tbs, issuer *x509.Certificate, lintCert lintCert, subjectPubKey crypto.PublicKey, signer crypto.Signer, certPath string) (*x509.Certificate, error) {
+	if lintCert == nil {
+		return nil, fmt.Errorf("linting was not performed prior to issuance")
+	}
 	// x509.CreateCertificate uses a io.Reader here for signing methods that require
 	// a source of randomness. Since PKCS#11 based signing generates needed randomness
 	// at the HSM we don't need to pass a real reader. Instead of passing a nil reader
@@ -611,7 +616,7 @@ func rootCeremony(configBytes []byte) error {
 	if !bytes.Equal(lintCert.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between self-signed lintCert RawSubject and RawIssuer DER bytes: \"%x\" != \"%x\"", lintCert.RawSubject, lintCert.RawIssuer)
 	}
-	_, err = signAndWriteCert(template, template, keyInfo.key, signer, config.Outputs.CertificatePath)
+	_, err = signAndWriteCert(template, template, lintCert, keyInfo.key, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
@@ -658,7 +663,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 	if !bytes.Equal(issuer.RawSubject, lintCert.RawIssuer) {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
-	finalCert, err := signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
+	finalCert, err := signAndWriteCert(template, issuer, lintCert, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
@@ -747,7 +752,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		}
 	}
 	// Issue the cross-signed certificate.
-	finalCert, err := signAndWriteCert(template, issuer, pub, signer, config.Outputs.CertificatePath)
+	finalCert, err := signAndWriteCert(template, lintCert, lintCert, pub, signer, config.Outputs.CertificatePath)
 	if err != nil {
 		return err
 	}
