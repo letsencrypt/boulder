@@ -34,6 +34,10 @@ type limit struct {
 	// bucket to go from empty to full (burst * (period / count)). This is
 	// precomputed to avoid doing the same calculation on every request.
 	burstOffset int64
+
+	// overridden is true if this limit is an override limit, false if it is a
+	// default limit.
+	overridden bool
 }
 
 func precomputeLimit(l limit) limit {
@@ -131,6 +135,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			fqdnSet := core.HashNames(domains)
 			id = fmt.Sprintf("%s:%s", regId, fqdnSet)
 		}
+		v.overridden = true
 		parsed[bucketKey(name, id)] = precomputeLimit(v)
 	}
 	return parsed, nil
