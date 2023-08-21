@@ -708,10 +708,10 @@ func (b badNonceProvider) Nonce() (string, error) {
 		return "im-a-nonce", nil
 	}
 	if b.shortNonce {
-		// A nonce length of 3 is considered "short" because derived prefixes
-		// are 8 characters and static prefixes are 4 characters. This
-		// particular prefix is too short to be considered static or derived.
-		return "wow", nil
+		// A nonce length of 4 is considered "short" because there is no nonce
+		// material to be redeemed after the prefix. Derived prefixes are 8
+		// characters and static prefixes are 4 characters.
+		return "woww", nil
 	}
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		// TODO(#6610): Remove this.
