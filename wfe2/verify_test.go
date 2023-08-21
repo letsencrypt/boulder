@@ -760,7 +760,7 @@ func TestValidNonce(t *testing.T) {
 			JWS:  signer.shortNonce(),
 			ExpectedResult: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
-				Detail:     "JWS has an invalid anti-replay nonce: \"wow\"",
+				Detail:     "JWS has an invalid anti-replay nonce: \"woww\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSMalformedNonce",
