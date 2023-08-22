@@ -41,9 +41,11 @@ func Test_Lookup(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup := NewLookup(cmd.ServiceDomain{
-		Service: "redisratelimits",
-		Domain:  "service.consul",
+	lookup := NewLookup([]*cmd.ServiceDomain{
+		{
+			Service: "redisratelimits",
+			Domain:  "service.consul",
+		},
 	},
 		"consul.service.consul",
 		250*time.Millisecond,

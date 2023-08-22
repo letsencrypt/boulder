@@ -16,11 +16,8 @@ import (
 // Lookup is a helper that keeps *redis.Ring shards up to date using SRV
 // lookups.
 type Lookup struct {
-	// service is the symbolic name of the desired service.
-	service string
-
-	// domain is the domain name of the desired service.
-	domain string
+	// srvLookups is a list of SRV records to be looked up.
+	srvLookups []*cmd.ServiceDomain
 
 	// updateFrequency is the frequency of periodic SRV lookups. Defaults to 30
 	// seconds.
@@ -38,7 +35,7 @@ type Lookup struct {
 }
 
 // NewLookup returns a new Lookup helper.
-func NewLookup(srv cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) *Lookup {
+func NewLookup(srvLookups []*cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) *Lookup {
 	if frequency == 0 {
 		// Use default frequency.
 		frequency = 30 * time.Second
@@ -53,8 +50,7 @@ func NewLookup(srv cmd.ServiceDomain, dnsAuthority string, frequency time.Durati
 		dnsAuthority = net.JoinHostPort(host, port)
 	}
 	return &Lookup{
-		service:         srv.Service,
-		domain:          srv.Domain,
+		srvLookups:      srvLookups,
 		updateFrequency: frequency,
 		dnsAuthority:    dnsAuthority,
 		ring:            ring,
@@ -75,46 +71,44 @@ func (look *Lookup) getResolver() *net.Resolver {
 	}
 }
 
-// dnsName returns DNS name to look up as defined in RFC 2782.
-func (look *Lookup) dnsName() string {
-	return fmt.Sprintf("_%s._tcp.%s", look.service, look.domain)
-}
-
 // LookupShards performs SRV lookups for the given service name and returns the
 // resolved shard addresses.
 func (look *Lookup) Shards(ctx context.Context) (map[string]string, error) {
 	resolver := look.getResolver()
 
-	_, addrs, err := resolver.LookupSRV(ctx, look.service, "tcp", look.domain)
-	if err != nil {
-		return nil, fmt.Errorf("failed to lookup SRV records for service %q: %w", look.dnsName(), err)
-	}
-
-	if len(addrs) <= 0 {
-		return nil, fmt.Errorf("no SRV targets found for service %q", look.dnsName())
-	}
-
 	newAddrs := make(map[string]string)
-
-	for _, srv := range addrs {
-		host := strings.TrimRight(srv.Target, ".")
-
-		if look.dnsAuthority != "" {
-			// Lookup A/AAAA records for the SRV target using the custom DNS
-			// authority.
-			hostAddrs, err := resolver.LookupHost(ctx, host)
-			if err != nil {
-				return nil, fmt.Errorf("failed to lookup A/AAAA records for %q: %w", host, err)
-			}
-			if len(hostAddrs) <= 0 {
-				return nil, fmt.Errorf("no A/AAAA records found for %q", host)
-			}
-			// Use the first resolved IP address.
-			host = hostAddrs[0]
+	for _, srv := range look.srvLookups {
+		_, addrs, err := resolver.LookupSRV(ctx, srv.Service, "tcp", srv.Domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to lookup SRV records for service \"_%s._tcp.%s\": %w",
+				srv.Service, srv.Domain, err)
 		}
 
-		addr := fmt.Sprintf("%s:%d", host, srv.Port)
-		newAddrs[addr] = addr
+		if len(addrs) <= 0 {
+			return nil, fmt.Errorf("no SRV targets found for service \"_%s._tcp.%s\"",
+				srv.Service, srv.Domain)
+		}
+
+		for _, srv := range addrs {
+			host := strings.TrimRight(srv.Target, ".")
+
+			if look.dnsAuthority != "" {
+				// Lookup A/AAAA records for the SRV target using the custom DNS
+				// authority.
+				hostAddrs, err := resolver.LookupHost(ctx, host)
+				if err != nil {
+					return nil, fmt.Errorf("failed to lookup A/AAAA records for %q: %w", host, err)
+				}
+				if len(hostAddrs) <= 0 {
+					return nil, fmt.Errorf("no A/AAAA records found for %q", host)
+				}
+				// Use the first resolved IP address.
+				host = hostAddrs[0]
+			}
+
+			addr := fmt.Sprintf("%s:%d", host, srv.Port)
+			newAddrs[addr] = addr
+		}
 	}
 	return newAddrs, nil
 }
