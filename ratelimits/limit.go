@@ -35,9 +35,9 @@ type limit struct {
 	// precomputed to avoid doing the same calculation on every request.
 	burstOffset int64
 
-	// isOverridden is true if this limit is an override limit, false if it is a
+	// isOverride is true if this limit is an override limit, false if it is a
 	// default limit.
-	isOverridden bool
+	isOverride bool
 }
 
 func precomputeLimit(l limit) limit {
@@ -135,7 +135,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			fqdnSet := core.HashNames(domains)
 			id = fmt.Sprintf("%s:%s", regId, fqdnSet)
 		}
-		v.isOverridden = true
+		v.isOverride = true
 		parsed[bucketKey(name, id)] = precomputeLimit(v)
 	}
 	return parsed, nil
