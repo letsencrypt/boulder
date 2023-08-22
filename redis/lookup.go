@@ -119,9 +119,9 @@ func (look *Lookup) Shards(ctx context.Context) (map[string]string, error) {
 	return newAddrs, nil
 }
 
-// ShardsPeriodically periodically performs SRV lookups for the given service
+// shardsPeriodically periodically performs SRV lookups for the given service
 // name and updates the ring shards accordingly.
-func (look *Lookup) ShardsPeriodically(ctx context.Context, frequency time.Duration) {
+func (look *Lookup) shardsPeriodically(ctx context.Context, frequency time.Duration) {
 	ticker := time.NewTicker(frequency)
 	defer ticker.Stop()
 
@@ -150,5 +150,5 @@ func (look *Lookup) Start(ctx context.Context) {
 		panic(err)
 	}
 	look.ring.SetAddrs(addrs)
-	go look.ShardsPeriodically(ctx, look.updateFrequency)
+	go look.shardsPeriodically(ctx, look.updateFrequency)
 }
