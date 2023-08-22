@@ -268,6 +268,39 @@ func (rs requestSigner) malformedNonce() *jose.JSONWebSignature {
 	return parsedJWS
 }
 
+// shortNonce returns an otherwise well-signed request with a nonce shorter than
+// the prefix length.
+func (rs requestSigner) shortNonce() *jose.JSONWebSignature {
+	privateKey := loadKey(rs.t, []byte(test1KeyPrivatePEM))
+	jwk := &jose.JSONWebKey{
+		Key:       privateKey,
+		Algorithm: keyAlgForKey(rs.t, privateKey),
+		KeyID:     "http://localhost/acme/acct/1",
+	}
+	signerKey := jose.SigningKey{
+		Key:       jwk,
+		Algorithm: jose.RS256,
+	}
+
+	opts := &jose.SignerOptions{
+		NonceSource: badNonceProvider{shortNonce: true},
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"url": "https://example.com/acme/foo",
+		},
+	}
+
+	signer, err := jose.NewSigner(signerKey, opts)
+	test.AssertNotError(rs.t, err, "Failed to make signer")
+	jws, err := signer.Sign([]byte(""))
+	test.AssertNotError(rs.t, err, "Failed to sign req")
+
+	body := jws.FullSerialize()
+	parsedJWS, err := jose.ParseSigned(body)
+	test.AssertNotError(rs.t, err, "Failed to parse generated JWS")
+
+	return parsedJWS
+}
+
 func TestRejectsNone(t *testing.T) {
 	noneJWSBody := `
 		{
@@ -666,12 +699,19 @@ func TestEnforceJWSAuthType(t *testing.T) {
 }
 
 type badNonceProvider struct {
-	malformed bool
+	malformed  bool
+	shortNonce bool
 }
 
 func (b badNonceProvider) Nonce() (string, error) {
 	if b.malformed {
 		return "im-a-nonce", nil
+	}
+	if b.shortNonce {
+		// A nonce length of 4 is considered "short" because there is no nonce
+		// material to be redeemed after the prefix. Derived prefixes are 8
+		// characters and static prefixes are 4 characters.
+		return "woww", nil
 	}
 	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
 		// TODO(#6610): Remove this.
@@ -711,6 +751,16 @@ func TestValidNonce(t *testing.T) {
 			ExpectedResult: &probs.ProblemDetails{
 				Type:       probs.BadNonceProblem,
 				Detail:     "JWS has an invalid anti-replay nonce: \"im-a-nonce\"",
+				HTTPStatus: http.StatusBadRequest,
+			},
+			ErrorStatType: "JWSMalformedNonce",
+		},
+		{
+			Name: "Canned nonce shorter than prefixLength in JWS",
+			JWS:  signer.shortNonce(),
+			ExpectedResult: &probs.ProblemDetails{
+				Type:       probs.BadNonceProblem,
+				Detail:     "JWS has an invalid anti-replay nonce: \"woww\"",
 				HTTPStatus: http.StatusBadRequest,
 			},
 			ErrorStatType: "JWSMalformedNonce",
