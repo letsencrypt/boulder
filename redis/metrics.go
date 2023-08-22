@@ -1,8 +1,8 @@
 package redis
 
 import (
-	"github.com/go-redis/redis/v8"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
 )
 
 // An interface satisfied by *redis.ClusterClient and also by a mock in our tests.

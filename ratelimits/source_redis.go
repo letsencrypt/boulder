@@ -8,9 +8,9 @@ import (
 
 	bredis "github.com/letsencrypt/boulder/redis"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
 )
 
 // Compile-time check that RedisSource implements the source interface.
