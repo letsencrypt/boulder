@@ -169,7 +169,7 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 
 	d := maybeSpend(l.clk, limit, tat, cost)
 
-	if limit.overridden {
+	if limit.isOverridden {
 		// Calculate the proportion of the override limit used.
 		utilization := float64(limit.Burst-d.Remaining) / float64(limit.Burst)
 		l.overrideUsageGauge.WithLabelValues(nameToString[name], id).Set(utilization)

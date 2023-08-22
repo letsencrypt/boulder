@@ -78,6 +78,11 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, clk, _ := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
+			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0% of
+			// the bucket has been consumed.
+			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
+				"limit_name": nameToString[NewRegistrationsPerIPAddress], "client_id": tenZeroZeroTwo}, 0)
+
 			// Attempt to check a spend of 41 requests (a cost > the limit burst
 			// capacity), this should fail with a specific error.
 			_, err := l.Check(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 41)
