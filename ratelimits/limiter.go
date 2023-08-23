@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ErrInvalidCost indicates that the cost specified was <= 0.
@@ -34,13 +35,15 @@ type Limiter struct {
 	// source is used to store buckets. It must be safe for concurrent use.
 	source source
 	clk    clock.Clock
+
+	overrideUsageGauge *prometheus.GaugeVec
 }
 
 // NewLimiter returns a new *Limiter. The provided source must be safe for
 // concurrent use. The defaults and overrides paths are expected to be paths to
 // YAML files that contain the default and override limits, respectively. The
 // overrides file is optional, all other arguments are required.
-func NewLimiter(clk clock.Clock, source source, defaults, overrides string) (*Limiter, error) {
+func NewLimiter(clk clock.Clock, source source, defaults, overrides string, stats prometheus.Registerer) (*Limiter, error) {
 	limiter := &Limiter{source: source, clk: clk}
 
 	var err error
@@ -59,6 +62,12 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string) (*Li
 	if err != nil {
 		return nil, err
 	}
+
+	limiter.overrideUsageGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ratelimits_override_usage",
+		Help: "Proportion of override limit used, by limit name and client id.",
+	}, []string{"limit_name", "client_id"})
+	stats.MustRegister(limiter.overrideUsageGauge)
 
 	return limiter, nil
 }
@@ -159,6 +168,13 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 	}
 
 	d := maybeSpend(l.clk, limit, tat, cost)
+
+	if limit.isOverride {
+		// Calculate the current utilization of the override limit for the
+		// specified client id.
+		utilization := float64(limit.Burst-d.Remaining) / float64(limit.Burst)
+		l.overrideUsageGauge.WithLabelValues(nameToString[name], id).Set(utilization)
+	}
 
 	if !d.Allowed {
 		return d, nil
