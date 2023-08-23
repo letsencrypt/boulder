@@ -147,15 +147,18 @@ func (profile *certProfile) verifyProfile(ct certType) error {
 		}
 	}
 
-	if ct == intermediateCert {
+	if ct == intermediateCert || ct == crossCert {
 		if profile.CRLURL == "" {
-			return errors.New("crl-url is required for intermediates")
+			return errors.New("crl-url is required for subordinate CAs")
 		}
 		if profile.IssuerURL == "" {
-			return errors.New("issuer-url is required for intermediates")
+			return errors.New("issuer-url is required for subordinate CAs")
 		}
+
+		// BR 7.1.2.10.5 CA Certificate Certificate Policies
+		// OID 2.23.140.1.2.1 is an anyPolicy
 		if len(profile.Policies) != 1 || profile.Policies[0].OID != "2.23.140.1.2.1" {
-			return errors.New("policy should be exactly BRs domain-validated for intermediates")
+			return errors.New("policy should be exactly BRs domain-validated for subordinate CAs")
 		}
 	}
 
@@ -209,7 +212,12 @@ func generateSKID(pk []byte) ([]byte, error) {
 }
 
 // makeTemplate generates the certificate template for use in x509.CreateCertificate
-func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct certType) (*x509.Certificate, error) {
+func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, tbcs *x509.Certificate, ct certType) (*x509.Certificate, error) {
+	// Handle "unrestricted" vs "restricted" subordinate CA profile specifics.
+	if ct == crossCert && tbcs == nil {
+		return nil, fmt.Errorf("toBeCrossSigned cert field was nil, but was required to gather EKUs for the lint cert")
+	}
+
 	var ocspServer []string
 	if profile.OCSPURL != "" {
 		ocspServer = []string{profile.OCSPURL}
@@ -282,7 +290,10 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 	}
 
 	switch ct {
-	// rootCert and crossCert do not get EKU or MaxPathZero
+	// rootCert does not get EKU or MaxPathZero.
+	// 		BR 7.1.2.1.2 Root CA Extensions
+	// 		Extension 	Presence 	Critical 	Description
+	// 		extKeyUsage 	MUST NOT 	N 	-
 	case ocspCert:
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageOCSPSigning}
 		// ASN.1 NULL is 0x05, 0x00
@@ -299,6 +310,9 @@ func makeTemplate(randReader io.Reader, profile *certProfile, pubKey []byte, ct 
 		// it in our end-entity certificates.
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
 		cert.MaxPathLenZero = true
+	case crossCert:
+		cert.ExtKeyUsage = tbcs.ExtKeyUsage
+		cert.MaxPathLenZero = tbcs.MaxPathLenZero
 	}
 
 	for _, policyConfig := range profile.Policies {

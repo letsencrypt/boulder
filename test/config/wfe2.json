@@ -68,6 +68,14 @@
 			[
 				"/hierarchy/intermediate-cert-ecdsa-b.pem",
 				"/hierarchy/root-cert-ecdsa.pem"
+			],
+			[
+				"/hierarchy/intermediate-cross-cert-ecdsa-a.pem",
+				"/hierarchy/root-cert-rsa.pem"
+			],
+			[
+				"/hierarchy/intermediate-cross-cert-ecdsa-b.pem",
+				"/hierarchy/root-cert-rsa.pem"
 			]
 		],
 		"staleTimeout": "5m",

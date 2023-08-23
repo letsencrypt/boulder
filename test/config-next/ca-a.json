@@ -59,6 +59,17 @@
 			},
 			"issuers": [
 				{
+					"useForRSALeaves": false,
+					"useForECDSALeaves": true,
+					"issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
+					"ocspURL": "http://127.0.0.1:4002/",
+					"location": {
+						"configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
+						"certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
+						"numSessions": 2
+					}
+				},
+				{
 					"useForRSALeaves": true,
 					"useForECDSALeaves": true,
 					"issuerURL": "http://127.0.0.1:4001/aia/issuer/6605440498369741",
@@ -67,17 +78,6 @@
 					"location": {
 						"configFile": "/hierarchy/intermediate-signing-key-rsa.pkcs11.json",
 						"certFile": "/hierarchy/intermediate-cert-rsa-a.pem",
-						"numSessions": 2
-					}
-				},
-				{
-					"useForRSALeaves": false,
-					"useForECDSALeaves": true,
-					"issuerURL": "http://127.0.0.1:4001/aia/issuer/5214744660557630",
-					"ocspURL": "http://127.0.0.1:4002/",
-					"location": {
-						"configFile": "/hierarchy/intermediate-signing-key-ecdsa.pkcs11.json",
-						"certFile": "/hierarchy/intermediate-cert-ecdsa-a.pem",
 						"numSessions": 2
 					}
 				},
@@ -112,9 +112,9 @@
 		},
 		"ocspLogMaxLength": 4000,
 		"ocspLogPeriod": "500ms",
-		"ecdsaAllowListFilename": "test/config-next/ecdsaAllowList.yml",
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
+			"ECDSAForAll": true,
 			"RequireCommonName": false
 		}
 	},
