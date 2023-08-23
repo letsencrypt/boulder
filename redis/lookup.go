@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -17,7 +18,7 @@ import (
 // lookups.
 type Lookup struct {
 	// srvLookups is a list of SRV records to be looked up.
-	srvLookups []*cmd.ServiceDomain
+	srvLookups []cmd.ServiceDomain
 
 	// updateFrequency is the frequency of periodic SRV lookups. Defaults to 30
 	// seconds.
@@ -35,7 +36,7 @@ type Lookup struct {
 }
 
 // NewLookup returns a new Lookup helper.
-func NewLookup(srvLookups []*cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) *Lookup {
+func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) *Lookup {
 	if frequency == 0 {
 		// Use default frequency.
 		frequency = 30 * time.Second
@@ -71,44 +72,65 @@ func (look *Lookup) getResolver() *net.Resolver {
 	}
 }
 
-// LookupShards performs SRV lookups for the given service name and returns the
-// resolved shard addresses.
+// handleDNSError logs non-temporary DNS errors and returns nil. Temporary DNS
+// errors are returned as-is.
+func (look *Lookup) handleDNSError(err error, lookupType string, srv cmd.ServiceDomain) error {
+	if err != nil {
+		return nil
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) && (dnsErr.IsTimeout || dnsErr.IsTemporary) {
+		return err
+	}
+	// Non-temporary DNS errors should always be logged as they are indicative
+	// of a misconfiguration.
+	look.logger.Errf("resolving redis shards, %s lookup for %+v failed: %s", lookupType, srv, err)
+	return nil
+}
+
+// Shards performs SRV lookups for the given service name and returns the
+// resolved shard addresses. An error is only returned if all lookups fail
+// and/or 0 shards are resolved.
 func (look *Lookup) Shards(ctx context.Context) (map[string]string, error) {
 	resolver := look.getResolver()
 
+	var tempErrs []error
 	newAddrs := make(map[string]string)
 	for _, srv := range look.srvLookups {
-		_, addrs, err := resolver.LookupSRV(ctx, srv.Service, "tcp", srv.Domain)
+		_, targets, err := resolver.LookupSRV(ctx, srv.Service, "tcp", srv.Domain)
+		err = look.handleDNSError(err, "SRV", srv)
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup SRV records for service \"_%s._tcp.%s\": %w",
-				srv.Service, srv.Domain, err)
+			tempErrs = append(tempErrs, err)
+			// Skip to the next SRV lookup.
+			continue
 		}
 
-		if len(addrs) <= 0 {
-			return nil, fmt.Errorf("no SRV targets found for service \"_%s._tcp.%s\"",
-				srv.Service, srv.Domain)
-		}
-
-		for _, srv := range addrs {
-			host := strings.TrimRight(srv.Target, ".")
-
+		for _, target := range targets {
+			host := strings.TrimRight(target.Target, ".")
 			if look.dnsAuthority != "" {
 				// Lookup A/AAAA records for the SRV target using the custom DNS
 				// authority.
 				hostAddrs, err := resolver.LookupHost(ctx, host)
+				err = look.handleDNSError(err, "A/AAAA", srv)
 				if err != nil {
-					return nil, fmt.Errorf("failed to lookup A/AAAA records for %q: %w", host, err)
+					tempErrs = append(tempErrs, err)
+					// Skip to the next A/AAAA lookup.
+					continue
 				}
-				if len(hostAddrs) <= 0 {
-					return nil, fmt.Errorf("no A/AAAA records found for %q", host)
+				if len(hostAddrs) == 0 {
+					// Skip to the next A/AAAA lookup.
+					continue
 				}
 				// Use the first resolved IP address.
 				host = hostAddrs[0]
 			}
-
-			addr := fmt.Sprintf("%s:%d", host, srv.Port)
+			addr := fmt.Sprintf("%s:%d", host, target.Port)
 			newAddrs[addr] = addr
 		}
+	}
+	// Only return an error if all lookups failed.
+	if len(tempErrs) > 0 && len(newAddrs) == 0 {
+		return nil, errors.Join(tempErrs...)
 	}
 	return newAddrs, nil
 }
@@ -126,7 +148,11 @@ func (look *Lookup) shardsPeriodically(ctx context.Context, frequency time.Durat
 			newAddrs, err := look.Shards(timeoutCtx)
 			cancel()
 			if err != nil {
-				look.logger.Errf(err.Error())
+				look.logger.Warningf("resolving redis shards for %+v, temporary errors occurred: %s", look.srvLookups, err)
+				continue
+			}
+			if len(newAddrs) == 0 {
+				look.logger.Errf("0 redis shards were resolved for %+v", look.srvLookups)
 				continue
 			}
 			look.ring.SetAddrs(newAddrs)
@@ -137,11 +163,14 @@ func (look *Lookup) shardsPeriodically(ctx context.Context, frequency time.Durat
 	}
 }
 
-// Start starts the periodic SRV lookups.
+// Start begins periodic SRV lookups and updates the ring shards accordingly.
 func (look *Lookup) Start(ctx context.Context) {
 	addrs, err := look.Shards(ctx)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("resolving redis shards for %+v, temporary errors occurred: %s", look.srvLookups, err))
+	}
+	if len(addrs) == 0 {
+		panic(fmt.Sprintf("0 redis shards were resolved for %+v", look.srvLookups))
 	}
 	look.ring.SetAddrs(addrs)
 	go look.shardsPeriodically(ctx, look.updateFrequency)

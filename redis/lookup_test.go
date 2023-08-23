@@ -41,7 +41,7 @@ func Test_Lookup(t *testing.T) {
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup := NewLookup([]*cmd.ServiceDomain{
+	lookup := NewLookup([]cmd.ServiceDomain{
 		{
 			Service: "redisratelimits",
 			Domain:  "service.consul",
@@ -77,4 +77,70 @@ func Test_Lookup(t *testing.T) {
 
 	// The ring should now have two shards again.
 	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
+}
+
+func Test_LookupWithOneFailingSRV(t *testing.T) {
+	t.Parallel()
+
+	logger := blog.NewMock()
+	ring := newTestRedisRing()
+
+	lookup := NewLookup([]cmd.ServiceDomain{
+		{
+			Service: "doesnotexist",
+			Domain:  "service.consuls",
+		},
+		{
+			Service: "redisratelimits",
+			Domain:  "service.consul",
+		},
+	},
+		"consul.service.consul",
+		250*time.Millisecond,
+		ring,
+		logger,
+	)
+
+	testCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	lookup.Start(testCtx)
+
+	// The Consul service entry for 'redisratelimits' is configured to return
+	// two SRV targets. We should only have two shards in the ring.
+	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
+
+	// No error message should have been logged for 'doesnotexist' because some
+	// SRV targets were found for 'redisratelimits'.
+	noExist := logger.GetAllMatching(".*doesnotexist.*")
+	test.Assert(t, len(noExist) == 0, "Expected no error message for doesnotexist")
+}
+
+func Test_LookupWithAllFailingSRV(t *testing.T) {
+	t.Parallel()
+
+	logger := blog.NewMock()
+	ring := newTestRedisRing()
+
+	// Arrest panic.
+	defer func() {
+		r := recover()
+		test.AssertNil(t, r, "Expected NewLookup with all failing SRV lookups to panic")
+	}()
+
+	NewLookup([]cmd.ServiceDomain{
+		{
+			Service: "doesnotexist",
+			Domain:  "service.consuls",
+		},
+		{
+			Service: "doesnotexist2",
+			Domain:  "service.consuls",
+		},
+	},
+		"consul.service.consul",
+		250*time.Millisecond,
+		ring,
+		logger,
+	)
 }
