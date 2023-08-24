@@ -85,7 +85,8 @@ type Config struct {
 		// to update before being timed out. The total CRL updating process may take
 		// significantly longer, since a full update cycle may consist of updating
 		// many shards with varying degrees of parallelism. This value must be
-		// strictly less than the UpdatePeriod. Defaults to 1 hour.
+		// strictly less than the UpdatePeriod. Defaults to 10 minutes, one order
+		// of magnitude greater than our p99 update latency.
 		UpdateTimeout config.Duration `validate:"-"`
 
 		// MaxParallelism controls how many workers may be running in parallel.
@@ -150,7 +151,7 @@ func main() {
 		c.CRLUpdater.LookbackPeriod.Duration = 24 * time.Hour
 	}
 	if c.CRLUpdater.UpdateTimeout.Duration == 0 {
-		c.CRLUpdater.UpdateTimeout.Duration = 1 * time.Hour
+		c.CRLUpdater.UpdateTimeout.Duration = 10 * time.Minute
 	}
 
 	saConn, err := bgrpc.ClientSetup(c.CRLUpdater.SAService, tlsConfig, scope, clk)
