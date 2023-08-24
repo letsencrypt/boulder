@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // tenZeroZeroTwo is overridden in 'testdata/working_override.yml' to have
@@ -19,7 +21,7 @@ const tenZeroZeroTwo = "10.0.0.2"
 //   - 'NewRegistrationsPerIPAddress' burst: 20 count: 20 period: 1s
 //   - 'NewRegistrationsPerIPAddress:10.0.0.2' burst: 40 count: 40 period: 1s
 func newTestLimiter(t *testing.T, s source, clk clock.FakeClock) *Limiter {
-	l, err := NewLimiter(clk, s, "testdata/working_default.yml", "testdata/working_override.yml")
+	l, err := NewLimiter(clk, s, "testdata/working_default.yml", "testdata/working_override.yml", metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "should not error")
 	return l
 }
@@ -44,16 +46,16 @@ func setup(t *testing.T) (context.Context, map[string]*Limiter, clock.FakeClock,
 
 func Test_Limiter_WithBadLimitsPath(t *testing.T) {
 	t.Parallel()
-	_, err := NewLimiter(clock.NewFake(), newInmem(), "testdata/does-not-exist.yml", "")
+	_, err := NewLimiter(clock.NewFake(), newInmem(), "testdata/does-not-exist.yml", "", metrics.NoopRegisterer)
 	test.AssertError(t, err, "should error")
 
-	_, err = NewLimiter(clock.NewFake(), newInmem(), "testdata/defaults.yml", "testdata/does-not-exist.yml")
+	_, err = NewLimiter(clock.NewFake(), newInmem(), "testdata/defaults.yml", "testdata/does-not-exist.yml", metrics.NoopRegisterer)
 	test.AssertError(t, err, "should error")
 }
 
 func Test_Limiter_getLimitNoExist(t *testing.T) {
 	t.Parallel()
-	l, err := NewLimiter(clock.NewFake(), newInmem(), "testdata/working_default.yml", "")
+	l, err := NewLimiter(clock.NewFake(), newInmem(), "testdata/working_default.yml", "", metrics.NoopRegisterer)
 	test.AssertNotError(t, err, "should not error")
 	_, err = l.getLimit(Name(9999), "")
 	test.AssertError(t, err, "should error")
@@ -76,6 +78,11 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 	testCtx, limiters, clk, _ := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
+			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0% of
+			// the bucket has been consumed.
+			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
+				"limit_name": nameToString[NewRegistrationsPerIPAddress], "client_id": tenZeroZeroTwo}, 0)
+
 			// Attempt to check a spend of 41 requests (a cost > the limit burst
 			// capacity), this should fail with a specific error.
 			_, err := l.Check(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 41)
@@ -97,6 +104,11 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
+
+			// Verify our overrideUsageGauge is being set correctly. 1.0 == 100% of
+			// the bucket has been consumed.
+			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
+				"limit_name": nameToString[NewRegistrationsPerIPAddress], "client_id": tenZeroZeroTwo}, 1.0)
 
 			// Verify our RetryIn is correct. 1 second == 1000 milliseconds and
 			// 1000/40 = 25 milliseconds per request.

@@ -25,21 +25,25 @@ import (
 var ErrLinting = fmt.Errorf("failed lint(s)")
 
 // Check accomplishes the entire process of linting: it generates a throwaway
-// signing key, uses that to create a throwaway cert, and runs a default set
-// of lints (everything except for the ETSI and EV lints) against it. If the
+// signing key, uses that to create a linting cert, and runs a default set of
+// lints (everything except for the ETSI and EV lints) against it. If the
 // subjectPubKey and realSigner indicate that this is a self-signed cert, the
-// throwaway cert will have its pubkey replaced to also be self-signed. This is
-// the primary public interface of this package, but it can be inefficient;
-// creating a new signer and a new lint registry are expensive operations which
+// cert will have its pubkey replaced to also be self-signed. This is the
+// primary public interface of this package, but it can be inefficient; creating
+// a new signer and a new lint registry are expensive operations which
 // performance-sensitive clients may want to cache via linter.New().
-func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
+func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) ([]byte, error) {
 	linter, err := New(realIssuer, realSigner, skipLints)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = linter.Check(tbs, subjectPubKey)
-	return err
+	lintCertBytes, err := linter.Check(tbs, subjectPubKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return lintCertBytes, nil
 }
 
 // CheckCRL is like Check, but for CRLs.
@@ -54,7 +58,7 @@ func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSi
 // Linter is capable of linting a to-be-signed (TBS) certificate. It does so by
 // signing that certificate with a throwaway private key and a fake issuer whose
 // public key matches the throwaway private key, and then running the resulting
-// throwaway certificate through a registry of zlint lints.
+// certificate through a registry of zlint lints.
 type Linter struct {
 	issuer     *x509.Certificate
 	signer     crypto.Signer

@@ -191,6 +191,12 @@ func (wfe *WebFrontEndImpl) validPOSTRequest(request *http.Request) *probs.Probl
 // the nonce redemption service.
 func nonceWellFormed(nonceHeader string, prefixLen int) *probs.ProblemDetails {
 	errBadNonce := probs.BadNonce(fmt.Sprintf("JWS has an invalid anti-replay nonce: %q", nonceHeader))
+	if len(nonceHeader) <= prefixLen {
+		// Nonce header was an unexpected length because there is either:
+		// 1) no nonce, or
+		// 2) no nonce material after the prefix.
+		return errBadNonce
+	}
 	body, err := base64.RawURLEncoding.DecodeString(nonceHeader[prefixLen:])
 	if err != nil {
 		// Nonce was not valid base64url.
