@@ -11,11 +11,9 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/crl"
 	"github.com/letsencrypt/boulder/issuance"
-	sapb "github.com/letsencrypt/boulder/sa/proto"
 )
 
 // RunOnce runs the entire update process once immediately. It processes each
@@ -85,27 +83,10 @@ func (cu *crlUpdater) updateIssuer(ctx context.Context, atTime time.Time, issuer
 			case <-ctx.Done():
 				return
 			default:
-				ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
-				deadline, _ := ctx.Deadline()
-
-				_, err = cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
-					IssuerNameID: int64(issuerNameID),
-					MinShardIdx:  int64(idx),
-					MaxShardIdx:  int64(idx),
-					Until:        timestamppb.New(deadline.Add(-time.Second)),
-				})
-				if err != nil {
-					out <- shardResult{
-						shardIdx: idx,
-						err:      fmt.Errorf("leasing shard: %w", err),
-					}
-				} else {
-					out <- shardResult{
-						shardIdx: idx,
-						err:      cu.updateShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
-					}
+				out <- shardResult{
+					shardIdx: idx,
+					err:      cu.updateShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
 				}
-
 				// We want to renumber shard 0 to also be shard numShards (e.g. 128).
 				// To facilitate that transition, produce the same CRL with both shard
 				// indices.
@@ -116,8 +97,6 @@ func (cu *crlUpdater) updateIssuer(ctx context.Context, atTime time.Time, issuer
 						err:      cu.updateShardWithRetry(ctx, atTime, issuerNameID, cu.numShards, shardMap[idx]),
 					}
 				}
-
-				cancel()
 			}
 		}
 	}

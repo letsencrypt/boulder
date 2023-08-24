@@ -129,9 +129,32 @@ func NewUpdater(
 // updateShardWithRetry calls tickShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
 func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
+	ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+
+	if chunks == nil {
+		// Compute the shard map and relevant chunk boundaries, if not supplied.
+		// Batch mode supplies this to avoid duplicate computation.
+		shardMap, err := cu.getShardMappings(ctx, atTime)
+		if err != nil {
+			return fmt.Errorf("computing shardmap: %w", err)
+		}
+		chunks = shardMap[shardIdx%cu.numShards]
+	}
+
+	_, err := cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
+		IssuerNameID: int64(issuerNameID),
+		MinShardIdx:  int64(shardIdx),
+		MaxShardIdx:  int64(shardIdx),
+		Until:        timestamppb.New(deadline.Add(time.Minute)),
+	})
+	if err != nil {
+		return fmt.Errorf("leasing shard: %w", err)
+	}
+
 	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
 
-	var err error
 	for i := 0; i < cu.maxAttempts; i++ {
 		// core.RetryBackoff always returns 0 when its first argument is zero.
 		sleepTime := core.RetryBackoff(i, time.Second, time.Minute, 2)
@@ -147,7 +170,21 @@ func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time
 			break
 		}
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Notify the database that that we're done.
+	_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
+		IssuerNameID: int64(issuerNameID),
+		ShardIdx:     int64(shardIdx),
+		ThisUpdate:   timestamppb.New(atTime),
+	})
+	if err != nil {
+		return fmt.Errorf("updating db metadata: %w", err)
+	}
+
+	return nil
 }
 
 // updateShard processes a single shard. It computes the shard's boundaries, gets
@@ -291,15 +328,9 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
 	}
 
-	// Notify the database that that we're done.
-	_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
-		IssuerNameID: int64(issuerNameID),
-		ShardIdx:     int64(shardIdx),
-		ThisUpdate:   timestamppb.New(atTime),
-	})
-
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
 		crlID, crlLen, crlHash.Sum(nil))
+
 	return nil
 }

@@ -3,66 +3,74 @@ package updater
 import (
 	"context"
 	"math/big"
+	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/crl"
+	"github.com/letsencrypt/boulder/issuance"
 )
 
-// Run causes the crlUpdater to enter its processing loop. It waits until the
-// next scheduled run time based on the current time and the updateOffset, then
-// begins running once every updatePeriod.
+// Run causes the crlUpdater to enter its processing loop. It starts one
+// goroutine for every shard it intends to update, each of which will wake at
+// the appropriate interval.
 func (cu *crlUpdater) Run(ctx context.Context) error {
-	// We don't want the times at which crlUpdater runs to be dependent on when
-	// the process starts. So wait until the appropriate time before kicking off
-	// the first run and the main ticker loop.
-	currOffset := cu.clk.Now().UnixNano() % cu.updatePeriod.Nanoseconds()
-	var waitNanos int64
-	if currOffset <= cu.updateOffset.Nanoseconds() {
-		waitNanos = cu.updateOffset.Nanoseconds() - currOffset
-	} else {
-		waitNanos = cu.updatePeriod.Nanoseconds() - currOffset + cu.updateOffset.Nanoseconds()
-	}
-	cu.log.Infof("Running, next tick in %ds", waitNanos*int64(time.Nanosecond)/int64(time.Second))
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(time.Duration(waitNanos)):
-	}
+	var wg sync.WaitGroup
 
-	// Tick once immediately, but create the ticker first so that it starts
-	// counting from the appropriate time.
-	ticker := time.NewTicker(cu.updatePeriod)
-	atTime := cu.clk.Now()
-	err := cu.RunOnce(ctx, atTime)
-	if err != nil {
-		// We only log, rather than return, so that the long-lived process can
-		// continue and try again at the next tick.
-		cu.log.AuditErrf(
-			"Generating CRLs failed: number=[%s] err=[%s]",
-			(*big.Int)(crl.Number(atTime)), err)
-	}
+	shardWorker := func(issuerNameID issuance.IssuerNameID, shardIdx int) {
+		defer wg.Done()
 
-	for {
-		// If we have overrun *and* been canceled, both of the below cases could be
-		// selectable at the same time, so check for context cancellation first.
-		if ctx.Err() != nil {
-			ticker.Stop()
-			return ctx.Err()
-		}
+		// Wait for a random number of nanoseconds less than the updatePeriod, so
+		// that process restarts do not skip or delay shards deterministically.
+		waitTimer := time.NewTimer(time.Duration(rand.Int63n(cu.updatePeriod.Nanoseconds())))
+		defer waitTimer.Stop()
 		select {
-		case <-ticker.C:
-			atTime = cu.clk.Now()
-			err := cu.RunOnce(ctx, atTime)
+		case <-waitTimer.C:
+			// Continue to ticker loop
+		case <-ctx.Done():
+			return
+		}
+
+		// Do work, then sleep for updatePeriod. Rinse, and repeat.
+		ticker := time.NewTicker(cu.updatePeriod)
+		defer ticker.Stop()
+		for {
+			// Check for context cancellation before we do any real work, in case we
+			// overran the last tick and both cases were selectable at the same time.
+			if ctx.Err() != nil {
+				return
+			}
+
+			atTime := cu.clk.Now()
+			err := cu.updateShardWithRetry(ctx, atTime, issuerNameID, shardIdx, nil)
 			if err != nil {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
 				cu.log.AuditErrf(
-					"Generating CRLs failed: number=[%s] err=[%s]",
-					(*big.Int)(crl.Number(atTime)), err)
+					"Generating CRL failed: issuer=[%d] shard=[%d] number=[%s] err=[%s]",
+					issuerNameID, shardIdx, (*big.Int)(crl.Number(atTime)), err)
 			}
-		case <-ctx.Done():
-			ticker.Stop()
-			return ctx.Err()
+
+			select {
+			case <-ticker.C:
+				continue
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
+
+	// Start one shard worker per shard this updater is responsible for.
+	for _, issuer := range cu.issuers {
+		// TODO(#7007): Start at index 1 when we stop producing shard 0.
+		for i := 0; i <= cu.numShards; i++ {
+			wg.Add(1)
+			go shardWorker(issuer.NameID(), i)
+		}
+	}
+
+	// Wait for all of the shard workers to exit, which will happen when their
+	// contexts are cancelled, probably by a SIGTERM.
+	wg.Wait()
+	return ctx.Err()
 }
