@@ -1118,7 +1118,7 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 
 	// Only set the nextUpdate if it's actually present in the request message.
 	var nextUpdate *time.Time
-	if !req.NextUpdate.AsTime().IsZero() {
+	if req.NextUpdate != nil {
 		nut := req.NextUpdate.AsTime()
 		nextUpdate = &nut
 	}
