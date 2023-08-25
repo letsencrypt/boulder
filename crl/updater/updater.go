@@ -27,7 +27,6 @@ type crlUpdater struct {
 	shardWidth     time.Duration
 	lookbackPeriod time.Duration
 	updatePeriod   time.Duration
-	updateOffset   time.Duration
 	updateTimeout  time.Duration
 	maxParallelism int
 	maxAttempts    int
@@ -49,7 +48,6 @@ func NewUpdater(
 	shardWidth time.Duration,
 	lookbackPeriod time.Duration,
 	updatePeriod time.Duration,
-	updateOffset time.Duration,
 	updateTimeout time.Duration,
 	maxParallelism int,
 	maxAttempts int,
@@ -71,10 +69,6 @@ func NewUpdater(
 
 	if updatePeriod >= 7*24*time.Hour {
 		return nil, fmt.Errorf("must update CRLs at least every 7 days, got: %s", updatePeriod)
-	}
-
-	if updateOffset >= updatePeriod {
-		return nil, fmt.Errorf("update offset must be less than period: %s !< %s", updateOffset, updatePeriod)
 	}
 
 	if updateTimeout >= updatePeriod {
@@ -112,7 +106,6 @@ func NewUpdater(
 		shardWidth,
 		lookbackPeriod,
 		updatePeriod,
-		updateOffset,
 		updateTimeout,
 		maxParallelism,
 		maxAttempts,

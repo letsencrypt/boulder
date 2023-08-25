@@ -26,7 +26,7 @@ func TestUpdateIssuer(t *testing.T) {
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, time.Minute, time.Hour, 1, 1,
+		6*time.Hour, time.Minute, 1, 1,
 		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
@@ -72,7 +72,7 @@ func TestRunOnce(t *testing.T) {
 	cu, err := NewUpdater(
 		[]*issuance.Certificate{e1, r3},
 		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, time.Minute, time.Hour, 1, 1,
+		6*time.Hour, time.Minute, 1, 1,
 		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
 		&fakeCGC{gcc: fakeGCC{}},
 		&fakeCSC{ucc: fakeUCC{}},
