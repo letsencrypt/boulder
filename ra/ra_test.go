@@ -230,7 +230,7 @@ var testKeyPolicy = goodkey.KeyPolicy{
 
 var ctx = context.Background()
 
-// dummyRateLimitConfig satisfies the ratelimit.RateLimitConfig interface while
+// dummyRateLimitConfig satisfies the rl.RateLimitConfig interface while
 // allowing easy mocking of the individual RateLimitPolicy's
 type dummyRateLimitConfig struct {
 	CertificatesPerNamePolicy             ratelimit.RateLimitPolicy
@@ -655,6 +655,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": denied}, 1)
 
 	// Create a registration for an IPv6 address
 	reg.Key = newAcctKey(t)
@@ -672,6 +673,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": denied}, 2)
 
 	// Create a registration for an IPv6 address in the same /48
 	reg.Key = newAcctKey(t)
@@ -691,6 +693,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP range: see https://letsencrypt.org/docs/rate-limits/")
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": denied}, 1)
 }
 
 type NoUpdateSA struct {
@@ -1053,9 +1056,10 @@ func TestAuthzFailedRateLimitingNewOrder(t *testing.T) {
 	}
 
 	testcase := func() {
+		limit := ra.rlPolicies.InvalidAuthorizationsPerAccount()
 		ra.SA = &mockInvalidAuthorizationsAuthority{domainWithFailures: "all.i.do.is.lose.com"}
 		err := ra.checkInvalidAuthorizationLimits(ctx, Registration.Id,
-			[]string{"charlie.brown.com", "all.i.do.is.lose.com"})
+			[]string{"charlie.brown.com", "all.i.do.is.lose.com"}, limit)
 		test.AssertError(t, err, "checkInvalidAuthorizationLimits did not encounter expected rate limit error")
 		test.AssertEquals(t, err.Error(), "too many failed authorizations recently: see https://letsencrypt.org/docs/failed-validation-limit/")
 	}
@@ -2162,7 +2166,8 @@ func TestPendingAuthorizationsUnlimited(t *testing.T) {
 
 	ra.SA = &mockSACountPendingFails{}
 
-	err := ra.checkPendingAuthorizationLimit(context.Background(), 13)
+	limit := ra.rlPolicies.PendingAuthorizationsPerAccount()
+	err := ra.checkPendingAuthorizationLimit(context.Background(), 13, limit)
 	test.AssertNotError(t, err, "checking pending authorization limit")
 }
 
