@@ -237,7 +237,6 @@ type dummyRateLimitConfig struct {
 	RegistrationsPerIPPolicy              ratelimit.RateLimitPolicy
 	RegistrationsPerIPRangePolicy         ratelimit.RateLimitPolicy
 	PendingAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
-	PendingOrdersPerAccountPolicy         ratelimit.RateLimitPolicy
 	NewOrdersPerAccountPolicy             ratelimit.RateLimitPolicy
 	InvalidAuthorizationsPerAccountPolicy ratelimit.RateLimitPolicy
 	CertificatesPerFQDNSetPolicy          ratelimit.RateLimitPolicy
@@ -258,10 +257,6 @@ func (r *dummyRateLimitConfig) RegistrationsPerIPRange() ratelimit.RateLimitPoli
 
 func (r *dummyRateLimitConfig) PendingAuthorizationsPerAccount() ratelimit.RateLimitPolicy {
 	return r.PendingAuthorizationsPerAccountPolicy
-}
-
-func (r *dummyRateLimitConfig) PendingOrdersPerAccount() ratelimit.RateLimitPolicy {
-	return r.PendingOrdersPerAccountPolicy
 }
 
 func (r *dummyRateLimitConfig) NewOrdersPerAccount() ratelimit.RateLimitPolicy {
