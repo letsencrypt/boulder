@@ -18,7 +18,6 @@ type Limits interface {
 	InvalidAuthorizationsPerAccount() RateLimitPolicy
 	CertificatesPerFQDNSet() RateLimitPolicy
 	CertificatesPerFQDNSetFast() RateLimitPolicy
-	PendingOrdersPerAccount() RateLimitPolicy
 	NewOrdersPerAccount() RateLimitPolicy
 	LoadPolicies(contents []byte) error
 }
@@ -95,15 +94,6 @@ func (r *limitsImpl) CertificatesPerFQDNSetFast() RateLimitPolicy {
 	return r.rlPolicy.CertificatesPerFQDNSetFast
 }
 
-func (r *limitsImpl) PendingOrdersPerAccount() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
-	if r.rlPolicy == nil {
-		return RateLimitPolicy{}
-	}
-	return r.rlPolicy.PendingOrdersPerAccount
-}
-
 func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
 	r.RLock()
 	defer r.RUnlock()
@@ -157,9 +147,6 @@ type rateLimitConfig struct {
 	// Note that this limit is actually "per account, per hostname," but that
 	// is too long for the variable name.
 	InvalidAuthorizationsPerAccount RateLimitPolicy `yaml:"invalidAuthorizationsPerAccount"`
-	// Number of pending orders that can exist per account. Overrides by key are
-	// not applied, but overrides by registration are. **DEPRECATED**
-	PendingOrdersPerAccount RateLimitPolicy `yaml:"pendingOrdersPerAccount"`
 	// Number of new orders that can be created per account within the given
 	// window. Overrides by key are not applied, but overrides by registration are.
 	NewOrdersPerAccount RateLimitPolicy `yaml:"newOrdersPerAccount"`
