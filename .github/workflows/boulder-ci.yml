@@ -205,20 +205,21 @@ jobs:
         run: echo "Using BOULDER_TOOLS_TAG ${BOULDER_TOOLS_TAG}"
 
       # Pre-pull the docker containers before running the tests.
-      - name: docker compose pull netaccess
-        run: docker compose pull netaccess
+      - name: docker compose pull boulder
+        run: docker compose pull boulder
       
-      - uses: dominikh/staticcheck-action@v1.3.0
-        with:
-          version: "2023.1.5"
-          install-go: false
-          # Ignores the following checks:
-          # SA1019: Using a deprecated function, variable, constant or field
-          # SA6003: Converting a string to a slice of runes before ranging over it
-          # ST1000: Incorrect or missing package comment
-          # ST1003: Poorly chosen identifier
-          # ST1005: Incorrectly formatted error string
-          checks: "all, -SA1019, -SA6003, -ST1000, -ST1003, -ST1005,"
+      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
+      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
+      - if: startsWith(matrix.BOULDER_TOOLS_TAG, 'go1.21')
+        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
+
+      # Unset the GOFLAGS environment variable because, by default, it will be
+      # set to "GOFLAGS='-mod=vendor'" which all go subcommands will utilize. In
+      # this instance, we want to run a package that isn't vendored in our
+      # repository because 1) we don't need this package for CA operations and
+      # 2) we want the benefits of vulnerability checking.
+      - name: Run staticcheck
+        run: docker compose run -e GOFLAGS= boulder staticcheck ./...
 
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
@@ -233,6 +234,7 @@ jobs:
     needs:
       - b
       - govulncheck
+      - staticcheck
     steps:
       - name: Check boulder ci test matrix status
         if: ${{ needs.b.result != 'success' || needs.govulncheck.result != 'success' || needs.staticcheck.result != 'success'  }}
