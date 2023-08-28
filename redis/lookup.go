@@ -88,10 +88,10 @@ func (look *Lookup) handleDNSError(err error, lookupType string, srv cmd.Service
 	return nil
 }
 
-// Shards performs SRV lookups for the given service name and returns the
+// shards performs SRV lookups for the given service name and returns the
 // resolved shard addresses. An error is only returned if all lookups fail
 // and/or 0 shards are resolved.
-func (look *Lookup) Shards(ctx context.Context) (map[string]string, error) {
+func (look *Lookup) shards(ctx context.Context) (map[string]string, error) {
 	resolver := look.getResolver()
 
 	var tempErrs []error
@@ -137,15 +137,15 @@ func (look *Lookup) Shards(ctx context.Context) (map[string]string, error) {
 
 // shardsPeriodically periodically performs SRV lookups for the given service
 // name and updates the ring shards accordingly.
-func (look *Lookup) shardsPeriodically(ctx context.Context, frequency time.Duration) {
-	ticker := time.NewTicker(frequency)
+func (look *Lookup) shardsPeriodically(ctx context.Context) {
+	ticker := time.NewTicker(look.updateFrequency)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			timeoutCtx, cancel := context.WithTimeout(ctx, frequency)
-			newAddrs, err := look.Shards(timeoutCtx)
+			timeoutCtx, cancel := context.WithTimeout(ctx, look.updateFrequency-look.updateFrequency/10)
+			newAddrs, err := look.shards(timeoutCtx)
 			cancel()
 			if err != nil {
 				look.logger.Warningf("resolving redis shards for %+v, temporary errors occurred: %s", look.srvLookups, err)
@@ -165,7 +165,7 @@ func (look *Lookup) shardsPeriodically(ctx context.Context, frequency time.Durat
 
 // Start begins periodic SRV lookups and updates the ring shards accordingly.
 func (look *Lookup) Start(ctx context.Context) {
-	addrs, err := look.Shards(ctx)
+	addrs, err := look.shards(ctx)
 	if err != nil {
 		panic(fmt.Sprintf("resolving redis shards for %+v, temporary errors occurred: %s", look.srvLookups, err))
 	}
@@ -173,5 +173,5 @@ func (look *Lookup) Start(ctx context.Context) {
 		panic(fmt.Sprintf("0 redis shards were resolved for %+v", look.srvLookups))
 	}
 	look.ring.SetAddrs(addrs)
-	go look.shardsPeriodically(ctx, look.updateFrequency)
+	go look.shardsPeriodically(ctx)
 }

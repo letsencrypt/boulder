@@ -35,7 +35,7 @@ func newTestRedisRing() *redis.Ring {
 	return client
 }
 
-func Test_Lookup(t *testing.T) {
+func TestLookup(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
@@ -79,7 +79,7 @@ func Test_Lookup(t *testing.T) {
 	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
 }
 
-func Test_LookupWithOneFailingSRV(t *testing.T) {
+func TestLookupWithOneFailingSRV(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
@@ -116,7 +116,7 @@ func Test_LookupWithOneFailingSRV(t *testing.T) {
 	test.Assert(t, len(noExist) == 0, "Expected no error message for doesnotexist")
 }
 
-func Test_LookupWithAllFailingSRV(t *testing.T) {
+func TestLookupWithAllFailingSRV(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
