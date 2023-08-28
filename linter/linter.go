@@ -159,10 +159,10 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		// get, without sharing a public key.
 		//
 		// We do not copy the SignatureAlgorithm field while constructing the
-		// lint issuer. Depending on the realIssuer, which could be either an
-		// intermediate or cross-signed intermediate, the SignatureAlgorithm of
-		// that certificate may differ from the root certificate that had signed
-		// it.
+		// lintIssuer because the lintIssuer is self-signed. Depending on the
+		// realIssuer, which could be either an intermediate or cross-signed
+		// intermediate, the SignatureAlgorithm of that certificate may differ
+		// from the root certificate that had signed it.
 		AuthorityKeyId:              realIssuer.AuthorityKeyId,
 		BasicConstraintsValid:       realIssuer.BasicConstraintsValid,
 		CRLDistributionPoints:       realIssuer.CRLDistributionPoints,
