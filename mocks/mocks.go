@@ -572,7 +572,7 @@ func (sa *StorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.Rev
 	return nil, nil
 }
 
-// RevokeCertificate is a mock
+// UpdateRevokedCertificate is a mock
 func (sa *StorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return nil, nil
 }
@@ -602,7 +602,7 @@ func (sa *StorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Update
 	return nil, errors.New("unimplemented")
 }
 
-// Publisher is a mock
+// PublisherClient is a mock
 type PublisherClient struct {
 	// empty
 }
