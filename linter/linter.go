@@ -163,7 +163,6 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		// intermediate or cross-signed intermediate, the SignatureAlgorithm of
 		// that certificate may differ from the root certificate that had signed
 		// it.
-		//
 		AuthorityKeyId:              realIssuer.AuthorityKeyId,
 		BasicConstraintsValid:       realIssuer.BasicConstraintsValid,
 		CRLDistributionPoints:       realIssuer.CRLDistributionPoints,
