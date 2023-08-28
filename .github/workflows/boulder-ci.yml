@@ -207,11 +207,6 @@ jobs:
       # Pre-pull the docker containers before running the tests.
       - name: docker compose pull netaccess
         run: docker compose pull netaccess
-
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
-      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
-      - if: startsWith(matrix.BOULDER_TOOLS_TAG, 'go1.21')
-        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
       
       - uses: dominikh/staticcheck-action@v1.3.0
         with:
