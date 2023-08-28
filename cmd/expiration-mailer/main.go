@@ -926,7 +926,6 @@ func main() {
 
 	if *daemon {
 		t := time.NewTicker(c.Mailer.Frequency.Duration)
-	daemonLoop:
 		for {
 			select {
 			case <-t.C:
@@ -935,7 +934,7 @@ func main() {
 					cmd.FailOnError(err, "expiration-mailer has failed")
 				}
 			case <-ctx.Done():
-				continue daemonLoop
+				return
 			}
 		}
 	} else {
