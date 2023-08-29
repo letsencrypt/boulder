@@ -205,8 +205,8 @@ jobs:
         run: echo "Using BOULDER_TOOLS_TAG ${BOULDER_TOOLS_TAG}"
 
       # Pre-pull the docker containers before running the tests.
-      - name: docker compose pull boulder
-        run: docker compose pull boulder
+      - name: docker compose pull netaccess
+        run: docker compose pull netaccess
 
       # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
       # go1.21rc2 or higher. This experiment value is unknown in lower versions.
@@ -216,10 +216,13 @@ jobs:
       # Unset the GOFLAGS environment variable because, by default, it will be
       # set to "GOFLAGS='-mod=vendor'" which all go subcommands will utilize. In
       # this instance, we want to run a package that isn't vendored in our
-      # repository because 1) we don't need this package for CA operations and
-      # 2) we want the benefits of vulnerability checking.
+      # repository because we don't need this package for CA operations.
+      #
+      # This lint tool is running specifically in the netaccess container
+      # because it will only run a container containing boulder source code, not
+      # the entire boulder stack.
       - name: Run staticcheck
-        run: docker compose run -e GOFLAGS= boulder staticcheck ./...
+        run: docker compose run -e GOFLAGS= netaccess staticcheck ./...
 
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
