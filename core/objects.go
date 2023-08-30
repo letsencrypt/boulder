@@ -350,7 +350,7 @@ type Authorization struct {
 	//   domain name.  For other authorizations, it MUST be absent.
 	//   Wildcard domain names are described in Section 7.1.3.
 	//
-	// This is not represented inthe database because we calculate it from
+	// This is not represented in the database because we calculate it from
 	// the identifier stored in the database. Unlike the identifier returned
 	// as part of the authorization, the identifier we store in the database
 	// can contain an asterisk.
