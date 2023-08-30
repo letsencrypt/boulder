@@ -35,13 +35,13 @@ func newTestRedisRing() *redis.Ring {
 	return client
 }
 
-func TestLookup(t *testing.T) {
+func TestNewLookup(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup := NewLookup([]cmd.ServiceDomain{
+	_, err := NewLookup([]cmd.ServiceDomain{
 		{
 			Service: "redisratelimits",
 			Domain:  "service.consul",
@@ -52,40 +52,16 @@ func TestLookup(t *testing.T) {
 		ring,
 		logger,
 	)
-
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	lookup.Start(testCtx)
-
-	// The Consul service entry for 'redisratelimits' is configured to return
-	// two SRV targets. We should only have two shards in the ring.
-	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
-
-	// Ensure we can reach both shards using the PING command.
-	err := ring.ForEachShard(testCtx, func(ctx context.Context, shard *redis.Client) error {
-		return shard.Ping(ctx).Err()
-	})
-	test.AssertNotError(t, err, "Expected PING to succeed for both shards")
-
-	// Drop both Shards from the ring.
-	ring.SetAddrs(map[string]string{})
-	test.Assert(t, ring.Len() == 0, "Expected 0 shards in the ring")
-
-	// Sleep 300ms to allow the periodic lookup to run.
-	time.Sleep(300 * time.Millisecond)
-
-	// The ring should now have two shards again.
-	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
+	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
 }
 
-func TestLookupWithOneFailingSRV(t *testing.T) {
+func TestNewLookupWithOneFailingSRV(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	lookup := NewLookup([]cmd.ServiceDomain{
+	_, err := NewLookup([]cmd.ServiceDomain{
 		{
 			Service: "doesnotexist",
 			Domain:  "service.consuls",
@@ -100,35 +76,16 @@ func TestLookupWithOneFailingSRV(t *testing.T) {
 		ring,
 		logger,
 	)
-
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	lookup.Start(testCtx)
-
-	// The Consul service entry for 'redisratelimits' is configured to return
-	// two SRV targets. We should only have two shards in the ring.
-	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
-
-	// No error message should have been logged for 'doesnotexist' because some
-	// SRV targets were found for 'redisratelimits'.
-	noExist := logger.GetAllMatching(".*doesnotexist.*")
-	test.Assert(t, len(noExist) == 0, "Expected no error message for doesnotexist")
+	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
 }
 
-func TestLookupWithAllFailingSRV(t *testing.T) {
+func TestNewLookupWithAllFailingSRV(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
 	ring := newTestRedisRing()
 
-	// Arrest panic.
-	defer func() {
-		r := recover()
-		test.AssertNil(t, r, "Expected NewLookup with all failing SRV lookups to panic")
-	}()
-
-	NewLookup([]cmd.ServiceDomain{
+	_, err := NewLookup([]cmd.ServiceDomain{
 		{
 			Service: "doesnotexist",
 			Domain:  "service.consuls",
@@ -143,4 +100,123 @@ func TestLookupWithAllFailingSRV(t *testing.T) {
 		ring,
 		logger,
 	)
+	test.AssertError(t, err, "Expected NewLookup construction to fail")
+}
+
+func TestLookupWithAllFailingSRV(t *testing.T) {
+	t.Parallel()
+
+	logger := blog.NewMock()
+	ring := newTestRedisRing()
+
+	lookup, err := NewLookup([]cmd.ServiceDomain{
+		{
+			Service: "redisratelimits",
+			Domain:  "service.consul",
+		},
+	},
+		"consul.service.consul",
+		250*time.Millisecond,
+		ring,
+		logger,
+	)
+	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+
+	lookup.srvLookups = []cmd.ServiceDomain{
+		{
+			Service: "doesnotexist1",
+			Domain:  "service.consul",
+		},
+		{
+			Service: "doesnotexist2",
+			Domain:  "service.consul",
+		},
+	}
+
+	testCtx, cancel := context.WithCancel(context.Background())
+	tempErr, nonTempErr := lookup.now(testCtx)
+	cancel()
+	test.AssertNotError(t, tempErr, "Expected no temporary errors")
+	test.AssertError(t, nonTempErr, "Expected non-temporary errors to have occurred")
+}
+
+func TestLookupWithAllFailingSRVs(t *testing.T) {
+	t.Parallel()
+
+	logger := blog.NewMock()
+	ring := newTestRedisRing()
+
+	lookup, err := NewLookup([]cmd.ServiceDomain{
+		{
+			Service: "redisratelimits",
+			Domain:  "service.consul",
+		},
+	},
+		"consul.service.consul",
+		250*time.Millisecond,
+		ring,
+		logger,
+	)
+	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+
+	// Replace the dnsAuthority with a non-existent DNS server, this will cause
+	// a timeout error, which is technically a temporary error.
+	lookup.dnsAuthority = "consuls.services.consuls:53"
+
+	testCtx, cancel := context.WithCancel(context.Background())
+	tempErr, nonTempErr := lookup.now(testCtx)
+	cancel()
+	test.AssertError(t, tempErr, "Expected a temporary error")
+	test.AssertNotError(t, nonTempErr, "Expected no non-temporary errors")
+}
+
+func TestLookupWithOneFailingSRV(t *testing.T) {
+	t.Parallel()
+
+	logger := blog.NewMock()
+	ring := newTestRedisRing()
+
+	lookup, err := NewLookup([]cmd.ServiceDomain{
+		{
+			Service: "doesnotexist",
+			Domain:  "service.consuls",
+		},
+		{
+			Service: "redisratelimits",
+			Domain:  "service.consul",
+		},
+	},
+		"consul.service.consul",
+		250*time.Millisecond,
+		ring,
+		logger,
+	)
+	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+
+	testCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	lookup.Start(testCtx)
+
+	// The Consul service entry for 'redisratelimits' is configured to return
+	// two SRV targets. We should only have two shards in the ring.
+	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
+
+	// Ensure we can reach both shards using the PING command.
+	err = ring.ForEachShard(testCtx, func(ctx context.Context, shard *redis.Client) error {
+		return shard.Ping(ctx).Err()
+	})
+	test.AssertNotError(t, err, "Expected PING to succeed for both shards")
+
+	// Drop both Shards from the ring.
+	ring.SetAddrs(map[string]string{})
+	test.Assert(t, ring.Len() == 0, "Expected 0 shards in the ring")
+
+	// Force a lookup to occur.
+	tempErr, nonTempErr := lookup.now(testCtx)
+	test.AssertNotError(t, tempErr, "Expected no temporary errors")
+	test.AssertNotError(t, nonTempErr, "Expected no non-temporary errors")
+
+	// The ring should now have two shards again.
+	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
 }
