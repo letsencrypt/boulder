@@ -44,12 +44,18 @@ type Lookup struct {
 // is performed to populate the Redis ring shards. If the initial lookup fails,
 // an error is returned.
 func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) (*Lookup, error) {
-	var lookup = &Lookup{}
+	var lookup = &Lookup{
+		srvLookups: srvLookups,
+		ring:       ring,
+		logger:     logger,
+	}
+
 	lookup.updateFrequency = frequency
 	if lookup.updateFrequency == 0 {
 		// Use default frequency.
 		lookup.updateFrequency = 30 * time.Second
 	}
+	// Use 90% of the update frequency as the default timeout.
 	lookup.updateTimeout = lookup.updateFrequency - lookup.updateFrequency/10
 
 	// Use the system DNS resolver by default.
@@ -66,17 +72,14 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 		lookup.resolver = &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+				// Note: This closes over the lookup.dnsAuthority field.
 				return net.Dial(network, lookup.dnsAuthority)
 			},
 		}
 	}
 
-	lookup.srvLookups = srvLookups
-	lookup.ring = ring
-	lookup.logger = logger
-
 	ctx, cancel := context.WithTimeout(context.Background(), lookup.updateTimeout)
-	tempErrs, nonTempErrs := lookup.now(ctx)
+	tempErrs, nonTempErrs := lookup.updateNow(ctx)
 	cancel()
 	if tempErrs != nil || nonTempErrs != nil {
 		return nil, errors.Join(tempErrs, nonTempErrs)
@@ -84,13 +87,13 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	return lookup, nil
 }
 
-// now resolves the SRV records and updates the Redis ring shards accordingly.
-// If all lookups fail or otherwise result in an empty set of resolved shards,
-// the Redis ring is left unmodified and any errors are returned. If at least
-// one lookup succeeds, the Redis ring is updated, and all errors are discarded.
-// Non-temporary DNS errors logged as they occur, as they're likely to be
-// indicative of a misconfiguration.
-func (look *Lookup) now(ctx context.Context) (tempErrors, nonTempErrors error) {
+// updateNow resolves and updates the Redis ring shards accordingly. If all
+// lookups fail or otherwise result in an empty set of resolved shards, the
+// Redis ring is left unmodified and any errors are returned. If at least one
+// lookup succeeds, the Redis ring is updated, and all errors are discarded.
+// Non-temporary DNS errors are always logged as they occur, as they're likely
+// to be indicative of a misconfiguration.
+func (look *Lookup) updateNow(ctx context.Context) (tempErrors, nonTempErrors error) {
 	var tempErrs []error
 	var nonTempErrs []error
 
@@ -113,7 +116,7 @@ func (look *Lookup) now(ctx context.Context) (tempErrors, nonTempErrors error) {
 			continue
 		}
 		if len(targets) <= 0 {
-			tempErrs = append(tempErrs, fmt.Errorf("no targets resolved for service \"_%s._tcp.%s\"", srv.Service, srv.Domain))
+			tempErrs = append(tempErrs, fmt.Errorf("0 targets resolved for service \"_%s._tcp.%s\"", srv.Service, srv.Domain))
 			// Skip to the next SRV lookup.
 			continue
 		}
@@ -130,7 +133,7 @@ func (look *Lookup) now(ctx context.Context) (tempErrors, nonTempErrors error) {
 					continue
 				}
 				if len(hostAddrs) <= 0 {
-					tempErrs = append(tempErrs, fmt.Errorf("no host resolved for target %q of service \"_%s._tcp.%s\"", host, srv.Service, srv.Domain))
+					tempErrs = append(tempErrs, fmt.Errorf("0 addrs resolved for target %q of service \"_%s._tcp.%s\"", host, srv.Service, srv.Domain))
 					// Skip to the next A/AAAA lookup.
 					continue
 				}
@@ -142,15 +145,13 @@ func (look *Lookup) now(ctx context.Context) (tempErrors, nonTempErrors error) {
 		}
 	}
 
-	// Only return and error if all lookups failed.
+	// Only return errors if we failed to resolve any shards.
 	if len(nextAddrs) == 0 {
 		return errors.Join(tempErrs...), errors.Join(nonTempErrs...)
 	}
 
-	// At least some lookups succeeded, update the ring.
+	// Some shards were resolved, update the Redis ring and discard all errors.
 	look.ring.SetAddrs(nextAddrs)
-
-	// Discard any errors.
 	return nil, nil
 }
 
@@ -168,7 +169,7 @@ func (look *Lookup) Start(ctx context.Context) {
 			}
 
 			timeoutCtx, cancel := context.WithTimeout(ctx, look.updateTimeout)
-			tempErrs, _ := look.now(timeoutCtx)
+			tempErrs, _ := look.updateNow(timeoutCtx)
 			cancel()
 			if tempErrs != nil {
 				look.logger.Warningf("resolving ring shards: %s", tempErrs)

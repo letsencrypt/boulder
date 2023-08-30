@@ -134,7 +134,7 @@ func TestLookupWithAllFailingSRV(t *testing.T) {
 	}
 
 	testCtx, cancel := context.WithCancel(context.Background())
-	tempErr, nonTempErr := lookup.now(testCtx)
+	tempErr, nonTempErr := lookup.updateNow(testCtx)
 	cancel()
 	test.AssertNotError(t, tempErr, "Expected no temporary errors")
 	test.AssertError(t, nonTempErr, "Expected non-temporary errors to have occurred")
@@ -164,7 +164,7 @@ func TestLookupWithAllFailingSRVs(t *testing.T) {
 	lookup.dnsAuthority = "consuls.services.consuls:53"
 
 	testCtx, cancel := context.WithCancel(context.Background())
-	tempErr, nonTempErr := lookup.now(testCtx)
+	tempErr, nonTempErr := lookup.updateNow(testCtx)
 	cancel()
 	test.AssertError(t, tempErr, "Expected a temporary error")
 	test.AssertNotError(t, nonTempErr, "Expected no non-temporary errors")
@@ -213,7 +213,7 @@ func TestLookupWithOneFailingSRV(t *testing.T) {
 	test.Assert(t, ring.Len() == 0, "Expected 0 shards in the ring")
 
 	// Force a lookup to occur.
-	tempErr, nonTempErr := lookup.now(testCtx)
+	tempErr, nonTempErr := lookup.updateNow(testCtx)
 	test.AssertNotError(t, tempErr, "Expected no temporary errors")
 	test.AssertNotError(t, nonTempErr, "Expected no non-temporary errors")
 
