@@ -160,14 +160,16 @@ func TestLookupWithAllFailingSRVs(t *testing.T) {
 	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
 
 	// Replace the dnsAuthority with a non-existent DNS server, this will cause
-	// a timeout error, which is technically a temporary error.
+	// a timeout error, which is technically a temporary error, but will
+	// eventually result in a non-temporary error when no shards are resolved.
 	lookup.dnsAuthority = "consuls.services.consuls:53"
 
 	testCtx, cancel := context.WithCancel(context.Background())
 	tempErr, nonTempErr := lookup.updateNow(testCtx)
 	cancel()
-	test.AssertError(t, tempErr, "Expected a temporary error")
-	test.AssertNotError(t, nonTempErr, "Expected no non-temporary errors")
+	test.AssertError(t, tempErr, "Expected temporary errors")
+	test.AssertError(t, nonTempErr, "Expected a non-temporary error")
+	test.AssertErrorIs(t, nonTempErr, ErrNoShardsResolved)
 }
 
 func TestLookupWithOneFailingSRV(t *testing.T) {

@@ -14,6 +14,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var ErrNoShardsResolved = errors.New("0 shards were resolved")
+
 // Lookup wraps a Redis ring client by reference and keeps the Redis ring shards
 // up to date via periodic SRV lookups.
 type Lookup struct {
@@ -41,8 +43,8 @@ type Lookup struct {
 }
 
 // NewLookup constructs and returns a new Lookup instance. An initial SRV lookup
-// is performed to populate the Redis ring shards. If the initial lookup fails,
-// an error is returned.
+// is performed to populate the Redis ring shards. If this lookup fails or
+// otherwise results in an empty set of resolved shards, an error is returned.
 func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) (*Lookup, error) {
 	var lookup = &Lookup{
 		srvLookups: srvLookups,
@@ -51,7 +53,7 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	}
 
 	lookup.updateFrequency = frequency
-	if lookup.updateFrequency == 0 {
+	if lookup.updateFrequency <= 0 {
 		// Use default frequency.
 		lookup.updateFrequency = 30 * time.Second
 	}
@@ -79,10 +81,15 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), lookup.updateTimeout)
-	tempErrs, nonTempErrs := lookup.updateNow(ctx)
+	tempErr, nonTempErr := lookup.updateNow(ctx)
 	cancel()
-	if tempErrs != nil || nonTempErrs != nil {
-		return nil, errors.Join(tempErrs, nonTempErrs)
+	if tempErr != nil {
+		// Log and discard temporary errors, as they're likely to be transient
+		// (e.g. network connectivity issues).
+		lookup.logger.Warningf("resolving ring shards: %s", tempErr)
+	}
+	if nonTempErr != nil && errors.Is(nonTempErr, ErrNoShardsResolved) {
+		return nil, nonTempErr
 	}
 	return lookup, nil
 }
@@ -93,17 +100,16 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 // lookup succeeds, the Redis ring is updated, and all errors are discarded.
 // Non-temporary DNS errors are always logged as they occur, as they're likely
 // to be indicative of a misconfiguration.
-func (look *Lookup) updateNow(ctx context.Context) (tempErrors, nonTempErrors error) {
+func (look *Lookup) updateNow(ctx context.Context) (tempError, nonTempError error) {
 	var tempErrs []error
-	var nonTempErrs []error
-
 	handleDNSError := func(err error, srv cmd.ServiceDomain) {
 		var dnsErr *net.DNSError
 		if errors.As(err, &dnsErr) && (dnsErr.IsTimeout || dnsErr.IsTemporary) {
 			tempErrs = append(tempErrs, err)
 			return
 		}
-		nonTempErrs = append(nonTempErrs, err)
+		// Log non-temporary DNS errors as they occur, as they're likely to be
+		// indicative of misconfiguration.
 		look.logger.Errf("resolving service _%s._tcp.%s: %s", srv.Service, srv.Domain, err)
 	}
 
@@ -146,8 +152,8 @@ func (look *Lookup) updateNow(ctx context.Context) (tempErrors, nonTempErrors er
 	}
 
 	// Only return errors if we failed to resolve any shards.
-	if len(nextAddrs) == 0 {
-		return errors.Join(tempErrs...), errors.Join(nonTempErrs...)
+	if len(nextAddrs) <= 0 {
+		return errors.Join(tempErrs...), ErrNoShardsResolved
 	}
 
 	// Some shards were resolved, update the Redis ring and discard all errors.
@@ -169,10 +175,14 @@ func (look *Lookup) Start(ctx context.Context) {
 			}
 
 			timeoutCtx, cancel := context.WithTimeout(ctx, look.updateTimeout)
-			tempErrs, _ := look.updateNow(timeoutCtx)
+			tempErrs, nonTempErrs := look.updateNow(timeoutCtx)
 			cancel()
 			if tempErrs != nil {
-				look.logger.Warningf("resolving ring shards: %s", tempErrs)
+				look.logger.Warningf("resolving ring shards, temporary errors: %s", tempErrs)
+				continue
+			}
+			if nonTempErrs != nil {
+				look.logger.Errf("resolving ring shards, non-temporary errors: %s", nonTempErrs)
 				continue
 			}
 
