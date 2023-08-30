@@ -24,6 +24,10 @@ type Lookup struct {
 	// seconds.
 	updateFrequency time.Duration
 
+	// updateTimeout is the timeout for each SRV lookup. Defaults to 90% of the
+	// update frequency.
+	updateTimeout time.Duration
+
 	// dnsAuthority is the single <hostname|IPv4|[IPv6]>:<port> of the DNS
 	// server to be used for SRV lookups. If the address contains a hostname it
 	// will be resolved via the system DNS. If the port is left unspecified it
@@ -46,6 +50,7 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 		// Use default frequency.
 		lookup.updateFrequency = 30 * time.Second
 	}
+	lookup.updateTimeout = lookup.updateFrequency - lookup.updateFrequency/10
 
 	// Use the system DNS resolver by default.
 	lookup.resolver = net.DefaultResolver
@@ -70,7 +75,7 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	lookup.ring = ring
 	lookup.logger = logger
 
-	ctx, cancel := context.WithTimeout(context.Background(), lookup.updateFrequency-lookup.updateFrequency/10)
+	ctx, cancel := context.WithTimeout(context.Background(), lookup.updateTimeout)
 	tempErrs, nonTempErrs := lookup.now(ctx)
 	cancel()
 	if tempErrs != nil || nonTempErrs != nil {
@@ -162,7 +167,7 @@ func (look *Lookup) Start(ctx context.Context) {
 				return
 			}
 
-			timeoutCtx, cancel := context.WithTimeout(ctx, look.updateFrequency-look.updateFrequency/10)
+			timeoutCtx, cancel := context.WithTimeout(ctx, look.updateTimeout)
 			tempErrs, _ := look.now(timeoutCtx)
 			cancel()
 			if tempErrs != nil {
