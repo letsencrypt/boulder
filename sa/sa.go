@@ -1112,8 +1112,15 @@ func (ssa *SQLStorageAuthority) leaseSpecificCRLShard(ctx context.Context, req *
 // rows are created if necessary when leased). It also sets the leasedUntil time
 // to be equal to thisUpdate, to indicate that the shard is no longer leased.
 func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.UpdateCRLShardRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.IssuerNameID, req.ThisUpdate, req.NextUpdate) {
+	if core.IsAnyNilOrZero(req.IssuerNameID, req.ThisUpdate) {
 		return nil, errIncompleteRequest
+	}
+
+	// Only set the nextUpdate if it's actually present in the request message.
+	var nextUpdate *time.Time
+	if req.NextUpdate != nil {
+		nut := req.NextUpdate.AsTime()
+		nextUpdate = &nut
 	}
 
 	_, err := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
@@ -1122,10 +1129,10 @@ func (ssa *SQLStorageAuthority) UpdateCRLShard(ctx context.Context, req *sapb.Up
 				SET thisUpdate = ?, nextUpdate = ?, leasedUntil = ?
 				WHERE issuerID = ?
 				AND idx = ?
-				AND thisUpdate < ?
+				AND (thisUpdate is NULL OR thisUpdate < ?)
 				LIMIT 1`,
 			req.ThisUpdate.AsTime(),
-			req.NextUpdate.AsTime(),
+			nextUpdate,
 			req.ThisUpdate.AsTime(),
 			req.IssuerNameID,
 			req.ShardIdx,
