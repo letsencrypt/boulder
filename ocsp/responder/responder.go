@@ -167,7 +167,7 @@ func (rs Responder) sampledError(format string, a ...interface{}) {
 // mapping from an OCSP request to an OCSP response is done by the Source; the
 // Responder simply decodes the request, and passes back whatever response is
 // provided by the source.
-// The Responder will set these headers:ServeHTTP
+// The Responder will set these headers:
 //
 //	Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",
 //	Last-Modified: response.ThisUpdate,
