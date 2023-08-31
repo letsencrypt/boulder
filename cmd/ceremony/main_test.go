@@ -1171,8 +1171,10 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate   string `yaml:"revocation-date"`
 						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
+					IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
 				}{
-					ThisUpdate: "this-update",
+					ThisUpdate:               "this-update",
+					IssuingDistributionPoint: "http://example.com",
 				},
 			},
 			expectedError: "crl-profile.next-update is required",
@@ -1203,9 +1205,11 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate   string `yaml:"revocation-date"`
 						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
+					IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
 				}{
-					ThisUpdate: "this-update",
-					NextUpdate: "next-update",
+					ThisUpdate:               "this-update",
+					NextUpdate:               "next-update",
+					IssuingDistributionPoint: "http://example.com",
 				},
 			},
 			expectedError: "crl-profile.number must be non-zero",
@@ -1236,6 +1240,7 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate   string `yaml:"revocation-date"`
 						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
+					IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
@@ -1245,6 +1250,7 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate   string `yaml:"revocation-date"`
 						RevocationReason int    `yaml:"revocation-reason"`
 					}{{}},
+					IssuingDistributionPoint: "http://example.com",
 				},
 			},
 			expectedError: "crl-profile.revoked-certificates.certificate-path is required",
@@ -1275,6 +1281,7 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate   string `yaml:"revocation-date"`
 						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
+					IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
@@ -1286,6 +1293,7 @@ func TestCRLConfig(t *testing.T) {
 					}{{
 						CertificatePath: "path",
 					}},
+					IssuingDistributionPoint: "http://example.com",
 				},
 			},
 			expectedError: "crl-profile.revoked-certificates.revocation-date is required",
@@ -1316,6 +1324,51 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate   string `yaml:"revocation-date"`
 						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
+					IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
+				}{
+					ThisUpdate: "this-update",
+					NextUpdate: "next-update",
+					Number:     1,
+					RevokedCertificates: []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					}{{
+						CertificatePath: "path",
+						RevocationDate:  "date",
+					}},
+					IssuingDistributionPoint: "http://example.com",
+				},
+			},
+			expectedError: "crl-profile.revoked-certificates.revocation-reason is required",
+		},
+		{
+			name: "no issuing distribution point path provided",
+			config: crlConfig{
+				PKCS11: PKCS11SigningConfig{
+					Module:       "module",
+					SigningLabel: "label",
+				},
+				Inputs: struct {
+					IssuerCertificatePath string `yaml:"issuer-certificate-path"`
+				}{
+					IssuerCertificatePath: "path",
+				},
+				Outputs: struct {
+					CRLPath string `yaml:"crl-path"`
+				}{
+					CRLPath: "path",
+				},
+				CRLProfile: struct {
+					ThisUpdate          string `yaml:"this-update"`
+					NextUpdate          string `yaml:"next-update"`
+					Number              int64  `yaml:"number"`
+					RevokedCertificates []struct {
+						CertificatePath  string `yaml:"certificate-path"`
+						RevocationDate   string `yaml:"revocation-date"`
+						RevocationReason int    `yaml:"revocation-reason"`
+					} `yaml:"revoked-certificates"`
+					IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
@@ -1330,7 +1383,7 @@ func TestCRLConfig(t *testing.T) {
 					}},
 				},
 			},
-			expectedError: "crl-profile.revoked-certificates.revocation-reason is required",
+			expectedError: "crl-profile.issuing-distribution-point is required",
 		},
 		{
 			name: "good",
@@ -1358,6 +1411,7 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate   string `yaml:"revocation-date"`
 						RevocationReason int    `yaml:"revocation-reason"`
 					} `yaml:"revoked-certificates"`
+					IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
 				}{
 					ThisUpdate: "this-update",
 					NextUpdate: "next-update",
@@ -1371,6 +1425,7 @@ func TestCRLConfig(t *testing.T) {
 						RevocationDate:   "date",
 						RevocationReason: 1,
 					}},
+					IssuingDistributionPoint: "http://example.com",
 				},
 			},
 		},
