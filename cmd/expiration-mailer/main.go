@@ -934,7 +934,7 @@ func main() {
 					cmd.FailOnError(err, "expiration-mailer has failed")
 				}
 			case <-ctx.Done():
-				break
+				return
 			}
 		}
 	} else {

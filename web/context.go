@@ -183,10 +183,9 @@ func (th *TopHandler) logEvent(logEvent *RequestEvent) {
 		int(logEvent.Latency*1000), logEvent.RealIP, jsonEvent)
 }
 
-// Comma-separated list of HTTP clients involved in making this
-// request, starting with the original requester and ending with the
-// remote end of our TCP connection (which is typically our own
-// proxy).
+// GetClientAddr returns a comma-separated list of HTTP clients involved in
+// making this request, starting with the original requester and ending with the
+// remote end of our TCP connection (which is typically our own proxy).
 func GetClientAddr(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		return xff + "," + r.RemoteAddr

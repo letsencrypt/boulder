@@ -163,10 +163,10 @@ func (rs Responder) sampledError(format string, a ...interface{}) {
 	SampledError(rs.log, rs.sampleRate, format, a...)
 }
 
-// A Responder can process both GET and POST requests. The mapping from an OCSP
-// request to an OCSP response is done by the Source; the Responder simply
-// decodes the request, and passes back whatever response is provided by the
-// source.
+// ServeHTTP is a Responder that can process both GET and POST requests. The
+// mapping from an OCSP request to an OCSP response is done by the Source; the
+// Responder simply decodes the request, and passes back whatever response is
+// provided by the source.
 // The Responder will set these headers:
 //
 //	Cache-Control: "max-age=(response.NextUpdate-now), public, no-transform, must-revalidate",

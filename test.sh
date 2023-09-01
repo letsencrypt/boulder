@@ -212,6 +212,8 @@ STAGE="lints"
 if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
   print_heading "Running Lints"
   golangci-lint run --timeout 9m ./...
+  # Implicitly loads staticcheck.conf from the root of the boulder repository
+  staticcheck ./...
   python3 test/grafana/lint.py
   # Check for common spelling errors using codespell.
   # Update .codespell.ignore.txt if you find false positives (NOTE: ignored

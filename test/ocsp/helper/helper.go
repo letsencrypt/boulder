@@ -107,7 +107,7 @@ func (template Config) WithExpectStatus(status int) Config {
 	return ret
 }
 
-// WithExpectStatus returns a new Config with the given expectReason,
+// WithExpectReason returns a new Config with the given expectReason,
 // and all other fields the same as the receiver.
 func (template Config) WithExpectReason(reason int) Config {
 	ret := template
@@ -208,7 +208,7 @@ func parseCMS(body []byte) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-// ReqFle makes an OCSP request using the given config for the PEM-encoded
+// ReqFile makes an OCSP request using the given config for the PEM-encoded
 // certificate in fileName, and returns the response.
 func ReqFile(fileName string, config Config) (*ocsp.Response, error) {
 	contents, err := os.ReadFile(fileName)
