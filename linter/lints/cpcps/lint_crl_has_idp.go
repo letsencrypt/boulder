@@ -124,28 +124,64 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		}
 	}
 
-	// Ensure that OnlyContainsUserCerts is True. We have to read this boolean as
-	// a byte and ensure its value is 0xFF because cryptobyte.ReadASN1Boolean
-	// can't handle custom encoding rules like this field's [1] tag.
-	if !idpv.PeekASN1Tag(cryptobyte_asn1.Tag(1).ContextSpecific()) {
+	// Ensure either onlyContainsUserCerts or onlyContainsCACerts is True. We
+	// have to read this boolean as a byte and ensure its value is 0xFF because
+	// cryptobyte.ReadASN1Boolean can't handle custom encoding rules like this
+	// field's [1] and [2] tags.
+	/*
+		RFC 5280 Section 5.2.5
+
+		IssuingDistributionPoint ::= SEQUENCE {
+			...
+		    onlyContainsUserCerts      [1] BOOLEAN DEFAULT FALSE,
+		    onlyContainsCACerts        [2] BOOLEAN DEFAULT FALSE,
+			...
+	*/
+
+	if !(idpv.PeekASN1Tag(cryptobyte_asn1.Tag(1).ContextSpecific()) || idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific())) {
 		return &lint.LintResult{
 			Status:  lint.Warn,
-			Details: "IDP should contain onlyContainsUserCerts",
+			Details: "IDP should contain either onlyContainsUserCerts or onlyContainsCACerts",
 		}
 	}
 
 	onlyContainsUserCerts := make([]byte, 0)
-	if !idpv.ReadASN1Bytes(&onlyContainsUserCerts, cryptobyte_asn1.Tag(1).ContextSpecific()) {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "Failed to read IDP onlyContainsUserCerts",
+	onlyContainsCACerts := make([]byte, 0)
+
+	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(1).ContextSpecific()) {
+		if !idpv.ReadASN1Bytes(&onlyContainsUserCerts, cryptobyte_asn1.Tag(1).ContextSpecific()) {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "Failed to read IDP onlyContainsUserCerts",
+			}
+		}
+		if len(onlyContainsUserCerts) != 1 || onlyContainsUserCerts[0] != 0xFF {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "IDP should set onlyContainsUserCerts: TRUE",
+			}
 		}
 	}
 
-	if len(onlyContainsUserCerts) != 1 || onlyContainsUserCerts[0] != 0xFF {
+	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific()) {
+		if !idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "Failed to read IDP onlyContainsCACerts",
+			}
+		}
+		if len(onlyContainsCACerts) != 1 || onlyContainsCACerts[0] != 0xFF {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "IDP should set onlyContainsCACerts: TRUE",
+			}
+		}
+	}
+
+	if len(onlyContainsUserCerts) == 1 && len(onlyContainsCACerts) == 1 {
 		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "IDP should set onlyContainsUserCerts: TRUE",
+			Status:  lint.Warn,
+			Details: "IDP should contain either onlyContainsUserCerts or onlyContainsCACerts",
 		}
 	}
 
@@ -153,7 +189,7 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	if !idpv.Empty() {
 		return &lint.LintResult{
 			Status:  lint.Warn,
-			Details: "IDP should not contain fields other than distributionPoint and onlyContainsUserCerts",
+			Details: "Unexpected IDP fields were found",
 		}
 	}
 

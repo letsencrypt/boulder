@@ -39,12 +39,17 @@ func TestCrlHasIDP(t *testing.T) {
 		{
 			name:       "idp_no_usercerts",
 			want:       lint.Warn,
-			wantSubStr: "should contain onlyContainsUserCerts",
+			wantSubStr: "should contain either onlyContainsUserCerts or onlyContainsCACerts",
 		},
 		{
 			name:       "idp_some_reasons",
 			want:       lint.Warn,
-			wantSubStr: "should not contain fields other than",
+			wantSubStr: "Unexpected IDP fields were found",
+		},
+		{
+			name:       "idp_onlyCA_and_onlyUser",
+			want:       lint.Warn,
+			wantSubStr: "IDP should contain either onlyContainsUserCerts or onlyContainsCACerts",
 		},
 	}
 
