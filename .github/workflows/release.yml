@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         GO_VERSION:
-          - "1.20.7"
-          - "1.21rc4"
+          - "1.20.8"
+          - "1.21.1"
     runs-on: ubuntu-20.04
     permissions:
       contents: write
