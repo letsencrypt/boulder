@@ -378,10 +378,10 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	var crlEntries []*proto.CRLEntry
 	for _, chunk := range chunks {
 		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
-			IssuerNameID:  int64(issuerNameID),
-			ExpiresAfter:  chunk.start.UnixNano(),
-			ExpiresBefore: chunk.end.UnixNano(),
-			RevokedBefore: atTime.UnixNano(),
+			IssuerNameID:    int64(issuerNameID),
+			ExpiresAfterNS:  chunk.start.UnixNano(),
+			ExpiresBeforeNS: chunk.end.UnixNano(),
+			RevokedBeforeNS: atTime.UnixNano(),
 		})
 		if err != nil {
 			return fmt.Errorf("connecting to SA: %w", err)
@@ -413,7 +413,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(issuerNameID),
-				ThisUpdate:   atTime.UnixNano(),
+				ThisUpdateNS: atTime.UnixNano(),
 				ShardIdx:     int64(shardIdx),
 			},
 		},

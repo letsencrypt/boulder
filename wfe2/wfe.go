@@ -1034,7 +1034,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1232,7 +1232,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1476,7 +1476,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 
 	// Ensure gRPC response is complete.
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1487,7 +1487,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	logEvent.Status = authzPB.Status
 
 	// After expiring, authorizations are inaccessible
-	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
+	if time.Unix(0, authzPB.ExpiresNS).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -2347,8 +2347,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// comparing those to the ones in the request.
 
 	sendRI(core.RenewalInfoSimple(
-		time.Unix(0, cert.Issued).UTC(),
-		time.Unix(0, cert.Expires).UTC()))
+		time.Unix(0, cert.IssuedNS).UTC(),
+		time.Unix(0, cert.ExpiresNS).UTC()))
 }
 
 // UpdateRenewal is used by the client to inform the server that they have

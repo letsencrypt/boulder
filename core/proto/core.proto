@@ -40,8 +40,8 @@ message Certificate {
   string serial = 2;
   string digest = 3;
   bytes der = 4;
-  int64 issued = 5;  // Unix timestamp (nanoseconds)
-  int64 expires = 6; // Unix timestamp (nanoseconds)
+  int64 issuedNS = 5;  // Unix timestamp (nanoseconds)
+  int64 expiresNS = 6; // Unix timestamp (nanoseconds)
 }
 
 message CertificateStatus {
@@ -64,7 +64,7 @@ message Registration {
   bool contactsPresent = 4;
   string agreement = 5;
   bytes initialIP = 6;
-  int64 createdAt = 7; // Unix timestamp (nanoseconds)
+  int64 createdAtNS = 7; // Unix timestamp (nanoseconds)
   string status = 8;
 }
 
@@ -73,7 +73,7 @@ message Authorization {
   string identifier = 2;
   int64 registrationID = 3;
   string status = 4;
-  int64 expires = 5; // Unix timestamp (nanoseconds)
+  int64 expiresNS = 5; // Unix timestamp (nanoseconds)
   repeated core.Challenge challenges = 6;
   reserved 7; // previously ACMEv1 combinations
   reserved 8; // previously v2
@@ -96,5 +96,5 @@ message Order {
 message CRLEntry {
   string serial = 1;
   int32 reason = 2;
-  int64 revokedAt = 3; // Unix timestamp (nanoseconds)
+  int64 revokedAtNS = 3; // Unix timestamp (nanoseconds)
 }

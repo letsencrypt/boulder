@@ -240,7 +240,7 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
-		CreatedAt:       createdAt,
+		CreatedAtNS:     createdAt,
 		Status:          string(reg.Status),
 	}, nil
 }
@@ -257,8 +257,8 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		return core.Registration{}, err
 	}
 	var createdAt *time.Time
-	if pb.CreatedAt != 0 {
-		c := time.Unix(0, pb.CreatedAt).UTC()
+	if pb.CreatedAtNS != 0 {
+		c := time.Unix(0, pb.CreatedAtNS).UTC()
 		createdAt = &c
 	}
 	var contacts *[]string
@@ -304,7 +304,7 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		Identifier:     authz.Identifier.Value,
 		RegistrationID: authz.RegistrationID,
 		Status:         string(authz.Status),
-		Expires:        expires,
+		ExpiresNS:      expires,
 		Challenges:     challs,
 	}, nil
 }
@@ -318,7 +318,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		}
 		challs[i] = chall
 	}
-	expires := time.Unix(0, pb.Expires).UTC()
+	expires := time.Unix(0, pb.ExpiresNS).UTC()
 	authz := core.Authorization{
 		ID:             pb.Id,
 		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: pb.Identifier},
@@ -353,8 +353,8 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 		Serial:         cert.Serial,
 		Digest:         cert.Digest,
 		Der:            cert.DER,
-		Issued:         cert.Issued.UnixNano(),
-		Expires:        cert.Expires.UnixNano(),
+		IssuedNS:       cert.Issued.UnixNano(),
+		ExpiresNS:      cert.Expires.UnixNano(),
 	}
 }
 
@@ -364,8 +364,8 @@ func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
 		Serial:         pb.Serial,
 		Digest:         pb.Digest,
 		DER:            pb.Der,
-		Issued:         time.Unix(0, pb.Issued),
-		Expires:        time.Unix(0, pb.Expires),
+		Issued:         time.Unix(0, pb.IssuedNS),
+		Expires:        time.Unix(0, pb.ExpiresNS),
 	}, nil
 }
 

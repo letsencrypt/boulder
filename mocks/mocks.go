@@ -120,7 +120,7 @@ func (sa *StorageAuthorityReadOnly) GetRegistration(_ context.Context, req *sapb
 
 	goodReg.InitialIP, _ = net.ParseIP("5.6.7.8").MarshalText()
 	createdAt := time.Date(2003, 9, 27, 0, 0, 0, 0, time.UTC)
-	goodReg.CreatedAt = createdAt.UnixNano()
+	goodReg.CreatedAtNS = createdAt.UnixNano()
 	return goodReg, nil
 }
 
@@ -202,8 +202,8 @@ func (sa *StorageAuthorityReadOnly) GetSerialMetadata(ctx context.Context, req *
 	return &sapb.SerialMetadata{
 		Serial:         req.Serial,
 		RegistrationID: 1,
-		Created:        sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
-		Expires:        sa.clk.Now().Add(2159 * time.Hour).UnixNano(),
+		CreatedNS:      sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
+		ExpiresNS:      sa.clk.Now().Add(2159 * time.Hour).UnixNano(),
 	}, nil
 }
 
@@ -216,7 +216,7 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 		return &corepb.Certificate{
 			RegistrationID: 1,
 			Der:            certBlock.Bytes,
-			Issued:         sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
+			IssuedNS:       sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
 		}, nil
 	} else if req.Serial == "0000000000000000000000000000000000b2" {
 		certPemBytes, _ := os.ReadFile("test/178.crt")
@@ -224,7 +224,7 @@ func (sa *StorageAuthorityReadOnly) GetCertificate(_ context.Context, req *sapb.
 		return &corepb.Certificate{
 			RegistrationID: 1,
 			Der:            certBlock.Bytes,
-			Issued:         sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
+			IssuedNS:       sa.clk.Now().Add(-1 * time.Hour).UnixNano(),
 		}, nil
 	} else if req.Serial == "000000000000000000000000000000626164" {
 		return nil, errors.New("bad")
@@ -474,7 +474,7 @@ func (sa *StorageAuthorityReadOnly) GetValidAuthorizations2(ctx context.Context,
 	if req.RegistrationID != 1 && req.RegistrationID != 5 && req.RegistrationID != 4 {
 		return &sapb.Authorizations{}, nil
 	}
-	now := time.Unix(0, req.Now)
+	now := time.Unix(0, req.NowNS)
 	auths := &sapb.Authorizations{}
 	for _, name := range req.Domains {
 		exp := now.AddDate(100, 0, 0)

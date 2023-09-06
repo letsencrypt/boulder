@@ -186,7 +186,7 @@ type MockRegistrationAuthority struct {
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
-	in.CreatedAt = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	in.CreatedAtNS = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
 	return in, nil
 }
 
@@ -1805,8 +1805,8 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
-		Issued:         sa.cert.NotBefore.UnixNano(),
-		Expires:        sa.cert.NotAfter.UnixNano(),
+		IssuedNS:       sa.cert.NotBefore.UnixNano(),
+		ExpiresNS:      sa.cert.NotAfter.UnixNano(),
 		Der:            sa.cert.Raw,
 	}, nil
 }
@@ -1840,7 +1840,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					Id:          0,
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
-					RenewBy:     0,
+					RenewByNS:   0,
 					Enabled:     true,
 				},
 			},
@@ -2103,7 +2103,7 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		Issued:         sa.clk.Now().Add(-1 * time.Second).UnixNano(),
+		IssuedNS:       sa.clk.Now().Add(-1 * time.Second).UnixNano(),
 		Der:            cert.Raw,
 	}, nil
 }

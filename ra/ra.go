@@ -374,8 +374,8 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	count, err := counter(ctx, &sapb.CountRegistrationsByIPRequest{
 		Ip: ip,
 		Range: &sapb.Range{
-			Earliest: limit.WindowBegin(now).UnixNano(),
-			Latest:   now.UnixNano(),
+			EarliestNS: limit.WindowBegin(now).UnixNano(),
+			LatestNS:   now.UnixNano(),
 		},
 	})
 	if err != nil {
@@ -612,8 +612,8 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 		RegistrationID: regID,
 		Hostname:       hostname,
 		Range: &sapb.Range{
-			Earliest: earliest.UnixNano(),
-			Latest:   latest.UnixNano(),
+			EarliestNS: earliest.UnixNano(),
+			LatestNS:   latest.UnixNano(),
 		},
 	}
 	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
@@ -642,8 +642,8 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
 		AccountID: acctID,
 		Range: &sapb.Range{
-			Earliest: now.Add(-limit.Window.Duration).UnixNano(),
-			Latest:   now.UnixNano(),
+			EarliestNS: now.Add(-limit.Window.Duration).UnixNano(),
+			LatestNS:   now.UnixNano(),
 		},
 	})
 	if err != nil {
@@ -1375,8 +1375,8 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 	req := &sapb.CountCertificatesByNamesRequest{
 		Names: names,
 		Range: &sapb.Range{
-			Earliest: limit.WindowBegin(now).UnixNano(),
-			Latest:   now.UnixNano(),
+			EarliestNS: limit.WindowBegin(now).UnixNano(),
+			LatestNS:   now.UnixNano(),
 		},
 	}
 
@@ -1462,7 +1462,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 
-	if int64(len(prevIssuances.Timestamps)) < threshold {
+	if int64(len(prevIssuances.TimestampsNS)) < threshold {
 		// Issuance in window is below the threshold, no need to limit.
 		return nil
 	} else {
@@ -1471,7 +1471,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		// limit.Window/threshold from the time of each issuance timestamp.
 		now := ra.clk.Now()
 		nsPerToken := limit.Window.Nanoseconds() / threshold
-		for i, timestamp := range prevIssuances.Timestamps {
+		for i, timestamp := range prevIssuances.TimestampsNS {
 			tokensGeneratedSince := now.Add(-time.Duration(int64(i+1) * nsPerToken))
 			if time.Unix(0, timestamp).Before(tokensGeneratedSince) {
 				// We know `i+1` tokens were generated since `tokenGeneratedSince`,
@@ -1480,7 +1480,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 				return nil
 			}
 		}
-		retryTime := time.Unix(0, prevIssuances.Timestamps[0]).Add(time.Duration(nsPerToken))
+		retryTime := time.Unix(0, prevIssuances.TimestampsNS[0]).Add(time.Duration(nsPerToken))
 		retryAfter := retryTime.Sub(now)
 		return berrors.DuplicateCertificateError(
 			retryAfter,
@@ -1610,7 +1610,7 @@ func mergeUpdate(base *corepb.Registration, update *corepb.Registration) (*corep
 		ContactsPresent: base.ContactsPresent,
 		Agreement:       base.Agreement,
 		InitialIP:       base.InitialIP,
-		CreatedAt:       base.CreatedAt,
+		CreatedAtNS:     base.CreatedAtNS,
 		Status:          base.Status,
 	}
 
@@ -1671,9 +1671,9 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
 		Status:            string(challenge.Status),
-		Expires:           expires,
+		ExpiresNS:         expires,
 		Attempted:         string(challenge.Type),
-		AttemptedAt:       validated,
+		AttemptedAtNS:     validated,
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1693,7 +1693,7 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 	// Clock for start of PerformValidation.
 	vStart := ra.clk.Now()
 
-	if req.Authz == nil || req.Authz.Id == "" || req.Authz.Identifier == "" || req.Authz.Status == "" || req.Authz.Expires == 0 {
+	if req.Authz == nil || req.Authz.Id == "" || req.Authz.Identifier == "" || req.Authz.Status == "" || req.Authz.ExpiresNS == 0 {
 		return nil, errIncompleteGRPCRequest
 	}
 
@@ -1840,7 +1840,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(reason),
-		Date:     revokedAt,
+		DateNS:   revokedAt,
 		IssuerID: issuerID,
 	})
 	if err != nil {
@@ -1875,11 +1875,11 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	}
 
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
-		Serial:   serialString,
-		Reason:   int64(ocsp.KeyCompromise),
-		Date:     thisUpdate,
-		Backdate: status.RevokedDate,
-		IssuerID: issuerID,
+		Serial:     serialString,
+		Reason:     int64(ocsp.KeyCompromise),
+		DateNS:     thisUpdate,
+		BackdateNS: status.RevokedDate,
+		IssuerID:   issuerID,
 	})
 	if err != nil {
 		return err
@@ -1979,7 +1979,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Domains:        cert.DNSNames,
-			Now:            ra.clk.Now().UnixNano(),
+			NowNS:          ra.clk.Now().UnixNano(),
 		})
 		if err != nil {
 			return nil, err
@@ -2032,7 +2032,7 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 	// Add the public key to the blocked keys list.
 	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash: digest[:],
-		Added:   ra.clk.Now().UnixNano(),
+		AddedNS: ra.clk.Now().UnixNano(),
 		Source:  src,
 		Comment: comment,
 	})
@@ -2389,7 +2389,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 
 	getAuthReq := &sapb.GetAuthorizationsRequest{
 		RegistrationID: newOrder.RegistrationID,
-		Now:            authzExpiryCutoff,
+		NowNS:          authzExpiryCutoff,
 		Domains:        newOrder.Names,
 	}
 	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
@@ -2415,7 +2415,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			continue
 		}
 		authz := nameToExistingAuthz[name]
-		authzAge := (ra.authorizationLifetime - time.Unix(0, authz.Expires).Sub(ra.clk.Now())).Seconds()
+		authzAge := (ra.authorizationLifetime - time.Unix(0, authz.ExpiresNS).Sub(ra.clk.Now())).Seconds()
 		// If the identifier is a wildcard and the existing authz only has one
 		// DNS-01 type challenge we can reuse it. In theory we will
 		// never get back an authorization for a domain with a wildcard prefix
@@ -2480,14 +2480,14 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// minExpiry (the order's lifetime)
 	for _, authz := range nameToExistingAuthz {
 		// An authz without an expiry is an unexpected internal server event
-		if authz.Expires == 0 {
+		if authz.ExpiresNS == 0 {
 			return nil, berrors.InternalServerError(
 				"SA.GetAuthorizations returned an authz (%s) with zero expiry",
 				authz.Id)
 		}
 		// If the reused authorization expires before the minExpiry, it's expiry
 		// is the new minExpiry.
-		authzExpiry := time.Unix(0, authz.Expires)
+		authzExpiry := time.Unix(0, authz.ExpiresNS)
 		if authzExpiry.Before(minExpiry) {
 			minExpiry = authzExpiry
 		}
@@ -2531,7 +2531,7 @@ func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier id
 		Identifier:     identifier.Value,
 		RegistrationID: reg,
 		Status:         string(core.StatusPending),
-		Expires:        ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano(),
+		ExpiresNS:      ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano(),
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.

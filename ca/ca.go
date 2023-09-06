@@ -187,10 +187,10 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	nowNanos := ca.clk.Now().UnixNano()
 	expiresNanos := validity.NotAfter.UnixNano()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		Serial:  serialHex,
-		RegID:   regID,
-		Created: nowNanos,
-		Expires: expiresNanos,
+		Serial:    serialHex,
+		RegID:     regID,
+		CreatedNS: nowNanos,
+		ExpiresNS: expiresNanos,
 	})
 	if err != nil {
 		return nil, err
@@ -312,8 +312,8 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Serial:         core.SerialToString(precert.SerialNumber),
 		Der:            certDER,
 		Digest:         core.Fingerprint256(certDER),
-		Issued:         precert.NotBefore.UnixNano(),
-		Expires:        precert.NotAfter.UnixNano(),
+		IssuedNS:       precert.NotBefore.UnixNano(),
+		ExpiresNS:      precert.NotAfter.UnixNano(),
 	}, nil
 }
 
