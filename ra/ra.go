@@ -48,21 +48,12 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
+	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
 	"github.com/letsencrypt/boulder/web"
-)
-
-const (
-	// allowed is used for rate limit metrics, it's the value of the 'decision'
-	// label when a request was allowed.
-	allowed = "allowed"
-
-	// denied is used for rate limit metrics, it's the value of the 'decision'
-	// label when a request was denied.
-	denied = "denied"
 )
 
 var (
@@ -173,7 +164,7 @@ func NewRegistrationAuthorityImpl(
 
 	rlCheckLatency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "ratelimitsv1_check_latency_seconds",
-		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", allowed, denied),
+		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", ratelimits.Allowed, ratelimits.Denied),
 	}, []string{"limit", "decision"})
 	stats.MustRegister(rlCheckLatency)
 
@@ -407,12 +398,12 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, denied).Observe(elapsed.Seconds())
+				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, ratelimits.Denied).Observe(elapsed.Seconds())
 				ra.log.Infof("Rate limit exceeded, RegistrationsPerIP, by IP: %q", ip)
 			}
 			return err
 		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, allowed).Observe(elapsed.Seconds())
+		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIP, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	// We only apply the fuzzy reg limit to IPv6 addresses.
@@ -432,7 +423,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, denied).Observe(elapsed.Seconds())
+				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, ratelimits.Denied).Observe(elapsed.Seconds())
 				ra.log.Infof("Rate limit exceeded, RegistrationsByIPRange, IP: %q", ip)
 
 				// For the fuzzyRegLimit we use a new error message that specifically
@@ -441,7 +432,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 			}
 			return err
 		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, allowed).Observe(elapsed.Seconds())
+		ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	return nil
@@ -1500,11 +1491,11 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.NewOrdersPerAccount, denied).Observe(elapsed.Seconds())
+				ra.rlCheckLatency.WithLabelValues(ratelimit.NewOrdersPerAccount, ratelimits.Denied).Observe(elapsed.Seconds())
 			}
 			return err
 		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.NewOrdersPerAccount, allowed).Observe(elapsed.Seconds())
+		ra.rlCheckLatency.WithLabelValues(ratelimit.NewOrdersPerAccount, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	certNameLimits := ra.rlPolicies.CertificatesPerName()
@@ -1514,11 +1505,11 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerName, denied).Observe(elapsed.Seconds())
+				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerName, ratelimits.Denied).Observe(elapsed.Seconds())
 			}
 			return err
 		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerName, allowed).Observe(elapsed.Seconds())
+		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerName, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	fqdnLimitsFast := ra.rlPolicies.CertificatesPerFQDNSetFast()
@@ -1528,11 +1519,11 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSetFast, denied).Observe(elapsed.Seconds())
+				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSetFast, ratelimits.Denied).Observe(elapsed.Seconds())
 			}
 			return err
 		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSetFast, allowed).Observe(elapsed.Seconds())
+		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSetFast, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	fqdnLimits := ra.rlPolicies.CertificatesPerFQDNSet()
@@ -1542,11 +1533,11 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSet, denied).Observe(elapsed.Seconds())
+				ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSet, ratelimits.Denied).Observe(elapsed.Seconds())
 			}
 			return err
 		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSet, allowed).Observe(elapsed.Seconds())
+		ra.rlCheckLatency.WithLabelValues(ratelimit.CertificatesPerFQDNSet, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	invalidAuthzPerAccountLimits := ra.rlPolicies.InvalidAuthorizationsPerAccount()
@@ -1556,11 +1547,11 @@ func (ra *RegistrationAuthorityImpl) checkNewOrderLimits(ctx context.Context, na
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				ra.rlCheckLatency.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, denied).Observe(elapsed.Seconds())
+				ra.rlCheckLatency.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, ratelimits.Denied).Observe(elapsed.Seconds())
 			}
 			return err
 		}
-		ra.rlCheckLatency.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, allowed).Observe(elapsed.Seconds())
+		ra.rlCheckLatency.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, ratelimits.Allowed).Observe(elapsed.Seconds())
 	}
 
 	return nil
@@ -2495,11 +2486,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 			elapsed := ra.clk.Since(started)
 			if err != nil {
 				if errors.Is(err, berrors.RateLimit) {
-					ra.rlCheckLatency.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, denied).Observe(elapsed.Seconds())
+					ra.rlCheckLatency.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, ratelimits.Denied).Observe(elapsed.Seconds())
 				}
 				return nil, err
 			}
-			ra.rlCheckLatency.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, allowed).Observe(elapsed.Seconds())
+			ra.rlCheckLatency.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, ratelimits.Allowed).Observe(elapsed.Seconds())
 		}
 	}
 

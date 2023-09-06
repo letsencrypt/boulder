@@ -10,6 +10,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	// Allowed is used for rate limit metrics, it's the value of the 'decision'
+	// label when a request was allowed.
+	Allowed = "allowed"
+
+	// Denied is used for rate limit metrics, it's the value of the 'decision'
+	// label when a request was denied.
+	Denied = "denied"
+)
+
 // ErrInvalidCost indicates that the cost specified was <= 0.
 var ErrInvalidCost = fmt.Errorf("invalid cost, must be > 0")
 

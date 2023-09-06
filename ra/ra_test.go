@@ -55,6 +55,7 @@ import (
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
+	"github.com/letsencrypt/boulder/ratelimits"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -646,6 +647,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// There should be no errors - it is within the RegistrationsPerIP rate limit
 	_, err := ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Allowed}, 1)
 
 	// Create another registration for the same IPv4 address by changing the key
 	reg.Key = newAcctKey(t)
@@ -655,7 +657,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv4 registration")
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": denied}, 1)
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Denied}, 1)
 
 	// Create a registration for an IPv6 address
 	reg.Key = newAcctKey(t)
@@ -664,6 +666,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// There should be no errors - it is within the RegistrationsPerIP rate limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Unexpected error adding a new IPv6 registration")
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Allowed}, 2)
 
 	// Create a 2nd registration for the IPv6 address by changing the key
 	reg.Key = newAcctKey(t)
@@ -673,7 +676,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding duplicate IPv6 registration")
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP: see https://letsencrypt.org/docs/too-many-registrations-for-this-ip/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": denied}, 2)
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Denied}, 2)
 
 	// Create a registration for an IPv6 address in the same /48
 	reg.Key = newAcctKey(t)
@@ -683,6 +686,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	// within the RegistrationsPerIPRange limit
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Unexpected error adding second IPv6 registration in the same /48")
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": ratelimits.Allowed}, 2)
 
 	// Create a registration for yet another IPv6 address in the same /48
 	reg.Key = newAcctKey(t)
@@ -693,7 +697,7 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	_, err = ra.NewRegistration(ctx, reg)
 	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP range: see https://letsencrypt.org/docs/rate-limits/")
-	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": denied}, 1)
+	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": ratelimits.Denied}, 1)
 }
 
 type NoUpdateSA struct {
