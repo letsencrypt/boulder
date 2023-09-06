@@ -46,24 +46,37 @@ type Lookup struct {
 // is performed to populate the Redis ring shards. If this lookup fails or
 // otherwise results in an empty set of resolved shards, an error is returned.
 func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) (*Lookup, error) {
-	var lookup = &Lookup{
-		srvLookups: srvLookups,
-		ring:       ring,
-		logger:     logger,
+	updateFrequency := frequency
+	if updateFrequency <= 0 {
+		// Set default frequency.
+		updateFrequency = 30 * time.Second
 	}
+	// Set default timeout to 90% of the update frequency.
+	updateTimeout := updateFrequency - updateFrequency/10
 
-	lookup.updateFrequency = frequency
-	if lookup.updateFrequency <= 0 {
-		// Use default frequency.
-		lookup.updateFrequency = 30 * time.Second
-	}
-	// Use 90% of the update frequency as the default timeout.
-	lookup.updateTimeout = lookup.updateFrequency - lookup.updateFrequency/10
-
-	// Use the system DNS resolver by default.
-	lookup.resolver = net.DefaultResolver
-	if dnsAuthority != "" {
+	var lookup *Lookup
+	if dnsAuthority == "" {
+		// Use the system DNS resolver.
+		lookup = &Lookup{
+			srvLookups:      srvLookups,
+			ring:            ring,
+			logger:          logger,
+			updateFrequency: updateFrequency,
+			updateTimeout:   updateTimeout,
+			resolver:        net.DefaultResolver,
+			dnsAuthority:    dnsAuthority,
+		}
+	} else {
 		// Setup a custom DNS resolver.
+		lookup = &Lookup{
+			srvLookups:      srvLookups,
+			ring:            ring,
+			logger:          logger,
+			updateFrequency: updateFrequency,
+			updateTimeout:   updateTimeout,
+			dnsAuthority:    dnsAuthority,
+		}
+
 		host, port, err := net.SplitHostPort(dnsAuthority)
 		if err != nil {
 			// Assume only hostname or IPv4 address was specified.
@@ -74,23 +87,28 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 		lookup.resolver = &net.Resolver{
 			PreferGo: true,
 			Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-				// Note: This closes over the lookup.dnsAuthority field.
+				// The custom resolver closes over the lookup.dnsAuthority field
+				// so it can be swapped out in testing.
 				return net.Dial(network, lookup.dnsAuthority)
 			},
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), lookup.updateTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
+	defer cancel()
 	tempErr, nonTempErr := lookup.updateNow(ctx)
-	cancel()
+
 	if tempErr != nil {
 		// Log and discard temporary errors, as they're likely to be transient
 		// (e.g. network connectivity issues).
-		lookup.logger.Warningf("resolving ring shards: %s", tempErr)
+		logger.Warningf("resolving ring shards: %s", tempErr)
 	}
 	if nonTempErr != nil && errors.Is(nonTempErr, ErrNoShardsResolved) {
+		// Non-temporary errors are always logged inside of updateNow(), so we
+		// only need return the error here if it's ErrNoShardsResolved.
 		return nil, nonTempErr
 	}
+
 	return lookup, nil
 }
 

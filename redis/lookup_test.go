@@ -55,6 +55,31 @@ func TestNewLookup(t *testing.T) {
 	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
 }
 
+func TestStart(t *testing.T) {
+	t.Parallel()
+
+	logger := blog.NewMock()
+	ring := newTestRedisRing()
+
+	lookup, err := NewLookup([]cmd.ServiceDomain{
+		{
+			Service: "redisratelimits",
+			Domain:  "service.consul",
+		},
+	},
+		"consul.service.consul",
+		250*time.Millisecond,
+		ring,
+		logger,
+	)
+	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
+
+	testCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	lookup.Start(testCtx)
+}
+
 func TestNewLookupWithOneFailingSRV(t *testing.T) {
 	t.Parallel()
 
@@ -103,7 +128,7 @@ func TestNewLookupWithAllFailingSRV(t *testing.T) {
 	test.AssertError(t, err, "Expected NewLookup construction to fail")
 }
 
-func TestLookupWithAllFailingSRV(t *testing.T) {
+func TestUpdateNowWithAllFailingSRV(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
@@ -134,13 +159,14 @@ func TestLookupWithAllFailingSRV(t *testing.T) {
 	}
 
 	testCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	tempErr, nonTempErr := lookup.updateNow(testCtx)
-	cancel()
 	test.AssertNotError(t, tempErr, "Expected no temporary errors")
 	test.AssertError(t, nonTempErr, "Expected non-temporary errors to have occurred")
 }
 
-func TestLookupWithAllFailingSRVs(t *testing.T) {
+func TestUpdateNowWithAllFailingSRVs(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
@@ -165,14 +191,14 @@ func TestLookupWithAllFailingSRVs(t *testing.T) {
 	lookup.dnsAuthority = "consuls.services.consuls:53"
 
 	testCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	tempErr, nonTempErr := lookup.updateNow(testCtx)
-	cancel()
 	test.AssertError(t, tempErr, "Expected temporary errors")
 	test.AssertError(t, nonTempErr, "Expected a non-temporary error")
 	test.AssertErrorIs(t, nonTempErr, ErrNoShardsResolved)
 }
 
-func TestLookupWithOneFailingSRV(t *testing.T) {
+func TestUpdateNowWithOneFailingSRV(t *testing.T) {
 	t.Parallel()
 
 	logger := blog.NewMock()
@@ -195,14 +221,12 @@ func TestLookupWithOneFailingSRV(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "Expected NewLookup construction to succeed")
 
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	lookup.Start(testCtx)
-
 	// The Consul service entry for 'redisratelimits' is configured to return
 	// two SRV targets. We should only have two shards in the ring.
 	test.Assert(t, ring.Len() == 2, "Expected 2 shards in the ring")
+
+	testCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Ensure we can reach both shards using the PING command.
 	err = ring.ForEachShard(testCtx, func(ctx context.Context, shard *redis.Client) error {
