@@ -3,6 +3,8 @@ syntax = "proto3";
 package core;
 option go_package = "github.com/letsencrypt/boulder/core/proto";
 
+import "google/protobuf/timestamp.proto";
+
 message Challenge {
   int64 id = 1;
   string type = 2;
@@ -42,6 +44,8 @@ message Certificate {
   bytes der = 4;
   int64 issuedNS = 5;  // Unix timestamp (nanoseconds)
   int64 expiresNS = 6; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp issued = 7;
+  google.protobuf.Timestamp expires = 8;
 }
 
 message CertificateStatus {
@@ -66,6 +70,7 @@ message Registration {
   bytes initialIP = 6;
   int64 createdAtNS = 7; // Unix timestamp (nanoseconds)
   string status = 8;
+  google.protobuf.Timestamp createdAt = 9;
 }
 
 message Authorization {
@@ -77,6 +82,7 @@ message Authorization {
   repeated core.Challenge challenges = 6;
   reserved 7; // previously ACMEv1 combinations
   reserved 8; // previously v2
+  google.protobuf.Timestamp expires = 9;
 }
 
 message Order {
@@ -97,4 +103,5 @@ message CRLEntry {
   string serial = 1;
   int32 reason = 2;
   int64 revokedAtNS = 3; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp revokedAt = 4;
 }

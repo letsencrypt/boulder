@@ -4,6 +4,7 @@ package ca;
 option go_package = "github.com/letsencrypt/boulder/ca/proto";
 
 import "core/proto/core.proto";
+import "google/protobuf/timestamp.proto";
 
 // CertificateAuthority issues certificates.
 service CertificateAuthority {
@@ -66,6 +67,7 @@ message CRLMetadata {
   int64 issuerNameID = 1;
   int64 thisUpdateNS = 2; // Unix timestamp (nanoseconds), also used for CRLNumber.
   int64 shardIdx = 3;
+  google.protobuf.Timestamp thisUpdate = 4;
 }
 
 message GenerateCRLResponse {

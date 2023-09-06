@@ -109,12 +109,14 @@ message GetPendingAuthorizationRequest {
   string identifierValue = 3;
   // Result must be valid until at least this Unix timestamp (nanos)
   int64 validUntilNS = 4;
+  google.protobuf.Timestamp validUntil = 5; // Result must be valid until at least this timestamp
 }
 
 message GetValidAuthorizationsRequest {
   int64 registrationID = 1;
   repeated string domains = 2;
   int64 nowNS = 3; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp now = 4;
 }
 
 message ValidAuthorizations {
@@ -134,11 +136,15 @@ message SerialMetadata {
   int64 registrationID = 2;
   int64 createdNS = 3; // Unix timestamp (nanoseconds)
   int64 expiresNS = 4; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp created = 5;
+  google.protobuf.Timestamp expires = 6;
 }
 
 message Range {
   int64 earliestNS = 1; // Unix timestamp (nanoseconds)
   int64 latestNS = 2;   // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp earliest = 3;
+  google.protobuf.Timestamp latest = 4;
 }
 
 message Count {
@@ -147,6 +153,7 @@ message Count {
 
 message Timestamps {
 	repeated int64 timestampsNS = 1; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp timestamps = 2;
 }
 
 message CountCertificatesByNamesRequest {
@@ -199,6 +206,8 @@ message AddSerialRequest {
   string serial = 2;
   int64 createdNS = 3; // Unix timestamp (nanoseconds)
   int64 expiresNS = 4; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp created = 5;
+  google.protobuf.Timestamp expires = 6;
 }
 
 message AddCertificateRequest {
@@ -266,6 +275,7 @@ message GetAuthorizationsRequest {
   int64 registrationID = 1;
   repeated string domains = 2;
   int64 nowNS = 3; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp now = 4;
 }
 
 message Authorizations {
@@ -291,6 +301,8 @@ message RevokeCertificateRequest {
   int64 backdateNS = 5; // Unix timestamp (nanoseconds)
   bytes response = 4;
   int64 issuerID = 6;
+  google.protobuf.Timestamp date = 7;
+  google.protobuf.Timestamp backdate = 8;
 }
 
 message FinalizeAuthorizationRequest {
@@ -301,6 +313,8 @@ message FinalizeAuthorizationRequest {
   repeated core.ValidationRecord validationRecords = 5;
   core.ProblemDetails validationError = 6;
   int64 attemptedAtNS = 7; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp expires = 8;
+  google.protobuf.Timestamp attemptedAt = 9;
 }
 
 message AddBlockedKeyRequest {
@@ -309,6 +323,7 @@ message AddBlockedKeyRequest {
   string source = 3;
   string comment = 4;
   int64 revokedBy = 5;
+  google.protobuf.Timestamp added = 6;
 }
 
 message KeyBlockedRequest {
@@ -321,6 +336,7 @@ message Incident {
   string url = 3;
   int64 renewByNS = 4; // Unix timestamp (nanoseconds)
   bool enabled = 5;
+  google.protobuf.Timestamp renewBy = 6;
 }
 
 message Incidents {
@@ -336,6 +352,7 @@ message IncidentSerial {
   int64 registrationID = 2; // May be 0 (NULL)
   int64 orderID = 3; // May be 0 (NULL)
   int64 lastNoticeSentNS = 4; // Unix timestamp (nanoseconds), may be 0 (NULL)
+  google.protobuf.Timestamp lastNoticeSent = 5;
 }
 
 message GetRevokedCertsRequest {
@@ -343,6 +360,9 @@ message GetRevokedCertsRequest {
   int64 expiresAfterNS = 2; // Unix timestamp (nanoseconds), inclusive
   int64 expiresBeforeNS = 3; // Unix timestamp (nanoseconds), exclusive
   int64 revokedBeforeNS = 4; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp expiresAfter = 5; // inclusive
+  google.protobuf.Timestamp expiresBefore = 6; // exclusive
+  google.protobuf.Timestamp revokedBefore = 7;
 }
 
 message RevocationStatus {
