@@ -26,6 +26,8 @@ func (srv *s3TestSrv) handleS3(w http.ResponseWriter, r *http.Request) {
 		srv.handleUpload(w, r)
 	} else if r.Method == "GET" {
 		srv.handleDownload(w, r)
+	} else {
+		w.WriteHeader(405)
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -169,11 +170,11 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		Key:    &filename,
 	})
 	if err != nil {
-		noSuchKey := &types.NoSuchKey{}
-		if !errors.As(err, &noSuchKey) {
+		smithyErr := &smithyhttp.ResponseError{}
+		if !errors.As(err, &smithyErr) || smithyErr.HTTPStatusCode() != 404 {
 			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
 		}
-		cs.log.Infof("no previous CRL found for %s", crlId)
+		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)
 	} else {
 		prevBytes, err := io.ReadAll(prevObj.Body)
 		if err != nil {
