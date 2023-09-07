@@ -19,7 +19,7 @@ require (
 	github.com/letsencrypt/challtestsrv v1.2.1
 	github.com/letsencrypt/pkcs11key/v4 v4.0.0
 	github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
-	github.com/miekg/dns v1.1.50
+	github.com/miekg/dns v1.1.55
 	github.com/miekg/pkcs11 v1.1.1
 	github.com/prometheus/client_golang v1.15.1
 	github.com/prometheus/client_model v0.4.0
@@ -38,7 +38,7 @@ require (
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/net v0.11.0
 	golang.org/x/sync v0.2.0
-	golang.org/x/term v0.9.0
+	golang.org/x/term v0.11.0
 	golang.org/x/text v0.10.0
 	google.golang.org/grpc v1.54.0
 	google.golang.org/protobuf v1.31.0
@@ -83,7 +83,7 @@ require (
 	go.opentelemetry.io/otel/metric v0.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	golang.org/x/mod v0.10.0 // indirect
-	golang.org/x/sys v0.9.0 // indirect
+	golang.org/x/sys v0.11.0 // indirect
 	golang.org/x/tools v0.8.0 // indirect
 	google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
