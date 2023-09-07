@@ -119,7 +119,7 @@ func NewUpdater(
 	}, nil
 }
 
-// updateShardWithRetry calls tickShard repeatedly (with exponential backoff
+// updateShardWithRetry calls updateShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
 func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
 	ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
