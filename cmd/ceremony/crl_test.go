@@ -19,28 +19,28 @@ import (
 )
 
 func TestGenerateCRLTimeBounds(t *testing.T) {
-	_, err := generateCRL(nil, nil, time.Now().Add(time.Hour), time.Now(), 1, "idp", nil)
+	_, err := generateCRL(nil, nil, time.Now().Add(time.Hour), time.Now(), 1, nil)
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "thisUpdate must be before nextUpdate")
 
 	_, err = generateCRL(nil, &x509.Certificate{
 		NotBefore: time.Now().Add(time.Hour),
 		NotAfter:  time.Now(),
-	}, time.Now(), time.Now(), 1, "idp", nil)
+	}, time.Now(), time.Now(), 1, nil)
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "thisUpdate is before issuing certificate's notBefore")
 
 	_, err = generateCRL(nil, &x509.Certificate{
 		NotBefore: time.Now(),
 		NotAfter:  time.Now().Add(time.Hour * 2),
-	}, time.Now().Add(time.Hour), time.Now().Add(time.Hour*3), 1, "idp", nil)
+	}, time.Now().Add(time.Hour), time.Now().Add(time.Hour*3), 1, nil)
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "nextUpdate is after issuing certificate's notAfter")
 
 	_, err = generateCRL(nil, &x509.Certificate{
 		NotBefore: time.Now(),
 		NotAfter:  time.Now().Add(time.Hour * 24 * 370),
-	}, time.Now(), time.Now().Add(time.Hour*24*366), 1, "idp", nil)
+	}, time.Now(), time.Now().Add(time.Hour*24*366), 1, nil)
 	test.AssertError(t, err, "generateCRL did not fail")
 	test.AssertEquals(t, err.Error(), "nextUpdate must be less than 12 months after thisUpdate")
 }
@@ -81,21 +81,23 @@ func TestGenerateCRLLints(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse test cert")
 
 	// This CRL should fail the following lints:
-	// - e_crl_validity_period (because our ceremony CRLs are valid for a long time)
+	// - e_crl_validity_period_subscriber_cert (ceremony CRLs are valid for up to 12 months)
 	// - e_crl_acceptable_reason_codes (because 6 is forbidden)
+	//
 	// However, only e_crl_acceptable_reason_codes should show up in the error
-	// message, because e_crl_validity_period should be explicitly removed from
-	// the lint registry by the ceremony tool.
+	// message, because e_crl_validity_period_subscriber_cert and
+	// e_crl_has_idp_subscriber_cert should be explicitly removed from the lint
+	// registry by the ceremony tool.
 	six := 6
-	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, "http://idp", []crl_x509.RevokedCertificate{
+	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []crl_x509.RevokedCertificate{
 		{
 			SerialNumber: big.NewInt(12345),
 			ReasonCode:   &six,
 		},
 	})
 	test.AssertError(t, err, "generateCRL did not fail")
-	test.AssertNotContains(t, err.Error(), "e_crl_has_idp")
-	test.AssertNotContains(t, err.Error(), "e_crl_validity_period")
+	test.AssertNotContains(t, err.Error(), "e_crl_has_idp_subordinate_ca")
+	test.AssertNotContains(t, err.Error(), "e_crl_validity_period_subordinate_ca")
 	test.AssertContains(t, err.Error(), "e_crl_acceptable_reason_codes")
 }
 
@@ -119,7 +121,7 @@ func TestGenerateCRL(t *testing.T) {
 	cert, err := x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse test cert")
 
-	crlPEM, err := generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(time.Hour*2), 1, "http://idp", nil)
+	crlPEM, err := generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(time.Hour*2), 1, nil)
 	test.AssertNotError(t, err, "generateCRL failed with valid profile")
 
 	pemBlock, _ := pem.Decode(crlPEM)
@@ -138,7 +140,7 @@ func TestGenerateCRL(t *testing.T) {
 	_, err = asn1.Unmarshal(crlDER, &crl)
 	test.AssertNotError(t, err, "failed to parse CRL")
 	test.AssertEquals(t, crl.TBS.Version, 1)         // x509v2 == 1
-	test.AssertEquals(t, len(crl.TBS.Extensions), 3) // AKID, CRL number, IssuingDistributionPOint
+	test.AssertEquals(t, len(crl.TBS.Extensions), 3) // AKID, CRL number, IssuingDistributionPoint
 	test.Assert(t, crl.TBS.Extensions[1].Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 20}), "unexpected OID in extension")
 	test.Assert(t, crl.TBS.Extensions[2].Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 28}), "unexpected OID in extension")
 	var number int

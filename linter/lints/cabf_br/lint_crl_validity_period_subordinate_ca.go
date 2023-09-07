@@ -1,47 +1,43 @@
 package cabfbr
 
 import (
-	"time"
-
+	"github.com/letsencrypt/boulder/linter/lints"
 	"github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3/lint"
 	"github.com/zmap/zlint/v3/util"
 )
 
-type crlValidityPeriod struct{}
+type crlValidityPeriodSubordinateCA struct{}
 
 /************************************************
 Baseline Requirements, Section 4.9.7:
-For the status of Subscriber Certificates [...] the value of the nextUpdate
-field MUST NOT be more than ten days beyond the value of the thisUpdate field.
-
-Although the validity period for CRLs covering the status of Subordinate CA
-certificates is longer (up to 12 months), Boulder does not produce such CRLs,
-so this lint only covers the Subscriber Certificate case.
+For the status of Subordinate CA Certificates [...]. The value of the nextUpdate
+field MUST NOT be more than twelve months beyond the value of the thisUpdate
+field.
 ************************************************/
 
 func init() {
 	lint.RegisterRevocationListLint(&lint.RevocationListLint{
 		LintMetadata: lint.LintMetadata{
-			Name:          "e_crl_validity_period",
+			Name:          "e_crl_validity_period_subordinate_ca",
 			Description:   "CRLs must have an acceptable validity period",
 			Citation:      "BRs: 4.9.7",
 			Source:        lint.CABFBaselineRequirements,
 			EffectiveDate: util.CABFBRs_1_2_1_Date,
 		},
-		Lint: NewCrlValidityPeriod,
+		Lint: NewCrlValidityPeriodSubordinateCA,
 	})
 }
 
-func NewCrlValidityPeriod() lint.RevocationListLintInterface {
-	return &crlValidityPeriod{}
+func NewCrlValidityPeriodSubordinateCA() lint.RevocationListLintInterface {
+	return &crlValidityPeriodSubordinateCA{}
 }
 
-func (l *crlValidityPeriod) CheckApplies(c *x509.RevocationList) bool {
+func (l *crlValidityPeriodSubordinateCA) CheckApplies(c *x509.RevocationList) bool {
 	return true
 }
 
-func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
+func (l *crlValidityPeriodSubordinateCA) Execute(c *x509.RevocationList) *lint.LintResult {
 	validity := c.NextUpdate.Sub(c.ThisUpdate)
 	if validity <= 0 {
 		return &lint.LintResult{
@@ -49,10 +45,10 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 			Details: "CRL has NextUpdate at or before ThisUpdate",
 		}
 	}
-	if validity > 10*24*time.Hour {
+	if validity > 365*lints.BRDay {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: "CRL has validity period greater than ten days",
+			Details: "CRL has validity period greater than 12 months (365 days)",
 		}
 	}
 	return &lint.LintResult{Status: lint.Pass}

@@ -12,4 +12,3 @@ crl-profile:
     this-update: 2023-01-01 12:00:00
     next-update: 2023-12-15 12:00:00
     number: 100
-    issuing-distribution-point: "http://example.com"

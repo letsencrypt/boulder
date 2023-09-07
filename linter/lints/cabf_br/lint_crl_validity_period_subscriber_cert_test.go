@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints/test"
 )
 
-func TestCrlValidityPeriod(t *testing.T) {
+func TestCrlValidityPeriodSubscriberCert(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -36,7 +36,7 @@ func TestCrlValidityPeriod(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			l := NewCrlValidityPeriod()
+			l := NewCrlValidityPeriodSubscriberCert()
 			c := test.LoadPEMCRL(t, fmt.Sprintf("testdata/crl_%s.pem", tc.name))
 			r := l.Execute(c)
 

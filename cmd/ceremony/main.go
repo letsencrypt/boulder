@@ -416,7 +416,6 @@ type crlConfig struct {
 			RevocationDate   string `yaml:"revocation-date"`
 			RevocationReason int    `yaml:"revocation-reason"`
 		} `yaml:"revoked-certificates"`
-		IssuingDistributionPoint string `yaml:"issuing-distribution-point"`
 	} `yaml:"crl-profile"`
 }
 
@@ -446,9 +445,6 @@ func (cc crlConfig) validate() error {
 	}
 	if cc.CRLProfile.Number == 0 {
 		return errors.New("crl-profile.number must be non-zero")
-	}
-	if cc.CRLProfile.IssuingDistributionPoint == "" {
-		return errors.New("crl-profile.issuing-distribution-point is required")
 	}
 	for _, rc := range cc.CRLProfile.RevokedCertificates {
 		if rc.CertificatePath == "" {
@@ -963,7 +959,7 @@ func crlCeremony(configBytes []byte) error {
 		revokedCertificates = append(revokedCertificates, revokedCert)
 	}
 
-	crlBytes, err := generateCRL(signer, issuer, thisUpdate, nextUpdate, config.CRLProfile.Number, config.CRLProfile.IssuingDistributionPoint, revokedCertificates)
+	crlBytes, err := generateCRL(signer, issuer, thisUpdate, nextUpdate, config.CRLProfile.Number, revokedCertificates)
 	if err != nil {
 		return err
 	}
