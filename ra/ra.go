@@ -685,14 +685,14 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 
 	parsedNames := parsedCertificate.DNSNames
 	sort.Strings(parsedNames)
-	if !reflect.DeepEqual(parsedNames, csrNames.SANs) {
+	if !slices.Equal(parsedNames, csrNames.SANs) {
 		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
 	}
 
 	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
 		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
 	}
-	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
+	if !slices.Equal(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
 		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
 	}
 
@@ -712,7 +712,7 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 	if parsedCertificate.IsCA {
 		return berrors.InternalServerError("generated certificate can sign other certificates")
 	}
-	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+	if !slices.Equal(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
 		return berrors.InternalServerError("generated certificate doesn't have correct key usage extensions")
 	}
 
