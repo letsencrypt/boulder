@@ -9,11 +9,12 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"net/http"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -292,7 +293,7 @@ func (p *fakeSimpleS3) GetObject(ctx context.Context, params *s3.GetObjectInput,
 	if p.prevBytes != nil {
 		return &s3.GetObjectOutput{Body: io.NopCloser(bytes.NewReader(p.prevBytes))}, nil
 	}
-	return nil, &types.NoSuchKey{}
+	return nil, &smithyhttp.ResponseError{Response: &smithyhttp.Response{Response: &http.Response{StatusCode: 404}}}
 }
 
 // Test that the correct bytes get propagated to S3.
