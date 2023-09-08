@@ -536,6 +536,7 @@ func (dnsClient *impl) LookupCAA(ctx context.Context, hostname string) ([]*dns.C
 	// TXT records for DNS-01 challenge) and then removed after
 	// validation but before CAA rechecking.
 	if err == nil && r.Rcode == dns.RcodeNameError {
+		dnsClient.log.Infof("LookupCAA: got NXDOMAIN looking up %q", hostname)
 		return nil, "", nil
 	}
 
