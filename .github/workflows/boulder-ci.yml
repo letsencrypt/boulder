@@ -36,8 +36,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.20.8_2023-09-06
-          - go1.21.1_2023-09-06
+          - go1.21.1_2023-09-07
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -96,10 +95,8 @@ jobs:
       - name: docker compose pull
         run: docker compose pull
 
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
-      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
-      - if: startsWith(matrix.BOULDER_TOOLS_TAG, 'go1.21')
-        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
+      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
+      - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
       # Run the test matrix. This will run
       - name: "Run Test: ${{ matrix.tests }}"
@@ -113,8 +110,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.20.8_2023-09-06
-          - go1.21.1_2023-09-06
+          - go1.21.1_2023-09-07
 
     env:
       # This sets the docker image tag for the boulder-tools repository to
@@ -150,10 +146,8 @@ jobs:
       - name: docker compose pull netaccess
         run: docker compose pull netaccess
 
-      # Enable https://github.com/golang/go/wiki/LoopvarExperiment if we're on
-      # go1.21rc2 or higher. This experiment value is unknown in lower versions.
-      - if: startsWith(matrix.BOULDER_TOOLS_TAG, 'go1.21')
-        run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
+      # Enable https://github.com/golang/go/wiki/LoopvarExperiment
+      - run: echo "GOEXPERIMENT=loopvar" >> "$GITHUB_ENV"
 
       # Unset the GOFLAGS environment variable because, by default, it will be
       # set to "GOFLAGS='-mod=vendor'" which all go subcommands will utilize. In
