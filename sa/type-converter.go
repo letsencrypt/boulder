@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/letsencrypt/borp"
 	"gopkg.in/go-jose/go-jose.v2"
@@ -34,6 +35,8 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 		return string(t), nil
 	case core.OCSPStatus:
 		return string(t), nil
+	case time.Time:
+		return t.Truncate(time.Microsecond), nil
 	default:
 		return val, nil
 	}
