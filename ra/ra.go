@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"net"
 	"net/url"
-	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,7 +22,6 @@ import (
 	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/ocsp"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -685,14 +684,14 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 
 	parsedNames := parsedCertificate.DNSNames
 	sort.Strings(parsedNames)
-	if !reflect.DeepEqual(parsedNames, csrNames.SANs) {
+	if !slices.Equal(parsedNames, csrNames.SANs) {
 		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
 	}
 
-	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
+	if !slices.EqualFunc(parsedCertificate.IPAddresses, csr.IPAddresses, func(l, r net.IP) bool { return l.Equal(r) }) {
 		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
 	}
-	if !reflect.DeepEqual(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
+	if !slices.Equal(parsedCertificate.EmailAddresses, csr.EmailAddresses) {
 		return berrors.InternalServerError("generated certificate EmailAddresses don't match CSR EmailAddresses")
 	}
 
@@ -712,7 +711,7 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 	if parsedCertificate.IsCA {
 		return berrors.InternalServerError("generated certificate can sign other certificates")
 	}
-	if !reflect.DeepEqual(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
+	if !slices.Equal(parsedCertificate.ExtKeyUsage, []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}) {
 		return berrors.InternalServerError("generated certificate doesn't have correct key usage extensions")
 	}
 

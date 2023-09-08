@@ -9,10 +9,10 @@ import (
 	"net"
 	"net/mail"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
-	"golang.org/x/exp/slices"
 	"golang.org/x/net/idna"
 	"golang.org/x/text/unicode/norm"
 
