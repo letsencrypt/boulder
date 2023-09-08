@@ -10,7 +10,6 @@ import (
 	"math/big"
 	"net"
 	"net/url"
-	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -689,7 +688,7 @@ func (ra *RegistrationAuthorityImpl) matchesCSR(parsedCertificate *x509.Certific
 		return berrors.InternalServerError("generated certificate DNSNames don't match CSR DNSNames")
 	}
 
-	if !reflect.DeepEqual(parsedCertificate.IPAddresses, csr.IPAddresses) {
+	if !slices.EqualFunc(parsedCertificate.IPAddresses, csr.IPAddresses, func(l, r net.IP) bool { return l.Equal(r) }) {
 		return berrors.InternalServerError("generated certificate IPAddresses don't match CSR IPAddresses")
 	}
 	if !slices.Equal(parsedCertificate.EmailAddresses, csr.EmailAddresses) {

@@ -741,7 +741,6 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
-	// TODO(#7032) Replace reflect with slices.Equal() >= go1.21
 	if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
