@@ -230,8 +230,13 @@ type SyslogConfig struct {
 // ServiceDomain contains the service and domain name the gRPC or bdns provider
 // will use to construct a SRV DNS query to lookup backends.
 type ServiceDomain struct {
+	// Service is the service name to be used for SRV lookups. For example: if
+	// record is 'foo.service.consul', then the Service is 'foo'.
 	Service string `validate:"required"`
-	Domain  string `validate:"required"`
+
+	// Domain is the domain name to be used for SRV lookups. For example: if the
+	// record is 'foo.service.consul', then the Domain is 'service.consul'.
+	Domain string `validate:"required"`
 }
 
 // GRPCClientConfig contains the information necessary to setup a gRPC client
