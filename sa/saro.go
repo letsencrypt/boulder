@@ -683,7 +683,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, err
 		}
 
-		orderExp := time.Unix(0, order.Expires)
+		orderExp := time.Unix(0, order.ExpiresNS)
 		if orderExp.Before(ssa.clk.Now()) {
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}

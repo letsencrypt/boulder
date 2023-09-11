@@ -235,8 +235,8 @@ func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewO
 	return &corepb.Order{
 		Id:               1,
 		RegistrationID:   in.RegistrationID,
-		Created:          time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
-		Expires:          time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
+		CreatedNS:        time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
+		ExpiresNS:        time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
 		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
@@ -3341,7 +3341,7 @@ func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 		RegistrationID:   1,
 		Names:            []string{"a"},
 		Status:           string(core.StatusPending),
-		Expires:          fc.Now().UnixNano(),
+		ExpiresNS:        fc.Now().UnixNano(),
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{

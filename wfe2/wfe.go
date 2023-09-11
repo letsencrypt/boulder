@@ -1910,7 +1910,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
-		Expires:     time.Unix(0, order.Expires).UTC(),
+		Expires:     time.Unix(0, order.ExpiresNS).UTC(),
 		Identifiers: idents,
 		Finalize:    finalizeURL,
 	}
@@ -2013,7 +2013,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		RegistrationID: acct.ID,
 		Names:          names,
 	})
-	if err != nil || order == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if err != nil || order == nil || order.Id == 0 || order.CreatedNS == 0 || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2073,7 +2073,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if order.Id == 0 || order.CreatedNS == 0 || order.Status == "" || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2153,7 +2153,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if order.Id == 0 || order.CreatedNS == 0 || order.Status == "" || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2181,7 +2181,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	// If the order is expired we can not finalize it and must return an error
-	orderExpiry := time.Unix(order.Expires, 0)
+	orderExpiry := time.Unix(order.ExpiresNS, 0)
 	if orderExpiry.Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", order.Id)), nil)
 		return
@@ -2214,7 +2214,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if updatedOrder == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if updatedOrder == nil || order.Id == 0 || order.CreatedNS == 0 || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}

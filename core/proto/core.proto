@@ -49,10 +49,10 @@ message CertificateStatus {
   reserved 2; // previously subscriberApproved
   string status = 3;
   int64 ocspLastUpdated = 4;
-  int64 revokedDate = 5;
+  int64 revokedDateNS = 5; // Unix timestamp (nanoseconds)
   int64 revokedReason = 6;
-  int64 lastExpirationNagSent = 7;
-  int64 notAfter = 9;
+  int64 lastExpirationNagSentNS = 7; // Unix timestamp (nanoseconds)
+  int64 notAfterNS = 9; // Unix timestamp (nanoseconds)
   bool isExpired = 10;
   int64 issuerID = 11;
 }
@@ -82,14 +82,14 @@ message Authorization {
 message Order {
   int64 id = 1;
   int64 registrationID = 2;
-  int64 expires = 3;
+  int64 expiresNS = 3; // Unix timestamp (nanoseconds)
   ProblemDetails error = 4;
   string certificateSerial = 5;
   reserved 6; // previously authorizations, deprecated in favor of v2Authorizations
   string status = 7;
   repeated string names = 8;
   bool beganProcessing = 9;
-  int64 created = 10;
+  int64 createdNS = 10; // Unix timestamp (nanoseconds)
   repeated int64 v2Authorizations = 11;
 }
 
