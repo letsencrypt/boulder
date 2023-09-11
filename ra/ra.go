@@ -172,7 +172,7 @@ func NewRegistrationAuthorityImpl(
 	overrideUsageGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "ratelimitsv1_override_usage",
 		Help: "Proportion of override limit used, by limit name and client identifier.",
-	}, []string{"limit", "client_id"})
+	}, []string{"limit", "override_key"})
 	stats.MustRegister(overrideUsageGauge)
 
 	newRegCounter := prometheus.NewCounter(prometheus.CounterOpts{
@@ -374,7 +374,7 @@ type registrationCounter func(context.Context, *sapb.CountRegistrationsByIPReque
 // checkRegistrationIPLimit checks a specific registraton limit by using the
 // provided registrationCounter function to determine if the limit has been
 // exceeded for a given IP or IP range
-func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Context, limit ratelimit.RateLimitPolicy, ip net.IP, counter registrationCounter, ipRangeCheck bool) error {
+func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Context, limit ratelimit.RateLimitPolicy, ip net.IP, counter registrationCounter) error {
 	now := ra.clk.Now()
 	count, err := counter(ctx, &sapb.CountRegistrationsByIPRequest{
 		Ip: ip,
@@ -388,7 +388,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	}
 
 	threshold, isOverridden := limit.GetThreshold(ip.String(), noRegistrationID)
-	if isOverridden && !ipRangeCheck {
+	if isOverridden {
 		// We do not support overrides for the NewRegistrationsPerIPRange limit.
 		utilization := float64(count.Count) / float64(threshold)
 		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.RegistrationsPerIP, ip.String()).Set(utilization)
@@ -409,7 +409,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	exactRegLimit := ra.rlPolicies.RegistrationsPerIP()
 	if exactRegLimit.Enabled() {
 		started := ra.clk.Now()
-		err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP, false)
+		err := ra.checkRegistrationIPLimit(ctx, exactRegLimit, ip, ra.SA.CountRegistrationsByIP)
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
@@ -434,7 +434,7 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 	fuzzyRegLimit := ra.rlPolicies.RegistrationsPerIPRange()
 	if fuzzyRegLimit.Enabled() {
 		started := ra.clk.Now()
-		err := ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange, true)
+		err := ra.checkRegistrationIPLimit(ctx, fuzzyRegLimit, ip, ra.SA.CountRegistrationsByIPRange)
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
@@ -645,17 +645,13 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// here.
 	noKey := ""
 	threshold, isOverridden := limit.GetThreshold(noKey, regID)
-	if count.Count >= threshold {
-		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
-		if isOverridden {
-			utilization := float64(count.Count) / float64(threshold)
-			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, strconv.FormatInt(regID, 10)).Set(utilization)
-		}
-		return berrors.FailedValidationError(0, "too many failed authorizations recently")
-	}
 	if isOverridden {
 		utilization := float64(count.Count) / float64(threshold)
 		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, strconv.FormatInt(regID, 10)).Set(utilization)
+	}
+	if count.Count >= threshold {
+		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
+		return berrors.FailedValidationError(0, "too many failed authorizations recently")
 	}
 	return nil
 }
