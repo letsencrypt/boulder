@@ -152,10 +152,17 @@ func makeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
 
 func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.Certificate, error) {
 	lintIssuerTBS := &x509.Certificate{
-		// This is the full list of attributes that x509.CreateCertificate() says it
-		// carries over from the template. Constructing this TBS certificate in
-		// this way ensures that the resulting lint issuer is as identical to the
-		// real issuer as we can get, without sharing a public key.
+		// This is nearly the full list of attributes that
+		// x509.CreateCertificate() says it carries over from the template.
+		// Constructing this TBS certificate in this way ensures that the
+		// resulting lint issuer is as identical to the real issuer as we can
+		// get, without sharing a public key.
+		//
+		// We do not copy the SignatureAlgorithm field while constructing the
+		// lintIssuer because the lintIssuer is self-signed. Depending on the
+		// realIssuer, which could be either an intermediate or cross-signed
+		// intermediate, the SignatureAlgorithm of that certificate may differ
+		// from the root certificate that had signed it.
 		AuthorityKeyId:              realIssuer.AuthorityKeyId,
 		BasicConstraintsValid:       realIssuer.BasicConstraintsValid,
 		CRLDistributionPoints:       realIssuer.CRLDistributionPoints,
@@ -183,7 +190,6 @@ func makeIssuer(realIssuer *x509.Certificate, lintSigner crypto.Signer) (*x509.C
 		PermittedURIDomains:         realIssuer.PermittedURIDomains,
 		PolicyIdentifiers:           realIssuer.PolicyIdentifiers,
 		SerialNumber:                realIssuer.SerialNumber,
-		SignatureAlgorithm:          realIssuer.SignatureAlgorithm,
 		Subject:                     realIssuer.Subject,
 		SubjectKeyId:                realIssuer.SubjectKeyId,
 		URIs:                        realIssuer.URIs,

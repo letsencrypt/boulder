@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// serverProvider represents a type which can provide a list of addresses for
+// ServerProvider represents a type which can provide a list of addresses for
 // the bdns to use as DNS resolvers. Different implementations may provide
 // different strategies for providing addresses, and may provide different kinds
 // of addresses (e.g. host:port combos vs IP addresses).

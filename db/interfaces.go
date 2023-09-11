@@ -101,7 +101,7 @@ type Rows[T any] interface {
 	Close() error
 }
 
-// MockSqlExecuter implement SqlExecutor by returning errors from every call.
+// MockSqlExecutor implement SqlExecutor by returning errors from every call.
 //
 // TODO: To mock out WithContext, we needed to be able to return objects that satisfy
 // borp.SqlExecutor. That's a pretty big interface, so we specify one no-op mock

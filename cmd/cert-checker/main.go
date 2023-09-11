@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"log/syslog"
 	"os"
-	"reflect"
 	"regexp"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -378,7 +378,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			}
 		}
 		// Check the cert has the correct key usage extensions
-		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
+		if !slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
 		}
 

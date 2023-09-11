@@ -3492,10 +3492,6 @@ func TestLeaseSpecificCRLShard(t *testing.T) {
 }
 
 func TestUpdateCRLShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires crlShards database table")
-	}
-
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3523,8 +3519,9 @@ func TestUpdateCRLShard(t *testing.T) {
 	test.AssertNotError(t, err, "setting up test shards")
 
 	thisUpdate := clk.Now().Truncate(time.Second).UTC()
-	var thisUpdateModel struct {
-		ThisUpdate time.Time `db:"thisUpdate"`
+	var crlModel struct {
+		ThisUpdate *time.Time
+		NextUpdate *time.Time
 	}
 
 	// Updating a leased shard should work.
@@ -3541,13 +3538,11 @@ func TestUpdateCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		ctx,
-		&thisUpdateModel,
-		`SELECT thisUpdate FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
-		1,
-		0,
+		&crlModel,
+		`SELECT thisUpdate FROM crlShards WHERE issuerID = 1 AND idx = 0 LIMIT 1`,
 	)
 	test.AssertNotError(t, err, "getting updated thisUpdate timestamp")
-	test.Assert(t, thisUpdateModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
+	test.Assert(t, crlModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
 
 	// Updating an unleased shard should work.
 	_, err = sa.UpdateCRLShard(
@@ -3563,13 +3558,30 @@ func TestUpdateCRLShard(t *testing.T) {
 
 	err = sa.dbMap.SelectOne(
 		ctx,
-		&thisUpdateModel,
-		`SELECT thisUpdate FROM crlShards WHERE issuerID = ? AND idx = ? LIMIT 1`,
-		1,
-		1,
+		&crlModel,
+		`SELECT thisUpdate FROM crlShards WHERE issuerID = 1 AND idx = 1 LIMIT 1`,
 	)
 	test.AssertNotError(t, err, "getting updated thisUpdate timestamp")
-	test.Assert(t, thisUpdateModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
+	test.Assert(t, crlModel.ThisUpdate.Equal(thisUpdate), "checking updated thisUpdate timestamp")
+
+	// Updating without supplying a NextUpdate should work.
+	_, err = sa.UpdateCRLShard(
+		context.Background(),
+		&sapb.UpdateCRLShardRequest{
+			IssuerNameID: 1,
+			ShardIdx:     3,
+			ThisUpdate:   timestamppb.New(thisUpdate.Add(time.Second)),
+		},
+	)
+	test.AssertNotError(t, err, "updating shard without NextUpdate")
+
+	err = sa.dbMap.SelectOne(
+		ctx,
+		&crlModel,
+		`SELECT nextUpdate FROM crlShards WHERE issuerID = 1 AND idx = 3 LIMIT 1`,
+	)
+	test.AssertNotError(t, err, "getting updated nextUpdate timestamp")
+	test.AssertBoxedNil(t, crlModel.NextUpdate, "checking updated nextUpdate timestamp")
 
 	// Updating a shard to an earlier time should fail.
 	_, err = sa.UpdateCRLShard(
@@ -3593,5 +3605,5 @@ func TestUpdateCRLShard(t *testing.T) {
 			NextUpdate:   timestamppb.New(thisUpdate.Add(10 * 24 * time.Hour)),
 		},
 	)
-	test.AssertError(t, err, "updating shard to an earlier time")
+	test.AssertError(t, err, "updating an unknown shard")
 }

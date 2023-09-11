@@ -44,11 +44,10 @@
 		"numShards": 10,
 		"shardWidth": "240h",
 		"lookbackPeriod": "24h",
-		"updatePeriod": "6h",
-		"updateOffset": "9120s",
-		"updateTimeout": "3600s",
+		"updatePeriod": "10m",
+		"updateTimeout": "1m",
 		"maxParallelism": 10,
-		"maxAttempts": 5,
+		"maxAttempts": 2,
 		"features": {}
 	},
 	"syslog": {
