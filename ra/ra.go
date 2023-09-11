@@ -20,7 +20,6 @@ import (
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weppos/publicsuffix-go/publicsuffix"
-	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -953,17 +952,14 @@ func (ra *RegistrationAuthorityImpl) recheckCAA(ctx context.Context, authzs []*c
 // log it and don't modify the input order. There aren't any alternatives if we
 // can't add the error to the order. This function MUST only be called when we
 // are already returning an error for another reason.
-//
-// TODO(go1.22?): take a context as an argument so its metadata can be used.
 func (ra *RegistrationAuthorityImpl) failOrder(
+	ctx context.Context,
 	order *corepb.Order,
 	prob *probs.ProblemDetails) {
 	// Use a separate context with its own timeout, since the error we encountered
 	// may have been a context cancellation or timeout, and these operations still
 	// need to succeed.
-	// TODO(go1.22?): use context.Detach to preserve tracing metadata.
-	var cancel func()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 1*time.Second)
 	defer cancel()
 
 	// Convert the problem to a protobuf problem for the *corepb.Order field
@@ -1033,7 +1029,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 	if err != nil {
 		// Fail the order with a server internal error - we weren't able to set the
 		// status to processing and that's unexpected & weird.
-		ra.failOrder(req.Order, probs.ServerInternal("Error setting order processing"))
+		ra.failOrder(ctx, req.Order, probs.ServerInternal("Error setting order processing"))
 		return nil, err
 	}
 
@@ -1199,7 +1195,7 @@ func (ra *RegistrationAuthorityImpl) issueCertificateOuter(
 		// correct `urn:ietf:params:acme:error:unauthorized` problem while not
 		// letting anything like a server internal error through with sensitive
 		// info.
-		ra.failOrder(order, web.ProblemDetailsForError(err, "Error finalizing order"))
+		ra.failOrder(ctx, order, web.ProblemDetailsForError(err, "Error finalizing order"))
 		order.Status = string(core.StatusInvalid)
 
 		logEvent.Error = err.Error()
@@ -1249,10 +1245,8 @@ func (ra *RegistrationAuthorityImpl) issueCertificateInner(
 	oID orderID) (*x509.Certificate, error) {
 	if features.Enabled(features.AsyncFinalize) {
 		// If we're in async mode, use a context with a much longer timeout.
-		// TODO(go1.22?): use context.Detach to preserve tracing metadata.
-		span := trace.SpanFromContext(ctx)
 		var cancel func()
-		ctx, cancel = context.WithTimeout(trace.ContextWithSpan(context.Background(), span), ra.finalizeTimeout)
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), ra.finalizeTimeout)
 		defer cancel()
 	}
 
