@@ -36,7 +36,6 @@ func (l *crlNoEmptyRevokedCertsList) CheckApplies(c *x509.RevocationList) bool {
 }
 
 func (l *crlNoEmptyRevokedCertsList) Execute(c *x509.RevocationList) *lint.LintResult {
-	// TODO(#6741): Rewrite this lint because upstream does not make this distinction.
 	if c.RevokedCertificates != nil && len(c.RevokedCertificates) == 0 {
 		return &lint.LintResult{
 			Status:  lint.Error,

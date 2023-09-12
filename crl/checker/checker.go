@@ -68,16 +68,16 @@ func Diff(old, new *x509.RevocationList) (*diffResult, error) {
 	}
 
 	// Sort both sets of serials so we can march through them in order.
-	oldSerials := make([]*big.Int, len(old.RevokedCertificates))
-	for i, rc := range old.RevokedCertificates {
+	oldSerials := make([]*big.Int, len(old.RevokedCertificateEntries))
+	for i, rc := range old.RevokedCertificateEntries {
 		oldSerials[i] = rc.SerialNumber
 	}
 	sort.Slice(oldSerials, func(i, j int) bool {
 		return oldSerials[i].Cmp(oldSerials[j]) < 0
 	})
 
-	newSerials := make([]*big.Int, len(new.RevokedCertificates))
-	for j, rc := range new.RevokedCertificates {
+	newSerials := make([]*big.Int, len(new.RevokedCertificateEntries))
+	for j, rc := range new.RevokedCertificateEntries {
 		newSerials[j] = rc.SerialNumber
 	}
 	sort.Slice(newSerials, func(i, j int) bool {

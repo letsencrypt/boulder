@@ -176,10 +176,10 @@ func TestGenerateCRL(t *testing.T) {
 	<-done
 	test.AssertNotError(t, err, "generating empty CRL should work")
 	test.Assert(t, len(crlBytes) > 0, "should have gotten some CRL bytes")
-	crl, err := x509.ParseCRL(crlBytes)
+	crl, err := x509.ParseRevocationList(crlBytes)
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
-	test.AssertEquals(t, len(crl.TBSCertList.RevokedCertificates), 0)
-	err = testCtx.boulderIssuers[0].Cert.CheckCRLSignature(crl)
+	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 0)
+	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "CRL signature should validate")
 
 	// Test that generating a CRL with some entries works.
@@ -255,9 +255,9 @@ func TestGenerateCRL(t *testing.T) {
 	<-done
 	test.AssertNotError(t, err, "generating empty CRL should work")
 	test.Assert(t, len(crlBytes) > 0, "should have gotten some CRL bytes")
-	crl, err = x509.ParseCRL(crlBytes)
+	crl, err = x509.ParseRevocationList(crlBytes)
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
-	test.AssertEquals(t, len(crl.TBSCertList.RevokedCertificates), 5)
-	err = testCtx.boulderIssuers[0].Cert.CheckCRLSignature(crl)
+	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 5)
+	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
 	test.AssertNotError(t, err, "CRL signature should validate")
 }

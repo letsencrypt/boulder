@@ -130,7 +130,7 @@ func TestGenerateCRL(t *testing.T) {
 	test.AssertNotError(t, err, "failed to parse CRL")
 	err = goCRL.CheckSignatureFrom(cert)
 	test.AssertNotError(t, err, "CRL signature check failed")
-	test.AssertEquals(t, len(goCRL.RevokedCertificates), 0)
+	test.AssertEquals(t, len(goCRL.RevokedCertificateEntries), 0)
 
 	// fully parse the CRL to check that the version is correct, and that
 	// it contains the CRL number extension containing the number we expect

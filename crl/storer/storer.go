@@ -179,7 +179,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
 	cs.log.AuditInfof(
 		"CRL uploaded: id=[%s] issuerCN=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-		crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
+		crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificateEntries),
 	)
 
 	return stream.SendAndClose(&emptypb.Empty{})

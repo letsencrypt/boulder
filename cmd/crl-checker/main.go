@@ -117,7 +117,7 @@ func main() {
 			oldestTimestamp = crl.ThisUpdate
 		}
 
-		for _, c := range crl.RevokedCertificates {
+		for _, c := range crl.RevokedCertificateEntries {
 			serial := core.SerialToString(c.SerialNumber)
 			if _, seen := seenSerials[serial]; seen {
 				errCount += 1
