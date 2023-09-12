@@ -349,6 +349,22 @@ services {
   tags    = ["tcp"] // Required for SRV RR support in gRPC DNS resolution.
 }
 
+services {
+  id      = "bredis3"
+  name    = "redisratelimits"
+  address = "10.33.33.4"
+  port    = 4218
+  tags    = ["tcp"] // Required for SRV RR support in DNS resolution.
+}
+
+services {
+  id      = "bredis4"
+  name    = "redisratelimits"
+  address = "10.33.33.5"
+  port    = 4218
+  tags    = ["tcp"] // Required for SRV RR support in DNS resolution.
+}
+
 //
 // The following services are used for testing the gRPC DNS resolver.
 //
