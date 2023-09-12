@@ -10,7 +10,7 @@ import (
 	"github.com/letsencrypt/boulder/linter/lints/test"
 )
 
-func TestCrlValidityPeriodSubscriberCert(t *testing.T) {
+func TestCrlValidityPeriod(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -19,24 +19,43 @@ func TestCrlValidityPeriodSubscriberCert(t *testing.T) {
 		wantSubStr string
 	}{
 		{
-			name: "good",
+			name: "good", // CRL for subscriber certs
+			want: lint.Pass,
+		},
+		{
+			name: "good_subordinate_ca",
 			want: lint.Pass,
 		},
 		{
 			name:       "negative_validity",
+			want:       lint.Warn,
+			wantSubStr: "CRL missing IDP",
+		},
+		{
+			name:       "negative_validity_subscriber_cert",
 			want:       lint.Error,
 			wantSubStr: "at or before",
 		},
 		{
-			name:       "long_validity",
+			name:       "negative_validity_subordinate_ca",
 			want:       lint.Error,
-			wantSubStr: "greater than ten days",
+			wantSubStr: "at or before",
+		},
+		{
+			name:       "long_validity_subscriber_cert",
+			want:       lint.Error,
+			wantSubStr: "CRL has validity period greater than 10 days",
+		},
+		{
+			name:       "long_validity_subordinate_ca",
+			want:       lint.Error,
+			wantSubStr: "CRL has validity period greater than 365 days",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			l := NewCrlValidityPeriodSubscriberCert()
+			l := NewCrlValidityPeriod()
 			c := test.LoadPEMCRL(t, fmt.Sprintf("testdata/crl_%s.pem", tc.name))
 			r := l.Execute(c)
 

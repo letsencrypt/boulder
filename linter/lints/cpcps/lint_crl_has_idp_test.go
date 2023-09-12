@@ -19,17 +19,22 @@ func TestCrlHasIDP(t *testing.T) {
 		wantSubStr string
 	}{
 		{
-			name: "good",
+			name: "good", // CRL for subscriber certs
 			want: lint.Pass,
 		},
 		{
-			name: "no_idp",
-			want: lint.Warn,
+			name: "good_subordinate_ca",
+			want: lint.Pass,
+		},
+		{
+			name:       "no_idp",
+			want:       lint.Warn,
+			wantSubStr: "CRL missing IDP",
 		},
 		{
 			name:       "idp_no_uri",
 			want:       lint.Warn,
-			wantSubStr: "should contain distributionPoint",
+			wantSubStr: "Unexpected IDP fields were found",
 		},
 		{
 			name:       "idp_two_uris",
@@ -38,18 +43,18 @@ func TestCrlHasIDP(t *testing.T) {
 		},
 		{
 			name:       "idp_no_usercerts",
-			want:       lint.Warn,
-			wantSubStr: "should contain either onlyContainsUserCerts or onlyContainsCACerts",
+			want:       lint.Error,
+			wantSubStr: "Failed to read IDP onlyContainsUserCerts",
 		},
 		{
-			name:       "idp_some_reasons",
+			name:       "idp_some_reasons", // Subscriber cert
 			want:       lint.Warn,
 			wantSubStr: "Unexpected IDP fields were found",
 		},
 		{
 			name:       "idp_onlyCA_and_onlyUser",
 			want:       lint.Warn,
-			wantSubStr: "IDP should contain either onlyContainsUserCerts or onlyContainsCACerts",
+			wantSubStr: "Unexpected IDP fields were found",
 		},
 	}
 
