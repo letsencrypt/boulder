@@ -36,7 +36,9 @@ func (tc BoulderTypeConverter) ToDb(val interface{}) (interface{}, error) {
 	case core.OCSPStatus:
 		return string(t), nil
 	case time.Time:
-		return t.Truncate(time.Microsecond), nil
+		// All of our MySQL DATETIME columns have only Second-level precision, so
+		// don't bother sending more precision than the database will use.
+		return t.Truncate(time.Second), nil
 	default:
 		return val, nil
 	}
