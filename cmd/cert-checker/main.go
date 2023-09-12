@@ -411,13 +411,14 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		if features.Enabled(features.CertCheckerRequiresCorrespondence) {
 			precertDER, err := c.getPrecert(ctx, cert.Serial)
 			if err != nil {
-				problems = append(problems,
-					fmt.Sprintf("fetching linting precertificate for %s: %s", cert.Serial, err))
+				// Log and continue, since we want the problems slice to only contains
+				// problems with the cert itself.
+				c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
 			} else {
 				err = precert.Correspond(precertDER, cert.DER)
 				if err != nil {
 					problems = append(problems,
-						fmt.Sprintf("checking correspondence for %s: %s", cert.Serial, err))
+						fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))
 				}
 			}
 		}

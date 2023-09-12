@@ -647,7 +647,7 @@ func TestPrecertCorrespond(t *testing.T) {
 	}
 	// Ensure that at least one of the problems was related to checking correspondence
 	for _, p := range problems {
-		if strings.Contains(p, "checking correspondence for") {
+		if strings.Contains(p, "does not correspond to precert") {
 			return
 		}
 	}
