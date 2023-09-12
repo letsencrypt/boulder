@@ -1,11 +1,11 @@
 package probers
 
 import (
+	"crypto/x509"
 	"io"
 	"net/http"
 	"time"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -42,7 +42,7 @@ func (p CRLProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 	}
 	dur := time.Since(start)
 
-	crl, err := crl_x509.ParseRevocationList(body)
+	crl, err := x509.ParseRevocationList(body)
 	if err != nil {
 		return false, dur
 	}

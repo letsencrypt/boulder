@@ -6,6 +6,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
 	"errors"
 	"io"
 	"math/big"
@@ -17,7 +18,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -208,9 +208,9 @@ func TestUploadCRLInvalidSignature(t *testing.T) {
 	}
 	fakeSigner, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	test.AssertNotError(t, err, "creating throwaway signer")
-	crlBytes, err := crl_x509.CreateRevocationList(
+	crlBytes, err := x509.CreateRevocationList(
 		rand.Reader,
-		&crl_x509.RevocationList{
+		&x509.RevocationList{
 			ThisUpdate: time.Now(),
 			NextUpdate: time.Now().Add(time.Hour),
 			Number:     big.NewInt(1),
@@ -247,9 +247,9 @@ func TestUploadCRLMismatchedNumbers(t *testing.T) {
 			},
 		},
 	}
-	crlBytes, err := crl_x509.CreateRevocationList(
+	crlBytes, err := x509.CreateRevocationList(
 		rand.Reader,
-		&crl_x509.RevocationList{
+		&x509.RevocationList{
 			ThisUpdate: time.Now(),
 			NextUpdate: time.Now().Add(time.Hour),
 			Number:     big.NewInt(2),
@@ -301,13 +301,13 @@ func TestUploadCRLSuccess(t *testing.T) {
 			},
 		},
 	}
-	crlBytes, err := crl_x509.CreateRevocationList(
+	crlBytes, err := x509.CreateRevocationList(
 		rand.Reader,
-		&crl_x509.RevocationList{
+		&x509.RevocationList{
 			ThisUpdate: time.Now(),
 			NextUpdate: time.Now().Add(time.Hour),
 			Number:     big.NewInt(1),
-			RevokedCertificates: []crl_x509.RevokedCertificate{
+			RevokedCertificateEntries: []x509.RevocationListEntry{
 				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
 			},
 		},
@@ -349,13 +349,13 @@ func TestUploadCRLBrokenS3(t *testing.T) {
 			},
 		},
 	}
-	crlBytes, err := crl_x509.CreateRevocationList(
+	crlBytes, err := x509.CreateRevocationList(
 		rand.Reader,
-		&crl_x509.RevocationList{
+		&x509.RevocationList{
 			ThisUpdate: time.Now(),
 			NextUpdate: time.Now().Add(time.Hour),
 			Number:     big.NewInt(1),
-			RevokedCertificates: []crl_x509.RevokedCertificate{
+			RevokedCertificateEntries: []x509.RevocationListEntry{
 				{SerialNumber: big.NewInt(123), RevocationTime: time.Now().Add(-time.Hour)},
 			},
 		},

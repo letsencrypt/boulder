@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/test"
 )
 
@@ -87,11 +86,11 @@ func TestGenerateCRLLints(t *testing.T) {
 	// However, only the last of those should show up in the error message,
 	// because the first two should be explicitly removed from the lint registry
 	// by the ceremony tool.
-	six := 6
-	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []crl_x509.RevokedCertificate{
+	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
-			SerialNumber: big.NewInt(12345),
-			ReasonCode:   &six,
+			SerialNumber:   big.NewInt(12345),
+			RevocationTime: time.Now().Add(time.Hour),
+			ReasonCode:     6,
 		},
 	})
 	test.AssertError(t, err, "generateCRL did not fail")
