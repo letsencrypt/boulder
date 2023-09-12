@@ -1017,7 +1017,7 @@ func (ra *RegistrationAuthorityImpl) FinalizeOrder(ctx context.Context, req *rap
 
 	// Observe the age of this order, so we know how quickly most clients complete
 	// issuance flows.
-	ra.orderAges.WithLabelValues("FinalizeOrder").Observe(ra.clk.Since(time.Unix(0, req.Order.Created)).Seconds())
+	ra.orderAges.WithLabelValues("FinalizeOrder").Observe(ra.clk.Since(time.Unix(0, req.Order.CreatedNS)).Seconds())
 
 	// Step 2: Set the Order to Processing status
 	//
@@ -1878,7 +1878,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		Serial:     serialString,
 		Reason:     int64(ocsp.KeyCompromise),
 		DateNS:     thisUpdate,
-		BackdateNS: status.RevokedDate,
+		BackdateNS: status.RevokedDateNS,
 		IssuerID:   issuerID,
 	})
 	if err != nil {
@@ -2307,17 +2307,17 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		return nil, errors.New("serial belongs to a certificate that errored during issuance")
 	}
 
-	notAfter := time.Unix(0, status.NotAfter).UTC()
+	notAfter := time.Unix(0, status.NotAfterNS).UTC()
 	if ra.clk.Now().After(notAfter) {
 		return nil, berrors.NotFoundError("certificate is expired")
 	}
 
 	return ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:    req.Serial,
-		Status:    status.Status,
-		Reason:    int32(status.RevokedReason),
-		RevokedAt: status.RevokedDate,
-		IssuerID:  status.IssuerID,
+		Serial:      req.Serial,
+		Status:      status.Status,
+		Reason:      int32(status.RevokedReason),
+		RevokedAtNS: status.RevokedDateNS,
+		IssuerID:    status.IssuerID,
 	})
 }
 
@@ -2364,11 +2364,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Error if an incomplete order is returned.
 	if existingOrder != nil {
 		// Check to see if the expected fields of the existing order are set.
-		if existingOrder.Id == 0 || existingOrder.Created == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || existingOrder.Expires == 0 || len(existingOrder.Names) == 0 {
+		if existingOrder.Id == 0 || existingOrder.CreatedNS == 0 || existingOrder.Status == "" || existingOrder.RegistrationID == 0 || existingOrder.ExpiresNS == 0 || len(existingOrder.Names) == 0 {
 			return nil, errIncompleteGRPCResponse
 		}
 		// Track how often we reuse an existing order and how old that order is.
-		ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(time.Unix(0, existingOrder.Created)).Seconds())
+		ra.orderAges.WithLabelValues("NewOrder").Observe(ra.clk.Since(time.Unix(0, existingOrder.CreatedNS)).Seconds())
 		return existingOrder, nil
 	}
 
@@ -2502,7 +2502,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	}
 	// Set the order's expiry to the minimum expiry. The db doesn't store
 	// sub-second values, so truncate here.
-	newOrder.Expires = minExpiry.Truncate(time.Second).UnixNano()
+	newOrder.ExpiresNS = minExpiry.Truncate(time.Second).UnixNano()
 
 	newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
 		NewOrder:  newOrder,
@@ -2512,7 +2512,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	if err != nil {
 		return nil, err
 	}
-	if storedOrder.Id == 0 || storedOrder.Created == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.Expires == 0 || len(storedOrder.Names) == 0 {
+	if storedOrder.Id == 0 || storedOrder.CreatedNS == 0 || storedOrder.Status == "" || storedOrder.RegistrationID == 0 || storedOrder.ExpiresNS == 0 || len(storedOrder.Names) == 0 {
 		return nil, errIncompleteGRPCResponse
 	}
 	ra.orderAges.WithLabelValues("NewOrder").Observe(0)

@@ -203,7 +203,7 @@ func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, r
 // certificate multiple times. Calling code needs to first insert the cert's
 // serial into the Serials table to ensure uniqueness.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
-	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 || req.IssuerNameID == 0 {
+	if len(req.Der) == 0 || req.RegID == 0 || req.IssuedNS == 0 || req.IssuerNameID == 0 {
 		return nil, errIncompleteRequest
 	}
 	parsed, err := x509.ParseCertificate(req.Der)
@@ -216,7 +216,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Serial:         serialHex,
 		RegistrationID: req.RegID,
 		DER:            req.Der,
-		Issued:         time.Unix(0, req.Issued),
+		Issued:         time.Unix(0, req.IssuedNS),
 		Expires:        parsed.NotAfter,
 	}
 
@@ -294,7 +294,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 // AddCertificate stores an issued certificate, returning an error if it is a
 // duplicate or if any other failure occurs.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
-	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 {
+	if len(req.Der) == 0 || req.RegID == 0 || req.IssuedNS == 0 {
 		return nil, errIncompleteRequest
 	}
 	parsedCertificate, err := x509.ParseCertificate(req.Der)
@@ -309,7 +309,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		Serial:         serial,
 		Digest:         digest,
 		DER:            req.Der,
-		Issued:         time.Unix(0, req.Issued),
+		Issued:         time.Unix(0, req.IssuedNS),
 		Expires:        parsedCertificate.NotAfter,
 	}
 
@@ -495,7 +495,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Second, insert the new order.
 		order := &orderModel{
 			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        time.Unix(0, req.NewOrder.Expires),
+			Expires:        time.Unix(0, req.NewOrder.ExpiresNS),
 			Created:        ssa.clk.Now(),
 		}
 		err := tx.Insert(ctx, order)
@@ -550,11 +550,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Finally, build the overall Order PB.
 		res := &corepb.Order{
 			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:      order.ID,
-			Created: order.Created.UnixNano(),
+			Id:        order.ID,
+			CreatedNS: order.Created.UnixNano(),
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires,
+			ExpiresNS:      req.NewOrder.ExpiresNS,
 			Names:          req.NewOrder.Names,
 			// Have to combine the already-associated and newly-reacted authzs.
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),

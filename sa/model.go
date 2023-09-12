@@ -400,8 +400,8 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 	om := &orderModel{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
-		Expires:           time.Unix(0, order.Expires),
-		Created:           time.Unix(0, order.Created),
+		Expires:           time.Unix(0, order.ExpiresNS),
+		Created:           time.Unix(0, order.CreatedNS),
 		BeganProcessing:   order.BeganProcessing,
 		CertificateSerial: order.CertificateSerial,
 	}
@@ -423,8 +423,8 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	order := &corepb.Order{
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
-		Expires:           om.Expires.UnixNano(),
-		Created:           om.Created.UnixNano(),
+		ExpiresNS:         om.Expires.UnixNano(),
+		CreatedNS:         om.Created.UnixNano(),
 		CertificateSerial: om.CertificateSerial,
 		BeganProcessing:   om.BeganProcessing,
 	}
@@ -1007,7 +1007,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 	// in ra.NewOrder), and expired authorizations may be purged from the DB.
 	// Because of this purging fetching the authz's for an expired order may
 	// return fewer authz objects than expected, triggering a 500 error response.
-	orderExpiry := time.Unix(0, order.Expires)
+	orderExpiry := time.Unix(0, order.ExpiresNS)
 	if orderExpiry.Before(now) {
 		return string(core.StatusInvalid), nil
 	}

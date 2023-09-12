@@ -112,7 +112,7 @@ func TestWaitForReadyTrue(t *testing.T) {
 	c := test_proto.NewChillerClient(conn)
 
 	start := time.Now()
-	_, err = c.Chill(context.Background(), &test_proto.Time{Time: time.Second.Nanoseconds()})
+	_, err = c.Chill(context.Background(), &test_proto.Time{TimeNS: time.Second.Nanoseconds()})
 	if err == nil {
 		t.Errorf("Successful Chill when we expected failure.")
 	}
@@ -144,7 +144,7 @@ func TestWaitForReadyFalse(t *testing.T) {
 	c := test_proto.NewChillerClient(conn)
 
 	start := time.Now()
-	_, err = c.Chill(context.Background(), &test_proto.Time{Time: time.Second.Nanoseconds()})
+	_, err = c.Chill(context.Background(), &test_proto.Time{TimeNS: time.Second.Nanoseconds()})
 	if err == nil {
 		t.Errorf("Successful Chill when we expected failure.")
 	}
@@ -165,9 +165,9 @@ func (s *testServer) Chill(ctx context.Context, in *test_proto.Time) (*test_prot
 	// Sleep for either the requested amount of time, or the context times out or
 	// is canceled.
 	select {
-	case <-time.After(time.Duration(in.Time) * time.Nanosecond):
+	case <-time.After(time.Duration(in.TimeNS) * time.Nanosecond):
 		spent := int64(time.Since(start) / time.Nanosecond)
-		return &test_proto.Time{Time: spent}, nil
+		return &test_proto.Time{TimeNS: spent}, nil
 	case <-ctx.Done():
 		return nil, errors.New("unique error indicating that the server's shortened context timed itself out")
 	}
@@ -223,7 +223,7 @@ func TestTimeouts(t *testing.T) {
 		t.Run(tc.timeout.String(), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.timeout)
 			defer cancel()
-			_, err := c.Chill(ctx, &test_proto.Time{Time: time.Second.Nanoseconds()})
+			_, err := c.Chill(ctx, &test_proto.Time{TimeNS: time.Second.Nanoseconds()})
 			if err == nil {
 				t.Fatal("Got no error, expected a timeout")
 			}
@@ -282,7 +282,7 @@ func TestRequestTimeTagging(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	delayTime := (time.Second * 5).Nanoseconds()
-	if _, err := c.Chill(ctx, &test_proto.Time{Time: delayTime}); err != nil {
+	if _, err := c.Chill(ctx, &test_proto.Time{TimeNS: delayTime}); err != nil {
 		t.Fatalf("Unexpected error calling Chill RPC: %s", err)
 	}
 
@@ -308,7 +308,7 @@ func (s *blockedServer) Chill(_ context.Context, _ *test_proto.Time) (*test_prot
 	// Wait for the roadblock to be cleared
 	s.roadblock.Wait()
 	// Return a dummy spent value to adhere to the chiller protocol
-	return &test_proto.Time{Time: int64(1)}, nil
+	return &test_proto.Time{TimeNS: int64(1)}, nil
 }
 
 func TestInFlightRPCStat(t *testing.T) {

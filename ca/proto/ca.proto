@@ -42,7 +42,7 @@ service OCSPGenerator {
 message GenerateOCSPRequest {
   string status = 2;
   int32 reason = 3;
-  int64 revokedAt = 4;
+  int64 revokedAtNS = 4; // Unix timestamp (nanoseconds)
   string serial = 5;
   int64 issuerID = 6;
 }

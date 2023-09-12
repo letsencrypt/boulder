@@ -99,7 +99,7 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 	res, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: Registration.Id,
-			Expires:        exp.UnixNano(),
+			ExpiresNS:      exp.UnixNano(),
 			Names:          []string{domain},
 		},
 		NewAuthzs: []*corepb.Authorization{authzPB},
@@ -910,7 +910,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			Expires:          exp.UnixNano(),
+			ExpiresNS:        exp.UnixNano(),
 			Names:            []string{"www.example.com"},
 			V2Authorizations: []int64{authzID},
 		},
@@ -1928,7 +1928,7 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, orderA.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderA.ExpiresNS, fc.Now().Add(time.Hour).UnixNano())
 	test.AssertEquals(t, len(orderA.Names), 3)
 	// We expect the order names to have been sorted, deduped, and lowercased
 	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
@@ -1942,7 +1942,7 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderB.RegistrationID, int64(1))
-	test.AssertEquals(t, orderB.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderB.ExpiresNS, fc.Now().Add(time.Hour).UnixNano())
 	// We expect orderB's ID to match orderA's because of pending order reuse
 	test.AssertEquals(t, orderB.Id, orderA.Id)
 	test.AssertEquals(t, len(orderB.Names), 3)
@@ -1959,7 +1959,7 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderC.RegistrationID, int64(1))
-	test.AssertEquals(t, orderC.Expires, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderC.ExpiresNS, fc.Now().Add(time.Hour).UnixNano())
 	test.AssertEquals(t, len(orderC.Names), 4)
 	test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
 	// We expect orderC's ID to not match orderA/orderB's because it is for
@@ -2105,7 +2105,7 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:            order.V2Authorizations[0],
 		Status:        string(core.StatusInvalid),
-		ExpiresNS:     order.Expires,
+		ExpiresNS:     order.ExpiresNS,
 		Attempted:     string(core.ChallengeTypeDNS01),
 		AttemptedAtNS: ra.clk.Now().UnixNano(),
 	})
@@ -2536,7 +2536,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the fake authz's expiry since it is sooner
 	// than the order's own expiry.
-	test.AssertEquals(t, order.Expires, fakeAuthzExpires.UnixNano())
+	test.AssertEquals(t, order.ExpiresNS, fakeAuthzExpires.UnixNano())
 
 	// Set the order lifetime to be lower than the fakeAuthzLifetime
 	ra.orderLifetime = 12 * time.Hour
@@ -2550,7 +2550,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the order's own expiry since it is sooner than
 	// the fake authz's expiry.
-	test.AssertEquals(t, order.Expires, expectedOrderExpiry)
+	test.AssertEquals(t, order.ExpiresNS, expectedOrderExpiry)
 }
 
 func TestFinalizeOrder(t *testing.T) {
@@ -2631,7 +2631,7 @@ func TestFinalizeOrder(t *testing.T) {
 	validatedOrder, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			Expires:          exp.UnixNano(),
+			ExpiresNS:        exp.UnixNano(),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -2762,7 +2762,7 @@ func TestFinalizeOrder(t *testing.T) {
 					RegistrationID:    1,
 					Status:            string(core.StatusReady),
 					Names:             []string{"example.org"},
-					Expires:           exp.UnixNano(),
+					ExpiresNS:         exp.UnixNano(),
 					CertificateSerial: "",
 					BeganProcessing:   false,
 				},
@@ -2778,10 +2778,10 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:             []string{"a.com"},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    fakeRegID,
-					Expires:           exp.UnixNano(),
+					ExpiresNS:         exp.UnixNano(),
 					CertificateSerial: "",
 					BeganProcessing:   false,
-					Created:           ra.clk.Now().UnixNano(),
+					CreatedNS:         ra.clk.Now().UnixNano(),
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2795,10 +2795,10 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:             []string{"a.com", "b.com"},
 					Id:                missingAuthzOrder.Id,
 					RegistrationID:    Registration.Id,
-					Expires:           exp.UnixNano(),
+					ExpiresNS:         exp.UnixNano(),
 					CertificateSerial: "",
 					BeganProcessing:   false,
-					Created:           ra.clk.Now().UnixNano(),
+					CreatedNS:         ra.clk.Now().UnixNano(),
 				},
 				Csr: twoDomainCSR,
 			},
@@ -2854,7 +2854,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	mixedOrder, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			Expires:          exp.UnixNano(),
+			ExpiresNS:        exp.UnixNano(),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -3018,7 +3018,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			Expires:          exp.UnixNano(),
+			ExpiresNS:        exp.UnixNano(),
 			Names:            names,
 			V2Authorizations: authzIDs,
 		},
@@ -3149,7 +3149,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			Expires:          exp.UnixNano(),
+			ExpiresNS:        exp.UnixNano(),
 			Names:            names,
 			V2Authorizations: authzIDs,
 		},
@@ -3313,7 +3313,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	order, err := ra.SA.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			Expires:          exp.UnixNano(),
+			ExpiresNS:        exp.UnixNano(),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -3443,7 +3443,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			Expires:          exp.UnixNano(),
+			ExpiresNS:        exp.UnixNano(),
 			Names:            names,
 			V2Authorizations: authzIDs,
 		},
@@ -3676,9 +3676,9 @@ type mockSAGenerateOCSP struct {
 
 func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	return &corepb.CertificateStatus{
-		Serial:   req.Serial,
-		Status:   "good",
-		NotAfter: msgo.expiration.UTC().UnixNano(),
+		Serial:     req.Serial,
+		Status:     "good",
+		NotAfterNS: msgo.expiration.UTC().UnixNano(),
 	}, nil
 }
 

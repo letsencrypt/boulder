@@ -405,7 +405,7 @@ func TestAddPrecertificate(t *testing.T) {
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        regID,
-		Issued:       issuedTime.UnixNano(),
+		IssuedNS:     issuedTime.UnixNano(),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
@@ -425,9 +425,9 @@ func TestAddPrecertificate(t *testing.T) {
 	// without it being an error. The duplicate err on inserting to
 	// issuedNames should be ignored.
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  regID,
-		Issued: issuedTime.UnixNano(),
+		Der:      testCert.Raw,
+		RegID:    regID,
+		IssuedNS: issuedTime.UnixNano(),
 	})
 	test.AssertNotError(t, err, "unexpected err adding final cert after precert")
 }
@@ -444,7 +444,7 @@ func TestAddPrecertificateNoOCSP(t *testing.T) {
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        regID,
-		Issued:       issuedTime.UnixNano(),
+		IssuedNS:     issuedTime.UnixNano(),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add test cert")
@@ -460,7 +460,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
-		Issued:       clk.Now().UnixNano(),
+		IssuedNS:     clk.Now().UnixNano(),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
@@ -468,7 +468,7 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
-		Issued:       clk.Now().UnixNano(),
+		IssuedNS:     clk.Now().UnixNano(),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
@@ -488,9 +488,9 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 	// Add the cert as a precertificate
 	regID := reg.Id
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  regID,
-		Issued: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
+		Der:      testCert.Raw,
+		RegID:    regID,
+		IssuedNS: time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC).UnixNano(),
 		// Leaving out IssuerNameID
 	})
 
@@ -506,7 +506,7 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        reg.Id,
-		Issued:       testCert.NotBefore.UnixNano(),
+		IssuedNS:     testCert.NotBefore.UnixNano(),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add precert")
@@ -533,9 +533,9 @@ func TestAddCertificate(t *testing.T) {
 
 	// Calling AddCertificate with a non-nil issued should succeed
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  reg.Id,
-		Issued: sa.clk.Now().UnixNano(),
+		Der:      certDER,
+		RegID:    reg.Id,
+		IssuedNS: sa.clk.Now().UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
@@ -555,9 +555,9 @@ func TestAddCertificate(t *testing.T) {
 	// Add the certificate with a specific issued time instead of nil
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER2,
-		RegID:  reg.Id,
-		Issued: issuedTime.UnixNano(),
+		Der:      certDER2,
+		RegID:    reg.Id,
+		IssuedNS: issuedTime.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
@@ -579,16 +579,16 @@ func TestAddCertificateDuplicate(t *testing.T) {
 
 	issuedTime := clk.Now()
 	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  reg.Id,
-		Issued: issuedTime.UnixNano(),
+		Der:      testCert.Raw,
+		RegID:    reg.Id,
+		IssuedNS: issuedTime.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add test certificate")
 
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    testCert.Raw,
-		RegID:  reg.Id,
-		Issued: issuedTime.UnixNano(),
+		Der:      testCert.Raw,
+		RegID:    reg.Id,
+		IssuedNS: issuedTime.UnixNano(),
 	})
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
 
@@ -631,9 +631,9 @@ func TestCountCertificatesByNames(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	issued := sa.clk.Now()
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certDER,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
@@ -679,9 +679,9 @@ func TestCountCertificatesByNames(t *testing.T) {
 	certDER2, err := os.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER2,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certDER2,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	req.Names = names
@@ -1128,15 +1128,15 @@ func TestPreviousCertificateExists(t *testing.T) {
 	issued := sa.clk.Now()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
-		Issued:       issued.UnixNano(),
+		IssuedNS:     issued.UnixNano(),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certDER,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "calling AddCertificate")
 
@@ -1239,7 +1239,7 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 		// Insert an order for four names, two of which already have authzs
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          1,
+			ExpiresNS:        1,
 			Names:            []string{"a.com", "b.com", "c.com", "d.com"},
 			V2Authorizations: []int64{1, 2},
 		},
@@ -1340,7 +1340,7 @@ func TestNewOrderAndAuthzs_NewAuthzExpectedFields(t *testing.T) {
 		},
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: reg.Id,
-			Expires:        expires,
+			ExpiresNS:      expires,
 			Names:          []string{domain},
 		},
 	})
@@ -1392,7 +1392,7 @@ func TestSetOrderProcessing(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano(),
+			ExpiresNS:        sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano(),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{authzID},
 		},
@@ -1440,7 +1440,7 @@ func TestFinalizeOrder(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano(),
+			ExpiresNS:        sa.clk.Now().Add(365 * 24 * time.Hour).UnixNano(),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{authzID},
 		},
@@ -1487,7 +1487,7 @@ func TestOrder(t *testing.T) {
 
 	inputOrder := &corepb.Order{
 		RegistrationID:   reg.Id,
-		Expires:          expires,
+		ExpiresNS:        expires,
 		Names:            []string{"example.com"},
 		V2Authorizations: []int64{authzID},
 	}
@@ -1496,7 +1496,7 @@ func TestOrder(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   inputOrder.RegistrationID,
-			Expires:          inputOrder.Expires,
+			ExpiresNS:        inputOrder.ExpiresNS,
 			Names:            inputOrder.Names,
 			V2Authorizations: inputOrder.V2Authorizations,
 		},
@@ -1510,7 +1510,7 @@ func TestOrder(t *testing.T) {
 		RegistrationID:   inputOrder.RegistrationID,
 		V2Authorizations: inputOrder.V2Authorizations,
 		Names:            inputOrder.Names,
-		Expires:          inputOrder.Expires,
+		ExpiresNS:        inputOrder.ExpiresNS,
 		// The ID should have been set to 1 by the SA
 		Id: 1,
 		// The status should be pending
@@ -1520,7 +1520,7 @@ func TestOrder(t *testing.T) {
 		// We should not be processing it
 		BeganProcessing: false,
 		// The created timestamp should have been set to the current time
-		Created: sa.clk.Now().UnixNano(),
+		CreatedNS: sa.clk.Now().UnixNano(),
 	}
 
 	// Fetch the order by its ID and make sure it matches the expected
@@ -1635,7 +1635,7 @@ func TestCountOrders(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          expires.UnixNano(),
+			ExpiresNS:        expires.UnixNano(),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{authzID},
 		},
@@ -1650,7 +1650,7 @@ func TestCountOrders(t *testing.T) {
 
 	// Moving the count window to after the order was created should return the
 	// count to 0
-	earliest := time.Unix(0, order.Created).Add(time.Minute)
+	earliest := time.Unix(0, order.CreatedNS).Add(time.Minute)
 	req.Range.EarliestNS = earliest.UnixNano()
 	req.Range.LatestNS = earliest.Add(time.Hour).UnixNano()
 	count, err = sa.CountOrders(ctx, req)
@@ -1679,7 +1679,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	_, err = sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          expiresNano,
+			ExpiresNS:        expiresNano,
 			V2Authorizations: []int64{authzIDs},
 			Names:            []string{domain},
 		},
@@ -1689,7 +1689,7 @@ func TestFasterGetOrderForNames(t *testing.T) {
 	_, err = sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          expiresNano,
+			ExpiresNS:        expiresNano,
 			V2Authorizations: []int64{authzIDs},
 			Names:            []string{domain},
 		},
@@ -1746,7 +1746,7 @@ func TestGetOrderForNames(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   regA.Id,
-			Expires:          expires,
+			ExpiresNS:        expires,
 			V2Authorizations: []int64{authzIDA, authzIDB},
 			Names:            names,
 		},
@@ -1809,7 +1809,7 @@ func TestGetOrderForNames(t *testing.T) {
 	order, err = sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   regA.Id,
-			Expires:          fc.Now().Add(orderLifetime).UnixNano(),
+			ExpiresNS:        fc.Now().Add(orderLifetime).UnixNano(),
 			V2Authorizations: []int64{authzIDC, authzIDD},
 			Names:            names,
 		},
@@ -1958,7 +1958,7 @@ func TestStatusForOrder(t *testing.T) {
 			newOrder, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 				NewOrder: &sapb.NewOrderRequest{
 					RegistrationID:   reg.Id,
-					Expires:          orderExpiry,
+					ExpiresNS:        orderExpiry,
 					V2Authorizations: tc.AuthorizationIDs,
 					Names:            tc.OrderNames,
 				},
@@ -2023,7 +2023,7 @@ func TestRevokeCertificate(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		RegID:        reg.Id,
-		Issued:       sa.clk.Now().UnixNano(),
+		IssuedNS:     sa.clk.Now().UnixNano(),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
@@ -2050,7 +2050,7 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	test.AssertEquals(t, status.RevokedReason, reason)
-	test.AssertEquals(t, status.RevokedDate, now.UnixNano())
+	test.AssertEquals(t, status.RevokedDateNS, now.UnixNano())
 	test.AssertEquals(t, status.OcspLastUpdated, now.UnixNano())
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
@@ -2074,7 +2074,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		RegID:        reg.Id,
-		Issued:       issuedTime,
+		IssuedNS:     issuedTime,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
@@ -2189,15 +2189,15 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	// Add the certificate with the same names.
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
-		Issued:       issued.UnixNano(),
+		IssuedNS:     issued.UnixNano(),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certDER,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
@@ -2231,15 +2231,15 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
-		Issued:       issued.UnixNano(),
+		IssuedNS:     issued.UnixNano(),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certDER,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
@@ -2310,9 +2310,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// Add the first certificate - it won't be considered a renewal.
 	issued := certA.NotBefore
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certADER,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certADER,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Failed to add CertA test certificate")
 
@@ -2322,9 +2322,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// Add the second certificate - it should be considered a renewal
 	issued = certB.NotBefore
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certBDER,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certBDER,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Failed to add CertB test certificate")
 
@@ -2334,9 +2334,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 
 	// Add the third certificate - it should not be considered a renewal
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certCDER,
-		RegID:  reg.Id,
-		Issued: issued.UnixNano(),
+		Der:      certCDER,
+		RegID:    reg.Id,
+		IssuedNS: issued.UnixNano(),
 	})
 	test.AssertNotError(t, err, "Failed to add CertC test certificate")
 
@@ -2682,7 +2682,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          fc.Now().Truncate(time.Second).UnixNano(),
+			ExpiresNS:        fc.Now().Truncate(time.Second).UnixNano(),
 			Names:            []string{"a.example.com", "b.example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -2794,7 +2794,7 @@ func TestGetOrderExpired(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			Expires:          fc.Now().Add(-time.Hour).UnixNano(),
+			ExpiresNS:        fc.Now().Add(-time.Hour).UnixNano(),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{666},
 		},
@@ -3134,7 +3134,7 @@ func TestGetRevokedCerts(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
-		Issued:       eeCert.NotBefore.UnixNano(),
+		IssuedNS:     eeCert.NotBefore.UnixNano(),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
@@ -3226,7 +3226,7 @@ func TestGetMaxExpiration(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
-		Issued:       eeCert.NotBefore.UnixNano(),
+		IssuedNS:     eeCert.NotBefore.UnixNano(),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")

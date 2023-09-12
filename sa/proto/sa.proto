@@ -216,7 +216,7 @@ message AddCertificateRequest {
   reserved 3; // previously ocsp
   // An issued time. When not present the SA defaults to using
   // the current time.
-  int64 issued = 4;
+  int64 issuedNS = 4; // Unix timestamp (nanoseconds)
   int64 issuerNameID = 5; // https://pkg.go.dev/github.com/letsencrypt/boulder/issuance#IssuerNameID
 
   // If this is set to true, the certificateStatus.status column will be set to
@@ -241,7 +241,7 @@ message OrderRequest {
 
 message NewOrderRequest {
   int64 registrationID = 1;
-  int64 expires = 2;
+  int64 expiresNS = 2; // Unix timestamp (nanoseconds)
   repeated string names = 3;
   repeated int64 v2Authorizations = 4;
 }
