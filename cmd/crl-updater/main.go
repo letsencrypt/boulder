@@ -79,7 +79,9 @@ type Config struct {
 		// UpdatePeriod, starting from the Unix Epoch plus UpdateOffset, and
 		// continuing forward into the future forever. This value must be strictly
 		// less than the UpdatePeriod.
-		UpdateOffset config.Duration
+		// DEPRECATED: This config value is not relevant with continuous updating.
+		// TODO(#7023): Remove this value.
+		UpdateOffset config.Duration `validate:"-"`
 
 		// UpdateTimeout controls how long a single CRL shard is allowed to attempt
 		// to update before being timed out. The total CRL updating process may take
@@ -92,7 +94,7 @@ type Config struct {
 		// MaxParallelism controls how many workers may be running in parallel.
 		// A higher value reduces the total time necessary to update all CRL shards
 		// that this updater is responsible for, but also increases the memory used
-		// by this updater.
+		// by this updater. Only relevant in -runOnce mode.
 		MaxParallelism int `validate:"min=0"`
 
 		// MaxAttempts control how many times the updater will attempt to generate
@@ -172,7 +174,6 @@ func main() {
 		c.CRLUpdater.ShardWidth.Duration,
 		c.CRLUpdater.LookbackPeriod.Duration,
 		c.CRLUpdater.UpdatePeriod.Duration,
-		c.CRLUpdater.UpdateOffset.Duration,
 		c.CRLUpdater.UpdateTimeout.Duration,
 		c.CRLUpdater.MaxParallelism,
 		c.CRLUpdater.MaxAttempts,
@@ -189,7 +190,7 @@ func main() {
 	go cmd.CatchSignals(cancel)
 
 	if *runOnce {
-		err = u.Tick(ctx, clk.Now())
+		err = u.RunOnce(ctx, clk.Now())
 		if err != nil && !errors.Is(err, context.Canceled) {
 			cmd.FailOnError(err, "")
 		}

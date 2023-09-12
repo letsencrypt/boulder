@@ -17,7 +17,7 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"os"
-	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -166,7 +166,7 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 	}
 
 	names, problems := checker.checkCert(context.Background(), cert, nil)
-	if !reflect.DeepEqual(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
+	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
 		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
 }

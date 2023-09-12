@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -242,7 +242,7 @@ func testDNSResolver(t *testing.T) {
 			t.Fatalf("UpdateState not called after 2s; aborting")
 		}
 
-		if !reflect.DeepEqual(a.addrWant, state.Addresses) {
+		if !slices.Equal(a.addrWant, state.Addresses) {
 			t.Errorf("Resolved addresses of target: %q = %+v, want %+v", a.target, state.Addresses, a.addrWant)
 		}
 		r.Close()
@@ -287,7 +287,7 @@ func TestDNSResolverExponentialBackoff(t *testing.T) {
 	if cnt == 0 {
 		t.Fatalf("UpdateState not called after 2s; aborting")
 	}
-	if !reflect.DeepEqual(wantAddr, state.Addresses) {
+	if !slices.Equal(wantAddr, state.Addresses) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, target)
 	}
 	ctx, ctxCancel := context.WithTimeout(context.Background(), defaultTestTimeout)
@@ -414,7 +414,7 @@ func testDNSResolveNow(t *testing.T) {
 		if cnt == 0 {
 			t.Fatalf("UpdateState not called after 2s; aborting.  state=%v", state)
 		}
-		if !reflect.DeepEqual(a.addrWant, state.Addresses) {
+		if !slices.Equal(a.addrWant, state.Addresses) {
 			t.Errorf("Resolved addresses of target: %q = %+v, want %+v", a.target, state.Addresses, a.addrWant)
 		}
 
@@ -430,7 +430,7 @@ func testDNSResolveNow(t *testing.T) {
 		if cnt != 2 {
 			t.Fatalf("UpdateState not called after 2s; aborting.  state=%v", state)
 		}
-		if !reflect.DeepEqual(a.addrNext, state.Addresses) {
+		if !slices.Equal(a.addrNext, state.Addresses) {
 			t.Errorf("Resolved addresses of target: %q = %+v, want %+v", a.target, state.Addresses, a.addrNext)
 		}
 		revertTbl()
@@ -465,7 +465,7 @@ func TestDNSResolverRetry(t *testing.T) {
 		t.Fatalf("UpdateState not called with 1 address after 2s; aborting.  state=%v", state)
 	}
 	want := []resolver.Address{{Addr: "2.4.6.8:1234", ServerName: "ipv4.single.fake"}}
-	if !reflect.DeepEqual(want, state.Addresses) {
+	if !slices.Equal(want, state.Addresses) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, want)
 	}
 	// mutate the host lookup table so the target has 0 address returned.
@@ -492,7 +492,7 @@ func TestDNSResolverRetry(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if !reflect.DeepEqual(want, state.Addresses) {
+	if !slices.Equal(want, state.Addresses) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, want)
 	}
 }
@@ -735,7 +735,7 @@ func TestRateLimitedResolve(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if !reflect.DeepEqual(state.Addresses, wantAddrs) {
+	if !slices.Equal(state.Addresses, wantAddrs) {
 		t.Errorf("Resolved addresses of target: %q = %+v, want %+v", target, state.Addresses, wantAddrs)
 	}
 }

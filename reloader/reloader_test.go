@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -99,12 +99,12 @@ func TestReload(t *testing.T) {
 	}
 	defer r.Stop()
 	expected := []string{"first body"}
-	if !reflect.DeepEqual(bodies, expected) {
+	if !slices.Equal(bodies, expected) {
 		t.Errorf("Expected bodies = %#v, got %#v", expected, bodies)
 	}
 	fakeTick <- time.Now()
 	<-reloads
-	if !reflect.DeepEqual(bodies, expected) {
+	if !slices.Equal(bodies, expected) {
 		t.Errorf("Expected bodies = %#v, got %#v", expected, bodies)
 	}
 
@@ -118,7 +118,7 @@ func TestReload(t *testing.T) {
 	fakeTick <- time.Now()
 	<-reloads
 	expected = []string{"first body", "second body"}
-	if !reflect.DeepEqual(bodies, expected) {
+	if !slices.Equal(bodies, expected) {
 		t.Errorf("Expected bodies = %#v, got %#v", expected, bodies)
 	}
 
@@ -126,7 +126,7 @@ func TestReload(t *testing.T) {
 	// iteration of the reloader's loop.
 	fakeTick <- time.Now()
 	fakeTick <- time.Now()
-	if !reflect.DeepEqual(bodies, expected) {
+	if !slices.Equal(bodies, expected) {
 		t.Errorf("Expected bodies = %#v, got %#v", expected, bodies)
 	}
 }

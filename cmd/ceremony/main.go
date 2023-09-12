@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
+	"slices"
 	"time"
 
 	"github.com/letsencrypt/boulder/crl/crl_x509"
@@ -741,13 +741,12 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
-	// TODO(#7032) Replace reflect with slices.Equal() >= go1.21
-	if !reflect.DeepEqual(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
+	if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
 	if len(lintCert.ExtKeyUsage) == 0 {
 		// "Unrestricted" case, the issuer and subject need to be the same or at least affiliates.
-		if !reflect.DeepEqual(lintCert.Subject.Organization, issuer.Subject.Organization) {
+		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) {
 			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
 		}
 	}
