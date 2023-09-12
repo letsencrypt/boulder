@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/ratelimits"
 
 	// 'grpc/noncebalancer' is imported for its init function.
 	_ "github.com/letsencrypt/boulder/grpc/noncebalancer"
@@ -166,6 +167,7 @@ type WebFrontEndImpl struct {
 	// match the ones used by the RA.
 	authorizationLifetime        time.Duration
 	pendingAuthorizationLifetime time.Duration
+	limiter                      *ratelimits.Limiter
 }
 
 // NewWebFrontEndImpl constructs a web service for Boulder
@@ -187,6 +189,7 @@ func NewWebFrontEndImpl(
 	rnc nonce.Redeemer,
 	rncKey string,
 	accountGetter AccountGetter,
+	limiter *ratelimits.Limiter,
 ) (WebFrontEndImpl, error) {
 	if len(issuerCertificates) == 0 {
 		return WebFrontEndImpl{}, errors.New("must provide at least one issuer certificate")
@@ -223,6 +226,7 @@ func NewWebFrontEndImpl(
 		rnc:                          rnc,
 		rncKey:                       rncKey,
 		accountGetter:                accountGetter,
+		limiter:                      limiter,
 	}
 
 	return wfe, nil
@@ -611,6 +615,91 @@ func link(url, relation string) string {
 	return fmt.Sprintf("<%s>;rel=\"%s\"", url, relation)
 }
 
+// checkNewAccountLimits checks whether sufficient limit quota exists for the
+// creation of a new account from the given IP address. If an error is
+// encountered during the check, it is logged but not returned.
+//
+// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
+// This should eventually use the *ratelimits.Decision to populate the various
+// headers in the response, such as "Retry-After" and then return either the
+// *ratelimits.Decision or decision.Allowed.
+func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) {
+	if wfe.limiter == nil {
+		// Limiter is disabled.
+		return
+	}
+	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
+	if err != nil {
+		if errors.Is(err, ratelimits.ErrLimitDisabled) {
+			// Limit is disabled.
+			return
+		}
+		wfe.log.Warningf("checking new account rate limit: %s", err)
+		return
+	}
+	if !decision.Allowed || ip.To4() != nil {
+		// This requester is being limited or they have an IPv4 address.
+		return
+	}
+
+	// See docs for ratelimits.NewRegistrationsPerIPv6Range for more information
+	// on the selection of a /48 block size for IPv6 ranges.
+	ipMask := net.CIDRMask(48, 128)
+	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
+	_, err = wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
+	if err != nil {
+		if errors.Is(err, ratelimits.ErrLimitDisabled) {
+			// Limit is disabled.
+			return
+		}
+		wfe.log.Warningf("checking new account rate limit: %s", err)
+		return
+	}
+}
+
+// refundNewAccountLimits is typically called when a new account creation fails.
+// It refunds the limit quota consumed by the request, allowing the caller to
+// retry immediately. If an error is encountered during the refund, it is logged
+// but not returned.
+//
+// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
+// This should eventually use the *ratelimits.Decision to populate the various
+// headers in the response, such as "Retry-After".
+func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.IP) {
+	if wfe.limiter == nil {
+		// Limiter is disabled.
+		return
+	}
+	_, err := wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
+	if err != nil {
+		if errors.Is(err, ratelimits.ErrLimitDisabled) ||
+			errors.Is(err, ratelimits.ErrBucketAlreadyFull) {
+			// Limit is disabled or bucket is already full.
+			return
+		}
+		wfe.log.Warningf("refunding new account rate limit: %s", err)
+		return
+	}
+	if ip.To4() != nil {
+		// Requested from an IPv4 address.
+		return
+	}
+
+	// See docs for ratelimits.NewRegistrationsPerIPv6Range for more information
+	// on the selection of a /48 block size for IPv6 ranges.
+	ipMask := net.CIDRMask(48, 128)
+	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
+	_, err = wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
+	if err != nil {
+		if errors.Is(err, ratelimits.ErrLimitDisabled) ||
+			errors.Is(err, ratelimits.ErrBucketAlreadyFull) {
+			// Limit is disabled or bucket is already full.
+			return
+		}
+		wfe.log.Warningf("refunding new account rate limit: %s", err)
+	}
+}
+
 // NewAccount is used by clients to submit a new account
 func (wfe *WebFrontEndImpl) NewAccount(
 	ctx context.Context,
@@ -733,6 +822,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		InitialIP:       ipBytes,
 	}
 
+	wfe.checkNewAccountLimits(ctx, ip)
+	// TODO(#5545): We should be checking a returned *ratelimits.Decision or a
+	// bool to see if the request was allowed or not.
+
 	// Send the registration to the RA via grpc
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
 	if err != nil {
@@ -740,15 +833,18 @@ func (wfe *WebFrontEndImpl) NewAccount(
 			existingAcct, err := wfe.sa.GetRegistrationByKey(ctx, &sapb.JSONWebKey{Jwk: keyBytes})
 			if err == nil {
 				returnExistingAcct(existingAcct)
+				wfe.refundNewAccountLimits(ctx, ip)
 				return
 			}
 			// return error even if berrors.NotFound, as the duplicate key error we got from
 			// ra.NewRegistration indicates it _does_ already exist.
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "checking for existing account"), err)
+			wfe.refundNewAccountLimits(ctx, ip)
 			return
 		}
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		wfe.refundNewAccountLimits(ctx, ip)
 		return
 	}
 
@@ -759,12 +855,14 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	if acctPB == nil || !registrationValid(acctPB) {
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		wfe.refundNewAccountLimits(ctx, ip)
 		return
 	}
 	acct, err := bgrpc.PbToRegistration(acctPB)
 	if err != nil {
 		wfe.sendError(response, logEvent,
 			web.ProblemDetailsForError(err, "Error creating new account"), err)
+		wfe.refundNewAccountLimits(ctx, ip)
 		return
 	}
 	logEvent.Requester = acct.ID
@@ -784,6 +882,7 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		// ServerInternal because we just created this account, and it
 		// should be OK.
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling account"), err)
+		wfe.refundNewAccountLimits(ctx, ip)
 		return
 	}
 }

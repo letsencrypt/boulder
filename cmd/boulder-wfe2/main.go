@@ -13,6 +13,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -25,6 +26,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe2"
 )
@@ -137,6 +140,25 @@ type Config struct {
 		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
 
 		AccountCache *CacheConfig
+
+		Limiter struct {
+			// Redis contains the configuration necessary to connect to Redis
+			// for rate limiting. This fields is required to enable rate
+			// limiting.
+			Redis *bredis.Config `validate:"required_with=Defaults"`
+
+			// Defaults is a path to a YAML file containing default rate limits.
+			// See: ratelimits/README.md for details. This field is required to
+			// enable rate limiting. If any individual rate limit is not set,
+			// that limit will be disabled.
+			Defaults string `validate:"required_with=Redis"`
+
+			// Overrides is a path to a YAML file containing overrides for the
+			// default rate limits. See: ratelimits/README.md for details. If
+			// this field is not set, all requesters will be subject to the
+			// default rate limits.
+			Overrides string
+		}
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -172,7 +194,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, map[string]nonce.Redeemer, nonce.Redeemer, string) {
+func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock, log blog.Logger) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, map[string]nonce.Redeemer, nonce.Redeemer, string, *ratelimits.Limiter, *bredis.Lookup) {
 	tlsConfig, err := c.WFE.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
@@ -233,7 +255,28 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.Regi
 		}
 	}
 
-	return rac, sac, gnc, npm, rnc, rncKey
+	var limiter *ratelimits.Limiter
+	var limiterLookup *bredis.Lookup
+	if c.WFE.Limiter.Defaults != "" {
+		// Setup rate limiting.
+		var ring *redis.Ring
+		if len(c.WFE.Limiter.Redis.Lookups) > 0 {
+			// Configure a Redis client with periodic SRV lookups.
+			ring, limiterLookup, err = c.WFE.Limiter.Redis.NewRingWithPeriodicLookups(scope, log)
+			cmd.FailOnError(err, "Failed to create Redis SRV Lookup for rate limiting")
+		} else {
+			// Configure a Redis client with static shard addresses.
+			ring, err = c.WFE.Limiter.Redis.NewRing(scope)
+			cmd.FailOnError(err, "Failed to create Redis client for rate limiting")
+		}
+
+		timeout := c.WFE.Limiter.Redis.Timeout.Duration
+		source := ratelimits.NewRedisSource(ring, timeout, clk, scope)
+		limiter, err = ratelimits.NewLimiter(clk, source, c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, scope)
+		cmd.FailOnError(err, "Failed to create rate limiter")
+	}
+
+	return rac, sac, gnc, npm, rnc, rncKey, limiter, limiterLookup
 }
 
 type errorWriter struct {
@@ -291,7 +334,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, gnc, npm, rnc, npKey := setupWFE(c, stats, clk)
+	rac, sac, gnc, npm, rnc, npKey, limiter, limiterLookup := setupWFE(c, stats, clk, logger)
 
 	kp, err := sagoodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -346,8 +389,17 @@ func main() {
 		rnc,
 		npKey,
 		accountGetter,
+		limiter,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
+
+	var limiterCtx context.Context
+	var shutdownLimiterLookup context.CancelFunc
+	if limiterLookup != nil {
+		// Start the limiter Lookup goroutine.
+		limiterCtx, shutdownLimiterLookup = context.WithCancel(context.Background())
+		limiterLookup.Start(limiterCtx)
+	}
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
@@ -398,6 +450,9 @@ func main() {
 	// ListenAndServe() and ListenAndServeTLS() to immediately return, then waits
 	// for any lingering connection-handling goroutines to finish their work.
 	defer func() {
+		if limiterLookup != nil {
+			defer shutdownLimiterLookup()
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)

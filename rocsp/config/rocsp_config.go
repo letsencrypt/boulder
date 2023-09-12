@@ -20,6 +20,9 @@ import (
 )
 
 // RedisConfig contains the configuration needed to act as a Redis client.
+//
+// TODO(#7081): Deprecate this in favor of bredis.Config once we can support SRV
+// lookups in rocsp.
 type RedisConfig struct {
 	// PasswordFile is a file containing the password for the Redis user.
 	cmd.PasswordConfig

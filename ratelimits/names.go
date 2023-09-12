@@ -26,7 +26,13 @@ const (
 	NewRegistrationsPerIPAddress
 
 	// NewRegistrationsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
-	// address range must be a /48.
+	// address range must be a /48. RFC 3177, which was published in 2001,
+	// advised operators to allocate a /48 block of IPv6 addresses for most end
+	// sites. RFC 6177, which was published in 2011 and obsoletes RFC 3177,
+	// advises allocating a smaller /56 block. We've chosen to use the larger
+	// /48 block for our IPv6 rate limiting. See:
+	//   1. https://tools.ietf.org/html/rfc3177#section-3
+	//   2. https://datatracker.ietf.org/doc/html/rfc6177#section-2
 	NewRegistrationsPerIPv6Range
 
 	// NewOrdersPerAccount uses bucket key 'enum:regId'.
@@ -199,4 +205,10 @@ func nameToEnumString(s Name) string {
 // bucketKey returns the key used to store a rate limit bucket.
 func bucketKey(name Name, id string) string {
 	return nameToEnumString(name) + ":" + id
+}
+
+// isLimitNameValid returns true if the provided Name is a valid rate limit
+// name.
+func isNameValid(name Name) bool {
+	return name > Unknown && name < Name(len(nameToString))
 }

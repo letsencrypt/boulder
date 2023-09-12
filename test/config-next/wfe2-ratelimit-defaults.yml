@@ -1,0 +1,2 @@
+NewRegistrationsPerIPAddress: { burst: 10, count: 10, period: 10800s }
+NewRegistrationsPerIPv6Range: { burst: 500, count: 500, period: 10800s }

@@ -3,6 +3,8 @@ package ratelimits
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,18 +31,21 @@ type RedisSource struct {
 // NewRedisSource returns a new Redis backed source using the provided
 // *redis.Ring client.
 func NewRedisSource(client *redis.Ring, timeout time.Duration, clk clock.Clock, stats prometheus.Registerer) *RedisSource {
-	if len(client.Options().Addrs) == 0 {
-		return nil
-	}
 	var addrs []string
-	for addr := range client.Options().Addrs {
-		addrs = append(addrs, addr)
+	if len(client.Options().Addrs) != 0 {
+		// Client was statically configured with a list of shards.
+		for addr := range client.Options().Addrs {
+			addrs = append(addrs, addr)
+		}
+		// Keep the list of addresses sorted for consistency.
+		slices.Sort(addrs)
+		labels := prometheus.Labels{
+			"addresses": strings.Join(addrs, ", "),
+			"user":      client.Options().Username,
+		}
+		stats.MustRegister(bredis.NewMetricsCollector(client, labels))
 	}
-	labels := prometheus.Labels{
-		"addresses": strings.Join(addrs, ", "),
-		"user":      client.Options().Username,
-	}
-	stats.MustRegister(bredis.NewMetricsCollector(client, labels))
+
 	setLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name: "rl_set_latency",
@@ -159,6 +164,7 @@ func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 // Ping checks that each shard of the *redis.Ring is reachable using the PING
 // command. It returns an error if any shard is unreachable and nil otherwise.
 func (r *RedisSource) Ping(ctx context.Context) error {
+	fmt.Printf("\n\n%v\n\n", r)
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
 

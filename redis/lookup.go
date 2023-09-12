@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	blog "github.com/letsencrypt/boulder/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -40,12 +42,13 @@ type Lookup struct {
 	resolver *net.Resolver
 	ring     *redis.Ring
 	logger   blog.Logger
+	stats    prometheus.Registerer
 }
 
-// NewLookup constructs and returns a new Lookup instance. An initial SRV lookup
+// newLookup constructs and returns a new Lookup instance. An initial SRV lookup
 // is performed to populate the Redis ring shards. If this lookup fails or
 // otherwise results in an empty set of resolved shards, an error is returned.
-func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger) (*Lookup, error) {
+func newLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency time.Duration, ring *redis.Ring, logger blog.Logger, stats prometheus.Registerer) (*Lookup, error) {
 	updateFrequency := frequency
 	if updateFrequency <= 0 {
 		// Set default frequency.
@@ -61,6 +64,7 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 			srvLookups:      srvLookups,
 			ring:            ring,
 			logger:          logger,
+			stats:           stats,
 			updateFrequency: updateFrequency,
 			updateTimeout:   updateTimeout,
 			resolver:        net.DefaultResolver,
@@ -72,6 +76,7 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 			srvLookups:      srvLookups,
 			ring:            ring,
 			logger:          logger,
+			stats:           stats,
 			updateFrequency: updateFrequency,
 			updateTimeout:   updateTimeout,
 			dnsAuthority:    dnsAuthority,
@@ -176,6 +181,21 @@ func (look *Lookup) updateNow(ctx context.Context) (tempError, nonTempError erro
 
 	// Some shards were resolved, update the Redis ring and discard all errors.
 	look.ring.SetAddrs(nextAddrs)
+
+	// Update the Redis client metrics.
+	var addrs []string
+	for addr := range nextAddrs {
+		addrs = append(addrs, addr)
+	}
+	// Keep the list of addresses sorted for consistency.
+	slices.Sort(addrs)
+
+	labels := prometheus.Labels{
+		"addresses": strings.Join(addrs, ", "),
+		"user":      look.ring.Options().Username,
+	}
+	look.stats.MustRegister(NewMetricsCollector(look.ring, labels))
+
 	return nil, nil
 }
 

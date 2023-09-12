@@ -36,6 +36,8 @@ import (
 	"gopkg.in/go-jose/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
+	"github.com/letsencrypt/boulder/cmd"
+	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -52,6 +54,8 @@ import (
 	noncepb "github.com/letsencrypt/boulder/nonce/proto"
 	"github.com/letsencrypt/boulder/probs"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -340,11 +344,14 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 
 	mockSA := mocks.NewStorageAuthorityReadOnly(fc)
 
+	log := blog.NewMock()
+
 	var gnc nonce.Getter
 	var noncePrefixMap map[string]nonce.Redeemer
 	var rnc nonce.Redeemer
 	var rncKey string
 	var inmemNonceService *inmemnonce.Service
+	var limiter *ratelimits.Limiter
 	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		// Use derived nonces.
 		noncePrefix := nonce.DerivePrefix("192.168.1.1:8080", "b8c758dd85e113ea340ce0b3a99f389d40a308548af94d1730a7692c1874f1f")
@@ -354,6 +361,33 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		inmemNonceService = &inmemnonce.Service{NonceService: nonceService}
 		gnc = inmemNonceService
 		rnc = inmemNonceService
+
+		// Setup rate limiting.
+		rc := bredis.Config{
+			Username: "unittest-rw",
+			PasswordFile: cmd.PasswordConfig{
+				PasswordFile: "../test/secrets/ratelimits_redis_password",
+			},
+			TLS: cmd.TLSConfig{
+				CACertFile: "../test/redis-tls/minica.pem",
+				CertFile:   "../test/redis-tls/boulder/cert.pem",
+				KeyFile:    "../test/redis-tls/boulder/key.pem",
+			},
+			Lookups: []cmd.ServiceDomain{
+				{
+					Service: "redisratelimits",
+					Domain:  "service.consul",
+				},
+			},
+			LookupDNSAuthority: "consul.service.consul",
+			Timeout:            config.Duration{Duration: 1 * time.Second},
+		}
+		ring, _, err := rc.NewRingWithPeriodicLookups(stats, log)
+		test.AssertNotError(t, err, "making redis ring and lookup")
+		source := ratelimits.NewRedisSource(ring, rc.Timeout.Duration, fc, stats)
+		test.AssertNotNil(t, source, "source should not be nil")
+		limiter, err = ratelimits.NewLimiter(fc, source, "../test/config-next/wfe2-ratelimit-defaults.yml", "", stats)
+		test.AssertNotError(t, err, "making limiter")
 	} else {
 		// TODO(#6610): Remove this once we've moved to derived to prefixes.
 		noncePrefix := "mlem"
@@ -383,7 +417,8 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		noncePrefixMap,
 		rnc,
 		rncKey,
-		mockSA)
+		mockSA,
+		limiter)
 	test.AssertNotError(t, err, "Unable to create WFE")
 
 	wfe.SubscriberAgreementURL = agreementURL

@@ -20,6 +20,10 @@ const (
 	Denied = "denied"
 )
 
+// ErrLimitDisabled indicates that the limit name specified is valid but is not
+// currently configured.
+var ErrLimitDisabled = errors.New("limit disabled")
+
 // ErrInvalidCost indicates that the cost specified was <= 0.
 var ErrInvalidCost = fmt.Errorf("invalid cost, must be > 0")
 
@@ -29,8 +33,8 @@ var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 // ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
-// ErrBucketAlreadyFull indicates that the bucket already has reached its
-// maximum capacity.
+// ErrBucketAlreadyFull indicates that the bucket is already at maximum
+// capacity. A refund is not possible.
 var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
 
 // Limiter provides a high-level interface for rate limiting requests by
@@ -114,7 +118,8 @@ type Decision struct {
 // wait time before the client can make another request, and the time until the
 // bucket refills to its maximum capacity (resets). If no bucket exists for the
 // given limit Name and client id, a new one will be created WITHOUT the
-// request's cost deducted from its initial capacity.
+// request's cost deducted from its initial capacity. If the specified limit is
+// disabled, ErrLimitDisabled is returned.
 func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost < 0 {
 		return nil, ErrInvalidCostForCheck
@@ -153,7 +158,8 @@ func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (
 // required wait time before the client can make another request, and the time
 // until the bucket refills to its maximum capacity (resets). If no bucket
 // exists for the given limit Name and client id, a new one will be created WITH
-// the request's cost deducted from its initial capacity.
+// the request's cost deducted from its initial capacity. If the specified limit
+// is disabled, ErrLimitDisabled is returned.
 func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
@@ -202,7 +208,8 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 // capacity. However, partial refunds are allowed and are considered successful.
 // For instance, if a bucket has a maximum capacity of 10 and currently has 5
 // requests remaining, a refund request of 7 will result in the bucket reaching
-// its maximum capacity of 10, not 12.
+// its maximum capacity of 10, not 12. If the specified limit is disabled,
+// ErrLimitDisabled is returned.
 func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
@@ -244,8 +251,14 @@ func (l *Limiter) initialize(ctx context.Context, rl limit, name Name, id string
 
 // GetLimit returns the limit for the specified by name and id, name is
 // required, id is optional. If id is left unspecified, the default limit for
-// the limit specified by name is returned.
+// the limit specified by name is returned. If no default limit exists for the
+// specified name, ErrLimitDisabled is returned.
 func (l *Limiter) getLimit(name Name, id string) (limit, error) {
+	if !isNameValid(name) {
+		// This should never happen. Callers should only be specifying the limit
+		// Name enums defined in this package.
+		return limit{}, fmt.Errorf("specified name enum %q, is invalid", name)
+	}
 	if id != "" {
 		// Check for override.
 		ol, ok := l.overrides[bucketKey(name, id)]
@@ -257,5 +270,5 @@ func (l *Limiter) getLimit(name Name, id string) (limit, error) {
 	if ok {
 		return dl, nil
 	}
-	return limit{}, fmt.Errorf("limit %q does not exist", name)
+	return limit{}, ErrLimitDisabled
 }
