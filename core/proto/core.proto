@@ -59,6 +59,7 @@ message CertificateStatus {
   google.protobuf.Timestamp revokedDate = 12;
   int64 revokedReason = 6;
   int64 lastExpirationNagSentNS = 7; // Unix timestamp (nanoseconds)
+  reserved 8; // previously ocspResponse
   google.protobuf.Timestamp lastExpirationNagSent = 13;
   int64 notAfterNS = 9; // Unix timestamp (nanoseconds)
   google.protobuf.Timestamp notAfter = 14;
