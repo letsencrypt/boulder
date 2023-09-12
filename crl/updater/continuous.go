@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"math/big"
 	"math/rand"
 	"sync"
 	"time"
@@ -47,8 +46,8 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
 				cu.log.AuditErrf(
-					"Generating CRL failed: issuer=[%d] shard=[%d] number=[%s] err=[%s]",
-					issuerNameID, shardIdx, (*big.Int)(crl.Number(atTime)), err)
+					"Generating CRL failed: id=[%s] err=[%s]",
+					crl.Id(issuerNameID, shardIdx, crl.Number(atTime)), err)
 			}
 
 			select {

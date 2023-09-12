@@ -11,54 +11,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/test"
-	"github.com/prometheus/client_golang/prometheus"
 )
-
-func TestUpdateIssuer(t *testing.T) {
-	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
-	test.AssertNotError(t, err, "loading test issuer")
-	r3, err := issuance.LoadCertificate("../../test/hierarchy/int-r3.cert.pem")
-	test.AssertNotError(t, err, "loading test issuer")
-
-	mockLog := blog.NewMock()
-	clk := clock.NewFake()
-	clk.Set(time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC))
-	cu, err := NewUpdater(
-		[]*issuance.Certificate{e1, r3},
-		2, 18*time.Hour, 24*time.Hour,
-		6*time.Hour, time.Minute, 1, 1,
-		&fakeSAC{grcc: fakeGRCC{err: errors.New("db no worky")}, maxNotAfter: clk.Now().Add(90 * 24 * time.Hour)},
-		&fakeCGC{gcc: fakeGCC{}},
-		&fakeCSC{ucc: fakeUCC{}},
-		metrics.NoopRegisterer, mockLog, clk,
-	)
-	test.AssertNotError(t, err, "building test crlUpdater")
-
-	// An error that affects all shards should have every shard reflected in the
-	// combined error message, including the bonus shard with index=numShards.
-	err = cu.updateIssuer(context.Background(), cu.clk.Now(), e1.NameID())
-	test.AssertError(t, err, "database error")
-	test.AssertContains(t, err.Error(), "3 shards failed")
-	test.AssertContains(t, err.Error(), "[0 1 2]")
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 3)
-	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
-		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
-	}, 3)
-	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
-		"issuer": "(TEST) Elegant Elephant E1 (Overall)", "result": "failed",
-	}, 1)
-	cu.tickHistogram.Reset()
-
-	// An error while leasing should have the same effect.
-	cu.sa = &fakeSAC{leaseError: errors.New("oops")}
-	err = cu.updateIssuer(context.Background(), cu.clk.Now(), e1.NameID())
-	test.AssertError(t, err, "leasing error")
-	test.AssertMetricWithLabelsEquals(t, cu.updatedCounter, prometheus.Labels{
-		"issuer": "(TEST) Elegant Elephant E1", "result": "failed",
-	}, 3)
-	cu.updatedCounter.Reset()
-	cu.sa.(*fakeSAC).leaseError = nil
-}
 
 func TestRunOnce(t *testing.T) {
 	e1, err := issuance.LoadCertificate("../../test/hierarchy/int-e1.cert.pem")
@@ -82,23 +35,10 @@ func TestRunOnce(t *testing.T) {
 
 	// An error that affects all issuers should have every issuer reflected in the
 	// combined error message.
-	now := cu.clk.Now()
-	err = cu.RunOnce(context.Background(), now)
+	err = cu.RunOnce(context.Background())
 	test.AssertError(t, err, "database error")
-	test.AssertContains(t, err.Error(), "2 issuers failed")
-	test.AssertContains(t, err.Error(), "(TEST) Elegant Elephant E1")
-	test.AssertContains(t, err.Error(), "(TEST) Radical Rhino R3")
+	test.AssertContains(t, err.Error(), "one or more errors")
 	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRL failed:")), 6)
-	test.AssertEquals(t, len(mockLog.GetAllMatching("Generating CRLs for issuer failed:")), 2)
-	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
-		"issuer": "(TEST) Elegant Elephant E1 (Overall)", "result": "failed",
-	}, 1)
-	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
-		"issuer": "(TEST) Radical Rhino R3 (Overall)", "result": "failed",
-	}, 1)
-	test.AssertMetricWithLabelsEquals(t, cu.tickHistogram, prometheus.Labels{
-		"issuer": "all", "result": "failed",
-	}, 1)
 	cu.tickHistogram.Reset()
 }
 
