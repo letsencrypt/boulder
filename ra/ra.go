@@ -436,7 +436,6 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationLimits(ctx context.Context
 		elapsed := ra.clk.Since(started)
 		if err != nil {
 			if errors.Is(err, berrors.RateLimit) {
-				fmt.Printf("Rate limit exceeded, RegistrationsByIPRange, IP: %q\n", ip)
 				ra.rlCheckLatency.WithLabelValues(ratelimit.RegistrationsPerIPRange, ratelimits.Denied).Observe(elapsed.Seconds())
 				ra.log.Infof("Rate limit exceeded, RegistrationsByIPRange, IP: %q", ip)
 
