@@ -110,6 +110,7 @@ type RegistrationAuthorityImpl struct {
 	revocationReasonCounter     *prometheus.CounterVec
 	namesPerCert                *prometheus.HistogramVec
 	rlCheckLatency              *prometheus.HistogramVec
+	rlOverrideUsageGauge        *prometheus.GaugeVec
 	newRegCounter               prometheus.Counter
 	recheckCAACounter           prometheus.Counter
 	newCertCounter              prometheus.Counter
@@ -165,6 +166,12 @@ func NewRegistrationAuthorityImpl(
 		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", ratelimits.Allowed, ratelimits.Denied),
 	}, []string{"limit", "decision"})
 	stats.MustRegister(rlCheckLatency)
+
+	overrideUsageGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ratelimitsv1_override_usage",
+		Help: "Proportion of override limit used, by limit name and client identifier.",
+	}, []string{"limit", "override_key"})
+	stats.MustRegister(overrideUsageGauge)
 
 	newRegCounter := prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "new_registrations",
@@ -253,6 +260,7 @@ func NewRegistrationAuthorityImpl(
 		issuersByID:                  issuersByID,
 		namesPerCert:                 namesPerCert,
 		rlCheckLatency:               rlCheckLatency,
+		rlOverrideUsageGauge:         overrideUsageGauge,
 		newRegCounter:                newRegCounter,
 		recheckCAACounter:            recheckCAACounter,
 		newCertCounter:               newCertCounter,
@@ -377,7 +385,14 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 		return err
 	}
 
-	if count.Count >= limit.GetThreshold(ip.String(), noRegistrationID) {
+	threshold, isOverridden := limit.GetThreshold(ip.String(), noRegistrationID)
+	if isOverridden {
+		// We do not support overrides for the NewRegistrationsPerIPRange limit.
+		utilization := float64(count.Count) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.RegistrationsPerIP, ip.String()).Set(utilization)
+	}
+
+	if count.Count >= threshold {
 		return berrors.RegistrationsPerIPError(0, "too many registrations for this IP")
 	}
 
@@ -567,7 +582,7 @@ func (ra *RegistrationAuthorityImpl) validateContacts(contacts []string) error {
 func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.Context, regID int64, limit ratelimit.RateLimitPolicy) error {
 	// This rate limit's threshold can only be overridden on a per-regID basis,
 	// not based on any other key.
-	threshold := limit.GetThreshold("", regID)
+	threshold, isOverridden := limit.GetThreshold("", regID)
 	if threshold == -1 {
 		return nil
 	}
@@ -576,6 +591,10 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	})
 	if err != nil {
 		return err
+	}
+	if isOverridden {
+		utilization := float64(countPB.Count) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, strconv.FormatInt(regID, 10)).Set(utilization)
 	}
 	if countPB.Count >= threshold {
 		ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
@@ -623,7 +642,12 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// Most rate limits have a key for overrides, but there is no meaningful key
 	// here.
 	noKey := ""
-	if count.Count >= limit.GetThreshold(noKey, regID) {
+	threshold, isOverridden := limit.GetThreshold(noKey, regID)
+	if isOverridden {
+		utilization := float64(count.Count) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, strconv.FormatInt(regID, 10)).Set(utilization)
+	}
+	if count.Count >= threshold {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
 		return berrors.FailedValidationError(0, "too many failed authorizations recently")
 	}
@@ -647,7 +671,13 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	}
 	// There is no meaningful override key to use for this rate limit
 	noKey := ""
-	if count.Count >= limit.GetThreshold(noKey, acctID) {
+	threshold, isOverridden := limit.GetThreshold(noKey, acctID)
+	if isOverridden {
+		utilization := float64(count.Count) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.NewOrdersPerAccount, strconv.FormatInt(acctID, 10)).Set(utilization)
+	}
+
+	if count.Count >= threshold {
 		return berrors.RateLimitError(0, "too many new orders recently")
 	}
 	return nil
@@ -1383,7 +1413,13 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 	// over the names slice input to ensure the order of badNames will
 	// return the badNames in the same order they were input.
 	for _, name := range names {
-		if response.Counts[name] >= limit.GetThreshold(name, regID) {
+		threshold, isOverridden := limit.GetThreshold(name, regID)
+		if isOverridden {
+			clientId := fmt.Sprintf("%d:%s", regID, name)
+			utilization := float64(response.Counts[name]) / float64(threshold)
+			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, clientId).Set(utilization)
+		}
+		if response.Counts[name] >= threshold {
 			badNames = append(badNames, name)
 		}
 	}
@@ -1434,7 +1470,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 
 func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx context.Context, names []string, limit ratelimit.RateLimitPolicy, regID int64) error {
 	names = core.UniqueLowerNames(names)
-	threshold := limit.GetThreshold(strings.Join(names, ","), regID)
+	threshold, isOverridden := limit.GetThreshold(strings.Join(names, ","), regID)
 	if threshold <= 0 {
 		// No limit configured.
 		return nil
@@ -1446,6 +1482,12 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 	})
 	if err != nil {
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
+	}
+
+	if isOverridden {
+		clientId := fmt.Sprintf("%d:%s", regID, strings.Join(names, ","))
+		utilization := float64(len(prevIssuances.Timestamps)) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, clientId).Set(utilization)
 	}
 
 	if int64(len(prevIssuances.Timestamps)) < threshold {

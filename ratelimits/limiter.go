@@ -76,7 +76,7 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string, stat
 	limiter.overrideUsageGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "ratelimits_override_usage",
 		Help: "Proportion of override limit used, by limit name and client id.",
-	}, []string{"limit_name", "client_id"})
+	}, []string{"limit", "client_id"})
 	stats.MustRegister(limiter.overrideUsageGauge)
 
 	return limiter, nil
