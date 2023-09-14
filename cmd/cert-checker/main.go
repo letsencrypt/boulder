@@ -498,6 +498,8 @@ func main() {
 	err = blog.Set(logger)
 	cmd.FailOnError(err, "Failed to set audit logger")
 
+	logger.Info(cmd.VersionString())
+
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {
 		for _, entry := range config.CertChecker.AcceptableValidityDurations {
