@@ -34,7 +34,7 @@ func TestCrlHasIDP(t *testing.T) {
 		{
 			name:       "idp_no_uri",
 			want:       lint.Warn,
-			wantSubStr: "Unexpected IDP fields were found",
+			wantSubStr: "Failed to read IDP distributionPoint",
 		},
 		{
 			name:       "idp_two_uris",
@@ -53,8 +53,8 @@ func TestCrlHasIDP(t *testing.T) {
 		},
 		{
 			name:       "idp_onlyCA_and_onlyUser",
-			want:       lint.Warn,
-			wantSubStr: "Unexpected IDP fields were found",
+			want:       lint.Error,
+			wantSubStr: "IDP should set either onlyContainsUserCerts or onlyContainsCACerts to TRUE, not both",
 		},
 	}
 
