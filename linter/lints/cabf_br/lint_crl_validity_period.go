@@ -90,8 +90,8 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	onlyContainsCACerts := make([]byte, 0)
 
 	// Default to subscriber cert CRL.
-	var BRValidity time.Duration = 10 * 24 * time.Hour
-	var validityString string = "10 days"
+	var BRValidity = 10 * 24 * time.Hour
+	var validityString = "10 days"
 
 	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific()) {
 		if idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
