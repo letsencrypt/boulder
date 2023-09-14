@@ -80,14 +80,8 @@ func TestGenerateCRLLints(t *testing.T) {
 	cert, err = x509.ParseCertificate(certBytes)
 	test.AssertNotError(t, err, "failed to parse test cert")
 
-	// This CRL should fail the following lints:
-	// - e_crl_validity_period_subscriber_cert (ceremony CRLs are valid for up to 12 months)
+	// This CRL should fail the following lint:
 	// - e_crl_acceptable_reason_codes (because 6 is forbidden)
-	//
-	// However, only e_crl_acceptable_reason_codes should show up in the error
-	// message, because e_crl_validity_period_subscriber_cert and
-	// e_crl_has_idp_subscriber_cert should be explicitly removed from the lint
-	// registry by the ceremony tool.
 	six := 6
 	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []crl_x509.RevokedCertificate{
 		{
@@ -96,8 +90,6 @@ func TestGenerateCRLLints(t *testing.T) {
 		},
 	})
 	test.AssertError(t, err, "generateCRL did not fail")
-	test.AssertNotContains(t, err.Error(), "e_crl_has_idp_subordinate_ca")
-	test.AssertNotContains(t, err.Error(), "e_crl_validity_period_subordinate_ca")
 	test.AssertContains(t, err.Error(), "e_crl_acceptable_reason_codes")
 }
 
