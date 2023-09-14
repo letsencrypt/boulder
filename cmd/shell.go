@@ -442,12 +442,10 @@ func ValidateJSONConfig(cv *ConfigValidator, in io.Reader) error {
 
 	// Initialize the validator and load any custom tags.
 	validate := validator.New()
-	if cv.Validators != nil {
-		for tag, v := range cv.Validators {
-			err := validate.RegisterValidation(tag, v)
-			if err != nil {
-				return err
-			}
+	for tag, v := range cv.Validators {
+		err := validate.RegisterValidation(tag, v)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -486,12 +484,10 @@ func ValidateYAMLConfig(cv *ConfigValidator, in io.Reader) error {
 
 	// Initialize the validator and load any custom tags.
 	validate := validator.New()
-	if cv.Validators != nil {
-		for tag, v := range cv.Validators {
-			err := validate.RegisterValidation(tag, v)
-			if err != nil {
-				return err
-			}
+	for tag, v := range cv.Validators {
+		err := validate.RegisterValidation(tag, v)
+		if err != nil {
+			return err
 		}
 	}
 
