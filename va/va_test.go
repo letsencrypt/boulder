@@ -322,7 +322,7 @@ func TestDCVAndCAASequencing(t *testing.T) {
 	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
 	test.AssertEquals(t, len(caaLog), 1)
 
-	features.Set(map[string]bool{features.CAAAfterValidation.String(): true})
+	_ = features.Set(map[string]bool{features.CAAAfterValidation.String(): true})
 	defer features.Reset()
 
 	// When performing successful validation with the CAAAfterValidation flag,
