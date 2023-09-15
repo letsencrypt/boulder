@@ -67,7 +67,7 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		Expires:        1234,
+		ExpiresNS:      1234,
 		Challenges: []*corepb.Challenge{
 			{
 				Type:      string(core.ChallengeTypeHTTP01),
@@ -111,7 +111,7 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		Expires:        1234,
+		ExpiresNS:      1234,
 		Challenges: []*corepb.Challenge{
 			{
 				Type:      string(core.ChallengeTypeHTTP01),
@@ -160,7 +160,7 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusInvalid),
-		Expires:        1234,
+		ExpiresNS:      1234,
 		Challenges: []*corepb.Challenge{
 			{
 				Type:   string(core.ChallengeTypeHTTP01),
@@ -199,7 +199,7 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		Expires:        1234,
+		ExpiresNS:      1234,
 		Challenges: []*corepb.Challenge{
 			{
 				Type:      string(core.ChallengeTypeHTTP01),

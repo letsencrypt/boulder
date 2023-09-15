@@ -75,7 +75,7 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: 1,
-				ThisUpdate:   time.Now().UnixNano(),
+				ThisUpdateNS: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -93,7 +93,7 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				ThisUpdateNS: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -101,7 +101,7 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				ThisUpdateNS: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -118,9 +118,9 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "123",
-				Reason:    1,
-				RevokedAt: time.Now().UnixNano(),
+				Serial:      "123",
+				Reason:      1,
+				RevokedAtNS: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -137,9 +137,9 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "deadbeefdeadbeefdeadbeefdeadbeefdead",
-				Reason:    1,
-				RevokedAt: 0,
+				Serial:      "deadbeefdeadbeefdeadbeefdeadbeefdead",
+				Reason:      1,
+				RevokedAtNS: 0,
 			},
 		},
 	}
@@ -167,7 +167,7 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				ThisUpdateNS: time.Now().UnixNano(),
 			},
 		},
 	}
@@ -201,15 +201,15 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdate:   time.Now().UnixNano(),
+				ThisUpdateNS: time.Now().UnixNano(),
 			},
 		},
 	}
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "000000000000000000000000000000000000",
-				RevokedAt: time.Now().UnixNano(),
+				Serial:      "000000000000000000000000000000000000",
+				RevokedAtNS: time.Now().UnixNano(),
 				// Reason 0, Unspecified, is omitted.
 			},
 		},
@@ -217,36 +217,36 @@ func TestGenerateCRL(t *testing.T) {
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "111111111111111111111111111111111111",
-				Reason:    1, // keyCompromise
-				RevokedAt: time.Now().UnixNano(),
+				Serial:      "111111111111111111111111111111111111",
+				Reason:      1, // keyCompromise
+				RevokedAtNS: time.Now().UnixNano(),
 			},
 		},
 	}
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "444444444444444444444444444444444444",
-				Reason:    4, // superseded
-				RevokedAt: time.Now().UnixNano(),
+				Serial:      "444444444444444444444444444444444444",
+				Reason:      4, // superseded
+				RevokedAtNS: time.Now().UnixNano(),
 			},
 		},
 	}
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "555555555555555555555555555555555555",
-				Reason:    5, // cessationOfOperation
-				RevokedAt: time.Now().UnixNano(),
+				Serial:      "555555555555555555555555555555555555",
+				Reason:      5, // cessationOfOperation
+				RevokedAtNS: time.Now().UnixNano(),
 			},
 		},
 	}
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
-				Serial:    "999999999999999999999999999999999999",
-				Reason:    9, // privilegeWithdrawn
-				RevokedAt: time.Now().UnixNano(),
+				Serial:      "999999999999999999999999999999999999",
+				Reason:      9, // privilegeWithdrawn
+				RevokedAtNS: time.Now().UnixNano(),
 			},
 		},
 	}

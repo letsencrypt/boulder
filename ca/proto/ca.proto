@@ -41,7 +41,7 @@ service OCSPGenerator {
 message GenerateOCSPRequest {
   string status = 2;
   int32 reason = 3;
-  int64 revokedAt = 4;
+  int64 revokedAtNS = 4; // Unix timestamp (nanoseconds)
   string serial = 5;
   int64 issuerID = 6;
 }
@@ -64,7 +64,7 @@ message GenerateCRLRequest {
 
 message CRLMetadata {
   int64 issuerNameID = 1;
-  int64 thisUpdate = 2; // Unix timestamp (nanoseconds), also used for CRLNumber.
+  int64 thisUpdateNS = 2; // Unix timestamp (nanoseconds), also used for CRLNumber.
   int64 shardIdx = 3;
 }
 
