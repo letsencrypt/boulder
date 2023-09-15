@@ -3,12 +3,7 @@ package ratelimits
 import (
 	"context"
 	"errors"
-	"fmt"
-	"slices"
-	"strings"
 	"time"
-
-	bredis "github.com/letsencrypt/boulder/redis"
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,27 +26,14 @@ type RedisSource struct {
 // NewRedisSource returns a new Redis backed source using the provided
 // *redis.Ring client.
 func NewRedisSource(client *redis.Ring, timeout time.Duration, clk clock.Clock, stats prometheus.Registerer) *RedisSource {
-	var addrs []string
-	if len(client.Options().Addrs) != 0 {
-		// Client was statically configured with a list of shards.
-		for addr := range client.Options().Addrs {
-			addrs = append(addrs, addr)
-		}
-		// Keep the list of addresses sorted for consistency.
-		slices.Sort(addrs)
-		labels := prometheus.Labels{
-			"addresses": strings.Join(addrs, ", "),
-			"user":      client.Options().Username,
-		}
-		stats.MustRegister(bredis.NewMetricsCollector(client, labels))
-	}
+	// Exponential buckets ranging from 0.0005s to 2s
+	buckets := prometheus.ExponentialBucketsRange(0.0005, 2, 8)
 
 	setLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "rl_set_latency",
-			Help: "Histogram of latencies of redisSource.Set calls",
-			// Exponential buckets ranging from 0.0005s to 2s
-			Buckets: prometheus.ExponentialBucketsRange(0.0005, 2, 8),
+			Name:    "ratelimits_set_latency",
+			Help:    "Histogram of latencies of redisSource.Set calls",
+			Buckets: buckets,
 		},
 		[]string{"result"},
 	)
@@ -59,10 +41,9 @@ func NewRedisSource(client *redis.Ring, timeout time.Duration, clk clock.Clock, 
 
 	getLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "rl_get_latency",
-			Help: "Histogram of redisSource.Get call latencies",
-			// Exponential buckets ranging from 0.0005s to 2s
-			Buckets: prometheus.ExponentialBucketsRange(0.0005, 2, 8),
+			Name:    "ratelimits_get_latency",
+			Help:    "Histogram of redisSource.Get call latencies",
+			Buckets: buckets,
 		},
 		[]string{"result"},
 	)
@@ -70,10 +51,9 @@ func NewRedisSource(client *redis.Ring, timeout time.Duration, clk clock.Clock, 
 
 	deleteLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "rl_delete_latency",
-			Help: "Histogram of latencies of redisSource.Delete calls",
-			// Exponential buckets ranging from 0.0005s to 2s
-			Buckets: prometheus.ExponentialBucketsRange(0.0005, 2, 8),
+			Name:    "ratelimits_delete_latency",
+			Help:    "Histogram of latencies of redisSource.Delete calls",
+			Buckets: buckets,
 		},
 		[]string{"result"},
 	)
@@ -164,7 +144,6 @@ func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 // Ping checks that each shard of the *redis.Ring is reachable using the PING
 // command. It returns an error if any shard is unreachable and nil otherwise.
 func (r *RedisSource) Ping(ctx context.Context) error {
-	fmt.Printf("\n\n%v\n\n", r)
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
 

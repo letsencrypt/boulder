@@ -16,6 +16,7 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/issuance"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/rocsp"
 )
 
@@ -169,6 +170,7 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		PoolTimeout:     c.PoolTimeout.Duration,
 		ConnMaxIdleTime: c.IdleTimeout.Duration,
 	})
+	bredis.MustRegisterClientMetricsCollector(rdb, stats, rdb.Options().Addrs, rdb.Options().Username)
 	return rocsp.NewReadingClient(rdb, c.Timeout.Duration, clk, stats), nil
 }
 

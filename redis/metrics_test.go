@@ -25,7 +25,7 @@ func (mockPoolStatGetter) PoolStats() *redis.PoolStats {
 }
 
 func TestMetrics(t *testing.T) {
-	mets := NewMetricsCollector(mockPoolStatGetter{},
+	mets := newClientMetricsCollector(mockPoolStatGetter{},
 		prometheus.Labels{
 			"foo": "bar",
 		})

@@ -1,6 +1,9 @@
 package redis
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 )
@@ -49,7 +52,8 @@ func (dbc metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	writeGauge(dbc.staleConns, stats.StaleConns)
 }
 
-func NewMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) metricsCollector {
+// newClientMetricsCollector is broken out for testing purposes.
+func newClientMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) metricsCollector {
 	return metricsCollector{
 		statGetter: statGetter,
 		lookups: prometheus.NewDesc(
@@ -69,4 +73,21 @@ func NewMetricsCollector(statGetter poolStatGetter, labels prometheus.Labels) me
 			"Number of stale connections removed from the pool.",
 			nil, labels),
 	}
+}
+
+// MustRegisterClientMetricsCollector registers a metrics collector for the
+// given Redis client with the provided prometheus.Registerer. The collector
+// will report metrics labelled by the provided addresses and username.
+func MustRegisterClientMetricsCollector(client poolStatGetter, stats prometheus.Registerer, addrs map[string]string, user string) {
+	var labelAddrs []string
+	for addr := range addrs {
+		labelAddrs = append(labelAddrs, addr)
+	}
+	// Keep the list of addresses sorted for consistency.
+	slices.Sort(labelAddrs)
+	labels := prometheus.Labels{
+		"addresses": strings.Join(labelAddrs, ", "),
+		"user":      user,
+	}
+	stats.MustRegister(newClientMetricsCollector(client, labels))
 }

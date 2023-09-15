@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"slices"
 	"strings"
 	"time"
 
@@ -172,18 +171,7 @@ func (look *Lookup) updateNow(ctx context.Context) (tempError, nonTempError erro
 	look.ring.SetAddrs(nextAddrs)
 
 	// Update the Redis client metrics.
-	var addrs []string
-	for addr := range nextAddrs {
-		addrs = append(addrs, addr)
-	}
-	// Keep the list of addresses sorted for consistency.
-	slices.Sort(addrs)
-
-	labels := prometheus.Labels{
-		"addresses": strings.Join(addrs, ", "),
-		"user":      look.ring.Options().Username,
-	}
-	look.stats.MustRegister(NewMetricsCollector(look.ring, labels))
+	MustRegisterClientMetricsCollector(look.ring, look.stats, nextAddrs, look.ring.Options().Username)
 
 	return nil, nil
 }

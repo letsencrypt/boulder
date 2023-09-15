@@ -123,7 +123,7 @@ func (c *Config) NewRing(stats prometheus.Registerer) (*redis.Ring, error) {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
 
-	return redis.NewRing(&redis.RingOptions{
+	client := redis.NewRing(&redis.RingOptions{
 		Addrs:     c.ShardAddrs,
 		Username:  c.Username,
 		Password:  password,
@@ -141,7 +141,13 @@ func (c *Config) NewRing(stats prometheus.Registerer) (*redis.Ring, error) {
 		ConnMaxLifetime: c.MaxConnAge.Duration,
 		PoolTimeout:     c.PoolTimeout.Duration,
 		ConnMaxIdleTime: c.IdleTimeout.Duration,
-	}), nil
+	})
+	if len(c.ShardAddrs) != 0 {
+		// Client was statically configured with a list of shards.
+		MustRegisterClientMetricsCollector(client, stats, c.ShardAddrs, c.Username)
+	}
+
+	return client, nil
 }
 
 // NewRingWithPeriodicLookups returns a new Redis ring client whose shards are
