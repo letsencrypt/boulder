@@ -154,7 +154,7 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 					  issued < :end`,
 			map[string]interface{}{
 				"begin": c.issuedReport.begin,
-				"end":   c.issuedReport.end,
+				"end":   c.issuedReport.begin.Add(time.Hour),
 			},
 		)
 		if err != nil {
