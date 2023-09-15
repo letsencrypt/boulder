@@ -367,7 +367,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	}
 
 	batchSize = 2
-	err = checker.getCerts(context.Background(), false)
+	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
@@ -431,7 +431,7 @@ func TestGetCertsEmptyResults(t *testing.T) {
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
-	err = checker.getCerts(context.Background(), false)
+	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 }
 
@@ -458,7 +458,7 @@ func TestGetCertsNullResults(t *testing.T) {
 	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 	checker.dbMap = emptyDB{}
 
-	err = checker.getCerts(context.Background(), false)
+	err = checker.getCerts(context.Background())
 	test.AssertError(t, err, "Should have gotten error from empty DB")
 }
 

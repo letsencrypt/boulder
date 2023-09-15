@@ -6,7 +6,6 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log/syslog"
@@ -140,14 +139,9 @@ func newChecker(saDbMap certDB,
 	}
 }
 
-func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
-	c.issuedReport.end = c.clock.Now()
-	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod)
-
-	args := map[string]interface{}{"issued": c.issuedReport.begin, "now": 0}
-	if unexpiredOnly {
-		args["now"] = c.clock.Now()
-	}
+func (c *certChecker) getCerts(ctx context.Context) error {
+	c.issuedReport.end = c.clock.Now().Truncate(time.Second).Add(time.Second)
+	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod).Truncate(time.Second)
 
 	var sni sql.NullInt64
 	var err error
@@ -155,8 +149,13 @@ func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 	for {
 		sni, err = c.dbMap.SelectNullInt(
 			ctx,
-			"SELECT MIN(id) FROM certificates WHERE issued >= :issued AND expires >= :now",
-			args,
+			`SELECT MIN(id) FROM certificates
+				WHERE issued >= :begin AND
+					  issued < :end`,
+			map[string]interface{}{
+				"begin": c.issuedReport.begin,
+				"end":   c.issuedReport.end,
+			},
 		)
 		if err != nil {
 			c.logger.AuditErrf("finding starting certificate: %s", err)
@@ -168,8 +167,10 @@ func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 		break
 	}
 	if !sni.Valid {
-		// a nil response was returned by the DB, so return error and fail
-		return errors.New("the SELECT query resulted in a NULL response from the DB")
+		// https://mariadb.com/kb/en/min/
+		// MIN() returns NULL if there were no matching rows
+		return fmt.Errorf("no rows found for certificates issued between %s and %s",
+			c.issuedReport.begin, c.issuedReport.end)
 	}
 
 	initialID := sni.Int64
@@ -178,18 +179,24 @@ func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 		initialID -= 1
 	}
 
-	// Retrieve certs in batches of 1000 (the size of the certificate channel)
-	// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
-	// packet limit.
-	args["limit"] = batchSize
-	args["id"] = initialID
-
+	batchStartID := initialID
 	for {
 		certs, err := sa.SelectCertificates(
 			ctx,
 			c.dbMap,
-			"WHERE id > :id AND issued >= :issued AND expires >= :now ORDER BY id LIMIT :limit",
-			args,
+			`WHERE id > :id AND
+			       issued >= :begin AND
+				   issued < :end
+			 ORDER BY id LIMIT :limit`,
+			map[string]interface{}{
+				"begin": c.issuedReport.begin,
+				"end":   c.issuedReport.end,
+				// Retrieve certs in batches of 1000 (the size of the certificate channel)
+				// so that we don't eat unnecessary amounts of memory and avoid the 16MB MySQL
+				// packet limit.
+				"limit": batchSize,
+				"id":    batchStartID,
+			},
 		)
 		if err != nil {
 			c.logger.AuditErrf("selecting certificates: %s", err)
@@ -205,7 +212,7 @@ func (c *certChecker) getCerts(ctx context.Context, unexpiredOnly bool) error {
 			break
 		}
 		lastCert := certs[len(certs)-1]
-		args["id"] = lastCert.ID
+		batchStartID = lastCert.ID
 		if lastCert.Issued.After(c.issuedReport.end) {
 			break
 		}
@@ -441,7 +448,8 @@ type Config struct {
 		DB cmd.DBConfig
 		cmd.HostnamePolicyConfig
 
-		Workers        int `validate:"required,min=1"`
+		Workers int `validate:"required,min=1"`
+		// Deprecated: this is ignored, and cert checker always checks both expired and unexpired.
 		UnexpiredOnly  bool
 		BadResultsOnly bool
 		CheckPeriod    config.Duration
@@ -564,7 +572,7 @@ func main() {
 	// is finished it will close the certificate channel which allows the range
 	// loops in checker.processCerts to break
 	go func() {
-		err := checker.getCerts(context.TODO(), config.CertChecker.UnexpiredOnly)
+		err := checker.getCerts(context.TODO())
 		cmd.FailOnError(err, "Batch retrieval of certificates failed")
 	}()
 
