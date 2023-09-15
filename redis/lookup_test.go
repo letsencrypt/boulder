@@ -53,7 +53,7 @@ func TestNewLookup(t *testing.T) {
 		logger,
 		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "ExpectednewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 }
 
 func TestStart(t *testing.T) {
@@ -74,7 +74,7 @@ func TestStart(t *testing.T) {
 		logger,
 		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "ExpectednewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
 	testCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -104,7 +104,7 @@ func TestNewLookupWithOneFailingSRV(t *testing.T) {
 		logger,
 		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "ExpectednewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 }
 
 func TestNewLookupWithAllFailingSRV(t *testing.T) {
@@ -129,7 +129,7 @@ func TestNewLookupWithAllFailingSRV(t *testing.T) {
 		logger,
 		metrics.NoopRegisterer,
 	)
-	test.AssertError(t, err, "ExpectednewLookup construction to fail")
+	test.AssertError(t, err, "Expected newLookup construction to fail")
 }
 
 func TestUpdateNowWithAllFailingSRV(t *testing.T) {
@@ -150,7 +150,7 @@ func TestUpdateNowWithAllFailingSRV(t *testing.T) {
 		logger,
 		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "ExpectednewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
 	lookup.srvLookups = []cmd.ServiceDomain{
 		{
@@ -189,7 +189,7 @@ func TestUpdateNowWithAllFailingSRVs(t *testing.T) {
 		logger,
 		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "ExpectednewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
 	// Replace the dnsAuthority with a non-existent DNS server, this will cause
 	// a timeout error, which is technically a temporary error, but will
@@ -226,7 +226,7 @@ func TestUpdateNowWithOneFailingSRV(t *testing.T) {
 		logger,
 		metrics.NoopRegisterer,
 	)
-	test.AssertNotError(t, err, "ExpectednewLookup construction to succeed")
+	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
 	// The Consul service entry for 'redisratelimits' is configured to return
 	// two SRV targets. We should only have two shards in the ring.
