@@ -227,6 +227,7 @@ func main() {
 		StdoutLevel: *logStdoutLevel,
 		SyslogLevel: *logSyslogLevel,
 	})
+	logger.Info(cmd.VersionString())
 
 	if *timeTolerance < 0 {
 		cmd.Fail("value of -time-tolerance must be non-negative")
