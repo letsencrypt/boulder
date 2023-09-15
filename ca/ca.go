@@ -187,10 +187,10 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	nowNanos := ca.clk.Now().UnixNano()
 	expiresNanos := validity.NotAfter.UnixNano()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		Serial:  serialHex,
-		RegID:   regID,
-		Created: nowNanos,
-		Expires: expiresNanos,
+		Serial:    serialHex,
+		RegID:     regID,
+		CreatedNS: nowNanos,
+		ExpiresNS: expiresNanos,
 	})
 	if err != nil {
 		return nil, err
@@ -297,9 +297,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
 
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:    certDER,
-		RegID:  req.RegistrationID,
-		Issued: ca.clk.Now().UnixNano(),
+		Der:      certDER,
+		RegID:    req.RegistrationID,
+		IssuedNS: ca.clk.Now().UnixNano(),
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
@@ -312,8 +312,8 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Serial:         core.SerialToString(precert.SerialNumber),
 		Der:            certDER,
 		Digest:         core.Fingerprint256(certDER),
-		Issued:         precert.NotBefore.UnixNano(),
-		Expires:        precert.NotAfter.UnixNano(),
+		IssuedNS:       precert.NotBefore.UnixNano(),
+		ExpiresNS:      precert.NotAfter.UnixNano(),
 	}, nil
 }
 
@@ -417,7 +417,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
-		Issued:       nowNanos,
+		IssuedNS:     nowNanos,
 		IssuerNameID: int64(issuer.Cert.NameID()),
 		OcspNotReady: true,
 	})

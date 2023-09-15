@@ -305,8 +305,8 @@ func registrationPbToModel(reg *corepb.Registration) (*regModel, error) {
 	// the time.Time zero-value (the former is 1970; the latter is year 0),
 	// so we have to do this check.
 	var createdAt time.Time
-	if reg.CreatedAt != 0 {
-		createdAt = time.Unix(0, reg.CreatedAt)
+	if reg.CreatedAtNS != 0 {
+		createdAt = time.Unix(0, reg.CreatedAtNS)
 	}
 
 	return &regModel{
@@ -353,7 +353,7 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
-		CreatedAt:       reg.CreatedAt.UTC().UnixNano(),
+		CreatedAtNS:     reg.CreatedAt.UTC().UnixNano(),
 		Status:          reg.Status,
 	}, nil
 }
@@ -400,8 +400,8 @@ func orderToModel(order *corepb.Order) (*orderModel, error) {
 	om := &orderModel{
 		ID:                order.Id,
 		RegistrationID:    order.RegistrationID,
-		Expires:           time.Unix(0, order.Expires),
-		Created:           time.Unix(0, order.Created),
+		Expires:           time.Unix(0, order.ExpiresNS),
+		Created:           time.Unix(0, order.CreatedNS),
 		BeganProcessing:   order.BeganProcessing,
 		CertificateSerial: order.CertificateSerial,
 	}
@@ -423,8 +423,8 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 	order := &corepb.Order{
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
-		Expires:           om.Expires.UnixNano(),
-		Created:           om.Created.UnixNano(),
+		ExpiresNS:         om.Expires.UnixNano(),
+		CreatedNS:         om.Created.UnixNano(),
 		CertificateSerial: om.CertificateSerial,
 		BeganProcessing:   om.BeganProcessing,
 	}
@@ -635,7 +635,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 		IdentifierValue: authz.Identifier,
 		RegistrationID:  authz.RegistrationID,
 		Status:          statusToUint[core.AcmeStatus(authz.Status)],
-		Expires:         time.Unix(0, authz.Expires).UTC(),
+		Expires:         time.Unix(0, authz.ExpiresNS).UTC(),
 	}
 	if authz.Id != "" {
 		// The v1 internal authorization objects use a string for the ID, the v2
@@ -778,7 +778,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Status:         string(uintToStatus[am.Status]),
 		Identifier:     am.IdentifierValue,
 		RegistrationID: am.RegistrationID,
-		Expires:        am.Expires.UTC().UnixNano(),
+		ExpiresNS:      am.Expires.UTC().UnixNano(),
 	}
 	// Populate authorization challenge array. We do this by iterating through
 	// the challenge type bitmap and creating a challenge of each type if its
@@ -850,7 +850,7 @@ func incidentModelToPB(i incidentModel) sapb.Incident {
 		Id:          i.ID,
 		SerialTable: i.SerialTable,
 		Url:         i.URL,
-		RenewBy:     i.RenewBy.UnixNano(),
+		RenewByNS:   i.RenewBy.UnixNano(),
 		Enabled:     i.Enabled,
 	}
 }
@@ -1007,7 +1007,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 	// in ra.NewOrder), and expired authorizations may be purged from the DB.
 	// Because of this purging fetching the authz's for an expired order may
 	// return fewer authz objects than expected, triggering a 500 error response.
-	orderExpiry := time.Unix(0, order.Expires)
+	orderExpiry := time.Unix(0, order.ExpiresNS)
 	if orderExpiry.Before(now) {
 		return string(core.StatusInvalid), nil
 	}
