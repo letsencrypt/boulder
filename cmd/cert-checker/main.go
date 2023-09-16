@@ -65,6 +65,7 @@ type report struct {
 	end       time.Time
 	GoodCerts int64                  `json:"good-certs"`
 	BadCerts  int64                  `json:"bad-certs"`
+	DbErrs    int64                  `json:"db-errs"`
 	Entries   map[string]reportEntry `json:"entries"`
 }
 
@@ -414,6 +415,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 				// Log and continue, since we want the problems slice to only contains
 				// problems with the cert itself.
 				c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
+				atomic.AddInt64(&c.issuedReport.DbErrs, 1)
 			} else {
 				err = precert.Correspond(precertDER, cert.DER)
 				if err != nil {
