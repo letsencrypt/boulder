@@ -50,6 +50,7 @@ type Limiter struct {
 	source source
 	clk    clock.Clock
 
+	spendLatency       *prometheus.HistogramVec
 	overrideUsageGauge *prometheus.GaugeVec
 }
 
@@ -65,6 +66,13 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string, stat
 	if err != nil {
 		return nil, err
 	}
+
+	limiter.spendLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "ratelimits_spend_latency_seconds",
+		Help:    fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
+		Buckets: prometheus.ExponentialBuckets(0.0005, 2, 8),
+	}, []string{"limit", "decision"})
+	stats.MustRegister(limiter.spendLatency)
 
 	if overrides == "" {
 		// No overrides specified, initialize an empty map.
@@ -174,11 +182,24 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 		return nil, ErrInvalidCostOverLimit
 	}
 
+	start := l.clk.Now()
+	decisionStatus := Denied
+	defer func() {
+		l.spendLatency.WithLabelValues(nameToString[name], decisionStatus).Observe(l.clk.Since(start).Seconds())
+	}()
+
 	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			// First request from this client.
-			return l.initialize(ctx, limit, name, id, cost)
+			d, err := l.initialize(ctx, limit, name, id, cost)
+			if err != nil {
+				return nil, err
+			}
+			if d.Allowed {
+				decisionStatus = Allowed
+			}
+			return d, nil
 		}
 		return nil, err
 	}
@@ -195,7 +216,13 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 	if !d.Allowed {
 		return d, nil
 	}
-	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
+
+	err = l.source.Set(ctx, bucketKey(name, id), d.newTAT)
+	if err != nil {
+		return nil, err
+	}
+	decisionStatus = Allowed
+	return d, nil
 }
 
 // Refund attempts to refund the cost to the bucket identified by limit name and
