@@ -620,9 +620,8 @@ func link(url, relation string) string {
 // encountered during the check, it is logged but not returned.
 //
 // TODO(#5545): For now we're simply exercising the new rate limiter codepath.
-// This should eventually use the *ratelimits.Decision to populate the various
-// headers in the response, such as "Retry-After" and then return either the
-// *ratelimits.Decision or decision.Allowed.
+// This should eventually return a berrors.RateLimit error containing the retry
+// after duration among other information available in the ratelimits.Decision.
 func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP) {
 	if wfe.limiter == nil {
 		// Limiter is disabled.
@@ -631,14 +630,14 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
 	if err != nil {
 		if errors.Is(err, ratelimits.ErrLimitDisabled) {
-			// Limit is disabled.
 			return
 		}
 		wfe.log.Warningf("checking new account rate limit: %s", err)
 		return
 	}
 	if !decision.Allowed || ip.To4() != nil {
-		// This requester is being limited or they have an IPv4 address.
+		// This requester is being limited or the request was made from an IPv4
+		// address.
 		return
 	}
 
@@ -649,7 +648,6 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 	_, err = wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
 	if err != nil {
 		if errors.Is(err, ratelimits.ErrLimitDisabled) {
-			// Limit is disabled.
 			return
 		}
 		wfe.log.Warningf("checking new account rate limit: %s", err)
@@ -661,10 +659,6 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 // It refunds the limit quota consumed by the request, allowing the caller to
 // retry immediately. If an error is encountered during the refund, it is logged
 // but not returned.
-//
-// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
-// This should eventually use the *ratelimits.Decision to populate the various
-// headers in the response, such as "Retry-After".
 func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.IP) {
 	if wfe.limiter == nil {
 		// Limiter is disabled.
@@ -674,14 +668,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 	if err != nil {
 		if errors.Is(err, ratelimits.ErrLimitDisabled) ||
 			errors.Is(err, ratelimits.ErrBucketAlreadyFull) {
-			// Limit is disabled or bucket is already full.
 			return
 		}
 		wfe.log.Warningf("refunding new account rate limit: %s", err)
 		return
 	}
 	if ip.To4() != nil {
-		// Requested from an IPv4 address.
+		// Request was made from an IPv4 address.
 		return
 	}
 
@@ -693,7 +686,6 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 	if err != nil {
 		if errors.Is(err, ratelimits.ErrLimitDisabled) ||
 			errors.Is(err, ratelimits.ErrBucketAlreadyFull) {
-			// Limit is disabled or bucket is already full.
 			return
 		}
 		wfe.log.Warningf("refunding new account rate limit: %s", err)
@@ -823,8 +815,6 @@ func (wfe *WebFrontEndImpl) NewAccount(
 	}
 
 	wfe.checkNewAccountLimits(ctx, ip)
-	// TODO(#5545): We should be checking a returned *ratelimits.Decision or a
-	// bool to see if the request was allowed or not.
 
 	// Send the registration to the RA via grpc
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
