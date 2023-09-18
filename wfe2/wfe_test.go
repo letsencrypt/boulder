@@ -37,7 +37,6 @@ import (
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/cmd"
-	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -377,14 +376,13 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 				},
 			},
 			LookupDNSAuthority: "consul.service.consul",
-			Timeout:            config.Duration{Duration: 1 * time.Second},
 		}
 		rc.PasswordConfig = cmd.PasswordConfig{
 			PasswordFile: "../test/secrets/ratelimits_redis_password",
 		}
 		ring, _, err := rc.NewRingWithPeriodicLookups(stats, log)
 		test.AssertNotError(t, err, "making redis ring and lookup")
-		source := ratelimits.NewRedisSource(ring, rc.Timeout.Duration, fc, stats)
+		source := ratelimits.NewRedisSource(ring, fc, stats)
 		test.AssertNotNil(t, source, "source should not be nil")
 		limiter, err = ratelimits.NewLimiter(fc, source, "../test/config-next/wfe2-ratelimit-defaults.yml", "", stats)
 		test.AssertNotError(t, err, "making limiter")

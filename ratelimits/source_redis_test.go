@@ -2,7 +2,6 @@ package ratelimits
 
 import (
 	"testing"
-	"time"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/metrics"
@@ -33,7 +32,7 @@ func newTestRedisSource(clk clock.FakeClock, addrs map[string]string) *RedisSour
 		Password:  "824968fa490f4ecec1e52d5e34916bdb60d45f8d",
 		TLSConfig: tlsConfig2,
 	})
-	return NewRedisSource(client, 5*time.Second, clk, metrics.NoopRegisterer)
+	return NewRedisSource(client, clk, metrics.NoopRegisterer)
 }
 
 func newRedisTestLimiter(t *testing.T, clk clock.FakeClock) *Limiter {

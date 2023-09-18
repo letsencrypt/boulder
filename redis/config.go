@@ -46,9 +46,6 @@ type Config struct {
 	// the system DNS will be used for resolution.
 	LookupDNSAuthority string `validate:"excluded_without=Lookups,omitempty,ip|hostname|hostname_port"`
 
-	// Timeout is a per-request timeout applied to all Redis requests.
-	Timeout config.Duration `validate:"-"`
-
 	// Enables read-only commands on replicas.
 	ReadOnly bool
 	// Allows routing read-only commands to the closest primary or replica.
@@ -142,7 +139,7 @@ func (c *Config) NewRing(stats prometheus.Registerer) (*redis.Ring, error) {
 		PoolTimeout:     c.PoolTimeout.Duration,
 		ConnMaxIdleTime: c.IdleTimeout.Duration,
 	})
-	if len(c.ShardAddrs) != 0 {
+	if len(c.ShardAddrs) > 0 {
 		// Client was statically configured with a list of shards.
 		MustRegisterClientMetricsCollector(client, stats, c.ShardAddrs, c.Username)
 	}

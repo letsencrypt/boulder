@@ -259,6 +259,18 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock, log blog.L
 	var limiterLookup *bredis.Lookup
 	if c.WFE.Limiter.Defaults != "" {
 		// Setup rate limiting.
+
+		// The default read and write timeouts for go-redis clients are 3s. We
+		// want to be more aggressive than that.
+		readTimeout := c.WFE.Limiter.Redis.ReadTimeout.Duration
+		if readTimeout > 250*time.Millisecond || readTimeout <= 0 {
+			cmd.Fail("limiter.redis.readTimeout must be <= 250ms and > 0 ns")
+		}
+		writeTimeout := c.WFE.Limiter.Redis.WriteTimeout.Duration
+		if writeTimeout > 250*time.Millisecond || writeTimeout <= 0 {
+			cmd.Fail("limiter.redis.writeTimeout must be <= 250ms and > 0 ns")
+		}
+
 		var ring *redis.Ring
 		if len(c.WFE.Limiter.Redis.Lookups) > 0 {
 			// Configure a Redis client with periodic SRV lookups.
@@ -269,9 +281,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock, log blog.L
 			ring, err = c.WFE.Limiter.Redis.NewRing(scope)
 			cmd.FailOnError(err, "Failed to create Redis client for rate limiting")
 		}
-
-		timeout := c.WFE.Limiter.Redis.Timeout.Duration
-		source := ratelimits.NewRedisSource(ring, timeout, clk, scope)
+		source := ratelimits.NewRedisSource(ring, clk, scope)
 		limiter, err = ratelimits.NewLimiter(clk, source, c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, scope)
 		cmd.FailOnError(err, "Failed to create rate limiter")
 	}
