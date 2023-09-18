@@ -28,7 +28,7 @@ func TestCAALogChecker(t *testing.T) {
 	stdErr := new(bytes.Buffer)
 	cmd.Stderr = stdErr
 	out, err := cmd.Output()
-	test.AssertEquals(t, string(out), "")
+	test.AssertContains(t, string(out), "Versions: ")
 	test.AssertEquals(t, stdErr.String(), "")
 	test.AssertNotError(t, err, "caa-log-checker failed")
 
