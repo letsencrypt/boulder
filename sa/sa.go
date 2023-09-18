@@ -157,14 +157,14 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 
 // AddSerial writes a record of a serial number generation to the DB.
 func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" || req.RegID == 0 || req.Created == 0 || req.Expires == 0 {
+	if req.Serial == "" || req.RegID == 0 || req.CreatedNS == 0 || req.ExpiresNS == 0 {
 		return nil, errIncompleteRequest
 	}
 	err := ssa.dbMap.Insert(ctx, &recordedSerialModel{
 		Serial:         req.Serial,
 		RegistrationID: req.RegID,
-		Created:        time.Unix(0, req.Created),
-		Expires:        time.Unix(0, req.Expires),
+		Created:        time.Unix(0, req.CreatedNS),
+		Expires:        time.Unix(0, req.ExpiresNS),
 	})
 	if err != nil {
 		return nil, err
@@ -203,7 +203,7 @@ func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, r
 // certificate multiple times. Calling code needs to first insert the cert's
 // serial into the Serials table to ensure uniqueness.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
-	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 || req.IssuerNameID == 0 {
+	if len(req.Der) == 0 || req.RegID == 0 || req.IssuedNS == 0 || req.IssuerNameID == 0 {
 		return nil, errIncompleteRequest
 	}
 	parsed, err := x509.ParseCertificate(req.Der)
@@ -216,7 +216,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 		Serial:         serialHex,
 		RegistrationID: req.RegID,
 		DER:            req.Der,
-		Issued:         time.Unix(0, req.Issued),
+		Issued:         time.Unix(0, req.IssuedNS),
 		Expires:        parsed.NotAfter,
 	}
 
@@ -294,7 +294,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 // AddCertificate stores an issued certificate, returning an error if it is a
 // duplicate or if any other failure occurs.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
-	if len(req.Der) == 0 || req.RegID == 0 || req.Issued == 0 {
+	if len(req.Der) == 0 || req.RegID == 0 || req.IssuedNS == 0 {
 		return nil, errIncompleteRequest
 	}
 	parsedCertificate, err := x509.ParseCertificate(req.Der)
@@ -309,7 +309,7 @@ func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.Ad
 		Serial:         serial,
 		Digest:         digest,
 		DER:            req.Der,
-		Issued:         time.Unix(0, req.Issued),
+		Issued:         time.Unix(0, req.IssuedNS),
 		Expires:        parsedCertificate.NotAfter,
 	}
 
@@ -495,7 +495,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Second, insert the new order.
 		order := &orderModel{
 			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        time.Unix(0, req.NewOrder.Expires),
+			Expires:        time.Unix(0, req.NewOrder.ExpiresNS),
 			Created:        ssa.clk.Now(),
 		}
 		err := tx.Insert(ctx, order)
@@ -550,11 +550,11 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Finally, build the overall Order PB.
 		res := &corepb.Order{
 			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:      order.ID,
-			Created: order.Created.UnixNano(),
+			Id:        order.ID,
+			CreatedNS: order.Created.UnixNano(),
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
-			Expires:        req.NewOrder.Expires,
+			ExpiresNS:      req.NewOrder.ExpiresNS,
 			Names:          req.NewOrder.Names,
 			// Have to combine the already-associated and newly-reacted authzs.
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),
@@ -704,7 +704,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 // the authorization is being moved to invalid the validationError field must be set. If the
 // authorization is being moved to valid the validationRecord and expires fields must be set.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
-	if req.Status == "" || req.Attempted == "" || req.Expires == 0 || req.Id == 0 {
+	if req.Status == "" || req.Attempted == "" || req.ExpiresNS == 0 || req.Id == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -754,8 +754,8 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	// the the database attemptedAt field Null instead of
 	// 1970-01-01 00:00:00.
 	var attemptedTime *time.Time
-	if req.AttemptedAt != 0 {
-		val := time.Unix(0, req.AttemptedAt).UTC()
+	if req.AttemptedAtNS != 0 {
+		val := time.Unix(0, req.AttemptedAtNS).UTC()
 		attemptedTime = &val
 	}
 	params := map[string]interface{}{
@@ -765,7 +765,7 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 		"validationRecord": vrJSON,
 		"id":               req.Id,
 		"pending":          statusUint(core.StatusPending),
-		"expires":          time.Unix(0, req.Expires).UTC(),
+		"expires":          time.Unix(0, req.ExpiresNS).UTC(),
 		// if req.ValidationError is nil veJSON should also be nil
 		// which should result in a NULL field
 		"validationError": veJSON,
@@ -790,11 +790,11 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" || req.Date == 0 {
+	if req.Serial == "" || req.DateNS == 0 {
 		return nil, errIncompleteRequest
 	}
 
-	revokedDate := time.Unix(0, req.Date)
+	revokedDate := time.Unix(0, req.DateNS)
 
 	res, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE certificateStatus SET
@@ -829,15 +829,15 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 // cert is already revoked, if the new revocation reason is `KeyCompromise`,
 // and if the revokedDate is identical to the current revokedDate.
 func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" || req.Date == 0 || req.Backdate == 0 {
+	if req.Serial == "" || req.DateNS == 0 || req.BackdateNS == 0 {
 		return nil, errIncompleteRequest
 	}
 	if req.Reason != ocsp.KeyCompromise {
 		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
 	}
 
-	thisUpdate := time.Unix(0, req.Date)
-	revokedDate := time.Unix(0, req.Backdate)
+	thisUpdate := time.Unix(0, req.DateNS)
+	revokedDate := time.Unix(0, req.BackdateNS)
 
 	res, err := ssa.dbMap.ExecContext(ctx,
 		`UPDATE certificateStatus SET
@@ -869,7 +869,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 
 // AddBlockedKey adds a key hash to the blockedKeys table
 func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.AddBlockedKeyRequest) (*emptypb.Empty, error) {
-	if core.IsAnyNilOrZero(req.KeyHash, req.Added, req.Source) {
+	if core.IsAnyNilOrZero(req.KeyHash, req.AddedNS, req.Source) {
 		return nil, errIncompleteRequest
 	}
 	sourceInt, ok := stringToSourceInt[req.Source]
@@ -879,7 +879,7 @@ func (ssa *SQLStorageAuthority) AddBlockedKey(ctx context.Context, req *sapb.Add
 	cols, qs := blockedKeysColumns, "?, ?, ?, ?"
 	vals := []interface{}{
 		req.KeyHash,
-		time.Unix(0, req.Added),
+		time.Unix(0, req.AddedNS),
 		sourceInt,
 		req.Comment,
 	}

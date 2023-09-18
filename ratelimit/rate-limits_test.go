@@ -80,8 +80,9 @@ func TestGetThreshold(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
+			threshold, _ := policy.GetThreshold(tc.Key, tc.RegID)
 			test.AssertEquals(t,
-				policy.GetThreshold(tc.Key, tc.RegID),
+				threshold,
 				tc.Expected)
 		})
 	}

@@ -412,7 +412,7 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 		context.Background(), &sapb.AddCertificateRequest{
 			Der:          rawCert,
 			RegID:        regId,
-			Issued:       time.Now().UnixNano(),
+			IssuedNS:     time.Now().UnixNano(),
 			IssuerNameID: 1,
 		},
 	)

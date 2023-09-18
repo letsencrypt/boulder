@@ -108,13 +108,13 @@ message GetPendingAuthorizationRequest {
   string identifierType = 2;
   string identifierValue = 3;
   // Result must be valid until at least this Unix timestamp (nanos)
-  int64 validUntil = 4;
+  int64 validUntilNS = 4;
 }
 
 message GetValidAuthorizationsRequest {
   int64 registrationID = 1;
   repeated string domains = 2;
-  int64 now = 3; // Unix timestamp (nanoseconds)
+  int64 nowNS = 3; // Unix timestamp (nanoseconds)
 }
 
 message ValidAuthorizations {
@@ -132,13 +132,13 @@ message Serial {
 message SerialMetadata {
   string serial = 1;
   int64 registrationID = 2;
-  int64 created = 3; // Unix timestamp (nanoseconds)
-  int64 expires = 4; // Unix timestamp (nanoseconds)
+  int64 createdNS = 3; // Unix timestamp (nanoseconds)
+  int64 expiresNS = 4; // Unix timestamp (nanoseconds)
 }
 
 message Range {
-  int64 earliest = 1; // Unix timestamp (nanoseconds)
-  int64 latest = 2;   // Unix timestamp (nanoseconds)
+  int64 earliestNS = 1; // Unix timestamp (nanoseconds)
+  int64 latestNS = 2;   // Unix timestamp (nanoseconds)
 }
 
 message Count {
@@ -146,7 +146,7 @@ message Count {
 }
 
 message Timestamps {
-	repeated int64 timestamps = 1; // Unix timestamp (nanoseconds)
+	repeated int64 timestampsNS = 1; // Unix timestamp (nanoseconds)
 }
 
 message CountCertificatesByNamesRequest {
@@ -197,8 +197,8 @@ message Exists {
 message AddSerialRequest {
   int64 regID = 1;
   string serial = 2;
-  int64 created = 3; // Unix timestamp (nanoseconds)
-  int64 expires = 4; // Unix timestamp (nanoseconds)
+  int64 createdNS = 3; // Unix timestamp (nanoseconds)
+  int64 expiresNS = 4; // Unix timestamp (nanoseconds)
 }
 
 message AddCertificateRequest {
@@ -207,7 +207,7 @@ message AddCertificateRequest {
   reserved 3; // previously ocsp
   // An issued time. When not present the SA defaults to using
   // the current time.
-  int64 issued = 4;
+  int64 issuedNS = 4; // Unix timestamp (nanoseconds)
   int64 issuerNameID = 5; // https://pkg.go.dev/github.com/letsencrypt/boulder/issuance#IssuerNameID
 
   // If this is set to true, the certificateStatus.status column will be set to
@@ -232,7 +232,7 @@ message OrderRequest {
 
 message NewOrderRequest {
   int64 registrationID = 1;
-  int64 expires = 2;
+  int64 expiresNS = 2; // Unix timestamp (nanoseconds)
   repeated string names = 3;
   repeated int64 v2Authorizations = 4;
 }
@@ -265,7 +265,7 @@ message FinalizeOrderRequest {
 message GetAuthorizationsRequest {
   int64 registrationID = 1;
   repeated string domains = 2;
-  int64 now = 3; // Unix timestamp (nanoseconds)
+  int64 nowNS = 3; // Unix timestamp (nanoseconds)
 }
 
 message Authorizations {
@@ -287,8 +287,8 @@ message AuthorizationID2 {
 message RevokeCertificateRequest {
   string serial = 1;
   int64 reason = 2;
-  int64 date = 3; // Unix timestamp (nanoseconds)
-  int64 backdate = 5; // Unix timestamp (nanoseconds)
+  int64 dateNS = 3; // Unix timestamp (nanoseconds)
+  int64 backdateNS = 5; // Unix timestamp (nanoseconds)
   bytes response = 4;
   int64 issuerID = 6;
 }
@@ -296,16 +296,16 @@ message RevokeCertificateRequest {
 message FinalizeAuthorizationRequest {
   int64 id = 1;
   string status = 2;
-  int64 expires = 3; // Unix timestamp (nanoseconds)
+  int64 expiresNS = 3; // Unix timestamp (nanoseconds)
   string attempted = 4;
   repeated core.ValidationRecord validationRecords = 5;
   core.ProblemDetails validationError = 6;
-  int64 attemptedAt = 7; // Unix timestamp (nanoseconds)
+  int64 attemptedAtNS = 7; // Unix timestamp (nanoseconds)
 }
 
 message AddBlockedKeyRequest {
   bytes keyHash = 1;
-  int64 added = 2; // Unix timestamp (nanoseconds)
+  int64 addedNS = 2; // Unix timestamp (nanoseconds)
   string source = 3;
   string comment = 4;
   int64 revokedBy = 5;
@@ -319,7 +319,7 @@ message Incident {
   int64 id = 1;
   string serialTable = 2;
   string url = 3;
-  int64 renewBy = 4; // Unix timestamp (nanoseconds)
+  int64 renewByNS = 4; // Unix timestamp (nanoseconds)
   bool enabled = 5;
 }
 
@@ -335,14 +335,14 @@ message IncidentSerial {
   string serial = 1;
   int64 registrationID = 2; // May be 0 (NULL)
   int64 orderID = 3; // May be 0 (NULL)
-  int64 lastNoticeSent = 4; // Unix timestamp (nanoseconds), may be 0 (NULL)
+  int64 lastNoticeSentNS = 4; // Unix timestamp (nanoseconds), may be 0 (NULL)
 }
 
 message GetRevokedCertsRequest {
   int64 issuerNameID = 1;
-  int64 expiresAfter = 2; // Unix timestamp (nanoseconds), inclusive
-  int64 expiresBefore = 3; // Unix timestamp (nanoseconds), exclusive
-  int64 revokedBefore = 4; // Unix timestamp (nanoseconds)
+  int64 expiresAfterNS = 2; // Unix timestamp (nanoseconds), inclusive
+  int64 expiresBeforeNS = 3; // Unix timestamp (nanoseconds), exclusive
+  int64 revokedBeforeNS = 4; // Unix timestamp (nanoseconds)
 }
 
 message RevocationStatus {
