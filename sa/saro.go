@@ -405,7 +405,9 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 		Serial:         recordedSerial.Serial,
 		RegistrationID: recordedSerial.RegistrationID,
 		CreatedNS:      recordedSerial.Created.UnixNano(),
+		Created:        timestamppb.New(recordedSerial.Created),
 		ExpiresNS:      recordedSerial.Expires.UnixNano(),
+		Expires:        timestamppb.New(recordedSerial.Expires),
 	}, nil
 }
 
@@ -1336,6 +1338,7 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 			Serial:      row.Serial,
 			Reason:      int32(row.RevokedReason),
 			RevokedAtNS: row.RevokedDate.UnixNano(),
+			RevokedAt:   timestamppb.New(row.RevokedDate),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)

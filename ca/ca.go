@@ -17,6 +17,7 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -190,7 +191,9 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 		Serial:    serialHex,
 		RegID:     regID,
 		CreatedNS: nowNanos,
+		Created:   timestamppb.Now(),
 		ExpiresNS: expiresNanos,
+		Expires:   timestamppb.New(validity.NotAfter),
 	})
 	if err != nil {
 		return nil, err
@@ -300,6 +303,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Der:      certDER,
 		RegID:    req.RegistrationID,
 		IssuedNS: ca.clk.Now().UnixNano(),
+		Issued:   timestamppb.Now(),
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
@@ -313,7 +317,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Der:            certDER,
 		Digest:         core.Fingerprint256(certDER),
 		IssuedNS:       precert.NotBefore.UnixNano(),
+		Issued:         timestamppb.New(precert.NotBefore),
 		ExpiresNS:      precert.NotAfter.UnixNano(),
+		Expires:        timestamppb.New(precert.NotAfter),
 	}, nil
 }
 
@@ -418,6 +424,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
 		IssuedNS:     nowNanos,
+		Issued:       timestamppb.Now(),
 		IssuerNameID: int64(issuer.Cert.NameID()),
 		OcspNotReady: true,
 	})

@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/akamai"
@@ -378,7 +379,9 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 		Ip: ip,
 		Range: &sapb.Range{
 			EarliestNS: limit.WindowBegin(now).UnixNano(),
+			Earliest:   timestamppb.New(limit.WindowBegin(timestamppb.Now().AsTime())),
 			LatestNS:   now.UnixNano(),
+			Latest:     timestamppb.Now(),
 		},
 	})
 	if err != nil {
@@ -625,14 +628,18 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context
 }
 
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string, limit ratelimit.RateLimitPolicy) error {
-	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
-	earliest := latest.Add(-limit.Window.Duration)
+	latestNS := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
+	latest := timestamppb.New(timestamppb.Now().AsTime().Add(ra.pendingAuthorizationLifetime))
+	earliestNS := latestNS.Add(-limit.Window.Duration)
+	earliest := timestamppb.New(latest.AsTime().Add(-limit.Window.Duration))
 	req := &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: regID,
 		Hostname:       hostname,
 		Range: &sapb.Range{
-			EarliestNS: earliest.UnixNano(),
-			LatestNS:   latest.UnixNano(),
+			EarliestNS: earliestNS.UnixNano(),
+			Earliest:   earliest,
+			LatestNS:   latestNS.UnixNano(),
+			Latest:     latest,
 		},
 	}
 	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
@@ -663,7 +670,9 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 		AccountID: acctID,
 		Range: &sapb.Range{
 			EarliestNS: now.Add(-limit.Window.Duration).UnixNano(),
+			Earliest:   timestamppb.New(timestamppb.Now().AsTime().Add(-limit.Window.Duration)),
 			LatestNS:   now.UnixNano(),
+			Latest:     timestamppb.Now(),
 		},
 	})
 	if err != nil {
@@ -1395,7 +1404,9 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 		Names: names,
 		Range: &sapb.Range{
 			EarliestNS: limit.WindowBegin(now).UnixNano(),
+			Earliest:   timestamppb.New(limit.WindowBegin(timestamppb.Now().AsTime())),
 			LatestNS:   now.UnixNano(),
+			Latest:     timestamppb.Now(),
 		},
 	}
 
@@ -1674,6 +1685,7 @@ func mergeUpdate(base *corepb.Registration, update *corepb.Registration) (*corep
 		Agreement:       base.Agreement,
 		InitialIP:       base.InitialIP,
 		CreatedAtNS:     base.CreatedAtNS,
+		CreatedAt:       base.CreatedAt,
 		Status:          base.Status,
 	}
 
@@ -1717,26 +1729,34 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if err != nil {
 		return err
 	}
-	var expires int64
+	var expiresOrigNS int64
+	var expires *timestamppb.Timestamp
 	if challenge.Status == core.StatusInvalid {
-		expires = authExpires.UnixNano()
+		expiresOrigNS = authExpires.UnixNano()
+		expires = timestamppb.New(*authExpires)
 	} else {
-		expires = ra.clk.Now().Add(ra.authorizationLifetime).UnixNano()
+		expiresOrigNS = ra.clk.Now().Add(ra.authorizationLifetime).UnixNano()
+		//expires = timestamppb.New(timestamppb.Now().AsTime().Add(ra.authorizationLifetime))
+		expires = timestamppb.New(ra.clk.Now().Add(ra.authorizationLifetime))
 	}
 	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error)
 	if err != nil {
 		return err
 	}
-	var validated int64
+	var validatedOrigNS int64
+	var validated *timestamppb.Timestamp
 	if challenge.Validated != nil {
-		validated = challenge.Validated.UTC().UnixNano()
+		validatedOrigNS = challenge.Validated.UTC().UnixNano()
+		validated = timestamppb.New(*challenge.Validated)
 	}
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
 		Status:            string(challenge.Status),
-		ExpiresNS:         expires,
+		ExpiresNS:         expiresOrigNS,
+		Expires:           expires,
 		Attempted:         string(challenge.Type),
-		AttemptedAtNS:     validated,
+		AttemptedAtNS:     validatedOrigNS,
+		AttemptedAt:       validated,
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -2370,8 +2390,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		return nil, errors.New("serial belongs to a certificate that errored during issuance")
 	}
 
-	notAfter := time.Unix(0, status.NotAfterNS).UTC()
-	if ra.clk.Now().After(notAfter) {
+	if ra.clk.Now().After(status.NotAfter.AsTime()) {
 		return nil, berrors.NotFoundError("certificate is expired")
 	}
 
@@ -2380,6 +2399,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		Status:      status.Status,
 		Reason:      int32(status.RevokedReason),
 		RevokedAtNS: status.RevokedDateNS,
+		RevokedAt:   status.RevokedDate,
 		IssuerID:    status.IssuerID,
 	})
 }
