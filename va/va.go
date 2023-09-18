@@ -378,17 +378,21 @@ func (va *ValidationAuthorityImpl) validate(
 		baseIdentifier.Value = strings.TrimPrefix(identifier.Value, "*.")
 	}
 
-	// va.checkCAA accepts wildcard identifiers and handles them appropriately so
-	// we can dispatch `checkCAA` with the provided `identifier` instead of
-	// `baseIdentifier`
+	// Create this channel outside of the feature-conditional block so that it is
+	// also in scope for the matching block below.
 	ch := make(chan *probs.ProblemDetails, 1)
-	go func() {
-		params := &caaParams{
-			accountURIID:     regid,
-			validationMethod: challenge.Type,
-		}
-		ch <- va.checkCAA(ctx, identifier, params)
-	}()
+	if !features.Enabled(features.CAAAfterValidation) {
+		// va.checkCAA accepts wildcard identifiers and handles them appropriately so
+		// we can dispatch `checkCAA` with the provided `identifier` instead of
+		// `baseIdentifier`
+		go func() {
+			params := &caaParams{
+				accountURIID:     regid,
+				validationMethod: challenge.Type,
+			}
+			ch <- va.checkCAA(ctx, identifier, params)
+		}()
+	}
 
 	// TODO(#1292): send into another goroutine
 	validationRecords, prob := va.validateChallenge(ctx, baseIdentifier, challenge)
@@ -401,11 +405,23 @@ func (va *ValidationAuthorityImpl) validate(
 		return validationRecords, prob
 	}
 
-	for i := 0; i < cap(ch); i++ {
-		if extraProblem := <-ch; extraProblem != nil {
-			return validationRecords, extraProblem
+	if !features.Enabled(features.CAAAfterValidation) {
+		for i := 0; i < cap(ch); i++ {
+			if extraProblem := <-ch; extraProblem != nil {
+				return validationRecords, extraProblem
+			}
+		}
+	} else {
+		params := &caaParams{
+			accountURIID:     regid,
+			validationMethod: challenge.Type,
+		}
+		prob := va.checkCAA(ctx, identifier, params)
+		if prob != nil {
+			return validationRecords, prob
 		}
 	}
+
 	return validationRecords, nil
 }
 
