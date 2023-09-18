@@ -34,9 +34,9 @@ type Config struct {
 	// authenticated in the server certificate would be 'foo.service.consul'.
 	Lookups []cmd.ServiceDomain `validate:"omitempty,required_without=ShardAddrs,min=1,dive"`
 
-	// LookupTimeout is the timeout for each periodic SRV lookup. Defaults to 30
-	// seconds if unspecified.
-	LookupTimeout config.Duration `validate:"-"`
+	// LookupFrequency is the frequency of periodic SRV lookups. Defaults to 30
+	// seconds.
+	LookupFrequency config.Duration `validate:"-"`
 
 	// LookupDNSAuthority can only be specified with Lookups. It's a single
 	// <hostname|IPv4|[IPv6]>:<port> of the DNS server to be used for resolution
@@ -157,7 +157,7 @@ func (c *Config) NewRingWithPeriodicLookups(stats prometheus.Registerer, logger 
 		return nil, nil, err
 	}
 
-	lookup, err := newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupTimeout.Duration, ring, logger, stats)
+	lookup, err := newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupFrequency.Duration, ring, logger, stats)
 	if err != nil {
 		return nil, nil, err
 	}
