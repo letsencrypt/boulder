@@ -18,14 +18,13 @@ import (
 	"slices"
 	"time"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
+	"golang.org/x/crypto/ocsp"
+	"gopkg.in/yaml.v3"
 
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/strictyaml"
-	"golang.org/x/crypto/ocsp"
-	"gopkg.in/yaml.v3"
 )
 
 var kp goodkey.KeyPolicy
@@ -933,7 +932,7 @@ func crlCeremony(configBytes []byte) error {
 		return fmt.Errorf("unable to parse crl-profile.next-update: %s", err)
 	}
 
-	var revokedCertificates []crl_x509.RevokedCertificate
+	var revokedCertificates []x509.RevocationListEntry
 	for _, rc := range config.CRLProfile.RevokedCertificates {
 		cert, err := loadCert(rc.CertificatePath)
 		if err != nil {
@@ -943,7 +942,7 @@ func crlCeremony(configBytes []byte) error {
 		if err != nil {
 			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")
 		}
-		revokedCert := crl_x509.RevokedCertificate{
+		revokedCert := x509.RevocationListEntry{
 			SerialNumber:   cert.SerialNumber,
 			RevocationTime: revokedAt,
 		}

@@ -15,10 +15,9 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/crl/checker"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 )
 
-func downloadShard(url string) (*crl_x509.RevocationList, error) {
+func downloadShard(url string) (*x509.RevocationList, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("downloading crl: %w", err)
@@ -32,7 +31,7 @@ func downloadShard(url string) (*crl_x509.RevocationList, error) {
 		return nil, fmt.Errorf("reading CRL bytes: %w", err)
 	}
 
-	crl, err := crl_x509.ParseRevocationList(crlBytes)
+	crl, err := x509.ParseRevocationList(crlBytes)
 	if err != nil {
 		return nil, fmt.Errorf("parsing CRL: %w", err)
 	}
@@ -100,7 +99,7 @@ func main() {
 
 		totalBytes += len(crl.Raw)
 
-		zcrl, err := crl_x509.ParseRevocationList(crl.Raw)
+		zcrl, err := x509.ParseRevocationList(crl.Raw)
 		if err != nil {
 			errCount += 1
 			logger.Errf("parsing CRL %q failed: %s", u, err)
@@ -118,7 +117,7 @@ func main() {
 			oldestTimestamp = crl.ThisUpdate
 		}
 
-		for _, c := range crl.RevokedCertificates {
+		for _, c := range crl.RevokedCertificateEntries {
 			serial := core.SerialToString(c.SerialNumber)
 			if _, seen := seenSerials[serial]; seen {
 				errCount += 1

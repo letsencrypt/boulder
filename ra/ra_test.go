@@ -643,6 +643,9 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	_, err := ra.NewRegistration(ctx, reg)
 	test.AssertNotError(t, err, "Unexpected error adding new IPv4 registration")
 	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "decision": ratelimits.Allowed}, 1)
+	// There are no overrides for this IP, so the override usage gauge should
+	// contain 0 entries with labels matching it.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": "7.6.6.5"}, 0)
 
 	// Create another registration for the same IPv4 address by changing the key
 	reg.Key = newAcctKey(t)
@@ -693,6 +696,44 @@ func TestNewRegistrationRateLimit(t *testing.T) {
 	test.AssertError(t, err, "No error adding a third IPv6 registration in the same /48")
 	test.AssertEquals(t, err.Error(), "too many registrations for this IP range: see https://letsencrypt.org/docs/rate-limits/")
 	test.AssertMetricWithLabelsEquals(t, ra.rlCheckLatency, prometheus.Labels{"limit": ratelimit.RegistrationsPerIPRange, "decision": ratelimits.Denied}, 1)
+}
+
+func TestRegistrationsPerIPOverrideUsage(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	regIP := net.ParseIP("4.5.6.7")
+	rlp := ratelimit.RateLimitPolicy{
+		Threshold: 2,
+		Window:    config.Duration{Duration: 23 * time.Hour},
+		Overrides: map[string]int64{
+			regIP.String(): 3,
+		},
+	}
+
+	mockCounterAlwaysTwo := func(context.Context, *sapb.CountRegistrationsByIPRequest, ...grpc.CallOption) (*sapb.Count, error) {
+		return &sapb.Count{Count: 2}, nil
+	}
+
+	// No error expected, the count of existing registrations for "4.5.6.7"
+	// should be 1 below the threshold.
+	err := ra.checkRegistrationIPLimit(ctx, rlp, regIP, mockCounterAlwaysTwo)
+	test.AssertNotError(t, err, "Unexpected error checking RegistrationsPerIPRange limit")
+
+	// Expecting ~66% of the override for "4.5.6.7" to be utilized.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": regIP.String()}, 0.6666666666666666)
+
+	mockCounterAlwaysThree := func(context.Context, *sapb.CountRegistrationsByIPRequest, ...grpc.CallOption) (*sapb.Count, error) {
+		return &sapb.Count{Count: 3}, nil
+	}
+
+	// Error expected, the count of existing registrations for "4.5.6.7" should
+	// be exactly at the threshold.
+	err = ra.checkRegistrationIPLimit(ctx, rlp, regIP, mockCounterAlwaysThree)
+	test.AssertError(t, err, "Expected error checking RegistrationsPerIPRange limit")
+
+	// Expecting 100% of the override for "4.5.6.7" to be utilized.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": regIP.String()}, 1)
 }
 
 type NoUpdateSA struct {
@@ -1194,6 +1235,9 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "good-example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
+	// There are no overrides for "99:example.com", so the override usage gauge
+	// should contain 0 entries with labels matching it.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:example.com"}, 0)
 	// Verify it has no sub errors as there is only one bad name
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/")
 	var bErr *berrors.BoulderError
@@ -1221,6 +1265,10 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts.Counts["bigissuer.com"] = 50
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
+	// "99:bigissuer.com" has an override of 100 and they've issued 50. We do
+	// not count issuance that has yet to occur, so we expect to see 50%
+	// utilization.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:bigissuer.com"}, .5)
 
 	// Two base domains, one above its override
 	mockSA.nameCounts.Counts["example.com"] = 10
@@ -1228,12 +1276,18 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
+	// "99:bigissuer.com" has an override of 100 and they've issued 100. So we
+	// expect to see 100% utilization.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:bigissuer.com"}, 1)
 
 	// One base domain, above its override (which is below threshold)
 	mockSA.nameCounts.Counts["smallissuer.co.uk"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
+	// "99:smallissuer.co.uk" has an override of 1 and they've issued 1. So we
+	// expect to see 100% utilization.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:smallissuer.co.uk"}, 1)
 }
 
 // TestCheckExactCertificateLimit tests that the duplicate certificate limit

@@ -3,6 +3,7 @@ package ca
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
@@ -15,7 +16,6 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	bcrl "github.com/letsencrypt/boulder/crl"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
 )
@@ -67,9 +67,9 @@ func NewCRLImpl(issuers []*issuance.Issuer, lifetime time.Duration, idpBase stri
 
 func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error {
 	var issuer *issuance.Issuer
-	var template *crl_x509.RevocationList
+	var template *x509.RevocationList
 	var shard int64
-	rcs := make([]crl_x509.RevokedCertificate, 0)
+	rcs := make([]x509.RevocationListEntry, 0)
 
 	for {
 		in, err := stream.Recv()
@@ -138,11 +138,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 				fmt.Fprintf(&builder, "Signing CRL: logID=[%s] entries=[", logID)
 			}
 
-			reason := 0
-			if rcs[i].ReasonCode != nil {
-				reason = *rcs[i].ReasonCode
-			}
-			fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), reason)
+			fmt.Fprintf(&builder, "%x:%d,", rcs[i].SerialNumber.Bytes(), rcs[i].ReasonCode)
 
 			if builder.Len() >= ci.maxLogLen {
 				fmt.Fprint(&builder, "]")
@@ -154,14 +150,14 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 		ci.log.AuditInfo(builder.String())
 	}
 
-	template.RevokedCertificates = rcs
+	template.RevokedCertificateEntries = rcs
 
 	err = issuer.Linter.CheckCRL(template)
 	if err != nil {
 		return err
 	}
 
-	crlBytes, err := crl_x509.CreateRevocationList(
+	crlBytes, err := x509.CreateRevocationList(
 		rand.Reader,
 		template,
 		issuer.Cert.Certificate,
@@ -196,21 +192,21 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 	return nil
 }
 
-func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*crl_x509.RevocationList, error) {
+func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*x509.RevocationList, error) {
 	if meta.IssuerNameID == 0 || meta.ThisUpdateNS == 0 {
 		return nil, errors.New("got incomplete metadata message")
 	}
 	thisUpdate := time.Unix(0, meta.ThisUpdateNS)
 	number := bcrl.Number(thisUpdate)
 
-	return &crl_x509.RevocationList{
+	return &x509.RevocationList{
 		Number:     number,
 		ThisUpdate: thisUpdate,
 		NextUpdate: thisUpdate.Add(-time.Second).Add(ci.lifetime),
 	}, nil
 }
 
-func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*crl_x509.RevokedCertificate, error) {
+func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*x509.RevocationListEntry, error) {
 	serial, err := core.StringToSerial(entry.Serial)
 	if err != nil {
 		return nil, err
@@ -221,16 +217,10 @@ func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*crl_x509.
 	}
 	revokedAt := time.Unix(0, entry.RevokedAtNS)
 
-	var reason *int
-	if entry.Reason != 0 {
-		reason = new(int)
-		*reason = int(entry.Reason)
-	}
-
-	return &crl_x509.RevokedCertificate{
+	return &x509.RevocationListEntry{
 		SerialNumber:   serial,
 		RevocationTime: revokedAt,
-		ReasonCode:     reason,
+		ReasonCode:     int(entry.Reason),
 	}, nil
 }
 
