@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"errors"
 	"slices"
 	"strings"
 
@@ -77,7 +78,8 @@ func newClientMetricsCollector(statGetter poolStatGetter, labels prometheus.Labe
 
 // MustRegisterClientMetricsCollector registers a metrics collector for the
 // given Redis client with the provided prometheus.Registerer. The collector
-// will report metrics labelled by the provided addresses and username.
+// will report metrics labelled by the provided addresses and username. If the
+// collector is already registered, this function is a no-op.
 func MustRegisterClientMetricsCollector(client poolStatGetter, stats prometheus.Registerer, addrs map[string]string, user string) {
 	var labelAddrs []string
 	for addr := range addrs {
@@ -89,5 +91,13 @@ func MustRegisterClientMetricsCollector(client poolStatGetter, stats prometheus.
 		"addresses": strings.Join(labelAddrs, ", "),
 		"user":      user,
 	}
-	stats.MustRegister(newClientMetricsCollector(client, labels))
+	err := stats.Register(newClientMetricsCollector(client, labels))
+	if err != nil {
+		are := prometheus.AlreadyRegisteredError{}
+		if errors.As(err, &are) {
+			// The collector is already registered using the same labels.
+			return
+		}
+		panic(err)
+	}
 }

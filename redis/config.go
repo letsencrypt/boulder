@@ -20,19 +20,19 @@ type Config struct {
 
 	// PasswordFile is the path to a file holding the password used to
 	// authenticate to each Redis instance.
-	PasswordFile cmd.PasswordConfig `validate:"required"`
+	cmd.PasswordConfig
 
 	// ShardAddrs is a map of shard names to IP address:port pairs. The go-redis
 	// `Ring` client will shard reads and writes across the provided Redis
 	// Servers based on a consistent hashing algorithm.
-	ShardAddrs map[string]string `validate:"required_without=Lookups,min=1,dive,hostname_port"`
+	ShardAddrs map[string]string `validate:"omitempty,required_without=Lookups,min=1,dive,hostname_port"`
 
 	// Lookups each entry contains a service and domain name that will be used
 	// to construct a SRV DNS query to lookup Redis backends. For example: if
 	// the resource record is 'foo.service.consul', then the 'Service' is 'foo'
 	// and the 'Domain' is 'service.consul'. The expected dNSName to be
 	// authenticated in the server certificate would be 'foo.service.consul'.
-	Lookups []cmd.ServiceDomain `validate:"required_without=ShardAddrs,min=1,dive"`
+	Lookups []cmd.ServiceDomain `validate:"omitempty,required_without=ShardAddrs,min=1,dive"`
 
 	// LookupTimeout is the timeout for each periodic SRV lookup. Defaults to 30
 	// seconds if unspecified.
@@ -113,7 +113,7 @@ type Config struct {
 
 // NewRing returns a new Redis ring client.
 func (c *Config) NewRing(stats prometheus.Registerer) (*redis.Ring, error) {
-	password, err := c.PasswordFile.Pass()
+	password, err := c.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)
 	}

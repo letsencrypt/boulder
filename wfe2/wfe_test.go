@@ -365,9 +365,6 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		// Setup rate limiting.
 		rc := bredis.Config{
 			Username: "unittest-rw",
-			PasswordFile: cmd.PasswordConfig{
-				PasswordFile: "../test/secrets/ratelimits_redis_password",
-			},
 			TLS: cmd.TLSConfig{
 				CACertFile: "../test/redis-tls/minica.pem",
 				CertFile:   "../test/redis-tls/boulder/cert.pem",
@@ -381,6 +378,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 			},
 			LookupDNSAuthority: "consul.service.consul",
 			Timeout:            config.Duration{Duration: 1 * time.Second},
+		}
+		rc.PasswordConfig = cmd.PasswordConfig{
+			PasswordFile: "../test/secrets/ratelimits_redis_password",
 		}
 		ring, _, err := rc.NewRingWithPeriodicLookups(stats, log)
 		test.AssertNotError(t, err, "making redis ring and lookup")
