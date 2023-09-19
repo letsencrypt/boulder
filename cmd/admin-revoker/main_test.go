@@ -36,6 +36,7 @@ import (
 	"github.com/letsencrypt/boulder/test/vars"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type mockOCSPA struct {
@@ -408,11 +409,13 @@ func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, p
 	rawCert, err := x509.CreateCertificate(rand.Reader, template, c.issuer.Certificate, &pubKey, c.signer)
 	test.AssertNotError(t, err, "Failed to generate test cert")
 
+	now := time.Now()
 	_, err = c.ssa.AddPrecertificate(
 		context.Background(), &sapb.AddCertificateRequest{
 			Der:          rawCert,
 			RegID:        regId,
-			IssuedNS:     time.Now().UnixNano(),
+			IssuedNS:     now.UnixNano(),
+			Issued:       timestamppb.New(now),
 			IssuerNameID: 1,
 		},
 	)

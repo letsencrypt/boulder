@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -229,9 +230,9 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
-	var createdAt int64
+	var createdAt time.Time
 	if reg.CreatedAt != nil {
-		createdAt = reg.CreatedAt.UTC().UnixNano()
+		createdAt = reg.CreatedAt.UTC()
 	}
 	return &corepb.Registration{
 		Id:              reg.ID,
@@ -240,7 +241,8 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
-		CreatedAtNS:     createdAt,
+		CreatedAtNS:     createdAt.UnixNano(),
+		CreatedAt:       timestamppb.New(createdAt),
 		Status:          string(reg.Status),
 	}, nil
 }
@@ -295,16 +297,17 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		}
 		challs[i] = pbChall
 	}
-	var expires int64
+	var expires time.Time
 	if authz.Expires != nil {
-		expires = authz.Expires.UTC().UnixNano()
+		expires = authz.Expires.UTC()
 	}
 	return &corepb.Authorization{
 		Id:             authz.ID,
 		Identifier:     authz.Identifier.Value,
 		RegistrationID: authz.RegistrationID,
 		Status:         string(authz.Status),
-		ExpiresNS:      expires,
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 		Challenges:     challs,
 	}, nil
 }
@@ -354,7 +357,9 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 		Digest:         cert.Digest,
 		Der:            cert.DER,
 		IssuedNS:       cert.Issued.UnixNano(),
+		Issued:         timestamppb.New(cert.Issued),
 		ExpiresNS:      cert.Expires.UnixNano(),
+		Expires:        timestamppb.New(cert.Expires),
 	}
 }
 
@@ -375,9 +380,12 @@ func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus
 		Status:                  string(certStatus.Status),
 		OcspLastUpdated:         certStatus.OCSPLastUpdated.UnixNano(),
 		RevokedDateNS:           certStatus.RevokedDate.UnixNano(),
+		RevokedDate:             timestamppb.New(certStatus.RevokedDate),
 		RevokedReason:           int64(certStatus.RevokedReason),
 		LastExpirationNagSentNS: certStatus.LastExpirationNagSent.UnixNano(),
+		LastExpirationNagSent:   timestamppb.New(certStatus.LastExpirationNagSent),
 		NotAfterNS:              certStatus.NotAfter.UnixNano(),
+		NotAfter:                timestamppb.New(certStatus.NotAfter),
 		IsExpired:               certStatus.IsExpired,
 		IssuerID:                certStatus.IssuerNameID,
 	}

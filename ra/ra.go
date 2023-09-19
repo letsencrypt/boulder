@@ -379,9 +379,9 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 		Ip: ip,
 		Range: &sapb.Range{
 			EarliestNS: limit.WindowBegin(now).UnixNano(),
-			Earliest:   timestamppb.New(limit.WindowBegin(timestamppb.Now().AsTime())),
+			Earliest:   timestamppb.New(limit.WindowBegin(now)),
 			LatestNS:   now.UnixNano(),
-			Latest:     timestamppb.Now(),
+			Latest:     timestamppb.New(now),
 		},
 	})
 	if err != nil {
@@ -628,18 +628,16 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimits(ctx context
 }
 
 func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.Context, regID int64, hostname string, limit ratelimit.RateLimitPolicy) error {
-	latestNS := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
-	latest := timestamppb.New(timestamppb.Now().AsTime().Add(ra.pendingAuthorizationLifetime))
-	earliestNS := latestNS.Add(-limit.Window.Duration)
-	earliest := timestamppb.New(latest.AsTime().Add(-limit.Window.Duration))
+	latest := ra.clk.Now().Add(ra.pendingAuthorizationLifetime)
+	earliest := latest.Add(-limit.Window.Duration)
 	req := &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: regID,
 		Hostname:       hostname,
 		Range: &sapb.Range{
-			EarliestNS: earliestNS.UnixNano(),
-			Earliest:   earliest,
-			LatestNS:   latestNS.UnixNano(),
-			Latest:     latest,
+			EarliestNS: earliest.UnixNano(),
+			Earliest:   timestamppb.New(earliest),
+			LatestNS:   latest.UnixNano(),
+			Latest:     timestamppb.New(latest),
 		},
 	}
 	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
@@ -1404,9 +1402,9 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 		Names: names,
 		Range: &sapb.Range{
 			EarliestNS: limit.WindowBegin(now).UnixNano(),
-			Earliest:   timestamppb.New(limit.WindowBegin(timestamppb.Now().AsTime())),
+			Earliest:   timestamppb.New(limit.WindowBegin(now)),
 			LatestNS:   now.UnixNano(),
-			Latest:     timestamppb.Now(),
+			Latest:     timestamppb.New(now),
 		},
 	}
 
@@ -1729,34 +1727,28 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if err != nil {
 		return err
 	}
-	var expiresOrigNS int64
-	var expires *timestamppb.Timestamp
+	var expires time.Time
 	if challenge.Status == core.StatusInvalid {
-		expiresOrigNS = authExpires.UnixNano()
-		expires = timestamppb.New(*authExpires)
+		expires = *authExpires
 	} else {
-		expiresOrigNS = ra.clk.Now().Add(ra.authorizationLifetime).UnixNano()
-		//expires = timestamppb.New(timestamppb.Now().AsTime().Add(ra.authorizationLifetime))
-		expires = timestamppb.New(ra.clk.Now().Add(ra.authorizationLifetime))
+		expires = ra.clk.Now().Add(ra.authorizationLifetime)
 	}
 	vr, err := bgrpc.ValidationResultToPB(challenge.ValidationRecord, challenge.Error)
 	if err != nil {
 		return err
 	}
-	var validatedOrigNS int64
-	var validated *timestamppb.Timestamp
+	var validated time.Time
 	if challenge.Validated != nil {
-		validatedOrigNS = challenge.Validated.UTC().UnixNano()
-		validated = timestamppb.New(*challenge.Validated)
+		validated = challenge.Validated.UTC()
 	}
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
 		Status:            string(challenge.Status),
-		ExpiresNS:         expiresOrigNS,
-		Expires:           expires,
+		ExpiresNS:         expires.UnixNano(),
+		Expires:           timestamppb.New(expires),
 		Attempted:         string(challenge.Type),
-		AttemptedAtNS:     validatedOrigNS,
-		AttemptedAt:       validated,
+		AttemptedAtNS:     validated.UnixNano(),
+		AttemptedAt:       timestamppb.New(validated),
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1918,12 +1910,13 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID int64, reason revocation.Reason) error {
 	serialString := core.SerialToString(serial)
-	revokedAt := ra.clk.Now().UnixNano()
+	now := ra.clk.Now()
 
 	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(reason),
-		DateNS:   revokedAt,
+		DateNS:   now.UnixNano(),
+		Date:     timestamppb.New(now),
 		IssuerID: issuerID,
 	})
 	if err != nil {
@@ -1941,7 +1934,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
 	serialString := core.SerialToString(serial)
-	thisUpdate := ra.clk.Now().UnixNano()
+	now := ra.clk.Now()
 
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
 	if err != nil {
@@ -1960,8 +1953,10 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:     serialString,
 		Reason:     int64(ocsp.KeyCompromise),
-		DateNS:     thisUpdate,
+		DateNS:     now.UnixNano(),
+		Date:       timestamppb.New(now),
 		BackdateNS: status.RevokedDateNS,
+		Backdate:   status.RevokedDate,
 		IssuerID:   issuerID,
 	})
 	if err != nil {
@@ -2390,7 +2385,8 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		return nil, errors.New("serial belongs to a certificate that errored during issuance")
 	}
 
-	if ra.clk.Now().After(status.NotAfter.AsTime()) {
+	notAfter := time.Unix(0, status.NotAfterNS).UTC()
+	if ra.clk.Now().After(notAfter) {
 		return nil, berrors.NotFoundError("certificate is expired")
 	}
 

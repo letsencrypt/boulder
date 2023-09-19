@@ -33,6 +33,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -232,11 +233,16 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 }
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
+	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
+
 	return &corepb.Order{
 		Id:               1,
 		RegistrationID:   in.RegistrationID,
-		CreatedNS:        time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
-		ExpiresNS:        time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
+		CreatedNS:        created.UnixNano(),
+		Created:          timestamppb.New(created),
+		ExpiresNS:        expires.UnixNano(),
+		Expires:          timestamppb.New(expires),
 		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
@@ -1806,7 +1812,9 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
 		IssuedNS:       sa.cert.NotBefore.UnixNano(),
+		Issued:         timestamppb.New(sa.cert.NotBefore),
 		ExpiresNS:      sa.cert.NotAfter.UnixNano(),
+		Expires:        timestamppb.New(sa.cert.NotAfter),
 		Der:            sa.cert.Raw,
 	}, nil
 }
@@ -1841,6 +1849,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
 					RenewByNS:   0,
+					RenewBy:     nil,
 					Enabled:     true,
 				},
 			},
@@ -2100,10 +2109,14 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 		return nil, fmt.Errorf("failed to parse test cert: %w", err)
 	}
 
+	now := sa.clk.Now()
+	issued := now.Add(-1 * time.Second)
+
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		IssuedNS:       sa.clk.Now().Add(-1 * time.Second).UnixNano(),
+		IssuedNS:       issued.UnixNano(),
+		Issued:         timestamppb.New(issued),
 		Der:            cert.Raw,
 	}, nil
 }
@@ -3335,13 +3348,14 @@ func TestFinalizeSCTError(t *testing.T) {
 
 func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	wfe, fc, _ := setupWFE(t)
-
+	expires := fc.Now()
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
 		Id:               1,
 		RegistrationID:   1,
 		Names:            []string{"a"},
 		Status:           string(core.StatusPending),
-		ExpiresNS:        fc.Now().UnixNano(),
+		ExpiresNS:        expires.UnixNano(),
+		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{

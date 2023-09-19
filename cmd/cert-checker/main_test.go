@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
@@ -358,10 +359,12 @@ func TestGetAndProcessCerts(t *testing.T) {
 		rawCert.SerialNumber = big.NewInt(mrand.Int63())
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
+		now := fc.Now()
 		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:      certDER,
 			RegID:    reg.Id,
-			IssuedNS: fc.Now().UnixNano(),
+			IssuedNS: now.UnixNano(),
+			Issued:   timestamppb.New(now),
 		})
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
