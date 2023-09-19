@@ -632,7 +632,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		if errors.Is(err, ratelimits.ErrLimitDisabled) {
 			return
 		}
-		wfe.log.Warningf("checking new account rate limit: %s", err)
+		wfe.log.Warningf("checking %s rate limit: %s", ratelimits.NewRegistrationsPerIPAddress, err)
 		return
 	}
 	if !decision.Allowed || ip.To4() != nil {
@@ -650,7 +650,7 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		if errors.Is(err, ratelimits.ErrLimitDisabled) {
 			return
 		}
-		wfe.log.Warningf("checking new account rate limit: %s", err)
+		wfe.log.Warningf("checking %s rate limit: %s", ratelimits.NewRegistrationsPerIPv6Range, err)
 		return
 	}
 }

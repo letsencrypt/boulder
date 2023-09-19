@@ -26,13 +26,13 @@ type RedisSource struct {
 // NewRedisSource returns a new Redis backed source using the provided
 // *redis.Ring client.
 func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Registerer) *RedisSource {
-	// Exponential buckets ranging from 0.0005s to 300ms.
-	buckets := prometheus.ExponentialBucketsRange(0.0005, 0.3, 8)
+	// Exponential buckets ranging from 0.0005s to 3s.
+	buckets := prometheus.ExponentialBucketsRange(0.0005, 3, 8)
 
 	setLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ratelimits_set_latency",
-			Help:    "Histogram of latencies of redisSource.Set calls",
+			Help:    "Histogram of RedisSource.Set() call latencies labeled by result",
 			Buckets: buckets,
 		},
 		[]string{"result"},
@@ -42,7 +42,7 @@ func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Regist
 	getLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ratelimits_get_latency",
-			Help:    "Histogram of redisSource.Get call latencies",
+			Help:    "Histogram of RedisSource.Get() call latencies labeled by result",
 			Buckets: buckets,
 		},
 		[]string{"result"},
@@ -52,7 +52,7 @@ func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Regist
 	deleteLatency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "ratelimits_delete_latency",
-			Help:    "Histogram of latencies of redisSource.Delete calls",
+			Help:    "Histogram of RedisSource.Delete() call latencies labeled by result",
 			Buckets: buckets,
 		},
 		[]string{"result"},
@@ -68,6 +68,32 @@ func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Regist
 	}
 }
 
+// resultForError returns a string representing the result of the operation
+// based on the provided error.
+func resultForError(err error) string {
+	if errors.Is(redis.Nil, err) {
+		// Bucket key does not exist.
+		return "notFound"
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		// Client read or write deadline exceeded.
+		return "deadlineExceeded"
+	} else if errors.Is(err, context.Canceled) {
+		// Caller canceled the operation.
+		return "canceled"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		// Dialer timed out connecting to Redis.
+		return "timeout"
+	}
+	var redisErr redis.Error
+	if errors.Is(err, redisErr) {
+		// An internal error was returned by the Redis server.
+		return "redisError"
+	}
+	return "failed"
+}
+
 // Set stores the TAT at the specified bucketKey ('name:id'). It returns an
 // error if the operation failed and nil otherwise. If the bucketKey does not
 // exist, it will be created.
@@ -76,13 +102,7 @@ func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) 
 
 	err := r.client.Set(ctx, bucketKey, tat.UnixNano(), 0).Err()
 	if err != nil {
-		state := "failed"
-		if errors.Is(err, context.DeadlineExceeded) {
-			state = "deadlineExceeded"
-		} else if errors.Is(err, context.Canceled) {
-			state = "canceled"
-		}
-		r.setLatency.With(prometheus.Labels{"result": state}).Observe(time.Since(start).Seconds())
+		r.setLatency.With(prometheus.Labels{"result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return err
 	}
 
@@ -103,17 +123,7 @@ func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, err
 			r.getLatency.With(prometheus.Labels{"result": "notFound"}).Observe(time.Since(start).Seconds())
 			return time.Time{}, ErrBucketNotFound
 		}
-
-		state := "failed"
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
-			state = "timeout"
-		} else if errors.Is(err, context.DeadlineExceeded) {
-			state = "deadlineExceeded"
-		} else if errors.Is(err, context.Canceled) {
-			state = "canceled"
-		}
-		r.getLatency.With(prometheus.Labels{"result": state}).Observe(time.Since(start).Seconds())
+		r.getLatency.With(prometheus.Labels{"result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return time.Time{}, err
 	}
 
@@ -129,7 +139,7 @@ func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 
 	err := r.client.Del(ctx, bucketKey).Err()
 	if err != nil {
-		r.deleteLatency.With(prometheus.Labels{"result": "failed"}).Observe(time.Since(start).Seconds())
+		r.deleteLatency.With(prometheus.Labels{"result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return err
 	}
 

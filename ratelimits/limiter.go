@@ -68,9 +68,10 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string, stat
 	}
 
 	limiter.spendLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "ratelimits_spend_latency_seconds",
-		Help:    fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
-		Buckets: prometheus.ExponentialBuckets(0.0005, 2, 8),
+		Name: "ratelimits_spend_latency",
+		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
+		// Exponential buckets ranging from 0.0005s to 3s.
+		Buckets: prometheus.ExponentialBuckets(0.0005, 3, 8),
 	}, []string{"limit", "decision"})
 	stats.MustRegister(limiter.spendLatency)
 
@@ -210,7 +211,7 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 		// Calculate the current utilization of the override limit for the
 		// specified client id.
 		utilization := float64(limit.Burst-d.Remaining) / float64(limit.Burst)
-		l.overrideUsageGauge.WithLabelValues(nameToString[name], id).Set(utilization)
+		l.overrideUsageGauge.WithLabelValues(name.String(), id).Set(utilization)
 	}
 
 	if !d.Allowed {

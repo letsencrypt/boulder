@@ -53,6 +53,15 @@ const (
 	CertificatesPerFQDNSetPerAccount
 )
 
+// String returns the string representation of the Name. It allows Name to
+// satisfy the fmt.Stringer interface.
+func (n Name) String() string {
+	if !isNameValid(n) {
+		return nameToString[Unknown]
+	}
+	return nameToString[n]
+}
+
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{
 	Unknown:                          "Unknown",

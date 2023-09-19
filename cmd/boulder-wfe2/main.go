@@ -143,7 +143,7 @@ type Config struct {
 
 		Limiter struct {
 			// Redis contains the configuration necessary to connect to Redis
-			// for rate limiting. This fields is required to enable rate
+			// for rate limiting. This field is required to enable rate
 			// limiting.
 			Redis *bredis.Config `validate:"required_with=Defaults"`
 
@@ -259,18 +259,6 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock, log blog.L
 	var limiterLookup *bredis.Lookup
 	if c.WFE.Limiter.Defaults != "" {
 		// Setup rate limiting.
-
-		// The default read and write timeouts for go-redis clients are 3s. We
-		// want to be more aggressive than that.
-		readTimeout := c.WFE.Limiter.Redis.ReadTimeout.Duration
-		if readTimeout > 250*time.Millisecond || readTimeout <= 0 {
-			cmd.Fail("limiter.redis.readTimeout must be <= 250ms and > 0 ns")
-		}
-		writeTimeout := c.WFE.Limiter.Redis.WriteTimeout.Duration
-		if writeTimeout > 250*time.Millisecond || writeTimeout <= 0 {
-			cmd.Fail("limiter.redis.writeTimeout must be <= 250ms and > 0 ns")
-		}
-
 		var ring *redis.Ring
 		if len(c.WFE.Limiter.Redis.Lookups) > 0 {
 			// Configure a Redis client with periodic SRV lookups.
@@ -406,7 +394,6 @@ func main() {
 	var limiterCtx context.Context
 	var shutdownLimiterLookup context.CancelFunc
 	if limiterLookup != nil {
-		// Start the limiter Lookup goroutine.
 		limiterCtx, shutdownLimiterLookup = context.WithCancel(context.Background())
 		limiterLookup.Start(limiterCtx)
 	}
