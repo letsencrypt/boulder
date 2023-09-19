@@ -140,7 +140,9 @@ func newChecker(saDbMap certDB,
 }
 
 func (c *certChecker) getCerts(ctx context.Context) error {
+	// The end of the report is the current time, rounded up to the nearest second.
 	c.issuedReport.end = c.clock.Now().Truncate(time.Second).Add(time.Second)
+	// The beginning of the report is the end minus the check period, rounded down to the nearest second.
 	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod).Truncate(time.Second)
 
 	var sni sql.NullInt64
