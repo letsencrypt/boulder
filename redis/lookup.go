@@ -54,29 +54,20 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	// Set default timeout to 90% of the update frequency.
 	updateTimeout := updateFrequency - updateFrequency/10
 
-	var lookup *Lookup
+	lookup := &Lookup{
+		srvLookups:      srvLookups,
+		ring:            ring,
+		logger:          logger,
+		updateFrequency: updateFrequency,
+		updateTimeout:   updateTimeout,
+		dnsAuthority:    dnsAuthority,
+	}
+
 	if dnsAuthority == "" {
 		// Use the system DNS resolver.
-		lookup = &Lookup{
-			srvLookups:      srvLookups,
-			ring:            ring,
-			logger:          logger,
-			updateFrequency: updateFrequency,
-			updateTimeout:   updateTimeout,
-			resolver:        net.DefaultResolver,
-			dnsAuthority:    dnsAuthority,
-		}
+		lookup.resolver = net.DefaultResolver
 	} else {
 		// Setup a custom DNS resolver.
-		lookup = &Lookup{
-			srvLookups:      srvLookups,
-			ring:            ring,
-			logger:          logger,
-			updateFrequency: updateFrequency,
-			updateTimeout:   updateTimeout,
-			dnsAuthority:    dnsAuthority,
-		}
-
 		host, port, err := net.SplitHostPort(dnsAuthority)
 		if err != nil {
 			// Assume only hostname or IPv4 address was specified.
@@ -97,7 +88,6 @@ func NewLookup(srvLookups []cmd.ServiceDomain, dnsAuthority string, frequency ti
 	ctx, cancel := context.WithTimeout(context.Background(), updateTimeout)
 	defer cancel()
 	tempErr, nonTempErr := lookup.updateNow(ctx)
-
 	if tempErr != nil {
 		// Log and discard temporary errors, as they're likely to be transient
 		// (e.g. network connectivity issues).

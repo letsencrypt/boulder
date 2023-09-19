@@ -93,6 +93,7 @@ func main2() error {
 
 	_, logger, oTelShutdown := cmd.StatsAndLogging(conf.Syslog, conf.OpenTelemetry, conf.ROCSPTool.DebugAddr)
 	defer oTelShutdown(context.Background())
+	logger.Info(cmd.VersionString())
 
 	clk := cmd.Clock()
 	redisClient, err := rocsp_config.MakeClient(&conf.ROCSPTool.Redis, clk, metrics.NoopRegisterer)

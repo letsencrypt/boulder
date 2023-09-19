@@ -58,7 +58,7 @@ func (ssa *SQLStorageAuthority) addCertificatesPerName(ctx context.Context, db d
 // countCertificates returns the count of certificates issued for a domain's
 // eTLD+1 (aka base domain), during a given time range.
 func (ssa *SQLStorageAuthorityRO) countCertificates(ctx context.Context, dbMap db.Selector, domain string, timeRange *sapb.Range) (int64, time.Time, error) {
-	latest := time.Unix(0, timeRange.Latest)
+	latest := time.Unix(0, timeRange.LatestNS)
 	var results []struct {
 		Count int64
 		Time  time.Time
@@ -72,7 +72,7 @@ func (ssa *SQLStorageAuthorityRO) countCertificates(ctx context.Context, dbMap d
 		 time <= :latest`,
 		map[string]interface{}{
 			"baseDomain": baseDomain(domain),
-			"earliest":   time.Unix(0, timeRange.Earliest),
+			"earliest":   time.Unix(0, timeRange.EarliestNS),
 			"latest":     latest,
 		})
 	if err != nil {
@@ -128,8 +128,8 @@ func countNewOrders(ctx context.Context, dbMap db.Selector, req *sapb.CountOrder
 		time <= :latest`,
 		map[string]interface{}{
 			"regID":    req.AccountID,
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
+			"earliest": time.Unix(0, req.Range.EarliestNS),
+			"latest":   time.Unix(0, req.Range.LatestNS),
 		},
 	)
 	if err != nil {

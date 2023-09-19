@@ -1034,7 +1034,7 @@ func (wfe *WebFrontEndImpl) Challenge(
 	}
 
 	// Ensure gRPC response is complete.
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1232,7 +1232,7 @@ func (wfe *WebFrontEndImpl) postChallenge(
 			Authz:          authzPB,
 			ChallengeIndex: int64(challengeIndex),
 		})
-		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+		if err != nil || authzPB == nil || authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
 			wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Unable to update challenge"), err)
 			return
 		}
@@ -1476,7 +1476,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	}
 
 	// Ensure gRPC response is complete.
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}
@@ -1487,7 +1487,7 @@ func (wfe *WebFrontEndImpl) Authorization(
 	logEvent.Status = authzPB.Status
 
 	// After expiring, authorizations are inaccessible
-	if time.Unix(0, authzPB.Expires).Before(wfe.clk.Now()) {
+	if time.Unix(0, authzPB.ExpiresNS).Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound("Expired authorization"), nil)
 		return
 	}
@@ -1910,7 +1910,7 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		fmt.Sprintf("%s%d/%d", finalizeOrderPath, order.RegistrationID, order.Id))
 	respObj := orderJSON{
 		Status:      core.AcmeStatus(order.Status),
-		Expires:     time.Unix(0, order.Expires).UTC(),
+		Expires:     time.Unix(0, order.ExpiresNS).UTC(),
 		Identifiers: idents,
 		Finalize:    finalizeURL,
 	}
@@ -2013,7 +2013,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		RegistrationID: acct.ID,
 		Names:          names,
 	})
-	if err != nil || order == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if err != nil || order == nil || order.Id == 0 || order.CreatedNS == 0 || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
@@ -2073,7 +2073,7 @@ func (wfe *WebFrontEndImpl) GetOrder(ctx context.Context, logEvent *web.RequestE
 		return
 	}
 
-	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if order.Id == 0 || order.CreatedNS == 0 || order.Status == "" || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2153,7 +2153,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		return
 	}
 
-	if order.Id == 0 || order.Created == 0 || order.Status == "" || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if order.Id == 0 || order.CreatedNS == 0 || order.Status == "" || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal(fmt.Sprintf("Failed to retrieve order for ID %d", orderID)), errIncompleteGRPCResponse)
 		return
 	}
@@ -2181,7 +2181,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 	}
 
 	// If the order is expired we can not finalize it and must return an error
-	orderExpiry := time.Unix(order.Expires, 0)
+	orderExpiry := time.Unix(order.ExpiresNS, 0)
 	if orderExpiry.Before(wfe.clk.Now()) {
 		wfe.sendError(response, logEvent, probs.NotFound(fmt.Sprintf("Order %d is expired", order.Id)), nil)
 		return
@@ -2214,7 +2214,7 @@ func (wfe *WebFrontEndImpl) FinalizeOrder(ctx context.Context, logEvent *web.Req
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error finalizing order"), err)
 		return
 	}
-	if updatedOrder == nil || order.Id == 0 || order.Created == 0 || order.RegistrationID == 0 || order.Expires == 0 || len(order.Names) == 0 {
+	if updatedOrder == nil || order.Id == 0 || order.CreatedNS == 0 || order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0 {
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error validating order"), errIncompleteGRPCResponse)
 		return
 	}
@@ -2347,8 +2347,8 @@ func (wfe *WebFrontEndImpl) RenewalInfo(ctx context.Context, logEvent *web.Reque
 	// comparing those to the ones in the request.
 
 	sendRI(core.RenewalInfoSimple(
-		time.Unix(0, cert.Issued).UTC(),
-		time.Unix(0, cert.Expires).UTC()))
+		time.Unix(0, cert.IssuedNS).UTC(),
+		time.Unix(0, cert.ExpiresNS).UTC()))
 }
 
 // UpdateRenewal is used by the client to inform the server that they have

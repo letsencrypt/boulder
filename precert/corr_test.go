@@ -100,6 +100,8 @@ func derFromPEMFile(filename string) ([]byte, error) {
 }
 
 func TestMismatches(t *testing.T) {
+	now := time.Now()
+
 	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -128,8 +130,8 @@ func TestMismatches(t *testing.T) {
 
 	precertTemplate := x509.Certificate{
 		SerialNumber: big.NewInt(3141592653589793238),
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(24 * time.Hour),
+		NotBefore:    now,
+		NotAfter:     now.Add(24 * time.Hour),
 		DNSNames:     []string{"example.com"},
 		ExtraExtensions: []pkix.Extension{
 			{
@@ -150,8 +152,8 @@ func TestMismatches(t *testing.T) {
 		t.Helper()
 		finalCertTemplate := &x509.Certificate{
 			SerialNumber: big.NewInt(3141592653589793238),
-			NotBefore:    time.Now(),
-			NotAfter:     time.Now().Add(24 * time.Hour),
+			NotBefore:    now,
+			NotAfter:     now.Add(24 * time.Hour),
 			DNSNames:     []string{"example.com"},
 			ExtraExtensions: []pkix.Extension{
 				{
@@ -183,8 +185,8 @@ func TestMismatches(t *testing.T) {
 	// not in the same position
 	precertTemplate2 := x509.Certificate{
 		SerialNumber: big.NewInt(3141592653589793238),
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(24 * time.Hour),
+		NotBefore:    now,
+		NotAfter:     now.Add(24 * time.Hour),
 		DNSNames:     []string{"example.com"},
 		ExtraExtensions: []pkix.Extension{
 			{
@@ -262,7 +264,7 @@ func TestMismatches(t *testing.T) {
 
 	// Expect failure with mismatched NotBefore
 	finalCertDER = makeFinalCert(func(c *x509.Certificate) {
-		c.NotBefore = time.Now().Add(24 * time.Hour)
+		c.NotBefore = now.Add(24 * time.Hour)
 	})
 
 	err = Correspond(precertDER, finalCertDER)
@@ -272,7 +274,7 @@ func TestMismatches(t *testing.T) {
 
 	// Expect failure with mismatched NotAfter
 	finalCertDER = makeFinalCert(func(c *x509.Certificate) {
-		c.NotAfter = time.Now().Add(48 * time.Hour)
+		c.NotAfter = now.Add(48 * time.Hour)
 	})
 	err = Correspond(precertDER, finalCertDER)
 	if err == nil {

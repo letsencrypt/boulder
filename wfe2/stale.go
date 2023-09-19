@@ -24,13 +24,13 @@ func requiredStale(req *http.Request, logEvent *web.RequestEvent) bool {
 // in the past to be acceptably stale for accessing via the Boulder specific GET
 // API.
 func (wfe *WebFrontEndImpl) staleEnoughToGETOrder(order *corepb.Order) *probs.ProblemDetails {
-	return wfe.staleEnoughToGET("Order", time.Unix(0, order.Created))
+	return wfe.staleEnoughToGET("Order", time.Unix(0, order.CreatedNS))
 }
 
 // staleEnoughToGETCert checks if the given cert was issued long enough in the
 // past to be acceptably stale for accessing via the Boulder specific GET API.
 func (wfe *WebFrontEndImpl) staleEnoughToGETCert(cert *corepb.Certificate) *probs.ProblemDetails {
-	return wfe.staleEnoughToGET("Certificate", time.Unix(0, cert.Issued))
+	return wfe.staleEnoughToGET("Certificate", time.Unix(0, cert.IssuedNS))
 }
 
 // staleEnoughToGETAuthz checks if the given authorization was created long
@@ -50,11 +50,11 @@ func (wfe *WebFrontEndImpl) staleEnoughToGETAuthz(authzPB *corepb.Authorization)
 	// pendingAuthorization lifetime from the expiry. This will be inaccurate if
 	// we change the pendingAuthorizationLifetime but is sufficient for the weak
 	// staleness requirements of the GET API.
-	createdTime := time.Unix(0, authzPB.Expires).Add(-wfe.pendingAuthorizationLifetime)
+	createdTime := time.Unix(0, authzPB.ExpiresNS).Add(-wfe.pendingAuthorizationLifetime)
 	// if the authz is valid then we need to subtract the authorizationLifetime
 	// instead of the pendingAuthorizationLifetime.
 	if core.AcmeStatus(authzPB.Status) == core.StatusValid {
-		createdTime = time.Unix(0, authzPB.Expires).Add(-wfe.authorizationLifetime)
+		createdTime = time.Unix(0, authzPB.ExpiresNS).Add(-wfe.authorizationLifetime)
 	}
 	return wfe.staleEnoughToGET("Authorization", createdTime)
 }

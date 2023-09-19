@@ -153,6 +153,7 @@ func main() {
 
 	stats, logger, oTelShutdown := cmd.StatsAndLogging(config.Syslog, config.OpenTelemetry, config.DebugAddr)
 	defer oTelShutdown(context.Background())
+	logger.Info(cmd.VersionString())
 	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",
