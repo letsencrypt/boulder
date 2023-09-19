@@ -1179,3 +1179,16 @@ type crlShardModel struct {
 	NextUpdate  *time.Time `db:"nextUpdate"`
 	LeasedUntil time.Time  `db:"leasedUntil"`
 }
+
+// revokedCertModel represents one row in the revokedCertificates table. It
+// contains all of the information necessary to populate a CRL entry for the
+// indicated certificate.
+type revokedCertModel struct {
+	ID            int64             `db:"id"`
+	IssuerID      int64             `db:"issuerID"`
+	Serial        string            `db:"serial"`
+	NotAfter      time.Time         `db:"notAfter"`
+	ShardIdx      int64             `db:"shardIdx"`
+	RevokedDate   time.Time         `db:"revokedDate"`
+	RevokedReason revocation.Reason `db:"revokedReason"`
+}

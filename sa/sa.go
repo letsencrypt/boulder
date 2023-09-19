@@ -790,35 +790,63 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" || req.DateNS == 0 {
+	if req.Serial == "" || req.DateNS == 0 || req.IssuerID == 0 {
 		return nil, errIncompleteRequest
 	}
 
-	revokedDate := time.Unix(0, req.DateNS)
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		revokedDate := time.Unix(0, req.DateNS)
 
-	res, err := ssa.dbMap.ExecContext(ctx,
-		`UPDATE certificateStatus SET
+		res, err := tx.ExecContext(ctx,
+			`UPDATE certificateStatus SET
 				status = ?,
 				revokedReason = ?,
 				revokedDate = ?,
 				ocspLastUpdated = ?
 			WHERE serial = ? AND status != ?`,
-		string(core.OCSPStatusRevoked),
-		revocation.Reason(req.Reason),
-		revokedDate,
-		revokedDate,
-		req.Serial,
-		string(core.OCSPStatusRevoked),
-	)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-	if rows == 0 {
-		return nil, berrors.AlreadyRevokedError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+			string(core.OCSPStatusRevoked),
+			revocation.Reason(req.Reason),
+			revokedDate,
+			revokedDate,
+			req.Serial,
+			string(core.OCSPStatusRevoked),
+		)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if rows == 0 {
+			return nil, berrors.AlreadyRevokedError("no certificate with serial %s and status other than %s", req.Serial, string(core.OCSPStatusRevoked))
+		}
+
+		if req.ShardIdx != 0 {
+			var rsm recordedSerialModel
+			err = tx.SelectOne(
+				ctx, &rsm, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
+			if err != nil {
+				return nil, fmt.Errorf("retriving revoked certificate expiration: %w", err)
+			}
+
+			err = tx.Insert(ctx, &revokedCertModel{
+				IssuerID:      req.IssuerID,
+				Serial:        req.Serial,
+				NotAfter:      rsm.Expires,
+				ShardIdx:      req.ShardIdx,
+				RevokedDate:   revokedDate,
+				RevokedReason: revocation.Reason(req.Reason),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("inserting revoked certificate row: %w", err)
+			}
+		}
+
+		return nil, nil
+	})
+	if overallError != nil {
+		return nil, overallError
 	}
 
 	return &emptypb.Empty{}, nil
