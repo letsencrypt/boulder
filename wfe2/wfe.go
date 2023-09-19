@@ -814,7 +814,10 @@ func (wfe *WebFrontEndImpl) NewAccount(
 		InitialIP:       ipBytes,
 	}
 
-	wfe.checkNewAccountLimits(ctx, ip)
+	// TODO(#5545): This can no longer by async once we start treating the new
+	// limiter as the source of truth for rate limits. But for now, this saves
+	// us from eating extra latency for each new account creation.
+	go wfe.checkNewAccountLimits(ctx, ip)
 
 	// Send the registration to the RA via grpc
 	acctPB, err := wfe.ra.NewRegistration(ctx, &reg)
