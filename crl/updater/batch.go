@@ -26,20 +26,21 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 	shardWorker := func(in <-chan workItem) {
 		defer wg.Done()
 
-		for work := range in {
-			err := cu.updateShardWithRetry(ctx, atTime, work.issuerNameID, work.shardIdx, nil)
-			if err != nil {
-				cu.log.AuditErrf(
-					"Generating CRL failed: id=[%s] err=[%s]",
-					crl.Id(work.issuerNameID, work.shardIdx, crl.Number(atTime)), err)
-				once.Do(func() { anyErr = true })
-			}
-
+		for {
 			select {
 			case <-ctx.Done():
 				return
-			default:
-				continue
+			case work, ok := <-in:
+				if !ok {
+					return
+				}
+				err := cu.updateShardWithRetry(ctx, atTime, work.issuerNameID, work.shardIdx, nil)
+				if err != nil {
+					cu.log.AuditErrf(
+						"Generating CRL failed: id=[%s] err=[%s]",
+						crl.Id(work.issuerNameID, work.shardIdx, crl.Number(atTime)), err)
+					once.Do(func() { anyErr = true })
+				}
 			}
 		}
 	}
@@ -59,8 +60,7 @@ func (cu *crlUpdater) RunOnce(ctx context.Context) error {
 				close(inputs)
 				wg.Wait()
 				return ctx.Err()
-			default:
-				inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i}
+			case inputs <- workItem{issuerNameID: issuer.NameID(), shardIdx: i}:
 			}
 		}
 	}
