@@ -4,10 +4,16 @@ package s3
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	internalauth "github.com/aws/aws-sdk-go-v2/internal/auth"
+	"github.com/aws/aws-sdk-go-v2/internal/v4a"
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"time"
@@ -15,112 +21,64 @@ import (
 
 // Retrieves all the metadata from an object without returning the object itself.
 // This action is useful if you're interested only in an object's metadata. To use
-// GetObjectAttributes, you must have READ access to the object.
-// GetObjectAttributes combines the functionality of GetObjectAcl,
-// GetObjectLegalHold, GetObjectLockConfiguration, GetObjectRetention,
-// GetObjectTagging, HeadObject, and ListParts. All of the data returned with each
-// of those individual calls can be returned with a single call to
-// GetObjectAttributes. If you encrypt an object by using server-side encryption
-// with customer-provided encryption keys (SSE-C) when you store the object in
-// Amazon S3, then when you retrieve the metadata from the object, you must use the
-// following headers:
+// GetObjectAttributes , you must have READ access to the object.
+// GetObjectAttributes combines the functionality of HeadObject and ListParts . All
+// of the data returned with each of those individual calls can be returned with a
+// single call to GetObjectAttributes . If you encrypt an object by using
+// server-side encryption with customer-provided encryption keys (SSE-C) when you
+// store the object in Amazon S3, then when you retrieve the metadata from the
+// object, you must use the following headers:
+//   - x-amz-server-side-encryption-customer-algorithm
+//   - x-amz-server-side-encryption-customer-key
+//   - x-amz-server-side-encryption-customer-key-MD5
 //
-// * x-amz-server-side-encryption-customer-algorithm
-//
-// *
-// x-amz-server-side-encryption-customer-key
-//
-// *
-// x-amz-server-side-encryption-customer-key-MD5
-//
-// For more information about SSE-C,
-// see Server-Side Encryption (Using Customer-Provided Encryption Keys)
-// (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
+// For more information about SSE-C, see Server-Side Encryption (Using
+// Customer-Provided Encryption Keys) (https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html)
 // in the Amazon S3 User Guide.
+//   - Encryption request headers, such as x-amz-server-side-encryption , should
+//     not be sent for GET requests if your object uses server-side encryption with
+//     Amazon Web Services KMS keys stored in Amazon Web Services Key Management
+//     Service (SSE-KMS) or server-side encryption with Amazon S3 managed keys
+//     (SSE-S3). If your object does use these types of keys, you'll get an HTTP 400
+//     Bad Request error.
+//   - The last modified property in this case is the creation date of the object.
 //
-// * Encryption request headers, such as
-// x-amz-server-side-encryption, should not be sent for GET requests if your object
-// uses server-side encryption with Amazon Web Services KMS keys stored in Amazon
-// Web Services Key Management Service (SSE-KMS) or server-side encryption with
-// Amazon S3 managed encryption keys (SSE-S3). If your object does use these types
-// of keys, you'll get an HTTP 400 Bad Request error.
+// Consider the following when using request headers:
+//   - If both of the If-Match and If-Unmodified-Since headers are present in the
+//     request as follows, then Amazon S3 returns the HTTP status code 200 OK and the
+//     data requested:
+//   - If-Match condition evaluates to true .
+//   - If-Unmodified-Since condition evaluates to false .
+//   - If both of the If-None-Match and If-Modified-Since headers are present in
+//     the request as follows, then Amazon S3 returns the HTTP status code 304 Not
+//     Modified :
+//   - If-None-Match condition evaluates to false .
+//   - If-Modified-Since condition evaluates to true .
 //
-// * The last modified property
-// in this case is the creation date of the object.
-//
-// Consider the following when
-// using request headers:
-//
-// * If both of the If-Match and If-Unmodified-Since
-// headers are present in the request as follows, then Amazon S3 returns the HTTP
-// status code 200 OK and the data requested:
-//
-// * If-Match condition evaluates to
-// true.
-//
-// * If-Unmodified-Since condition evaluates to false.
-//
-// * If both of the
-// If-None-Match and If-Modified-Since headers are present in the request as
-// follows, then Amazon S3 returns the HTTP status code 304 Not Modified:
-//
-// *
-// If-None-Match condition evaluates to false.
-//
-// * If-Modified-Since condition
-// evaluates to true.
-//
-// For more information about conditional requests, see RFC
-// 7232 (https://tools.ietf.org/html/rfc7232). Permissions The permissions that you
-// need to use this operation depend on whether the bucket is versioned. If the
-// bucket is versioned, you need both the s3:GetObjectVersion and
-// s3:GetObjectVersionAttributes permissions for this operation. If the bucket is
-// not versioned, you need the s3:GetObject and s3:GetObjectAttributes permissions.
-// For more information, see Specifying Permissions in a Policy
-// (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html) in
-// the Amazon S3 User Guide. If the object that you request does not exist, the
+// For more information about conditional requests, see RFC 7232 (https://tools.ietf.org/html/rfc7232)
+// . Permissions The permissions that you need to use this operation depend on
+// whether the bucket is versioned. If the bucket is versioned, you need both the
+// s3:GetObjectVersion and s3:GetObjectVersionAttributes permissions for this
+// operation. If the bucket is not versioned, you need the s3:GetObject and
+// s3:GetObjectAttributes permissions. For more information, see Specifying
+// Permissions in a Policy (https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html)
+// in the Amazon S3 User Guide. If the object that you request does not exist, the
 // error Amazon S3 returns depends on whether you also have the s3:ListBucket
 // permission.
+//   - If you have the s3:ListBucket permission on the bucket, Amazon S3 returns an
+//     HTTP status code 404 Not Found ("no such key") error.
+//   - If you don't have the s3:ListBucket permission, Amazon S3 returns an HTTP
+//     status code 403 Forbidden ("access denied") error.
 //
-// * If you have the s3:ListBucket permission on the bucket, Amazon S3
-// returns an HTTP status code 404 Not Found ("no such key") error.
-//
-// * If you don't
-// have the s3:ListBucket permission, Amazon S3 returns an HTTP status code 403
-// Forbidden ("access denied") error.
-//
-// The following actions are related to
-// GetObjectAttributes:
-//
-// * GetObject
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
-//
-// *
-// GetObjectAcl
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html)
-//
-// *
-// GetObjectLegalHold
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLegalHold.html)
-//
-// *
-// GetObjectLockConfiguration
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html)
-//
-// *
-// GetObjectRetention
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html)
-//
-// *
-// GetObjectTagging
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html)
-//
-// *
-// HeadObject
-// (https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
-//
-// *
-// ListParts (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html)
+// The following actions are related to GetObjectAttributes :
+//   - GetObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html)
+//   - GetObjectAcl (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAcl.html)
+//   - GetObjectLegalHold (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLegalHold.html)
+//   - GetObjectLockConfiguration (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectLockConfiguration.html)
+//   - GetObjectRetention (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectRetention.html)
+//   - GetObjectTagging (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html)
+//   - HeadObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html)
+//   - ListParts (https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html)
 func (c *Client) GetObjectAttributes(ctx context.Context, params *GetObjectAttributesInput, optFns ...func(*Options)) (*GetObjectAttributesOutput, error) {
 	if params == nil {
 		params = &GetObjectAttributesInput{}
@@ -144,17 +102,15 @@ type GetObjectAttributesInput struct {
 	// AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com. When using this
 	// action with an access point through the Amazon Web Services SDKs, you provide
 	// the access point ARN in place of the bucket name. For more information about
-	// access point ARNs, see Using access points
-	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
-	// in the Amazon S3 User Guide. When using this action with Amazon S3 on Outposts,
-	// you must direct requests to the S3 on Outposts hostname. The S3 on Outposts
-	// hostname takes the form
-	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com. When using
-	// this action with S3 on Outposts through the Amazon Web Services SDKs, you
-	// provide the Outposts bucket ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see Using Amazon S3 on Outposts
-	// (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html) in the
-	// Amazon S3 User Guide.
+	// access point ARNs, see Using access points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
+	// in the Amazon S3 User Guide. When you use this action with Amazon S3 on
+	// Outposts, you must direct requests to the S3 on Outposts hostname. The S3 on
+	// Outposts hostname takes the form
+	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com . When you
+	// use this action with S3 on Outposts through the Amazon Web Services SDKs, you
+	// provide the Outposts access point ARN in place of the bucket name. For more
+	// information about S3 on Outposts ARNs, see What is S3 on Outposts? (https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html)
+	// in the Amazon S3 User Guide.
 	//
 	// This member is required.
 	Bucket *string
@@ -164,8 +120,8 @@ type GetObjectAttributesInput struct {
 	// This member is required.
 	Key *string
 
-	// An XML header that specifies the fields at the root level that you want returned
-	// in the response. Fields that you do not specify are not returned.
+	// Specifies the fields at the root level that you want returned in the response.
+	// Fields that you do not specify are not returned.
 	//
 	// This member is required.
 	ObjectAttributes []types.ObjectAttributes
@@ -178,15 +134,14 @@ type GetObjectAttributesInput struct {
 	// Sets the maximum number of parts to return.
 	MaxParts int32
 
-	// Specifies the part after which listing should begin. Only parts with higher part
-	// numbers will be listed.
+	// Specifies the part after which listing should begin. Only parts with higher
+	// part numbers will be listed.
 	PartNumberMarker *string
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
 	// about downloading objects from Requester Pays buckets, see Downloading Objects
-	// in Requester Pays Buckets
-	// (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
+	// in Requester Pays Buckets (https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html)
 	// in the Amazon S3 User Guide.
 	RequestPayer types.RequestPayer
 
@@ -216,8 +171,8 @@ type GetObjectAttributesOutput struct {
 	// The checksum or digest of the object.
 	Checksum *types.Checksum
 
-	// Specifies whether the object retrieved was (true) or was not (false) a delete
-	// marker. If false, this response header does not appear in the response.
+	// Specifies whether the object retrieved was ( true ) or was not ( false ) a
+	// delete marker. If false , this response header does not appear in the response.
 	DeleteMarker bool
 
 	// An ETag is an opaque identifier assigned by a web server to a specific version
@@ -239,8 +194,8 @@ type GetObjectAttributesOutput struct {
 
 	// Provides the storage class information of the object. Amazon S3 returns this
 	// header for all objects except for S3 Standard storage class objects. For more
-	// information, see Storage Classes
-	// (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html).
+	// information, see Storage Classes (https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html)
+	// .
 	StorageClass types.StorageClass
 
 	// The version ID of the object.
@@ -259,6 +214,9 @@ func (c *Client) addOperationGetObjectAttributesMiddlewares(stack *middleware.St
 	}
 	err = stack.Deserialize.Add(&awsRestxml_deserializeOpGetObjectAttributes{}, middleware.After)
 	if err != nil {
+		return err
+	}
+	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
 		return err
 	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
@@ -288,7 +246,7 @@ func (c *Client) addOperationGetObjectAttributesMiddlewares(stack *middleware.St
 	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack); err != nil {
+	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -300,6 +258,9 @@ func (c *Client) addOperationGetObjectAttributesMiddlewares(stack *middleware.St
 	if err = swapWithCustomHTTPSignerMiddleware(stack, options); err != nil {
 		return err
 	}
+	if err = addGetObjectAttributesResolveEndpointMiddleware(stack, options); err != nil {
+		return err
+	}
 	if err = addOpGetObjectAttributesValidationMiddleware(stack); err != nil {
 		return err
 	}
@@ -307,6 +268,9 @@ func (c *Client) addOperationGetObjectAttributesMiddlewares(stack *middleware.St
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
+		return err
+	}
+	if err = awsmiddleware.AddRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addGetObjectAttributesUpdateEndpoint(stack, options); err != nil {
@@ -324,7 +288,20 @@ func (c *Client) addOperationGetObjectAttributesMiddlewares(stack *middleware.St
 	if err = addRequestResponseLogging(stack, options); err != nil {
 		return err
 	}
+	if err = addendpointDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (v *GetObjectAttributesInput) bucket() (string, bool) {
+	if v.Bucket == nil {
+		return "", false
+	}
+	return *v.Bucket, true
 }
 
 func newServiceMetadataMiddleware_opGetObjectAttributes(region string) *awsmiddleware.RegisterServiceMetadata {
@@ -360,4 +337,140 @@ func addGetObjectAttributesUpdateEndpoint(stack *middleware.Stack, options Optio
 		UseARNRegion:                   options.UseARNRegion,
 		DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
 	})
+}
+
+type opGetObjectAttributesResolveEndpointMiddleware struct {
+	EndpointResolver EndpointResolverV2
+	BuiltInResolver  builtInParameterResolver
+}
+
+func (*opGetObjectAttributesResolveEndpointMiddleware) ID() string {
+	return "ResolveEndpointV2"
+}
+
+func (m *opGetObjectAttributesResolveEndpointMiddleware) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
+	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
+) {
+	if awsmiddleware.GetRequiresLegacyEndpoints(ctx) {
+		return next.HandleSerialize(ctx, in)
+	}
+
+	req, ok := in.Request.(*smithyhttp.Request)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
+	}
+
+	input, ok := in.Parameters.(*GetObjectAttributesInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown transport type %T", in.Request)
+	}
+
+	if m.EndpointResolver == nil {
+		return out, metadata, fmt.Errorf("expected endpoint resolver to not be nil")
+	}
+
+	params := EndpointParameters{}
+
+	m.BuiltInResolver.ResolveBuiltIns(&params)
+
+	params.Bucket = input.Bucket
+
+	var resolvedEndpoint smithyendpoints.Endpoint
+	resolvedEndpoint, err = m.EndpointResolver.ResolveEndpoint(ctx, params)
+	if err != nil {
+		return out, metadata, fmt.Errorf("failed to resolve service endpoint, %w", err)
+	}
+
+	req.URL = &resolvedEndpoint.URI
+
+	for k := range resolvedEndpoint.Headers {
+		req.Header.Set(
+			k,
+			resolvedEndpoint.Headers.Get(k),
+		)
+	}
+
+	authSchemes, err := internalauth.GetAuthenticationSchemes(&resolvedEndpoint.Properties)
+	if err != nil {
+		var nfe *internalauth.NoAuthenticationSchemesFoundError
+		if errors.As(err, &nfe) {
+			// if no auth scheme is found, default to sigv4
+			signingName := "s3"
+			signingRegion := m.BuiltInResolver.(*builtInResolver).Region
+			ctx = awsmiddleware.SetSigningName(ctx, signingName)
+			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
+			ctx = s3cust.SetSignerVersion(ctx, internalauth.SigV4)
+		}
+		var ue *internalauth.UnSupportedAuthenticationSchemeSpecifiedError
+		if errors.As(err, &ue) {
+			return out, metadata, fmt.Errorf(
+				"This operation requests signer version(s) %v but the client only supports %v",
+				ue.UnsupportedSchemes,
+				internalauth.SupportedSchemes,
+			)
+		}
+	}
+
+	for _, authScheme := range authSchemes {
+		switch authScheme.(type) {
+		case *internalauth.AuthenticationSchemeV4:
+			v4Scheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4)
+			var signingName, signingRegion string
+			if v4Scheme.SigningName == nil {
+				signingName = "s3"
+			} else {
+				signingName = *v4Scheme.SigningName
+			}
+			if v4Scheme.SigningRegion == nil {
+				signingRegion = m.BuiltInResolver.(*builtInResolver).Region
+			} else {
+				signingRegion = *v4Scheme.SigningRegion
+			}
+			if v4Scheme.DisableDoubleEncoding != nil {
+				// The signer sets an equivalent value at client initialization time.
+				// Setting this context value will cause the signer to extract it
+				// and override the value set at client initialization time.
+				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4Scheme.DisableDoubleEncoding)
+			}
+			ctx = awsmiddleware.SetSigningName(ctx, signingName)
+			ctx = awsmiddleware.SetSigningRegion(ctx, signingRegion)
+			ctx = s3cust.SetSignerVersion(ctx, v4Scheme.Name)
+			break
+		case *internalauth.AuthenticationSchemeV4A:
+			v4aScheme, _ := authScheme.(*internalauth.AuthenticationSchemeV4A)
+			if v4aScheme.SigningName == nil {
+				v4aScheme.SigningName = aws.String("s3")
+			}
+			if v4aScheme.DisableDoubleEncoding != nil {
+				// The signer sets an equivalent value at client initialization time.
+				// Setting this context value will cause the signer to extract it
+				// and override the value set at client initialization time.
+				ctx = internalauth.SetDisableDoubleEncoding(ctx, *v4aScheme.DisableDoubleEncoding)
+			}
+			ctx = awsmiddleware.SetSigningName(ctx, *v4aScheme.SigningName)
+			ctx = awsmiddleware.SetSigningRegion(ctx, v4aScheme.SigningRegionSet[0])
+			ctx = s3cust.SetSignerVersion(ctx, v4a.Version)
+			break
+		case *internalauth.AuthenticationSchemeNone:
+			break
+		}
+	}
+
+	return next.HandleSerialize(ctx, in)
+}
+
+func addGetObjectAttributesResolveEndpointMiddleware(stack *middleware.Stack, options Options) error {
+	return stack.Serialize.Insert(&opGetObjectAttributesResolveEndpointMiddleware{
+		EndpointResolver: options.EndpointResolverV2,
+		BuiltInResolver: &builtInResolver{
+			Region:                         options.Region,
+			UseFIPS:                        options.EndpointOptions.UseFIPSEndpoint,
+			UseDualStack:                   options.EndpointOptions.UseDualStackEndpoint,
+			Endpoint:                       options.BaseEndpoint,
+			ForcePathStyle:                 options.UsePathStyle,
+			Accelerate:                     options.UseAccelerate,
+			DisableMultiRegionAccessPoints: options.DisableMultiRegionAccessPoints,
+			UseArnRegion:                   options.UseARNRegion,
+		},
+	}, "ResolveEndpoint", middleware.After)
 }
