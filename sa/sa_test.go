@@ -3332,6 +3332,13 @@ func TestGetRevokedCerts(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
+	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		RegID:     reg.Id,
+		Serial:    core.SerialToString(eeCert.SerialNumber),
+		CreatedNS: eeCert.NotBefore.UnixNano(),
+		ExpiresNS: eeCert.NotAfter.UnixNano(),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
@@ -3413,6 +3420,138 @@ func TestGetRevokedCerts(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
+
+	// Asking for revoked certs from a different issuer should return zero results.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:    1,
+		ExpiresAfterNS:  time.Date(2022, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresBeforeNS: time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
+}
+
+func TestGetRevokedCertsByShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires revokedCertificates database table")
+	}
+
+	sa, _, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a cert to the DB to test with. We use AddPrecertificate because it sets
+	// up the certificateStatus row we need. This particular cert has a notAfter
+	// date of Mar 6 2023, and we lie about its IssuerNameID to make things easy.
+	reg := createWorkingRegistration(t, sa)
+	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
+	test.AssertNotError(t, err, "failed to load test cert")
+	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		RegID:     reg.Id,
+		Serial:    core.SerialToString(eeCert.SerialNumber),
+		CreatedNS: eeCert.NotBefore.UnixNano(),
+		ExpiresNS: eeCert.NotAfter.UnixNano(),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          eeCert.Raw,
+		RegID:        reg.Id,
+		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "failed to add test cert")
+
+	// Check that it worked.
+	status, err := sa.GetCertificateStatus(
+		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert.SerialNumber)})
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusGood)
+
+	// Here's a little helper func we'll use to call GetRevokedCerts and count
+	// how many results it returned.
+	countRevokedCerts := func(req *sapb.GetRevokedCertsRequest) (int, error) {
+		stream := make(chan *corepb.CRLEntry)
+		mockServerStream := mockGetRevokedCertsServerStream{output: stream}
+		var err error
+		go func() {
+			err = sa.GetRevokedCerts(req, mockServerStream)
+			close(stream)
+		}()
+		entriesReceived := 0
+		for range stream {
+			entriesReceived++
+		}
+		return entriesReceived, err
+	}
+
+	// Asking for revoked certs now should return no results.
+	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:    1,
+		ShardIdx:        9,
+		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
+
+	// Revoke the certificate, providing the ShardIdx so it gets written into
+	// both the certificateStatus and revokedCertificates tables.
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID: 1,
+		Serial:   core.SerialToString(eeCert.SerialNumber),
+		DateNS:   time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		Reason:   1,
+		Response: []byte{1, 2, 3},
+		ShardIdx: 9,
+	})
+	test.AssertNotError(t, err, "failed to revoke test cert")
+
+	// Check that it worked in the most basic way.
+	c, err := sa.dbMap.SelectNullInt(
+		ctx, "SELECT count(*) FROM revokedCertificates")
+	test.AssertNotError(t, err, "SELECT from revokedCertificates failed")
+	test.Assert(t, c.Valid, "SELECT from revokedCertificates got no result")
+	test.AssertEquals(t, c.Int64, int64(1))
+
+	// Asking for revoked certs now should return one result.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:    1,
+		ShardIdx:        9,
+		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "normal usage shouldn't result in error")
+	test.AssertEquals(t, count, 1)
+
+	// Asking for revoked certs from a different issuer should return zero results.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:    2,
+		ShardIdx:        9,
+		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
+
+	// Asking for revoked certs from a different shard should return zero reults.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:    1,
+		ShardIdx:        8,
+		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
+
+	// Asking for revoked certs with an old RevokedBefore should return no results.
+	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
+		IssuerNameID:    1,
+		ShardIdx:        9,
+		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		RevokedBeforeNS: time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+	})
+	test.AssertNotError(t, err, "zero rows shouldn't result in error")
+	test.AssertEquals(t, count, 0)
 }
 
 func TestGetMaxExpiration(t *testing.T) {
@@ -3439,10 +3578,6 @@ func TestGetMaxExpiration(t *testing.T) {
 }
 
 func TestLeaseOldestCRLShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires crlShards database table")
-	}
-
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
@@ -3562,10 +3697,6 @@ func TestLeaseOldestCRLShard(t *testing.T) {
 }
 
 func TestLeaseSpecificCRLShard(t *testing.T) {
-	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
-		t.Skip("Test requires crlShards database table")
-	}
-
 	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
