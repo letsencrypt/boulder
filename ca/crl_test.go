@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -71,11 +72,13 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
+	now := time.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: 1,
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -93,7 +96,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -101,7 +105,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -120,7 +125,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "123",
 				Reason:      1,
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -134,12 +140,14 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
+
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:      "deadbeefdeadbeefdeadbeefdeadbeefdead",
 				Reason:      1,
 				RevokedAtNS: 0,
+				RevokedAt:   timestamppb.New(0),
 			},
 		},
 	}
@@ -167,7 +175,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -201,7 +210,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -209,7 +219,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:      "000000000000000000000000000000000000",
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 				// Reason 0, Unspecified, is omitted.
 			},
 		},
@@ -219,7 +230,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "111111111111111111111111111111111111",
 				Reason:      1, // keyCompromise
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -228,7 +240,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "444444444444444444444444444444444444",
 				Reason:      4, // superseded
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -237,7 +250,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "555555555555555555555555555555555555",
 				Reason:      5, // cessationOfOperation
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -246,7 +260,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "999999999999999999999999999999999999",
 				Reason:      9, // privilegeWithdrawn
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}

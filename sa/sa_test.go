@@ -546,7 +546,7 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 }
 
 func TestAddCertificate(t *testing.T) {
-	sa, clk, cleanUp := initSA(t)
+	sa, _, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
@@ -1957,7 +1957,8 @@ func TestStatusForOrder(t *testing.T) {
 		Name             string
 		AuthorizationIDs []int64
 		OrderNames       []string
-		OrderExpires     int64
+		OrderExpiresNS   int64
+		OrderExpires     *timestamppb.Timestamp
 		ExpectedStatus   string
 		SetProcessing    bool
 		Finalize         bool
@@ -2026,15 +2027,20 @@ func TestStatusForOrder(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			// If the testcase doesn't specify an order expiry use a default timestamp
 			// in the near future.
-			orderExpiry := tc.OrderExpires
-			if orderExpiry == 0 {
-				orderExpiry = expires.UnixNano()
+			orderExpiryNS := tc.OrderExpiresNS
+			if orderExpiryNS == 0 {
+				orderExpiryNS = expires.UnixNano()
 			}
+			orderExpiry := tc.OrderExpires
+			if !orderExpiry.IsValid() {
+				orderExpiry = timestamppb.New(expires)
+			}
+
 			newOrder, err := sa.NewOrderAndAuthzs(ctx, &sapb.NewOrderAndAuthzsRequest{
 				NewOrder: &sapb.NewOrderRequest{
-					RegistrationID: reg.Id,
-					ExpiresNS:      orderExpiry,
-					//Expires: timestamppb.New(orderExpiry),
+					RegistrationID:   reg.Id,
+					ExpiresNS:        orderExpiryNS,
+					Expires:          orderExpiry,
 					V2Authorizations: tc.AuthorizationIDs,
 					Names:            tc.OrderNames,
 				},
@@ -2096,10 +2102,12 @@ func TestRevokeCertificate(t *testing.T) {
 	// Add a cert to the DB to test with.
 	certDER, err := os.ReadFile("www.eff.org.der")
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
+	issuedTime := sa.clk.Now()
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		RegID:        reg.Id,
-		IssuedNS:     sa.clk.Now().UnixNano(),
+		IssuedNS:     issuedTime.UnixNano(),
+		Issued:       timestamppb.New(issuedTime),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
@@ -2118,6 +2126,7 @@ func TestRevokeCertificate(t *testing.T) {
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial: serial,
 		DateNS: now.UnixNano(),
+		Date:   timestamppb.New(now),
 		Reason: reason,
 	})
 	test.AssertNotError(t, err, "RevokeCertificate with no OCSP response should succeed")
@@ -2132,6 +2141,7 @@ func TestRevokeCertificate(t *testing.T) {
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial: serial,
 		DateNS: now.UnixNano(),
+		Date:   timestamppb.New(now),
 		Reason: reason,
 	})
 	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
@@ -2145,22 +2155,26 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	certDER, err := os.ReadFile("www.eff.org.der")
 	serial := "000000000000000000000000000000021bd4"
-	issuedTime := fc.Now().UnixNano()
+	issuedTime := fc.Now()
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		RegID:        reg.Id,
-		IssuedNS:     issuedTime,
+		IssuedNS:     issuedTime.UnixNano(),
+		Issued:       timestamppb.New(issuedTime),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	fc.Add(1 * time.Hour)
 
 	// Try to update it before its been revoked
+	now := fc.Now()
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:     serial,
-		DateNS:     fc.Now().UnixNano(),
-		BackdateNS: fc.Now().UnixNano(),
+		DateNS:     now.UnixNano(),
+		Date:       timestamppb.New(now),
+		BackdateNS: now.UnixNano(),
+		Backdate:   timestamppb.New(now),
 		Reason:     ocsp.KeyCompromise,
 		Response:   []byte{4, 5, 6},
 	})
@@ -2168,10 +2182,11 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	test.AssertContains(t, err.Error(), "no certificate with serial")
 
 	// Now revoke it, so we can update it.
-	revokedTime := fc.Now().UnixNano()
+	revokedTime := fc.Now()
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		DateNS:   revokedTime,
+		DateNS:   revokedTime.UnixNano(),
+		Date:     timestamppb.New(revokedTime),
 		Reason:   ocsp.CessationOfOperation,
 		Response: []byte{1, 2, 3},
 	})
@@ -2185,9 +2200,11 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	fc.Add(1 * time.Hour)
 
 	// Try to update its revocation info with no backdate
+	now = fc.Now()
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   serial,
-		DateNS:   fc.Now().UnixNano(),
+		DateNS:   now.UnixNano(),
+		Date:     timestamppb.New(now),
 		Reason:   ocsp.KeyCompromise,
 		Response: []byte{4, 5, 6},
 	})
@@ -2197,8 +2214,10 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	// Try to update its revocation info for a reason other than keyCompromise
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:     serial,
-		DateNS:     fc.Now().UnixNano(),
-		BackdateNS: revokedTime,
+		DateNS:     now.UnixNano(),
+		Date:       timestamppb.New(now),
+		BackdateNS: revokedTime.UnixNano(),
+		Backdate:   timestamppb.New(revokedTime),
 		Reason:     ocsp.Unspecified,
 		Response:   []byte{4, 5, 6},
 	})
@@ -2208,8 +2227,10 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	// Try to update the revocation info of the wrong certificate
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:     "000000000000000000000000000000021bd5",
-		DateNS:     fc.Now().UnixNano(),
-		BackdateNS: revokedTime,
+		DateNS:     now.UnixNano(),
+		Date:       timestamppb.New(now),
+		BackdateNS: revokedTime.UnixNano(),
+		Backdate:   timestamppb.New(revokedTime),
 		Reason:     ocsp.KeyCompromise,
 		Response:   []byte{4, 5, 6},
 	})
@@ -2219,8 +2240,10 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	// Try to update its revocation info with the wrong backdate
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:     serial,
-		DateNS:     fc.Now().UnixNano(),
-		BackdateNS: fc.Now().UnixNano(),
+		DateNS:     now.UnixNano(),
+		Date:       timestamppb.New(now),
+		BackdateNS: now.UnixNano(),
+		Backdate:   timestamppb.New(now),
 		Reason:     ocsp.KeyCompromise,
 		Response:   []byte{4, 5, 6},
 	})
@@ -2230,8 +2253,10 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	// Try to update its revocation info correctly
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:     serial,
-		DateNS:     fc.Now().UnixNano(),
-		BackdateNS: revokedTime,
+		DateNS:     now.UnixNano(),
+		Date:       timestamppb.New(now),
+		BackdateNS: revokedTime.UnixNano(),
+		Backdate:   timestamppb.New(revokedTime),
 		Reason:     ocsp.KeyCompromise,
 		Response:   []byte{4, 5, 6},
 	})
@@ -2266,6 +2291,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		IssuedNS:     issued.UnixNano(),
+		Issued:       timestamppb.New(issued),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
@@ -2274,6 +2300,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 		Der:      certDER,
 		RegID:    reg.Id,
 		IssuedNS: issued.UnixNano(),
+		Issued:   timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
@@ -2308,6 +2335,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		IssuedNS:     issued.UnixNano(),
+		Issued:       timestamppb.New(issued),
 		RegID:        reg.Id,
 		IssuerNameID: 1,
 	})
@@ -2316,6 +2344,7 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 		Der:      certDER,
 		RegID:    reg.Id,
 		IssuedNS: issued.UnixNano(),
+		Issued:   timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
@@ -2366,11 +2395,15 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to create test cert C")
 
 	countName := func(t *testing.T, expectedName string) int64 {
+		earliest := fc.Now().Add(-5 * time.Hour)
+		latest := fc.Now().Add(5 * time.Hour)
 		req := &sapb.CountCertificatesByNamesRequest{
 			Names: []string{expectedName},
 			Range: &sapb.Range{
-				EarliestNS: fc.Now().Add(-5 * time.Hour).UnixNano(),
-				LatestNS:   fc.Now().Add(5 * time.Hour).UnixNano(),
+				EarliestNS: earliest.UnixNano(),
+				Earliest:   timestamppb.New(earliest),
+				LatestNS:   latest.UnixNano(),
+				Latest:     timestamppb.New(latest),
 			},
 		}
 		counts, err := sa.CountCertificatesByNames(context.Background(), req)
@@ -2389,6 +2422,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		Der:      certADER,
 		RegID:    reg.Id,
 		IssuedNS: issued.UnixNano(),
+		Issued:   timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add CertA test certificate")
 
@@ -2401,6 +2435,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		Der:      certBDER,
 		RegID:    reg.Id,
 		IssuedNS: issued.UnixNano(),
+		Issued:   timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add CertB test certificate")
 
@@ -2413,6 +2448,7 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		Der:      certCDER,
 		RegID:    reg.Id,
 		IssuedNS: issued.UnixNano(),
+		Issued:   timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add CertC test certificate")
 
@@ -2428,8 +2464,8 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
 
 	authzID := createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
-	expires := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
-	attemptedAt := fc.Now().UnixNano()
+	expires := fc.Now().Add(time.Hour * 2).UTC()
+	attemptedAt := fc.Now()
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
 
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -2443,21 +2479,24 @@ func TestFinalizeAuthorization2(t *testing.T) {
 			},
 		},
 		Status:        string(core.StatusValid),
-		ExpiresNS:     expires,
+		ExpiresNS:     expires.UnixNano(),
+		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAtNS: attemptedAt,
+		AttemptedAtNS: attemptedAt.UnixNano(),
+		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 	test.AssertEquals(t, dbVer.Status, string(core.StatusValid))
-	test.AssertEquals(t, time.Unix(0, dbVer.ExpiresNS).UTC(), fc.Now().Add(time.Hour*2).UTC())
+	test.AssertEquals(t, time.Unix(0, dbVer.ExpiresNS).UTC(), expires)
+	test.AssertEquals(t, dbVer.Expires.AsTime(), expires)
 	test.AssertEquals(t, dbVer.Challenges[0].Status, string(core.StatusValid))
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
-	test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), fc.Now().UTC())
+	test.AssertEquals(t, time.Unix(0, dbVer.Challenges[0].Validated).UTC(), attemptedAt.UTC())
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
 	prob, _ := bgrpc.ProblemDetailsToPB(probs.Connection("it went bad captain"))
@@ -2475,7 +2514,8 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		ValidationError: prob,
 		Status:          string(core.StatusInvalid),
 		Attempted:       string(core.ChallengeTypeHTTP01),
-		ExpiresNS:       expires,
+		ExpiresNS:       expires.UnixNano(),
+		Expires:         timestamppb.New(expires),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -2495,8 +2535,8 @@ func TestRehydrateHostPort(t *testing.T) {
 
 	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
 
-	expires := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
-	attemptedAt := fc.Now().UnixNano()
+	expires := fc.Now().Add(time.Hour * 2).UTC()
+	attemptedAt := fc.Now()
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
 
 	// Implicit good port with good scheme
@@ -2512,9 +2552,11 @@ func TestRehydrateHostPort(t *testing.T) {
 			},
 		},
 		Status:        string(core.StatusValid),
-		ExpiresNS:     expires,
+		ExpiresNS:     expires.UnixNano(),
+		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAtNS: attemptedAt,
+		AttemptedAtNS: attemptedAt.UnixNano(),
+		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2533,9 +2575,11 @@ func TestRehydrateHostPort(t *testing.T) {
 			},
 		},
 		Status:        string(core.StatusValid),
-		ExpiresNS:     expires,
+		ExpiresNS:     expires.UnixNano(),
+		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAtNS: attemptedAt,
+		AttemptedAtNS: attemptedAt.UnixNano(),
+		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2554,9 +2598,11 @@ func TestRehydrateHostPort(t *testing.T) {
 			},
 		},
 		Status:        string(core.StatusValid),
-		ExpiresNS:     expires,
+		ExpiresNS:     expires.UnixNano(),
+		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAtNS: attemptedAt,
+		AttemptedAtNS: attemptedAt.UnixNano(),
+		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2575,9 +2621,11 @@ func TestRehydrateHostPort(t *testing.T) {
 			},
 		},
 		Status:        string(core.StatusValid),
-		ExpiresNS:     expires,
+		ExpiresNS:     expires.UnixNano(),
+		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAtNS: attemptedAt,
+		AttemptedAtNS: attemptedAt.UnixNano(),
+		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2595,9 +2643,11 @@ func TestRehydrateHostPort(t *testing.T) {
 			},
 		},
 		Status:        string(core.StatusValid),
-		ExpiresNS:     expires,
+		ExpiresNS:     expires.UnixNano(),
+		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAtNS: attemptedAt,
+		AttemptedAtNS: attemptedAt.UnixNano(),
+		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2615,20 +2665,22 @@ func TestGetPendingAuthorization2(t *testing.T) {
 	authzIDB := createPendingAuthorization(t, sa, domain, expiresB)
 
 	regID := int64(1)
-	validUntil := fc.Now().Add(time.Hour * 2).UTC().UnixNano()
+	validUntil := fc.Now().Add(time.Hour * 2).UTC()
 	dbVer, err := sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
 		RegistrationID:  regID,
 		IdentifierValue: domain,
-		ValidUntilNS:    validUntil,
+		ValidUntilNS:    validUntil.UnixNano(),
+		ValidUntil:      timestamppb.New(validUntil),
 	})
 	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
 	test.AssertEquals(t, fmt.Sprintf("%d", authzIDB), dbVer.Id)
 
-	validUntil = fc.Now().UTC().UnixNano()
+	validUntil = fc.Now().UTC()
 	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
 		RegistrationID:  regID,
 		IdentifierValue: domain,
-		ValidUntilNS:    validUntil,
+		ValidUntilNS:    validUntil.UnixNano(),
+		ValidUntil:      timestamppb.New(validUntil),
 	})
 	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
 	test.AssertEquals(t, fmt.Sprintf("%d", authzIDA), dbVer.Id)
@@ -2755,10 +2807,12 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
 	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
 
+	orderExpr := fc.Now().Truncate(time.Second)
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			ExpiresNS:        fc.Now().Truncate(time.Second).UnixNano(),
+			ExpiresNS:        orderExpr.UnixNano(),
+			Expires:          timestamppb.New(orderExpr),
 			Names:            []string{"a.example.com", "b.example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -2781,6 +2835,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 			t.Fatalf("incorrect identifier %q with id %s", a.Authz.Identifier, a.Authz.Id)
 		}
 		test.AssertEquals(t, a.Authz.ExpiresNS, expires.UnixNano())
+		test.AssertEquals(t, a.Authz.Expires.AsTime(), expires)
 		delete(namesToCheck, a.Authz.Identifier)
 	}
 
@@ -2822,13 +2877,16 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 	_ = createFinalizedAuthorization(t, sa, ident, expiresA, "invalid", attemptedAt)
 	_ = createPendingAuthorization(t, sa, ident, expiresB)
 
-	earliest, latest := fc.Now().Add(-time.Hour).UTC().UnixNano(), fc.Now().Add(time.Hour*5).UTC().UnixNano()
+	earliest := fc.Now().Add(-time.Hour).UTC()
+	latest := fc.Now().Add(time.Hour * 5).UTC()
 	count, err := sa.CountInvalidAuthorizations2(context.Background(), &sapb.CountInvalidAuthorizationsRequest{
 		RegistrationID: reg.Id,
 		Hostname:       ident,
 		Range: &sapb.Range{
-			EarliestNS: earliest,
-			LatestNS:   latest,
+			EarliestNS: earliest.UnixNano(),
+			Earliest:   timestamppb.New(earliest),
+			LatestNS:   latest.UnixNano(),
+			Latest:     timestamppb.New(latest),
 		},
 	})
 	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
@@ -2845,7 +2903,7 @@ func TestGetValidAuthorizations2(t *testing.T) {
 	attemptedAt := fc.Now()
 	authzID := createFinalizedAuthorization(t, sa, ident, expires, "valid", attemptedAt)
 
-	now := fc.Now().UTC().UnixNano()
+	now := fc.Now().UTC()
 	regID := int64(1)
 	authzs, err := sa.GetValidAuthorizations2(context.Background(), &sapb.GetValidAuthorizationsRequest{
 		Domains: []string{
@@ -2853,7 +2911,8 @@ func TestGetValidAuthorizations2(t *testing.T) {
 			"bbb",
 		},
 		RegistrationID: regID,
-		NowNS:          now,
+		NowNS:          now.UnixNano(),
+		Now:            timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "sa.GetValidAuthorizations2 failed")
 	test.AssertEquals(t, len(authzs.Authz), 1)
@@ -2864,13 +2923,14 @@ func TestGetValidAuthorizations2(t *testing.T) {
 func TestGetOrderExpired(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
-
 	fc.Add(time.Hour * 5)
+	now := fc.Now()
 	reg := createWorkingRegistration(t, sa)
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			ExpiresNS:        fc.Now().Add(-time.Hour).UnixNano(),
+			ExpiresNS:        now.Add(-time.Hour).UnixNano(),
+			Expires:          timestamppb.New(now.Add(-time.Hour)),
 			Names:            []string{"example.com"},
 			V2Authorizations: []int64{666},
 		},
@@ -2892,17 +2952,19 @@ func TestBlockedKey(t *testing.T) {
 	hashB := make([]byte, 32)
 	hashB[0] = 2
 
-	added := time.Now().UnixNano()
+	added := time.Now()
 	source := "API"
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashA,
-		AddedNS: added,
+		AddedNS: added.UnixNano(),
+		Added:   timestamppb.New(added),
 		Source:  source,
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashA,
-		AddedNS: added,
+		AddedNS: added.UnixNano(),
+		Added:   timestamppb.New(added),
 		Source:  source,
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed with duplicate insert")
@@ -2910,7 +2972,8 @@ func TestBlockedKey(t *testing.T) {
 	comment := "testing comments"
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashB,
-		AddedNS: added,
+		AddedNS: added.UnixNano(),
+		Added:   timestamppb.New(added),
 		Source:  source,
 		Comment: comment,
 	})
@@ -2937,12 +3000,14 @@ func TestBlockedKey(t *testing.T) {
 }
 
 func TestAddBlockedKeyUnknownSource(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
+	now := fc.Now()
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: []byte{1, 2, 3},
-		AddedNS: 1,
+		AddedNS: now.UnixNano(),
+		Added:   timestamppb.New(now),
 		Source:  "heyo",
 	})
 	test.AssertError(t, err, "AddBlockedKey didn't fail with unknown source")
@@ -2950,19 +3015,22 @@ func TestAddBlockedKeyUnknownSource(t *testing.T) {
 }
 
 func TestBlockedKeyRevokedBy(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
+	now := fc.Now()
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: []byte{1},
-		AddedNS: 1,
+		AddedNS: now.UnixNano(),
+		Added:   timestamppb.New(now),
 		Source:  "API",
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash:   []byte{2},
-		AddedNS:   1,
+		AddedNS:   now.UnixNano(),
+		Added:     timestamppb.New(now),
 		Source:    "API",
 		RevokedBy: 1,
 	})
@@ -3211,6 +3279,7 @@ func TestGetRevokedCerts(t *testing.T) {
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
 		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		Issued:       timestamppb.New(eeCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
@@ -3239,19 +3308,27 @@ func TestGetRevokedCerts(t *testing.T) {
 	}
 
 	// Asking for revoked certs now should return no results.
+	expiresAfter := time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
+	expiresBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		ExpiresBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		ExpiresBeforeNS: expiresBefore.UnixNano(),
+		ExpiresBefore:   timestamppb.New(expiresBefore),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Revoke the certificate.
+	date := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial:   core.SerialToString(eeCert.SerialNumber),
-		DateNS:   time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		DateNS:   date.UnixNano(),
+		Date:     timestamppb.New(date),
 		Reason:   1,
 		Response: []byte{1, 2, 3},
 	})
@@ -3260,30 +3337,45 @@ func TestGetRevokedCerts(t *testing.T) {
 	// Asking for revoked certs now should return one result.
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		ExpiresBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		ExpiresBeforeNS: expiresBefore.UnixNano(),
+		ExpiresBefore:   timestamppb.New(expiresBefore),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "normal usage shouldn't result in error")
 	test.AssertEquals(t, count, 1)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
+	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
+	expiresBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore = time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		ExpiresBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		ExpiresBeforeNS: expiresBefore.UnixNano(),
+		ExpiresBefore:   timestamppb.New(expiresBefore),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs in a time period that does not cover this cert's
 	// notAfter timestamp should return zero results.
+	expiresAfter = time.Date(2022, time.March, 1, 0, 0, 0, 0, time.UTC)
+	expiresBefore = time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
-		ExpiresAfterNS:  time.Date(2022, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		ExpiresBeforeNS: time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		ExpiresBeforeNS: expiresBefore.UnixNano(),
+		ExpiresBefore:   timestamppb.New(expiresBefore),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
@@ -3303,6 +3395,7 @@ func TestGetMaxExpiration(t *testing.T) {
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
 		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		Issued:       timestamppb.New(eeCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
@@ -3310,6 +3403,7 @@ func TestGetMaxExpiration(t *testing.T) {
 	lastExpiry, err := sa.GetMaxExpiration(context.Background(), &emptypb.Empty{})
 	test.AssertNotError(t, err, "getting last expriy should succeed")
 	test.Assert(t, lastExpiry.AsTime().Equal(eeCert.NotAfter), "times should be equal")
+	test.AssertEquals(t, timestamppb.New(eeCert.NotBefore).AsTime(), eeCert.NotBefore)
 }
 
 func TestLeaseOldestCRLShard(t *testing.T) {

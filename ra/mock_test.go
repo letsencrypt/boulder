@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type mockInvalidAuthorizationsAuthority struct {
@@ -48,6 +49,8 @@ type mockInvalidPlusValidAuthzAuthority struct {
 }
 
 func (sa *mockInvalidPlusValidAuthzAuthority) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest, _ ...grpc.CallOption) (*sapb.Authorizations, error) {
+	date := time.Date(2101, 12, 3, 0, 0, 0, 0, time.UTC)
+
 	return &sapb.Authorizations{
 		Authz: []*sapb.Authorizations_MapElement{
 			{
@@ -56,7 +59,8 @@ func (sa *mockInvalidPlusValidAuthzAuthority) GetAuthorizations2(ctx context.Con
 					Status:         "valid",
 					Identifier:     sa.domainWithFailures,
 					RegistrationID: 1234,
-					ExpiresNS:      time.Date(2101, 12, 3, 0, 0, 0, 0, time.UTC).Unix(),
+					ExpiresNS:      date.Unix(),
+					Expires:        timestamppb.New(date),
 				},
 			},
 		},

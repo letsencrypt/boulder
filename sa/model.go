@@ -354,6 +354,7 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
 		CreatedAtNS:     reg.CreatedAt.UTC().UnixNano(),
+		CreatedAt:       timestamppb.New(reg.CreatedAt),
 		Status:          reg.Status,
 	}, nil
 }
@@ -424,7 +425,9 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
 		ExpiresNS:         om.Expires.UnixNano(),
+		Expires:           timestamppb.New(om.Expires),
 		CreatedNS:         om.Created.UnixNano(),
+		Created:           timestamppb.New(om.Created),
 		CertificateSerial: om.CertificateSerial,
 		BeganProcessing:   om.BeganProcessing,
 	}
@@ -779,6 +782,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Identifier:     am.IdentifierValue,
 		RegistrationID: am.RegistrationID,
 		ExpiresNS:      am.Expires.UTC().UnixNano(),
+		Expires:        timestamppb.New(am.Expires),
 	}
 	// Populate authorization challenge array. We do this by iterating through
 	// the challenge type bitmap and creating a challenge of each type if its
@@ -851,6 +855,7 @@ func incidentModelToPB(i incidentModel) sapb.Incident {
 		SerialTable: i.SerialTable,
 		Url:         i.URL,
 		RenewByNS:   i.RenewBy.UnixNano(),
+		RenewBy:     timestamppb.New(i.RenewBy),
 		Enabled:     i.Enabled,
 	}
 }
