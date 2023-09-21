@@ -1849,7 +1849,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
 					RenewByNS:   0,
-					RenewBy:     nil,
+					RenewBy:     timestamppb.New(time.Time{}),
 					Enabled:     true,
 				},
 			},
@@ -2109,8 +2109,7 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 		return nil, fmt.Errorf("failed to parse test cert: %w", err)
 	}
 
-	now := sa.clk.Now()
-	issued := now.Add(-1 * time.Second)
+	issued := sa.clk.Now().Add(-1 * time.Second)
 
 	return &corepb.Certificate{
 		RegistrationID: 1,
@@ -2834,6 +2833,8 @@ func TestKeyRollover(t *testing.T) {
 			_, _, inner := signer.embeddedJWK(tc.NewKey, "http://localhost/key-change", tc.Payload)
 			_, _, outer := signer.byKeyID(1, nil, "http://localhost/key-change", inner)
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
+			t.Log(responseWriter.Body.String())
+			t.Log(tc.ExpectedResponse)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 			if tc.ErrorStatType != "" {
 				test.AssertMetricWithLabelsEquals(

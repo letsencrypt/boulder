@@ -34,6 +34,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	akamaipb "github.com/letsencrypt/boulder/akamai/proto"
@@ -101,6 +102,7 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: Registration.Id,
 			ExpiresNS:      exp.UnixNano(),
+			Expires:        timestamppb.New(exp),
 			Names:          []string{domain},
 		},
 		NewAuthzs: []*corepb.Authorization{authzPB},
@@ -119,6 +121,7 @@ func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, 
 		Id:            pendingID,
 		Status:        "valid",
 		ExpiresNS:     exp.UnixNano(),
+		Expires:       timestamppb.New(exp),
 		Attempted:     string(chall),
 		AttemptedAtNS: attemptedAt.UnixNano(),
 	})
@@ -858,6 +861,7 @@ func TestPerformValidationSuccess(t *testing.T) {
 		Problems: nil,
 	}
 
+	now := fc.Now()
 	challIdx := dnsChallIdx(t, authzPB.Challenges)
 	authzPB, err := ra.PerformValidation(ctx, &rapb.PerformValidationRequest{
 		Authz:          authzPB,
@@ -893,7 +897,8 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	test.AssertEquals(t, time.Unix(0, dbAuthzPB.ExpiresNS).String(), fc.Now().Add(ra.authorizationLifetime).String())
+	test.AssertEquals(t, dbAuthzPB.ExpiresNS, now.Add(ra.authorizationLifetime).UnixNano())
+	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.authorizationLifetime))
 
 	// Check that validated timestamp was recorded, stored, and retrieved
 	expectedValidated := fc.Now()
@@ -959,6 +964,7 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			ExpiresNS:        exp.UnixNano(),
+			Expires:          timestamppb.New(exp),
 			Names:            []string{"www.example.com"},
 			V2Authorizations: []int64{authzID},
 		},
@@ -1984,13 +1990,15 @@ func TestNewOrder(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
+	now := fc.Now()
 	orderA, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		Names:          []string{"b.com", "a.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, orderA.ExpiresNS, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderA.ExpiresNS, now.Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(time.Hour))
 	test.AssertEquals(t, len(orderA.Names), 3)
 	// We expect the order names to have been sorted, deduped, and lowercased
 	test.AssertDeepEquals(t, orderA.Names, []string{"a.com", "b.com", "c.com"})
@@ -1998,13 +2006,15 @@ func TestNewOrder(t *testing.T) {
 	test.AssertEquals(t, numAuthorizations(orderA), 3)
 
 	// Reuse all existing authorizations
+	now = fc.Now()
 	orderB, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		Names:          []string{"b.com", "a.com", "C.COM"},
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderB.RegistrationID, int64(1))
-	test.AssertEquals(t, orderB.ExpiresNS, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderB.ExpiresNS, now.Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderB.Expires.AsTime(), now.Add(time.Hour))
 	// We expect orderB's ID to match orderA's because of pending order reuse
 	test.AssertEquals(t, orderB.Id, orderA.Id)
 	test.AssertEquals(t, len(orderB.Names), 3)
@@ -2015,13 +2025,15 @@ func TestNewOrder(t *testing.T) {
 	// Reuse all of the existing authorizations from the previous order and
 	// add a new one
 	orderA.Names = append(orderA.Names, "d.com")
+	now = fc.Now()
 	orderC, err := ra.NewOrder(context.Background(), &rapb.NewOrderRequest{
 		RegistrationID: Registration.Id,
 		Names:          orderA.Names,
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderC.RegistrationID, int64(1))
-	test.AssertEquals(t, orderC.ExpiresNS, fc.Now().Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderC.ExpiresNS, now.Add(time.Hour).UnixNano())
+	test.AssertEquals(t, orderC.Expires.AsTime(), now.Add(time.Hour))
 	test.AssertEquals(t, len(orderC.Names), 4)
 	test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
 	// We expect orderC's ID to not match orderA/orderB's because it is for
@@ -2695,6 +2707,7 @@ func TestFinalizeOrder(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			ExpiresNS:        exp.UnixNano(),
+			Expires:          timestamppb.New(exp),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -2895,6 +2908,8 @@ func TestFinalizeOrder(t *testing.T) {
 				test.AssertNotError(t, err, "Error getting order to check serial")
 				test.AssertNotEquals(t, updatedOrder.CertificateSerial, "")
 				test.AssertEquals(t, updatedOrder.Status, "valid")
+				test.AssertEquals(t, updatedOrder.ExpiresNS, exp.UnixNano())
+				test.AssertEquals(t, updatedOrder.Expires.AsTime(), exp)
 			}
 		})
 	}
@@ -3213,6 +3228,7 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			ExpiresNS:        exp.UnixNano(),
+			Expires:          timestamppb.New(exp),
 			Names:            names,
 			V2Authorizations: authzIDs,
 		},
@@ -3377,6 +3393,7 @@ func TestCTPolicyMeasurements(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			ExpiresNS:        exp.UnixNano(),
+			Expires:          timestamppb.New(exp),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -3507,6 +3524,7 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			ExpiresNS:        exp.UnixNano(),
+			Expires:          timestamppb.New(exp),
 			Names:            names,
 			V2Authorizations: authzIDs,
 		},

@@ -668,9 +668,9 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 		AccountID: acctID,
 		Range: &sapb.Range{
 			EarliestNS: now.Add(-limit.Window.Duration).UnixNano(),
-			Earliest:   timestamppb.New(timestamppb.Now().AsTime().Add(-limit.Window.Duration)),
+			Earliest:   timestamppb.New(now.Add(-limit.Window.Duration)),
 			LatestNS:   now.UnixNano(),
-			Latest:     timestamppb.Now(),
+			Latest:     timestamppb.New(now),
 		},
 	})
 	if err != nil {
@@ -2053,11 +2053,13 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// authorizations for all names in the cert.
 		logEvent.Method = "control"
 
+		now := ra.clk.Now()
 		var authzMapPB *sapb.Authorizations
 		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Domains:        cert.DNSNames,
-			NowNS:          ra.clk.Now().UnixNano(),
+			NowNS:          now.UnixNano(),
+			Now:            timestamppb.New(now),
 		})
 		if err != nil {
 			return nil, err
@@ -2108,9 +2110,11 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 	}
 
 	// Add the public key to the blocked keys list.
+	now := ra.clk.Now()
 	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash: digest[:],
-		AddedNS: ra.clk.Now().UnixNano(),
+		AddedNS: now.UnixNano(),
+		Added:   timestamppb.New(now),
 		Source:  src,
 		Comment: comment,
 	})
@@ -2464,11 +2468,12 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// expiring very soon.
 	// To prevent this we only return authorizations that are at least 1 day away
 	// from expiring.
-	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1).UnixNano()
+	authzExpiryCutoff := ra.clk.Now().AddDate(0, 0, 1)
 
 	getAuthReq := &sapb.GetAuthorizationsRequest{
 		RegistrationID: newOrder.RegistrationID,
-		NowNS:          authzExpiryCutoff,
+		NowNS:          authzExpiryCutoff.UnixNano(),
+		Now:            timestamppb.New(authzExpiryCutoff),
 		Domains:        newOrder.Names,
 	}
 	existingAuthz, err := ra.SA.GetAuthorizations2(ctx, getAuthReq)
@@ -2591,6 +2596,7 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 	// Set the order's expiry to the minimum expiry. The db doesn't store
 	// sub-second values, so truncate here.
 	newOrder.ExpiresNS = minExpiry.Truncate(time.Second).UnixNano()
+	newOrder.Expires = timestamppb.New(minExpiry.Truncate(time.Second))
 
 	newOrderAndAuthzsReq := &sapb.NewOrderAndAuthzsRequest{
 		NewOrder:  newOrder,
@@ -2615,11 +2621,13 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
+	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)
 	authz := &corepb.Authorization{
 		Identifier:     identifier.Value,
 		RegistrationID: reg,
 		Status:         string(core.StatusPending),
-		ExpiresNS:      ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second).UnixNano(),
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.

@@ -147,7 +147,7 @@ func TestGenerateCRL(t *testing.T) {
 				Serial:      "deadbeefdeadbeefdeadbeefdeadbeefdead",
 				Reason:      1,
 				RevokedAtNS: 0,
-				RevokedAt:   timestamppb.New(0),
+				RevokedAt:   timestamppb.New(time.Time{}),
 			},
 		},
 	}

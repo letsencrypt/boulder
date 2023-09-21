@@ -69,9 +69,9 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 			return nil, err
 		}
 	}
-	var validated int64
+	var validated time.Time
 	if challenge.Validated != nil {
-		validated = challenge.Validated.UTC().UnixNano()
+		validated = challenge.Validated.UTC()
 	}
 	return &corepb.Challenge{
 		Type:              string(challenge.Type),
@@ -80,7 +80,8 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		KeyAuthorization:  challenge.ProvidedKeyAuthorization,
 		Error:             prob,
 		Validationrecords: recordAry,
-		Validated:         validated,
+		ValidatedNS:       validated.UnixNano(),
+		Validated:         timestamppb.New(validated),
 	}, nil
 }
 
@@ -106,8 +107,8 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	var validated *time.Time
-	if in.Validated != 0 {
-		val := time.Unix(0, in.Validated).UTC()
+	if in.ValidatedNS != 0 {
+		val := time.Unix(0, in.ValidatedNS).UTC()
 		validated = &val
 	}
 	ch := core.Challenge{

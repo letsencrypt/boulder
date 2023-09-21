@@ -676,8 +676,8 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 
 			// If validated Unix timestamp is zero then keep the core.Challenge Validated object nil.
 			var validated *time.Time
-			if chall.Validated != 0 {
-				val := time.Unix(0, chall.Validated).UTC()
+			if chall.ValidatedNS != 0 {
+				val := time.Unix(0, chall.ValidatedNS).UTC()
 				validated = &val
 			}
 			am.AttemptedAt = validated
@@ -811,11 +811,12 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 						return nil, err
 					}
 					// Get the attemptedAt time and assign to the challenge validated time.
-					var validated int64
+					var validated time.Time
 					if am.AttemptedAt != nil {
-						validated = am.AttemptedAt.UTC().UnixNano()
+						validated = am.AttemptedAt.UTC()
 					}
-					challenge.Validated = validated
+					challenge.ValidatedNS = validated.UnixNano()
+					challenge.Validated = timestamppb.New(validated)
 					pb.Challenges = append(pb.Challenges, challenge)
 				}
 			} else {

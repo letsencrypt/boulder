@@ -186,12 +186,11 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	serialHex := core.SerialToString(serialBigInt)
 	regID := issueReq.RegistrationID
 	now := ca.clk.Now()
-	nowNanos := now.UnixNano()
 	expiresNanos := validity.NotAfter.UnixNano()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		Serial:    serialHex,
 		RegID:     regID,
-		CreatedNS: nowNanos,
+		CreatedNS: now.UnixNano(),
 		Created:   timestamppb.New(now),
 		ExpiresNS: expiresNanos,
 		Expires:   timestamppb.New(validity.NotAfter),
@@ -301,11 +300,10 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
 
 	now := ca.clk.Now()
-	nowNanos := now.UnixNano()
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
 		RegID:    req.RegistrationID,
-		IssuedNS: nowNanos,
+		IssuedNS: now.UnixNano(),
 		Issued:   timestamppb.New(now),
 	})
 	if err != nil {
@@ -423,11 +421,10 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 	}
 
 	now := ca.clk.Now()
-	nowNanos := now.UnixNano()
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
-		IssuedNS:     nowNanos,
+		IssuedNS:     now.UnixNano(),
 		Issued:       timestamppb.New(now),
 		IssuerNameID: int64(issuer.Cert.NameID()),
 		OcspNotReady: true,
