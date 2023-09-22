@@ -827,7 +827,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 			err = tx.SelectOne(
 				ctx, &rsm, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
 			if err != nil {
-				return nil, fmt.Errorf("retriving revoked certificate expiration: %w", err)
+				return nil, fmt.Errorf("retrieving revoked certificate expiration: %w", err)
 			}
 
 			err = tx.Insert(ctx, &revokedCertModel{
@@ -912,7 +912,7 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 				err = tx.SelectOne(
 					ctx, &rsm, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
 				if err != nil {
-					return nil, fmt.Errorf("retriving revoked certificate expiration: %w", err)
+					return nil, fmt.Errorf("retrieving revoked certificate expiration: %w", err)
 				}
 
 				err = tx.Insert(ctx, &revokedCertModel{
