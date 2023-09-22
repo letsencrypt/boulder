@@ -124,6 +124,7 @@ func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, 
 		Expires:       timestamppb.New(exp),
 		Attempted:     string(chall),
 		AttemptedAtNS: attemptedAt.UnixNano(),
+		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
@@ -2176,12 +2177,15 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	// It should have one authorization
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
+	now := ra.clk.Now()
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:            order.V2Authorizations[0],
 		Status:        string(core.StatusInvalid),
 		ExpiresNS:     order.ExpiresNS,
+		Expires:       order.Expires,
 		Attempted:     string(core.ChallengeTypeDNS01),
-		AttemptedAtNS: ra.clk.Now().UnixNano(),
+		AttemptedAtNS: now.UnixNano(),
+		AttemptedAt:   timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
@@ -2635,7 +2639,8 @@ func TestFinalizeOrder(t *testing.T) {
 
 	// Create one finalized authorization for not-example.com and one finalized
 	// authorization for www.not-example.org
-	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	now := ra.clk.Now()
+	exp := now.Add(365 * 24 * time.Hour)
 	authzIDA := createFinalizedAuthorization(t, sa, "not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 	authzIDB := createFinalizedAuthorization(t, sa, "www.not-example.com", exp, core.ChallengeTypeHTTP01, ra.clk.Now())
 
@@ -2839,6 +2844,7 @@ func TestFinalizeOrder(t *testing.T) {
 					Status:            string(core.StatusReady),
 					Names:             []string{"example.org"},
 					ExpiresNS:         exp.UnixNano(),
+					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
 					BeganProcessing:   false,
 				},
@@ -2855,9 +2861,11 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    fakeRegID,
 					ExpiresNS:         exp.UnixNano(),
+					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
 					BeganProcessing:   false,
-					CreatedNS:         ra.clk.Now().UnixNano(),
+					CreatedNS:         now.UnixNano(),
+					Created:           timestamppb.New(now),
 				},
 				Csr: oneDomainCSR,
 			},
@@ -2872,9 +2880,11 @@ func TestFinalizeOrder(t *testing.T) {
 					Id:                missingAuthzOrder.Id,
 					RegistrationID:    Registration.Id,
 					ExpiresNS:         exp.UnixNano(),
+					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
 					BeganProcessing:   false,
-					CreatedNS:         ra.clk.Now().UnixNano(),
+					CreatedNS:         now.UnixNano(),
+					Created:           timestamppb.New(now),
 				},
 				Csr: twoDomainCSR,
 			},
@@ -2920,8 +2930,9 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
-	// Pick an expiry in the future
-	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	// Pick an expiry in the future\
+	now := ra.clk.Now()
+	exp := now.Add(365 * 24 * time.Hour)
 
 	// Create one finalized authorization for Registration.Id for not-example.com and
 	// one finalized authorization for Registration.Id for www.not-example.org
@@ -2933,6 +2944,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			ExpiresNS:        exp.UnixNano(),
+			Expires:          timestamppb.New(exp),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
 		},
@@ -2981,7 +2993,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	defer cleanUp()
 
 	// Pick an expiry in the future
-	exp := ra.clk.Now().Add(365 * 24 * time.Hour)
+	now := ra.clk.Now()
+	exp := now.Add(365 * 24 * time.Hour)
 
 	testKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	test.AssertNotError(t, err, "Error creating test RSA key")
@@ -3051,12 +3064,15 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 
 	// Finalize the authorization with the challenge validated
+	expires := now.Add(time.Hour * 24 * 7)
 	_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:            validOrder.V2Authorizations[0],
 		Status:        string(core.StatusValid),
-		ExpiresNS:     ra.clk.Now().Add(time.Hour * 24 * 7).UnixNano(),
+		ExpiresNS:     expires.UnixNano(),
+		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeDNS01),
-		AttemptedAtNS: ra.clk.Now().UnixNano(),
+		AttemptedAtNS: now.UnixNano(),
+		AttemptedAt:   timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -3097,6 +3113,7 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
 			ExpiresNS:        exp.UnixNano(),
+			Expires:          timestamppb.New(exp),
 			Names:            names,
 			V2Authorizations: authzIDs,
 		},
@@ -3760,6 +3777,7 @@ func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sap
 		Serial:     req.Serial,
 		Status:     "good",
 		NotAfterNS: msgo.expiration.UTC().UnixNano(),
+		NotAfter:   timestamppb.New(msgo.expiration.UTC()),
 	}, nil
 }
 

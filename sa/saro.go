@@ -553,11 +553,11 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		return nil, err
 	}
 
-	var results []int64
+	var resultsNS []int64
 	for _, i := range rows {
-		results = append(results, i.Issued.UnixNano())
+		resultsNS = append(resultsNS, i.Issued.UnixNano())
 	}
-	return &sapb.Timestamps{TimestampsNS: results}, nil
+	return &sapb.Timestamps{TimestampsNS: resultsNS}, nil
 }
 
 func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {

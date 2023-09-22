@@ -158,7 +158,7 @@ message Count {
 message Timestamps {
   // Next unused field number: 3
 	repeated int64 timestampsNS = 1; // Unix timestamp (nanoseconds)
-  google.protobuf.Timestamp timestamps = 2;
+  repeated google.protobuf.Timestamp timestamps = 2;
 }
 
 message CountCertificatesByNamesRequest {

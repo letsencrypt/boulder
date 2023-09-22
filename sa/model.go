@@ -354,7 +354,7 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
 		CreatedAtNS:     reg.CreatedAt.UTC().UnixNano(),
-		CreatedAt:       timestamppb.New(reg.CreatedAt),
+		CreatedAt:       timestamppb.New(reg.CreatedAt.UTC()),
 		Status:          reg.Status,
 	}, nil
 }
