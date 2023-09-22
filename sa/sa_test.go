@@ -34,6 +34,7 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/metrics"
 	"github.com/letsencrypt/boulder/probs"
+	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
@@ -2140,6 +2141,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Try to update it before its been revoked
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID:   1,
 		Serial:     serial,
 		DateNS:     fc.Now().UnixNano(),
 		BackdateNS: fc.Now().UnixNano(),
@@ -2169,6 +2171,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Try to update its revocation info with no backdate
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID: 1,
 		Serial:   serial,
 		DateNS:   fc.Now().UnixNano(),
 		Reason:   ocsp.KeyCompromise,
@@ -2179,6 +2182,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Try to update its revocation info for a reason other than keyCompromise
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID:   1,
 		Serial:     serial,
 		DateNS:     fc.Now().UnixNano(),
 		BackdateNS: revokedTime,
@@ -2190,6 +2194,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Try to update the revocation info of the wrong certificate
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID:   1,
 		Serial:     "000000000000000000000000000000021bd5",
 		DateNS:     fc.Now().UnixNano(),
 		BackdateNS: revokedTime,
@@ -2201,6 +2206,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Try to update its revocation info with the wrong backdate
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID:   1,
 		Serial:     serial,
 		DateNS:     fc.Now().UnixNano(),
 		BackdateNS: fc.Now().UnixNano(),
@@ -2212,6 +2218,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Try to update its revocation info correctly
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID:   1,
 		Serial:     serial,
 		DateNS:     fc.Now().UnixNano(),
 		BackdateNS: revokedTime,
@@ -2219,6 +2226,141 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 		Response:   []byte{4, 5, 6},
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
+}
+
+func TestUpdateRevokedCertificateWithShard(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires revokedCertificates database table")
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a cert to the DB to test with.
+	reg := createWorkingRegistration(t, sa)
+	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
+	test.AssertNotError(t, err, "failed to load test cert")
+	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		RegID:     reg.Id,
+		Serial:    core.SerialToString(eeCert.SerialNumber),
+		CreatedNS: eeCert.NotBefore.UnixNano(),
+		ExpiresNS: eeCert.NotAfter.UnixNano(),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          eeCert.Raw,
+		RegID:        reg.Id,
+		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	fc.Add(1 * time.Hour)
+
+	// Now revoke it with a shardIdx, so that it gets updated in both the
+	// certificateStatus table and the revokedCertificates table.
+	revokedTime := fc.Now().UnixNano()
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID: 1,
+		ShardIdx: 9,
+		Serial:   core.SerialToString(eeCert.SerialNumber),
+		DateNS:   revokedTime,
+		Reason:   ocsp.CessationOfOperation,
+		Response: []byte{1, 2, 3},
+	})
+	test.AssertNotError(t, err, "RevokeCertificate failed")
+
+	// Updating revocation should succeed, with the revokedCertificates row being
+	// updated.
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID:   1,
+		ShardIdx:   9,
+		Serial:     core.SerialToString(eeCert.SerialNumber),
+		DateNS:     fc.Now().UnixNano(),
+		BackdateNS: revokedTime,
+		Reason:     ocsp.KeyCompromise,
+		Response:   []byte{4, 5, 6},
+	})
+	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
+
+	var result revokedCertModel
+	err = sa.dbMap.SelectOne(
+		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, core.SerialToString(eeCert.SerialNumber))
+	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
+	test.AssertEquals(t, result.ShardIdx, int64(9))
+	test.AssertEquals(t, result.RevokedReason, revocation.Reason(ocsp.KeyCompromise))
+}
+
+func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
+	if os.Getenv("BOULDER_CONFIG_DIR") != "test/config-next" {
+		t.Skip("Test requires revokedCertificates database table")
+	}
+
+	sa, fc, cleanUp := initSA(t)
+	defer cleanUp()
+
+	// Add a cert to the DB to test with.
+	reg := createWorkingRegistration(t, sa)
+	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
+	test.AssertNotError(t, err, "failed to load test cert")
+	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
+		RegID:     reg.Id,
+		Serial:    core.SerialToString(eeCert.SerialNumber),
+		CreatedNS: eeCert.NotBefore.UnixNano(),
+		ExpiresNS: eeCert.NotAfter.UnixNano(),
+	})
+	test.AssertNotError(t, err, "failed to add test serial")
+	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
+		Der:          eeCert.Raw,
+		RegID:        reg.Id,
+		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		IssuerNameID: 1,
+	})
+	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
+	fc.Add(1 * time.Hour)
+
+	// Now revoke it *without* a shardIdx, so that it only gets updated in the
+	// certificateStatus table, and not the revokedCertificates table.
+	revokedTime := fc.Now().UnixNano()
+	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID: 1,
+		Serial:   core.SerialToString(eeCert.SerialNumber),
+		DateNS:   revokedTime,
+		Reason:   ocsp.CessationOfOperation,
+		Response: []byte{1, 2, 3},
+	})
+	test.AssertNotError(t, err, "RevokeCertificate failed")
+
+	// Confirm that setup worked as expected.
+	status, err := sa.GetCertificateStatus(
+		ctx, &sapb.Serial{Serial: core.SerialToString(eeCert.SerialNumber)})
+	test.AssertNotError(t, err, "GetCertificateStatus failed")
+	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
+
+	c, err := sa.dbMap.SelectNullInt(
+		ctx, "SELECT count(*) FROM revokedCertificates")
+	test.AssertNotError(t, err, "SELECT from revokedCertificates failed")
+	test.Assert(t, c.Valid, "SELECT from revokedCertificates got no result")
+	test.AssertEquals(t, c.Int64, int64(0))
+
+	// Updating revocation should succeed, with a new row being written into the
+	// revokedCertificates table.
+	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
+		IssuerID:   1,
+		ShardIdx:   9,
+		Serial:     core.SerialToString(eeCert.SerialNumber),
+		DateNS:     fc.Now().UnixNano(),
+		BackdateNS: revokedTime,
+		Reason:     ocsp.KeyCompromise,
+		Response:   []byte{4, 5, 6},
+	})
+	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
+
+	var result revokedCertModel
+	err = sa.dbMap.SelectOne(
+		ctx, &result, `SELECT * FROM revokedCertificates WHERE serial = ?`, core.SerialToString(eeCert.SerialNumber))
+	test.AssertNotError(t, err, "should be exactly one row in revokedCertificates")
+	test.AssertEquals(t, result.ShardIdx, int64(9))
+	test.AssertEquals(t, result.RevokedReason, revocation.Reason(ocsp.KeyCompromise))
 }
 
 func TestAddCertificateRenewalBit(t *testing.T) {

@@ -857,39 +857,88 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 // cert is already revoked, if the new revocation reason is `KeyCompromise`,
 // and if the revokedDate is identical to the current revokedDate.
 func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" || req.DateNS == 0 || req.BackdateNS == 0 {
+	if req.Serial == "" || req.DateNS == 0 || req.BackdateNS == 0 || req.IssuerID == 0 {
 		return nil, errIncompleteRequest
 	}
 	if req.Reason != ocsp.KeyCompromise {
 		return nil, fmt.Errorf("cannot update revocation for any reason other than keyCompromise (1); got: %d", req.Reason)
 	}
 
-	thisUpdate := time.Unix(0, req.DateNS)
-	revokedDate := time.Unix(0, req.BackdateNS)
+	_, overallError := db.WithTransaction(ctx, ssa.dbMap, func(tx db.Executor) (interface{}, error) {
+		thisUpdate := time.Unix(0, req.DateNS)
+		revokedDate := time.Unix(0, req.BackdateNS)
 
-	res, err := ssa.dbMap.ExecContext(ctx,
-		`UPDATE certificateStatus SET
-				revokedReason = ?,
-				ocspLastUpdated = ?
-			WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
-		revocation.Reason(ocsp.KeyCompromise),
-		thisUpdate,
-		req.Serial,
-		string(core.OCSPStatusRevoked),
-		revocation.Reason(ocsp.KeyCompromise),
-		revokedDate,
-	)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return nil, err
-	}
-	if rows == 0 {
-		// InternalServerError because we expected this certificate status to exist,
-		// to already be revoked for a different reason, and to have a matching date.
-		return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
+		res, err := tx.ExecContext(ctx,
+			`UPDATE certificateStatus SET
+					revokedReason = ?,
+					ocspLastUpdated = ?
+				WHERE serial = ? AND status = ? AND revokedReason != ? AND revokedDate = ?`,
+			revocation.Reason(ocsp.KeyCompromise),
+			thisUpdate,
+			req.Serial,
+			string(core.OCSPStatusRevoked),
+			revocation.Reason(ocsp.KeyCompromise),
+			revokedDate,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		if rows == 0 {
+			// InternalServerError because we expected this certificate status to exist,
+			// to already be revoked for a different reason, and to have a matching date.
+			return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
+		}
+
+		if req.ShardIdx != 0 {
+			var rcm revokedCertModel
+			// Note: this query MUST be updated to enforce the same preconditions as
+			// the UPDATE above, if this query ever becomes the first or only query
+			// in this transaction. We are currently relying on the query above to
+			// exit early if the certificate does not have an appropriate status.
+			err = tx.SelectOne(
+				ctx, &rcm, `SELECT * FROM revokedCertificates WHERE serial = ?`, req.Serial)
+			if err != nil && !db.IsNoRows(err) {
+				return nil, fmt.Errorf("retrieving revoked certificate row: %w", err)
+			} else if db.IsNoRows(err) {
+				// TODO: Remove this once we know that all unexpired certs marked as
+				// revoked in the certificateStatus table have corresponding rows in
+				// the revokedCertificates table, i.e. 90+ days after the RA starts
+				// sending ShardIdx in its RevokeCertificateRequest messages.
+				var rsm recordedSerialModel
+				err = tx.SelectOne(
+					ctx, &rsm, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
+				if err != nil {
+					return nil, fmt.Errorf("retriving revoked certificate expiration: %w", err)
+				}
+
+				err = tx.Insert(ctx, &revokedCertModel{
+					IssuerID:      req.IssuerID,
+					Serial:        req.Serial,
+					NotAfter:      rsm.Expires,
+					ShardIdx:      req.ShardIdx,
+					RevokedDate:   revokedDate,
+					RevokedReason: revocation.Reason(req.Reason),
+				})
+				if err != nil {
+					return nil, fmt.Errorf("inserting revoked certificate row: %w", err)
+				}
+			} else {
+				rcm.RevokedReason = revocation.Reason(ocsp.KeyCompromise)
+				_, err = tx.Update(ctx, &rcm)
+				if err != nil {
+					return nil, fmt.Errorf("updating revoked certificate row: %w", err)
+				}
+			}
+		}
+
+		return nil, nil
+	})
+	if overallError != nil {
+		return nil, overallError
 	}
 
 	return &emptypb.Empty{}, nil
