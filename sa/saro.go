@@ -218,7 +218,7 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // CountRegistrationsByIP returns the number of registrations created in the
 // time range for a single IP address.
 func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	if len(req.Ip) == 0 || req.Range.EarliestNS == 0 || req.Range.LatestNS == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -233,8 +233,8 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, re
 		 createdAt <= :latest`,
 		map[string]interface{}{
 			"ip":       req.Ip,
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
+			"earliest": time.Unix(0, req.Range.EarliestNS),
+			"latest":   time.Unix(0, req.Range.LatestNS),
 		})
 	if err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, req 
 // the single IP. For IPv6 addresses, that range is a /48, since it's not
 // uncommon for one person to have a /48 to themselves.
 func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
-	if len(req.Ip) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	if len(req.Ip) == 0 || req.Range.EarliestNS == 0 || req.Range.LatestNS == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -267,8 +267,8 @@ func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Contex
 		 :earliest < createdAt AND
 		 createdAt <= :latest`,
 		map[string]interface{}{
-			"earliest": time.Unix(0, req.Range.Earliest),
-			"latest":   time.Unix(0, req.Range.Latest),
+			"earliest": time.Unix(0, req.Range.EarliestNS),
+			"latest":   time.Unix(0, req.Range.LatestNS),
 			"beginIP":  beginIP,
 			"endIP":    endIP,
 		})
@@ -290,7 +290,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 // issued for any of the domains during the provided range of time. Queries will
 // be run in parallel. If any of them error, only one error will be returned.
 func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
-	if len(req.Names) == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	if len(req.Names) == 0 || req.Range.EarliestNS == 0 || req.Range.LatestNS == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -343,7 +343,7 @@ func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, 
 
 	// Set earliest to the latest possible time, so that we can find the
 	// earliest certificate in the results.
-	earliest := timestamppb.New(time.Unix(0, req.Range.Latest))
+	earliest := timestamppb.New(time.Unix(0, req.Range.LatestNS))
 	counts := make(map[string]int64)
 	for r := range results {
 		if r.err != nil {
@@ -404,8 +404,8 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 	return &sapb.SerialMetadata{
 		Serial:         recordedSerial.Serial,
 		RegistrationID: recordedSerial.RegistrationID,
-		Created:        recordedSerial.Created.UnixNano(),
-		Expires:        recordedSerial.Expires.UnixNano(),
+		CreatedNS:      recordedSerial.Created.UnixNano(),
+		ExpiresNS:      recordedSerial.Expires.UnixNano(),
 	}, nil
 }
 
@@ -491,7 +491,7 @@ func (ssa *SQLStorageAuthority) GetRevocationStatus(ctx context.Context, req *sa
 }
 
 func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
-	if req.AccountID == 0 || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	if req.AccountID == 0 || req.Range.EarliestNS == 0 || req.Range.LatestNS == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -555,7 +555,7 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 	for _, i := range rows {
 		results = append(results, i.Issued.UnixNano())
 	}
-	return &sapb.Timestamps{Timestamps: results}, nil
+	return &sapb.Timestamps{TimestampsNS: results}, nil
 }
 
 func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
@@ -683,7 +683,7 @@ func (ssa *SQLStorageAuthorityRO) GetOrder(ctx context.Context, req *sapb.OrderR
 			return nil, err
 		}
 
-		orderExp := time.Unix(0, order.Expires)
+		orderExp := time.Unix(0, order.ExpiresNS)
 		if orderExp.Before(ssa.clk.Now()) {
 			return nil, berrors.NotFoundError("no order found for ID %d", req.Id)
 		}
@@ -869,7 +869,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
 // provided. If both a valid and pending authorization exist only the valid one will be returned.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.NowNS == 0 {
 		return nil, errIncompleteRequest
 	}
 	var authzModels []authzModel
@@ -877,7 +877,7 @@ func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *s
 		req.RegistrationID,
 		statusUint(core.StatusValid),
 		statusUint(core.StatusPending),
-		time.Unix(0, req.Now),
+		time.Unix(0, req.NowNS),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 
@@ -930,7 +930,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // the given identifier, if available. This method only supports DNS identifier types.
 // TODO(#5816): Consider removing this method, as it has no callers.
 func (ssa *SQLStorageAuthorityRO) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
-	if req.RegistrationID == 0 || req.IdentifierValue == "" || req.ValidUntil == 0 {
+	if req.RegistrationID == 0 || req.IdentifierValue == "" || req.ValidUntilNS == 0 {
 		return nil, errIncompleteRequest
 	}
 	var am authzModel
@@ -948,7 +948,7 @@ func (ssa *SQLStorageAuthorityRO) GetPendingAuthorization2(ctx context.Context, 
 		map[string]interface{}{
 			"regID":      req.RegistrationID,
 			"status":     statusUint(core.StatusPending),
-			"validUntil": time.Unix(0, req.ValidUntil),
+			"validUntil": time.Unix(0, req.ValidUntilNS),
 			"dnsType":    identifierTypeToUint[string(identifier.DNS)],
 			"ident":      req.IdentifierValue,
 		},
@@ -1056,7 +1056,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
-	if req.RegistrationID == 0 || req.Hostname == "" || req.Range.Earliest == 0 || req.Range.Latest == 0 {
+	if req.RegistrationID == 0 || req.Hostname == "" || req.Range.EarliestNS == 0 || req.Range.LatestNS == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -1075,8 +1075,8 @@ func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Contex
 			"regID":           req.RegistrationID,
 			"dnsType":         identifierTypeToUint[string(identifier.DNS)],
 			"ident":           req.Hostname,
-			"expiresEarliest": time.Unix(0, req.Range.Earliest),
-			"expiresLatest":   time.Unix(0, req.Range.Latest),
+			"expiresEarliest": time.Unix(0, req.Range.EarliestNS),
+			"expiresLatest":   time.Unix(0, req.Range.LatestNS),
 			"status":          statusUint(core.StatusInvalid),
 		},
 	)
@@ -1094,7 +1094,7 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 // domain names that the account has authorizations for. This method
 // only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
-	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.Now == 0 {
+	if len(req.Domains) == 0 || req.RegistrationID == 0 || req.NowNS == 0 {
 		return nil, errIncompleteRequest
 	}
 
@@ -1112,7 +1112,7 @@ func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, r
 	params := []interface{}{
 		req.RegistrationID,
 		statusUint(core.StatusValid),
-		time.Unix(0, req.Now),
+		time.Unix(0, req.NowNS),
 		identifierTypeToUint[string(identifier.DNS)],
 	}
 	for _, domain := range req.Domains {
@@ -1260,7 +1260,7 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 			ispb.OrderID = *ism.OrderID
 		}
 		if ism.LastNoticeSent != nil {
-			ispb.LastNoticeSent = ism.LastNoticeSent.UnixNano()
+			ispb.LastNoticeSentNS = ism.LastNoticeSent.UnixNano()
 		}
 
 		err = stream.Send(ispb)
@@ -1287,7 +1287,7 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 // notAfter date are included), but the ending timestamp is exclusive (certs
 // with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
-	atTime := time.Unix(0, req.RevokedBefore)
+	atTime := time.Unix(0, req.RevokedBeforeNS)
 
 	clauses := `
 		WHERE notAfter >= ?
@@ -1295,8 +1295,8 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 		AND issuerID = ?
 		AND status = ?`
 	params := []interface{}{
-		time.Unix(0, req.ExpiresAfter),
-		time.Unix(0, req.ExpiresBefore),
+		time.Unix(0, req.ExpiresAfterNS),
+		time.Unix(0, req.ExpiresBeforeNS),
 		req.IssuerNameID,
 		core.OCSPStatusRevoked,
 	}
@@ -1333,9 +1333,9 @@ func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsReque
 		}
 
 		err = stream.Send(&corepb.CRLEntry{
-			Serial:    row.Serial,
-			Reason:    int32(row.RevokedReason),
-			RevokedAt: row.RevokedDate.UnixNano(),
+			Serial:      row.Serial,
+			Reason:      int32(row.RevokedReason),
+			RevokedAtNS: row.RevokedDate.UnixNano(),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)

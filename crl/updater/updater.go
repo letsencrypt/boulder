@@ -7,9 +7,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/big"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -33,7 +30,6 @@ type crlUpdater struct {
 	shardWidth     time.Duration
 	lookbackPeriod time.Duration
 	updatePeriod   time.Duration
-	updateOffset   time.Duration
 	updateTimeout  time.Duration
 	maxParallelism int
 	maxAttempts    int
@@ -55,7 +51,6 @@ func NewUpdater(
 	shardWidth time.Duration,
 	lookbackPeriod time.Duration,
 	updatePeriod time.Duration,
-	updateOffset time.Duration,
 	updateTimeout time.Duration,
 	maxParallelism int,
 	maxAttempts int,
@@ -77,10 +72,6 @@ func NewUpdater(
 
 	if updatePeriod >= 7*24*time.Hour {
 		return nil, fmt.Errorf("must update CRLs at least every 7 days, got: %s", updatePeriod)
-	}
-
-	if updateOffset >= updatePeriod {
-		return nil, fmt.Errorf("update offset must be less than period: %s !< %s", updateOffset, updatePeriod)
 	}
 
 	if updateTimeout >= updatePeriod {
@@ -118,7 +109,6 @@ func NewUpdater(
 		shardWidth,
 		lookbackPeriod,
 		updatePeriod,
-		updateOffset,
 		updateTimeout,
 		maxParallelism,
 		maxAttempts,
@@ -132,191 +122,35 @@ func NewUpdater(
 	}, nil
 }
 
-// Run causes the crlUpdater to enter its processing loop. It waits until the
-// next scheduled run time based on the current time and the updateOffset, then
-// begins running once every updatePeriod.
-func (cu *crlUpdater) Run(ctx context.Context) error {
-	// We don't want the times at which crlUpdater runs to be dependent on when
-	// the process starts. So wait until the appropriate time before kicking off
-	// the first run and the main ticker loop.
-	currOffset := cu.clk.Now().UnixNano() % cu.updatePeriod.Nanoseconds()
-	var waitNanos int64
-	if currOffset <= cu.updateOffset.Nanoseconds() {
-		waitNanos = cu.updateOffset.Nanoseconds() - currOffset
-	} else {
-		waitNanos = cu.updatePeriod.Nanoseconds() - currOffset + cu.updateOffset.Nanoseconds()
-	}
-	cu.log.Infof("Running, next tick in %ds", waitNanos*int64(time.Nanosecond)/int64(time.Second))
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(time.Duration(waitNanos)):
-	}
-
-	// Tick once immediately, but create the ticker first so that it starts
-	// counting from the appropriate time.
-	ticker := time.NewTicker(cu.updatePeriod)
-	atTime := cu.clk.Now()
-	err := cu.Tick(ctx, atTime)
-	if err != nil {
-		// We only log, rather than return, so that the long-lived process can
-		// continue and try again at the next tick.
-		cu.log.AuditErrf(
-			"Generating CRLs failed: number=[%s] err=[%s]",
-			(*big.Int)(crl.Number(atTime)), err)
-	}
-
-	for {
-		// If we have overrun *and* been canceled, both of the below cases could be
-		// selectable at the same time, so check for context cancellation first.
-		if ctx.Err() != nil {
-			ticker.Stop()
-			return ctx.Err()
-		}
-		select {
-		case <-ticker.C:
-			atTime = cu.clk.Now()
-			err := cu.Tick(ctx, atTime)
-			if err != nil {
-				// We only log, rather than return, so that the long-lived process can
-				// continue and try again at the next tick.
-				cu.log.AuditErrf(
-					"Generating CRLs failed: number=[%s] err=[%s]",
-					(*big.Int)(crl.Number(atTime)), err)
-			}
-		case <-ctx.Done():
-			ticker.Stop()
-			return ctx.Err()
-		}
-	}
-}
-
-// Tick runs the entire update process once immediately. It processes each
-// configured issuer serially, and processes all of them even if an early one
-// encounters an error. All errors encountered are returned as a single combined
-// error at the end.
-func (cu *crlUpdater) Tick(ctx context.Context, atTime time.Time) (err error) {
-	defer func() {
-		// This func closes over the named return value `err`, so can reference it.
-		result := "success"
-		if err != nil {
-			result = "failed"
-		}
-		cu.tickHistogram.WithLabelValues("all", result).Observe(cu.clk.Since(atTime).Seconds())
-	}()
-	cu.log.Debugf("Ticking at time %s", atTime)
-
-	var errIssuers []string
-	for id := range cu.issuers {
-		// For now, process each issuer serially. This keeps the worker pool system
-		// simple, and processing all of the issuers in parallel likely wouldn't
-		// meaningfully speed up the overall process.
-		err := cu.tickIssuer(ctx, atTime, id)
-		if err != nil {
-			cu.log.AuditErrf(
-				"Generating CRLs for issuer failed: number=[%d] issuer=[%s] err=[%s]",
-				(*big.Int)(crl.Number(atTime)), cu.issuers[id].Subject.CommonName, err)
-			errIssuers = append(errIssuers, cu.issuers[id].Subject.CommonName)
-		}
-	}
-
-	if len(errIssuers) != 0 {
-		return fmt.Errorf("%d issuers failed: %v", len(errIssuers), strings.Join(errIssuers, ", "))
-	}
-	return nil
-}
-
-// tickIssuer performs the full CRL issuance cycle for a single issuer cert. It
-// processes all of the shards of this issuer's CRL concurrently, and processes
-// all of them even if an early one encounters an error. All errors encountered
-// are returned as a single combined error at the end.
-func (cu *crlUpdater) tickIssuer(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID) (err error) {
-	start := cu.clk.Now()
-	defer func() {
-		// This func closes over the named return value `err`, so can reference it.
-		result := "success"
-		if err != nil {
-			result = "failed"
-		}
-		cu.tickHistogram.WithLabelValues(cu.issuers[issuerNameID].Subject.CommonName+" (Overall)", result).Observe(cu.clk.Since(start).Seconds())
-	}()
-	cu.log.Debugf("Ticking issuer %d at time %s", issuerNameID, atTime)
-
-	shardMap, err := cu.getShardMappings(ctx, atTime)
-	if err != nil {
-		return fmt.Errorf("computing shardmap: %w", err)
-	}
-
-	type shardResult struct {
-		shardIdx int
-		err      error
-	}
-
-	shardWorker := func(in <-chan int, out chan<- shardResult) {
-		for idx := range in {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
-				out <- shardResult{
-					shardIdx: idx,
-					err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, idx, shardMap[idx]),
-				}
-
-				// We want to renumber shard 0 to also be shard numShards (e.g. 128).
-				// To facilitate that transition, produce the same CRL with both shard
-				// indices.
-				// TODO(#7007): Collapse this when we don't need to produce both anymore.
-				if idx == 0 {
-					out <- shardResult{
-						shardIdx: cu.numShards,
-						err:      cu.tickShardWithRetry(ctx, atTime, issuerNameID, cu.numShards, shardMap[idx]),
-					}
-				}
-
-				cancel()
-			}
-		}
-	}
-
-	shardIdxs := make(chan int, cu.numShards)
-	shardResults := make(chan shardResult, cu.numShards)
-	for i := 0; i < cu.maxParallelism; i++ {
-		go shardWorker(shardIdxs, shardResults)
-	}
-
-	// TODO(#7007): Iterate from 1 to numShards instead of 0 to numShards-1.
-	for shardIdx := 0; shardIdx < cu.numShards; shardIdx++ {
-		shardIdxs <- shardIdx
-	}
-	close(shardIdxs)
-
-	var errShards []int
-	// TODO(#7007): Reduce this to cu.numShards when we stop producing shard 0.
-	for i := 0; i < cu.numShards+1; i++ {
-		res := <-shardResults
-		if res.err != nil {
-			cu.log.AuditErrf(
-				"Generating CRL failed: id=[%s] err=[%s]",
-				crl.Id(issuerNameID, crl.Number(atTime), res.shardIdx), res.err)
-			errShards = append(errShards, res.shardIdx)
-		}
-	}
-
-	if len(errShards) != 0 {
-		sort.Ints(errShards)
-		return fmt.Errorf("%d shards failed: %v", len(errShards), errShards)
-	}
-	return nil
-}
-
-// tickShardWithRetry calls tickShard repeatedly (with exponential backoff
+// updateShardWithRetry calls updateShard repeatedly (with exponential backoff
 // between attempts) until it succeeds or the max number of attempts is reached.
-func (cu *crlUpdater) tickShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
-	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+func (cu *crlUpdater) updateShardWithRetry(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) error {
+	ctx, cancel := context.WithTimeout(ctx, cu.updateTimeout)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
 
-	var err error
+	if chunks == nil {
+		// Compute the shard map and relevant chunk boundaries, if not supplied.
+		// Batch mode supplies this to avoid duplicate computation.
+		shardMap, err := cu.getShardMappings(ctx, atTime)
+		if err != nil {
+			return fmt.Errorf("computing shardmap: %w", err)
+		}
+		chunks = shardMap[shardIdx%cu.numShards]
+	}
+
+	_, err := cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
+		IssuerNameID: int64(issuerNameID),
+		MinShardIdx:  int64(shardIdx),
+		MaxShardIdx:  int64(shardIdx),
+		Until:        timestamppb.New(deadline.Add(time.Minute)),
+	})
+	if err != nil {
+		return fmt.Errorf("leasing shard: %w", err)
+	}
+
+	crlID := crl.Id(issuerNameID, shardIdx, crl.Number(atTime))
+
 	for i := 0; i < cu.maxAttempts; i++ {
 		// core.RetryBackoff always returns 0 when its first argument is zero.
 		sleepTime := core.RetryBackoff(i, time.Second, time.Minute, 2)
@@ -327,23 +161,37 @@ func (cu *crlUpdater) tickShardWithRetry(ctx context.Context, atTime time.Time, 
 		}
 		cu.clk.Sleep(sleepTime)
 
-		err = cu.tickShard(ctx, atTime, issuerNameID, shardIdx, chunks)
+		err = cu.updateShard(ctx, atTime, issuerNameID, shardIdx, chunks)
 		if err == nil {
 			break
 		}
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Notify the database that that we're done.
+	_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
+		IssuerNameID: int64(issuerNameID),
+		ShardIdx:     int64(shardIdx),
+		ThisUpdate:   timestamppb.New(atTime),
+	})
+	if err != nil {
+		return fmt.Errorf("updating db metadata: %w", err)
+	}
+
+	return nil
 }
 
-// tickShard processes a single shard. It computes the shard's boundaries, gets
+// updateShard processes a single shard. It computes the shard's boundaries, gets
 // the list of revoked certs in that shard from the SA, gets the CA to sign the
 // resulting CRL, and gets the crl-storer to upload it. It returns an error if
 // any of these operations fail.
-func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) (err error) {
+func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerNameID issuance.IssuerNameID, shardIdx int, chunks []chunk) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	crlID := crl.Id(issuerNameID, crl.Number(atTime), shardIdx)
+	crlID := crl.Id(issuerNameID, shardIdx, crl.Number(atTime))
 
 	start := cu.clk.Now()
 	defer func() {
@@ -359,29 +207,14 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 	cu.log.Infof(
 		"Generating CRL shard: id=[%s] numChunks=[%d]", crlID, len(chunks))
 
-	// Notify the database that we're working on this shard.
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		return fmt.Errorf("context has no deadline")
-	}
-	_, err = cu.sa.LeaseCRLShard(ctx, &sapb.LeaseCRLShardRequest{
-		IssuerNameID: int64(issuerNameID),
-		MinShardIdx:  int64(shardIdx),
-		MaxShardIdx:  int64(shardIdx),
-		Until:        timestamppb.New(deadline.Add(-time.Second)),
-	})
-	if err != nil {
-		return fmt.Errorf("leasing shard: %w", err)
-	}
-
 	// Get the full list of CRL Entries for this shard from the SA.
 	var crlEntries []*proto.CRLEntry
 	for _, chunk := range chunks {
 		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
-			IssuerNameID:  int64(issuerNameID),
-			ExpiresAfter:  chunk.start.UnixNano(),
-			ExpiresBefore: chunk.end.UnixNano(),
-			RevokedBefore: atTime.UnixNano(),
+			IssuerNameID:    int64(issuerNameID),
+			ExpiresAfterNS:  chunk.start.UnixNano(),
+			ExpiresBeforeNS: chunk.end.UnixNano(),
+			RevokedBeforeNS: atTime.UnixNano(),
 		})
 		if err != nil {
 			return fmt.Errorf("connecting to SA: %w", err)
@@ -413,7 +246,7 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(issuerNameID),
-				ThisUpdate:   atTime.UnixNano(),
+				ThisUpdateNS: atTime.UnixNano(),
 				ShardIdx:     int64(shardIdx),
 			},
 		},
@@ -491,16 +324,10 @@ func (cu *crlUpdater) tickShard(ctx context.Context, atTime time.Time, issuerNam
 		return fmt.Errorf("closing CRLStorer upload stream: %w", err)
 	}
 
-	// Notify the database that that we're done.
-	_, err = cu.sa.UpdateCRLShard(ctx, &sapb.UpdateCRLShardRequest{
-		IssuerNameID: int64(issuerNameID),
-		ShardIdx:     int64(shardIdx),
-		ThisUpdate:   timestamppb.New(atTime),
-	})
-
 	cu.log.Infof(
 		"Generated CRL shard: id=[%s] size=[%d] hash=[%x]",
 		crlID, crlLen, crlHash.Sum(nil))
+
 	return nil
 }
 

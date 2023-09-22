@@ -8,5 +8,5 @@ service Chiller {
 }
 
 message Time {
-  int64 time = 1; // In nanoseconds
+  int64 timeNS = 1; // Unix timestamp (nanoseconds)
 }

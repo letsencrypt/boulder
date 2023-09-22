@@ -255,6 +255,7 @@ func main() {
 	}
 
 	log := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	log.Info(cmd.VersionString())
 
 	// Load configuration file.
 	configData, err := os.ReadFile(*configFile)

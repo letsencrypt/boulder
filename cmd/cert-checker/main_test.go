@@ -17,7 +17,7 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"os"
-	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -166,7 +166,7 @@ func TestCheckCertReturnsDNSNames(t *testing.T) {
 	}
 
 	names, problems := checker.checkCert(context.Background(), cert, nil)
-	if !reflect.DeepEqual(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
+	if !slices.Equal(names, []string{"quite_invalid.com", "al--so--wr--ong.com"}) {
 		t.Errorf("didn't get expected DNS names. other problems: %s", strings.Join(problems, "\n"))
 	}
 }
@@ -359,9 +359,9 @@ func TestGetAndProcessCerts(t *testing.T) {
 		certDER, err := x509.CreateCertificate(rand.Reader, &rawCert, &rawCert, &testKey.PublicKey, testKey)
 		test.AssertNotError(t, err, "Couldn't create certificate")
 		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:    certDER,
-			RegID:  reg.Id,
-			Issued: fc.Now().UnixNano(),
+			Der:      certDER,
+			RegID:    reg.Id,
+			IssuedNS: fc.Now().UnixNano(),
 		})
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}
@@ -647,7 +647,7 @@ func TestPrecertCorrespond(t *testing.T) {
 	}
 	// Ensure that at least one of the problems was related to checking correspondence
 	for _, p := range problems {
-		if strings.Contains(p, "checking correspondence for") {
+		if strings.Contains(p, "does not correspond to precert") {
 			return
 		}
 	}

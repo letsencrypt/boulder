@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
@@ -21,7 +22,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/letsencrypt/boulder/crl"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	cspb "github.com/letsencrypt/boulder/crl/storer/proto"
 	"github.com/letsencrypt/boulder/issuance"
 	blog "github.com/letsencrypt/boulder/log"
@@ -141,11 +141,11 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		return errors.New("got no metadata message")
 	}
 
-	crlId := crl.Id(issuer.NameID(), crlNumber, int(shardIdx))
+	crlId := crl.Id(issuer.NameID(), int(shardIdx), crlNumber)
 
 	cs.sizeHistogram.WithLabelValues(issuer.Subject.CommonName).Observe(float64(len(crlBytes)))
 
-	crl, err := crl_x509.ParseRevocationList(crlBytes)
+	crl, err := x509.ParseRevocationList(crlBytes)
 	if err != nil {
 		return fmt.Errorf("parsing CRL for %s: %w", crlId, err)
 	}
@@ -181,7 +181,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 			return fmt.Errorf("downloading previous CRL for %s: %w", crlId, err)
 		}
 
-		prevCRL, err := crl_x509.ParseRevocationList(prevBytes)
+		prevCRL, err := x509.ParseRevocationList(prevBytes)
 		if err != nil {
 			return fmt.Errorf("parsing previous CRL for %s: %w", crlId, err)
 		}
@@ -225,7 +225,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	cs.uploadCount.WithLabelValues(issuer.Subject.CommonName, "success").Inc()
 	cs.log.AuditInfof(
 		"CRL uploaded: id=[%s] issuerCN=[%s] thisUpdate=[%s] nextUpdate=[%s] numEntries=[%d]",
-		crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificates),
+		crlId, issuer.Subject.CommonName, crl.ThisUpdate, crl.NextUpdate, len(crl.RevokedCertificateEntries),
 	)
 
 	return stream.SendAndClose(&emptypb.Empty{})

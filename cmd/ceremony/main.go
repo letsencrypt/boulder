@@ -15,17 +15,16 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
+	"slices"
 	"time"
 
-	"github.com/letsencrypt/boulder/crl/crl_x509"
+	"golang.org/x/crypto/ocsp"
+	"gopkg.in/yaml.v3"
 
 	"github.com/letsencrypt/boulder/goodkey"
 	"github.com/letsencrypt/boulder/linter"
 	"github.com/letsencrypt/boulder/pkcs11helpers"
 	"github.com/letsencrypt/boulder/strictyaml"
-	"golang.org/x/crypto/ocsp"
-	"gopkg.in/yaml.v3"
 )
 
 var kp goodkey.KeyPolicy
@@ -741,13 +740,12 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("mismatch between issuer RawSubject and lintCert RawIssuer DER bytes: \"%x\" != \"%x\"", issuer.RawSubject, lintCert.RawIssuer)
 	}
 	// BR 7.1.2.2.3 Cross-Certified Subordinate CA Extensions
-	// TODO(#7032) Replace reflect with slices.Equal() >= go1.21
-	if !reflect.DeepEqual(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
+	if !slices.Equal(lintCert.ExtKeyUsage, toBeCrossSigned.ExtKeyUsage) {
 		return fmt.Errorf("lint cert and toBeCrossSigned cert EKUs differ")
 	}
 	if len(lintCert.ExtKeyUsage) == 0 {
 		// "Unrestricted" case, the issuer and subject need to be the same or at least affiliates.
-		if !reflect.DeepEqual(lintCert.Subject.Organization, issuer.Subject.Organization) {
+		if !slices.Equal(lintCert.Subject.Organization, issuer.Subject.Organization) {
 			return fmt.Errorf("attempted unrestricted cross-sign of certificate operated by a different organization")
 		}
 	}
@@ -934,7 +932,7 @@ func crlCeremony(configBytes []byte) error {
 		return fmt.Errorf("unable to parse crl-profile.next-update: %s", err)
 	}
 
-	var revokedCertificates []crl_x509.RevokedCertificate
+	var revokedCertificates []x509.RevocationListEntry
 	for _, rc := range config.CRLProfile.RevokedCertificates {
 		cert, err := loadCert(rc.CertificatePath)
 		if err != nil {
@@ -944,7 +942,7 @@ func crlCeremony(configBytes []byte) error {
 		if err != nil {
 			return fmt.Errorf("unable to parse crl-profile.revoked-certificates.revocation-date")
 		}
-		revokedCert := crl_x509.RevokedCertificate{
+		revokedCert := x509.RevocationListEntry{
 			SerialNumber:   cert.SerialNumber,
 			RevocationTime: revokedAt,
 		}

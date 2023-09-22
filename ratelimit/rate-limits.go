@@ -8,6 +8,42 @@ import (
 	"github.com/letsencrypt/boulder/strictyaml"
 )
 
+const (
+	// CertificatesPerName is the name of the CertificatesPerName rate limit
+	// when referenced in metric labels.
+	CertificatesPerName = "certificates_per_domain_per_account"
+
+	// RegistrationsPerIP is the name of the RegistrationsPerIP rate limit when
+	// referenced in metric labels.
+	RegistrationsPerIP = "registrations_per_ip"
+
+	// RegistrationsPerIPRange is the name of the RegistrationsPerIPRange rate
+	// limit when referenced in metric labels.
+	RegistrationsPerIPRange = "registrations_per_ipv6_range"
+
+	// PendingAuthorizationsPerAccount is the name of the
+	// PendingAuthorizationsPerAccount rate limit when referenced in metric
+	// labels.
+	PendingAuthorizationsPerAccount = "pending_authorizations_per_account"
+
+	// InvalidAuthorizationsPerAccount is the name of the
+	// InvalidAuthorizationsPerAccount rate limit when referenced in metric
+	// labels.
+	InvalidAuthorizationsPerAccount = "failed_authorizations_per_account"
+
+	// CertificatesPerFQDNSet is the name of the CertificatesPerFQDNSet rate
+	// limit when referenced in metric labels.
+	CertificatesPerFQDNSet = "certificates_per_fqdn_set_per_account"
+
+	// CertificatesPerFQDNSetFast is the name of the CertificatesPerFQDNSetFast
+	// rate limit when referenced in metric labels.
+	CertificatesPerFQDNSetFast = "certificates_per_fqdn_set_per_account_fast"
+
+	// NewOrdersPerAccount is the name of the NewOrdersPerAccount rate limit
+	// when referenced in metric labels.
+	NewOrdersPerAccount = "new_orders_per_account"
+)
+
 // Limits is defined to allow mock implementations be provided during unit
 // testing
 type Limits interface {
@@ -187,31 +223,32 @@ func (rlp *RateLimitPolicy) Enabled() bool {
 	return rlp.Threshold != 0
 }
 
-// GetThreshold returns the threshold for this rate limit, taking into account
-// any overrides for `key` or `regID`. If both `key` and `regID` have an
-// override the largest of the two will be used.
-func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) int64 {
+// GetThreshold returns the threshold for this rate limit and true if that
+// threshold is an override for the default limit, false otherwise. The
+// threshold returned takes into account any overrides for `key` or `regID`. If
+// both `key` and `regID` have an override the largest of the two will be used.
+func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) (int64, bool) {
 	regOverride, regOverrideExists := rlp.RegistrationOverrides[regID]
 	keyOverride, keyOverrideExists := rlp.Overrides[key]
 
 	if regOverrideExists && !keyOverrideExists {
 		// If there is a regOverride and no keyOverride use the regOverride
-		return regOverride
+		return regOverride, true
 	} else if !regOverrideExists && keyOverrideExists {
 		// If there is a keyOverride and no regOverride use the keyOverride
-		return keyOverride
+		return keyOverride, true
 	} else if regOverrideExists && keyOverrideExists {
 		// If there is both a regOverride and a keyOverride use whichever is larger.
 		if regOverride > keyOverride {
-			return regOverride
+			return regOverride, true
 		} else {
-			return keyOverride
+			return keyOverride, true
 		}
 	}
 
 	// Otherwise there was no regOverride and no keyOverride, use the base
 	// Threshold
-	return rlp.Threshold
+	return rlp.Threshold, false
 }
 
 // WindowBegin returns the time that a RateLimitPolicy's window begins, given a
