@@ -1287,129 +1287,146 @@ func (ssa *SQLStorageAuthority) SerialsForIncident(req *sapb.SerialsForIncidentR
 // notAfter date are included), but the ending timestamp is exclusive (certs
 // with exactly that notAfter date are *not* included).
 func (ssa *SQLStorageAuthorityRO) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
+	if req.ShardIdx != 0 {
+		return ssa.getRevokedCertsFromRevokedCertificatesTable(req, stream)
+	} else {
+		return ssa.getRevokedCertsFromCertificateStatusTable(req, stream)
+	}
+}
+
+func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
+	return ssa.SQLStorageAuthorityRO.GetRevokedCerts(req, stream)
+}
+
+// getRevokedCertsFromRevokedCertificatesTable uses the new revokedCertificates
+// table to implement GetRevokedCerts. It must only be called when the request
+// contains a non-zero ShardIdx.
+func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
 	atTime := time.Unix(0, req.RevokedBeforeNS)
 
-	if req.ShardIdx != 0 {
-		clauses := `
-			WHERE issuerID = ?
-			AND shardIdx = ?
-			AND notAfter >= ?`
-		params := []interface{}{
-			req.IssuerNameID,
-			req.ShardIdx,
-			time.Unix(0, req.ExpiresAfterNS),
-		}
+	clauses := `
+		WHERE issuerID = ?
+		AND shardIdx = ?
+		AND notAfter >= ?`
+	params := []interface{}{
+		req.IssuerNameID,
+		req.ShardIdx,
+		time.Unix(0, req.ExpiresAfterNS),
+	}
 
-		selector, err := db.NewMappedSelector[revokedCertModel](ssa.dbReadOnlyMap)
+	selector, err := db.NewMappedSelector[revokedCertModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	defer func() {
+		err := rows.Close()
 		if err != nil {
-			return fmt.Errorf("initializing db map: %w", err)
+			ssa.log.AuditErrf("closing row reader: %s", err)
 		}
+	}()
 
-		rows, err := selector.QueryContext(stream.Context(), clauses, params...)
+	for rows.Next() {
+		row, err := rows.Get()
 		if err != nil {
-			return fmt.Errorf("reading db: %w", err)
+			return fmt.Errorf("reading row: %w", err)
 		}
 
-		defer func() {
-			err := rows.Close()
-			if err != nil {
-				ssa.log.AuditErrf("closing row reader: %s", err)
-			}
-		}()
-
-		for rows.Next() {
-			row, err := rows.Get()
-			if err != nil {
-				return fmt.Errorf("reading row: %w", err)
-			}
-
-			// Double-check that the cert wasn't revoked between the time at which we're
-			// constructing this snapshot CRL and right now. If the cert was revoked
-			// at-or-after the "atTime", we'll just include it in the next generation
-			// of CRLs.
-			if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
-				continue
-			}
-
-			err = stream.Send(&corepb.CRLEntry{
-				Serial:      row.Serial,
-				Reason:      int32(row.RevokedReason),
-				RevokedAtNS: row.RevokedDate.UnixNano(),
-			})
-			if err != nil {
-				return fmt.Errorf("sending crl entry: %w", err)
-			}
+		// Double-check that the cert wasn't revoked between the time at which we're
+		// constructing this snapshot CRL and right now. If the cert was revoked
+		// at-or-after the "atTime", we'll just include it in the next generation
+		// of CRLs.
+		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
+			continue
 		}
 
-		err = rows.Err()
+		err = stream.Send(&corepb.CRLEntry{
+			Serial:      row.Serial,
+			Reason:      int32(row.RevokedReason),
+			RevokedAtNS: row.RevokedDate.UnixNano(),
+		})
 		if err != nil {
-			return fmt.Errorf("iterating over row reader: %w", err)
+			return fmt.Errorf("sending crl entry: %w", err)
 		}
-	} else {
-		clauses := `
-			WHERE notAfter >= ?
-			AND notAfter < ?
-			AND issuerID = ?
-			AND status = ?`
-		params := []interface{}{
-			time.Unix(0, req.ExpiresAfterNS),
-			time.Unix(0, req.ExpiresBeforeNS),
-			req.IssuerNameID,
-			core.OCSPStatusRevoked,
-		}
+	}
 
-		selector, err := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
-		if err != nil {
-			return fmt.Errorf("initializing db map: %w", err)
-		}
-
-		rows, err := selector.QueryContext(stream.Context(), clauses, params...)
-		if err != nil {
-			return fmt.Errorf("reading db: %w", err)
-		}
-
-		defer func() {
-			err := rows.Close()
-			if err != nil {
-				ssa.log.AuditErrf("closing row reader: %s", err)
-			}
-		}()
-
-		for rows.Next() {
-			row, err := rows.Get()
-			if err != nil {
-				return fmt.Errorf("reading row: %w", err)
-			}
-
-			// Double-check that the cert wasn't revoked between the time at which we're
-			// constructing this snapshot CRL and right now. If the cert was revoked
-			// at-or-after the "atTime", we'll just include it in the next generation
-			// of CRLs.
-			if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
-				continue
-			}
-
-			err = stream.Send(&corepb.CRLEntry{
-				Serial:      row.Serial,
-				Reason:      int32(row.RevokedReason),
-				RevokedAtNS: row.RevokedDate.UnixNano(),
-			})
-			if err != nil {
-				return fmt.Errorf("sending crl entry: %w", err)
-			}
-		}
-
-		err = rows.Err()
-		if err != nil {
-			return fmt.Errorf("iterating over row reader: %w", err)
-		}
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
 	}
 
 	return nil
 }
 
-func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthority_GetRevokedCertsServer) error {
-	return ssa.SQLStorageAuthorityRO.GetRevokedCerts(req, stream)
+// getRevokedCertsFromCertificateStatusTable uses the new old certificateStatus
+// table to implement GetRevokedCerts.
+func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
+	atTime := time.Unix(0, req.RevokedBeforeNS)
+
+	clauses := `
+		WHERE notAfter >= ?
+		AND notAfter < ?
+		AND issuerID = ?
+		AND status = ?`
+	params := []interface{}{
+		time.Unix(0, req.ExpiresAfterNS),
+		time.Unix(0, req.ExpiresBeforeNS),
+		req.IssuerNameID,
+		core.OCSPStatusRevoked,
+	}
+
+	selector, err := db.NewMappedSelector[crlEntryModel](ssa.dbReadOnlyMap)
+	if err != nil {
+		return fmt.Errorf("initializing db map: %w", err)
+	}
+
+	rows, err := selector.QueryContext(stream.Context(), clauses, params...)
+	if err != nil {
+		return fmt.Errorf("reading db: %w", err)
+	}
+
+	defer func() {
+		err := rows.Close()
+		if err != nil {
+			ssa.log.AuditErrf("closing row reader: %s", err)
+		}
+	}()
+
+	for rows.Next() {
+		row, err := rows.Get()
+		if err != nil {
+			return fmt.Errorf("reading row: %w", err)
+		}
+
+		// Double-check that the cert wasn't revoked between the time at which we're
+		// constructing this snapshot CRL and right now. If the cert was revoked
+		// at-or-after the "atTime", we'll just include it in the next generation
+		// of CRLs.
+		if row.RevokedDate.After(atTime) || row.RevokedDate.Equal(atTime) {
+			continue
+		}
+
+		err = stream.Send(&corepb.CRLEntry{
+			Serial:      row.Serial,
+			Reason:      int32(row.RevokedReason),
+			RevokedAtNS: row.RevokedDate.UnixNano(),
+		})
+		if err != nil {
+			return fmt.Errorf("sending crl entry: %w", err)
+		}
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return fmt.Errorf("iterating over row reader: %w", err)
+	}
+
+	return nil
 }
 
 // GetMaxExpiration returns the timestamp of the farthest-future notAfter date

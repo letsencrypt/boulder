@@ -787,6 +787,41 @@ func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req 
 	return &emptypb.Empty{}, nil
 }
 
+// addRevokedCertificate is a helper used by both RevokeCertificate and
+// UpdateRevokedCertificate. It inserts a new row into the revokedCertificates
+// table based on the contents of the input request. The second argument must be
+// a transaction object so that it is safe to conduct multiple queries with a
+// consistent view of the database. It must only be called when the request
+// specifies a non-zero ShardIdx.
+func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.RevokeCertificateRequest, revokedDate time.Time) error {
+	if req.ShardIdx == 0 {
+		return errors.New("cannot add revoked certificate with shard index 0")
+	}
+
+	var serial struct {
+		Expires time.Time
+	}
+	err := tx.SelectOne(
+		ctx, &serial, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
+	if err != nil {
+		return fmt.Errorf("retrieving revoked certificate expiration: %w", err)
+	}
+
+	err = tx.Insert(ctx, &revokedCertModel{
+		IssuerID:      req.IssuerID,
+		Serial:        req.Serial,
+		NotAfter:      serial.Expires,
+		ShardIdx:      req.ShardIdx,
+		RevokedDate:   revokedDate,
+		RevokedReason: revocation.Reason(req.Reason),
+	})
+	if err != nil {
+		return fmt.Errorf("inserting revoked certificate row: %w", err)
+	}
+
+	return nil
+}
+
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
@@ -823,23 +858,9 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 		}
 
 		if req.ShardIdx != 0 {
-			var rsm recordedSerialModel
-			err = tx.SelectOne(
-				ctx, &rsm, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
+			err = addRevokedCertificate(ctx, tx, req, revokedDate)
 			if err != nil {
-				return nil, fmt.Errorf("retrieving revoked certificate expiration: %w", err)
-			}
-
-			err = tx.Insert(ctx, &revokedCertModel{
-				IssuerID:      req.IssuerID,
-				Serial:        req.Serial,
-				NotAfter:      rsm.Expires,
-				ShardIdx:      req.ShardIdx,
-				RevokedDate:   revokedDate,
-				RevokedReason: revocation.Reason(req.Reason),
-			})
-			if err != nil {
-				return nil, fmt.Errorf("inserting revoked certificate row: %w", err)
+				return nil, err
 			}
 		}
 
@@ -896,42 +917,31 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 		if req.ShardIdx != 0 {
 			var rcm revokedCertModel
 			// Note: this query MUST be updated to enforce the same preconditions as
-			// the UPDATE above, if this query ever becomes the first or only query
-			// in this transaction. We are currently relying on the query above to
-			// exit early if the certificate does not have an appropriate status.
+			// the "UPDATE certificateStatus SET revokedReason..." above if this
+			// query ever becomes the first or only query in this transaction. We are
+			// currently relying on the query above to exit early if the certificate
+			// does not have an appropriate status.
 			err = tx.SelectOne(
 				ctx, &rcm, `SELECT * FROM revokedCertificates WHERE serial = ?`, req.Serial)
-			if err != nil && !db.IsNoRows(err) {
+			if db.IsNoRows(err) {
+				// TODO: Remove this fallback codepath once we know that all unexpired
+				// certs marked as revoked in the certificateStatus table have
+				// corresponding rows in the revokedCertificates table. That should be
+				// 90+ days after the RA starts sending ShardIdx in its
+				// RevokeCertificateRequest messages.
+				err = addRevokedCertificate(ctx, tx, req, revokedDate)
+				if err != nil {
+					return nil, err
+				}
+				return nil, nil
+			} else if err != nil {
 				return nil, fmt.Errorf("retrieving revoked certificate row: %w", err)
-			} else if db.IsNoRows(err) {
-				// TODO: Remove this once we know that all unexpired certs marked as
-				// revoked in the certificateStatus table have corresponding rows in
-				// the revokedCertificates table, i.e. 90+ days after the RA starts
-				// sending ShardIdx in its RevokeCertificateRequest messages.
-				var rsm recordedSerialModel
-				err = tx.SelectOne(
-					ctx, &rsm, `SELECT expires FROM serials WHERE serial = ?`, req.Serial)
-				if err != nil {
-					return nil, fmt.Errorf("retrieving revoked certificate expiration: %w", err)
-				}
+			}
 
-				err = tx.Insert(ctx, &revokedCertModel{
-					IssuerID:      req.IssuerID,
-					Serial:        req.Serial,
-					NotAfter:      rsm.Expires,
-					ShardIdx:      req.ShardIdx,
-					RevokedDate:   revokedDate,
-					RevokedReason: revocation.Reason(req.Reason),
-				})
-				if err != nil {
-					return nil, fmt.Errorf("inserting revoked certificate row: %w", err)
-				}
-			} else {
-				rcm.RevokedReason = revocation.Reason(ocsp.KeyCompromise)
-				_, err = tx.Update(ctx, &rcm)
-				if err != nil {
-					return nil, fmt.Errorf("updating revoked certificate row: %w", err)
-				}
+			rcm.RevokedReason = revocation.Reason(ocsp.KeyCompromise)
+			_, err = tx.Update(ctx, &rcm)
+			if err != nil {
+				return nil, fmt.Errorf("updating revoked certificate row: %w", err)
 			}
 		}
 

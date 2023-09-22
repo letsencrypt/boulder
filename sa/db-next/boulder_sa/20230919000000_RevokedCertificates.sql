@@ -10,7 +10,7 @@ CREATE TABLE `revokedCertificates` (
   `revokedDate` datetime NOT NULL,
   `revokedReason` int(11) NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `notAfter_shardIdx_idx` (`notAfter`, `shardIdx`)
+  KEY `shardIdx_notAfter_idx` (`shardIdx`, `notAfter`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
  PARTITION BY RANGE(id)
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));

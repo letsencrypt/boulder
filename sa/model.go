@@ -1181,8 +1181,8 @@ type crlShardModel struct {
 }
 
 // revokedCertModel represents one row in the revokedCertificates table. It
-// contains all of the information necessary to populate a CRL entry for the
-// indicated certificate.
+// contains all of the information necessary to populate a CRL entry or OCSP
+// response for the indicated certificate.
 type revokedCertModel struct {
 	ID            int64             `db:"id"`
 	IssuerID      int64             `db:"issuerID"`
