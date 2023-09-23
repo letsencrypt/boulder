@@ -720,6 +720,7 @@ func TestCountCertificatesByNames(t *testing.T) {
 		Der:      certDER2,
 		RegID:    reg.Id,
 		IssuedNS: issued.UnixNano(),
+		Issued:   timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	req.Names = names
@@ -1287,11 +1288,13 @@ func TestNewOrderAndAuthzs(t *testing.T) {
 
 	nowC := sa.clk.Now().Add(time.Hour)
 	nowD := sa.clk.Now().Add(time.Hour)
+	expires := sa.clk.Now().Add(2 * time.Hour)
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		// Insert an order for four names, two of which already have authzs
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   reg.Id,
-			ExpiresNS:        1,
+			ExpiresNS:        expires.UnixNano(),
+			Expires:          timestamppb.New(expires),
 			Names:            []string{"a.com", "b.com", "c.com", "d.com"},
 			V2Authorizations: []int64{1, 2},
 		},

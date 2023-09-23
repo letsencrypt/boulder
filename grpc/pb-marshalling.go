@@ -256,6 +256,9 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		createdAtInt = 0
 		createdAtTS = timestamppb.New(time.Time{})
 	}
+	if !createdAtTS.IsValid() {
+		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+	}
 
 	return &corepb.Registration{
 		Id:              reg.ID,

@@ -27,8 +27,9 @@ type Time struct {
 	unknownFields protoimpl.UnknownFields
 
 	// Next unused field number: 3
-	TimeNS int64                  `protobuf:"varint,1,opt,name=timeNS,proto3" json:"timeNS,omitempty"` // Unix timestamp (nanoseconds)
-	Time   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=time,proto3" json:"time,omitempty"`
+	TimeNS int64 `protobuf:"varint,1,opt,name=timeNS,proto3" json:"timeNS,omitempty"` // Unix timestamp (nanoseconds)
+	// TODO (#7097) Change this to google.protobuf.Duration
+	Time *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=time,proto3" json:"time,omitempty"`
 }
 
 func (x *Time) Reset() {

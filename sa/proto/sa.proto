@@ -96,7 +96,7 @@ message RegistrationID {
 }
 
 message JSONWebKey {
-  bytes jwk = 1; 
+  bytes jwk = 1;
 }
 
 message AuthorizationID {
@@ -189,6 +189,7 @@ message CountOrdersRequest {
 }
 
 message CountFQDNSetsRequest {
+  // TODO (#7097) Replace int64 with durationpb
   int64 window = 1;
   repeated string domains = 2;
 }
@@ -234,7 +235,7 @@ message AddCertificateRequest {
   // If the OCSP responder receives a request for the status of a certificate
   // serial number that is “unused”, then ...
   // the responder MUST NOT respond with a “good” status for such requests.
-  // 
+  //
   // Paraphrasing, a certificate serial number is unused if neither a
   // Certificate nor a Precertificate has been issued with it. So when we write
   // a linting certificate to the precertificates table, we want to make sure

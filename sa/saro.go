@@ -554,10 +554,12 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 	}
 
 	var resultsNS []int64
+	var results []*timestamppb.Timestamp
 	for _, i := range rows {
 		resultsNS = append(resultsNS, i.Issued.UnixNano())
+		results = append(results, timestamppb.New(i.Issued))
 	}
-	return &sapb.Timestamps{TimestampsNS: resultsNS}, nil
+	return &sapb.Timestamps{TimestampsNS: resultsNS, Timestamps: results}, nil
 }
 
 func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {

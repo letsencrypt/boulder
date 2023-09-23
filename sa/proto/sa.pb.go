@@ -963,6 +963,7 @@ type CountFQDNSetsRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// TODO (#7097) Replace int64 with durationpb
 	Window  int64    `protobuf:"varint,1,opt,name=window,proto3" json:"window,omitempty"`
 	Domains []string `protobuf:"bytes,2,rep,name=domains,proto3" json:"domains,omitempty"`
 }

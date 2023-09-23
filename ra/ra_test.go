@@ -1313,22 +1313,33 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	// Create a mock SA that has a count of already issued certificates for some
 	// test names
 	firstIssuanceTimestamp := ra.clk.Now().Add(-rlp.Window.Duration)
-	issuanceTimestamps := []int64{
-		firstIssuanceTimestamp.Add(time.Hour * 23).UnixNano(),
-		firstIssuanceTimestamp.Add(time.Hour * 16).UnixNano(),
-		firstIssuanceTimestamp.Add(time.Hour * 8).UnixNano(),
+	fITS2 := firstIssuanceTimestamp.Add(time.Hour * 23)
+	fITS3 := firstIssuanceTimestamp.Add(time.Hour * 16)
+	fITS4 := firstIssuanceTimestamp.Add(time.Hour * 8)
+	issuanceTimestampsNS := []int64{
+		fITS2.UnixNano(),
+		fITS3.UnixNano(),
+		fITS4.UnixNano(),
 		firstIssuanceTimestamp.UnixNano(),
+	}
+	issuanceTimestamps := []*timestamppb.Timestamp{
+		timestamppb.New(fITS2),
+		timestamppb.New(fITS3),
+		timestamppb.New(fITS4),
+		timestamppb.New(firstIssuanceTimestamp),
 	}
 	// Our window is 24 hours and our threshold is 3 issuance. If our most
 	// recent issuance was 1 hour ago, we expect the next token to be available
 	// 8 hours from issuance time or 7 hours from now.
-	expectRetryAfter := time.Unix(0, issuanceTimestamps[0]).Add(time.Hour * 8).Format(time.RFC3339)
+	expectRetryAfterNS := time.Unix(0, issuanceTimestampsNS[0]).Add(time.Hour * 8).Format(time.RFC3339)
+	expectRetryAfter := issuanceTimestamps[0].AsTime().Add(time.Hour * 8).Format(time.RFC3339)
+	test.AssertEquals(t, expectRetryAfterNS, expectRetryAfter)
 	ra.SA = &mockSAWithFQDNSet{
 		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"none.example.com":          {TimestampsNS: []int64{}},
-			"under.example.com":         {TimestampsNS: issuanceTimestamps[3:3]},
-			"equalbutvalid.example.com": {TimestampsNS: issuanceTimestamps[1:3]},
-			"over.example.com":          {TimestampsNS: issuanceTimestamps[0:3]},
+			"none.example.com":          {TimestampsNS: []int64{}, Timestamps: []*timestamppb.Timestamp{}},
+			"under.example.com":         {TimestampsNS: issuanceTimestampsNS[3:3], Timestamps: issuanceTimestamps[3:3]},
+			"equalbutvalid.example.com": {TimestampsNS: issuanceTimestampsNS[1:3], Timestamps: issuanceTimestamps[1:3]},
+			"over.example.com":          {TimestampsNS: issuanceTimestampsNS[0:3], Timestamps: issuanceTimestamps[0:3]},
 		},
 		t: t,
 	}
@@ -1352,6 +1363,14 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 			Name:        "FQDN set issuances equal to limit",
 			Domain:      "equalbutvalid.example.com",
 			ExpectedErr: nil,
+		},
+		{
+			Name:   "FQDN set issuances above limit NS",
+			Domain: "over.example.com",
+			ExpectedErr: fmt.Errorf(
+				"too many certificates (3) already issued for this exact set of domains in the last 24 hours: over.example.com, retry after %s: see https://letsencrypt.org/docs/duplicate-certificate-limit/",
+				expectRetryAfterNS,
+			),
 		},
 		{
 			Name:   "FQDN set issuances above limit",
@@ -1474,7 +1493,8 @@ type mockSAWithFQDNSet struct {
 	mocks.StorageAuthority
 	fqdnSet            map[string]bool
 	issuanceTimestamps map[string]*sapb.Timestamps
-	t                  *testing.T
+
+	t *testing.T
 }
 
 // Construct the FQDN Set key the same way as the SA (by using
@@ -1550,11 +1570,13 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	}
 
 	// Create a mock SA that has both name counts and an FQDN set
-	ts := ra.clk.Now().UnixNano()
+	now := ra.clk.Now()
+	tsNS := now.UnixNano()
+	ts := timestamppb.New(now)
 	mockSA := &mockSAWithFQDNSet{
 		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"example.com": {TimestampsNS: []int64{ts, ts}},
-			"zombo.com":   {TimestampsNS: []int64{ts, ts}},
+			"example.com": {TimestampsNS: []int64{tsNS, tsNS}, Timestamps: []*timestamppb.Timestamp{ts, ts}},
+			"zombo.com":   {TimestampsNS: []int64{tsNS, tsNS}, Timestamps: []*timestamppb.Timestamp{ts, ts}},
 		},
 		fqdnSet: map[string]bool{},
 		t:       t,

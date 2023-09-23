@@ -36,15 +36,18 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertific
 
 // IssueCertificateForPrecertificate is a mock
 func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	now := time.Now()
+	expires := now.Add(1 * time.Hour)
+
 	return &corepb.Certificate{
 		Der:            req.DER,
 		RegistrationID: 1,
 		Serial:         "mock",
 		Digest:         "mock",
-		IssuedNS:       1,
-		Issued:         timestamppb.New(time.Time{}),
-		ExpiresNS:      1,
-		Expires:        timestamppb.New(time.Time{}),
+		IssuedNS:       now.UnixNano(),
+		Issued:         timestamppb.New(now),
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 	}, nil
 }
 
