@@ -26,7 +26,7 @@ func init() {
 	lint.RegisterRevocationListLint(&lint.RevocationListLint{
 		LintMetadata: lint.LintMetadata{
 			Name:          "e_crl_has_idp",
-			Description:   "Let's Encrypt CRLs must have the distributionPoint set",
+			Description:   "Let's Encrypt CRLs must have the Issuing Distribution Point extension with appropriate contents",
 			Citation:      "",
 			Source:        lints.LetsEncryptCPS,
 			EffectiveDate: lints.CPSV33Date,
