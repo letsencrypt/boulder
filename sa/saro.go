@@ -1311,11 +1311,13 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 	clauses := `
 		WHERE issuerID = ?
 		AND shardIdx = ?
-		AND notAfter >= ?`
+		AND notAfterHour >= ?`
 	params := []interface{}{
 		req.IssuerNameID,
 		req.ShardIdx,
-		time.Unix(0, req.ExpiresAfterNS),
+		// Round the expiry down to the nearest hour, to take advantage of our
+		// smaller index while still capturing at least as many certs as intended.
+		time.Unix(0, req.ExpiresAfterNS).Truncate(time.Hour),
 	}
 
 	selector, err := db.NewMappedSelector[revokedCertModel](ssa.dbReadOnlyMap)

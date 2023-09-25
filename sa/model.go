@@ -1187,7 +1187,7 @@ type revokedCertModel struct {
 	ID            int64             `db:"id"`
 	IssuerID      int64             `db:"issuerID"`
 	Serial        string            `db:"serial"`
-	NotAfter      time.Time         `db:"notAfter"`
+	NotAfterHour  time.Time         `db:"notAfterHour"`
 	ShardIdx      int64             `db:"shardIdx"`
 	RevokedDate   time.Time         `db:"revokedDate"`
 	RevokedReason revocation.Reason `db:"revokedReason"`

@@ -5,12 +5,12 @@ CREATE TABLE `revokedCertificates` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `issuerID` bigint(20) NOT NULL,
   `serial` varchar(255) NOT NULL,
-  `notAfter` datetime NOT NULL,
+  `notAfterHour` datetime NOT NULL,
   `shardIdx` bigint(20) NOT NULL,
   `revokedDate` datetime NOT NULL,
   `revokedReason` int(11) NOT NULL,
   PRIMARY KEY (`id`),
-  KEY `shardIdx_notAfter_idx` (`shardIdx`, `notAfter`)
+  KEY `issuerID_shardIdx_notAfterHour_idx` (`issuerID`, `shardIdx`, `notAfterHour`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
  PARTITION BY RANGE(id)
 (PARTITION p_start VALUES LESS THAN (MAXVALUE));

@@ -810,10 +810,12 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 	err = tx.Insert(ctx, &revokedCertModel{
 		IssuerID:      req.IssuerID,
 		Serial:        req.Serial,
-		NotAfter:      serial.Expires,
 		ShardIdx:      req.ShardIdx,
 		RevokedDate:   revokedDate,
 		RevokedReason: revocation.Reason(req.Reason),
+		// Round the notAfter up to the next hour, to reduce index size while still
+		// ensuring we correctly serve revocation info past the actual expiration.
+		NotAfterHour: serial.Expires.Add(time.Hour).Truncate(time.Hour),
 	})
 	if err != nil {
 		return fmt.Errorf("inserting revoked certificate row: %w", err)
