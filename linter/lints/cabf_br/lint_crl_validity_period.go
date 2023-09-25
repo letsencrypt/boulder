@@ -48,22 +48,16 @@ func (l *crlValidityPeriod) CheckApplies(c *x509.RevocationList) bool {
 
 func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	/*
-		Let's Encrypt issues CRLs for two distinct purposes:
-		   1) CRLs containing subscriber certificates created by the
-		      crl-updater. These CRLs must have only the distributionPoint and
-		      onlyContainsUserCerts fields set.
-		   2) CRLs containing subordinate CA certificates created by the
-		      ceremony tool. These CRLs must only have the onlyContainsCACerts
-		      field set.
+	   Let's Encrypt issues two kinds of CRLs:
 
-		RFC 5280 Section 5.2.5
+	    1) CRLs containing subscriber certificates, created by crl-updater.
+	       These assert the distributionPoint and onlyContainsUserCerts
+	       booleans.
+	    2) CRLs containing issuer CRLs, created by the ceremony tool. These
+	       assert the onlyContainsCACerts boolean.
 
-		IssuingDistributionPoint ::= SEQUENCE {
-			distributionPoint          [0] DistributionPointName OPTIONAL,
-			onlyContainsUserCerts      [1] BOOLEAN DEFAULT FALSE,
-			onlyContainsCACerts        [2] BOOLEAN DEFAULT FALSE,
-			...
-		}
+	   We use the presence of these booleans to determine which BR-mandated
+	   lifetime to enforce.
 	*/
 
 	// The only way to determine which type of CRL we're dealing with, the
@@ -86,7 +80,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	// Default to subscriber cert CRL.
 	var BRValidity = 10 * 24 * time.Hour
 	var validityString = "10 days"
-	
+
 	// We read this boolean as a byte and ensure its value is 0xFF because
 	// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for the
 	// [1] and [2] tagged fields referenced above. For the purposes of this
