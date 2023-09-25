@@ -55,11 +55,12 @@ message Certificate {
 }
 
 message CertificateStatus {
-  // Next unused field number: 15
+  // Next unused field number: 16
   string serial = 1;
   reserved 2; // previously subscriberApproved
   string status = 3;
-  int64 ocspLastUpdated = 4;
+  int64 ocspLastUpdatedNS = 4; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp ocspLastUpdated = 15;
   int64 revokedDateNS = 5; // Unix timestamp (nanoseconds)
   google.protobuf.Timestamp revokedDate = 12;
   int64 revokedReason = 6;

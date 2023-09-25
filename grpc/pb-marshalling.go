@@ -421,7 +421,8 @@ func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus
 	return &corepb.CertificateStatus{
 		Serial:                  certStatus.Serial,
 		Status:                  string(certStatus.Status),
-		OcspLastUpdated:         certStatus.OCSPLastUpdated.UnixNano(),
+		OcspLastUpdatedNS:       certStatus.OCSPLastUpdated.UnixNano(),
+		OcspLastUpdated:         timestamppb.New(certStatus.OCSPLastUpdated),
 		RevokedDateNS:           certStatus.RevokedDate.UnixNano(),
 		RevokedDate:             timestamppb.New(certStatus.RevokedDate),
 		RevokedReason:           int64(certStatus.RevokedReason),
@@ -438,7 +439,7 @@ func PBToCertStatus(pb *corepb.CertificateStatus) core.CertificateStatus {
 	return core.CertificateStatus{
 		Serial:                pb.Serial,
 		Status:                core.OCSPStatus(pb.Status),
-		OCSPLastUpdated:       time.Unix(0, pb.OcspLastUpdated),
+		OCSPLastUpdated:       time.Unix(0, pb.OcspLastUpdatedNS),
 		RevokedDate:           time.Unix(0, pb.RevokedDateNS),
 		RevokedReason:         revocation.Reason(pb.RevokedReason),
 		LastExpirationNagSent: time.Unix(0, pb.LastExpirationNagSentNS),

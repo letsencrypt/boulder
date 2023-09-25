@@ -431,7 +431,9 @@ func TestAddPrecertificate(t *testing.T) {
 	certStatus, err := sa.GetCertificateStatus(ctx, &sapb.Serial{Serial: serial})
 	test.AssertNotError(t, err, "Couldn't get status for test cert")
 	test.AssertEquals(t, certStatus.Status, string(core.OCSPStatusGood))
-	test.AssertEquals(t, clk.Now().UnixNano(), certStatus.OcspLastUpdated)
+	now := clk.Now()
+	test.AssertEquals(t, now.UnixNano(), certStatus.OcspLastUpdatedNS)
+	test.AssertEquals(t, now, certStatus.OcspLastUpdated.AsTime())
 
 	// It should show up in the issued names table
 	issuedNamesSerial, err := findIssuedName(ctx, sa.dbMap, testCert.DNSNames[0])
@@ -2139,7 +2141,8 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	test.AssertEquals(t, status.RevokedReason, reason)
 	test.AssertEquals(t, status.RevokedDateNS, now.UnixNano())
-	test.AssertEquals(t, status.OcspLastUpdated, now.UnixNano())
+	test.AssertEquals(t, status.OcspLastUpdated.AsTime(), now)
+	test.AssertEquals(t, status.OcspLastUpdatedNS, now.UnixNano())
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		Serial: serial,
