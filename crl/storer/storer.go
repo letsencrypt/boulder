@@ -170,7 +170,7 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		Key:    &filename,
 	})
 	if err != nil {
-		smithyErr := &smithyhttp.ResponseError{}
+		var smithyErr *smithyhttp.ResponseError
 		if !errors.As(err, &smithyErr) || smithyErr.HTTPStatusCode() != 404 {
 			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
 		}
