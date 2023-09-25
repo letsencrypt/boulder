@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -223,32 +224,33 @@ func (rlp *RateLimitPolicy) Enabled() bool {
 	return rlp.Threshold != 0
 }
 
-// GetThreshold returns the threshold for this rate limit and true if that
-// threshold is an override for the default limit, false otherwise. The
-// threshold returned takes into account any overrides for `key` or `regID`. If
-// both `key` and `regID` have an override the largest of the two will be used.
-func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) (int64, bool) {
+// GetThreshold returns the threshold for this rate limit and the override
+// Id/Key if that threshold is the result of an override for the default limit,
+// empty-string otherwise. The threshold returned takes into account any
+// overrides for `key` or `regID`. If both `key` and `regID` have an override
+// the largest of the two will be used.
+func (rlp *RateLimitPolicy) GetThreshold(key string, regID int64) (int64, string) {
 	regOverride, regOverrideExists := rlp.RegistrationOverrides[regID]
 	keyOverride, keyOverrideExists := rlp.Overrides[key]
 
 	if regOverrideExists && !keyOverrideExists {
 		// If there is a regOverride and no keyOverride use the regOverride
-		return regOverride, true
+		return regOverride, strconv.FormatInt(regID, 10)
 	} else if !regOverrideExists && keyOverrideExists {
 		// If there is a keyOverride and no regOverride use the keyOverride
-		return keyOverride, true
+		return keyOverride, key
 	} else if regOverrideExists && keyOverrideExists {
 		// If there is both a regOverride and a keyOverride use whichever is larger.
 		if regOverride > keyOverride {
-			return regOverride, true
+			return regOverride, strconv.FormatInt(regID, 10)
 		} else {
-			return keyOverride, true
+			return keyOverride, key
 		}
 	}
 
 	// Otherwise there was no regOverride and no keyOverride, use the base
 	// Threshold
-	return rlp.Threshold, false
+	return rlp.Threshold, ""
 }
 
 // WindowBegin returns the time that a RateLimitPolicy's window begins, given a

@@ -1235,9 +1235,9 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "example.com", "good-example.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit example.com")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// There are no overrides for "99:example.com", so the override usage gauge
+	// There are no overrides for "example.com", so the override usage gauge
 	// should contain 0 entries with labels matching it.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:example.com"}, 0)
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "example.com"}, 0)
 	// Verify it has no sub errors as there is only one bad name
 	test.AssertEquals(t, err.Error(), "too many certificates already issued for \"example.com\". Retry after 1970-01-01T23:00:00Z: see https://letsencrypt.org/docs/rate-limits/")
 	var bErr *berrors.BoulderError
@@ -1265,10 +1265,10 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	mockSA.nameCounts.Counts["bigissuer.com"] = 50
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
-	// "99:bigissuer.com" has an override of 100 and they've issued 50. We do
+	// "bigissuer.com" has an override of 100 and they've issued 50. We do
 	// not count issuance that has yet to occur, so we expect to see 50%
 	// utilization.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:bigissuer.com"}, .5)
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, .5)
 
 	// Two base domains, one above its override
 	mockSA.nameCounts.Counts["example.com"] = 10
@@ -1276,18 +1276,18 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// "99:bigissuer.com" has an override of 100 and they've issued 100. So we
+	// "bigissuer.com" has an override of 100 and they've issued 100. So we
 	// expect to see 100% utilization.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:bigissuer.com"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, 1)
 
 	// One base domain, above its override (which is below threshold)
 	mockSA.nameCounts.Counts["smallissuer.co.uk"] = 1
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// "99:smallissuer.co.uk" has an override of 1 and they've issued 1. So we
+	// "smallissuer.co.uk" has an override of 1 and they've issued 1. So we
 	// expect to see 100% utilization.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "99:smallissuer.co.uk"}, 1)
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "smallissuer.co.uk"}, 1)
 }
 
 // TestCheckExactCertificateLimit tests that the duplicate certificate limit
