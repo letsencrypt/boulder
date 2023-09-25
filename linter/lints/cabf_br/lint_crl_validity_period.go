@@ -95,7 +95,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 
 	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific()) {
 		if idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
-			if len(onlyContainsCACerts) == 1 || onlyContainsCACerts[0] == 0xFF {
+			if len(onlyContainsCACerts) == 1 && onlyContainsCACerts[0] == 0xFF {
 				BRValidity = 365 * lints.BRDay
 				validityString = "365 days"
 			}
