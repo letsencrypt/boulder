@@ -2432,7 +2432,7 @@ type GetRevokedCertsRequest struct {
 	ExpiresAfterNS  int64 `protobuf:"varint,2,opt,name=expiresAfterNS,proto3" json:"expiresAfterNS,omitempty"`   // Unix timestamp (nanoseconds), inclusive
 	ExpiresBeforeNS int64 `protobuf:"varint,3,opt,name=expiresBeforeNS,proto3" json:"expiresBeforeNS,omitempty"` // Unix timestamp (nanoseconds), exclusive
 	RevokedBeforeNS int64 `protobuf:"varint,4,opt,name=revokedBeforeNS,proto3" json:"revokedBeforeNS,omitempty"` // Unix timestamp (nanoseconds)
-	ShardIdx        int64 `protobuf:"varint,5,opt,name=shardIdx,proto3" json:"shardIdx,omitempty"`
+	ShardIdx        int64 `protobuf:"varint,5,opt,name=shardIdx,proto3" json:"shardIdx,omitempty"`               // Must not be set until the revokedCertificates table has 90+ days of entries.
 }
 
 func (x *GetRevokedCertsRequest) Reset() {

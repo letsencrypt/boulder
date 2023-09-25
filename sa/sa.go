@@ -914,6 +914,9 @@ func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, re
 			return nil, berrors.InternalServerError("no certificate with serial %s and revoked reason other than keyCompromise", req.Serial)
 		}
 
+		// Only update the revokedCertificates table if the revocation request
+		// specifies the CRL shard that this certificate belongs in. Our shards are
+		// one-indexed, so a ShardIdx of zero means no value was set.
 		if req.ShardIdx != 0 {
 			var rcm revokedCertModel
 			// Note: this query MUST be updated to enforce the same preconditions as

@@ -1302,6 +1302,10 @@ func (ssa *SQLStorageAuthority) GetRevokedCerts(req *sapb.GetRevokedCertsRequest
 // table to implement GetRevokedCerts. It must only be called when the request
 // contains a non-zero ShardIdx.
 func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(req *sapb.GetRevokedCertsRequest, stream sapb.StorageAuthorityReadOnly_GetRevokedCertsServer) error {
+	if req.ShardIdx == 0 {
+		return errors.New("can't select shard 0 from revokedCertificates table")
+	}
+
 	atTime := time.Unix(0, req.RevokedBeforeNS)
 
 	clauses := `
