@@ -79,7 +79,8 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	}
 
 	// Step inside the outer issuingDistributionPoint sequence to get access to
-	// its constituent fields, DistributionPoint and OnlyContainsUserCerts.
+	// its constituent fields, distributionPoint[0], and
+	// onlyContainsUserCerts[1], and onlyContainsCACerts[2].
 	idpv := cryptobyte.String(idpe.Value)
 	if !idpv.ReadASN1(&idpv, cryptobyte_asn1.SEQUENCE) {
 		return &lint.LintResult{
@@ -88,18 +89,18 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		}
 	}
 
-	// We read these booleans as a byte and ensure the value is 0xFF because
-	// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for the
-	// [1] and [2] tagged fields referenced above. X.690 (07/2002) section 8.2
-	// states that a boolean set to true will have contents FF.
-	// https://www.itu.int/rec/T-REC-X.690-200207-S/en
-	onlyContainsUserCerts := make([]byte, 0)
-	onlyContainsCACerts := make([]byte, 0)
-
-	// Ensure that the distributionPoint is a reasonable URI. To get to the URI,
-	// we have to step inside the DistributionPointName, then step inside that's
-	// FullName, and finally read the singular SEQUENCE OF GeneralName element.
 	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) || idpv.PeekASN1Tag(cryptobyte_asn1.Tag(1).ContextSpecific()) {
+		// If either the distributionPoint[0] field or the
+		// onlyContainsUserCerts[1] field is present, assume we're dealing with
+		// a CRL containing Subscriber Certs.
+
+		// We read this boolean as a byte and ensure the value is 0xFF because
+		// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for
+		// the onlyContainsUserCerts[1] and onlyContainsCACerts[2] tagged
+		// fields. X.690 (07/2002) section 8.2 states that a boolean set to true
+		// will have contents FF.
+		// https://www.itu.int/rec/T-REC-X.690-200207-S/en
+		onlyContainsUserCerts := make([]byte, 0)
 		var dpName cryptobyte.String
 		if !idpv.ReadASN1(&dpName, cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) {
 			return &lint.LintResult{
@@ -153,34 +154,37 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 				Details: "IDP should set onlyContainsUserCerts: TRUE",
 			}
 		}
-	}
+	} else {
+		// We read this boolean as a byte and ensure the value is 0xFF because
+		// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for
+		// the onlyContainsUserCerts[1] and onlyContainsCACerts[2] tagged
+		// fields. X.690 (07/2002) section 8.2 states that a boolean set to true
+		// will have contents FF.
+		// https://www.itu.int/rec/T-REC-X.690-200207-S/en
+		onlyContainsCACerts := make([]byte, 0)
 
-	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific()) {
-		if !idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "Failed to read IDP onlyContainsCACerts",
+		if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific()) {
+			// If either the onlyContainsCACerts[2] field is present, assume we're
+			// dealing with a CRL containing CA Certs.
+			if !idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
+				return &lint.LintResult{
+					Status:  lint.Error,
+					Details: "Failed to read IDP onlyContainsCACerts",
+				}
 			}
-		}
-		if len(onlyContainsCACerts) != 1 || onlyContainsCACerts[0] != 0xFF {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "IDP should set onlyContainsCACerts: TRUE",
+			if len(onlyContainsCACerts) != 1 || onlyContainsCACerts[0] != 0xFF {
+				return &lint.LintResult{
+					Status:  lint.Error,
+					Details: "IDP should set onlyContainsCACerts: TRUE",
+				}
 			}
-		}
-	}
-
-	if len(onlyContainsUserCerts) == 1 && len(onlyContainsCACerts) == 1 {
-		return &lint.LintResult{
-			Status:  lint.Error,
-			Details: "IDP should set either onlyContainsUserCerts or onlyContainsCACerts to TRUE, not both",
 		}
 	}
 
 	// Ensure that no other fields are set.
 	if !idpv.Empty() {
 		return &lint.LintResult{
-			Status:  lint.Warn,
+			Status:  lint.Error,
 			Details: "Unexpected IDP fields were found",
 		}
 	}

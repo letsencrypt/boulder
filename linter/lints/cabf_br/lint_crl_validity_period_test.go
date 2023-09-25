@@ -51,6 +51,14 @@ func TestCrlValidityPeriod(t *testing.T) {
 			want:       lint.Error,
 			wantSubStr: "CRL has validity period greater than 365 days",
 		},
+		{
+			// Technically this CRL is incorrect because Let's Encrypt does not
+			// (yet) issue CRLs containing both the distributionPoint and Only
+			// Contains CA Certs boolean, but we're still parsing the correct BR
+			// validity.
+			name: "long_validity_distributionPoint_and_subordinate_ca",
+			want: lint.Pass,
+		},
 	}
 
 	for _, tc := range testCases {
