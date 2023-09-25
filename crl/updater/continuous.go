@@ -61,8 +61,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 
 	// Start one shard worker per shard this updater is responsible for.
 	for _, issuer := range cu.issuers {
-		// TODO(#7007): Start at index 1 when we stop producing shard 0.
-		for i := 0; i <= cu.numShards; i++ {
+		for i := 1; i <= cu.numShards; i++ {
 			wg.Add(1)
 			go shardWorker(issuer.NameID(), i)
 		}
