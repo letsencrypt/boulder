@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"log/syslog"
 	"os"
-	"reflect"
 	"regexp"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,6 +65,7 @@ type report struct {
 	end       time.Time
 	GoodCerts int64                  `json:"good-certs"`
 	BadCerts  int64                  `json:"bad-certs"`
+	DbErrs    int64                  `json:"db-errs"`
 	Entries   map[string]reportEntry `json:"entries"`
 }
 
@@ -378,7 +379,7 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 			}
 		}
 		// Check the cert has the correct key usage extensions
-		if !reflect.DeepEqual(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
+		if !slices.Equal(parsedCert.ExtKeyUsage, []zX509.ExtKeyUsage{zX509.ExtKeyUsageServerAuth, zX509.ExtKeyUsageClientAuth}) {
 			problems = append(problems, "Certificate has incorrect key usage extensions")
 		}
 
@@ -411,13 +412,15 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		if features.Enabled(features.CertCheckerRequiresCorrespondence) {
 			precertDER, err := c.getPrecert(ctx, cert.Serial)
 			if err != nil {
-				problems = append(problems,
-					fmt.Sprintf("fetching linting precertificate for %s: %s", cert.Serial, err))
+				// Log and continue, since we want the problems slice to only contains
+				// problems with the cert itself.
+				c.logger.Errf("fetching linting precertificate for %s: %s", cert.Serial, err)
+				atomic.AddInt64(&c.issuedReport.DbErrs, 1)
 			} else {
 				err = precert.Correspond(precertDER, cert.DER)
 				if err != nil {
 					problems = append(problems,
-						fmt.Sprintf("checking correspondence for %s: %s", cert.Serial, err))
+						fmt.Sprintf("Certificate does not correspond to precert for %s: %s", cert.Serial, err))
 				}
 			}
 		}
@@ -497,6 +500,8 @@ func main() {
 
 	err = blog.Set(logger)
 	cmd.FailOnError(err, "Failed to set audit logger")
+
+	logger.Info(cmd.VersionString())
 
 	acceptableValidityDurations := make(map[time.Duration]bool)
 	if len(config.CertChecker.AcceptableValidityDurations) > 0 {

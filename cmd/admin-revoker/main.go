@@ -101,6 +101,7 @@ type revoker struct {
 
 func newRevoker(c Config) *revoker {
 	logger := cmd.NewLogger(c.Syslog)
+	logger.Info(cmd.VersionString())
 
 	// TODO(#6840) Rework admin-revoker to export prometheus metrics.
 	tlsConfig, err := c.Revoker.TLS.Load(metrics.NoopRegisterer)
@@ -341,7 +342,7 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 
 	req := &sapb.AddBlockedKeyRequest{
 		KeyHash:   spkiHash,
-		Added:     r.clk.Now().UnixNano(),
+		AddedNS:   r.clk.Now().UnixNano(),
 		Source:    "admin-revoker",
 		Comment:   dbcomment,
 		RevokedBy: 0,

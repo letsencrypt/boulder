@@ -74,6 +74,12 @@ const (
 	// According to the BRs Section 7.1.4.2.2(a), the commonName field is
 	// Deprecated, and its inclusion is discouraged but not (yet) prohibited.
 	RequireCommonName
+
+	// CAAAfterValidation causes the VA to only kick off CAA checks after the base
+	// domain control validation has completed and succeeded. This makes
+	// successful validations slower by serializing the DCV and CAA work, but
+	// makes unsuccessful validations easier by not doing CAA work at all.
+	CAAAfterValidation
 )
 
 // List of features and their default value, protected by fMu
@@ -96,6 +102,7 @@ var features = map[FeatureFlag]bool{
 	AsyncFinalize:                     false,
 	RequireCommonName:                 true,
 	LeaseCRLShards:                    false,
+	CAAAfterValidation:                false,
 
 	StoreLintingCertificateInsteadOfPrecertificate: false,
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"io"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/revocation"
 )
 
@@ -28,7 +28,7 @@ func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	crl, err := crl_x509.ParseRevocationList(body)
+	crl, err := x509.ParseRevocationList(body)
 	if err != nil {
 		w.WriteHeader(500)
 		w.Write([]byte(fmt.Sprintf("failed to parse body: %s", err)))
@@ -37,12 +37,8 @@ func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	srv.Lock()
 	defer srv.Unlock()
-	for _, rc := range crl.RevokedCertificates {
-		reason := 0
-		if rc.ReasonCode != nil {
-			reason = *rc.ReasonCode
-		}
-		srv.allSerials[core.SerialToString(rc.SerialNumber)] = revocation.Reason(reason)
+	for _, rc := range crl.RevokedCertificateEntries {
+		srv.allSerials[core.SerialToString(rc.SerialNumber)] = revocation.Reason(rc.ReasonCode)
 	}
 
 	w.WriteHeader(200)

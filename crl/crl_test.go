@@ -11,7 +11,7 @@ import (
 
 func TestId(t *testing.T) {
 	thisUpdate := time.Now()
-	out := Id(1337, Number(thisUpdate), 1)
-	expectCRLId := fmt.Sprintf("{\"issuerID\":1337,\"crlNumber\":%d,\"shardIdx\":1}", big.NewInt(thisUpdate.UnixNano()))
+	out := Id(1337, 1, Number(thisUpdate))
+	expectCRLId := fmt.Sprintf("{\"issuerID\":1337,\"shardIdx\":1,\"crlNumber\":%d}", big.NewInt(thisUpdate.UnixNano()))
 	test.AssertEquals(t, string(out), expectCRLId)
 }

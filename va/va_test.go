@@ -310,6 +310,42 @@ func TestPerformValidationWildcard(t *testing.T) {
 	}
 }
 
+func TestDCVAndCAASequencing(t *testing.T) {
+	va, mockLog := setup(nil, 0, "", nil)
+
+	// When performing validation without the CAAAfterValidation flag, CAA should
+	// be checked.
+	req := createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	res, err := va.PerformValidation(context.Background(), req)
+	test.AssertNotError(t, err, "performing validation")
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+	caaLog := mockLog.GetAllMatching(`Checked CAA records for`)
+	test.AssertEquals(t, len(caaLog), 1)
+
+	_ = features.Set(map[string]bool{features.CAAAfterValidation.String(): true})
+	defer features.Reset()
+
+	// When performing successful validation with the CAAAfterValidation flag,
+	// CAA should be checked.
+	mockLog.Clear()
+	req = createValidationRequest("good-dns01.com", core.ChallengeTypeDNS01)
+	res, err = va.PerformValidation(context.Background(), req)
+	test.AssertNotError(t, err, "performing validation")
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
+	test.AssertEquals(t, len(caaLog), 1)
+
+	// When performing failed validation with the CAAAfterValidation flag,
+	// CAA should be skipped
+	mockLog.Clear()
+	req = createValidationRequest("bad-dns01.com", core.ChallengeTypeDNS01)
+	res, err = va.PerformValidation(context.Background(), req)
+	test.AssertNotError(t, err, "performing validation")
+	test.Assert(t, res.Problems != nil, "validation succeeded")
+	caaLog = mockLog.GetAllMatching(`Checked CAA records for`)
+	test.AssertEquals(t, len(caaLog), 0)
+}
+
 func TestMultiVA(t *testing.T) {
 	// Create a new challenge to use for the httpSrv
 	req := createValidationRequest("localhost", core.ChallengeTypeHTTP01)

@@ -39,8 +39,8 @@ func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *ca
 		RegistrationID: 1,
 		Serial:         "mock",
 		Digest:         "mock",
-		Issued:         1,
-		Expires:        1,
+		IssuedNS:       1,
+		ExpiresNS:      1,
 	}, nil
 }
 

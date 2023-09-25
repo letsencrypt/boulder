@@ -2,6 +2,7 @@ package checker
 
 import (
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/pem"
 	"io"
 	"math/big"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 	"github.com/letsencrypt/boulder/issuance"
 	"github.com/letsencrypt/boulder/test"
 )
@@ -21,7 +21,7 @@ func TestValidate(t *testing.T) {
 	crlPEM, err := io.ReadAll(crlFile)
 	test.AssertNotError(t, err, "reading test crl file")
 	crlDER, _ := pem.Decode(crlPEM)
-	crl, err := crl_x509.ParseRevocationList(crlDER.Bytes)
+	crl, err := x509.ParseRevocationList(crlDER.Bytes)
 	test.AssertNotError(t, err, "parsing test crl")
 	issuer, err := core.LoadCert("../../test/hierarchy/int-e1.cert.pem")
 	test.AssertNotError(t, err, "loading test issuer")
@@ -44,7 +44,7 @@ func TestValidate(t *testing.T) {
 	crlPEM, err = io.ReadAll(crlFile)
 	test.AssertNotError(t, err, "reading test crl file")
 	crlDER, _ = pem.Decode(crlPEM)
-	crl, err = crl_x509.ParseRevocationList(crlDER.Bytes)
+	crl, err = x509.ParseRevocationList(crlDER.Bytes)
 	test.AssertNotError(t, err, "parsing test crl")
 	err = Validate(crl, issuer, 100*365*24*time.Hour)
 	test.AssertError(t, err, "validating crl with lint error")
@@ -59,11 +59,11 @@ func TestDiff(t *testing.T) {
 	test.AssertNotError(t, err, "loading test issuer")
 
 	now := time.Now()
-	template := crl_x509.RevocationList{
+	template := x509.RevocationList{
 		ThisUpdate: now,
 		NextUpdate: now.Add(24 * time.Hour),
 		Number:     big.NewInt(1),
-		RevokedCertificates: []crl_x509.RevokedCertificate{
+		RevokedCertificateEntries: []x509.RevocationListEntry{
 			{
 				SerialNumber:   big.NewInt(1),
 				RevocationTime: now.Add(-time.Hour),
@@ -75,17 +75,17 @@ func TestDiff(t *testing.T) {
 		},
 	}
 
-	oldCRLDER, err := crl_x509.CreateRevocationList(rand.Reader, &template, issuer.Certificate, signer)
+	oldCRLDER, err := x509.CreateRevocationList(rand.Reader, &template, issuer.Certificate, signer)
 	test.AssertNotError(t, err, "creating old crl")
-	oldCRL, err := crl_x509.ParseRevocationList(oldCRLDER)
+	oldCRL, err := x509.ParseRevocationList(oldCRLDER)
 	test.AssertNotError(t, err, "parsing old crl")
 
 	now = now.Add(time.Hour)
-	template = crl_x509.RevocationList{
+	template = x509.RevocationList{
 		ThisUpdate: now,
 		NextUpdate: now.Add(24 * time.Hour),
 		Number:     big.NewInt(2),
-		RevokedCertificates: []crl_x509.RevokedCertificate{
+		RevokedCertificateEntries: []x509.RevocationListEntry{
 			{
 				SerialNumber:   big.NewInt(1),
 				RevocationTime: now.Add(-2 * time.Hour),
@@ -97,9 +97,9 @@ func TestDiff(t *testing.T) {
 		},
 	}
 
-	newCRLDER, err := crl_x509.CreateRevocationList(rand.Reader, &template, issuer.Certificate, signer)
+	newCRLDER, err := x509.CreateRevocationList(rand.Reader, &template, issuer.Certificate, signer)
 	test.AssertNotError(t, err, "creating old crl")
-	newCRL, err := crl_x509.ParseRevocationList(newCRLDER)
+	newCRL, err := x509.ParseRevocationList(newCRLDER)
 	test.AssertNotError(t, err, "parsing old crl")
 
 	res, err := Diff(oldCRL, newCRL)

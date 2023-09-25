@@ -19,6 +19,7 @@ go install github.com/rubenv/sql-migrate/...@v1.1.2
 go install golang.org/x/tools/cmd/stringer@latest
 go install github.com/letsencrypt/pebble/cmd/pebble-challtestsrv@master
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.53.3
+go install honnef.co/go/tools/cmd/staticcheck@2023.1.5
 
 go clean -cache
 go clean -modcache

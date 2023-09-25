@@ -14,7 +14,6 @@ import (
 	"github.com/zmap/zlint/v3/lint"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/crl/crl_x509"
 
 	_ "github.com/letsencrypt/boulder/linter/lints/cabf_br"
 	_ "github.com/letsencrypt/boulder/linter/lints/chrome"
@@ -47,7 +46,7 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 }
 
 // CheckCRL is like Check, but for CRLs.
-func CheckCRL(tbs *crl_x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
+func CheckCRL(tbs *x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
 	linter, err := New(realIssuer, realSigner, skipLints)
 	if err != nil {
 		return err
@@ -121,7 +120,7 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]
 // CheckCRL signs the given RevocationList template using the Linter's fake
 // issuer cert and private key, then runs the resulting CRL through our suite
 // of CRL checks. It returns an error if any check fails.
-func (l Linter) CheckCRL(tbs *crl_x509.RevocationList) error {
+func (l Linter) CheckCRL(tbs *x509.RevocationList) error {
 	crl, err := makeLintCRL(tbs, l.issuer, l.signer)
 	if err != nil {
 		return err
@@ -248,8 +247,8 @@ func ProcessResultSet(lintRes *zlint.ResultSet) error {
 	return nil
 }
 
-func makeLintCRL(tbs *crl_x509.RevocationList, issuer *x509.Certificate, signer crypto.Signer) (*zlintx509.RevocationList, error) {
-	lintCRLBytes, err := crl_x509.CreateRevocationList(rand.Reader, tbs, issuer, signer)
+func makeLintCRL(tbs *x509.RevocationList, issuer *x509.Certificate, signer crypto.Signer) (*zlintx509.RevocationList, error) {
+	lintCRLBytes, err := x509.CreateRevocationList(rand.Reader, tbs, issuer, signer)
 	if err != nil {
 		return nil, err
 	}
