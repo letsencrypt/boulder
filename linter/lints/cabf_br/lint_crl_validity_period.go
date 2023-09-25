@@ -83,16 +83,15 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	idpv := cryptobyte.String(idpe.Value)
 	_ = idpv.ReadASN1(&idpv, cryptobyte_asn1.SEQUENCE)
 
+	// Default to subscriber cert CRL.
+	var BRValidity = 10 * 24 * time.Hour
+	var validityString = "10 days"
+	
 	// We read this boolean as a byte and ensure its value is 0xFF because
 	// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for the
 	// [1] and [2] tagged fields referenced above. For the purposes of this
 	// lint, we just need to know if the field exists.
 	onlyContainsCACerts := make([]byte, 0)
-
-	// Default to subscriber cert CRL.
-	var BRValidity = 10 * 24 * time.Hour
-	var validityString = "10 days"
-
 	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific()) {
 		if idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
 			if len(onlyContainsCACerts) == 1 && onlyContainsCACerts[0] == 0xFF {
