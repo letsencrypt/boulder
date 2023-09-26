@@ -81,9 +81,6 @@ func TestGenerateCRLLints(t *testing.T) {
 
 	// This CRL should fail the following lint:
 	// - e_crl_acceptable_reason_codes (because 6 is forbidden)
-	// However, only the last of those should show up in the error message,
-	// because the first two should be explicitly removed from the lint registry
-	// by the ceremony tool.
 	_, err = generateCRL(&wrappedSigner{k}, cert, time.Now().Add(time.Hour), time.Now().Add(100*24*time.Hour), 1, []x509.RevocationListEntry{
 		{
 			SerialNumber:   big.NewInt(12345),
