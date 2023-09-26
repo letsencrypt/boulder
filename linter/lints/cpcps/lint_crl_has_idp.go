@@ -79,8 +79,8 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	}
 
 	// Step inside the outer issuingDistributionPoint sequence to get access to
-	// its constituent fields, distributionPoint[0], and
-	// onlyContainsUserCerts[1], and onlyContainsCACerts[2].
+	// its constituent fields: distributionPoint [0],
+	// onlyContainsUserCerts [1], and onlyContainsCACerts [2].
 	idpv := cryptobyte.String(idpe.Value)
 	if !idpv.ReadASN1(&idpv, cryptobyte_asn1.SEQUENCE) {
 		return &lint.LintResult{
@@ -163,20 +163,18 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		// https://www.itu.int/rec/T-REC-X.690-200207-S/en
 		onlyContainsCACerts := make([]byte, 0)
 
-		if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(2).ContextSpecific()) {
-			// If either the onlyContainsCACerts[2] field is present, assume we're
-			// dealing with a CRL containing CA Certs.
-			if !idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
-				return &lint.LintResult{
-					Status:  lint.Error,
-					Details: "Failed to read IDP onlyContainsCACerts",
-				}
+		// If either the onlyContainsCACerts[2] field is present, assume we're
+		// dealing with a CRL containing CA Certs.
+		if !idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "Failed to read IDP onlyContainsCACerts",
 			}
-			if len(onlyContainsCACerts) != 1 || onlyContainsCACerts[0] != 0xFF {
-				return &lint.LintResult{
-					Status:  lint.Error,
-					Details: "IDP should set onlyContainsCACerts: TRUE",
-				}
+		}
+		if len(onlyContainsCACerts) != 1 || onlyContainsCACerts[0] != 0xFF {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "IDP should set onlyContainsCACerts: TRUE",
 			}
 		}
 	}

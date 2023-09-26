@@ -61,8 +61,10 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	return pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: crlBytes}), nil
 }
 
-// issuingDistributionPoint represents a subsection of ASN.1
-// IssuingDistributionPoint SEQUENCE as defined in RFC 5280 Section 5.2.5.
+// issuingDistributionPoint represents the ASN.1 IssuingDistributionPoint
+// SEQUENCE as defined in RFC 5280 Section 5.2.5. We only use one of the fields,
+// all others are omitted.
+// https://datatracker.ietf.org/doc/html/rfc5280#page-66
 type issuingDistributionPoint struct {
 	OnlyContainsCACerts bool `asn1:"optional,tag:2"`
 }
