@@ -1737,9 +1737,11 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if err != nil {
 		return err
 	}
-	var validated time.Time
+	var validatedInt int64 = 0
+	validatedTS := timestamppb.New(time.Time{})
 	if challenge.Validated != nil {
-		validated = challenge.Validated.UTC()
+		validatedInt = challenge.Validated.UTC().UnixNano()
+		validatedTS = timestamppb.New(*challenge.Validated)
 	}
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:                authzID,
@@ -1747,8 +1749,8 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 		ExpiresNS:         expires.UnixNano(),
 		Expires:           timestamppb.New(expires),
 		Attempted:         string(challenge.Type),
-		AttemptedAtNS:     validated.UnixNano(),
-		AttemptedAt:       timestamppb.New(validated),
+		AttemptedAtNS:     validatedInt,
+		AttemptedAt:       validatedTS,
 		ValidationRecords: vr.Records,
 		ValidationError:   vr.Problems,
 	})
@@ -1956,7 +1958,6 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		DateNS:     now.UnixNano(),
 		Date:       timestamppb.New(now),
 		BackdateNS: status.RevokedDateNS,
-		Backdate:   status.RevokedDate,
 		IssuerID:   issuerID,
 	})
 	if err != nil {
@@ -2399,7 +2400,6 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		Status:      status.Status,
 		Reason:      int32(status.RevokedReason),
 		RevokedAtNS: status.RevokedDateNS,
-		RevokedAt:   status.RevokedDate,
 		IssuerID:    status.IssuerID,
 	})
 }

@@ -70,18 +70,14 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 			return nil, err
 		}
 	}
-	var tempVal *time.Time
-	var validatedInt int64
-	var validatedTS *timestamppb.Timestamp
+
+	var validatedInt int64 = 0
+	validatedTS := timestamppb.New(time.Time{})
 	if challenge.Validated != nil {
-		val := challenge.Validated.UTC()
-		tempVal = &val
-		validatedInt = val.UnixNano()
-		validatedTS = timestamppb.New(*tempVal)
-	} else {
-		validatedInt = 0
-		validatedTS = timestamppb.New(time.Time{})
+		validatedInt = challenge.Validated.UTC().UnixNano()
+		validatedTS = timestamppb.New(challenge.Validated.UTC())
 	}
+
 	if !validatedTS.IsValid() {
 		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Challenge object")
 	}
@@ -244,17 +240,11 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
-	var tempVal *time.Time
-	var createdAtInt int64
-	var createdAtTS *timestamppb.Timestamp
+	var createdAtInt int64 = 0
+	createdAtTS := timestamppb.New(time.Time{})
 	if reg.CreatedAt != nil {
-		val := reg.CreatedAt.UTC()
-		tempVal = &val
-		createdAtInt = val.UnixNano()
-		createdAtTS = timestamppb.New(*tempVal)
-	} else {
-		createdAtInt = 0
-		createdAtTS = timestamppb.New(time.Time{})
+		createdAtInt = reg.CreatedAt.UTC().UnixNano()
+		createdAtTS = timestamppb.New(reg.CreatedAt.UTC())
 	}
 	if !createdAtTS.IsValid() {
 		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
@@ -323,17 +313,11 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		}
 		challs[i] = pbChall
 	}
-	var tempVal *time.Time
-	var expiresInt int64
-	var expiresTS *timestamppb.Timestamp
+	var expiresInt int64 = 0
+	expiresTS := timestamppb.New(time.Time{})
 	if authz.Expires != nil {
-		val := authz.Expires.UTC()
-		tempVal = &val
-		expiresInt = val.UnixNano()
-		expiresTS = timestamppb.New(*tempVal)
-	} else {
-		expiresInt = 0
-		expiresTS = timestamppb.New(time.Time{})
+		expiresInt = authz.Expires.UTC().UnixNano()
+		expiresTS = timestamppb.New(authz.Expires.UTC())
 	}
 	if !expiresTS.IsValid() {
 		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
@@ -379,7 +363,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 // from `newOrderValid` it ensures the order ID and the Created fields are not
 // the zero value.
 func orderValid(order *corepb.Order) bool {
-	return order.Id != 0 && order.CreatedNS != 0 && order.Created != nil && newOrderValid(order)
+	return order.Id != 0 && order.CreatedNS != 0 && newOrderValid(order)
 }
 
 // newOrderValid checks that a corepb.Order is valid. It allows for a nil
@@ -390,7 +374,7 @@ func orderValid(order *corepb.Order) bool {
 // `order.CertificateSerial` to be nil such that it can be used in places where
 // the order has not been finalized yet.
 func newOrderValid(order *corepb.Order) bool {
-	return !(order.RegistrationID == 0 || order.ExpiresNS == 0 || order.Expires == nil || len(order.Names) == 0)
+	return !(order.RegistrationID == 0 || order.ExpiresNS == 0 || len(order.Names) == 0)
 }
 
 func CertToPB(cert core.Certificate) *corepb.Certificate {

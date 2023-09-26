@@ -2952,7 +2952,7 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	defer cleanUp()
 	ra.orderLifetime = time.Hour
 
-	// Pick an expiry in the future\
+	// Pick an expiry in the future
 	now := ra.clk.Now()
 	exp := now.Add(365 * 24 * time.Hour)
 

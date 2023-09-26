@@ -557,7 +557,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			ExpiresNS:      req.NewOrder.ExpiresNS,
-			Expires:        req.NewOrder.Expires,
 			Names:          req.NewOrder.Names,
 			// Have to combine the already-associated and newly-reacted authzs.
 			V2Authorizations: append(req.NewOrder.V2Authorizations, newAuthzIDs...),

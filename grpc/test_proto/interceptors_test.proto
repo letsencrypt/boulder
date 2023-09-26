@@ -2,16 +2,13 @@ syntax = "proto3";
 
 option go_package = "github.com/letsencrypt/boulder/grpc/test_proto";
 
-import "google/protobuf/timestamp.proto";
-
 service Chiller {
   // Sleep for the given amount of time, and return the amount of time slept.
   rpc Chill(Time) returns (Time) {}
 }
 
 message Time {
-  // Next unused field number: 3
+  // Next unused field number: 2
+   // TODO (#7097) Change this to google.protobuf.Duration
   int64 timeNS = 1; // Unix timestamp (nanoseconds)
-  // TODO (#7097) Change this to google.protobuf.Duration
-  google.protobuf.Timestamp time = 2;
-}
+ }

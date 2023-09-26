@@ -186,13 +186,12 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	serialHex := core.SerialToString(serialBigInt)
 	regID := issueReq.RegistrationID
 	now := ca.clk.Now()
-	expiresNanos := validity.NotAfter.UnixNano()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		Serial:    serialHex,
 		RegID:     regID,
 		CreatedNS: now.UnixNano(),
 		Created:   timestamppb.New(now),
-		ExpiresNS: expiresNanos,
+		ExpiresNS: validity.NotAfter.UnixNano(),
 		Expires:   timestamppb.New(validity.NotAfter),
 	})
 	if err != nil {

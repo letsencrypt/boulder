@@ -811,12 +811,14 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 						return nil, err
 					}
 					// Get the attemptedAt time and assign to the challenge validated time.
-					var validated time.Time
+					var validatedInt int64 = 0
+					validatedTS := timestamppb.New(time.Time{})
 					if am.AttemptedAt != nil {
-						validated = am.AttemptedAt.UTC()
+						validatedInt = am.AttemptedAt.UTC().UnixNano()
+						validatedTS = timestamppb.New(*am.AttemptedAt)
 					}
-					challenge.ValidatedNS = validated.UnixNano()
-					challenge.Validated = timestamppb.New(validated)
+					challenge.ValidatedNS = validatedInt
+					challenge.Validated = validatedTS
 					pb.Challenges = append(pb.Challenges, challenge)
 				}
 			} else {

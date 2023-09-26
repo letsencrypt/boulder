@@ -72,6 +72,7 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
+	// TODO(#7100) Change usage of time.Now() to fakeclock.Now()
 	now := time.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
