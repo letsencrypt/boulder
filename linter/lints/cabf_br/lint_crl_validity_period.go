@@ -88,7 +88,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for the
 	// [1] and [2] tagged fields. For the purposes of this lint, we just need to
 	// know if the field exists.
-	onlyContainsCACerts := make([]byte, 0)
+	var onlyContainsCACerts []byte
 	if idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
 		if len(onlyContainsCACerts) == 1 && onlyContainsCACerts[0] == 0xFF {
 			BRValidity = 365 * lints.BRDay
