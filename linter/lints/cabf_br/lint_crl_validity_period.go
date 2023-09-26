@@ -60,7 +60,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	   lifetime to enforce.
 	*/
 
-	// The only way to determine which type of CRL we're dealing with, the
+	// The only way to determine which type of CRL we're dealing with. The
 	// issuingDistributionPoint must be parsed and the internal fields
 	// inspected.
 	idpOID := asn1.ObjectIdentifier{2, 5, 29, 28} // id-ce-issuingDistributionPoint
