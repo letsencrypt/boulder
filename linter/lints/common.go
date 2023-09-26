@@ -35,3 +35,13 @@ func GetExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) *pkix.Exten
 	}
 	return nil
 }
+
+// ReadASN1BooleanWithTag reports whether the incoming bytes from a decoded
+// ASN.1 Tag are a valid X.690 BOOLEAN. The caller is responsible for parsing
+// the ASN.1 Tag.
+func ReadASN1BooleanWithTag(parsedByes []byte) bool {
+	// X.690 (07/2002) section 8.2 states that a boolean will have length of 1
+	// and value true will have contents FF.
+	// https://www.itu.int/rec/T-REC-X.690-200207-S/en
+	return (len(parsedByes) == 1 && parsedByes[0] == 0xFF)
+}

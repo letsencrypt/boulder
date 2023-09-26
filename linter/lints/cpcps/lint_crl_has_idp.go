@@ -89,34 +89,32 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		}
 	}
 
-	if idpv.PeekASN1Tag(cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) || idpv.PeekASN1Tag(cryptobyte_asn1.Tag(1).ContextSpecific()) {
-		// If either the distributionPoint[0] field or the
-		// onlyContainsUserCerts[1] field is present, assume we're dealing with
+	distributionPointTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
+	onlyContainsUserCertsTag := cryptobyte_asn1.Tag(1).ContextSpecific()
+	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
+	distributionPointURITag := cryptobyte_asn1.Tag(6).ContextSpecific()
+
+	if idpv.PeekASN1Tag(distributionPointTag) || idpv.PeekASN1Tag(onlyContainsUserCertsTag) {
+		// If either the distributionPoint [0] field or the
+		// onlyContainsUserCerts [1] field is present, assume we're dealing with
 		// a CRL containing Subscriber Certs.
 
-		// We read this boolean as a byte and ensure the value is 0xFF because
-		// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for
-		// the onlyContainsUserCerts[1] and onlyContainsCACerts[2] tagged
-		// fields. X.690 (07/2002) section 8.2 states that a boolean set to true
-		// will have contents FF.
-		// https://www.itu.int/rec/T-REC-X.690-200207-S/en
-		onlyContainsUserCerts := make([]byte, 0)
 		var dpName cryptobyte.String
-		if !idpv.ReadASN1(&dpName, cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) {
+		if !idpv.ReadASN1(&dpName, distributionPointTag) {
 			return &lint.LintResult{
 				Status:  lint.Warn,
 				Details: "Failed to read IDP distributionPoint",
 			}
 		}
-		if !dpName.ReadASN1(&dpName, cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) {
+		if !dpName.ReadASN1(&dpName, distributionPointTag) {
 			return &lint.LintResult{
 				Status:  lint.Warn,
 				Details: "Failed to read IDP distributionPoint fullName",
 			}
 		}
 
-		uriBytes := make([]byte, 0)
-		if !dpName.ReadASN1Bytes(&uriBytes, cryptobyte_asn1.Tag(6).ContextSpecific()) {
+		var uriBytes []byte
+		if !dpName.ReadASN1Bytes(&uriBytes, distributionPointURITag) {
 			return &lint.LintResult{
 				Status:  lint.Warn,
 				Details: "Failed to read IDP URI",
@@ -142,36 +140,32 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 				Details: "IDP should contain only one distributionPoint",
 			}
 		}
-		if !idpv.ReadASN1Bytes(&onlyContainsUserCerts, cryptobyte_asn1.Tag(1).ContextSpecific()) {
+
+		var onlyContainsUserCertsBytes []byte
+		if !idpv.ReadASN1Bytes(&onlyContainsUserCertsBytes, onlyContainsUserCertsTag) {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "Failed to read IDP onlyContainsUserCerts",
 			}
 		}
-		if len(onlyContainsUserCerts) != 1 || onlyContainsUserCerts[0] != 0xFF {
+		if !lints.ReadASN1BooleanWithTag(onlyContainsUserCertsBytes) {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "IDP should set onlyContainsUserCerts: TRUE",
 			}
 		}
 	} else {
-		// We read this boolean as a byte and ensure the value is 0xFF because
-		// cryptobyte.ReadASN1Boolean can't handle the custom encoding rules for
-		// the onlyContainsUserCerts[1] and onlyContainsCACerts[2] tagged
-		// fields. X.690 (07/2002) section 8.2 states that a boolean set to true
-		// will have contents FF.
-		// https://www.itu.int/rec/T-REC-X.690-200207-S/en
-		onlyContainsCACerts := make([]byte, 0)
+		// If the onlyContainsCACerts [2] field is present, assume we're dealing
+		// with a CRL containing CA Certs.
 
-		// If either the onlyContainsCACerts[2] field is present, assume we're
-		// dealing with a CRL containing CA Certs.
-		if !idpv.ReadASN1Bytes(&onlyContainsCACerts, cryptobyte_asn1.Tag(2).ContextSpecific()) {
+		var onlyContainsCACertsBytes []byte
+		if !idpv.ReadASN1Bytes(&onlyContainsCACertsBytes, onlyContainsCACertsTag) {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "Failed to read IDP onlyContainsCACerts",
 			}
 		}
-		if len(onlyContainsCACerts) != 1 || onlyContainsCACerts[0] != 0xFF {
+		if !lints.ReadASN1BooleanWithTag(onlyContainsCACertsBytes) {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "IDP should set onlyContainsCACerts: TRUE",
