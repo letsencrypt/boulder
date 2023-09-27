@@ -139,24 +139,31 @@ func newChecker(saDbMap certDB,
 	}
 }
 
-func (c *certChecker) getCerts(ctx context.Context) error {
-	// The end of the report is the current time, rounded up to the nearest second.
-	c.issuedReport.end = c.clock.Now().Truncate(time.Second).Add(time.Second)
-	// The beginning of the report is the end minus the check period, rounded down to the nearest second.
-	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod).Truncate(time.Second)
-
-	var sni sql.NullInt64
+// findStartingID returns the lowest `id` in the certificates table within the
+// time window specified. The time window is a half-open interval [begin, end).
+func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) (int64, error) {
+	var output sql.NullInt64
 	var err error
 	var retries int
-	for {
-		sni, err = c.dbMap.SelectNullInt(
+
+	// Rather than querying `MIN(id)` across that whole window, we query it across the first
+	// hour of the window. Thisallows the query planner to use the index on `issued` more
+	// effectively. For a busy, actively issuing CA, that will always return results in the
+	// first query. For a less busy CA, or during integration tests, there may only exist
+	// certificates towards the end of the window, so we try querying later hourly chunks until
+	// we find a certificate or hit the end of the window. We also retry transient errors.
+	queryBegin := begin
+	queryEnd := begin.Add(time.Hour)
+
+	for queryBegin.Compare(end) < 0 {
+		output, err = c.dbMap.SelectNullInt(
 			ctx,
 			`SELECT MIN(id) FROM certificates
 				WHERE issued >= :begin AND
 					  issued < :end`,
 			map[string]interface{}{
-				"begin": c.issuedReport.begin,
-				"end":   c.issuedReport.begin.Add(time.Hour),
+				"begin": queryBegin,
+				"end":   queryEnd,
 			},
 		)
 		if err != nil {
@@ -165,23 +172,44 @@ func (c *certChecker) getCerts(ctx context.Context) error {
 			time.Sleep(core.RetryBackoff(retries, time.Second, time.Minute, 2))
 			continue
 		}
-		retries = 0
-		break
-	}
-	if !sni.Valid {
 		// https://mariadb.com/kb/en/min/
 		// MIN() returns NULL if there were no matching rows
-		return fmt.Errorf("no rows found for certificates issued between %s and %s",
-			c.issuedReport.begin, c.issuedReport.end)
+		// https://pkg.go.dev/database/sql#NullInt64
+		// Valid is true if Int64 is not NULL
+		if !output.Valid {
+			// No matching rows, try the next hour
+			queryBegin = queryBegin.Add(time.Hour)
+			queryEnd = queryEnd.Add(time.Hour)
+			if queryEnd.Compare(end) > 0 {
+				queryEnd = end
+			}
+			continue
+		}
+
+		return output.Int64, nil
 	}
 
-	initialID := sni.Int64
+	// Fell through the loop without finding a valid ID
+	return 0, fmt.Errorf("no rows found for certificates issued between %s and %s", begin, end)
+}
+
+func (c *certChecker) getCerts(ctx context.Context) error {
+	// The end of the report is the current time, rounded up to the nearest second.
+	c.issuedReport.end = c.clock.Now().Truncate(time.Second).Add(time.Second)
+	// The beginning of the report is the end minus the check period, rounded down to the nearest second.
+	c.issuedReport.begin = c.issuedReport.end.Add(-c.checkPeriod).Truncate(time.Second)
+
+	initialID, err := c.findStartingID(ctx, c.issuedReport.begin, c.issuedReport.end)
+	if err != nil {
+		return err
+	}
 	if initialID > 0 {
 		// decrement the initial ID so that we select below as we aren't using >=
 		initialID -= 1
 	}
 
 	batchStartID := initialID
+	var retries int
 	for {
 		certs, err := sa.SelectCertificates(
 			ctx,
