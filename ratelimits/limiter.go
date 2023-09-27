@@ -20,10 +20,6 @@ const (
 	Denied = "denied"
 )
 
-// ErrLimitDisabled indicates that the limit name specified is valid but is not
-// currently configured.
-var ErrLimitDisabled = errors.New("limit disabled")
-
 // ErrInvalidCost indicates that the cost specified was <= 0.
 var ErrInvalidCost = fmt.Errorf("invalid cost, must be > 0")
 
@@ -33,9 +29,13 @@ var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 // ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
-// ErrBucketAlreadyFull indicates that the bucket is already at maximum
-// capacity. A refund is not possible.
-var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
+// errLimitDisabled indicates that the limit name specified is valid but is not
+// currently configured.
+var errLimitDisabled = errors.New("limit disabled")
+
+// disabledLimitDecision is an "allowed" *Decision that should be returned when
+// a checked limit is found to be disabled.
+var disabledLimitDecision = &Decision{true, 0, 0, 0, time.Time{}}
 
 // Limiter provides a high-level interface for rate limiting requests by
 // utilizing a leaky bucket-style approach.
@@ -136,6 +136,9 @@ func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (
 
 	limit, err := l.getLimit(name, id)
 	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return disabledLimitDecision, nil
+		}
 		return nil, err
 	}
 
@@ -176,6 +179,9 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 
 	limit, err := l.getLimit(name, id)
 	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return disabledLimitDecision, nil
+		}
 		return nil, err
 	}
 
@@ -236,8 +242,7 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 // capacity. However, partial refunds are allowed and are considered successful.
 // For instance, if a bucket has a maximum capacity of 10 and currently has 5
 // requests remaining, a refund request of 7 will result in the bucket reaching
-// its maximum capacity of 10, not 12. If the specified limit is disabled,
-// ErrLimitDisabled is returned.
+// its maximum capacity of 10, not 12.
 func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
@@ -245,6 +250,9 @@ func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) 
 
 	limit, err := l.getLimit(name, id)
 	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return disabledLimitDecision, nil
+		}
 		return nil, err
 	}
 
@@ -254,7 +262,8 @@ func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) 
 	}
 	d := maybeRefund(l.clk, limit, tat, cost)
 	if !d.Allowed {
-		return d, ErrBucketAlreadyFull
+		// The bucket is already at maximum capacity.
+		return d, nil
 	}
 	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
 
@@ -298,5 +307,5 @@ func (l *Limiter) getLimit(name Name, id string) (limit, error) {
 	if ok {
 		return dl, nil
 	}
-	return limit{}, ErrLimitDisabled
+	return limit{}, errLimitDisabled
 }

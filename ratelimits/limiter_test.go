@@ -337,7 +337,8 @@ func Test_Limiter_RefundAndReset(t *testing.T) {
 
 			// Refund 1 requests above our limit, this should fail.
 			d, err = l.Refund(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
-			test.AssertErrorIs(t, err, ErrBucketAlreadyFull)
+			test.AssertNotError(t, err, "should not error")
+			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(20))
 		})
 	}

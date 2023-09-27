@@ -16,55 +16,29 @@ var _ source = (*RedisSource)(nil)
 
 // RedisSource is a ratelimits source backed by sharded Redis.
 type RedisSource struct {
-	client        *redis.Ring
-	clk           clock.Clock
-	setLatency    *prometheus.HistogramVec
-	getLatency    *prometheus.HistogramVec
-	deleteLatency *prometheus.HistogramVec
+	client  *redis.Ring
+	clk     clock.Clock
+	latency *prometheus.HistogramVec
 }
 
 // NewRedisSource returns a new Redis backed source using the provided
 // *redis.Ring client.
 func NewRedisSource(client *redis.Ring, clk clock.Clock, stats prometheus.Registerer) *RedisSource {
-	// Exponential buckets ranging from 0.0005s to 3s.
-	buckets := prometheus.ExponentialBucketsRange(0.0005, 3, 8)
-
-	setLatency := prometheus.NewHistogramVec(
+	latency := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "ratelimits_set_latency",
-			Help:    "Histogram of RedisSource.Set() call latencies labeled by result",
-			Buckets: buckets,
+			Name: "ratelimits_latency",
+			Help: "Histogram of Redis call latencies labeled by call=[set|get|delete|ping] and result=[success|error]",
+			// Exponential buckets ranging from 0.0005s to 3s.
+			Buckets: prometheus.ExponentialBucketsRange(0.0005, 3, 8),
 		},
-		[]string{"result"},
+		[]string{"call", "result"},
 	)
-	stats.MustRegister(setLatency)
-
-	getLatency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "ratelimits_get_latency",
-			Help:    "Histogram of RedisSource.Get() call latencies labeled by result",
-			Buckets: buckets,
-		},
-		[]string{"result"},
-	)
-	stats.MustRegister(getLatency)
-
-	deleteLatency := prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "ratelimits_delete_latency",
-			Help:    "Histogram of RedisSource.Delete() call latencies labeled by result",
-			Buckets: buckets,
-		},
-		[]string{"result"},
-	)
-	stats.MustRegister(deleteLatency)
+	stats.MustRegister(latency)
 
 	return &RedisSource{
-		client:        client,
-		clk:           clk,
-		setLatency:    setLatency,
-		getLatency:    getLatency,
-		deleteLatency: deleteLatency,
+		client:  client,
+		clk:     clk,
+		latency: latency,
 	}
 }
 
@@ -102,11 +76,11 @@ func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) 
 
 	err := r.client.Set(ctx, bucketKey, tat.UnixNano(), 0).Err()
 	if err != nil {
-		r.setLatency.With(prometheus.Labels{"result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		r.latency.With(prometheus.Labels{"call": "set", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return err
 	}
 
-	r.setLatency.With(prometheus.Labels{"result": "success"}).Observe(time.Since(start).Seconds())
+	r.latency.With(prometheus.Labels{"call": "set", "result": "success"}).Observe(time.Since(start).Seconds())
 	return nil
 }
 
@@ -120,14 +94,14 @@ func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, err
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			// Bucket key does not exist.
-			r.getLatency.With(prometheus.Labels{"result": "notFound"}).Observe(time.Since(start).Seconds())
+			r.latency.With(prometheus.Labels{"call": "get", "result": "notFound"}).Observe(time.Since(start).Seconds())
 			return time.Time{}, ErrBucketNotFound
 		}
-		r.getLatency.With(prometheus.Labels{"result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		r.latency.With(prometheus.Labels{"call": "get", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return time.Time{}, err
 	}
 
-	r.getLatency.With(prometheus.Labels{"result": "success"}).Observe(time.Since(start).Seconds())
+	r.latency.With(prometheus.Labels{"call": "get", "result": "success"}).Observe(time.Since(start).Seconds())
 	return time.Unix(0, tatNano).UTC(), nil
 }
 
@@ -139,22 +113,26 @@ func (r *RedisSource) Delete(ctx context.Context, bucketKey string) error {
 
 	err := r.client.Del(ctx, bucketKey).Err()
 	if err != nil {
-		r.deleteLatency.With(prometheus.Labels{"result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		r.latency.With(prometheus.Labels{"call": "delete", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return err
 	}
 
-	r.deleteLatency.With(prometheus.Labels{"result": "success"}).Observe(time.Since(start).Seconds())
+	r.latency.With(prometheus.Labels{"call": "delete", "result": "success"}).Observe(time.Since(start).Seconds())
 	return nil
 }
 
 // Ping checks that each shard of the *redis.Ring is reachable using the PING
 // command. It returns an error if any shard is unreachable and nil otherwise.
 func (r *RedisSource) Ping(ctx context.Context) error {
+	start := r.clk.Now()
+
 	err := r.client.ForEachShard(ctx, func(ctx context.Context, shard *redis.Client) error {
 		return shard.Ping(ctx).Err()
 	})
 	if err != nil {
+		r.latency.With(prometheus.Labels{"call": "ping", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return err
 	}
+	r.latency.With(prometheus.Labels{"call": "ping", "result": "success"}).Observe(time.Since(start).Seconds())
 	return nil
 }

@@ -194,7 +194,7 @@ func loadChain(certFiles []string) (*issuance.Certificate, []byte, error) {
 	return certs[0], buf.Bytes(), nil
 }
 
-func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock, log blog.Logger) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, map[string]nonce.Redeemer, nonce.Redeemer, string, *ratelimits.Limiter, *bredis.Lookup) {
+func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock) (rapb.RegistrationAuthorityClient, sapb.StorageAuthorityReadOnlyClient, nonce.Getter, map[string]nonce.Redeemer, nonce.Redeemer, string) {
 	tlsConfig, err := c.WFE.TLS.Load(scope)
 	cmd.FailOnError(err, "TLS config")
 
@@ -255,26 +255,7 @@ func setupWFE(c Config, scope prometheus.Registerer, clk clock.Clock, log blog.L
 		}
 	}
 
-	var limiter *ratelimits.Limiter
-	var limiterLookup *bredis.Lookup
-	if c.WFE.Limiter.Defaults != "" {
-		// Setup rate limiting.
-		var ring *redis.Ring
-		if len(c.WFE.Limiter.Redis.Lookups) > 0 {
-			// Configure a Redis client with periodic SRV lookups.
-			ring, limiterLookup, err = c.WFE.Limiter.Redis.NewRingWithPeriodicLookups(scope, log)
-			cmd.FailOnError(err, "Failed to create Redis SRV Lookup for rate limiting")
-		} else {
-			// Configure a Redis client with static shard addresses.
-			ring, err = c.WFE.Limiter.Redis.NewRing(scope)
-			cmd.FailOnError(err, "Failed to create Redis client for rate limiting")
-		}
-		source := ratelimits.NewRedisSource(ring, clk, scope)
-		limiter, err = ratelimits.NewLimiter(clk, source, c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, scope)
-		cmd.FailOnError(err, "Failed to create rate limiter")
-	}
-
-	return rac, sac, gnc, npm, rnc, rncKey, limiter, limiterLookup
+	return rac, sac, gnc, npm, rnc, rncKey
 }
 
 type errorWriter struct {
@@ -332,7 +313,7 @@ func main() {
 
 	clk := cmd.Clock()
 
-	rac, sac, gnc, npm, rnc, npKey, limiter, limiterLookup := setupWFE(c, stats, clk, logger)
+	rac, sac, gnc, npm, rnc, npKey := setupWFE(c, stats, clk)
 
 	kp, err := sagoodkey.NewKeyPolicy(&c.WFE.GoodKey, sac.KeyBlocked)
 	cmd.FailOnError(err, "Unable to create key policy")
@@ -358,6 +339,25 @@ func main() {
 		cmd.Fail("pendingAuthorizationLifetimeDays value must be greater than 0 and less than 30")
 	}
 	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
+
+	var limiter *ratelimits.Limiter
+	var limiterLookup *bredis.Lookup
+	if c.WFE.Limiter.Defaults != "" {
+		// Setup rate limiting.
+		var ring *redis.Ring
+		if len(c.WFE.Limiter.Redis.Lookups) > 0 {
+			// Configure a Redis client with periodic SRV lookups.
+			ring, limiterLookup, err = c.WFE.Limiter.Redis.NewRingWithPeriodicLookups(stats, logger)
+			cmd.FailOnError(err, "Failed to create Redis SRV Lookup for rate limiting")
+		} else {
+			// Configure a Redis client with static shard addresses.
+			ring, err = c.WFE.Limiter.Redis.NewRing(stats)
+			cmd.FailOnError(err, "Failed to create Redis client for rate limiting")
+		}
+		source := ratelimits.NewRedisSource(ring, clk, stats)
+		limiter, err = ratelimits.NewLimiter(clk, source, c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats)
+		cmd.FailOnError(err, "Failed to create rate limiter")
+	}
 
 	var accountGetter wfe2.AccountGetter
 	if c.WFE.AccountCache != nil {
@@ -392,7 +392,7 @@ func main() {
 	cmd.FailOnError(err, "Unable to create WFE")
 
 	var limiterCtx context.Context
-	var shutdownLimiterLookup context.CancelFunc
+	var shutdownLimiterLookup context.CancelFunc = func() {}
 	if limiterLookup != nil {
 		limiterCtx, shutdownLimiterLookup = context.WithCancel(context.Background())
 		limiterLookup.Start(limiterCtx)
@@ -447,13 +447,12 @@ func main() {
 	// ListenAndServe() and ListenAndServeTLS() to immediately return, then waits
 	// for any lingering connection-handling goroutines to finish their work.
 	defer func() {
-		if limiterLookup != nil {
-			defer shutdownLimiterLookup()
-		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
+		shutdownLimiterLookup()
 		oTelShutdown(ctx)
 	}()
 

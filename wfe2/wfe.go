@@ -629,9 +629,8 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 	}
 	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
 	if err != nil {
-		if errors.Is(err, ratelimits.ErrLimitDisabled) {
-			return
-		}
+		// TODO(#5545): Once key-value rate limits are authoritative this log
+		// line should be removed in favor of returning the error.
 		wfe.log.Warningf("checking %s rate limit: %s", ratelimits.NewRegistrationsPerIPAddress, err)
 		return
 	}
@@ -647,9 +646,6 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
 	_, err = wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
 	if err != nil {
-		if errors.Is(err, ratelimits.ErrLimitDisabled) {
-			return
-		}
 		wfe.log.Warningf("checking %s rate limit: %s", ratelimits.NewRegistrationsPerIPv6Range, err)
 		return
 	}
@@ -666,10 +662,6 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 	}
 	_, err := wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
 	if err != nil {
-		if errors.Is(err, ratelimits.ErrLimitDisabled) ||
-			errors.Is(err, ratelimits.ErrBucketAlreadyFull) {
-			return
-		}
 		wfe.log.Warningf("refunding new account rate limit: %s", err)
 		return
 	}
@@ -684,10 +676,6 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
 	_, err = wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
 	if err != nil {
-		if errors.Is(err, ratelimits.ErrLimitDisabled) ||
-			errors.Is(err, ratelimits.ErrBucketAlreadyFull) {
-			return
-		}
 		wfe.log.Warningf("refunding new account rate limit: %s", err)
 	}
 }
