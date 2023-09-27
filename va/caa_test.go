@@ -58,6 +58,8 @@ func (mock caaMockDNS) LookupCAA(_ context.Context, domain string) ([]*dns.CAA, 
 	case "com":
 		// com has no CAA records.
 		return nil, "", nil
+	case "gonetld":
+		return nil, "", fmt.Errorf("NXDOMAIN")
 	case "servfail.com", "servfail.present.com":
 		return results, "", fmt.Errorf("SERVFAIL")
 	case "multi-crit-present.com":
@@ -589,6 +591,13 @@ func TestCAAFailure(t *testing.T) {
 		t.Fatalf("Expected CAA rejection for reserved.com, got success")
 	}
 	test.AssertEquals(t, prob.Type, probs.CAAProblem)
+
+	_, prob = va.validate(ctx, dnsi("example.gonetld"), 1, chall)
+	if prob == nil {
+		t.Fatalf("Expected CAA rejection for gonetld, got success")
+	}
+	test.AssertEquals(t, prob.Type, probs.DNSProblem)
+	test.AssertContains(t, prob.Error(), "NXDOMAIN")
 }
 
 func TestFilterCAA(t *testing.T) {
