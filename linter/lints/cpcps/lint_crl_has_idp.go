@@ -90,6 +90,10 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	}
 
 	distributionPointTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
+	// Though this value looks the same as distributionPointTag, it's important
+	// to note it's technically retrieving data nested within another tag and
+	// this can help understand the hierarchy.
+	distributionPointFullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
 	onlyContainsUserCertsTag := cryptobyte_asn1.Tag(1).ContextSpecific()
 	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
 	distributionPointURITag := cryptobyte_asn1.Tag(6).ContextSpecific()
@@ -106,7 +110,7 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 				Details: "Failed to read IDP distributionPoint",
 			}
 		}
-		if !dpName.ReadASN1(&dpName, distributionPointTag) {
+		if !dpName.ReadASN1(&dpName, distributionPointFullNameTag) {
 			return &lint.LintResult{
 				Status:  lint.Warn,
 				Details: "Failed to read IDP distributionPoint fullName",
@@ -155,8 +159,9 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 			}
 		}
 	} else {
-		// If the onlyContainsCACerts [2] field is present, assume we're dealing
-		// with a CRL containing CA Certs.
+		// If neither the distributionPoint [0] or onlyContainsUserCerts [1]
+		// fields are present, assume that we're dealing with a CRL containing CA Certs.that
+		// contains the onlyContainsCACerts [2] field.
 
 		var onlyContainsCACertsBytes []byte
 		if !idpv.ReadASN1Bytes(&onlyContainsCACertsBytes, onlyContainsCACertsTag) {
