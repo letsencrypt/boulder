@@ -10,7 +10,8 @@ import (
 
 var onlyContainsUserCertsTag = asn1.Tag(1).ContextSpecific()
 var onlyContainsCACertsTag = asn1.Tag(2).ContextSpecific()
-var emptyUint8 uint8
+var isTrue = true
+var isFalse = false
 
 func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 	t.Parallel()
@@ -18,7 +19,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 	testCases := []struct {
 		name                string
 		incoming            []byte
-		expectedBoolPresent bool
+		expectedBoolPresent *bool
 		asn1Tag             asn1.Tag
 		expectedOk          bool
 		expectedTrailer     int
@@ -26,7 +27,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 		{
 			name:                "Good onlyContainsUserCerts",
 			incoming:            cryptobyte.String([]byte{0x81, 0x01, 0xFF}),
-			expectedBoolPresent: true,
+			expectedBoolPresent: &isTrue,
 			asn1Tag:             onlyContainsUserCertsTag,
 			expectedOk:          true,
 			expectedTrailer:     0,
@@ -34,7 +35,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 		{
 			name:                "Good onlyContainsCACerts",
 			incoming:            cryptobyte.String([]byte{0x82, 0x01, 0xFF}),
-			expectedBoolPresent: true,
+			expectedBoolPresent: &isTrue,
 			asn1Tag:             onlyContainsCACertsTag,
 			expectedOk:          true,
 			expectedTrailer:     0,
@@ -42,7 +43,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 		{
 			name:                "Read the tag, but bool value is false",
 			incoming:            cryptobyte.String([]byte{0x82, 0x01, 0x00}),
-			expectedBoolPresent: false,
+			expectedBoolPresent: &isFalse,
 			asn1Tag:             onlyContainsCACertsTag,
 			expectedOk:          true,
 			expectedTrailer:     0,
@@ -50,7 +51,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 		{
 			name:                "Read the tag, but bool value is false, trailer remains",
 			incoming:            cryptobyte.String([]byte{0x82, 0x01, 0x00, 0x99}),
-			expectedBoolPresent: false,
+			expectedBoolPresent: &isFalse,
 			asn1Tag:             onlyContainsCACertsTag,
 			expectedOk:          true,
 			expectedTrailer:     1,
@@ -58,7 +59,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 		{
 			name:                "Wrong asn1Tag compared to incoming bytes, no bytes should have been read",
 			incoming:            cryptobyte.String([]byte{0x81, 0x01, 0xFF}),
-			expectedBoolPresent: false,
+			expectedBoolPresent: &isFalse,
 			asn1Tag:             onlyContainsCACertsTag,
 			expectedOk:          false,
 			expectedTrailer:     3,
@@ -66,7 +67,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 		{
 			name:                "Bytes are popped off and the trailer remains",
 			incoming:            cryptobyte.String([]byte{0x82, 0x01, 0xFF, 0xC0, 0xFF, 0xEE, 0xCA, 0xFE}),
-			expectedBoolPresent: true,
+			expectedBoolPresent: &isTrue,
 			asn1Tag:             onlyContainsCACertsTag,
 			expectedOk:          true,
 			expectedTrailer:     5,
@@ -74,7 +75,7 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 		{
 			name:                "No incoming bytes with a valid tag",
 			incoming:            cryptobyte.String([]byte{}),
-			expectedBoolPresent: false,
+			expectedBoolPresent: &isTrue,
 			asn1Tag:             onlyContainsCACertsTag,
 			expectedOk:          false,
 			expectedTrailer:     0,
@@ -83,7 +84,8 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ok, boolPresent := ReadOptionalASN1BooleanWithTag((*cryptobyte.String)(&tc.incoming), tc.asn1Tag)
+			var boolPresent *bool
+			ok := ReadOptionalASN1BooleanWithTag((*cryptobyte.String)(&tc.incoming), boolPresent, tc.asn1Tag, false)
 			// Check if reading the tag was successful
 			test.AssertEquals(t, ok, tc.expectedOk)
 			// Check the value of the optional boolean

@@ -41,19 +41,26 @@ func GetExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) *pkix.Exten
 // ReadOptionalASN1BooleanWithTag attempts to read the contents of an optional
 // DER-encoded ASN.1 element tagged with the given tag from incoming. It reports
 // whether the read was successful and the value of the boolean.
-func ReadOptionalASN1BooleanWithTag(incoming *cryptobyte.String, tag cryptobyte_asn1.Tag) (ok bool, present bool) {
-	tagPresent := incoming.PeekASN1Tag(tag)
-	if !tagPresent {
-		return false, false
+func ReadOptionalASN1BooleanWithTag(incoming *cryptobyte.String, out *bool, tag cryptobyte_asn1.Tag, defaultValue bool) bool {
+	if out != nil {
+		out = &defaultValue
 	}
-	var asn1BoolBytes cryptobyte.String
-	if tagPresent && !incoming.ReadASN1(&asn1BoolBytes, tag) {
-		return false, false
+
+	var tagBytes cryptobyte.String
+	if !incoming.ReadOptionalASN1(&tagBytes, out, tag) {
+		return false
 	}
-	parsedBytes := []byte(asn1BoolBytes)
+	boolBytes := []byte(tagBytes)
 
 	// X.690 (07/2002) section 8.2 states that a boolean will have length of 1
 	// and value true will have contents FF.
 	// https://www.itu.int/rec/T-REC-X.690-200207-S/en
-	return true, (len(parsedBytes) == 1 && parsedBytes[0] == 0xFF)
+	if len(boolBytes) == 1 && boolBytes[0] == 0xFF {
+		if out != nil {
+			*out = true
+		}
+		return true
+	}
+
+	return false
 }
