@@ -1,3 +1,88 @@
+# v1.40.0 (2023-09-26)
+
+* **Feature**: This release adds a new field COMPLETED to the ReplicationStatus Enum. You can now use this field to validate the replication status of S3 objects using the AWS SDK.
+
+# v1.39.0 (2023-09-20)
+
+* **Feature**: Fix an issue where the SDK can fail to unmarshall response due to NumberFormatException
+
+# v1.38.5 (2023-08-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.38.4 (2023-08-18)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.38.3 (2023-08-17)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.38.2 (2023-08-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.38.1 (2023-08-01)
+
+* No change notes available for this release.
+
+# v1.38.0 (2023-07-31)
+
+* **Feature**: Adds support for smithy-modeled endpoint resolution. A new rules-based endpoint resolution will be added to the SDK which will supercede and deprecate existing endpoint resolution. Specifically, EndpointResolver will be deprecated while BaseEndpoint and EndpointResolverV2 will take its place. For more information, please see the Endpoints section in our Developer Guide.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.37.1 (2023-07-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.37.0 (2023-07-13)
+
+* **Feature**: S3 Inventory now supports Object Access Control List and Object Owner as available object metadata fields in inventory reports.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.36.0 (2023-06-28)
+
+* **Feature**: The S3 LISTObjects, ListObjectsV2 and ListObjectVersions API now supports a new optional header x-amz-optional-object-attributes. If header contains RestoreStatus as the value, then S3 will include Glacier restore status i.e. isRestoreInProgress and RestoreExpiryDate in List response.
+
+# v1.35.0 (2023-06-16)
+
+* **Feature**: This release adds SDK support for request-payer request header and request-charged response header in the "GetBucketAccelerateConfiguration", "ListMultipartUploads", "ListObjects", "ListObjectsV2" and "ListObjectVersions" S3 APIs.
+
+# v1.34.1 (2023-06-15)
+
+* No change notes available for this release.
+
+# v1.34.0 (2023-06-13)
+
+* **Feature**: Integrate double encryption feature to SDKs.
+* **Bug Fix**: Fix HeadObject to return types.Nound when an object does not exist. Fixes [2084](https://github.com/aws/aws-sdk-go-v2/issues/2084)
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.33.1 (2023-05-04)
+
+* **Documentation**: Documentation updates for Amazon S3
+
+# v1.33.0 (2023-04-24)
+
+* **Feature**: added custom paginators for listMultipartUploads and ListObjectVersions
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.32.0 (2023-04-19)
+
+* **Feature**: Provides support for "Snow" Storage class.
+
+# v1.31.3 (2023-04-10)
+
+* No change notes available for this release.
+
+# v1.31.2 (2023-04-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.31.1 (2023-03-31)
+
+* **Documentation**: Documentation updates for Amazon S3
+
 # v1.31.0 (2023-03-21)
 
 * **Feature**: port v1 sdk 100-continue http header customization for s3 PutObject/UploadPart request and enable user config
