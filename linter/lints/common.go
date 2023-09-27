@@ -6,6 +6,8 @@ import (
 	"github.com/zmap/zcrypto/encoding/asn1"
 	"github.com/zmap/zcrypto/x509/pkix"
 	"github.com/zmap/zlint/v3/lint"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 const (
@@ -36,12 +38,22 @@ func GetExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) *pkix.Exten
 	return nil
 }
 
-// ReadASN1BooleanWithTag reports whether the incoming bytes from a decoded
-// ASN.1 Tag are a valid X.690 BOOLEAN. The caller is responsible for parsing
-// the ASN.1 Tag.
-func ReadASN1BooleanWithTag(parsedByes []byte) bool {
+// ReadOptionalASN1BooleanWithTag attempts to read the contents of an optional
+// DER-encoded ASN.1 element tagged with the given tag from incoming. It reports
+// whether the read was successful and the value of the boolean.
+func ReadOptionalASN1BooleanWithTag(incoming *cryptobyte.String, tag cryptobyte_asn1.Tag) (ok bool, present bool) {
+	tagPresent := incoming.PeekASN1Tag(tag)
+	if !tagPresent {
+		return false, false
+	}
+	var asn1BoolBytes cryptobyte.String
+	if tagPresent && !incoming.ReadASN1(&asn1BoolBytes, tag) {
+		return false, false
+	}
+	parsedBytes := []byte(asn1BoolBytes)
+
 	// X.690 (07/2002) section 8.2 states that a boolean will have length of 1
 	// and value true will have contents FF.
 	// https://www.itu.int/rec/T-REC-X.690-200207-S/en
-	return (len(parsedByes) == 1 && parsedByes[0] == 0xFF)
+	return true, (len(parsedBytes) == 1 && parsedBytes[0] == 0xFF)
 }

@@ -145,14 +145,14 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 			}
 		}
 
-		var onlyContainsUserCertsBytes []byte
-		if !idpv.ReadASN1Bytes(&onlyContainsUserCertsBytes, onlyContainsUserCertsTag) {
+		ok, boolPresent := lints.ReadOptionalASN1BooleanWithTag(&idpv, onlyContainsUserCertsTag)
+		if !ok {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "Failed to read IDP onlyContainsUserCerts",
 			}
 		}
-		if !lints.ReadASN1BooleanWithTag(onlyContainsUserCertsBytes) {
+		if !boolPresent {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "IDP should set onlyContainsUserCerts: TRUE",
@@ -160,17 +160,18 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		}
 	} else {
 		// If neither the distributionPoint [0] or onlyContainsUserCerts [1]
-		// fields are present, assume that we're dealing with a CRL containing CA Certs.that
-		// contains the onlyContainsCACerts [2] field.
+		// fields are present, assume that we're dealing with a CRL containing
+		// CA Certs. Therefore, check that it contains the onlyContainsCACerts
+		// [2] field.
 
-		var onlyContainsCACertsBytes []byte
-		if !idpv.ReadASN1Bytes(&onlyContainsCACertsBytes, onlyContainsCACertsTag) {
+		ok, boolPresent := lints.ReadOptionalASN1BooleanWithTag(&idpv, onlyContainsCACertsTag)
+		if !ok {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "Failed to read IDP onlyContainsCACerts",
 			}
 		}
-		if !lints.ReadASN1BooleanWithTag(onlyContainsCACertsBytes) {
+		if !boolPresent {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "IDP should set onlyContainsCACerts: TRUE",

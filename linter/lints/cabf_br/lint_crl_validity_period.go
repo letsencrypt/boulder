@@ -85,13 +85,11 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	var BRValidity = 10 * 24 * time.Hour
 	var validityString = "10 days"
 
-	var onlyContainsCACerts []byte
 	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
-	if idpv.ReadASN1Bytes(&onlyContainsCACerts, onlyContainsCACertsTag) {
-		if lints.ReadASN1BooleanWithTag(onlyContainsCACerts) {
-			BRValidity = 365 * lints.BRDay
-			validityString = "365 days"
-		}
+	ok, boolPresent := lints.ReadOptionalASN1BooleanWithTag(&idpv, onlyContainsCACertsTag)
+	if ok && boolPresent {
+		BRValidity = 365 * lints.BRDay
+		validityString = "365 days"
 	}
 
 	parsedValidity := c.NextUpdate.Sub(c.ThisUpdate)
