@@ -26,6 +26,8 @@ import (
 	"github.com/letsencrypt/boulder/rocsp"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+
+	berrors "github.com/letsencrypt/boulder/errors"
 )
 
 type rocspClient interface {
@@ -160,11 +162,19 @@ const (
 
 func (src *redisSource) signAndSave(ctx context.Context, req *ocsp.Request, cause signAndSaveCause) (*responder.Response, error) {
 	resp, err := src.signer.Response(ctx, req)
-	if err != nil {
-		if errors.Is(err, responder.ErrNotFound) {
-			src.signAndSaveCounter.WithLabelValues(string(cause), "certificate_not_found").Inc()
-			return nil, responder.ErrNotFound
-		}
+	if errors.Is(err, responder.ErrNotFound) {
+		src.signAndSaveCounter.WithLabelValues(string(cause), "certificate_not_found").Inc()
+		return nil, responder.ErrNotFound
+	} else if errors.Is(err, berrors.UnknownSerial) {
+		// UnknownSerial is more interesting than NotFound, because it means we don't
+		// have a record in the `serials` table, which is kept longer-term than the
+		// `certificateStatus` table. That could mean someone is making up silly serial
+		// numbers in their requests to us, or it could mean there's site on the internet
+		// using a certificate that we don't have a record of in the `serials` table.
+		src.signAndSaveCounter.WithLabelValues(string(cause), "unknown_serial").Inc()
+		responder.SampledError(src.log, src.logSampleRate, "unknown serial: %s", core.SerialToString(req.SerialNumber))
+		return nil, responder.ErrNotFound
+	} else if err != nil {
 		src.signAndSaveCounter.WithLabelValues(string(cause), "signing_error").Inc()
 		return nil, err
 	}

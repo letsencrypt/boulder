@@ -49,6 +49,8 @@ const (
 	AlreadyRevoked
 	BadRevocationReason
 	UnsupportedContact
+	// The requesteed serial number does not exist in the `serials` table.
+	UnknownSerial
 )
 
 func (ErrorType) Error() string {
@@ -248,4 +250,8 @@ func AlreadyRevokedError(msg string, args ...interface{}) error {
 
 func BadRevocationReasonError(reason int64) error {
 	return New(BadRevocationReason, "disallowed revocation reason: %d", reason)
+}
+
+func UnknownSerialError() error {
+	return New(UnknownSerial, "unknown serial")
 }
