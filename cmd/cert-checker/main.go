@@ -147,7 +147,7 @@ func (c *certChecker) findStartingID(ctx context.Context, begin, end time.Time) 
 	var retries int
 
 	// Rather than querying `MIN(id)` across that whole window, we query it across the first
-	// hour of the window. Thisallows the query planner to use the index on `issued` more
+	// hour of the window. This allows the query planner to use the index on `issued` more
 	// effectively. For a busy, actively issuing CA, that will always return results in the
 	// first query. For a less busy CA, or during integration tests, there may only exist
 	// certificates towards the end of the window, so we try querying later hourly chunks until
