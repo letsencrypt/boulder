@@ -41,6 +41,9 @@ type redisSource struct {
 	cachedResponseAges prometheus.Histogram
 	clk                clock.Clock
 	liveSigningPeriod  time.Duration
+	// Error logs will be emitted at a rate of 1 in logSampleRate.
+	// If logSampleRate is 0, no logs will be emitted.
+	logSampleRate int
 	// Note: this logger is not currently used, as all audit log events are from
 	// the dbSource right now, but it should and will be used in the future.
 	log blog.Logger
@@ -55,6 +58,7 @@ func NewRedisSource(
 	clk clock.Clock,
 	stats prometheus.Registerer,
 	log blog.Logger,
+	logSampleRate int,
 ) (*redisSource, error) {
 	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "ocsp_redis_responses",
@@ -108,7 +112,9 @@ func (src *redisSource) Response(ctx context.Context, req *ocsp.Request) (*respo
 			src.counter.WithLabelValues("not_found").Inc()
 		} else {
 			src.counter.WithLabelValues("lookup_error").Inc()
-			responder.SampledError(src.log, 1000, "looking for cached response: %s", err)
+			responder.SampledError(src.log, src.logSampleRate, "looking for cached response: %s", err)
+			// Proceed despite the error; when Redis is down we'd like to limp along with live signing
+			// rather than returning an error to the client.
 		}
 		return src.signAndSave(ctx, req, causeNotFound)
 	}
