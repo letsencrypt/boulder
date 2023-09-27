@@ -5,6 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -24,15 +27,16 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 )
 
-// s3Putter matches the subset of the s3.Client interface which we use, to allow
+// simpleS3 matches the subset of the s3.Client interface which we use, to allow
 // simpler mocking in tests.
-type s3Putter interface {
+type simpleS3 interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
 type crlStorer struct {
 	cspb.UnimplementedCRLStorerServer
-	s3Client         s3Putter
+	s3Client         simpleS3
 	s3Bucket         string
 	issuers          map[issuance.IssuerNameID]*issuance.Certificate
 	uploadCount      *prometheus.CounterVec
@@ -44,7 +48,7 @@ type crlStorer struct {
 
 func New(
 	issuers []*issuance.Certificate,
-	s3Client s3Putter,
+	s3Client simpleS3,
 	s3Bucket string,
 	stats prometheus.Registerer,
 	log blog.Logger,
@@ -90,12 +94,16 @@ func New(
 // TODO(#6261): Unify all error messages to identify the shard they're working
 // on as a JSON object including issuer, crl number, and shard number.
 
+// UploadCRL implements the gRPC method of the same name. It takes a stream of
+// bytes as its input, parses and runs some sanity checks on the CRL, and then
+// uploads it to S3.
 func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	var issuer *issuance.Certificate
 	var shardIdx int64
 	var crlNumber *big.Int
 	crlBytes := make([]byte, 0)
 
+	// Read all of the messages from the input stream.
 	for {
 		in, err := stream.Recv()
 		if err != nil {
@@ -126,9 +134,9 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		case *cspb.UploadCRLRequest_CrlChunk:
 			crlBytes = append(crlBytes, payload.CrlChunk...)
 		}
-
 	}
 
+	// Do some basic sanity checks on the received metadata and CRL.
 	if issuer == nil || crlNumber == nil {
 		return errors.New("got no metadata message")
 	}
@@ -151,9 +159,47 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 		return fmt.Errorf("validating signature for %s: %w", crlId, err)
 	}
 
+	// Before uploading this CRL, we want to compare it against the previous CRL
+	// to ensure that the CRL Number field is not going backwards. This is an
+	// additional safety check against clock skew and potential races, if multiple
+	// crl-updaters are working on the same shard at the same time. We only run
+	// these checks if we found a CRL, so we don't block uploading brand new CRLs.
+	filename := fmt.Sprintf("%d/%d.crl", issuer.NameID(), shardIdx)
+	prevObj, err := cs.s3Client.GetObject(stream.Context(), &s3.GetObjectInput{
+		Bucket: &cs.s3Bucket,
+		Key:    &filename,
+	})
+	if err != nil {
+		var smithyErr *smithyhttp.ResponseError
+		if !errors.As(err, &smithyErr) || smithyErr.HTTPStatusCode() != 404 {
+			return fmt.Errorf("getting previous CRL for %s: %w", crlId, err)
+		}
+		cs.log.Infof("No previous CRL found for %s, proceeding", crlId)
+	} else {
+		prevBytes, err := io.ReadAll(prevObj.Body)
+		if err != nil {
+			return fmt.Errorf("downloading previous CRL for %s: %w", crlId, err)
+		}
+
+		prevCRL, err := x509.ParseRevocationList(prevBytes)
+		if err != nil {
+			return fmt.Errorf("parsing previous CRL for %s: %w", crlId, err)
+		}
+
+		idp := getIDPExt(crl.Extensions)
+		prevIdp := getIDPExt(prevCRL.Extensions)
+		if !bytes.Equal(idp, prevIdp) {
+			return fmt.Errorf("IDP does not match previous: %x != %x", idp, prevIdp)
+		}
+
+		if crl.Number.Cmp(prevCRL.Number) <= 0 {
+			return fmt.Errorf("crlNumber not strictly increasing: %d <= %d", crl.Number, prevCRL.Number)
+		}
+	}
+
+	// Finally actually upload the new CRL.
 	start := cs.clk.Now()
 
-	filename := fmt.Sprintf("%d/%d.crl", issuer.NameID(), shardIdx)
 	checksum := sha256.Sum256(crlBytes)
 	checksumb64 := base64.StdEncoding.EncodeToString(checksum[:])
 	crlContentType := "application/pkix-crl"
@@ -183,4 +229,14 @@ func (cs *crlStorer) UploadCRL(stream cspb.CRLStorer_UploadCRLServer) error {
 	)
 
 	return stream.SendAndClose(&emptypb.Empty{})
+}
+
+// getIDPExt returns the contents of the issuingDistributionPoint extension, if present.
+func getIDPExt(exts []pkix.Extension) []byte {
+	for _, ext := range exts {
+		if ext.Id.Equal(asn1.ObjectIdentifier{2, 5, 29, 28}) { // id-ce-issuingDistributionPoint
+			return ext.Value
+		}
+	}
+	return nil
 }

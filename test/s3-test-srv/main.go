@@ -18,6 +18,17 @@ import (
 type s3TestSrv struct {
 	sync.RWMutex
 	allSerials map[string]revocation.Reason
+	allShards  map[string][]byte
+}
+
+func (srv *s3TestSrv) handleS3(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "PUT" {
+		srv.handleUpload(w, r)
+	} else if r.Method == "GET" {
+		srv.handleDownload(w, r)
+	} else {
+		w.WriteHeader(405)
+	}
 }
 
 func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -37,6 +48,7 @@ func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	srv.Lock()
 	defer srv.Unlock()
+	srv.allShards[r.URL.Path] = body
 	for _, rc := range crl.RevokedCertificateEntries {
 		srv.allSerials[core.SerialToString(rc.SerialNumber)] = revocation.Reason(rc.ReasonCode)
 	}
@@ -45,15 +57,14 @@ func (srv *s3TestSrv) handleUpload(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("{}"))
 }
 
-func (srv *s3TestSrv) handleClear(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		w.WriteHeader(405)
+func (srv *s3TestSrv) handleDownload(w http.ResponseWriter, r *http.Request) {
+	body, ok := srv.allShards[r.URL.Path]
+	if !ok {
+		w.WriteHeader(404)
 		return
 	}
-
-	srv.Lock()
-	defer srv.Unlock()
-	srv.allSerials = make(map[string]revocation.Reason)
+	w.WriteHeader(200)
+	w.Write(body)
 }
 
 func (srv *s3TestSrv) handleQuery(w http.ResponseWriter, r *http.Request) {
@@ -84,10 +95,12 @@ func main() {
 	listenAddr := flag.String("listen", "0.0.0.0:7890", "Address to listen on")
 	flag.Parse()
 
-	srv := s3TestSrv{allSerials: make(map[string]revocation.Reason)}
+	srv := s3TestSrv{
+		allSerials: make(map[string]revocation.Reason),
+		allShards:  make(map[string][]byte),
+	}
 
-	http.HandleFunc("/", srv.handleUpload)
-	http.HandleFunc("/clear", srv.handleClear)
+	http.HandleFunc("/", srv.handleS3)
 	http.HandleFunc("/query", srv.handleQuery)
 
 	s := http.Server{
