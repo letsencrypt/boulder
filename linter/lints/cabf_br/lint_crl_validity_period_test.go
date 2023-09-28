@@ -42,20 +42,20 @@ func TestCrlValidityPeriod(t *testing.T) {
 			wantSubStr: "at or before",
 		},
 		{
-			name:       "long_validity_subscriber_cert",
+			name:       "long_validity_subscriber_cert", // 10 days + 1 second
 			want:       lint.Error,
 			wantSubStr: "CRL has validity period greater than 10 days",
 		},
 		{
-			name:       "long_validity_subordinate_ca",
+			name:       "long_validity_subordinate_ca", // 1 year + 1 second
 			want:       lint.Error,
 			wantSubStr: "CRL has validity period greater than 365 days",
 		},
 		{
 			// Technically this CRL is incorrect because Let's Encrypt does not
-			// (yet) issue CRLs containing both the distributionPoint and Only
-			// Contains CA Certs boolean, but we're still parsing the correct BR
-			// validity.
+			// (yet) issue CRLs containing both the distributionPoint and
+			// optional onlyContainsCACerts boolean, but we're still parsing the
+			// correct BR validity in this lint.
 			name: "long_validity_distributionPoint_and_subordinate_ca",
 			want: lint.Pass,
 		},

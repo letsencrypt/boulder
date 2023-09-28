@@ -145,14 +145,16 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 			}
 		}
 
-		ok, boolPresent := lints.ReadOptionalASN1BooleanWithTag(&idpv, onlyContainsUserCertsTag)
-		if !ok {
+		tagPresent := false
+		ocucPresent := false
+		ok := lints.ReadOptionalASN1BooleanWithTag(&idpv, &tagPresent, &ocucPresent, onlyContainsUserCertsTag, false)
+		if !ok || !tagPresent {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "Failed to read IDP onlyContainsUserCerts",
 			}
 		}
-		if !boolPresent {
+		if !ocucPresent {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "IDP should set onlyContainsUserCerts: TRUE",
@@ -164,14 +166,16 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		// CA Certs. Therefore, check that it contains the onlyContainsCACerts
 		// [2] field.
 
-		ok, boolPresent := lints.ReadOptionalASN1BooleanWithTag(&idpv, onlyContainsCACertsTag)
-		if !ok {
+		tagPresent := false
+		occcPresent := false
+		ok := lints.ReadOptionalASN1BooleanWithTag(&idpv, &tagPresent, &occcPresent, onlyContainsCACertsTag, false)
+		if !ok || !tagPresent {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "Failed to read IDP onlyContainsCACerts",
 			}
 		}
-		if !boolPresent {
+		if !occcPresent {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "IDP should set onlyContainsCACerts: TRUE",
