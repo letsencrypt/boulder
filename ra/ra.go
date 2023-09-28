@@ -2354,7 +2354,7 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 // `certificateStatus` (i.e. its partition in the certificateStatus table has
 // been cleaned up), it returns berrors.NotFoundError. If the serial is in
 // neither the `serials` table nor `certificateStatus`, it returns
-// berrors.UnknownSerial.
+// berrors.UnknownSerialError.
 // This does not write back the result to the SA or any other storage.
 func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
