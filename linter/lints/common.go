@@ -44,40 +44,29 @@ func GetExtWithOID(exts []pkix.Extension, oid asn1.ObjectIdentifier) *pkix.Exten
 // was found in outExpectedTagPresent and an element with the tag was found in
 // outPresent, otherwise each boolean will take the default value. It reports
 // whether all reads were successful.
-func ReadOptionalASN1BooleanWithTag(incoming *cryptobyte.String, outExpectedTagPresent *bool, outPresent *bool, tag cryptobyte_asn1.Tag, defaultValue bool) bool {
-	if outExpectedTagPresent != nil {
-		*outExpectedTagPresent = defaultValue
+func ReadOptionalASN1BooleanWithTag(incoming *cryptobyte.String, out *bool, tag cryptobyte_asn1.Tag, defaultValue bool) bool {
+	if out != nil {
+		*out = defaultValue
 	}
-	if outPresent != nil {
-		*outPresent = defaultValue
-	}
-	if incoming.Empty() {
-		return false
-	}
-
-	// We need to check the boolean value to determine if the tag was found. The
-	// ReadOptionalASN1BooleanWithTag caller may not care about the value, but
-	// here internally we do.
-	tagPresent := false
-	var tagBytes cryptobyte.String
 
 	// ReadOptionalASN1 performs a peek and will not advance if the tag is
 	// missing, meaning that incoming will retain bytes.
-	ok := incoming.ReadOptionalASN1(&tagBytes, &tagPresent, tag)
-	if !ok && !tagPresent {
+	var valuePresent bool
+	var valueBytes cryptobyte.String
+	ok := incoming.ReadOptionalASN1(&valueBytes, &valuePresent, tag)
+	if !ok {
 		return false
 	}
-	if outExpectedTagPresent != nil && tagPresent {
-		*outExpectedTagPresent = true
-	}
 
-	// X.690 (07/2002) section 8.2 states that a boolean will have length of 1
-	// and value true will have contents FF.
-	// https://www.itu.int/rec/T-REC-X.690-200207-S/en
-	boolBytes := []byte(tagBytes)
-	if len(boolBytes) == 1 && boolBytes[0] == 0xFF {
-		if outPresent != nil {
-			*outPresent = true
+	if valuePresent {
+		// X.690 (07/2002) section 8.2 states that a boolean will have length of 1
+		// and value true will have contents FF.
+		// https://www.itu.int/rec/T-REC-X.690-200207-S/en
+		boolBytes := []byte(valueBytes)
+		if len(boolBytes) == 1 && boolBytes[0] == 0xFF {
+			if out != nil {
+				*out = true
+			}
 		}
 	}
 

@@ -89,28 +89,65 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		}
 	}
 
+	var dpName cryptobyte.String
+	var distributionPointExists bool
 	distributionPointTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
-	// Though this value looks the same as distributionPointTag, it's important
-	// to note it's technically retrieving data nested within another tag and
-	// this can help understand the hierarchy.
-	distributionPointFullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
+	if !idpv.ReadOptionalASN1(&dpName, &distributionPointExists, distributionPointTag) {
+		return &lint.LintResult{
+			Status:  lint.Warn,
+			Details: "Failed to read IDP distributionPoint",
+		}
+	}
+
+	var onlyContainsUserCerts bool
 	onlyContainsUserCertsTag := cryptobyte_asn1.Tag(1).ContextSpecific()
+	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &onlyContainsUserCerts, onlyContainsUserCertsTag, false) {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "Failed to read IDP onlyContainsUserCerts",
+		}
+	}
+
+	var onlyContainsCACerts bool
 	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
-	distributionPointURITag := cryptobyte_asn1.Tag(6).ContextSpecific()
+	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &onlyContainsCACerts, onlyContainsCACertsTag, false) {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "Failed to read IDP onlyContainsCACerts",
+		}
+	}
 
-	if idpv.PeekASN1Tag(distributionPointTag) || idpv.PeekASN1Tag(onlyContainsUserCertsTag) {
-		// If either the distributionPoint [0] field or the
-		// onlyContainsUserCerts [1] field is present, assume we're dealing with
-		// a CRL containing Subscriber Certs.
+	if !idpv.Empty() {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "Unexpected IDP fields were found",
+		}
+	}
 
-		var dpName cryptobyte.String
-		if !idpv.ReadASN1(&dpName, distributionPointTag) {
+	if onlyContainsUserCerts {
+		if onlyContainsCACerts {
 			return &lint.LintResult{
-				Status:  lint.Warn,
-				Details: "Failed to read IDP distributionPoint",
+				Status:  lint.Error,
+				Details: "IDP should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 			}
 		}
-		if !dpName.ReadASN1(&dpName, distributionPointFullNameTag) {
+
+		/*
+			RFC 5280 Section 4.2.1.13
+
+			DistributionPointName ::= CHOICE {
+				fullName                [0]     GeneralNames,
+				... }
+
+			RFC 5280 Appendix A.1, Page 128
+
+			GeneralName ::= CHOICE {
+				...
+			    uniformResourceIdentifier [6]  IA5String,
+				... }
+		*/
+		fullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
+		if !dpName.ReadASN1(&dpName, fullNameTag) {
 			return &lint.LintResult{
 				Status:  lint.Warn,
 				Details: "Failed to read IDP distributionPoint fullName",
@@ -118,7 +155,8 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		}
 
 		var uriBytes []byte
-		if !dpName.ReadASN1Bytes(&uriBytes, distributionPointURITag) {
+		uriTag := cryptobyte_asn1.Tag(6).ContextSpecific()
+		if !dpName.ReadASN1Bytes(&uriBytes, uriTag) {
 			return &lint.LintResult{
 				Status:  lint.Warn,
 				Details: "Failed to read IDP URI",
@@ -144,50 +182,17 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 				Details: "IDP should contain only one distributionPoint",
 			}
 		}
-
-		tagPresent := false
-		ocucPresent := false
-		ok := lints.ReadOptionalASN1BooleanWithTag(&idpv, &tagPresent, &ocucPresent, onlyContainsUserCertsTag, false)
-		if !ok || !tagPresent {
+	} else if onlyContainsCACerts {
+		if distributionPointExists {
 			return &lint.LintResult{
 				Status:  lint.Error,
-				Details: "Failed to read IDP onlyContainsUserCerts",
-			}
-		}
-		if !ocucPresent {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "IDP should set onlyContainsUserCerts: TRUE",
+				Details: "IDP should not have both DistributionPointName and onlyContainsCACerts: TRUE",
 			}
 		}
 	} else {
-		// If neither the distributionPoint [0] or onlyContainsUserCerts [1]
-		// fields are present, assume that we're dealing with a CRL containing
-		// CA Certs. Therefore, check that it contains the onlyContainsCACerts
-		// [2] field.
-
-		tagPresent := false
-		occcPresent := false
-		ok := lints.ReadOptionalASN1BooleanWithTag(&idpv, &tagPresent, &occcPresent, onlyContainsCACertsTag, false)
-		if !ok || !tagPresent {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "Failed to read IDP onlyContainsCACerts",
-			}
-		}
-		if !occcPresent {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "IDP should set onlyContainsCACerts: TRUE",
-			}
-		}
-	}
-
-	// Ensure that no other fields are set.
-	if !idpv.Empty() {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: "Unexpected IDP fields were found",
+			Details: "Neither onlyContainsUserCerts nor onlyContainsCACerts was set",
 		}
 	}
 

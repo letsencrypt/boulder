@@ -75,7 +75,12 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	// Step inside the outer issuingDistributionPoint sequence to get access to
 	// its constituent fields.
 	idpv := cryptobyte.String(idpe.Value)
-	_ = idpv.ReadASN1(&idpv, cryptobyte_asn1.SEQUENCE)
+	if !idpv.ReadASN1(&idpv, cryptobyte_asn1.SEQUENCE) {
+		return &lint.LintResult{
+			Status:  lint.Warn,
+			Details: "Failed to read IDP distributionPoint",
+		}
+	}
 
 	// Throw distributionPoint away.
 	distributionPointTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
@@ -86,11 +91,8 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	var validityString = "10 days"
 
 	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
-	//myTag := false
 	occcPresent := false
-	ok := lints.ReadOptionalASN1BooleanWithTag(&idpv, nil, &occcPresent, onlyContainsCACertsTag, false)
-	//fmt.Println(&myTag)
-	if ok && occcPresent {
+	if lints.ReadOptionalASN1BooleanWithTag(&idpv, &occcPresent, onlyContainsCACertsTag, false) && occcPresent {
 		BRValidity = 365 * lints.BRDay
 		validityString = "365 days"
 	}

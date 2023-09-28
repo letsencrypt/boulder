@@ -43,7 +43,7 @@ func TestCrlHasIDP(t *testing.T) {
 		{
 			name:       "idp_no_usercerts",
 			want:       lint.Error,
-			wantSubStr: "Failed to read IDP onlyContainsUserCerts",
+			wantSubStr: "Neither onlyContainsUserCerts nor onlyContainsCACerts was set",
 		},
 		{
 			name:       "idp_some_reasons", // Subscriber cert
@@ -53,12 +53,12 @@ func TestCrlHasIDP(t *testing.T) {
 		{
 			name:       "idp_onlyCA_and_onlyUser",
 			want:       lint.Error,
-			wantSubStr: "Unexpected IDP fields were found",
+			wantSubStr: "IDP should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 		},
 		{
 			name:       "idp_distributionPoint_and_onlyCA",
 			want:       lint.Error,
-			wantSubStr: "Failed to read IDP onlyContainsUserCerts",
+			wantSubStr: "IDP should not have both DistributionPointName and onlyContainsCACerts: TRUE",
 		},
 	}
 
