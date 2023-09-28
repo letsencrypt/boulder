@@ -76,10 +76,8 @@ func TestStart(t *testing.T) {
 	)
 	test.AssertNotError(t, err, "Expected newLookup construction to succeed")
 
-	testCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	lookup.Start(testCtx)
+	lookup.start()
+	lookup.stop()
 }
 
 func TestNewLookupWithOneFailingSRV(t *testing.T) {

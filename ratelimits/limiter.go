@@ -146,6 +146,9 @@ func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (
 		return nil, ErrInvalidCostOverLimit
 	}
 
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		if !errors.Is(err, ErrBucketNotFound) {
@@ -190,11 +193,14 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 	}
 
 	start := l.clk.Now()
-	decisionStatus := Denied
+	status := Denied
 	defer func() {
-		l.spendLatency.WithLabelValues(nameToString[name], decisionStatus).Observe(l.clk.Since(start).Seconds())
+		l.spendLatency.WithLabelValues(name.String(), status).Observe(l.clk.Since(start).Seconds())
 	}()
 
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
@@ -204,7 +210,7 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 				return nil, err
 			}
 			if d.Allowed {
-				decisionStatus = Allowed
+				status = Allowed
 			}
 			return d, nil
 		}
@@ -228,7 +234,7 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 	if err != nil {
 		return nil, err
 	}
-	decisionStatus = Allowed
+	status = Allowed
 	return d, nil
 }
 
@@ -256,6 +262,9 @@ func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) 
 		return nil, err
 	}
 
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		return nil, err
@@ -271,6 +280,9 @@ func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) 
 
 // Reset resets the specified bucket.
 func (l *Limiter) Reset(ctx context.Context, name Name, id string) error {
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	return l.source.Delete(ctx, bucketKey(name, id))
 }
 
@@ -278,6 +290,10 @@ func (l *Limiter) Reset(ctx context.Context, name Name, id string) error {
 // cost of the request factored into the initial state.
 func (l *Limiter) initialize(ctx context.Context, rl limit, name Name, id string, cost int64) (*Decision, error) {
 	d := maybeSpend(l.clk, rl, l.clk.Now(), cost)
+
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	err := l.source.Set(ctx, bucketKey(name, id), d.newTAT)
 	if err != nil {
 		return nil, err

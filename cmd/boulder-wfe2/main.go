@@ -13,7 +13,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
@@ -341,20 +340,13 @@ func main() {
 	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
 	var limiter *ratelimits.Limiter
-	var limiterLookup *bredis.Lookup
+	var limiterRedis *bredis.Ring
 	if c.WFE.Limiter.Defaults != "" {
 		// Setup rate limiting.
-		var ring *redis.Ring
-		if len(c.WFE.Limiter.Redis.Lookups) > 0 {
-			// Configure a Redis client with periodic SRV lookups.
-			ring, limiterLookup, err = c.WFE.Limiter.Redis.NewRingWithPeriodicLookups(stats, logger)
-			cmd.FailOnError(err, "Failed to create Redis SRV Lookup for rate limiting")
-		} else {
-			// Configure a Redis client with static shard addresses.
-			ring, err = c.WFE.Limiter.Redis.NewRing(stats)
-			cmd.FailOnError(err, "Failed to create Redis client for rate limiting")
-		}
-		source := ratelimits.NewRedisSource(ring, clk, stats)
+		limiterRedis, err = bredis.NewRingFromConfig(*c.WFE.Limiter.Redis, stats, logger)
+		cmd.FailOnError(err, "Failed to create Redis ring")
+
+		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
 		limiter, err = ratelimits.NewLimiter(clk, source, c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats)
 		cmd.FailOnError(err, "Failed to create rate limiter")
 	}
@@ -390,13 +382,6 @@ func main() {
 		limiter,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
-
-	var limiterCtx context.Context
-	var shutdownLimiterLookup context.CancelFunc = func() {}
-	if limiterLookup != nil {
-		limiterCtx, shutdownLimiterLookup = context.WithCancel(context.Background())
-		limiterLookup.Start(limiterCtx)
-	}
 
 	wfe.SubscriberAgreementURL = c.WFE.SubscriberAgreementURL
 	wfe.AllowOrigins = c.WFE.AllowOrigins
@@ -447,12 +432,11 @@ func main() {
 	// ListenAndServe() and ListenAndServeTLS() to immediately return, then waits
 	// for any lingering connection-handling goroutines to finish their work.
 	defer func() {
-
 		ctx, cancel := context.WithTimeout(context.Background(), c.WFE.ShutdownStopTimeout.Duration)
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
-		shutdownLimiterLookup()
+		limiterRedis.StopLookups()
 		oTelShutdown(ctx)
 	}()
 

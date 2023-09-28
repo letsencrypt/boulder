@@ -380,9 +380,9 @@ func setupWFE(t *testing.T) (WebFrontEndImpl, clock.FakeClock, requestSigner) {
 		rc.PasswordConfig = cmd.PasswordConfig{
 			PasswordFile: "../test/secrets/ratelimits_redis_password",
 		}
-		ring, _, err := rc.NewRingWithPeriodicLookups(stats, log)
-		test.AssertNotError(t, err, "making redis ring and lookup")
-		source := ratelimits.NewRedisSource(ring, fc, stats)
+		ring, err := bredis.NewRingFromConfig(rc, stats, log)
+		test.AssertNotError(t, err, "making redis ring client")
+		source := ratelimits.NewRedisSource(ring.Ring, fc, stats)
 		test.AssertNotNil(t, source, "source should not be nil")
 		limiter, err = ratelimits.NewLimiter(fc, source, "../test/config-next/wfe2-ratelimit-defaults.yml", "", stats)
 		test.AssertNotError(t, err, "making limiter")

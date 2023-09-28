@@ -12,13 +12,19 @@ var ErrBucketNotFound = fmt.Errorf("bucket not found")
 
 // source is an interface for creating and modifying TATs.
 type source interface {
-	// Set stores the TAT at the specified bucketKey ('name:id').
+	// Set stores the TAT at the specified bucketKey ('name:id'). Contexts
+	// passed to this method should have a timeout or deadline set to prevent
+	// the operation from blocking indefinitely.
 	Set(ctx context.Context, bucketKey string, tat time.Time) error
 
-	// Get retrieves the TAT at the specified bucketKey ('name:id').
+	// Get retrieves the TAT at the specified bucketKey ('name:id'). Contexts
+	// passed to this method should have a timeout or deadline set to prevent
+	// the operation from blocking indefinitely.
 	Get(ctx context.Context, bucketKey string) (time.Time, error)
 
-	// Delete deletes the TAT at the specified bucketKey ('name:id').
+	// Delete deletes the TAT at the specified bucketKey ('name:id'). Contexts
+	// passed to this method should have a timeout or deadline set to prevent
+	// the operation from blocking indefinitely.
 	Delete(ctx context.Context, bucketKey string) error
 }
 

@@ -108,8 +108,18 @@ type Config struct {
 	IdleCheckFrequency config.Duration `validate:"-"`
 }
 
-// NewRing returns a new Redis ring client.
-func (c *Config) NewRing(stats prometheus.Registerer) (*redis.Ring, error) {
+// Ring is a wrapper around the go-redis/v9 Ring client that adds support for
+// (optional) periodic SRV lookups.
+type Ring struct {
+	*redis.Ring
+	lookup *lookup
+}
+
+// NewRingFromConfig returns a new *redis.Ring client. If periodic SRV lookups
+// are supplied, a goroutine will be started to periodically perform lookups.
+// Callers should defer a call to StopLookups() to ensure that this goroutine is
+// gracefully shutdown.
+func NewRingFromConfig(c Config, stats prometheus.Registerer, log blog.Logger) (*Ring, error) {
 	password, err := c.Pass()
 	if err != nil {
 		return nil, fmt.Errorf("loading password: %w", err)
@@ -120,7 +130,7 @@ func (c *Config) NewRing(stats prometheus.Registerer) (*redis.Ring, error) {
 		return nil, fmt.Errorf("loading TLS config: %w", err)
 	}
 
-	client := redis.NewRing(&redis.RingOptions{
+	inner := redis.NewRing(&redis.RingOptions{
 		Addrs:     c.ShardAddrs,
 		Username:  c.Username,
 		Password:  password,
@@ -141,26 +151,31 @@ func (c *Config) NewRing(stats prometheus.Registerer) (*redis.Ring, error) {
 	})
 	if len(c.ShardAddrs) > 0 {
 		// Client was statically configured with a list of shards.
-		MustRegisterClientMetricsCollector(client, stats, c.ShardAddrs, c.Username)
+		MustRegisterClientMetricsCollector(inner, stats, c.ShardAddrs, c.Username)
 	}
 
-	return client, nil
+	var lookup *lookup
+	if len(c.Lookups) != 0 {
+		lookup, err = newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupFrequency.Duration, inner, log, stats)
+		if err != nil {
+			return nil, err
+		}
+		lookup.start()
+	}
+
+	return &Ring{
+		Ring:   inner,
+		lookup: lookup,
+	}, nil
 }
 
-// NewRingWithPeriodicLookups returns a new Redis ring client whose shards are
-// periodically updated via SRV lookups. An initial SRV lookup is performed to
-// populate the Redis ring shards. If this lookup fails or otherwise results in
-// an empty set of resolved shards, an error is returned.
-func (c *Config) NewRingWithPeriodicLookups(stats prometheus.Registerer, logger blog.Logger) (*redis.Ring, *Lookup, error) {
-	ring, err := c.NewRing(stats)
-	if err != nil {
-		return nil, nil, err
+// StopLookups stops the goroutine responsible for keeping the shards of the
+// inner *redis.Ring up-to-date. It is a no-op if the Ring was not constructed
+// with periodic lookups or if the lookups have already been stopped.
+func (r *Ring) StopLookups() {
+	if r == nil || r.lookup == nil {
+		// No-op.
+		return
 	}
-
-	lookup, err := newLookup(c.Lookups, c.LookupDNSAuthority, c.LookupFrequency.Duration, ring, logger, stats)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return ring, lookup, nil
+	r.lookup.stop()
 }
