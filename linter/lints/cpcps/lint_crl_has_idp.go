@@ -52,15 +52,6 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 		   2) CRLs containing subordinate CA certificates created by the
 		      ceremony tool. These CRLs must only have the onlyContainsCACerts
 		      field set.
-
-		RFC 5280 Section 5.2.5
-
-		IssuingDistributionPoint ::= SEQUENCE {
-			distributionPoint          [0] DistributionPointName OPTIONAL,
-			onlyContainsUserCerts      [1] BOOLEAN DEFAULT FALSE,
-			onlyContainsCACerts        [2] BOOLEAN DEFAULT FALSE,
-			...
-		}
 	*/
 
 	idpOID := asn1.ObjectIdentifier{2, 5, 29, 28} // id-ce-issuingDistributionPoint
@@ -155,20 +146,6 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 // and updates idp. The distribution point name is checked for validity and
 // returns a pointer to a lint result based on the (lack of) validity.
 func parseSingleDistributionPointName(distributionPointName cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
-	/*
-		RFC 5280 Section 4.2.1.13
-
-		DistributionPointName ::= CHOICE {
-			fullName                [0]     GeneralNames,
-			... }
-
-		RFC 5280 Appendix A.1, Page 128
-
-		GeneralName ::= CHOICE {
-			...
-		    uniformResourceIdentifier [6]  IA5String,
-			... }
-	*/
 	fullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
 	if !distributionPointName.ReadASN1(&distributionPointName, fullNameTag) {
 		return &lint.LintResult{
