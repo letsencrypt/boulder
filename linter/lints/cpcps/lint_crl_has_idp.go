@@ -68,13 +68,13 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	if idpe == nil {
 		return &lint.LintResult{
 			Status:  lint.Warn,
-			Details: "CRL missing IDP",
+			Details: "CRL missing IssuingDistributionPoint",
 		}
 	}
 	if !idpe.Critical {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: "IDP MUST be critical",
+			Details: "IssuingDistributionPoint MUST be critical",
 		}
 	}
 
@@ -95,98 +95,50 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	if !idpv.ReadOptionalASN1(&dpName, &distributionPointExists, distributionPointTag) {
 		return &lint.LintResult{
 			Status:  lint.Warn,
-			Details: "Failed to read IDP distributionPoint",
+			Details: "Failed to read IssuingDistributionPoint distributionPoint",
 		}
 	}
 
-	var onlyContainsUserCerts bool
+	idp := lints.NewIssuingDistributionPoint()
 	onlyContainsUserCertsTag := cryptobyte_asn1.Tag(1).ContextSpecific()
-	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &onlyContainsUserCerts, onlyContainsUserCertsTag, false) {
+	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsUserCerts, onlyContainsUserCertsTag, false) {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: "Failed to read IDP onlyContainsUserCerts",
+			Details: "Failed to read IssuingDistributionPoint onlyContainsUserCerts",
 		}
 	}
 
-	var onlyContainsCACerts bool
 	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
-	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &onlyContainsCACerts, onlyContainsCACertsTag, false) {
+	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsCACerts, onlyContainsCACertsTag, false) {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: "Failed to read IDP onlyContainsCACerts",
+			Details: "Failed to read IssuingDistributionPoint onlyContainsCACerts",
 		}
 	}
 
 	if !idpv.Empty() {
 		return &lint.LintResult{
 			Status:  lint.Error,
-			Details: "Unexpected IDP fields were found",
+			Details: "Unexpected IssuingDistributionPoint fields were found",
 		}
 	}
 
-	if onlyContainsUserCerts {
-		if onlyContainsCACerts {
+	if idp.OnlyContainsUserCerts {
+		if idp.OnlyContainsCACerts {
 			return &lint.LintResult{
 				Status:  lint.Error,
-				Details: "IDP should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
+				Details: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 			}
 		}
-
-		/*
-			RFC 5280 Section 4.2.1.13
-
-			DistributionPointName ::= CHOICE {
-				fullName                [0]     GeneralNames,
-				... }
-
-			RFC 5280 Appendix A.1, Page 128
-
-			GeneralName ::= CHOICE {
-				...
-			    uniformResourceIdentifier [6]  IA5String,
-				... }
-		*/
-		fullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
-		if !dpName.ReadASN1(&dpName, fullNameTag) {
-			return &lint.LintResult{
-				Status:  lint.Warn,
-				Details: "Failed to read IDP distributionPoint fullName",
-			}
+		lintErrors := parseSingleDistributionPointName(dpName, idp)
+		if lintErrors != nil {
+			return lintErrors
 		}
-
-		var uriBytes []byte
-		uriTag := cryptobyte_asn1.Tag(6).ContextSpecific()
-		if !dpName.ReadASN1Bytes(&uriBytes, uriTag) {
-			return &lint.LintResult{
-				Status:  lint.Warn,
-				Details: "Failed to read IDP URI",
-			}
-		}
-
-		uri, err := url.Parse(string(uriBytes))
-		if err != nil {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "Failed to parse IDP URI",
-			}
-		}
-		if uri.Scheme != "http" {
-			return &lint.LintResult{
-				Status:  lint.Error,
-				Details: "IDP URI MUST use http scheme",
-			}
-		}
-		if !dpName.Empty() {
-			return &lint.LintResult{
-				Status:  lint.Warn,
-				Details: "IDP should contain only one distributionPoint",
-			}
-		}
-	} else if onlyContainsCACerts {
+	} else if idp.OnlyContainsCACerts {
 		if distributionPointExists {
 			return &lint.LintResult{
 				Status:  lint.Error,
-				Details: "IDP should not have both DistributionPointName and onlyContainsCACerts: TRUE",
+				Details: "IssuingDistributionPoint should not have both DistributionPointName and onlyContainsCACerts: TRUE",
 			}
 		}
 	} else {
@@ -197,4 +149,62 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	}
 
 	return &lint.LintResult{Status: lint.Pass}
+}
+
+// parseSingleDistributionPointName examines the provided distributionPointName
+// and updates idp. The distribution point name is checked for validity and
+// returns a pointer to a lint result based on the (lack of) validity.
+func parseSingleDistributionPointName(distributionPointName cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
+	/*
+		RFC 5280 Section 4.2.1.13
+
+		DistributionPointName ::= CHOICE {
+			fullName                [0]     GeneralNames,
+			... }
+
+		RFC 5280 Appendix A.1, Page 128
+
+		GeneralName ::= CHOICE {
+			...
+		    uniformResourceIdentifier [6]  IA5String,
+			... }
+	*/
+	fullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
+	if !distributionPointName.ReadASN1(&distributionPointName, fullNameTag) {
+		return &lint.LintResult{
+			Status:  lint.Warn,
+			Details: "Failed to read IssuingDistributionPoint distributionPoint fullName",
+		}
+	}
+
+	var uriBytes []byte
+	uriTag := cryptobyte_asn1.Tag(6).ContextSpecific()
+	if !distributionPointName.ReadASN1Bytes(&uriBytes, uriTag) {
+		return &lint.LintResult{
+			Status:  lint.Warn,
+			Details: "Failed to read IssuingDistributionPoint URI",
+		}
+	}
+	var err error
+	idp.DistributionPointURI, err = url.Parse(string(uriBytes))
+	if err != nil {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "Failed to parse IssuingDistributionPoint URI",
+		}
+	}
+	if idp.DistributionPointURI.Scheme != "http" {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "IssuingDistributionPoint URI MUST use http scheme",
+		}
+	}
+	if !distributionPointName.Empty() {
+		return &lint.LintResult{
+			Status:  lint.Warn,
+			Details: "IssuingDistributionPoint should contain only one distributionPoint",
+		}
+	}
+
+	return nil
 }

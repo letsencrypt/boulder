@@ -27,9 +27,14 @@ func TestCrlValidityPeriod(t *testing.T) {
 			want: lint.Pass,
 		},
 		{
+			name:       "idp_distributionPoint_and_onlyUser_and_onlyCA", // What type of CRL is it (besides horrible)?!!??!
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
+		},
+		{
 			name:       "negative_validity",
 			want:       lint.Warn,
-			wantSubStr: "CRL missing IDP",
+			wantSubStr: "CRL missing IssuingDistributionPoint",
 		},
 		{
 			name:       "negative_validity_subscriber_cert",

@@ -28,17 +28,23 @@ func TestCrlHasIDP(t *testing.T) {
 		{
 			name:       "no_idp",
 			want:       lint.Warn,
-			wantSubStr: "CRL missing IDP",
+			wantSubStr: "CRL missing IssuingDistributionPoint",
 		},
+
 		{
 			name:       "idp_no_uri",
 			want:       lint.Warn,
-			wantSubStr: "Failed to read IDP distributionPoint",
+			wantSubStr: "Failed to read IssuingDistributionPoint distributionPoint",
 		},
 		{
 			name:       "idp_two_uris",
 			want:       lint.Warn,
 			wantSubStr: "only one distributionPoint",
+		},
+		{
+			name:       "idp_https",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint URI MUST use http scheme",
 		},
 		{
 			name:       "idp_no_usercerts",
@@ -48,17 +54,22 @@ func TestCrlHasIDP(t *testing.T) {
 		{
 			name:       "idp_some_reasons", // Subscriber cert
 			want:       lint.Error,
-			wantSubStr: "Unexpected IDP fields were found",
+			wantSubStr: "Unexpected IssuingDistributionPoint fields were found",
 		},
 		{
 			name:       "idp_onlyCA_and_onlyUser",
 			want:       lint.Error,
-			wantSubStr: "IDP should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
+			wantSubStr: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 		},
 		{
 			name:       "idp_distributionPoint_and_onlyCA",
 			want:       lint.Error,
-			wantSubStr: "IDP should not have both DistributionPointName and onlyContainsCACerts: TRUE",
+			wantSubStr: "IssuingDistributionPoint should not have both DistributionPointName and onlyContainsCACerts: TRUE",
+		},
+		{
+			name:       "idp_distributionPoint_and_onlyUser_and_onlyCA",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 		},
 	}
 

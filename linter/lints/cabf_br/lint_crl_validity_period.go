@@ -68,7 +68,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	if idpe == nil {
 		return &lint.LintResult{
 			Status:  lint.Warn,
-			Details: "CRL missing IDP",
+			Details: "CRL missing IssuingDistributionPoint",
 		}
 	}
 
@@ -78,7 +78,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	if !idpv.ReadASN1(&idpv, cryptobyte_asn1.SEQUENCE) {
 		return &lint.LintResult{
 			Status:  lint.Warn,
-			Details: "Failed to read IDP distributionPoint",
+			Details: "Failed to read IssuingDistributionPoint distributionPoint",
 		}
 	}
 
@@ -86,13 +86,35 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	distributionPointTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
 	_ = idpv.SkipOptionalASN1(distributionPointTag)
 
+	// Parse IssuingDistributionPoint OPTIONAL BOOLEANS to eventually perform
+	// sanity checks.
+	idp := lints.NewIssuingDistributionPoint()
+	onlyContainsUserCertsTag := cryptobyte_asn1.Tag(1).ContextSpecific()
+	onlyContainsUserCertsOk := lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsUserCerts, onlyContainsUserCertsTag, false)
+	if !onlyContainsUserCertsOk {
+		return &lint.LintResult{
+			Status:  lint.Warn,
+			Details: "Failed to read IssuingDistributionPoint onlyContainsUserCerts",
+		}
+	}
+
+	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
+	onlyContainsCACertsOk := lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsCACerts, onlyContainsCACertsTag, false)
+
+	// Basic sanity check so that later on we can determine what type of CRL we
+	// issued based on the presence of one of these fields. If both fields exist
+	// then 1) it's a problem and 2) the real validity period is unknown.
+	if idp.OnlyContainsUserCerts && idp.OnlyContainsCACerts {
+		return &lint.LintResult{
+			Status:  lint.Error,
+			Details: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
+		}
+	}
+
 	// Default to subscriber cert CRL.
 	var BRValidity = 10 * 24 * time.Hour
 	var validityString = "10 days"
-
-	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
-	occcPresent := false
-	if lints.ReadOptionalASN1BooleanWithTag(&idpv, &occcPresent, onlyContainsCACertsTag, false) && occcPresent {
+	if onlyContainsCACertsOk && idp.OnlyContainsCACerts {
 		BRValidity = 365 * lints.BRDay
 		validityString = "365 days"
 	}
