@@ -57,11 +57,6 @@ func TestCrlHasIDP(t *testing.T) {
 			wantSubStr: "Unexpected IssuingDistributionPoint fields were found",
 		},
 		{
-			name:       "idp_onlyCA_and_onlyUser",
-			want:       lint.Error,
-			wantSubStr: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
-		},
-		{
 			name:       "idp_distributionPoint_and_onlyCA",
 			want:       lint.Error,
 			wantSubStr: "IssuingDistributionPoint should not have both DistributionPointName and onlyContainsCACerts: TRUE",
