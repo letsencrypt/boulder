@@ -118,7 +118,7 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	// Default to subscriber cert CRL.
 	var BRValidity = 10 * 24 * time.Hour
 	var validityString = "10 days"
-	if onlyContainsCACertsOk && idp.OnlyContainsCACerts {
+	if idp.OnlyContainsCACerts {
 		BRValidity = 365 * lints.BRDay
 		validityString = "365 days"
 	}
