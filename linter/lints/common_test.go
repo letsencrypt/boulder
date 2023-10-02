@@ -87,13 +87,12 @@ func TestReadOptionalASN1BooleanWithTag(t *testing.T) {
 			// currently don't pass nil. Instead we use a reference to a
 			// pre-existing boolean here and in the lint code. Passing in nil
 			// will _do the wrong thing (TM)_ in our CRL lints.
-			var outParam *bool //nolint:gosimple
-			outParam = new(bool)
-			ok := ReadOptionalASN1BooleanWithTag((*cryptobyte.String)(&tc.incoming), outParam, tc.asn1Tag, false)
+			var outParam bool
+			ok := ReadOptionalASN1BooleanWithTag((*cryptobyte.String)(&tc.incoming), &outParam, tc.asn1Tag, false)
 			t.Log("Check if reading the tag was successful:")
 			test.AssertEquals(t, ok, tc.expectedOk)
 			t.Log("Check value of the optional boolean:")
-			test.AssertEquals(t, *outParam, tc.expectedOut)
+			test.AssertEquals(t, outParam, tc.expectedOut)
 			t.Log("Bytes should be popped off of incoming as they're successfully read:")
 			test.AssertEquals(t, len(tc.incoming), tc.expectedTrailer)
 		})
