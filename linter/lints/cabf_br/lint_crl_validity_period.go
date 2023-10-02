@@ -98,7 +98,12 @@ func (l *crlValidityPeriod) Execute(c *x509.RevocationList) *lint.LintResult {
 	}
 
 	onlyContainsCACertsTag := cryptobyte_asn1.Tag(2).ContextSpecific()
-	onlyContainsCACertsOk := lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsCACerts, onlyContainsCACertsTag, false)
+	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsCACerts, onlyContainsCACertsTag, false) {
+		return &lint.LintResult{
+			Status:  lint.Warn,
+			Details: "Failed to read IssuingDistributionPoint onlyContainsCACerts",
+		}
+	}
 
 	// Basic sanity check so that later on we can determine what type of CRL we
 	// issued based on the presence of one of these fields. If both fields exist
