@@ -91,6 +91,13 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 	}
 
 	idp := lints.NewIssuingDistributionPoint()
+	if distributionPointExists {
+		lintErr := parseSingleDistributionPointName(&dpName, idp)
+		if lintErr != nil {
+			return lintErr
+		}
+	}
+
 	onlyContainsUserCertsTag := cryptobyte_asn1.Tag(1).ContextSpecific()
 	if !lints.ReadOptionalASN1BooleanWithTag(&idpv, &idp.OnlyContainsUserCerts, onlyContainsUserCertsTag, false) {
 		return &lint.LintResult{
@@ -121,12 +128,14 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 				Details: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 			}
 		}
-		lintErrors := parseSingleDistributionPointName(dpName, idp)
-		if lintErrors != nil {
-			return lintErrors
+		if idp.DistributionPointURI == nil {
+			return &lint.LintResult{
+				Status:  lint.Error,
+				Details: "IssuingDistributionPoint should have both DistributionPointName and onlyContainsUserCerts: TRUE",
+			}
 		}
 	} else if idp.OnlyContainsCACerts {
-		if distributionPointExists {
+		if idp.DistributionPointURI != nil {
 			return &lint.LintResult{
 				Status:  lint.Error,
 				Details: "IssuingDistributionPoint should not have both DistributionPointName and onlyContainsCACerts: TRUE",
@@ -143,11 +152,12 @@ func (l *crlHasIDP) Execute(c *x509.RevocationList) *lint.LintResult {
 }
 
 // parseSingleDistributionPointName examines the provided distributionPointName
-// and updates idp. The distribution point name is checked for validity and
-// returns a pointer to a lint result based on the (lack of) validity.
-func parseSingleDistributionPointName(distributionPointName cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
+// and updates idp with the URI if it is found. The distribution point name is
+// checked for validity and returns a non-nil LintResult if there were any
+// problems.
+func parseSingleDistributionPointName(distributionPointName *cryptobyte.String, idp *lints.IssuingDistributionPoint) *lint.LintResult {
 	fullNameTag := cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()
-	if !distributionPointName.ReadASN1(&distributionPointName, fullNameTag) {
+	if !distributionPointName.ReadASN1(distributionPointName, fullNameTag) {
 		return &lint.LintResult{
 			Status:  lint.Warn,
 			Details: "Failed to read IssuingDistributionPoint distributionPoint fullName",

@@ -33,13 +33,13 @@ func TestCrlHasIDP(t *testing.T) {
 
 		{
 			name:       "idp_no_uri",
-			want:       lint.Warn,
-			wantSubStr: "Failed to read IssuingDistributionPoint distributionPoint",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint should have both DistributionPointName and onlyContainsUserCerts: TRUE",
 		},
 		{
 			name:       "idp_two_uris",
 			want:       lint.Warn,
-			wantSubStr: "only one distributionPoint",
+			wantSubStr: "IssuingDistributionPoint should contain only one distributionPoint",
 		},
 		{
 			name:       "idp_https",
