@@ -142,6 +142,9 @@ func mockDNSQuery(w dns.ResponseWriter, r *dns.Msg) {
 				record.Flag = 1
 				appendAnswer(record)
 			}
+			if q.Name == "gonetld." {
+				m.SetRcode(r, dns.RcodeNameError)
+			}
 		case dns.TypeTXT:
 			if q.Name == "split-txt.letsencrypt.org." {
 				record := new(dns.TXT)
@@ -444,6 +447,10 @@ bracewel.net.	0	IN	CAA	1 issue "letsencrypt.org"
 caa.example.com.	0	IN	CAA	1 issue "letsencrypt.org"
 `
 	test.AssertEquals(t, removeIDExp.ReplaceAllString(resp, " id: XXXX"), expectedResp)
+
+	_, _, err = obj.LookupCAA(context.Background(), "gonetld")
+	test.AssertError(t, err, "should fail for TLD NXDOMAIN")
+	test.AssertContains(t, err.Error(), "NXDOMAIN")
 }
 
 func TestIsPrivateIP(t *testing.T) {
