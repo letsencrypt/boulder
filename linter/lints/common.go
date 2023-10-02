@@ -92,10 +92,27 @@ func ReadOptionalASN1BooleanWithTag(incoming *cryptobyte.String, out *bool, tag 
 	}
 	val := defaultValue
 	if valuePresent {
+		/*
+			X.690 (07/2002)
+			https://www.itu.int/rec/T-REC-X.690-200207-S/en
+
+			Section 8.2.2:
+				If the boolean value is:
+				FALSE
+				the octet shall be zero.
+				If the boolean value is
+				TRUE
+				the octet shall have any non-zero value, as a sender's option.
+
+			Section 11.1 Boolean values:
+				If the encoding represents the boolean value TRUE, its single contents octet shall have all eight
+				bits set to one. (Contrast with 8.2.2.)
+
+			Succinctly, BER encoding states any nonzero value is TRUE. The DER
+			encoding restricts the value 0xFF as TRUE and any other: 0x01,
+			0x23, 0xFE, etc as invalid encoding.
+		*/
 		boolBytes := []byte(valueBytes)
-		// X.690 (07/2002) section 8.2 states that a boolean will have length of 1
-		// and value true will have contents FF.
-		// https://www.itu.int/rec/T-REC-X.690-200207-S/en
 		if bytes.Equal(boolBytes, []byte{0xFF}) {
 			val = true
 		} else if bytes.Equal(boolBytes, []byte{0x00}) {
