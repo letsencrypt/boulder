@@ -16,7 +16,7 @@ message Challenge {
   string keyAuthorization = 5;
   repeated ValidationRecord validationrecords = 10;
   ProblemDetails error = 7;
-  reserved 8; // Unused and accidently skipped during initial commit.
+  reserved 8; // Unused and accidentally skipped during initial commit.
   int64 validatedNS = 11;
   google.protobuf.Timestamp validated = 12;
 }
