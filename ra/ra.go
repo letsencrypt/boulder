@@ -1958,6 +1958,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 		DateNS:     now.UnixNano(),
 		Date:       timestamppb.New(now),
 		BackdateNS: status.RevokedDateNS,
+		Backdate:   timestamppb.New(time.Unix(0, status.RevokedDateNS)),
 		IssuerID:   issuerID,
 	})
 	if err != nil {
@@ -2400,6 +2401,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		Status:      status.Status,
 		Reason:      int32(status.RevokedReason),
 		RevokedAtNS: status.RevokedDateNS,
+		RevokedAt:   timestamppb.New(time.Unix(0, status.RevokedDateNS)),
 		IssuerID:    status.IssuerID,
 	})
 }

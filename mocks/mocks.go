@@ -411,9 +411,9 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 	validOrder := &corepb.Order{
 		Id:                req.Id,
 		RegistrationID:    1,
-		CreatedNS:         created.Unix(),
+		CreatedNS:         created.UnixNano(),
 		Created:           timestamppb.New(created),
-		ExpiresNS:         exp.Unix(),
+		ExpiresNS:         exp.UnixNano(),
 		Expires:           timestamppb.New(exp),
 		Names:             []string{"example.com"},
 		Status:            string(core.StatusValid),

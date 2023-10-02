@@ -6,7 +6,7 @@ option go_package = "github.com/letsencrypt/boulder/core/proto";
 import "google/protobuf/timestamp.proto";
 
 message Challenge {
-  // Next unused field number: 12
+  // Next unused field number: 13
   int64 id = 1;
   string type = 2;
   string status = 6;
@@ -16,8 +16,9 @@ message Challenge {
   string keyAuthorization = 5;
   repeated ValidationRecord validationrecords = 10;
   ProblemDetails error = 7;
+  reserved 8; // Unused and accidently skipped during initial commit.
   int64 validatedNS = 11;
-  google.protobuf.Timestamp validated = 8;
+  google.protobuf.Timestamp validated = 12;
 }
 
 message ValidationRecord {
