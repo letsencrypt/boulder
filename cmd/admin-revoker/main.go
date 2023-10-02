@@ -36,6 +36,7 @@ const usageString = `
 usage:
   list-reasons           -config <path>
   serial-revoke          -config <path> <serial>           <reason-code>
+  malformed-revoke       -config <path> <serial>           <reason-code>
   batched-serial-revoke  -config <path> <serial-file-path> <reason-code>   <parallelism>
   incident-table-revoke  -config <path> <table-name>       <reason-code>   <parallelism>
   reg-revoke             -config <path> <registration-id>  <reason-code>
