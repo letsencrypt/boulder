@@ -48,6 +48,7 @@ func main() {
 	flag.Parse()
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 6, SyslogLevel: -1})
+	logger.Info(cmd.VersionString())
 
 	urlFileContents, err := os.ReadFile(*urlFile)
 	cmd.FailOnError(err, "Reading CRL URLs file")

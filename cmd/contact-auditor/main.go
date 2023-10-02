@@ -159,6 +159,7 @@ func main() {
 	flag.Parse()
 
 	logger := cmd.NewLogger(cmd.SyslogConfig{StdoutLevel: 7})
+	logger.Info(cmd.VersionString())
 
 	if *configFile == "" {
 		flag.Usage()

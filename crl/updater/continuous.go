@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"math/big"
 	"math/rand"
 	"sync"
 	"time"
@@ -47,8 +46,8 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 				// We only log, rather than return, so that the long-lived process can
 				// continue and try again at the next tick.
 				cu.log.AuditErrf(
-					"Generating CRL failed: issuer=[%d] shard=[%d] number=[%s] err=[%s]",
-					issuerNameID, shardIdx, (*big.Int)(crl.Number(atTime)), err)
+					"Generating CRL failed: id=[%s] err=[%s]",
+					crl.Id(issuerNameID, shardIdx, crl.Number(atTime)), err)
 			}
 
 			select {
@@ -62,8 +61,7 @@ func (cu *crlUpdater) Run(ctx context.Context) error {
 
 	// Start one shard worker per shard this updater is responsible for.
 	for _, issuer := range cu.issuers {
-		// TODO(#7007): Start at index 1 when we stop producing shard 0.
-		for i := 0; i <= cu.numShards; i++ {
+		for i := 1; i <= cu.numShards; i++ {
 			wg.Add(1)
 			go shardWorker(issuer.NameID(), i)
 		}
