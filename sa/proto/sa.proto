@@ -291,6 +291,7 @@ message RevokeCertificateRequest {
   int64 backdateNS = 5; // Unix timestamp (nanoseconds)
   bytes response = 4;
   int64 issuerID = 6;
+  int64 shardIdx = 7;
 }
 
 message FinalizeAuthorizationRequest {
@@ -343,6 +344,7 @@ message GetRevokedCertsRequest {
   int64 expiresAfterNS = 2; // Unix timestamp (nanoseconds), inclusive
   int64 expiresBeforeNS = 3; // Unix timestamp (nanoseconds), exclusive
   int64 revokedBeforeNS = 4; // Unix timestamp (nanoseconds)
+  int64 shardIdx = 5; // Must not be set until the revokedCertificates table has 90+ days of entries.
 }
 
 message RevocationStatus {
