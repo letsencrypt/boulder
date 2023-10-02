@@ -2349,12 +2349,22 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 }
 
 // GenerateOCSP looks up a certificate's status, then requests a signed OCSP
-// response for it from the CA. If the certificate status is not available
-// or the certificate is expired, it returns berrors.NotFoundError.
+// response for it from the CA. If the certificate is expired, it returns
+// berrors.NotFoundError. If the serial is in the `serials` table but not
+// `certificateStatus` (i.e. its partition in the certificateStatus table has
+// been cleaned up), it returns berrors.NotFoundError. If the serial is in
+// neither the `serials` table nor `certificateStatus`, it returns
+// berrors.UnknownSerialError.
 // This does not write back the result to the SA or any other storage.
 func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
-	if err != nil {
+	if errors.Is(err, berrors.NotFound) {
+		_, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: req.Serial})
+		if errors.Is(err, berrors.NotFound) {
+			return nil, berrors.UnknownSerialError()
+		}
+		return nil, err
+	} else if err != nil {
 		return nil, err
 	}
 
