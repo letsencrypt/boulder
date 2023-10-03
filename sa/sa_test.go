@@ -402,7 +402,7 @@ func TestGetSerialMetadata(t *testing.T) {
 	test.AssertEquals(t, time.Unix(0, m.CreatedNS).UTC(), now)
 	test.AssertEquals(t, now, timestamppb.New(now).AsTime())
 	test.AssertEquals(t, time.Unix(0, m.ExpiresNS).UTC(), hourLater)
-	test.AssertEquals(t, hourLater, timestamppb.New(hourLater).AsTime())
+	test.AssertEquals(t, m.Expires.AsTime(), timestamppb.New(hourLater).AsTime())
 }
 
 func TestAddPrecertificate(t *testing.T) {
@@ -544,6 +544,7 @@ func TestAddPrecertificateKeyHash(t *testing.T) {
 	test.AssertEquals(t, len(keyHashes), 1)
 	test.AssertEquals(t, keyHashes[0].CertSerial, serial)
 	test.AssertEquals(t, keyHashes[0].CertNotAfter, testCert.NotAfter)
+	test.AssertEquals(t, keyHashes[0].CertNotAfter, timestamppb.New(testCert.NotAfter).AsTime())
 	spkiHash := sha256.Sum256(testCert.RawSubjectPublicKeyInfo)
 	test.Assert(t, bytes.Equal(keyHashes[0].KeyHash, spkiHash[:]), "spki hash mismatch")
 }
@@ -2172,13 +2173,16 @@ func TestRevokeCertificateWithShard(t *testing.T) {
 		RegID:     reg.Id,
 		Serial:    core.SerialToString(eeCert.SerialNumber),
 		CreatedNS: eeCert.NotBefore.UnixNano(),
+		Created:   timestamppb.New(eeCert.NotBefore),
 		ExpiresNS: eeCert.NotAfter.UnixNano(),
+		Expires:   timestamppb.New(eeCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
 		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		Issued:       timestamppb.New(eeCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
@@ -2193,6 +2197,7 @@ func TestRevokeCertificateWithShard(t *testing.T) {
 		ShardIdx: 9,
 		Serial:   serial,
 		DateNS:   now.UnixNano(),
+		Date:     timestamppb.New(now),
 		Reason:   reason,
 	})
 	test.AssertNotError(t, err, "RevokeCertificate with no OCSP response should succeed")
@@ -2202,7 +2207,11 @@ func TestRevokeCertificateWithShard(t *testing.T) {
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	test.AssertEquals(t, status.RevokedReason, reason)
 	test.AssertEquals(t, status.RevokedDateNS, now.UnixNano())
-	test.AssertEquals(t, status.OcspLastUpdated, now.UnixNano())
+	test.AssertEquals(t, status.RevokedDate.AsTime(), now)
+	test.AssertEquals(t, status.OcspLastUpdatedNS, now.UnixNano())
+	test.AssertEquals(t, status.OcspLastUpdated.AsTime(), now)
+	test.AssertEquals(t, status.NotAfterNS, eeCert.NotAfter.UnixNano())
+	test.AssertEquals(t, status.NotAfter.AsTime(), eeCert.NotAfter)
 
 	var result revokedCertModel
 	err = sa.dbMap.SelectOne(
@@ -2358,6 +2367,7 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
 		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		Issued:       timestamppb.New(eeCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
@@ -2365,12 +2375,13 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 
 	// Now revoke it with a shardIdx, so that it gets updated in both the
 	// certificateStatus table and the revokedCertificates table.
-	revokedTime := fc.Now().UnixNano()
+	revokedTime := fc.Now()
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		ShardIdx: 9,
 		Serial:   core.SerialToString(eeCert.SerialNumber),
-		DateNS:   revokedTime,
+		DateNS:   revokedTime.UnixNano(),
+		Date:     timestamppb.New(revokedTime),
 		Reason:   ocsp.CessationOfOperation,
 		Response: []byte{1, 2, 3},
 	})
@@ -2383,7 +2394,9 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 		ShardIdx:   9,
 		Serial:     core.SerialToString(eeCert.SerialNumber),
 		DateNS:     fc.Now().UnixNano(),
-		BackdateNS: revokedTime,
+		Date:       timestamppb.New(fc.Now()),
+		BackdateNS: revokedTime.UnixNano(),
+		Backdate:   timestamppb.New(revokedTime),
 		Reason:     ocsp.KeyCompromise,
 		Response:   []byte{4, 5, 6},
 	})
@@ -2420,6 +2433,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
 		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		Issued:       timestamppb.New(eeCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
@@ -3487,7 +3501,9 @@ func TestGetRevokedCerts(t *testing.T) {
 		RegID:     reg.Id,
 		Serial:    core.SerialToString(eeCert.SerialNumber),
 		CreatedNS: eeCert.NotBefore.UnixNano(),
+		Created:   timestamppb.New(eeCert.NotBefore),
 		ExpiresNS: eeCert.NotAfter.UnixNano(),
+		Expires:   timestamppb.New(eeCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
@@ -3625,13 +3641,16 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 		RegID:     reg.Id,
 		Serial:    core.SerialToString(eeCert.SerialNumber),
 		CreatedNS: eeCert.NotBefore.UnixNano(),
+		Created:   timestamppb.New(eeCert.NotBefore),
 		ExpiresNS: eeCert.NotAfter.UnixNano(),
+		Expires:   timestamppb.New(eeCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          eeCert.Raw,
 		RegID:        reg.Id,
 		IssuedNS:     eeCert.NotBefore.UnixNano(),
+		Issued:       timestamppb.New(eeCert.NotBefore),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "failed to add test cert")
@@ -3660,21 +3679,27 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	}
 
 	// Asking for revoked certs now should return no results.
+	expiresAfter := time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
 		ShardIdx:        9,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Revoke the certificate, providing the ShardIdx so it gets written into
 	// both the certificateStatus and revokedCertificates tables.
+	date := time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   core.SerialToString(eeCert.SerialNumber),
-		DateNS:   time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		DateNS:   date.UnixNano(),
+		Date:     timestamppb.New(date),
 		Reason:   1,
 		Response: []byte{1, 2, 3},
 		ShardIdx: 9,
@@ -3689,41 +3714,57 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	test.AssertEquals(t, c.Int64, int64(1))
 
 	// Asking for revoked certs now should return one result.
+	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
 		ShardIdx:        9,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "normal usage shouldn't result in error")
 	test.AssertEquals(t, count, 1)
 
 	// Asking for revoked certs from a different issuer should return zero results.
+	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    2,
 		ShardIdx:        9,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs from a different shard should return zero reults.
+	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
 		ShardIdx:        8,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs with an old RevokedBefore should return no results.
+	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
+	revokedBefore = time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
 		IssuerNameID:    1,
 		ShardIdx:        9,
-		ExpiresAfterNS:  time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
-		RevokedBeforeNS: time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC).UnixNano(),
+		ExpiresAfterNS:  expiresAfter.UnixNano(),
+		ExpiresAfter:    timestamppb.New(expiresAfter),
+		RevokedBeforeNS: revokedBefore.UnixNano(),
+		RevokedBefore:   timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
