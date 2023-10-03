@@ -299,8 +299,6 @@ func (rs Responder) ServeHTTP(response http.ResponseWriter, request *http.Reques
 	ocspResponse, err := rs.Source.Response(ctx, ocspRequest)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			rs.sampledError("No response found for request: serial %x, request body %s",
-				ocspRequest.SerialNumber, b64Body)
 			response.Write(ocsp.UnauthorizedErrorResponse)
 			rs.responseTypes.With(prometheus.Labels{"type": responseTypeToString[ocsp.Unauthorized]}).Inc()
 			return

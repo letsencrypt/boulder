@@ -57,7 +57,7 @@ func (rs *recordingSigner) Response(ctx context.Context, req *ocsp.Request) (*re
 
 func TestNotFound(t *testing.T) {
 	recordingSigner := recordingSigner{}
-	src, err := NewRedisSource(nil, &recordingSigner, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, &recordingSigner, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock(), 1)
 	test.AssertNotError(t, err, "making source")
 	notFoundRedis := &notFoundRedis{make(chan *big.Int)}
 	src.client = notFoundRedis
@@ -108,7 +108,7 @@ func TestQueryError(t *testing.T) {
 	test.AssertNotError(t, err, "making fake response")
 	source := echoSource{resp: resp}
 
-	src, err := NewRedisSource(nil, source, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, source, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock(), 1)
 	test.AssertNotError(t, err, "making source")
 	src.client = errorRedis{}
 
@@ -131,7 +131,7 @@ func (er garbleRedis) StoreResponse(ctx context.Context, resp *ocsp.Response) er
 }
 
 func TestParseError(t *testing.T) {
-	src, err := NewRedisSource(nil, panicSource{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, panicSource{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock(), 1)
 	test.AssertNotError(t, err, "making source")
 	src.client = garbleRedis{}
 
@@ -145,7 +145,7 @@ func TestParseError(t *testing.T) {
 }
 
 func TestSignError(t *testing.T) {
-	src, err := NewRedisSource(nil, errorSource{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, errorSource{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock(), 1)
 	test.AssertNotError(t, err, "making source")
 	src.client = &notFoundRedis{nil}
 
@@ -188,7 +188,7 @@ func (sr *staleRedis) StoreResponse(ctx context.Context, resp *ocsp.Response) er
 func TestStale(t *testing.T) {
 	recordingSigner := recordingSigner{}
 	clk := clock.NewFake()
-	src, err := NewRedisSource(nil, &recordingSigner, time.Second, clk, metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, &recordingSigner, time.Second, clk, metrics.NoopRegisterer, log.NewMock(), 1)
 	test.AssertNotError(t, err, "making source")
 	staleRedis := &staleRedis{
 		serialStored: make(chan *big.Int),
@@ -224,7 +224,7 @@ func (nfs notFoundSigner) Response(ctx context.Context, req *ocsp.Request) (*res
 }
 
 func TestCertificateNotFound(t *testing.T) {
-	src, err := NewRedisSource(nil, notFoundSigner{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, notFoundSigner{}, time.Second, clock.NewFake(), metrics.NoopRegisterer, log.NewMock(), 1)
 	test.AssertNotError(t, err, "making source")
 	notFoundRedis := &notFoundRedis{nil}
 	src.client = notFoundRedis
@@ -239,7 +239,7 @@ func TestCertificateNotFound(t *testing.T) {
 
 func TestNoServeStale(t *testing.T) {
 	clk := clock.NewFake()
-	src, err := NewRedisSource(nil, errorSource{}, time.Second, clk, metrics.NoopRegisterer, log.NewMock())
+	src, err := NewRedisSource(nil, errorSource{}, time.Second, clk, metrics.NoopRegisterer, log.NewMock(), 1)
 	test.AssertNotError(t, err, "making source")
 	staleRedis := &staleRedis{
 		serialStored: nil,
