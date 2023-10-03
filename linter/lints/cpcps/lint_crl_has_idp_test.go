@@ -5,9 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	linttest "github.com/letsencrypt/boulder/linter/lints/test"
 	"github.com/zmap/zlint/v3/lint"
-
-	"github.com/letsencrypt/boulder/linter/lints/test"
 )
 
 func TestCrlHasIDP(t *testing.T) {
@@ -19,39 +18,60 @@ func TestCrlHasIDP(t *testing.T) {
 		wantSubStr string
 	}{
 		{
-			name: "good",
+			name: "good", // CRL for subscriber certs
 			want: lint.Pass,
 		},
 		{
-			name: "no_idp",
-			want: lint.Warn,
+			name: "good_subordinate_ca",
+			want: lint.Pass,
 		},
 		{
-			name:       "idp_no_uri",
+			name:       "no_idp",
 			want:       lint.Warn,
-			wantSubStr: "should contain distributionPoint",
+			wantSubStr: "CRL missing IssuingDistributionPoint",
+		},
+
+		{
+			name:       "idp_no_uri",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint should have both DistributionPointName and onlyContainsUserCerts: TRUE",
 		},
 		{
 			name:       "idp_two_uris",
 			want:       lint.Warn,
-			wantSubStr: "only one distributionPoint",
+			wantSubStr: "IssuingDistributionPoint should contain only one distributionPoint",
+		},
+		{
+			name:       "idp_https",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint URI MUST use http scheme",
 		},
 		{
 			name:       "idp_no_usercerts",
-			want:       lint.Warn,
-			wantSubStr: "should contain onlyContainsUserCerts",
+			want:       lint.Error,
+			wantSubStr: "Neither onlyContainsUserCerts nor onlyContainsCACerts was set",
 		},
 		{
-			name:       "idp_some_reasons",
-			want:       lint.Warn,
-			wantSubStr: "should not contain fields other than",
+			name:       "idp_some_reasons", // Subscriber cert
+			want:       lint.Error,
+			wantSubStr: "Unexpected IssuingDistributionPoint fields were found",
+		},
+		{
+			name:       "idp_distributionPoint_and_onlyCA",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint should not have both DistributionPointName and onlyContainsCACerts: TRUE",
+		},
+		{
+			name:       "idp_distributionPoint_and_onlyUser_and_onlyCA",
+			want:       lint.Error,
+			wantSubStr: "IssuingDistributionPoint should not have both onlyContainsUserCerts: TRUE and onlyContainsCACerts: TRUE",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			l := NewCrlHasIDP()
-			c := test.LoadPEMCRL(t, fmt.Sprintf("testdata/crl_%s.pem", tc.name))
+			c := linttest.LoadPEMCRL(t, fmt.Sprintf("testdata/crl_%s.pem", tc.name))
 			r := l.Execute(c)
 
 			if r.Status != tc.want {
