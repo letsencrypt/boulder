@@ -53,10 +53,15 @@ const (
 	CertificatesPerFQDNSetPerAccount
 )
 
+// isValid returns true if the Name is a valid rate limit name.
+func (n Name) isValid() bool {
+	return n > Unknown && n < Name(len(nameToString))
+}
+
 // String returns the string representation of the Name. It allows Name to
 // satisfy the fmt.Stringer interface.
 func (n Name) String() string {
-	if !isNameValid(n) {
+	if !n.isValid() {
 		return nameToString[Unknown]
 	}
 	return nameToString[n]
@@ -214,10 +219,4 @@ func nameToEnumString(s Name) string {
 // bucketKey returns the key used to store a rate limit bucket.
 func bucketKey(name Name, id string) string {
 	return nameToEnumString(name) + ":" + id
-}
-
-// isLimitNameValid returns true if the provided Name is a valid rate limit
-// name.
-func isNameValid(name Name) bool {
-	return name > Unknown && name < Name(len(nameToString))
 }

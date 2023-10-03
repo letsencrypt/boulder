@@ -307,7 +307,7 @@ func (l *Limiter) initialize(ctx context.Context, rl limit, name Name, id string
 // the limit specified by name is returned. If no default limit exists for the
 // specified name, ErrLimitDisabled is returned.
 func (l *Limiter) getLimit(name Name, id string) (limit, error) {
-	if !isNameValid(name) {
+	if !name.isValid() {
 		// This should never happen. Callers should only be specifying the limit
 		// Name enums defined in this package.
 		return limit{}, fmt.Errorf("specified name enum %q, is invalid", name)
