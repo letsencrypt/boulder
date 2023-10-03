@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/jmhodges/clock"
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"github.com/letsencrypt/boulder/test"
@@ -172,6 +173,9 @@ func TestGenerateCRL(t *testing.T) {
 		}
 		close(done)
 	}()
+	fc := clock.NewFake()
+	fc.Set(time.Date(2020, time.October, 10, 23, 17, 0, 0, time.UTC))
+	now = fc.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
@@ -190,6 +194,8 @@ func TestGenerateCRL(t *testing.T) {
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
 	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 0)
 	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
+	test.AssertEquals(t, crl.ThisUpdate, now)
+	test.AssertEquals(t, crl.ThisUpdate, timestamppb.New(now).AsTime())
 	test.AssertNotError(t, err, "CRL signature should validate")
 
 	// Test that generating a CRL with some entries works.

@@ -1194,13 +1194,19 @@ type mockSAWithNameCounts struct {
 }
 
 func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
-	expectedLatest := m.clk.Now().UnixNano()
-	if req.Range.LatestNS != expectedLatest {
-		m.t.Errorf("incorrect latest: got '%d', expected '%d'", req.Range.LatestNS, expectedLatest)
+	expectedLatest := m.clk.Now()
+	if req.Range.LatestNS != expectedLatest.UnixNano() {
+		m.t.Errorf("incorrect latestNS: got '%d', expected '%d'", req.Range.LatestNS, expectedLatest.UnixNano())
 	}
-	expectedEarliest := m.clk.Now().Add(-23 * time.Hour).UnixNano()
-	if req.Range.EarliestNS != expectedEarliest {
-		m.t.Errorf("incorrect earliest: got '%d', expected '%d'", req.Range.EarliestNS, expectedEarliest)
+	if req.Range.Latest.AsTime() != expectedLatest {
+		m.t.Errorf("incorrect latest: got '%v', expected '%v'", req.Range.Latest.AsTime(), expectedLatest)
+	}
+	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
+	if req.Range.EarliestNS != expectedEarliest.UnixNano() {
+		m.t.Errorf("incorrect earliestNS: got '%d', expected '%d'", req.Range.EarliestNS, expectedEarliest.UnixNano())
+	}
+	if req.Range.Earliest.AsTime() != expectedEarliest {
+		m.t.Errorf("incorrect earliest: got '%v', expected '%v'", req.Range.Earliest.AsTime(), expectedEarliest)
 	}
 	counts := make(map[string]int64)
 	for _, name := range req.Names {
@@ -4096,6 +4102,8 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
 	test.AssertEquals(t, mockSA.blocked[0].Source, "admin-revoker")
 	test.AssertEquals(t, mockSA.blocked[0].Comment, "revoked by root")
+	test.AssertEquals(t, mockSA.blocked[0].AddedNS, clk.Now().UnixNano())
+	test.AssertEquals(t, mockSA.blocked[0].Added.AsTime(), clk.Now())
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)
 

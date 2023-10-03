@@ -1265,6 +1265,7 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 		}
 		if ism.LastNoticeSent != nil {
 			ispb.LastNoticeSentNS = ism.LastNoticeSent.UnixNano()
+			ispb.LastNoticeSent = timestamppb.New(*ism.LastNoticeSent)
 		}
 
 		err = stream.Send(ispb)
@@ -1359,6 +1360,7 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 			Serial:      row.Serial,
 			Reason:      int32(row.RevokedReason),
 			RevokedAtNS: row.RevokedDate.UnixNano(),
+			RevokedAt:   timestamppb.New(row.RevokedDate),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)
