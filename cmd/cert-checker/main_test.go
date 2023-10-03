@@ -367,7 +367,7 @@ func TestGetAndProcessCerts(t *testing.T) {
 	}
 
 	batchSize = 2
-	err = checker.getCerts(context.Background(), false)
+	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 	test.AssertEquals(t, len(checker.certs), 5)
 	wg := new(sync.WaitGroup)
@@ -431,7 +431,7 @@ func TestGetCertsEmptyResults(t *testing.T) {
 	checker.dbMap = mismatchedCountDB{}
 
 	batchSize = 3
-	err = checker.getCerts(context.Background(), false)
+	err = checker.getCerts(context.Background())
 	test.AssertNotError(t, err, "Failed to retrieve certificates")
 }
 
@@ -453,13 +453,58 @@ func (db emptyDB) SelectNullInt(_ context.Context, _ string, _ ...interface{}) (
 // expected if the DB finds no certificates to match the SELECT query and
 // should return an error.
 func TestGetCertsNullResults(t *testing.T) {
-	saDbMap, err := sa.DBMapForTest(vars.DBConnSA)
-	test.AssertNotError(t, err, "Couldn't connect to database")
-	checker := newChecker(saDbMap, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
-	checker.dbMap = emptyDB{}
+	checker := newChecker(emptyDB{}, clock.NewFake(), pa, kp, time.Hour, testValidityDurations, blog.NewMock())
 
-	err = checker.getCerts(context.Background(), false)
+	err := checker.getCerts(context.Background())
 	test.AssertError(t, err, "Should have gotten error from empty DB")
+	if !strings.Contains(err.Error(), "no rows found for certificates issued between") {
+		t.Errorf("expected error to contain 'no rows found for certificates issued between', got '%s'", err.Error())
+	}
+}
+
+// lateDB is a certDB object that helps with TestGetCertsLate.
+// It pretends to contain a single cert issued at the given time.
+type lateDB struct {
+	issuedTime    time.Time
+	selectedACert bool
+}
+
+// SelectNullInt is a method that returns a false sql.NullInt64 struct to
+// mock a null DB response
+func (db *lateDB) SelectNullInt(_ context.Context, _ string, args ...interface{}) (sql.NullInt64, error) {
+	args2 := args[0].(map[string]interface{})
+	begin := args2["begin"].(time.Time)
+	end := args2["end"].(time.Time)
+	if begin.Compare(db.issuedTime) < 0 && end.Compare(db.issuedTime) > 0 {
+		return sql.NullInt64{Int64: 23, Valid: true}, nil
+	}
+	return sql.NullInt64{Valid: false}, nil
+}
+
+func (db *lateDB) Select(_ context.Context, output interface{}, _ string, args ...interface{}) ([]interface{}, error) {
+	db.selectedACert = true
+	// For expediency we respond with an empty list of certificates; the checker will treat this as if it's
+	// reached the end of the list of certificates to process.
+	return nil, nil
+}
+
+func (db *lateDB) SelectOne(_ context.Context, _ interface{}, _ string, _ ...interface{}) error {
+	return nil
+}
+
+// TestGetCertsLate checks for correct behavior when certificates exist only late in the provided window.
+func TestGetCertsLate(t *testing.T) {
+	clk := clock.NewFake()
+	db := &lateDB{issuedTime: clk.Now().Add(-time.Hour)}
+	checkPeriod := 24 * time.Hour
+	checker := newChecker(db, clk, pa, kp, checkPeriod, testValidityDurations, blog.NewMock())
+
+	err := checker.getCerts(context.Background())
+	test.AssertNotError(t, err, "getting certs")
+
+	if !db.selectedACert {
+		t.Errorf("checker never selected a certificate after getting a MIN(id)")
+	}
 }
 
 func TestSaveReport(t *testing.T) {
