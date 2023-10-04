@@ -23,7 +23,7 @@ require (
 	github.com/miekg/pkcs11 v1.1.1
 	github.com/prometheus/client_golang v1.15.1
 	github.com/prometheus/client_model v0.4.0
-	github.com/redis/go-redis/v9 v9.1.0
+	github.com/redis/go-redis/v9 v9.2.1
 	github.com/titanous/rocacheck v0.0.0-20171023193734-afe73141d399
 	github.com/weppos/publicsuffix-go v0.30.1-0.20230620154423-38c92ad2d5c6
 	github.com/zmap/zcrypto v0.0.0-20230310154051-c8b263fd8300
