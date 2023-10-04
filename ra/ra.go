@@ -2362,8 +2362,9 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		_, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: req.Serial})
 		if errors.Is(err, berrors.NotFound) {
 			return nil, berrors.UnknownSerialError()
+		} else {
+			return nil, berrors.NotFoundError("certificate not found")
 		}
-		return nil, err
 	} else if err != nil {
 		return nil, err
 	}
