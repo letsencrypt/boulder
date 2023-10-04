@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -36,6 +37,21 @@ var errLimitDisabled = errors.New("limit disabled")
 // disabledLimitDecision is an "allowed" *Decision that should be returned when
 // a checked limit is found to be disabled.
 var disabledLimitDecision = &Decision{true, 0, 0, 0, time.Time{}}
+
+// BatchEntry is used to batch requests to the limiter.
+type BatchEntry struct {
+	Name Name
+	Id   string
+	Cost int64
+}
+
+// bucketKey returns the key used to store the bucket in the source.
+func (b *BatchEntry) bucketKey() string {
+	return fmt.Sprintf("%s:%s", nameToEnumString(b.Name), b.Id)
+}
+
+// Batch is a slice of *BatchEntry used to batch requests to the limiter.
+type Batch []*BatchEntry
 
 // Limiter provides a high-level interface for rate limiting requests by
 // utilizing a leaky bucket-style approach.
@@ -127,8 +143,7 @@ type Decision struct {
 // wait time before the client can make another request, and the time until the
 // bucket refills to its maximum capacity (resets). If no bucket exists for the
 // given limit Name and client id, a new one will be created WITHOUT the
-// request's cost deducted from its initial capacity. If the specified limit is
-// disabled, ErrLimitDisabled is returned.
+// request's cost deducted from its initial capacity.
 func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost < 0 {
 		return nil, ErrInvalidCostForCheck
@@ -173,8 +188,7 @@ func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (
 // required wait time before the client can make another request, and the time
 // until the bucket refills to its maximum capacity (resets). If no bucket
 // exists for the given limit Name and client id, a new one will be created WITH
-// the request's cost deducted from its initial capacity. If the specified limit
-// is disabled, ErrLimitDisabled is returned.
+// the request's cost deducted from its initial capacity.
 func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
@@ -238,6 +252,96 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 	return d, nil
 }
 
+// BatchSpend checks each bucket in the batch to see if there's enough capacity
+// to allow the request, given the cost. If capacity exists, the cost of the
+// request HAS been deducted from the bucket's capacity, otherwise no cost was
+// deducted. If one or more buckets in the batch do not exist, they will be
+// created WITH the request's cost deducted from the initial capacity. If one or
+// more buckets in the batch are disabled, they will be ignored. The returned
+// *Decision will always include the number of remaining requests in the bucket,
+// the required wait time before the client can make another request, and the
+// time until the bucket refills to its maximum capacity (resets). This is
+// achieved by taking the minimum of the Remaining values for each bucket in the
+// batch, the maximum of the RetryIn and ResetIn values.
+func (l *Limiter) BatchSpend(ctx context.Context, batch Batch) (*Decision, error) {
+	if len(batch) == 0 {
+		return nil, ErrInvalidCost
+	}
+
+	bucketKeys := make([]string, 0, len(batch))
+	for _, entry := range batch {
+		if entry.Cost <= 0 {
+			return nil, ErrInvalidCost
+		}
+		bucketKeys = append(bucketKeys, entry.bucketKey())
+	}
+
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
+	tats, err := l.source.BatchGet(ctx, bucketKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	var minRemaining int64 = math.MaxInt64
+	var maxRetryIn time.Duration
+	var maxResetIn time.Duration
+	newTATs := make(map[string]time.Time)
+	allowed := true
+
+	// Assign nowTAT outside of the loop to avoid clock skew.
+	nowTAT := l.clk.Now()
+
+	for _, entry := range batch {
+		bucketKey := entry.bucketKey()
+		tat, exists := tats[bucketKey]
+		limit, err := l.getLimit(entry.Name, entry.Id)
+		if err != nil {
+			if errors.Is(err, errLimitDisabled) {
+				// Ignore disabled limit.
+				continue
+			}
+			return nil, err
+		}
+
+		if !exists || tat.IsZero() {
+			// First request from this client. A TAT of "now" is equivalent to a
+			// full bucket.
+			tat = nowTAT
+		}
+
+		// Spend the cost and update the consolidated decision.
+		d := maybeSpend(l.clk, limit, tat, entry.Cost)
+		if d.Allowed {
+			newTATs[bucketKey] = d.newTAT
+		}
+
+		// All spend decisions must be allowed for the batch to be considered
+		// allowed.
+		allowed = allowed && d.Allowed
+		minRemaining = min(minRemaining, d.Remaining)
+		maxRetryIn = max(maxRetryIn, d.RetryIn)
+		maxResetIn = max(maxResetIn, d.ResetIn)
+	}
+
+	// Conditionally, spend the batch.
+	if len(newTATs) > 0 && allowed {
+		err = l.source.BatchSet(ctx, newTATs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Consolidated decision for the batch.
+	return &Decision{
+		Allowed:   allowed,
+		Remaining: minRemaining,
+		RetryIn:   maxRetryIn,
+		ResetIn:   maxResetIn,
+	}, nil
+}
+
 // Refund attempts to refund the cost to the bucket identified by limit name and
 // client id. The returned *Decision indicates whether the refund was successful
 // or not. If the refund was successful, the cost of the request was added back
@@ -275,7 +379,90 @@ func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) 
 		return d, nil
 	}
 	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
+}
 
+// BatchRefund attempts to refund quota to the specified buckets in the batch.
+// If a refund was successful for a bucket, the cost is added back to its
+// capacity. If a refund is not possible for a bucket (e.g., already full,
+// invalid amount), no cost is refunded for that bucket. The consolidated
+// *Decision returned indicates whether at least 1 refund was successful
+// (Allowed), the minimum remaining capacity across all buckets (Remaining), and
+// the maximum RetryIn and ResetIn values across all buckets. If one or more
+// buckets in the batch do not exist, they will be ignored.
+func (l *Limiter) BatchRefund(ctx context.Context, batch Batch) (*Decision, error) {
+	if len(batch) == 0 {
+		return nil, ErrInvalidCost
+	}
+
+	bucketKeys := make([]string, 0, len(batch))
+	for _, entry := range batch {
+		if entry.Cost <= 0 {
+			return nil, ErrInvalidCost
+		}
+		bucketKeys = append(bucketKeys, entry.bucketKey())
+	}
+
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
+	tats, err := l.source.BatchGet(ctx, bucketKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	var minRemaining int64 = math.MaxInt64
+	var maxRetryIn time.Duration
+	var maxResetIn time.Duration
+	var allowed bool
+	newTATs := make(map[string]time.Time)
+
+	for _, entry := range batch {
+		bucketKey := entry.bucketKey()
+		tat, exists := tats[bucketKey]
+		limit, err := l.getLimit(entry.Name, entry.Id)
+		if err != nil {
+			if errors.Is(err, errLimitDisabled) {
+				// Ignore disabled limit.
+				continue
+			}
+			return nil, err
+		}
+
+		if !exists || tat.IsZero() {
+			// If the bucket no longer exists, ignore it. A missing bucket is
+			// equivalent to a full bucket.
+			continue
+		}
+
+		// Refund the cost and update the consolidated decision.
+		d := maybeRefund(l.clk, limit, tat, entry.Cost)
+		if d.Allowed {
+			newTATs[bucketKey] = d.newTAT
+		}
+
+		// At least one refund must be allowed for the batch to be considered
+		// allowed.
+		allowed = allowed || d.Allowed
+		minRemaining = min(minRemaining, d.Remaining)
+		maxRetryIn = max(maxRetryIn, d.RetryIn)
+		maxResetIn = max(maxResetIn, d.ResetIn)
+	}
+
+	// Conditionally, refund the batch.
+	if len(newTATs) > 0 {
+		err = l.source.BatchSet(ctx, newTATs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Consolidated decision for the batch.
+	return &Decision{
+		Allowed:   allowed,
+		Remaining: minRemaining,
+		RetryIn:   maxRetryIn,
+		ResetIn:   maxResetIn,
+	}, nil
 }
 
 // Reset resets the specified bucket.

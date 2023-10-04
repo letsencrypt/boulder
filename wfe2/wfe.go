@@ -29,6 +29,7 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
+	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/ratelimits"
 
 	// 'grpc/noncebalancer' is imported for its init function.
@@ -2031,6 +2032,73 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 		respObj.Certificate = certURL
 	}
 	return respObj
+}
+
+// checkNewOrderLimits checks whether sufficient limit quota exists for the
+// subscriber to request of a new order. If so, that quota is spent. If an error
+// is encountered during the check, it is logged but not returned.
+//
+// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
+// This should eventually return a berrors.RateLimit error containing the retry
+// after duration among other information available in the ratelimits.Decision.
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, id int64, orderNames []string) error {
+	var batch ratelimits.Batch
+	regId := strconv.FormatInt(id, 10)
+
+	batch = append(batch, &ratelimits.BatchEntry{
+		Name: ratelimits.NewOrdersPerAccount,
+		Id:   regId,
+		Cost: 1,
+	})
+
+	certsPerDomainIdPrefix := regId + ":"
+	for _, name := range ra.DomainsForRateLimiting(orderNames) {
+		batch = append(batch, &ratelimits.BatchEntry{
+			Name: ratelimits.CertificatesPerDomainPerAccount,
+			Id:   certsPerDomainIdPrefix + name,
+			Cost: 1,
+		})
+	}
+
+	batch = append(batch, &ratelimits.BatchEntry{
+		Name: ratelimits.CertificatesPerFQDNSetPerAccount,
+		Id:   regId + ":" + string(core.HashNames(orderNames)),
+		Cost: 1,
+	})
+
+	batch = append(batch, &ratelimits.BatchEntry{
+		Name: ratelimits.FailedAuthorizationsPerAccount,
+		Id:   regId,
+		Cost: 1,
+	})
+
+	_, err := wfe.limiter.BatchSpend(ctx, batch)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil
+		}
+		// TODO(#5545): Once key-value rate limits are authoritative this log
+		// line should be removed in favor of returning the error.
+		wfe.log.Warningf("checking %s rate limit: %s", batch, err)
+	}
+
+	return nil
+}
+
+// refundNewOrderLimits is typically called when a new order creation fails. It
+// refunds the limit quota consumed by the request, allowing the caller to retry
+// immediately. If an error is encountered during the refund, it is logged but
+// not returned.
+func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, id int64, orderNames []string) error {
+	// NewOrdersPerAccount
+
+	// CertificatesPerName
+
+	// CertificatesPerFQDNSet
+
+	// FailedAuthorizationsPerAccount
+
+	return nil
 }
 
 // NewOrder is used by clients to create a new order object and a set of

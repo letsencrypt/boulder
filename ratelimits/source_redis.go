@@ -3,7 +3,9 @@ package ratelimits
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -84,6 +86,29 @@ func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) 
 	return nil
 }
 
+// BatchSet stores the bucket keys and corresponding TATs using Redis' MSET
+// command. It returns an error if the operation failed and nil otherwise. If a
+// key for a given bucket does not exist, it will be created.
+func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time) error {
+	start := r.clk.Now()
+
+	// Flatten the map into a slice of alternating keys and values.
+	bucketsSlice := make([]interface{}, 0, len(buckets)*2)
+	for k, v := range buckets {
+		bucketsNano := v.UTC().UnixNano()
+		bucketsSlice = append(bucketsSlice, k, bucketsNano)
+	}
+
+	err := r.client.MSet(ctx, bucketsSlice).Err()
+	if err != nil {
+		r.latency.With(prometheus.Labels{"call": "mset", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		return err
+	}
+
+	r.latency.With(prometheus.Labels{"call": "mset", "result": "success"}).Observe(time.Since(start).Seconds())
+	return nil
+}
+
 // Get retrieves the TAT at the specified bucketKey ('name:id'). It returns the
 // TAT and nil if the operation succeeded, or an error if the operation failed.
 // If the bucketKey does not exist, it returns ErrBucketNotFound.
@@ -103,6 +128,46 @@ func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, err
 
 	r.latency.With(prometheus.Labels{"call": "get", "result": "success"}).Observe(time.Since(start).Seconds())
 	return time.Unix(0, tatNano).UTC(), nil
+}
+
+// BatchGet retrieves the TATs at the specified bucketKeys ('name:id'). It
+// returns the TATs and nil if the operation succeeded, or an error if the
+// operation failed. If a bucketKey does not exist, it will be returned in the
+// map with a zero value.
+func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[string]time.Time, error) {
+	start := r.clk.Now()
+
+	results, err := r.client.MGet(ctx, bucketKeys...).Result()
+	if err != nil {
+		r.latency.With(prometheus.Labels{"call": "mget", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
+		return nil, err
+	}
+
+	buckets := make(map[string]time.Time, len(bucketKeys))
+	for i, iface := range results {
+		if iface == nil {
+			// Bucket key does not exist. A zero value timestamp is used to
+			// indicate that the requested bucket does not exist.
+			buckets[bucketKeys[i]] = time.Time{}
+			continue
+		}
+		tatRaw, ok := iface.(string)
+		if !ok {
+			// This should never happen, Set() and BatchSet() should never
+			// store a TATs using a different Redis type.
+			return nil, fmt.Errorf("invalid type for bucketKey %q: %T", bucketKeys[i], iface)
+		}
+		tatNano, err := strconv.ParseInt(tatRaw, 10, 64)
+		if err != nil {
+			// This should never happen, Set() and BatchSet() should never
+			// store a TATs as anything other than a 64-bit integer.
+			return nil, fmt.Errorf("invalid value for bucketKey %q: %s", bucketKeys[i], tatRaw)
+		}
+		buckets[bucketKeys[i]] = time.Unix(0, tatNano).UTC()
+	}
+
+	r.latency.With(prometheus.Labels{"call": "mget", "result": "success"}).Observe(time.Since(start).Seconds())
+	return buckets, nil
 }
 
 // Delete deletes the TAT at the specified bucketKey ('name:id'). It returns an
