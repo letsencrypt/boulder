@@ -26,7 +26,13 @@ const (
 	NewRegistrationsPerIPAddress
 
 	// NewRegistrationsPerIPv6Range uses bucket key 'enum:ipv6rangeCIDR'. The
-	// address range must be a /48.
+	// address range must be a /48. RFC 3177, which was published in 2001,
+	// advised operators to allocate a /48 block of IPv6 addresses for most end
+	// sites. RFC 6177, which was published in 2011 and obsoletes RFC 3177,
+	// advises allocating a smaller /56 block. We've chosen to use the larger
+	// /48 block for our IPv6 rate limiting. See:
+	//   1. https://tools.ietf.org/html/rfc3177#section-3
+	//   2. https://datatracker.ietf.org/doc/html/rfc6177#section-2
 	NewRegistrationsPerIPv6Range
 
 	// NewOrdersPerAccount uses bucket key 'enum:regId'.
@@ -46,6 +52,20 @@ const (
 	// matching regId.
 	CertificatesPerFQDNSetPerAccount
 )
+
+// isValid returns true if the Name is a valid rate limit name.
+func (n Name) isValid() bool {
+	return n > Unknown && n < Name(len(nameToString))
+}
+
+// String returns the string representation of the Name. It allows Name to
+// satisfy the fmt.Stringer interface.
+func (n Name) String() string {
+	if !n.isValid() {
+		return nameToString[Unknown]
+	}
+	return nameToString[n]
+}
 
 // nameToString is a map of Name values to string names.
 var nameToString = map[Name]string{

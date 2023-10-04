@@ -29,9 +29,13 @@ var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 // ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
 
-// ErrBucketAlreadyFull indicates that the bucket already has reached its
-// maximum capacity.
-var ErrBucketAlreadyFull = fmt.Errorf("bucket already full")
+// errLimitDisabled indicates that the limit name specified is valid but is not
+// currently configured.
+var errLimitDisabled = errors.New("limit disabled")
+
+// disabledLimitDecision is an "allowed" *Decision that should be returned when
+// a checked limit is found to be disabled.
+var disabledLimitDecision = &Decision{true, 0, 0, 0, time.Time{}}
 
 // Limiter provides a high-level interface for rate limiting requests by
 // utilizing a leaky bucket-style approach.
@@ -46,6 +50,7 @@ type Limiter struct {
 	source source
 	clk    clock.Clock
 
+	spendLatency       *prometheus.HistogramVec
 	overrideUsageGauge *prometheus.GaugeVec
 }
 
@@ -61,6 +66,14 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string, stat
 	if err != nil {
 		return nil, err
 	}
+
+	limiter.spendLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "ratelimits_spend_latency",
+		Help: fmt.Sprintf("Latency of ratelimit checks labeled by limit=[name] and decision=[%s|%s], in seconds", Allowed, Denied),
+		// Exponential buckets ranging from 0.0005s to 3s.
+		Buckets: prometheus.ExponentialBuckets(0.0005, 3, 8),
+	}, []string{"limit", "decision"})
+	stats.MustRegister(limiter.spendLatency)
 
 	if overrides == "" {
 		// No overrides specified, initialize an empty map.
@@ -114,7 +127,8 @@ type Decision struct {
 // wait time before the client can make another request, and the time until the
 // bucket refills to its maximum capacity (resets). If no bucket exists for the
 // given limit Name and client id, a new one will be created WITHOUT the
-// request's cost deducted from its initial capacity.
+// request's cost deducted from its initial capacity. If the specified limit is
+// disabled, ErrLimitDisabled is returned.
 func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost < 0 {
 		return nil, ErrInvalidCostForCheck
@@ -122,6 +136,9 @@ func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (
 
 	limit, err := l.getLimit(name, id)
 	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return disabledLimitDecision, nil
+		}
 		return nil, err
 	}
 
@@ -129,6 +146,9 @@ func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (
 		return nil, ErrInvalidCostOverLimit
 	}
 
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		if !errors.Is(err, ErrBucketNotFound) {
@@ -153,7 +173,8 @@ func (l *Limiter) Check(ctx context.Context, name Name, id string, cost int64) (
 // required wait time before the client can make another request, and the time
 // until the bucket refills to its maximum capacity (resets). If no bucket
 // exists for the given limit Name and client id, a new one will be created WITH
-// the request's cost deducted from its initial capacity.
+// the request's cost deducted from its initial capacity. If the specified limit
+// is disabled, ErrLimitDisabled is returned.
 func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (*Decision, error) {
 	if cost <= 0 {
 		return nil, ErrInvalidCost
@@ -161,6 +182,9 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 
 	limit, err := l.getLimit(name, id)
 	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return disabledLimitDecision, nil
+		}
 		return nil, err
 	}
 
@@ -168,11 +192,27 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 		return nil, ErrInvalidCostOverLimit
 	}
 
+	start := l.clk.Now()
+	status := Denied
+	defer func() {
+		l.spendLatency.WithLabelValues(name.String(), status).Observe(l.clk.Since(start).Seconds())
+	}()
+
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		if errors.Is(err, ErrBucketNotFound) {
 			// First request from this client.
-			return l.initialize(ctx, limit, name, id, cost)
+			d, err := l.initialize(ctx, limit, name, id, cost)
+			if err != nil {
+				return nil, err
+			}
+			if d.Allowed {
+				status = Allowed
+			}
+			return d, nil
 		}
 		return nil, err
 	}
@@ -183,13 +223,19 @@ func (l *Limiter) Spend(ctx context.Context, name Name, id string, cost int64) (
 		// Calculate the current utilization of the override limit for the
 		// specified client id.
 		utilization := float64(limit.Burst-d.Remaining) / float64(limit.Burst)
-		l.overrideUsageGauge.WithLabelValues(nameToString[name], id).Set(utilization)
+		l.overrideUsageGauge.WithLabelValues(name.String(), id).Set(utilization)
 	}
 
 	if !d.Allowed {
 		return d, nil
 	}
-	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
+
+	err = l.source.Set(ctx, bucketKey(name, id), d.newTAT)
+	if err != nil {
+		return nil, err
+	}
+	status = Allowed
+	return d, nil
 }
 
 // Refund attempts to refund the cost to the bucket identified by limit name and
@@ -210,16 +256,23 @@ func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) 
 
 	limit, err := l.getLimit(name, id)
 	if err != nil {
+		if errors.Is(err, errLimitDisabled) {
+			return disabledLimitDecision, nil
+		}
 		return nil, err
 	}
 
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	tat, err := l.source.Get(ctx, bucketKey(name, id))
 	if err != nil {
 		return nil, err
 	}
 	d := maybeRefund(l.clk, limit, tat, cost)
 	if !d.Allowed {
-		return d, ErrBucketAlreadyFull
+		// The bucket is already at maximum capacity.
+		return d, nil
 	}
 	return d, l.source.Set(ctx, bucketKey(name, id), d.newTAT)
 
@@ -227,6 +280,9 @@ func (l *Limiter) Refund(ctx context.Context, name Name, id string, cost int64) 
 
 // Reset resets the specified bucket.
 func (l *Limiter) Reset(ctx context.Context, name Name, id string) error {
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	return l.source.Delete(ctx, bucketKey(name, id))
 }
 
@@ -234,6 +290,10 @@ func (l *Limiter) Reset(ctx context.Context, name Name, id string) error {
 // cost of the request factored into the initial state.
 func (l *Limiter) initialize(ctx context.Context, rl limit, name Name, id string, cost int64) (*Decision, error) {
 	d := maybeSpend(l.clk, rl, l.clk.Now(), cost)
+
+	// Remove cancellation from the request context so that transactions are not
+	// interrupted by a client disconnect.
+	ctx = context.WithoutCancel(ctx)
 	err := l.source.Set(ctx, bucketKey(name, id), d.newTAT)
 	if err != nil {
 		return nil, err
@@ -244,8 +304,14 @@ func (l *Limiter) initialize(ctx context.Context, rl limit, name Name, id string
 
 // GetLimit returns the limit for the specified by name and id, name is
 // required, id is optional. If id is left unspecified, the default limit for
-// the limit specified by name is returned.
+// the limit specified by name is returned. If no default limit exists for the
+// specified name, ErrLimitDisabled is returned.
 func (l *Limiter) getLimit(name Name, id string) (limit, error) {
+	if !name.isValid() {
+		// This should never happen. Callers should only be specifying the limit
+		// Name enums defined in this package.
+		return limit{}, fmt.Errorf("specified name enum %q, is invalid", name)
+	}
 	if id != "" {
 		// Check for override.
 		ol, ok := l.overrides[bucketKey(name, id)]
@@ -257,5 +323,5 @@ func (l *Limiter) getLimit(name Name, id string) (limit, error) {
 	if ok {
 		return dl, nil
 	}
-	return limit{}, fmt.Errorf("limit %q does not exist", name)
+	return limit{}, errLimitDisabled
 }

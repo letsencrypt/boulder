@@ -81,7 +81,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0% of
 			// the bucket has been consumed.
 			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit": nameToString[NewRegistrationsPerIPAddress], "client_id": tenZeroZeroTwo}, 0)
+				"limit": NewRegistrationsPerIPAddress.String(), "client_id": tenZeroZeroTwo}, 0)
 
 			// Attempt to check a spend of 41 requests (a cost > the limit burst
 			// capacity), this should fail with a specific error.
@@ -108,7 +108,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			// Verify our overrideUsageGauge is being set correctly. 1.0 == 100% of
 			// the bucket has been consumed.
 			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit_name": nameToString[NewRegistrationsPerIPAddress], "client_id": tenZeroZeroTwo}, 1.0)
+				"limit_name": NewRegistrationsPerIPAddress.String(), "client_id": tenZeroZeroTwo}, 1.0)
 
 			// Verify our RetryIn is correct. 1 second == 1000 milliseconds and
 			// 1000/40 = 25 milliseconds per request.
@@ -337,7 +337,8 @@ func Test_Limiter_RefundAndReset(t *testing.T) {
 
 			// Refund 1 requests above our limit, this should fail.
 			d, err = l.Refund(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
-			test.AssertErrorIs(t, err, ErrBucketAlreadyFull)
+			test.AssertNotError(t, err, "should not error")
+			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(20))
 		})
 	}

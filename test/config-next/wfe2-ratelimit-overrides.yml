@@ -1,0 +1,1 @@
+NewRegistrationsPerIPAddress:127.0.0.1: { burst: 1000000, count: 1000000, period: 168h }

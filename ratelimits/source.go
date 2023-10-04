@@ -12,13 +12,27 @@ var ErrBucketNotFound = fmt.Errorf("bucket not found")
 
 // source is an interface for creating and modifying TATs.
 type source interface {
-	// Set stores the TAT at the specified bucketKey ('name:id').
+	// Set stores the TAT at the specified bucketKey (formatted as 'name:id').
+	// Implementations MUST ensure non-blocking operations by either:
+	//   a) applying a deadline or timeout to the context WITHIN the method, or
+	//   b) guaranteeing the operation will not block indefinitely (e.g. via
+	//    the underlying storage client implementation).
 	Set(ctx context.Context, bucketKey string, tat time.Time) error
 
-	// Get retrieves the TAT at the specified bucketKey ('name:id').
+	// Get retrieves the TAT associated with the specified bucketKey (formatted
+	// as 'name:id'). Implementations MUST ensure non-blocking operations by
+	// either:
+	//   a) applying a deadline or timeout to the context WITHIN the method, or
+	//   b) guaranteeing the operation will not block indefinitely (e.g. via
+	//    the underlying storage client implementation).
 	Get(ctx context.Context, bucketKey string) (time.Time, error)
 
-	// Delete deletes the TAT at the specified bucketKey ('name:id').
+	// Delete removes the TAT associated with the specified bucketKey (formatted
+	// as 'name:id'). Implementations MUST ensure non-blocking operations by
+	// either:
+	//   a) applying a deadline or timeout to the context WITHIN the method, or
+	//   b) guaranteeing the operation will not block indefinitely (e.g. via
+	//    the underlying storage client implementation).
 	Delete(ctx context.Context, bucketKey string) error
 }
 

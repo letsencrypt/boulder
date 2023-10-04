@@ -105,6 +105,30 @@
 		"staleTimeout": "5m",
 		"authorizationLifetimeDays": 30,
 		"pendingAuthorizationLifetimeDays": 7,
+		"limiter": {
+			"redis": {
+				"username": "boulder-wfe",
+				"passwordFile": "test/secrets/wfe_ratelimits_redis_password",
+				"lookups": [
+					{
+						"Service": "redisratelimits",
+						"Domain": "service.consul"
+					}
+				],
+				"lookupDNSAuthority": "consul.service.consul",
+				"readTimeout": "250ms",
+				"writeTimeout": "250ms",
+				"poolSize": 100,
+				"routeRandomly": true,
+				"tls": {
+					"caCertFile": "test/redis-tls/minica.pem",
+					"certFile": "test/redis-tls/boulder/cert.pem",
+					"keyFile": "test/redis-tls/boulder/key.pem"
+				}
+			},
+			"Defaults": "test/config-next/wfe2-ratelimit-defaults.yml",
+			"Overrides": "test/config-next/wfe2-ratelimit-overrides.yml"
+		},
 		"features": {
 			"ServeRenewalInfo": true,
 			"RequireCommonName": false

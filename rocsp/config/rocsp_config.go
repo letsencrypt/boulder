@@ -16,10 +16,14 @@ import (
 	"github.com/letsencrypt/boulder/cmd"
 	"github.com/letsencrypt/boulder/config"
 	"github.com/letsencrypt/boulder/issuance"
+	bredis "github.com/letsencrypt/boulder/redis"
 	"github.com/letsencrypt/boulder/rocsp"
 )
 
 // RedisConfig contains the configuration needed to act as a Redis client.
+//
+// TODO(#7081): Deprecate this in favor of bredis.Config once we can support SRV
+// lookups in rocsp.
 type RedisConfig struct {
 	// PasswordFile is a file containing the password for the Redis user.
 	cmd.PasswordConfig
@@ -166,6 +170,7 @@ func MakeReadClient(c *RedisConfig, clk clock.Clock, stats prometheus.Registerer
 		PoolTimeout:     c.PoolTimeout.Duration,
 		ConnMaxIdleTime: c.IdleTimeout.Duration,
 	})
+	bredis.MustRegisterClientMetricsCollector(rdb, stats, rdb.Options().Addrs, rdb.Options().Username)
 	return rocsp.NewReadingClient(rdb, c.Timeout.Duration, clk, stats), nil
 }
 

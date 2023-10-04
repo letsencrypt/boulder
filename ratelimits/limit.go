@@ -119,7 +119,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 		err = validateIdForName(name, id)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"validating name %s and id %q for override limit %q: %w", nameToString[name], id, k, err)
+				"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 		}
 		if name == CertificatesPerFQDNSetPerAccount {
 			// FQDNSet hashes are not a nice thing to ask for in a config file,

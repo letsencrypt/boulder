@@ -25,6 +25,8 @@ import (
 	blog "github.com/letsencrypt/boulder/log"
 	"github.com/letsencrypt/boulder/nonce"
 	rapb "github.com/letsencrypt/boulder/ra/proto"
+	"github.com/letsencrypt/boulder/ratelimits"
+	bredis "github.com/letsencrypt/boulder/redis"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/wfe2"
 )
@@ -137,6 +139,25 @@ type Config struct {
 		PendingAuthorizationLifetimeDays int `validate:"required,min=1,max=29"`
 
 		AccountCache *CacheConfig
+
+		Limiter struct {
+			// Redis contains the configuration necessary to connect to Redis
+			// for rate limiting. This field is required to enable rate
+			// limiting.
+			Redis *bredis.Config `validate:"required_with=Defaults"`
+
+			// Defaults is a path to a YAML file containing default rate limits.
+			// See: ratelimits/README.md for details. This field is required to
+			// enable rate limiting. If any individual rate limit is not set,
+			// that limit will be disabled.
+			Defaults string `validate:"required_with=Redis"`
+
+			// Overrides is a path to a YAML file containing overrides for the
+			// default rate limits. See: ratelimits/README.md for details. If
+			// this field is not set, all requesters will be subject to the
+			// default rate limits.
+			Overrides string
+		}
 	}
 
 	Syslog        cmd.SyslogConfig
@@ -318,6 +339,18 @@ func main() {
 	}
 	pendingAuthorizationLifetime := time.Duration(c.WFE.PendingAuthorizationLifetimeDays) * 24 * time.Hour
 
+	var limiter *ratelimits.Limiter
+	var limiterRedis *bredis.Ring
+	if c.WFE.Limiter.Defaults != "" {
+		// Setup rate limiting.
+		limiterRedis, err = bredis.NewRingFromConfig(*c.WFE.Limiter.Redis, stats, logger)
+		cmd.FailOnError(err, "Failed to create Redis ring")
+
+		source := ratelimits.NewRedisSource(limiterRedis.Ring, clk, stats)
+		limiter, err = ratelimits.NewLimiter(clk, source, c.WFE.Limiter.Defaults, c.WFE.Limiter.Overrides, stats)
+		cmd.FailOnError(err, "Failed to create rate limiter")
+	}
+
 	var accountGetter wfe2.AccountGetter
 	if c.WFE.AccountCache != nil {
 		accountGetter = wfe2.NewAccountCache(sac,
@@ -346,6 +379,7 @@ func main() {
 		rnc,
 		npKey,
 		accountGetter,
+		limiter,
 	)
 	cmd.FailOnError(err, "Unable to create WFE")
 
@@ -402,6 +436,7 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(ctx)
 		_ = tlsSrv.Shutdown(ctx)
+		limiterRedis.StopLookups()
 		oTelShutdown(ctx)
 	}()
 
