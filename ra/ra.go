@@ -19,7 +19,6 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weppos/publicsuffix-go/publicsuffix"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -1365,26 +1364,6 @@ func (ra *RegistrationAuthorityImpl) getSCTs(ctx context.Context, cert []byte, e
 	return scts, nil
 }
 
-// DomainsForRateLimiting transforms a list of FQDNs into a list of eTLD+1's
-// for the purpose of rate limiting. It also de-duplicates the output
-// domains. Exact public suffix matches are included.
-func DomainsForRateLimiting(names []string) []string {
-	var domains []string
-	for _, name := range names {
-		domain, err := publicsuffix.Domain(name)
-		if err != nil {
-			// The only possible errors are:
-			// (1) publicsuffix.Domain is giving garbage values
-			// (2) the public suffix is the domain itself
-			// We assume 2 and include the original name in the result.
-			domains = append(domains, name)
-		} else {
-			domains = append(domains, domain)
-		}
-	}
-	return core.UniqueLowerNames(domains)
-}
-
 // enforceNameCounts uses the provided count RPC to find a count of certificates
 // for each of the names. If the count for any of the names exceeds the limit
 // for the given registration then the names out of policy are returned to be
@@ -1437,7 +1416,7 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerNameLimit(ctx context.C
 		return nil
 	}
 
-	tldNames := DomainsForRateLimiting(names)
+	tldNames := ratelimits.DomainsForRateLimiting(names)
 	namesOutOfLimit, earliest, err := ra.enforceNameCounts(ctx, tldNames, limit, regID)
 	if err != nil {
 		return fmt.Errorf("checking certificates per name limit for %q: %s",

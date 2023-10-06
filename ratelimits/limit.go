@@ -133,10 +133,10 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			regId := regIdDomains[0]
 			domains := strings.Split(regIdDomains[1], ",")
 			fqdnSet := core.HashNames(domains)
-			id = fmt.Sprintf("%s:%s", regId, fqdnSet)
+			id = joinWithColon(regId, string(fqdnSet))
 		}
 		v.isOverride = true
-		parsed[bucketKey(name, id)] = precomputeLimit(v)
+		parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v)
 	}
 	return parsed, nil
 }
@@ -159,7 +159,7 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 		if !ok {
 			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
 		}
-		parsed[nameToEnumString(name)] = precomputeLimit(v)
+		parsed[name.EnumString()] = precomputeLimit(v)
 	}
 	return parsed, nil
 }

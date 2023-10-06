@@ -29,7 +29,6 @@ import (
 	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/goodkey"
 	bgrpc "github.com/letsencrypt/boulder/grpc"
-	"github.com/letsencrypt/boulder/ra"
 	"github.com/letsencrypt/boulder/ratelimits"
 
 	// 'grpc/noncebalancer' is imported for its init function.
@@ -639,7 +638,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
-	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
+	bucket, err := ratelimits.NewRegistrationsPerIPAddressBucket(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPAddress)
+		return
+	}
+
+	decision, err := wfe.limiter.Spend(ctx, bucket.WithCost(1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -650,11 +655,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		return
 	}
 
-	// See docs for ratelimits.NewRegistrationsPerIPv6Range for more information
-	// on the selection of a /48 block size for IPv6 ranges.
-	ipMask := net.CIDRMask(48, 128)
-	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
-	_, err = wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
+	bucket, err = ratelimits.NewRegistrationsPerIPv6RangeBucket(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
+		return
+	}
+
+	_, err = wfe.limiter.Spend(ctx, bucket.WithCost(1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
@@ -679,7 +686,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
 	}
 
-	_, err := wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
+	bucket, err := ratelimits.NewRegistrationsPerIPAddressBucket(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPAddress)
+		return
+	}
+
+	_, err = wfe.limiter.Refund(ctx, bucket.WithCost(1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -689,11 +702,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		return
 	}
 
-	// See docs for ratelimits.NewRegistrationsPerIPv6Range for more information
-	// on the selection of a /48 block size for IPv6 ranges.
-	ipMask := net.CIDRMask(48, 128)
-	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
-	_, err = wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
+	bucket, err = ratelimits.NewRegistrationsPerIPv6RangeBucket(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
+		return
+	}
+
+	_, err = wfe.limiter.Refund(ctx, bucket.WithCost(1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
@@ -2041,64 +2056,92 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // TODO(#5545): For now we're simply exercising the new rate limiter codepath.
 // This should eventually return a berrors.RateLimit error containing the retry
 // after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, id int64, orderNames []string) error {
-	var batch ratelimits.Batch
-	regId := strconv.FormatInt(id, 10)
-
-	batch = append(batch, &ratelimits.BatchEntry{
-		Name: ratelimits.NewOrdersPerAccount,
-		Id:   regId,
-		Cost: 1,
-	})
-
-	certsPerDomainIdPrefix := regId + ":"
-	for _, name := range ra.DomainsForRateLimiting(orderNames) {
-		batch = append(batch, &ratelimits.BatchEntry{
-			Name: ratelimits.CertificatesPerDomainPerAccount,
-			Id:   certsPerDomainIdPrefix + name,
-			Cost: 1,
-		})
-	}
-
-	batch = append(batch, &ratelimits.BatchEntry{
-		Name: ratelimits.CertificatesPerFQDNSetPerAccount,
-		Id:   regId + ":" + string(core.HashNames(orderNames)),
-		Cost: 1,
-	})
-
-	batch = append(batch, &ratelimits.BatchEntry{
-		Name: ratelimits.FailedAuthorizationsPerAccount,
-		Id:   regId,
-		Cost: 1,
-	})
-
-	_, err := wfe.limiter.BatchSpend(ctx, batch)
-	if err != nil {
+func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, orderNames []string) {
+	var batch []ratelimits.BucketWithCost
+	warn := func(err error, limit ratelimits.Name) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil
+			return
 		}
 		// TODO(#5545): Once key-value rate limits are authoritative this log
 		// line should be removed in favor of returning the error.
-		wfe.log.Warningf("checking %s rate limit: %s", batch, err)
+		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
-	return nil
+	bucket, err := ratelimits.NewOrdersPerAccountBucket(regId)
+	if err != nil {
+		warn(err, ratelimits.NewOrdersPerAccount)
+		return
+	}
+	batch = append(batch, bucket.WithCost(1))
+
+	buckets, err := ratelimits.NewCertificatesPerDomainPerAccountBucketsWithCost(regId, orderNames, 1)
+	if err != nil {
+		warn(err, ratelimits.CertificatesPerDomainPerAccount)
+		return
+	}
+	batch = append(batch, buckets...)
+
+	bucket, err = ratelimits.NewFailedAuthorizationsPerAccountBucket(regId)
+	if err != nil {
+		warn(err, ratelimits.FailedAuthorizationsPerAccount)
+		return
+	}
+	batch = append(batch, bucket.WithCost(1))
+
+	_, err = wfe.limiter.BatchSpend(ctx, batch)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		warn(err, ratelimits.NewOrdersPerAccount)
+		return
+	}
 }
 
 // refundNewOrderLimits is typically called when a new order creation fails. It
 // refunds the limit quota consumed by the request, allowing the caller to retry
 // immediately. If an error is encountered during the refund, it is logged but
 // not returned.
-func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, id int64, orderNames []string) error {
-	// NewOrdersPerAccount
+func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, regId int64, orderNames []string) {
+	var batch []ratelimits.BucketWithCost
+	warn := func(err error, limit ratelimits.Name) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		// TODO(#5545): Once key-value rate limits are authoritative this log
+		// line should be removed in favor of returning the error.
+		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
+	}
 
-	// CertificatesPerName
+	bucket, err := ratelimits.NewOrdersPerAccountBucket(regId)
+	if err != nil {
+		warn(err, ratelimits.NewOrdersPerAccount)
+		return
+	}
+	batch = append(batch, bucket.WithCost(1))
 
-	// CertificatesPerFQDNSet
+	buckets, err := ratelimits.NewCertificatesPerDomainPerAccountBucketsWithCost(regId, orderNames, 1)
+	if err != nil {
+		warn(err, ratelimits.CertificatesPerDomainPerAccount)
+		return
+	}
+	batch = append(batch, buckets...)
 
-	// FailedAuthorizationsPerAccount
+	bucket, err = ratelimits.NewFailedAuthorizationsPerAccountBucket(regId)
+	if err != nil {
+		warn(err, ratelimits.FailedAuthorizationsPerAccount)
+		return
+	}
+	batch = append(batch, bucket.WithCost(1))
 
-	return nil
+	_, err = wfe.limiter.BatchRefund(ctx, batch)
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return
+		}
+		warn(err, ratelimits.NewOrdersPerAccount)
+		return
+	}
 }
 
 // NewOrder is used by clients to create a new order object and a set of

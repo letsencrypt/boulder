@@ -13,8 +13,10 @@ import (
 // limit names as strings and to provide a type-safe way to refer to rate
 // limits.
 //
-// IMPORTANT: If you add a new limit Name, you MUST add it to the 'nameToString'
-// mapping and idValidForName function below.
+// IMPORTANT: If you add a new limit Name, you MUST add:
+//   - it to the nameToString mapping,
+//   - an entry for it in the validateIdForName(), and
+//   - provide a Bucket constructor in bucket.go.
 type Name int
 
 const (
@@ -65,6 +67,14 @@ func (n Name) String() string {
 		return nameToString[Unknown]
 	}
 	return nameToString[n]
+}
+
+// EnumString returns the string representation of the Name enumeration.
+func (n Name) EnumString() string {
+	if !n.isValid() {
+		return nameToString[Unknown]
+	}
+	return strconv.Itoa(int(n))
 }
 
 // nameToString is a map of Name values to string names.
@@ -209,14 +219,3 @@ var limitNames = func() []string {
 	}
 	return names
 }()
-
-// nameToEnumString converts the integer value of the Name enumeration to its
-// string representation.
-func nameToEnumString(s Name) string {
-	return strconv.Itoa(int(s))
-}
-
-// bucketKey returns the key used to store a rate limit bucket.
-func bucketKey(name Name, id string) string {
-	return nameToEnumString(name) + ":" + id
-}

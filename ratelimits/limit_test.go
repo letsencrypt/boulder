@@ -183,13 +183,10 @@ func Test_validateIdForName(t *testing.T) {
 }
 
 func Test_loadAndParseOverrideLimits(t *testing.T) {
-	newRegistrationsPerIPAddressEnumStr := nameToEnumString(NewRegistrationsPerIPAddress)
-	newRegistrationsPerIPv6RangeEnumStr := nameToEnumString(NewRegistrationsPerIPv6Range)
-
 	// Load a single valid override limit with Id formatted as 'enum:RegId'.
 	l, err := loadAndParseOverrideLimits("testdata/working_override.yml")
 	test.AssertNotError(t, err, "valid single override limit")
-	expectKey := newRegistrationsPerIPAddressEnumStr + ":" + "10.0.0.2"
+	expectKey := NewRegistrationsPerIPAddress.EnumString() + ":" + "10.0.0.2"
 	test.AssertEquals(t, l[expectKey].Burst, int64(40))
 	test.AssertEquals(t, l[expectKey].Count, int64(40))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
@@ -197,19 +194,19 @@ func Test_loadAndParseOverrideLimits(t *testing.T) {
 	// Load single valid override limit with Id formatted as 'regId:domain'.
 	l, err = loadAndParseOverrideLimits("testdata/working_override_regid_domain.yml")
 	test.AssertNotError(t, err, "valid single override limit with Id of regId:domain")
-	expectKey = nameToEnumString(CertificatesPerDomainPerAccount) + ":" + "12345678:example.com"
+	expectKey = CertificatesPerDomainPerAccount.EnumString() + ":" + "12345678:example.com"
 	test.AssertEquals(t, l[expectKey].Burst, int64(40))
 	test.AssertEquals(t, l[expectKey].Count, int64(40))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
 
 	// Load multiple valid override limits with 'enum:RegId' Ids.
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides.yml")
-	expectKey1 := newRegistrationsPerIPAddressEnumStr + ":" + "10.0.0.2"
+	expectKey1 := NewRegistrationsPerIPAddress.EnumString() + ":" + "10.0.0.2"
 	test.AssertNotError(t, err, "multiple valid override limits")
 	test.AssertEquals(t, l[expectKey1].Burst, int64(40))
 	test.AssertEquals(t, l[expectKey1].Count, int64(40))
 	test.AssertEquals(t, l[expectKey1].Period.Duration, time.Second)
-	expectKey2 := newRegistrationsPerIPv6RangeEnumStr + ":" + "2001:0db8:0000::/48"
+	expectKey2 := NewRegistrationsPerIPv6Range.EnumString() + ":" + "2001:0db8:0000::/48"
 	test.AssertEquals(t, l[expectKey2].Burst, int64(50))
 	test.AssertEquals(t, l[expectKey2].Count, int64(50))
 	test.AssertEquals(t, l[expectKey2].Period.Duration, time.Second*2)
@@ -221,9 +218,9 @@ func Test_loadAndParseOverrideLimits(t *testing.T) {
 	firstEntryFQDNSetHash := string(core.HashNames([]string{"example.com"}))
 	secondEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net"}))
 	thirdEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net", "example.org"}))
-	firstEntryKey := nameToEnumString(CertificatesPerFQDNSetPerAccount) + ":" + "12345678:" + firstEntryFQDNSetHash
-	secondEntryKey := nameToEnumString(CertificatesPerFQDNSetPerAccount) + ":" + "12345678:" + secondEntryFQDNSetHash
-	thirdEntryKey := nameToEnumString(CertificatesPerFQDNSetPerAccount) + ":" + "12345678:" + thirdEntryFQDNSetHash
+	firstEntryKey := CertificatesPerFQDNSetPerAccount.EnumString() + ":" + "12345678:" + firstEntryFQDNSetHash
+	secondEntryKey := CertificatesPerFQDNSetPerAccount.EnumString() + ":" + "12345678:" + secondEntryFQDNSetHash
+	thirdEntryKey := CertificatesPerFQDNSetPerAccount.EnumString() + ":" + "12345678:" + thirdEntryFQDNSetHash
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides_regid_fqdnset.yml")
 	test.AssertNotError(t, err, "multiple valid override limits with Id of regId:fqdnSets")
 	test.AssertEquals(t, l[firstEntryKey].Burst, int64(40))
@@ -278,25 +275,22 @@ func Test_loadAndParseOverrideLimits(t *testing.T) {
 }
 
 func Test_loadAndParseDefaultLimits(t *testing.T) {
-	newRestistrationsPerIPv4AddressEnumStr := nameToEnumString(NewRegistrationsPerIPAddress)
-	newRegistrationsPerIPv6RangeEnumStr := nameToEnumString(NewRegistrationsPerIPv6Range)
-
 	// Load a single valid default limit.
 	l, err := loadAndParseDefaultLimits("testdata/working_default.yml")
 	test.AssertNotError(t, err, "valid single default limit")
-	test.AssertEquals(t, l[newRestistrationsPerIPv4AddressEnumStr].Burst, int64(20))
-	test.AssertEquals(t, l[newRestistrationsPerIPv4AddressEnumStr].Count, int64(20))
-	test.AssertEquals(t, l[newRestistrationsPerIPv4AddressEnumStr].Period.Duration, time.Second)
+	test.AssertEquals(t, l[NewRegistrationsPerIPAddress.EnumString()].Burst, int64(20))
+	test.AssertEquals(t, l[NewRegistrationsPerIPAddress.EnumString()].Count, int64(20))
+	test.AssertEquals(t, l[NewRegistrationsPerIPAddress.EnumString()].Period.Duration, time.Second)
 
 	// Load multiple valid default limits.
 	l, err = loadAndParseDefaultLimits("testdata/working_defaults.yml")
 	test.AssertNotError(t, err, "multiple valid default limits")
-	test.AssertEquals(t, l[newRestistrationsPerIPv4AddressEnumStr].Burst, int64(20))
-	test.AssertEquals(t, l[newRestistrationsPerIPv4AddressEnumStr].Count, int64(20))
-	test.AssertEquals(t, l[newRestistrationsPerIPv4AddressEnumStr].Period.Duration, time.Second)
-	test.AssertEquals(t, l[newRegistrationsPerIPv6RangeEnumStr].Burst, int64(30))
-	test.AssertEquals(t, l[newRegistrationsPerIPv6RangeEnumStr].Count, int64(30))
-	test.AssertEquals(t, l[newRegistrationsPerIPv6RangeEnumStr].Period.Duration, time.Second*2)
+	test.AssertEquals(t, l[NewRegistrationsPerIPAddress.EnumString()].Burst, int64(20))
+	test.AssertEquals(t, l[NewRegistrationsPerIPAddress.EnumString()].Count, int64(20))
+	test.AssertEquals(t, l[NewRegistrationsPerIPAddress.EnumString()].Period.Duration, time.Second)
+	test.AssertEquals(t, l[NewRegistrationsPerIPv6Range.EnumString()].Burst, int64(30))
+	test.AssertEquals(t, l[NewRegistrationsPerIPv6Range.EnumString()].Count, int64(30))
+	test.AssertEquals(t, l[NewRegistrationsPerIPv6Range.EnumString()].Period.Duration, time.Second*2)
 
 	// Path is empty string.
 	_, err = loadAndParseDefaultLimits("")
