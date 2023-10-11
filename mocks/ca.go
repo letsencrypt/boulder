@@ -5,10 +5,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"time"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // MockCA is a mock of a CA that always returns the cert from PEM in response to
@@ -34,13 +36,18 @@ func (ca *MockCA) IssuePrecertificate(ctx context.Context, _ *capb.IssueCertific
 
 // IssueCertificateForPrecertificate is a mock
 func (ca *MockCA) IssueCertificateForPrecertificate(ctx context.Context, req *capb.IssueCertificateForPrecertificateRequest, _ ...grpc.CallOption) (*corepb.Certificate, error) {
+	now := time.Now()
+	expires := now.Add(1 * time.Hour)
+
 	return &corepb.Certificate{
 		Der:            req.DER,
 		RegistrationID: 1,
 		Serial:         "mock",
 		Digest:         "mock",
-		IssuedNS:       1,
-		ExpiresNS:      1,
+		IssuedNS:       now.UnixNano(),
+		Issued:         timestamppb.New(now),
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 	}, nil
 }
 

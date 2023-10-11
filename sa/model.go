@@ -354,6 +354,7 @@ func registrationModelToPb(reg *regModel) (*corepb.Registration, error) {
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
 		CreatedAtNS:     reg.CreatedAt.UTC().UnixNano(),
+		CreatedAt:       timestamppb.New(reg.CreatedAt.UTC()),
 		Status:          reg.Status,
 	}, nil
 }
@@ -424,7 +425,9 @@ func modelToOrder(om *orderModel) (*corepb.Order, error) {
 		Id:                om.ID,
 		RegistrationID:    om.RegistrationID,
 		ExpiresNS:         om.Expires.UnixNano(),
+		Expires:           timestamppb.New(om.Expires),
 		CreatedNS:         om.Created.UnixNano(),
+		Created:           timestamppb.New(om.Created),
 		CertificateSerial: om.CertificateSerial,
 		BeganProcessing:   om.BeganProcessing,
 	}
@@ -673,8 +676,8 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 
 			// If validated Unix timestamp is zero then keep the core.Challenge Validated object nil.
 			var validated *time.Time
-			if chall.Validated != 0 {
-				val := time.Unix(0, chall.Validated).UTC()
+			if chall.ValidatedNS != 0 {
+				val := time.Unix(0, chall.ValidatedNS).UTC()
 				validated = &val
 			}
 			am.AttemptedAt = validated
@@ -779,6 +782,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 		Identifier:     am.IdentifierValue,
 		RegistrationID: am.RegistrationID,
 		ExpiresNS:      am.Expires.UTC().UnixNano(),
+		Expires:        timestamppb.New(am.Expires),
 	}
 	// Populate authorization challenge array. We do this by iterating through
 	// the challenge type bitmap and creating a challenge of each type if its
@@ -807,11 +811,14 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 						return nil, err
 					}
 					// Get the attemptedAt time and assign to the challenge validated time.
-					var validated int64
+					var validatedInt int64 = 0
+					validatedTS := timestamppb.New(time.Time{})
 					if am.AttemptedAt != nil {
-						validated = am.AttemptedAt.UTC().UnixNano()
+						validatedInt = am.AttemptedAt.UTC().UnixNano()
+						validatedTS = timestamppb.New(*am.AttemptedAt)
 					}
-					challenge.Validated = validated
+					challenge.ValidatedNS = validatedInt
+					challenge.Validated = validatedTS
 					pb.Challenges = append(pb.Challenges, challenge)
 				}
 			} else {
@@ -851,6 +858,7 @@ func incidentModelToPB(i incidentModel) sapb.Incident {
 		SerialTable: i.SerialTable,
 		Url:         i.URL,
 		RenewByNS:   i.RenewBy.UnixNano(),
+		RenewBy:     timestamppb.New(i.RenewBy),
 		Enabled:     i.Enabled,
 	}
 }

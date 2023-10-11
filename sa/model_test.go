@@ -18,6 +18,7 @@ import (
 	"github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test/vars"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -62,18 +63,23 @@ func TestRegistrationModelToPb(t *testing.T) {
 func TestRegistrationPbToModel(t *testing.T) {}
 
 func TestAuthzModel(t *testing.T) {
+	clk := clock.New()
+	now := clk.Now()
+	expires := now.Add(24 * time.Hour)
 	authzPB := &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		ExpiresNS:      1234,
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
-				Type:      string(core.ChallengeTypeHTTP01),
-				Status:    string(core.StatusValid),
-				Token:     "MTIz",
-				Validated: 1234,
+				Type:        string(core.ChallengeTypeHTTP01),
+				Status:      string(core.StatusValid),
+				Token:       "MTIz",
+				ValidatedNS: now.UnixNano(),
+				Validated:   timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),
@@ -106,18 +112,22 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
+	now = clk.Now()
+	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		ExpiresNS:      1234,
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
-				Type:      string(core.ChallengeTypeHTTP01),
-				Status:    string(core.StatusValid),
-				Token:     "MTIz",
-				Validated: 1234,
+				Type:        string(core.ChallengeTypeHTTP01),
+				Status:      string(core.StatusValid),
+				Token:       "MTIz",
+				ValidatedNS: now.UnixNano(),
+				Validated:   timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),
@@ -155,12 +165,15 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
+	now = clk.Now()
+	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusInvalid),
-		ExpiresNS:      1234,
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:   string(core.ChallengeTypeHTTP01),
@@ -194,18 +207,22 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
 
 	// Test that the caller Hostname and Port rehydration returns the expected data in the expected fields.
+	now = clk.Now()
+	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		ExpiresNS:      1234,
+		ExpiresNS:      expires.UnixNano(),
+		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
-				Type:      string(core.ChallengeTypeHTTP01),
-				Status:    string(core.StatusValid),
-				Token:     "MTIz",
-				Validated: 1234,
+				Type:        string(core.ChallengeTypeHTTP01),
+				Status:      string(core.StatusValid),
+				Token:       "MTIz",
+				ValidatedNS: now.UnixNano(),
+				Validated:   timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),

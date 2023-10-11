@@ -33,6 +33,7 @@ import (
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
@@ -189,7 +190,9 @@ type MockRegistrationAuthority struct {
 
 func (ra *MockRegistrationAuthority) NewRegistration(ctx context.Context, in *corepb.Registration, _ ...grpc.CallOption) (*corepb.Registration, error) {
 	in.Id = 1
-	in.CreatedAtNS = time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC).UnixNano()
+	created := time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)
+	in.CreatedAtNS = created.UnixNano()
+	in.CreatedAt = timestamppb.New(created)
 	return in, nil
 }
 
@@ -235,11 +238,16 @@ func (ra *MockRegistrationAuthority) DeactivateRegistration(context.Context, *co
 }
 
 func (ra *MockRegistrationAuthority) NewOrder(ctx context.Context, in *rapb.NewOrderRequest, _ ...grpc.CallOption) (*corepb.Order, error) {
+	created := time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC)
+	expires := time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC)
+
 	return &corepb.Order{
 		Id:               1,
 		RegistrationID:   in.RegistrationID,
-		CreatedNS:        time.Date(2021, 1, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
-		ExpiresNS:        time.Date(2021, 2, 1, 1, 1, 1, 0, time.UTC).UnixNano(),
+		CreatedNS:        created.UnixNano(),
+		Created:          timestamppb.New(created),
+		ExpiresNS:        expires.UnixNano(),
+		Expires:          timestamppb.New(expires),
 		Names:            in.Names,
 		Status:           string(core.StatusPending),
 		V2Authorizations: []int64{1},
@@ -1839,7 +1847,9 @@ func (sa *mockSAWithCert) GetCertificate(_ context.Context, req *sapb.Serial, _ 
 		RegistrationID: 1,
 		Serial:         core.SerialToString(sa.cert.SerialNumber),
 		IssuedNS:       sa.cert.NotBefore.UnixNano(),
+		Issued:         timestamppb.New(sa.cert.NotBefore),
 		ExpiresNS:      sa.cert.NotAfter.UnixNano(),
+		Expires:        timestamppb.New(sa.cert.NotAfter),
 		Der:            sa.cert.Raw,
 	}, nil
 }
@@ -1874,6 +1884,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
 					RenewByNS:   0,
+					RenewBy:     timestamppb.New(time.Time{}),
 					Enabled:     true,
 				},
 			},
@@ -2133,10 +2144,13 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 		return nil, fmt.Errorf("failed to parse test cert: %w", err)
 	}
 
+	issued := sa.clk.Now().Add(-1 * time.Second)
+
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		IssuedNS:       sa.clk.Now().Add(-1 * time.Second).UnixNano(),
+		IssuedNS:       issued.UnixNano(),
+		Issued:         timestamppb.New(issued),
 		Der:            cert.Raw,
 	}, nil
 }
@@ -2732,7 +2746,7 @@ func TestFinalizeOrder(t *testing.T) {
 			ExpectedBody: `
 {
   "status": "processing",
-  "expires": "1970-01-01T00:00:00.9466848Z",
+  "expires": "2000-01-01T00:00:00Z",
   "identifiers": [
     {"type":"dns","value":"example.com"}
   ],
@@ -2854,6 +2868,8 @@ func TestKeyRollover(t *testing.T) {
 			_, _, inner := signer.embeddedJWK(tc.NewKey, "http://localhost/key-change", tc.Payload)
 			_, _, outer := signer.byKeyID(1, nil, "http://localhost/key-change", inner)
 			wfe.KeyRollover(ctx, newRequestEvent(), responseWriter, makePostRequestWithPath("key-change", outer))
+			t.Log(responseWriter.Body.String())
+			t.Log(tc.ExpectedResponse)
 			test.AssertUnmarshaledEquals(t, responseWriter.Body.String(), tc.ExpectedResponse)
 			if tc.ErrorStatType != "" {
 				test.AssertMetricWithLabelsEquals(
@@ -2905,7 +2921,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Good request",
 			Request:  makeGet("1/1"),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "404 request",
@@ -2950,7 +2966,7 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "Valid POST-as-GET",
 			Request:  makePost(1, "1/1", ""),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/1","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "GET new order",
@@ -2961,17 +2977,17 @@ func TestGetOrder(t *testing.T) {
 		{
 			Name:     "GET new order from old endpoint",
 			Request:  makeGet("1/9"),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET new order",
 			Request:  makePost(1, "1/9", ""),
-			Response: `{"status": "valid","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
+			Response: `{"status": "valid","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/9","certificate":"http://localhost/acme/cert/serial"}`,
 		},
 		{
 			Name:     "POST-as-GET processing order",
 			Request:  makePost(1, "1/10", ""),
-			Response: `{"status": "processing","expires": "1970-01-01T00:00:00.9466848Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
+			Response: `{"status": "processing","expires": "2000-01-01T00:00:00Z","identifiers":[{"type":"dns", "value":"example.com"}], "authorizations":["http://localhost/acme/authz-v3/1"],"finalize":"http://localhost/acme/finalize/1/10"}`,
 			Headers:  map[string]string{"Retry-After": "3"},
 		},
 	}
@@ -3368,13 +3384,14 @@ func TestFinalizeSCTError(t *testing.T) {
 
 func TestOrderToOrderJSONV2Authorizations(t *testing.T) {
 	wfe, fc, _ := setupWFE(t)
-
+	expires := fc.Now()
 	orderJSON := wfe.orderToOrderJSON(&http.Request{}, &corepb.Order{
 		Id:               1,
 		RegistrationID:   1,
 		Names:            []string{"a"},
 		Status:           string(core.StatusPending),
-		ExpiresNS:        fc.Now().UnixNano(),
+		ExpiresNS:        expires.UnixNano(),
+		Expires:          timestamppb.New(expires),
 		V2Authorizations: []int64{1, 2},
 	})
 	test.AssertDeepEquals(t, orderJSON.Authorizations, []string{

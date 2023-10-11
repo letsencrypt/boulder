@@ -405,7 +405,9 @@ func (ssa *SQLStorageAuthorityRO) GetSerialMetadata(ctx context.Context, req *sa
 		Serial:         recordedSerial.Serial,
 		RegistrationID: recordedSerial.RegistrationID,
 		CreatedNS:      recordedSerial.Created.UnixNano(),
+		Created:        timestamppb.New(recordedSerial.Created),
 		ExpiresNS:      recordedSerial.Expires.UnixNano(),
+		Expires:        timestamppb.New(recordedSerial.Expires),
 	}, nil
 }
 
@@ -551,11 +553,13 @@ func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context
 		return nil, err
 	}
 
-	var results []int64
+	var resultsNS []int64
+	var results []*timestamppb.Timestamp
 	for _, i := range rows {
-		results = append(results, i.Issued.UnixNano())
+		resultsNS = append(resultsNS, i.Issued.UnixNano())
+		results = append(results, timestamppb.New(i.Issued))
 	}
-	return &sapb.Timestamps{TimestampsNS: results}, nil
+	return &sapb.Timestamps{TimestampsNS: resultsNS, Timestamps: results}, nil
 }
 
 func (ssa *SQLStorageAuthority) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
@@ -1261,6 +1265,7 @@ func (ssa *SQLStorageAuthorityRO) SerialsForIncident(req *sapb.SerialsForInciden
 		}
 		if ism.LastNoticeSent != nil {
 			ispb.LastNoticeSentNS = ism.LastNoticeSent.UnixNano()
+			ispb.LastNoticeSent = timestamppb.New(*ism.LastNoticeSent)
 		}
 
 		err = stream.Send(ispb)
@@ -1355,6 +1360,7 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 			Serial:      row.Serial,
 			Reason:      int32(row.RevokedReason),
 			RevokedAtNS: row.RevokedDate.UnixNano(),
+			RevokedAt:   timestamppb.New(row.RevokedDate),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)
@@ -1421,6 +1427,7 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 			Serial:      row.Serial,
 			Reason:      int32(row.RevokedReason),
 			RevokedAtNS: row.RevokedDate.UnixNano(),
+			RevokedAt:   timestamppb.New(row.RevokedDate),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)

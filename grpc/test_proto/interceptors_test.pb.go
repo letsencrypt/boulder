@@ -25,6 +25,8 @@ type Time struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
+	// Next unused field number: 2
+	// TODO (#7097) Change this to google.protobuf.Duration
 	TimeNS int64 `protobuf:"varint,1,opt,name=timeNS,proto3" json:"timeNS,omitempty"` // Unix timestamp (nanoseconds)
 }
 

@@ -9,12 +9,14 @@ import (
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // CreateWorkingRegistration inserts a new, correct Registration into
 // SA using GoodKey under the hood. This is used by various non-SA tests
 // to initialize the a registration for the test to reference.
 func CreateWorkingRegistration(t *testing.T, sa sapb.StorageAuthorityClient) *corepb.Registration {
+	created := time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)
 	initialIP, _ := net.ParseIP("88.77.66.11").MarshalText()
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
 		Key: []byte(`{
@@ -24,7 +26,8 @@ func CreateWorkingRegistration(t *testing.T, sa sapb.StorageAuthorityClient) *co
 }`),
 		Contact:     []string{"mailto:foo@example.com"},
 		InitialIP:   initialIP,
-		CreatedAtNS: time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC).UnixNano(),
+		CreatedAtNS: created.UnixNano(),
+		CreatedAt:   timestamppb.New(created),
 		Status:      string(core.StatusValid),
 	})
 	if err != nil {
