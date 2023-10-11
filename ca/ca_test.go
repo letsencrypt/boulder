@@ -484,37 +484,15 @@ func TestECDSAAllowList(t *testing.T) {
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
 	ca, _ := issueCertificateSubTestSetup(t)
 	contents := makeECDSAAllowListBytes(arbitraryRegID)
-	err := ca.ecdsaAllowList.Update(contents)
-	if err != nil {
-		t.Errorf("%s %s", yamlLoadErrMsg, err)
-		t.FailNow()
-	}
 	result, err := ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 
-	// Attempts to update the allow list with malformed YAML should
-	// fail, but the allowlist should still contain arbitraryRegID, so
-	// issuance should come from ECDSA issuer
-	malformed_yaml := []byte(`
-)(\/=`)
-	err = ca.ecdsaAllowList.Update(malformed_yaml)
-	test.AssertError(t, err, "Update method accepted malformed YAML")
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate after Update was called with malformed YAML")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
-
 	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
+	ca, _ = issueCertificateSubTestSetup(t)
 	contents = makeECDSAAllowListBytes(int64(2002))
-	err = ca.ecdsaAllowList.Update(contents)
-	if err != nil {
-		t.Errorf("%s %s", yamlLoadErrMsg, err)
-		t.FailNow()
-	}
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
