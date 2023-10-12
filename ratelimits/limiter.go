@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/jmhodges/clock"
@@ -31,12 +30,6 @@ var ErrInvalidCostForCheck = fmt.Errorf("invalid check cost, must be >= 0")
 
 // ErrInvalidCostOverLimit indicates that the cost specified was > limit.Burst.
 var ErrInvalidCostOverLimit = fmt.Errorf("invalid cost, must be <= limit.Burst")
-
-var errZeroBucketsInBatch = errors.New("invalid batch, a batch must have >= 1 bucket")
-
-// errLimitDisabled indicates that the limit name specified is valid but is not
-// currently configured.
-var errLimitDisabled = errors.New("limit disabled")
 
 // disabledLimitDecision is an "allowed" *Decision that should be returned when
 // a checked limit is found to be disabled.
@@ -133,14 +126,10 @@ func (l *Limiter) Check(ctx context.Context, bucket BucketWithCost) (*Decision, 
 		return nil, ErrInvalidCostForCheck
 	}
 
-	limit, err := l.getLimit(bucket.name, bucket.key)
-	if err != nil {
-		if errors.Is(err, errLimitDisabled) {
-			return disabledLimitDecision, nil
-		}
-		return nil, err
+	limit := l.getLimit(bucket.name, bucket.key)
+	if limit.disabled() {
+		return disabledLimitDecision, nil
 	}
-
 	if bucket.cost > limit.Burst {
 		return nil, ErrInvalidCostOverLimit
 	}
@@ -172,14 +161,10 @@ func (l *Limiter) Spend(ctx context.Context, bucket BucketWithCost) (*Decision, 
 		return nil, ErrInvalidCost
 	}
 
-	limit, err := l.getLimit(bucket.name, bucket.key)
-	if err != nil {
-		if errors.Is(err, errLimitDisabled) {
-			return disabledLimitDecision, nil
-		}
-		return nil, err
+	limit := l.getLimit(bucket.name, bucket.key)
+	if limit.disabled() {
+		return disabledLimitDecision, nil
 	}
-
 	if bucket.cost > limit.Burst {
 		return nil, ErrInvalidCostOverLimit
 	}
@@ -229,6 +214,66 @@ func (l *Limiter) Spend(ctx context.Context, bucket BucketWithCost) (*Decision, 
 	return d, nil
 }
 
+// batchDecision is a wrapper around Decision that allows for consolidation of
+// multiple individual Decisions into a single batch Decision. Callers MUST NOT
+// create batchDecision instances directly. Instead, use newBatchDecision().
+type batchDecision struct {
+	*Decision
+}
+
+func newBatchDecision() *batchDecision {
+	return &batchDecision{
+		Decision: &Decision{
+			Allowed:   true,
+			Remaining: math.MaxInt64,
+		},
+	}
+}
+
+func (d *batchDecision) consolidate(incoming *Decision) {
+	d.Allowed = d.Allowed || incoming.Allowed
+	d.Remaining = min(d.Remaining, incoming.Remaining)
+	d.RetryIn = max(d.RetryIn, incoming.RetryIn)
+	d.ResetIn = max(d.ResetIn, incoming.ResetIn)
+	if incoming.newTAT.After(d.newTAT) {
+		d.newTAT = incoming.newTAT
+	}
+}
+
+type batchEntry struct {
+	bucket BucketWithCost
+	limit  limit
+}
+
+// prepareBatchEntries is a helper that filters out buckets with disabled limits
+// and returns an error if the batch contains duplicate buckets, invalid costs,
+// or costs that exceed their respective limits. The returned slice is contains
+// only enabled buckets and their respective limits.
+func (l *Limiter) prepareBatchEntries(buckets []BucketWithCost) ([]batchEntry, []string, error) {
+	var batchBuckets []batchEntry
+	var batchKeys []string
+	for _, bucket := range buckets {
+		if bucket.cost <= 0 {
+			return nil, nil, ErrInvalidCost
+		}
+		limit := l.getLimit(bucket.name, bucket.key)
+		if limit.disabled() {
+			// Filter out buckets with disabled limits.
+			continue
+		}
+		if bucket.cost > limit.Burst {
+			return nil, nil, ErrInvalidCostOverLimit
+		}
+		if slices.Contains(batchKeys, bucket.key) {
+			return nil, nil, fmt.Errorf("found duplicate bucket %q in batch", bucket.key)
+		}
+		batchKeys = append(batchKeys, bucket.key)
+		batchBuckets = append(batchBuckets, batchEntry{bucket, limit})
+
+	}
+	return batchBuckets, batchKeys, nil
+}
+
 // BatchSpend attempts to deduct the cost from the provided buckets' capacities
 // in a batch. The returned consolidated *Decision indicates the following:
 //   - Allowed is true if all spend requests were successful,
@@ -239,57 +284,35 @@ func (l *Limiter) Spend(ctx context.Context, bucket BucketWithCost) (*Decision, 
 // state. The new bucket states are persisted to the underlying datastore, if
 // applicable, before returning.
 func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*Decision, error) {
-	if len(buckets) == 0 {
-		return nil, errZeroBucketsInBatch
+	batch, batchKeys, err := l.prepareBatchEntries(buckets)
+	if err != nil {
+		return nil, err
 	}
-
-	bucketKeys := make([]string, 0, len(buckets))
-	for _, bucket := range buckets {
-		if bucket.cost <= 0 {
-			return nil, ErrInvalidCost
-		}
-		bucketKeys = append(bucketKeys, bucket.key)
+	if len(batch) <= 0 {
+		// All buckets were disabled.
+		return disabledLimitDecision, nil
 	}
 
 	// Remove cancellation from the request context so that transactions are not
 	// interrupted by a client disconnect.
 	ctx = context.WithoutCancel(ctx)
-	tats, err := l.source.BatchGet(ctx, bucketKeys)
+	tats, err := l.source.BatchGet(ctx, batchKeys)
 	if err != nil {
 		return nil, err
 	}
 
-	// Track the limits that were checked for metrics purposes.
-	var limitsForMetrics []string
-
-	var minRemaining int64 = math.MaxInt64
-	var maxRetryIn time.Duration
-	var maxResetIn time.Duration
-	var maxNewTAT time.Time
+	start := l.clk.Now()
+	batchDecision := newBatchDecision()
 	newTATs := make(map[string]time.Time)
-	allowed := true
 
-	// Assign "now" TAT outside of the loop to avoid clock skew.
-	nowTAT := l.clk.Now()
-
-	for _, bucket := range buckets {
+	for _, entry := range batch {
+		bucket := entry.bucket
+		limit := entry.limit
 		tat, exists := tats[bucket.key]
-		limit, err := l.getLimit(bucket.name, bucket.key)
-		if err != nil {
-			if errors.Is(err, errLimitDisabled) {
-				// Ignore disabled limit.
-				continue
-			}
-			return nil, err
-		}
-		if !slices.Contains(limitsForMetrics, bucket.name.String()) {
-			limitsForMetrics = append(limitsForMetrics, bucket.name.String())
-		}
-
-		if !exists || tat.IsZero() {
+		if !exists {
 			// First request from this client. Initialize the bucket with a TAT of
 			// "now", which is equivalent to a full bucket.
-			tat = nowTAT
+			tat = l.clk.Now()
 		}
 
 		// Spend the cost and update the consolidated decision.
@@ -304,43 +327,23 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 			l.overrideUsageGauge.WithLabelValues(bucket.name.String(), bucket.key).Set(utilization)
 		}
 
-		// All spend decisions must be allowed for the batch to be considered
-		// allowed.
-		allowed = allowed && d.Allowed
-		minRemaining = min(minRemaining, d.Remaining)
-		maxRetryIn = max(maxRetryIn, d.RetryIn)
-		maxResetIn = max(maxResetIn, d.ResetIn)
-		if d.newTAT.After(maxNewTAT) {
-			maxNewTAT = d.newTAT
+		if !d.Allowed && !bucket.suppressDenials {
+			d = disabledLimitDecision
 		}
+		batchDecision.consolidate(d)
 	}
 
-	start := l.clk.Now()
-	status := Denied
-	defer func() {
-		// Sort the limits for metrics so that the order is consistent.
-		slices.Sort(limitsForMetrics)
-		batch := strings.Join(limitsForMetrics, ",")
-		l.spendLatency.WithLabelValues(batch, status).Observe(l.clk.Since(start).Seconds())
-	}()
-
 	// Conditionally, spend the batch.
-	if len(newTATs) > 0 && allowed {
+	if batchDecision.Allowed {
 		err = l.source.BatchSet(ctx, newTATs)
 		if err != nil {
 			return nil, err
 		}
+		l.spendLatency.WithLabelValues("batch", Allowed).Observe(l.clk.Since(start).Seconds())
+	} else {
+		l.spendLatency.WithLabelValues("batch", Denied).Observe(l.clk.Since(start).Seconds())
 	}
-	status = Allowed
-
-	// Consolidated decision for the batch.
-	return &Decision{
-		Allowed:   allowed,
-		Remaining: minRemaining,
-		RetryIn:   maxRetryIn,
-		ResetIn:   maxResetIn,
-		newTAT:    maxNewTAT,
-	}, nil
+	return batchDecision.Decision, nil
 }
 
 // Refund attempts to refund all of the cost to the capacity of the specified
@@ -359,12 +362,12 @@ func (l *Limiter) Refund(ctx context.Context, bucket BucketWithCost) (*Decision,
 		return nil, ErrInvalidCost
 	}
 
-	limit, err := l.getLimit(bucket.name, bucket.key)
-	if err != nil {
-		if errors.Is(err, errLimitDisabled) {
-			return disabledLimitDecision, nil
-		}
-		return nil, err
+	limit := l.getLimit(bucket.name, bucket.key)
+	if limit.disabled() {
+		return disabledLimitDecision, nil
+	}
+	if bucket.cost > limit.Burst {
+		return nil, ErrInvalidCostOverLimit
 	}
 
 	// Remove cancellation from the request context so that transactions are not
@@ -385,7 +388,8 @@ func (l *Limiter) Refund(ctx context.Context, bucket BucketWithCost) (*Decision,
 // BatchRefund attempts to refund quota to specified buckets in a batch by
 // adding back all or some of the cost to the bucket's capacity. The returned
 // consolidated *Decision indicates the following:
-//   - Allowed is true if at least one refund was successful,
+//   - Allowed is true if all refund requests were successful. Denied refunds
+//     indicate that the bucket is already at maximum capacity.
 //   - Remaining is the smallest value across all processed buckets, and
 //   - RetryIn and ResetIn are the largest values across all processed buckets.
 //
@@ -393,47 +397,32 @@ func (l *Limiter) Refund(ctx context.Context, bucket BucketWithCost) (*Decision,
 // is equivalent to the bucket being full. The new bucket state is persisted to
 // the underlying datastore, if applicable, before returning.
 func (l *Limiter) BatchRefund(ctx context.Context, buckets []BucketWithCost) (*Decision, error) {
-	if len(buckets) == 0 {
-		return nil, errZeroBucketsInBatch
+	batch, batchKeys, err := l.prepareBatchEntries(buckets)
+	if err != nil {
+		return nil, err
 	}
-
-	bucketKeys := make([]string, 0, len(buckets))
-	for _, bucket := range buckets {
-		if bucket.cost <= 0 {
-			return nil, ErrInvalidCost
-		}
-		bucketKeys = append(bucketKeys, bucket.key)
+	if len(batch) <= 0 {
+		// All buckets were disabled.
+		return disabledLimitDecision, nil
 	}
 
 	// Remove cancellation from the request context so that transactions are not
 	// interrupted by a client disconnect.
 	ctx = context.WithoutCancel(ctx)
-	tats, err := l.source.BatchGet(ctx, bucketKeys)
+	tats, err := l.source.BatchGet(ctx, batchKeys)
 	if err != nil {
 		return nil, err
 	}
 
-	var minRemaining int64 = math.MaxInt64
-	var maxRetryIn time.Duration
-	var maxResetIn time.Duration
-	var maxNewTAT time.Time
-	var allowed bool
+	batchDecision := newBatchDecision()
 	newTATs := make(map[string]time.Time)
 
-	for _, bucket := range buckets {
+	for _, entry := range batch {
+		bucket := entry.bucket
+		limit := entry.limit
 		tat, exists := tats[bucket.key]
-		limit, err := l.getLimit(bucket.name, bucket.key)
-		if err != nil {
-			if errors.Is(err, errLimitDisabled) {
-				// Ignore disabled limit.
-				continue
-			}
-			return nil, err
-		}
-
-		if !exists || tat.IsZero() {
-			// If the bucket no longer exists, ignore it. A missing bucket is
-			// equivalent to a full bucket.
+		if !exists {
+			// Ignore non-existent buckets.
 			continue
 		}
 
@@ -443,15 +432,10 @@ func (l *Limiter) BatchRefund(ctx context.Context, buckets []BucketWithCost) (*D
 			newTATs[bucket.key] = d.newTAT
 		}
 
-		// At least one refund must be allowed for the batch to be considered
-		// allowed.
-		allowed = allowed || d.Allowed
-		minRemaining = min(minRemaining, d.Remaining)
-		maxRetryIn = max(maxRetryIn, d.RetryIn)
-		maxResetIn = max(maxResetIn, d.ResetIn)
-		if d.newTAT.After(maxNewTAT) {
-			maxNewTAT = d.newTAT
+		if !d.Allowed && !bucket.suppressDenials {
+			d = disabledLimitDecision
 		}
+		batchDecision.consolidate(d)
 	}
 
 	// Conditionally, refund the batch.
@@ -461,15 +445,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, buckets []BucketWithCost) (*D
 			return nil, err
 		}
 	}
-
-	// Consolidated decision for the batch.
-	return &Decision{
-		Allowed:   allowed,
-		Remaining: minRemaining,
-		RetryIn:   maxRetryIn,
-		ResetIn:   maxResetIn,
-		newTAT:    maxNewTAT,
-	}, nil
+	return batchDecision.Decision, nil
 }
 
 // Reset resets the specified bucket to its maximum capacity. The new bucket
@@ -501,23 +477,20 @@ func (l *Limiter) initialize(ctx context.Context, rl limit, bucket BucketWithCos
 // getLimit returns the limit for the specified by name and bucketKey, name is
 // required, bucketKey is optional. If bucketKey is not specified, the default
 // limit is returned. If bucketKey is specified, the override limit is returned
-// if it exists, otherwise the default limit is returned.
-func (l *Limiter) getLimit(name Name, bucketKey string) (limit, error) {
-	if !name.isValid() {
-		// This should never happen. Callers should only be specifying the limit
-		// Name enums defined in this package.
-		return limit{}, fmt.Errorf("specified name enum %q, is invalid", name)
-	}
+// if it exists, otherwise the default limit is returned. If the returned limit
+// is disabled, the caller MUST return disabledLimitDecision instead of
+// attempting to spend or refund.
+func (l *Limiter) getLimit(name Name, bucketKey string) limit {
 	if bucketKey != "" {
 		// Check for override.
 		ol, ok := l.overrides[bucketKey]
 		if ok {
-			return ol, nil
+			return ol
 		}
 	}
 	dl, ok := l.defaults[name.EnumString()]
 	if ok {
-		return dl, nil
+		return dl
 	}
-	return limit{}, errLimitDisabled
+	return limit{}
 }

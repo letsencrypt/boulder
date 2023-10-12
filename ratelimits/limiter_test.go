@@ -53,15 +53,6 @@ func Test_Limiter_WithBadLimitsPath(t *testing.T) {
 	test.AssertError(t, err, "should error")
 }
 
-func Test_Limiter_getLimitNoExist(t *testing.T) {
-	t.Parallel()
-	l, err := NewLimiter(clock.NewFake(), newInmem(), "testdata/working_default.yml", "", metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "should not error")
-	_, err = l.getLimit(Name(9999), "")
-	test.AssertError(t, err, "should error")
-
-}
-
 func Test_Limiter_CheckWithLimitNoExist(t *testing.T) {
 	t.Parallel()
 	testCtx, limiters, _, testIP := setup(t)

@@ -48,10 +48,10 @@ const (
 	// domain name in the issued certificate.
 	CertificatesPerDomain
 
-	// CertificatesPerDomainPerAccount uses the bucket key 'enum:regId', where
-	// regId is the ACME registration Id of the account. Overrides of this limit
-	// override the certificatesPerDomain limit for each domain in certifcates
-	// requested by the account.
+	// CertificatesPerDomainPerAccount is used exclusively as an override to
+	// CertificatesPerDomain. It uses bucket key 'enum:regId', where regId is
+	// the ACME registration Id of the account. It is used to override the
+	// CertificatesPerDomain limit for a specific account.
 	CertificatesPerDomainPerAccount
 
 	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a

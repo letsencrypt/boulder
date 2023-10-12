@@ -35,9 +35,16 @@ type limit struct {
 	// precomputed to avoid doing the same calculation on every request.
 	burstOffset int64
 
+	// isEnabled is true if this limit is enabled, false if it is disabled.
+	isEnabled bool
+
 	// isOverride is true if this limit is an override limit, false if it is a
 	// default limit.
 	isOverride bool
+}
+
+func (l limit) disabled() bool {
+	return !l.isEnabled
 }
 
 func precomputeLimit(l limit) limit {
@@ -127,6 +134,7 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			// and compute the hash here.
 			id = string(core.HashNames(strings.Split(id, ",")))
 		}
+		v.isEnabled = true
 		v.isOverride = true
 		parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v)
 	}
@@ -151,6 +159,7 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 		if !ok {
 			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
 		}
+		v.isEnabled = true
 		parsed[name.EnumString()] = precomputeLimit(v)
 	}
 	return parsed, nil
