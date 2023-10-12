@@ -111,7 +111,6 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.21.1_2023-09-07
           - go1.21.3_2023-10-12
 
     env:
