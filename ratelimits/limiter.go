@@ -258,7 +258,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("\n\ntats: %+v\n\n", tats)
 
 	// Track the limits that were checked for metrics purposes.
 	var limitsForMetrics []string
@@ -266,6 +265,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 	var minRemaining int64 = math.MaxInt64
 	var maxRetryIn time.Duration
 	var maxResetIn time.Duration
+	var maxNewTAT time.Time
 	newTATs := make(map[string]time.Time)
 	allowed := true
 
@@ -287,8 +287,8 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 		}
 
 		if !exists || tat.IsZero() {
-			// First request from this client. A TAT of "now" is equivalent to a
-			// full bucket.
+			// First request from this client. Initialize the bucket with a TAT of
+			// "now", which is equivalent to a full bucket.
 			tat = nowTAT
 		}
 
@@ -297,8 +297,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 		if d.Allowed {
 			newTATs[bucket.key] = d.newTAT
 		}
-
-		fmt.Printf("\n\nd: %#v\n\n", d)
 
 		if limit.isOverride {
 			// Calculate the current utilization of the override limit.
@@ -312,6 +310,9 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 		minRemaining = min(minRemaining, d.Remaining)
 		maxRetryIn = max(maxRetryIn, d.RetryIn)
 		maxResetIn = max(maxResetIn, d.ResetIn)
+		if d.newTAT.After(maxNewTAT) {
+			maxNewTAT = d.newTAT
+		}
 	}
 
 	start := l.clk.Now()
@@ -338,6 +339,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 		Remaining: minRemaining,
 		RetryIn:   maxRetryIn,
 		ResetIn:   maxResetIn,
+		newTAT:    maxNewTAT,
 	}, nil
 }
 
@@ -414,6 +416,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, buckets []BucketWithCost) (*D
 	var minRemaining int64 = math.MaxInt64
 	var maxRetryIn time.Duration
 	var maxResetIn time.Duration
+	var maxNewTAT time.Time
 	var allowed bool
 	newTATs := make(map[string]time.Time)
 
@@ -446,6 +449,9 @@ func (l *Limiter) BatchRefund(ctx context.Context, buckets []BucketWithCost) (*D
 		minRemaining = min(minRemaining, d.Remaining)
 		maxRetryIn = max(maxRetryIn, d.RetryIn)
 		maxResetIn = max(maxResetIn, d.ResetIn)
+		if d.newTAT.After(maxNewTAT) {
+			maxNewTAT = d.newTAT
+		}
 	}
 
 	// Conditionally, refund the batch.
@@ -462,6 +468,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, buckets []BucketWithCost) (*D
 		Remaining: minRemaining,
 		RetryIn:   maxRetryIn,
 		ResetIn:   maxResetIn,
+		newTAT:    maxNewTAT,
 	}, nil
 }
 

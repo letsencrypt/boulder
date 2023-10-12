@@ -142,6 +142,11 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 		r.latency.With(prometheus.Labels{"call": "mget", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
 		return nil, err
 	}
+	fmt.Printf("results for mget(%v):", bucketKeys)
+	for _, iface := range results {
+		fmt.Printf(" %v", iface)
+	}
+	fmt.Println()
 
 	buckets := make(map[string]time.Time, len(bucketKeys))
 	for i, iface := range results {
@@ -165,6 +170,8 @@ func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[st
 		}
 		buckets[bucketKeys[i]] = time.Unix(0, tatNano).UTC()
 	}
+
+	fmt.Printf("buckets: %#v\n", buckets)
 
 	r.latency.With(prometheus.Labels{"call": "mget", "result": "success"}).Observe(time.Since(start).Seconds())
 	return buckets, nil

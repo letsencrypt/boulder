@@ -2235,7 +2235,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 	var newOrderSuccessful bool
 	defer func() {
 		if !newOrderSuccessful {
-			go wfe.refundNewOrderLimits(ctx, acct.ID, names)
+			// go wfe.refundNewOrderLimits(ctx, acct.ID, names)
 		}
 	}()
 
@@ -2247,7 +2247,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
-	newOrderSuccessful = true
 
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
 
@@ -2261,6 +2260,7 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
 	}
+	newOrderSuccessful = true
 }
 
 // GetOrder is used to retrieve a existing order object
