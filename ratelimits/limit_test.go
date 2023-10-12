@@ -78,19 +78,19 @@ func Test_validateIdForName(t *testing.T) {
 	err = validateIdForName(NewOrdersPerAccount, "1234567890")
 	test.AssertNotError(t, err, "valid regId")
 
-	// 'enum:regId:domain'
+	// 'enum:domain'
 	// Valid regId and domain.
-	err = validateIdForName(CertificatesPerDomainPerAccount, "1234567890:example.com")
+	err = validateIdForName(CertificatesPerDomain, "example.com")
 	test.AssertNotError(t, err, "valid regId and domain")
 
-	// 'enum:regId:fqdnSet'
-	// Valid regId and FQDN set containing a single domain.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:example.com")
+	// 'enum:fqdnSet'
+	// Valid fqdnSet containing a single domain.
+	err = validateIdForName(CertificatesPerFQDNSet, "example.com")
 	test.AssertNotError(t, err, "valid regId and FQDN set containing a single domain")
 
-	// 'enum:regId:fqdnSet'
-	// Valid regId and FQDN set containing multiple domains.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:example.com,example.org")
+	// 'enum:fqdnSet'
+	// Valid fqdnSet containing multiple domains.
+	err = validateIdForName(CertificatesPerFQDNSet, "example.com,example.org")
 	test.AssertNotError(t, err, "valid regId and FQDN set containing multiple domains")
 
 	// Empty string.
@@ -125,61 +125,13 @@ func Test_validateIdForName(t *testing.T) {
 	err = validateIdForName(NewOrdersPerAccount, "lol")
 	test.AssertError(t, err, "invalid regId")
 
-	// Invalid regId with good domain.
-	err = validateIdForName(CertificatesPerDomainPerAccount, "lol:example.com")
-	test.AssertError(t, err, "invalid regId with good domain")
-
-	// Valid regId with bad domain.
-	err = validateIdForName(CertificatesPerDomainPerAccount, "1234567890:lol")
+	// Invalid domain, malformed.
+	err = validateIdForName(CertificatesPerDomain, "example:.com")
 	test.AssertError(t, err, "valid regId with bad domain")
 
-	// Empty regId with good domain.
-	err = validateIdForName(CertificatesPerDomainPerAccount, ":lol")
-	test.AssertError(t, err, "valid regId with bad domain")
-
-	// Valid regId with empty domain.
-	err = validateIdForName(CertificatesPerDomainPerAccount, "1234567890:")
+	// Invalid domain, empty.
+	err = validateIdForName(CertificatesPerDomain, "")
 	test.AssertError(t, err, "valid regId with empty domain")
-
-	// Empty regId with empty domain, no separator.
-	err = validateIdForName(CertificatesPerDomainPerAccount, "")
-	test.AssertError(t, err, "empty regId with empty domain, no separator")
-
-	// Instead of anything we would expect, we get lol.
-	err = validateIdForName(CertificatesPerDomainPerAccount, "lol")
-	test.AssertError(t, err, "instead of anything we would expect, just lol")
-
-	// Valid regId with good domain and a secret third separator.
-	err = validateIdForName(CertificatesPerDomainPerAccount, "1234567890:example.com:lol")
-	test.AssertError(t, err, "valid regId with good domain and a secret third separator")
-
-	// Valid regId with bad FQDN set.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:lol..99")
-	test.AssertError(t, err, "valid regId with bad FQDN set")
-
-	// Bad regId with good FQDN set.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "lol:example.com,example.org")
-	test.AssertError(t, err, "bad regId with good FQDN set")
-
-	// Empty regId with good FQDN set.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, ":example.com,example.org")
-	test.AssertError(t, err, "empty regId with good FQDN set")
-
-	// Good regId with empty FQDN set.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:")
-	test.AssertError(t, err, "good regId with empty FQDN set")
-
-	// Empty regId with empty FQDN set, no separator.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "")
-	test.AssertError(t, err, "empty regId with empty FQDN set, no separator")
-
-	// Instead of anything we would expect, just lol.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "lol")
-	test.AssertError(t, err, "instead of anything we would expect, just lol")
-
-	// Valid regId with good FQDN set and a secret third separator.
-	err = validateIdForName(CertificatesPerFQDNSetPerAccount, "1234567890:example.com,example.org:lol")
-	test.AssertError(t, err, "valid regId with good FQDN set and a secret third separator")
 }
 
 func Test_loadAndParseOverrideLimits(t *testing.T) {
@@ -194,7 +146,7 @@ func Test_loadAndParseOverrideLimits(t *testing.T) {
 	// Load single valid override limit with Id formatted as 'regId:domain'.
 	l, err = loadAndParseOverrideLimits("testdata/working_override_regid_domain.yml")
 	test.AssertNotError(t, err, "valid single override limit with Id of regId:domain")
-	expectKey = CertificatesPerDomainPerAccount.EnumString() + ":" + "12345678:example.com"
+	expectKey = CertificatesPerDomain.EnumString() + ":" + "example.com"
 	test.AssertEquals(t, l[expectKey].Burst, int64(40))
 	test.AssertEquals(t, l[expectKey].Count, int64(40))
 	test.AssertEquals(t, l[expectKey].Period.Duration, time.Second)
@@ -211,18 +163,18 @@ func Test_loadAndParseOverrideLimits(t *testing.T) {
 	test.AssertEquals(t, l[expectKey2].Count, int64(50))
 	test.AssertEquals(t, l[expectKey2].Period.Duration, time.Second*2)
 
-	// Load multiple valid override limits with 'regID:fqdnSet' Ids as follows:
-	//   - CertificatesPerFQDNSetPerAccount:12345678:example.com
-	//   - CertificatesPerFQDNSetPerAccount:12345678:example.com,example.net
-	//   - CertificatesPerFQDNSetPerAccount:12345678:example.com,example.net,example.org
+	// Load multiple valid override limits with 'fqdnSet' Ids, as follows:
+	//   - CertificatesPerFQDNSet:example.com
+	//   - CertificatesPerFQDNSet:example.com,example.net
+	//   - CertificatesPerFQDNSet:example.com,example.net,example.org
 	firstEntryFQDNSetHash := string(core.HashNames([]string{"example.com"}))
 	secondEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net"}))
 	thirdEntryFQDNSetHash := string(core.HashNames([]string{"example.com", "example.net", "example.org"}))
-	firstEntryKey := CertificatesPerFQDNSetPerAccount.EnumString() + ":" + "12345678:" + firstEntryFQDNSetHash
-	secondEntryKey := CertificatesPerFQDNSetPerAccount.EnumString() + ":" + "12345678:" + secondEntryFQDNSetHash
-	thirdEntryKey := CertificatesPerFQDNSetPerAccount.EnumString() + ":" + "12345678:" + thirdEntryFQDNSetHash
+	firstEntryKey := CertificatesPerFQDNSet.EnumString() + ":" + firstEntryFQDNSetHash
+	secondEntryKey := CertificatesPerFQDNSet.EnumString() + ":" + secondEntryFQDNSetHash
+	thirdEntryKey := CertificatesPerFQDNSet.EnumString() + ":" + thirdEntryFQDNSetHash
 	l, err = loadAndParseOverrideLimits("testdata/working_overrides_regid_fqdnset.yml")
-	test.AssertNotError(t, err, "multiple valid override limits with Id of regId:fqdnSets")
+	test.AssertNotError(t, err, "multiple valid override limits with 'fqdnSet' Ids")
 	test.AssertEquals(t, l[firstEntryKey].Burst, int64(40))
 	test.AssertEquals(t, l[firstEntryKey].Count, int64(40))
 	test.AssertEquals(t, l[firstEntryKey].Period.Duration, time.Second)

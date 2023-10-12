@@ -86,10 +86,23 @@ func NewFailedAuthorizationsPerAccountBucket(regId int64) (Bucket, error) {
 	}, nil
 }
 
+// NewCertificatesPerDomainBucket returns a Bucket for the provided order domain
+// name.
+func NewCertificatesPerDomainBucket(orderName string) (Bucket, error) {
+	err := validateIdForName(CertificatesPerDomain, orderName)
+	if err != nil {
+		return Bucket{}, err
+	}
+	return Bucket{
+		name: CertificatesPerDomain,
+		key:  joinWithColon(CertificatesPerDomain.EnumString(), orderName),
+	}, nil
+}
+
 // NewCertificatesPerDomainPerAccountBucket returns a Bucket for the provided
-// ACME registration Id and order domain name.
-func NewCertificatesPerDomainPerAccountBucket(regId int64, orderName string) (Bucket, error) {
-	id := joinWithColon(strconv.FormatInt(regId, 10), orderName)
+// ACME registration Id.
+func NewCertificatesPerDomainPerAccountBucket(regId int64) (Bucket, error) {
+	id := strconv.FormatInt(regId, 10)
 	err := validateIdForName(CertificatesPerDomainPerAccount, id)
 	if err != nil {
 		return Bucket{}, err
@@ -100,30 +113,36 @@ func NewCertificatesPerDomainPerAccountBucket(regId int64, orderName string) (Bu
 	}, nil
 }
 
-// NewCertificatesPerDomainPerAccountBucketsWithCost returns a slice of
-// BucketWithCost for the provided ACME registration Id and order domain names.
-func NewCertificatesPerDomainPerAccountBucketsWithCost(regId int64, orderNames []string, cost int64) ([]BucketWithCost, error) {
+// NewCertificatesPerDomainBucketsWithCost returns a slice of BucketWithCost for
+// the provided order domain names and an additional BucketWithCost for
+// certificatesPerDomainPerAccount.
+func NewCertificatesPerDomainBucketsWithCost(regId int64, orderDomains []string, cost int64) ([]BucketWithCost, error) {
 	var buckets []BucketWithCost
-	for _, name := range DomainsForRateLimiting(orderNames) {
-		bucket, err := NewCertificatesPerDomainPerAccountBucket(regId, name)
+	for _, name := range DomainsForRateLimiting(orderDomains) {
+		bucket, err := NewCertificatesPerDomainBucket(name)
 		if err != nil {
 			return nil, err
 		}
 		buckets = append(buckets, bucket.WithCost(cost))
 	}
+	bucket, err := NewCertificatesPerDomainPerAccountBucket(regId)
+	if err != nil {
+		return nil, err
+	}
+	buckets = append(buckets, bucket.WithCost(cost))
 	return buckets, nil
 }
 
-// NewCertificatesPerFQDNSetPerAccountBucket returns a Bucket for the provided
-// ACME registration Id and order domain names.
-func NewCertificatesPerFQDNSetPerAccountBucket(regId int64, orderNames []string) (Bucket, error) {
-	id := joinWithColon(strconv.FormatInt(regId, 10), string(core.HashNames(orderNames)))
-	err := validateIdForName(CertificatesPerFQDNSetPerAccount, id)
+// NewCertificatesPerFQDNSetBucket returns a Bucket for the provided order
+// domain names.
+func NewCertificatesPerFQDNSetBucket(orderNames []string) (Bucket, error) {
+	id := string(core.HashNames(orderNames))
+	err := validateIdForName(CertificatesPerFQDNSet, id)
 	if err != nil {
 		return Bucket{}, err
 	}
 	return Bucket{
-		name: CertificatesPerFQDNSetPerAccount,
-		key:  joinWithColon(CertificatesPerFQDNSetPerAccount.EnumString(), id),
+		name: CertificatesPerFQDNSet,
+		key:  joinWithColon(CertificatesPerFQDNSet.EnumString(), id),
 	}, nil
 }

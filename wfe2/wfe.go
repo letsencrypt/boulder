@@ -2057,6 +2057,11 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 // This should eventually return a berrors.RateLimit error containing the retry
 // after duration among other information available in the ratelimits.Decision.
 func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, orderNames []string) {
+	if wfe.limiter == nil {
+		// Limiter is disabled.
+		return
+	}
+
 	var batch []ratelimits.BucketWithCost
 	warn := func(err error, limit ratelimits.Name) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -2074,9 +2079,9 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 	}
 	batch = append(batch, bucket.WithCost(1))
 
-	buckets, err := ratelimits.NewCertificatesPerDomainPerAccountBucketsWithCost(regId, orderNames, 1)
+	buckets, err := ratelimits.NewCertificatesPerDomainBucketsWithCost(regId, orderNames, 1)
 	if err != nil {
-		warn(err, ratelimits.CertificatesPerDomainPerAccount)
+		warn(err, ratelimits.CertificatesPerDomain)
 		return
 	}
 	batch = append(batch, buckets...)
@@ -2088,7 +2093,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 	}
 	batch = append(batch, bucket.WithCost(1))
 
-	_, err = wfe.limiter.BatchSpend(ctx, batch)
+	d, err := wfe.limiter.BatchSpend(ctx, batch)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return
@@ -2096,6 +2101,7 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 		warn(err, ratelimits.NewOrdersPerAccount)
 		return
 	}
+	fmt.Printf("\n\nDecision: %+v\n\n", d)
 }
 
 // refundNewOrderLimits is typically called when a new order creation fails. It
@@ -2103,6 +2109,11 @@ func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64
 // immediately. If an error is encountered during the refund, it is logged but
 // not returned.
 func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, regId int64, orderNames []string) {
+	if wfe.limiter == nil {
+		// Limiter is disabled.
+		return
+	}
+
 	var batch []ratelimits.BucketWithCost
 	warn := func(err error, limit ratelimits.Name) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -2120,9 +2131,9 @@ func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, regId int6
 	}
 	batch = append(batch, bucket.WithCost(1))
 
-	buckets, err := ratelimits.NewCertificatesPerDomainPerAccountBucketsWithCost(regId, orderNames, 1)
+	buckets, err := ratelimits.NewCertificatesPerDomainBucketsWithCost(regId, orderNames, 1)
 	if err != nil {
-		warn(err, ratelimits.CertificatesPerDomainPerAccount)
+		warn(err, ratelimits.CertificatesPerDomain)
 		return
 	}
 	batch = append(batch, buckets...)
@@ -2218,6 +2229,16 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	logEvent.DNSNames = names
 
+	// TODO(#5545): Spending and Refunding can be async until these rate limits
+	// are authoritative. This saves us from adding latency to each request.
+	go wfe.checkNewOrderLimits(ctx, acct.ID, names)
+	var newOrderSuccessful bool
+	defer func() {
+		if !newOrderSuccessful {
+			go wfe.refundNewOrderLimits(ctx, acct.ID, names)
+		}
+	}()
+
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
@@ -2226,6 +2247,8 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, web.ProblemDetailsForError(err, "Error creating new order"), err)
 		return
 	}
+	newOrderSuccessful = true
+
 	logEvent.Created = fmt.Sprintf("%d", order.Id)
 
 	orderURL := web.RelativeEndpoint(request,

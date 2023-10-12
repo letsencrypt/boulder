@@ -258,6 +258,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("\n\ntats: %+v\n\n", tats)
 
 	// Track the limits that were checked for metrics purposes.
 	var limitsForMetrics []string
@@ -272,9 +273,6 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 	nowTAT := l.clk.Now()
 
 	for _, bucket := range buckets {
-		if !slices.Contains(limitsForMetrics, bucket.name.String()) {
-			limitsForMetrics = append(limitsForMetrics, bucket.name.String())
-		}
 		tat, exists := tats[bucket.key]
 		limit, err := l.getLimit(bucket.name, bucket.key)
 		if err != nil {
@@ -284,8 +282,11 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 			}
 			return nil, err
 		}
+		if !slices.Contains(limitsForMetrics, bucket.name.String()) {
+			limitsForMetrics = append(limitsForMetrics, bucket.name.String())
+		}
 
-		if !exists {
+		if !exists || tat.IsZero() {
 			// First request from this client. A TAT of "now" is equivalent to a
 			// full bucket.
 			tat = nowTAT
@@ -296,6 +297,8 @@ func (l *Limiter) BatchSpend(ctx context.Context, buckets []BucketWithCost) (*De
 		if d.Allowed {
 			newTATs[bucket.key] = d.newTAT
 		}
+
+		fmt.Printf("\n\nd: %#v\n\n", d)
 
 		if limit.isOverride {
 			// Calculate the current utilization of the override limit.
@@ -425,7 +428,7 @@ func (l *Limiter) BatchRefund(ctx context.Context, buckets []BucketWithCost) (*D
 			return nil, err
 		}
 
-		if !exists {
+		if !exists || tat.IsZero() {
 			// If the bucket no longer exists, ignore it. A missing bucket is
 			// equivalent to a full bucket.
 			continue
