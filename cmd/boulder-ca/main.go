@@ -221,11 +221,12 @@ func main() {
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var ecdsaAllowList *ca.ECDSAAllowList
+	var entries int
 	if c.CA.ECDSAAllowListFilename != "" {
 		// Create an allow list object.
-		ecdsaAllowList, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename)
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
-		logger.Infof("Created an ECDSA allow list, it was initialized with %d entries", ecdsaAllowList.Length())
+		logger.Infof("Created an ECDSA allow list, it was initialized with %d entries", entries)
 	}
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)

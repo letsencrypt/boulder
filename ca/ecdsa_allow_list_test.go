@@ -47,18 +47,18 @@ func TestNewECDSAAllowListFromFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			allowList, err := NewECDSAAllowListFromFile(tt.args.filename)
+			allowList, gotEntries, err := NewECDSAAllowListFromFile(tt.args.filename)
 
 			if (err != nil) != tt.wantErrBool {
 				t.Errorf("NewECDSAAllowListFromFile() error = %v, wantErr %v", err, tt.wantErrBool)
-				t.Error(allowList, allowList.Length(), err)
+				t.Error(allowList, gotEntries, err)
 				return
 			}
 			if allowList != nil && allowList.permitted(1337) != tt.want1337Permitted {
-				t.Errorf("NewECDSAAllowListFromFile() got = %v, want %v", allowList, tt.want1337Permitted)
+				t.Errorf("NewECDSAAllowListFromFile() allowList = %v, want %v", allowList, tt.want1337Permitted)
 			}
-			if allowList.Length() != tt.wantEntries {
-				t.Errorf("NewECDSAAllowListFromFile() got1 = %v, want %v", allowList.Length(), tt.wantEntries)
+			if gotEntries != tt.wantEntries {
+				t.Errorf("NewECDSAAllowListFromFile() gotEntries = %v, want %v", gotEntries, tt.wantEntries)
 			}
 		})
 	}

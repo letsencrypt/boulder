@@ -93,7 +93,6 @@ var (
 )
 
 const arbitraryRegID int64 = 1001
-const yamlLoadErrMsg = "Error loading YAML bytes for ECDSA allow list:"
 
 // Useful key and certificate files.
 const caKeyFile = "../test/test-ca.key"
@@ -364,13 +363,6 @@ func TestIssuePrecertificate(t *testing.T) {
 			})
 		}
 	}
-}
-
-func makeECDSAAllowListBytes(regID int64) []byte {
-	regIDBytes := []byte(fmt.Sprintf("%d", regID))
-	contents := []byte(`
-- `)
-	return append(contents, regIDBytes...)
 }
 
 func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificateAuthorityImpl, *mockSA) {
