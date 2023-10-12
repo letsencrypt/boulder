@@ -6,6 +6,7 @@ option go_package = "github.com/letsencrypt/boulder/sa/proto";
 import "core/proto/core.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
 
 // StorageAuthorityReadOnly exposes only those SA methods which are read-only.
 service StorageAuthorityReadOnly {
@@ -189,9 +190,10 @@ message CountOrdersRequest {
 }
 
 message CountFQDNSetsRequest {
-  // TODO (#7097) Replace int64 with durationpb
-  int64 window = 1;
+  // Next unused field number: 4
+  int64 windowNS = 1;
   repeated string domains = 2;
+  google.protobuf.Duration window = 3;
 }
 
 message FQDNSetExistsRequest {

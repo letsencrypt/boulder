@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/letsencrypt/boulder/grpc/test_proto"
 	"github.com/letsencrypt/boulder/metrics"
@@ -112,13 +113,14 @@ func TestWaitForReadyTrue(t *testing.T) {
 	c := test_proto.NewChillerClient(conn)
 
 	start := time.Now()
-	_, err = c.Chill(context.Background(), &test_proto.Time{TimeNS: time.Second.Nanoseconds()})
+	_, err = c.Chill(context.Background(), &test_proto.Time{TimeNS: time.Second.Nanoseconds(), Time: durationpb.New(time.Second)})
 	if err == nil {
 		t.Errorf("Successful Chill when we expected failure.")
 	}
 	if time.Since(start) < 90*time.Millisecond {
 		t.Errorf("Chill failed fast, when WaitForReady should be enabled.")
 	}
+	test.AssertEquals(t, time.Second.Microseconds(), durationpb.New(time.Second).AsDuration().Microseconds())
 }
 
 // TestWaitForReadyFalse configures a gRPC client with waitForReady: false and
