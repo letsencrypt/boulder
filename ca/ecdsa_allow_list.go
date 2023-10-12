@@ -19,6 +19,10 @@ func (e *ECDSAAllowList) permitted(regID int64) bool {
 
 // length returns the number of entries currently in the allow list.
 func (e *ECDSAAllowList) Length() int {
+	if e == nil || e.regIDsMap == nil {
+		return 0
+	}
+
 	return len(e.regIDsMap)
 }
 
