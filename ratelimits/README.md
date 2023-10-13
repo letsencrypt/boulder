@@ -79,22 +79,21 @@ Example: `NewRegistrationsPerIPv6Range:2001:0db8:0000::/48`
 
 #### regId
 
-The registration ID of the account.
+An ACME account registration ID.
 
 Example: `NewOrdersPerAccount:12345678`
 
-#### regId:domain
+#### domain
 
-A combination of registration ID and domain, formatted 'regId:domain'.
+A valid eTLD+1 domain name.
 
-Example: `CertificatesPerDomainPerAccount:12345678:example.com`
+Example: `CertificatesPerDomain:example.com`
 
-#### regId:fqdnSet
+#### fqdnSet
 
-A combination of registration ID and a comma-separated list of domain names,
-formatted 'regId:fqdnSet'.
+A comma-separated list of domain names.
 
-Example: `CertificatesPerFQDNSetPerAccount:12345678:example.com,example.org`
+Example: `CertificatesPerFQDNSet:example.com,example.org`
 
 ## Bucket Key Definitions
 
