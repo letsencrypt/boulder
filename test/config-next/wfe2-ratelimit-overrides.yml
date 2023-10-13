@@ -1,11 +1,1 @@
 NewRegistrationsPerIPAddress:127.0.0.1: { burst: 1000000, count: 1000000, period: 168h }
-CertificatesPerDomain:ratelimit.me: { burst: 1, count: 1, period: 2160h }
-CertificatesPerDomain:le.wtf: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:le1.wtf: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:le2.wtf: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:le3.wtf: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:nginx.wtf: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:good-caa-reserved.com: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:bad-caa-reserved.com: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:ecdsa.le.wtf: { burst: 10000, count: 10000, period: 2160h }
-CertificatesPerDomain:must-staple.le.wtf: { burst: 10000, count: 10000, period: 2160h }

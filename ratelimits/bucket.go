@@ -12,12 +12,6 @@ import (
 type Bucket struct {
 	name Name
 	key  string
-
-	// suppressDenials is true if spend denials for this bucket should be
-	// suppressed. This should really only be used for CertificatesPerDomain
-	// buckets when an override limit for CertificatesPerDomainPerAccount is
-	// configured.
-	suppressDenials bool
 }
 
 // BucketWithCost is a bucket with an associated cost.
@@ -93,61 +87,20 @@ func NewFailedAuthorizationsPerAccountBucket(regId int64) (Bucket, error) {
 }
 
 // NewCertificatesPerDomainBucket returns a Bucket for the provided order domain
-// name.
-func NewCertificatesPerDomainBucket(orderName string, suppressDenials bool) (Bucket, error) {
+// name. The name must be an eTLD+1.
+func NewCertificatesPerDomainBucket(orderName string) (Bucket, error) {
+	validDomains := DomainsForRateLimiting([]string{orderName})
+	if len(validDomains) <= 0 {
+		return Bucket{}, fmt.Errorf("invalid order name %q", orderName)
+	}
 	err := validateIdForName(CertificatesPerDomain, orderName)
 	if err != nil {
 		return Bucket{}, err
 	}
 	return Bucket{
-		name:            CertificatesPerDomain,
-		key:             joinWithColon(CertificatesPerDomain.EnumString(), orderName),
-		suppressDenials: suppressDenials,
+		name: CertificatesPerDomain,
+		key:  joinWithColon(CertificatesPerDomain.EnumString(), orderName),
 	}, nil
-}
-
-// newCertificatesPerDomainPerAccountBucket is only referenced internally.
-// Buckets for CertificatesPerDomainPerAccount are created by calling
-// NewCertificatesPerDomainBucketsWithCost().
-func newCertificatesPerDomainPerAccountBucket(regId int64) (Bucket, error) {
-	id := strconv.FormatInt(regId, 10)
-	err := validateIdForName(CertificatesPerDomainPerAccount, id)
-	if err != nil {
-		return Bucket{}, err
-	}
-	return Bucket{
-		name: CertificatesPerDomainPerAccount,
-		key:  joinWithColon(CertificatesPerDomainPerAccount.EnumString(), id),
-	}, nil
-}
-
-// NewCertificatesPerDomainBucketsWithCost returns a slice of Buckets for the
-// provided order domain names. The cost specified will be applied per eTLD+1
-// name present in the orderDomains. The CertificatesPerDomain limit is special
-// in that it can be overridden by the CertificatesPerDomainPerAccount limit.
-// This occurs when the CertificatesPerDomainPerAccount limit allows for higher
-// throughput than the CertificatesPerDomain limit. In these cases, the cost
-// will be consumed from the CertificatesPerDomainPerAccount bucket and ALSO
-// from the CertificatesPerDomain bucket, if possible.
-func NewCertificatesPerDomainBucketsWithCost(limiter *Limiter, regId int64, orderDomains []string, cost int64) ([]BucketWithCost, error) {
-	regIdBucket, err := newCertificatesPerDomainPerAccountBucket(regId)
-	if err != nil {
-		return nil, err
-	}
-	regIdLimit := limiter.getLimit(CertificatesPerDomainPerAccount, regIdBucket.key)
-
-	var buckets []BucketWithCost
-	var regIdBucketCost int64
-	for _, name := range DomainsForRateLimiting(orderDomains) {
-		bucket, err := NewCertificatesPerDomainBucket(name, regIdLimit.isOverride)
-		if err != nil {
-			return nil, err
-		}
-		regIdBucketCost++
-		buckets = append(buckets, bucket.WithCost(cost))
-	}
-	buckets = append(buckets, regIdBucket.WithCost(regIdBucketCost*cost))
-	return buckets, nil
 }
 
 // NewCertificatesPerFQDNSetBucket returns a Bucket for the provided order

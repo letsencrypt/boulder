@@ -67,7 +67,7 @@ func Test_Limiter_CheckWithLimitNoExist(t *testing.T) {
 
 func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 	t.Parallel()
-	testCtx, limiters, clk, testIP := setup(t)
+	testCtx, limiters, clk, _ := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
 			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0% of
@@ -138,41 +138,6 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
-
-			// Wait 1 second for a full bucket reset.
-			clk.Add(d.ResetIn)
-
-			testIP := net.ParseIP(testIP)
-			normalBucket, err := NewRegistrationsPerIPAddressBucket(testIP)
-			test.AssertNotError(t, err, "should not error")
-
-			// Spend the same bucket but in a batch with bucket with no
-			// overrides, this should succeed but the decision should be that of
-			// the value of the bucket with no overrides.
-			d, err = l.BatchSpend(testCtx, []BucketWithCost{overridenBucket.WithCost(1), normalBucket.WithCost(1)})
-			test.AssertNotError(t, err, "should not error")
-			test.Assert(t, d.Allowed, "should be allowed")
-			test.AssertEquals(t, d.Remaining, int64(19))
-			test.AssertEquals(t, d.RetryIn, time.Duration(0))
-			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
-
-			// Refund 1 request in a batch with bucket with no overrides, this
-			// should succeed but the decision should reflect be that of the
-			// bucket with no overrides.
-			d, err = l.BatchRefund(testCtx, []BucketWithCost{overridenBucket.WithCost(1), normalBucket.WithCost(1)})
-			test.AssertNotError(t, err, "should not error")
-			test.Assert(t, d.Allowed, "should be allowed")
-			test.AssertEquals(t, d.Remaining, int64(20))
-			test.AssertEquals(t, d.RetryIn, time.Duration(0))
-			test.AssertEquals(t, d.ResetIn, time.Duration(0))
-
-			// Once again.
-			d, err = l.BatchSpend(testCtx, []BucketWithCost{overridenBucket.WithCost(1), normalBucket.WithCost(1)})
-			test.AssertNotError(t, err, "should not error")
-			test.Assert(t, d.Allowed, "should be allowed")
-			test.AssertEquals(t, d.Remaining, int64(19))
-			test.AssertEquals(t, d.RetryIn, time.Duration(0))
-			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 
 			// Reset between tests.
 			err = l.Reset(testCtx, overridenBucket)
@@ -337,33 +302,6 @@ func Test_Limiter_DefaultLimits(t *testing.T) {
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
-
-			// Wait 1 second for a full bucket reset.
-			clk.Add(d.ResetIn)
-
-			// Spend the same bucket but in a batch.
-			d, err = l.BatchSpend(testCtx, []BucketWithCost{bucket.WithCost(1)})
-			test.AssertNotError(t, err, "should not error")
-			test.Assert(t, d.Allowed, "should be allowed")
-			test.AssertEquals(t, d.Remaining, int64(19))
-			test.AssertEquals(t, d.RetryIn, time.Duration(0))
-			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
-
-			// Refund 1 request in a batch, this should succeed.
-			d, err = l.BatchRefund(testCtx, []BucketWithCost{bucket.WithCost(1)})
-			test.AssertNotError(t, err, "should not error")
-			test.Assert(t, d.Allowed, "should be allowed")
-			test.AssertEquals(t, d.Remaining, int64(20))
-			test.AssertEquals(t, d.RetryIn, time.Duration(0))
-			test.AssertEquals(t, d.ResetIn, time.Duration(0))
-
-			// Once again.
-			d, err = l.BatchSpend(testCtx, []BucketWithCost{bucket.WithCost(1)})
-			test.AssertNotError(t, err, "should not error")
-			test.Assert(t, d.Allowed, "should be allowed")
-			test.AssertEquals(t, d.Remaining, int64(19))
-			test.AssertEquals(t, d.RetryIn, time.Duration(0))
-			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 		})
 	}
 }

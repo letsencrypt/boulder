@@ -2049,111 +2049,6 @@ func (wfe *WebFrontEndImpl) orderToOrderJSON(request *http.Request, order *corep
 	return respObj
 }
 
-// checkNewOrderLimits checks whether sufficient limit quota exists for the
-// subscriber to request of a new order. If so, that quota is spent. If an error
-// is encountered during the check, it is logged but not returned.
-//
-// TODO(#5545): For now we're simply exercising the new rate limiter codepath.
-// This should eventually return a berrors.RateLimit error containing the retry
-// after duration among other information available in the ratelimits.Decision.
-func (wfe *WebFrontEndImpl) checkNewOrderLimits(ctx context.Context, regId int64, orderNames []string) {
-	if wfe.limiter == nil {
-		// Limiter is disabled.
-		return
-	}
-
-	var batch []ratelimits.BucketWithCost
-	warn := func(err error, limit ratelimits.Name) {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
-		// TODO(#5545): Once key-value rate limits are authoritative this log
-		// line should be removed in favor of returning the error.
-		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
-	}
-
-	bucket, err := ratelimits.NewOrdersPerAccountBucket(regId)
-	if err != nil {
-		warn(err, ratelimits.NewOrdersPerAccount)
-		return
-	}
-	batch = append(batch, bucket.WithCost(1))
-
-	buckets, err := ratelimits.NewCertificatesPerDomainBucketsWithCost(wfe.limiter, regId, orderNames, 1)
-	if err != nil {
-		warn(err, ratelimits.CertificatesPerDomain)
-		return
-	}
-	batch = append(batch, buckets...)
-
-	bucket, err = ratelimits.NewFailedAuthorizationsPerAccountBucket(regId)
-	if err != nil {
-		warn(err, ratelimits.FailedAuthorizationsPerAccount)
-		return
-	}
-	batch = append(batch, bucket.WithCost(1))
-
-	_, err = wfe.limiter.BatchSpend(ctx, batch)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
-		warn(err, ratelimits.NewOrdersPerAccount)
-		return
-	}
-}
-
-// refundNewOrderLimits is typically called when a new order creation fails. It
-// refunds the limit quota consumed by the request, allowing the caller to retry
-// immediately. If an error is encountered during the refund, it is logged but
-// not returned.
-func (wfe *WebFrontEndImpl) refundNewOrderLimits(ctx context.Context, regId int64, orderNames []string) {
-	if wfe.limiter == nil {
-		// Limiter is disabled.
-		return
-	}
-
-	var batch []ratelimits.BucketWithCost
-	warn := func(err error, limit ratelimits.Name) {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
-		// TODO(#5545): Once key-value rate limits are authoritative this log
-		// line should be removed in favor of returning the error.
-		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
-	}
-
-	bucket, err := ratelimits.NewOrdersPerAccountBucket(regId)
-	if err != nil {
-		warn(err, ratelimits.NewOrdersPerAccount)
-		return
-	}
-	batch = append(batch, bucket.WithCost(1))
-
-	buckets, err := ratelimits.NewCertificatesPerDomainBucketsWithCost(wfe.limiter, regId, orderNames, 1)
-	if err != nil {
-		warn(err, ratelimits.CertificatesPerDomain)
-		return
-	}
-	batch = append(batch, buckets...)
-
-	bucket, err = ratelimits.NewFailedAuthorizationsPerAccountBucket(regId)
-	if err != nil {
-		warn(err, ratelimits.FailedAuthorizationsPerAccount)
-		return
-	}
-	batch = append(batch, bucket.WithCost(1))
-
-	_, err = wfe.limiter.BatchRefund(ctx, batch)
-	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return
-		}
-		warn(err, ratelimits.NewOrdersPerAccount)
-		return
-	}
-}
-
 // NewOrder is used by clients to create a new order object and a set of
 // authorizations to fulfill for issuance.
 func (wfe *WebFrontEndImpl) NewOrder(
@@ -2228,16 +2123,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 
 	logEvent.DNSNames = names
 
-	// TODO(#5545): Spending and Refunding can be async until these rate limits
-	// are authoritative. This saves us from adding latency to each request.
-	go wfe.checkNewOrderLimits(ctx, acct.ID, names)
-	var newOrderSuccessful bool
-	defer func() {
-		if !newOrderSuccessful {
-			go wfe.refundNewOrderLimits(ctx, acct.ID, names)
-		}
-	}()
-
 	order, err := wfe.ra.NewOrder(ctx, &rapb.NewOrderRequest{
 		RegistrationID: acct.ID,
 		Names:          names,
@@ -2258,7 +2143,6 @@ func (wfe *WebFrontEndImpl) NewOrder(
 		wfe.sendError(response, logEvent, probs.ServerInternal("Error marshaling order"), err)
 		return
 	}
-	newOrderSuccessful = true
 }
 
 // GetOrder is used to retrieve a existing order object

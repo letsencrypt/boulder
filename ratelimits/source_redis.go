@@ -83,28 +83,8 @@ func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) 
 	return nil
 }
 
-// BatchSet stores TATs at the specified bucketKeys using a pipelined Redis
-// transaction in order to reduce the number of round-trips to each Redis shard.
-// An error is returned if the operation failed and nil otherwise.
-func (r *RedisSource) BatchSet(ctx context.Context, buckets map[string]time.Time) error {
-	start := r.clk.Now()
-
-	pipe := r.client.Pipeline()
-	for bucketKey, tat := range buckets {
-		pipe.Set(ctx, bucketKey, tat.UTC().UnixNano(), 0)
-	}
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		r.latency.With(prometheus.Labels{"call": "batchset", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
-		return err
-	}
-
-	r.latency.With(prometheus.Labels{"call": "batchset", "result": "success"}).Observe(time.Since(start).Seconds())
-	return nil
-}
-
-// Get retrieves the TATs at the specified bucketKeys. An error is returned if
-// the operation failed and nil otherwise. If the bucketKey does not exist,
+// Get retrieves the TAT at the specified bucketKey. An error is returned if the
+// operation failed and nil otherwise. If the bucketKey does not exist,
 // ErrBucketNotFound is returned.
 func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, error) {
 	start := r.clk.Now()
@@ -122,43 +102,6 @@ func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, err
 
 	r.latency.With(prometheus.Labels{"call": "get", "result": "success"}).Observe(time.Since(start).Seconds())
 	return time.Unix(0, tatNano).UTC(), nil
-}
-
-// BatchGet retrieves the TATs at the specified bucketKeys using a pipelined
-// Redis transaction in order to reduce the number of round-trips to each Redis
-// shard. An error is returned if the operation failed and nil otherwise. If a
-// bucketKey does not exist, it WILL NOT be included in the returned map.
-func (r *RedisSource) BatchGet(ctx context.Context, bucketKeys []string) (map[string]time.Time, error) {
-	start := r.clk.Now()
-
-	pipe := r.client.Pipeline()
-	for _, bucketKey := range bucketKeys {
-		pipe.Get(ctx, bucketKey)
-	}
-	results, err := pipe.Exec(ctx)
-	if err != nil {
-		r.latency.With(prometheus.Labels{"call": "batchget", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
-		if !errors.Is(err, redis.Nil) {
-			return nil, err
-		}
-	}
-
-	tats := make(map[string]time.Time, len(bucketKeys))
-	for i, result := range results {
-		tatNano, err := result.(*redis.StringCmd).Int64()
-		if err != nil {
-			if errors.Is(err, redis.Nil) {
-				// Bucket key does not exist.
-				continue
-			}
-			r.latency.With(prometheus.Labels{"call": "batchget", "result": resultForError(err)}).Observe(time.Since(start).Seconds())
-			return nil, err
-		}
-		tats[bucketKeys[i]] = time.Unix(0, tatNano).UTC()
-	}
-
-	r.latency.With(prometheus.Labels{"call": "batchget", "result": "success"}).Observe(time.Since(start).Seconds())
-	return tats, nil
 }
 
 // Delete deletes the TAT at the specified bucketKey ('name:id'). It returns an
