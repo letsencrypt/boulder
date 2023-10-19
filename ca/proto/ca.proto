@@ -4,6 +4,7 @@ package ca;
 option go_package = "github.com/letsencrypt/boulder/ca/proto";
 
 import "core/proto/core.proto";
+import "google/protobuf/timestamp.proto";
 
 // CertificateAuthority issues certificates.
 service CertificateAuthority {
@@ -39,9 +40,11 @@ service OCSPGenerator {
 
 // Exactly one of certDER or [serial and issuerID] must be set.
 message GenerateOCSPRequest {
+  // Next unused field number: 8
   string status = 2;
   int32 reason = 3;
   int64 revokedAtNS = 4; // Unix timestamp (nanoseconds)
+  google.protobuf.Timestamp revokedAt = 7;
   string serial = 5;
   int64 issuerID = 6;
 }
@@ -63,8 +66,10 @@ message GenerateCRLRequest {
 }
 
 message CRLMetadata {
+  // Next unused field number: 5
   int64 issuerNameID = 1;
   int64 thisUpdateNS = 2; // Unix timestamp (nanoseconds), also used for CRLNumber.
+  google.protobuf.Timestamp thisUpdate = 4;
   int64 shardIdx = 3;
 }
 

@@ -6,10 +6,12 @@
 package grpc
 
 import (
+	"fmt"
 	"net"
 	"time"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -68,10 +70,18 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 			return nil, err
 		}
 	}
-	var validated int64
+
+	var validatedInt int64 = 0
+	validatedTS := timestamppb.New(time.Time{})
 	if challenge.Validated != nil {
-		validated = challenge.Validated.UTC().UnixNano()
+		validatedInt = challenge.Validated.UTC().UnixNano()
+		validatedTS = timestamppb.New(challenge.Validated.UTC())
 	}
+
+	if !validatedTS.IsValid() {
+		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Challenge object")
+	}
+
 	return &corepb.Challenge{
 		Type:              string(challenge.Type),
 		Status:            string(challenge.Status),
@@ -79,7 +89,8 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		KeyAuthorization:  challenge.ProvidedKeyAuthorization,
 		Error:             prob,
 		Validationrecords: recordAry,
-		Validated:         validated,
+		ValidatedNS:       validatedInt,
+		Validated:         validatedTS,
 	}, nil
 }
 
@@ -105,8 +116,8 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	var validated *time.Time
-	if in.Validated != 0 {
-		val := time.Unix(0, in.Validated).UTC()
+	if in.ValidatedNS != 0 {
+		val := time.Unix(0, in.ValidatedNS).UTC()
 		validated = &val
 	}
 	ch := core.Challenge{
@@ -229,10 +240,16 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
-	var createdAt int64
+	var createdAtInt int64 = 0
+	createdAtTS := timestamppb.New(time.Time{})
 	if reg.CreatedAt != nil {
-		createdAt = reg.CreatedAt.UTC().UnixNano()
+		createdAtInt = reg.CreatedAt.UTC().UnixNano()
+		createdAtTS = timestamppb.New(reg.CreatedAt.UTC())
 	}
+	if !createdAtTS.IsValid() {
+		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+	}
+
 	return &corepb.Registration{
 		Id:              reg.ID,
 		Key:             keyBytes,
@@ -240,7 +257,8 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 		ContactsPresent: contactsPresent,
 		Agreement:       reg.Agreement,
 		InitialIP:       ipBytes,
-		CreatedAtNS:     createdAt,
+		CreatedAtNS:     createdAtInt,
+		CreatedAt:       createdAtTS,
 		Status:          string(reg.Status),
 	}, nil
 }
@@ -295,16 +313,23 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		}
 		challs[i] = pbChall
 	}
-	var expires int64
+	var expiresInt int64 = 0
+	expiresTS := timestamppb.New(time.Time{})
 	if authz.Expires != nil {
-		expires = authz.Expires.UTC().UnixNano()
+		expiresInt = authz.Expires.UTC().UnixNano()
+		expiresTS = timestamppb.New(authz.Expires.UTC())
 	}
+	if !expiresTS.IsValid() {
+		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+	}
+
 	return &corepb.Authorization{
 		Id:             authz.ID,
 		Identifier:     authz.Identifier.Value,
 		RegistrationID: authz.RegistrationID,
 		Status:         string(authz.Status),
-		ExpiresNS:      expires,
+		ExpiresNS:      expiresInt,
+		Expires:        expiresTS,
 		Challenges:     challs,
 	}, nil
 }
@@ -318,20 +343,25 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		}
 		challs[i] = chall
 	}
-	expires := time.Unix(0, pb.ExpiresNS).UTC()
+	var expires *time.Time
+	if pb.ExpiresNS != 0 {
+		c := time.Unix(0, pb.ExpiresNS).UTC()
+		expires = &c
+	}
 	authz := core.Authorization{
 		ID:             pb.Id,
 		Identifier:     identifier.ACMEIdentifier{Type: identifier.DNS, Value: pb.Identifier},
 		RegistrationID: pb.RegistrationID,
 		Status:         core.AcmeStatus(pb.Status),
-		Expires:        &expires,
+		Expires:        expires,
 		Challenges:     challs,
 	}
 	return authz, nil
 }
 
 // orderValid checks that a corepb.Order is valid. In addition to the checks
-// from `newOrderValid` it ensures the order ID and the Created field are not nil.
+// from `newOrderValid` it ensures the order ID and the Created fields are not
+// the zero value.
 func orderValid(order *corepb.Order) bool {
 	return order.Id != 0 && order.CreatedNS != 0 && newOrderValid(order)
 }
@@ -354,11 +384,13 @@ func CertToPB(cert core.Certificate) *corepb.Certificate {
 		Digest:         cert.Digest,
 		Der:            cert.DER,
 		IssuedNS:       cert.Issued.UnixNano(),
+		Issued:         timestamppb.New(cert.Issued),
 		ExpiresNS:      cert.Expires.UnixNano(),
+		Expires:        timestamppb.New(cert.Expires),
 	}
 }
 
-func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
+func PBToCert(pb *corepb.Certificate) core.Certificate {
 	return core.Certificate{
 		RegistrationID: pb.RegistrationID,
 		Serial:         pb.Serial,
@@ -366,35 +398,39 @@ func PBToCert(pb *corepb.Certificate) (core.Certificate, error) {
 		DER:            pb.Der,
 		Issued:         time.Unix(0, pb.IssuedNS),
 		Expires:        time.Unix(0, pb.ExpiresNS),
-	}, nil
+	}
 }
 
 func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {
 	return &corepb.CertificateStatus{
 		Serial:                  certStatus.Serial,
 		Status:                  string(certStatus.Status),
-		OcspLastUpdated:         certStatus.OCSPLastUpdated.UnixNano(),
+		OcspLastUpdatedNS:       certStatus.OCSPLastUpdated.UnixNano(),
+		OcspLastUpdated:         timestamppb.New(certStatus.OCSPLastUpdated),
 		RevokedDateNS:           certStatus.RevokedDate.UnixNano(),
+		RevokedDate:             timestamppb.New(certStatus.RevokedDate),
 		RevokedReason:           int64(certStatus.RevokedReason),
 		LastExpirationNagSentNS: certStatus.LastExpirationNagSent.UnixNano(),
+		LastExpirationNagSent:   timestamppb.New(certStatus.LastExpirationNagSent),
 		NotAfterNS:              certStatus.NotAfter.UnixNano(),
+		NotAfter:                timestamppb.New(certStatus.NotAfter),
 		IsExpired:               certStatus.IsExpired,
 		IssuerID:                certStatus.IssuerNameID,
 	}
 }
 
-func PBToCertStatus(pb *corepb.CertificateStatus) (core.CertificateStatus, error) {
+func PBToCertStatus(pb *corepb.CertificateStatus) core.CertificateStatus {
 	return core.CertificateStatus{
 		Serial:                pb.Serial,
 		Status:                core.OCSPStatus(pb.Status),
-		OCSPLastUpdated:       time.Unix(0, pb.OcspLastUpdated),
+		OCSPLastUpdated:       time.Unix(0, pb.OcspLastUpdatedNS),
 		RevokedDate:           time.Unix(0, pb.RevokedDateNS),
 		RevokedReason:         revocation.Reason(pb.RevokedReason),
 		LastExpirationNagSent: time.Unix(0, pb.LastExpirationNagSentNS),
 		NotAfter:              time.Unix(0, pb.NotAfterNS),
 		IsExpired:             pb.IsExpired,
 		IssuerNameID:          pb.IssuerID,
-	}, nil
+	}
 }
 
 // PBToAuthzMap converts a protobuf map of domains mapped to protobuf authorizations to a

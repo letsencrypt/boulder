@@ -30,6 +30,7 @@ import (
 	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/sa"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const usageString = `
@@ -341,9 +342,11 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 
 	dbcomment := fmt.Sprintf("%s: %s", u.Username, comment)
 
+	now := r.clk.Now()
 	req := &sapb.AddBlockedKeyRequest{
 		KeyHash:   spkiHash,
-		AddedNS:   r.clk.Now().UnixNano(),
+		AddedNS:   now.UnixNano(),
+		Added:     timestamppb.New(now),
 		Source:    "admin-revoker",
 		Comment:   dbcomment,
 		RevokedBy: 0,

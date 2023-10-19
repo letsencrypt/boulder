@@ -17,6 +17,7 @@ import (
 	"github.com/miekg/pkcs11"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
@@ -184,13 +185,14 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 	serialHex := core.SerialToString(serialBigInt)
 	regID := issueReq.RegistrationID
-	nowNanos := ca.clk.Now().UnixNano()
-	expiresNanos := validity.NotAfter.UnixNano()
+	now := ca.clk.Now()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		Serial:    serialHex,
 		RegID:     regID,
-		CreatedNS: nowNanos,
-		ExpiresNS: expiresNanos,
+		CreatedNS: now.UnixNano(),
+		Created:   timestamppb.New(now),
+		ExpiresNS: validity.NotAfter.UnixNano(),
+		Expires:   timestamppb.New(validity.NotAfter),
 	})
 	if err != nil {
 		return nil, err
@@ -296,10 +298,12 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
 
+	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:      certDER,
 		RegID:    req.RegistrationID,
-		IssuedNS: ca.clk.Now().UnixNano(),
+		IssuedNS: now.UnixNano(),
+		Issued:   timestamppb.New(now),
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
@@ -313,7 +317,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		Der:            certDER,
 		Digest:         core.Fingerprint256(certDER),
 		IssuedNS:       precert.NotBefore.UnixNano(),
+		Issued:         timestamppb.New(precert.NotBefore),
 		ExpiresNS:      precert.NotAfter.UnixNano(),
+		Expires:        timestamppb.New(precert.NotAfter),
 	}, nil
 }
 
@@ -413,11 +419,12 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
-	nowNanos := ca.clk.Now().UnixNano()
+	now := ca.clk.Now()
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
-		IssuedNS:     nowNanos,
+		IssuedNS:     now.UnixNano(),
+		Issued:       timestamppb.New(now),
 		IssuerNameID: int64(issuer.Cert.NameID()),
 		OcspNotReady: true,
 	})

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/core"
@@ -95,6 +96,20 @@ func TestChallenge(t *testing.T) {
 	_, err = PBToChallenge(&corepb.Challenge{})
 	test.AssertError(t, err, "PBToChallenge did not fail")
 	test.AssertEquals(t, err, ErrMissingParameters)
+
+	challNilValidation := core.Challenge{
+		Type:                     core.ChallengeTypeDNS01,
+		Status:                   core.StatusValid,
+		Token:                    "asd",
+		ProvidedKeyAuthorization: "keyauth",
+		Validated:                nil,
+	}
+	pb, err = ChallengeToPB(challNilValidation)
+	test.AssertNotError(t, err, "ChallengeToPB failed")
+	test.Assert(t, pb != nil, "Returned corepb.Challenge is nil")
+	recon, err = PBToChallenge(pb)
+	test.AssertNotError(t, err, "PBToChallenge failed")
+	test.AssertDeepEquals(t, recon, challNilValidation)
 }
 
 func TestValidationRecord(t *testing.T) {
@@ -190,6 +205,21 @@ func TestRegistration(t *testing.T) {
 	outReg, err = PbToRegistration(pbReg)
 	test.AssertNotError(t, err, "PbToRegistration failed")
 	test.Assert(t, *outReg.Contact != nil, "Empty slice was converted to a nil slice")
+
+	inRegNilCreatedAt := core.Registration{
+		ID:        1,
+		Key:       &key,
+		Contact:   &contacts,
+		Agreement: "yup",
+		InitialIP: net.ParseIP("1.1.1.1"),
+		CreatedAt: nil,
+		Status:    core.StatusValid,
+	}
+	pbReg, err = RegistrationToPB(inRegNilCreatedAt)
+	test.AssertNotError(t, err, "registrationToPB failed")
+	outReg, err = PbToRegistration(pbReg)
+	test.AssertNotError(t, err, "PbToRegistration failed")
+	test.AssertDeepEquals(t, inRegNilCreatedAt, outReg)
 }
 
 func TestAuthz(t *testing.T) {
@@ -215,12 +245,25 @@ func TestAuthz(t *testing.T) {
 		Expires:        &exp,
 		Challenges:     []core.Challenge{challA, challB},
 	}
-
 	pbAuthz, err := AuthzToPB(inAuthz)
 	test.AssertNotError(t, err, "AuthzToPB failed")
 	outAuthz, err := PBToAuthz(pbAuthz)
-	test.AssertNotError(t, err, "pbToAuthz failed")
+	test.AssertNotError(t, err, "PBToAuthz failed")
 	test.AssertDeepEquals(t, inAuthz, outAuthz)
+
+	inAuthzNilExpires := core.Authorization{
+		ID:             "1",
+		Identifier:     identifier,
+		RegistrationID: 5,
+		Status:         core.StatusPending,
+		Expires:        nil,
+		Challenges:     []core.Challenge{challA, challB},
+	}
+	pbAuthz2, err := AuthzToPB(inAuthzNilExpires)
+	test.AssertNotError(t, err, "AuthzToPB failed")
+	outAuthz2, err := PBToAuthz(pbAuthz2)
+	test.AssertNotError(t, err, "PBToAuthz failed")
+	test.AssertDeepEquals(t, inAuthzNilExpires, outAuthz2)
 }
 
 func TestCert(t *testing.T) {
@@ -235,12 +278,14 @@ func TestCert(t *testing.T) {
 	}
 
 	certPB := CertToPB(cert)
-	outCert, _ := PBToCert(certPB)
+	outCert := PBToCert(certPB)
 
 	test.AssertDeepEquals(t, cert, outCert)
 }
 
 func TestOrderValid(t *testing.T) {
+	created := time.Now()
+	expires := created.Add(1 * time.Hour)
 	testCases := []struct {
 		Name          string
 		Order         *corepb.Order
@@ -251,12 +296,14 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				ExpiresNS:         1,
+				ExpiresNS:         expires.UnixNano(),
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
 				BeganProcessing:   false,
-				CreatedNS:         1,
+				CreatedNS:         created.UnixNano(),
+				Created:           timestamppb.New(created),
 			},
 			ExpectedValid: true,
 		},
@@ -265,11 +312,13 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:               1,
 				RegistrationID:   1,
-				ExpiresNS:        1,
+				ExpiresNS:        expires.UnixNano(),
+				Expires:          timestamppb.New(expires),
 				V2Authorizations: []int64{},
 				Names:            []string{"example.com"},
 				BeganProcessing:  false,
-				CreatedNS:        1,
+				CreatedNS:        created.UnixNano(),
+				Created:          timestamppb.New(created),
 			},
 			ExpectedValid: true,
 		},
@@ -282,7 +331,8 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                0,
 				RegistrationID:    1,
-				ExpiresNS:         1,
+				ExpiresNS:         expires.UnixNano(),
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
@@ -294,7 +344,8 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    0,
-				ExpiresNS:         1,
+				ExpiresNS:         expires.UnixNano(),
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
@@ -307,6 +358,7 @@ func TestOrderValid(t *testing.T) {
 				Id:                1,
 				RegistrationID:    1,
 				ExpiresNS:         0,
+				Expires:           nil,
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{"example.com"},
@@ -318,7 +370,8 @@ func TestOrderValid(t *testing.T) {
 			Order: &corepb.Order{
 				Id:                1,
 				RegistrationID:    1,
-				ExpiresNS:         1,
+				ExpiresNS:         expires.UnixNano(),
+				Expires:           timestamppb.New(expires),
 				CertificateSerial: "",
 				V2Authorizations:  []int64{},
 				Names:             []string{},

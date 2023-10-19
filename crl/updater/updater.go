@@ -213,8 +213,11 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
 			IssuerNameID:    int64(issuerNameID),
 			ExpiresAfterNS:  chunk.start.UnixNano(),
+			ExpiresAfter:    timestamppb.New(chunk.start),
 			ExpiresBeforeNS: chunk.end.UnixNano(),
+			ExpiresBefore:   timestamppb.New(chunk.end),
 			RevokedBeforeNS: atTime.UnixNano(),
+			RevokedBefore:   timestamppb.New(atTime),
 		})
 		if err != nil {
 			return fmt.Errorf("connecting to SA: %w", err)
@@ -247,6 +250,7 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(issuerNameID),
 				ThisUpdateNS: atTime.UnixNano(),
+				ThisUpdate:   timestamppb.New(atTime),
 				ShardIdx:     int64(shardIdx),
 			},
 		},

@@ -8,5 +8,7 @@ service Chiller {
 }
 
 message Time {
+  // Next unused field number: 2
+   // TODO (#7097) Change this to google.protobuf.Duration
   int64 timeNS = 1; // Unix timestamp (nanoseconds)
-}
+ }

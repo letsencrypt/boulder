@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmhodges/clock"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	corepb "github.com/letsencrypt/boulder/core/proto"
@@ -71,11 +73,14 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
+	// TODO(#7100) Change usage of time.Now() to fakeclock.Now()
+	now := time.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: 1,
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -93,7 +98,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -101,7 +107,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -120,7 +127,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "123",
 				Reason:      1,
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -134,12 +142,14 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
+
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:      "deadbeefdeadbeefdeadbeefdeadbeefdead",
 				Reason:      1,
 				RevokedAtNS: 0,
+				RevokedAt:   timestamppb.New(time.Time{}),
 			},
 		},
 	}
@@ -163,11 +173,15 @@ func TestGenerateCRL(t *testing.T) {
 		}
 		close(done)
 	}()
+	fc := clock.NewFake()
+	fc.Set(time.Date(2020, time.October, 10, 23, 17, 0, 0, time.UTC))
+	now = fc.Now()
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -180,6 +194,8 @@ func TestGenerateCRL(t *testing.T) {
 	test.AssertNotError(t, err, "should be able to parse empty CRL")
 	test.AssertEquals(t, len(crl.RevokedCertificateEntries), 0)
 	err = crl.CheckSignatureFrom(testCtx.boulderIssuers[0].Cert.Certificate)
+	test.AssertEquals(t, crl.ThisUpdate, now)
+	test.AssertEquals(t, crl.ThisUpdate, timestamppb.New(now).AsTime())
 	test.AssertNotError(t, err, "CRL signature should validate")
 
 	// Test that generating a CRL with some entries works.
@@ -201,7 +217,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Metadata{
 			Metadata: &capb.CRLMetadata{
 				IssuerNameID: int64(testCtx.boulderIssuers[0].Cert.NameID()),
-				ThisUpdateNS: time.Now().UnixNano(),
+				ThisUpdateNS: now.UnixNano(),
+				ThisUpdate:   timestamppb.New(now),
 			},
 		},
 	}
@@ -209,7 +226,8 @@ func TestGenerateCRL(t *testing.T) {
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:      "000000000000000000000000000000000000",
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 				// Reason 0, Unspecified, is omitted.
 			},
 		},
@@ -219,7 +237,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "111111111111111111111111111111111111",
 				Reason:      1, // keyCompromise
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -228,7 +247,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "444444444444444444444444444444444444",
 				Reason:      4, // superseded
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -237,7 +257,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "555555555555555555555555555555555555",
 				Reason:      5, // cessationOfOperation
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
@@ -246,7 +267,8 @@ func TestGenerateCRL(t *testing.T) {
 			Entry: &corepb.CRLEntry{
 				Serial:      "999999999999999999999999999999999999",
 				Reason:      9, // privilegeWithdrawn
-				RevokedAtNS: time.Now().UnixNano(),
+				RevokedAtNS: now.UnixNano(),
+				RevokedAt:   timestamppb.New(now),
 			},
 		},
 	}
