@@ -17,15 +17,6 @@ func (e *ECDSAAllowList) permitted(regID int64) bool {
 	return e.regIDsMap[regID]
 }
 
-// length returns the number of entries currently in the allow list.s
-func (e *ECDSAAllowList) length() int {
-	if e == nil || e.regIDsMap == nil {
-		return 0
-	}
-
-	return len(e.regIDsMap)
-}
-
 func makeRegIDsMap(regIDs []int64) map[int64]bool {
 	regIDsMap := make(map[int64]bool)
 	for _, regID := range regIDs {
@@ -36,8 +27,7 @@ func makeRegIDsMap(regIDs []int64) map[int64]bool {
 
 // NewECDSAAllowListFromFile is exported to allow `boulder-ca` to construct a
 // new `ECDSAAllowList` object. It returns the ECDSAAllowList, the size of allow
-// list after attempting to load it (for CA logging purposes so length() doesn't
-// need to be exposed), or an error.
+// list after attempting to load it (for CA logging purposes so inner fields don't need to be exported), or an error.
 func NewECDSAAllowListFromFile(filename string) (*ECDSAAllowList, int, error) {
 	configBytes, err := os.ReadFile(filename)
 	if err != nil {
@@ -52,5 +42,5 @@ func NewECDSAAllowListFromFile(filename string) (*ECDSAAllowList, int, error) {
 	allowList := &ECDSAAllowList{}
 	allowList.regIDsMap = makeRegIDsMap(regIDs)
 
-	return allowList, allowList.length(), nil
+	return allowList, len(allowList.regIDsMap), nil
 }
