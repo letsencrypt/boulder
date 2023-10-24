@@ -94,7 +94,6 @@ func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
 	if len(policy.ExactBlockedNames) == 0 {
 		return fmt.Errorf("No entries in ExactBlockedNames.")
 	}
-
 	return pa.processHostnamePolicy(policy)
 }
 
