@@ -226,7 +226,7 @@ func main() {
 		// Create an allow list object.
 		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
-		logger.Infof("Created an ECDSA allow list, it was initialized with %d entries", entries)
+		logger.Infof("Loaded an ECDSA allow list with %d entries", entries)
 	}
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)
