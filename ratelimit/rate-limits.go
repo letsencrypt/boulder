@@ -129,7 +129,6 @@ func (r *limitsImpl) LoadPolicies(contents []byte) error {
 		return err
 	}
 	r.rlPolicy = &newPolicy
-
 	return nil
 }
 
