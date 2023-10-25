@@ -8,6 +8,7 @@ import (
 
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	"github.com/letsencrypt/boulder/test"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestCertsPerNameRateLimitTable(t *testing.T) {
@@ -79,7 +80,9 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 		t.Run(tc.caseName, func(t *testing.T) {
 			timeRange := &sapb.Range{
 				EarliestNS: aprilFirst.Add(-1 * time.Second).UnixNano(),
+				Earliest:   timestamppb.New(aprilFirst.Add(-1 * time.Second)),
 				LatestNS:   aprilFirst.Add(aWeek).UnixNano(),
+				Latest:     timestamppb.New(aprilFirst.Add(aWeek)),
 			}
 			count, earliest, err := sa.countCertificatesByName(ctx, sa.dbMap, tc.domainName, timeRange)
 			if err != nil {
@@ -108,7 +111,9 @@ func TestNewOrdersRateLimitTable(t *testing.T) {
 		AccountID: 1,
 		Range: &sapb.Range{
 			EarliestNS: start.UnixNano(),
+			Earliest:   timestamppb.New(start),
 			LatestNS:   start.Add(time.Minute * 10).UnixNano(),
+			Latest:     timestamppb.New(start.Add(time.Minute * 10)),
 		},
 	}
 
