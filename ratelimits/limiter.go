@@ -136,6 +136,10 @@ func (l *Limiter) Check(ctx context.Context, bucket BucketWithCost) (*Decision, 
 		return nil, err
 	}
 
+	if bucket.cost > limit.Burst {
+		return nil, ErrInvalidCostOverLimit
+	}
+
 	// Remove cancellation from the request context so that transactions are not
 	// interrupted by a client disconnect.
 	ctx = context.WithoutCancel(ctx)
@@ -169,6 +173,10 @@ func (l *Limiter) Spend(ctx context.Context, bucket BucketWithCost) (*Decision, 
 			return disabledLimitDecision, nil
 		}
 		return nil, err
+	}
+
+	if bucket.cost > limit.Burst {
+		return nil, ErrInvalidCostOverLimit
 	}
 
 	start := l.clk.Now()
