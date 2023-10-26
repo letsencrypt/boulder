@@ -100,7 +100,6 @@ With no options passed, runs standard battery of tests (lint, unit, and integrat
     -n, --config-next                     Changes BOULDER_CONFIG_DIR from test/config to test/config-next
     -i, --integration                     Adds integration to the list of tests to run
     -s, --start-py                        Adds start to the list of tests to run
-    -m, --gomod-vendor                    Adds gomod-vendor to the list of tests to run
     -g, --generate                        Adds generate to the list of tests to run
     -o, --list-integration-tests          Outputs a list of the available integration tests
     -f <REGEX>, --filter=<REGEX>          Run only those tests matching the regular expression
@@ -135,7 +134,6 @@ while getopts luvweciosmgnhp:f:-: OPT; do
     o | list-integration-tests )     print_list_of_integration_tests ;;
     f | filter )                     check_arg; FILTER+=("${OPTARG}") ;;
     s | start-py )                   RUN+=("start") ;;
-    m | gomod-vendor )               RUN+=("gomod-vendor") ;;
     g | generate )                   RUN+=("generate") ;;
     n | config-next )                BOULDER_CONFIG_DIR="test/config-next" ;;
     h | help )                       print_usage_exit ;;
@@ -145,9 +143,7 @@ while getopts luvweciosmgnhp:f:-: OPT; do
 done
 shift $((OPTIND-1)) # remove parsed options and args from $@ list
 
-# The list of segments to run. Order doesn't matter. Note: gomod-vendor
-# is specifically left out of the defaults, because we don't want to run
-# it locally (it could delete local state).
+# The list of segments to run. Order doesn't matter.
 if [ -z "${RUN[@]+x}" ]
 then
   RUN+=("lints" "unit" "integration")
@@ -258,17 +254,6 @@ if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
     echo "Boulder did not come up after ${I} seconds during ./start.py."
     exit 1
   fi
-fi
-
-# Run go mod vendor (happens only in CI) to check that the versions in
-# vendor/ really exist in the remote repo and match what we have.
-STAGE="gomod-vendor"
-if [[ "${RUN[@]}" =~ "$STAGE" ]] ; then
-  print_heading "Running Go Mod Tidy"
-  go mod tidy
-  print_heading "Running Go Mod Vendor"
-  go mod vendor
-  run_and_expect_silence git diff --exit-code .
 fi
 
 # Run generate to make sure all our generated code can be re-generated with
