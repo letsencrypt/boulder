@@ -159,7 +159,7 @@ func TestWillingToIssue(t *testing.T) {
 
 	pa := paImpl(t)
 
-	err = pa.SetHostnamePolicyFile(yamlPolicyFile.Name())
+	err = pa.LoadHostnamePolicyFile(yamlPolicyFile.Name())
 	test.AssertNotError(t, err, "Couldn't load rules")
 
 	// Test for invalid identifier type
@@ -233,7 +233,7 @@ func TestWillingToIssueWildcard(t *testing.T) {
 	defer os.Remove(f.Name())
 	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
-	err = pa.SetHostnamePolicyFile(f.Name())
+	err = pa.LoadHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
 	testCases := []struct {
@@ -324,7 +324,7 @@ func TestWillingToIssueWildcards(t *testing.T) {
 	defer os.Remove(f.Name())
 	err = os.WriteFile(f.Name(), bannedBytes, 0640)
 	test.AssertNotError(t, err, "Couldn't write serialized banned list to file")
-	err = pa.SetHostnamePolicyFile(f.Name())
+	err = pa.LoadHostnamePolicyFile(f.Name())
 	test.AssertNotError(t, err, "Couldn't load policy contents from file")
 
 	idents := []identifier.ACMEIdentifier{
@@ -448,7 +448,7 @@ func TestMalformedExactBlocklist(t *testing.T) {
 
 	// Try to use the YAML tempfile as the hostname policy. It should produce an
 	// error since the exact blocklist contents are malformed.
-	err = pa.SetHostnamePolicyFile(f.Name())
+	err = pa.LoadHostnamePolicyFile(f.Name())
 	test.AssertError(t, err, "Loaded invalid exact blocklist content without error")
 	test.AssertEquals(t, err.Error(), "Malformed ExactBlockedNames entry, only one label: \"com\"")
 }

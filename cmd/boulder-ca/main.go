@@ -194,7 +194,7 @@ func main() {
 	if c.CA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile was empty")
 	}
-	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
+	err = pa.LoadHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 	// Do this before creating the issuers to ensure the log list is loaded before
@@ -221,20 +221,12 @@ func main() {
 	cmd.FailOnError(err, "Unable to create key policy")
 
 	var ecdsaAllowList *ca.ECDSAAllowList
+	var entries int
 	if c.CA.ECDSAAllowListFilename != "" {
-		// Create a gauge vector to track allow list reloads.
-		allowListGauge := prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "ecdsa_allow_list_status",
-			Help: "Number of ECDSA allow list entries and status of most recent update attempt",
-		}, []string{"result"})
-		scope.MustRegister(allowListGauge)
-
-		// Create a reloadable allow list object.
-		var entries int
-		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename, logger, allowListGauge)
+		// Create an allow list object.
+		ecdsaAllowList, entries, err = ca.NewECDSAAllowListFromFile(c.CA.ECDSAAllowListFilename)
 		cmd.FailOnError(err, "Unable to load ECDSA allow list from YAML file")
-		defer ecdsaAllowList.Stop()
-		logger.Infof("Created a reloadable allow list, it was initialized with %d entries", entries)
+		logger.Infof("Loaded an ECDSA allow list with %d entries", entries)
 	}
 
 	srv := bgrpc.NewServer(c.CA.GRPCCA, logger)

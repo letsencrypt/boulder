@@ -2,7 +2,6 @@ package ratelimit
 
 import (
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/letsencrypt/boulder/config"
@@ -60,17 +59,12 @@ type Limits interface {
 }
 
 // limitsImpl is an unexported implementation of the Limits interface. It acts
-// as a container for a rateLimitConfig and a mutex. This allows the inner
-// rateLimitConfig pointer to be updated safely when the overall configuration
-// changes (e.g. due to a reload of the policy file)
+// as a container for a rateLimitConfig.
 type limitsImpl struct {
-	sync.RWMutex
 	rlPolicy *rateLimitConfig
 }
 
 func (r *limitsImpl) CertificatesPerName() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -78,8 +72,6 @@ func (r *limitsImpl) CertificatesPerName() RateLimitPolicy {
 }
 
 func (r *limitsImpl) RegistrationsPerIP() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -87,8 +79,6 @@ func (r *limitsImpl) RegistrationsPerIP() RateLimitPolicy {
 }
 
 func (r *limitsImpl) RegistrationsPerIPRange() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -96,8 +86,6 @@ func (r *limitsImpl) RegistrationsPerIPRange() RateLimitPolicy {
 }
 
 func (r *limitsImpl) PendingAuthorizationsPerAccount() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -105,8 +93,6 @@ func (r *limitsImpl) PendingAuthorizationsPerAccount() RateLimitPolicy {
 }
 
 func (r *limitsImpl) InvalidAuthorizationsPerAccount() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -114,8 +100,6 @@ func (r *limitsImpl) InvalidAuthorizationsPerAccount() RateLimitPolicy {
 }
 
 func (r *limitsImpl) CertificatesPerFQDNSet() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -123,8 +107,6 @@ func (r *limitsImpl) CertificatesPerFQDNSet() RateLimitPolicy {
 }
 
 func (r *limitsImpl) CertificatesPerFQDNSetFast() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -132,8 +114,6 @@ func (r *limitsImpl) CertificatesPerFQDNSetFast() RateLimitPolicy {
 }
 
 func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
-	r.RLock()
-	defer r.RUnlock()
 	if r.rlPolicy == nil {
 		return RateLimitPolicy{}
 	}
@@ -141,17 +121,14 @@ func (r *limitsImpl) NewOrdersPerAccount() RateLimitPolicy {
 }
 
 // LoadPolicies loads various rate limiting policies from a byte array of
-// YAML configuration (typically read from disk by a reloader)
+// YAML configuration.
 func (r *limitsImpl) LoadPolicies(contents []byte) error {
 	var newPolicy rateLimitConfig
 	err := strictyaml.Unmarshal(contents, &newPolicy)
 	if err != nil {
 		return err
 	}
-
-	r.Lock()
 	r.rlPolicy = &newPolicy
-	r.Unlock()
 	return nil
 }
 

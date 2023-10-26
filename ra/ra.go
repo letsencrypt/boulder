@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net"
 	"net/url"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -49,7 +50,6 @@ import (
 	rapb "github.com/letsencrypt/boulder/ra/proto"
 	"github.com/letsencrypt/boulder/ratelimit"
 	"github.com/letsencrypt/boulder/ratelimits"
-	"github.com/letsencrypt/boulder/reloader"
 	"github.com/letsencrypt/boulder/revocation"
 	sapb "github.com/letsencrypt/boulder/sa/proto"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -275,8 +275,12 @@ func NewRegistrationAuthorityImpl(
 	return ra
 }
 
-func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
-	_, err := reloader.New(filename, ra.rlPolicies.LoadPolicies, ra.log)
+func (ra *RegistrationAuthorityImpl) LoadRateLimitPoliciesFile(filename string) error {
+	configBytes, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	err = ra.rlPolicies.LoadPolicies(configBytes)
 	if err != nil {
 		return err
 	}

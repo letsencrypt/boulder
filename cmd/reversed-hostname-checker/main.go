@@ -44,7 +44,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = pa.SetHostnamePolicyFile(*policyFile)
+	err = pa.LoadHostnamePolicyFile(*policyFile)
 	if err != nil {
 		log.Fatalf("reading %s: %s", *policyFile, err)
 	}

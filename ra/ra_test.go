@@ -17,7 +17,6 @@ import (
 	"math/big"
 	mrand "math/rand"
 	"net"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -334,7 +333,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		core.ChallengeTypeDNS01:  true,
 	}, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
+	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	stats := metrics.NoopRegisterer
@@ -1132,58 +1131,6 @@ func TestDomainsForRateLimiting(t *testing.T) {
 
 	domains = domainsForRateLimiting([]string{"github.io", "foo.github.io", "bar.github.io"})
 	test.AssertDeepEquals(t, domains, []string{"bar.github.io", "foo.github.io", "github.io"})
-}
-
-func TestRateLimitLiveReload(t *testing.T) {
-	_, _, ra, _, cleanUp := initAuthorities(t)
-	defer cleanUp()
-
-	// We'll work with a temporary file as the reloader monitored rate limit
-	// policy file
-	policyFile, tempErr := os.CreateTemp("", "rate-limit-policies.yml")
-	test.AssertNotError(t, tempErr, "should not fail to create TempFile")
-	filename := policyFile.Name()
-	defer os.Remove(filename)
-
-	// Start with bodyOne in the temp file
-	bodyOne, readErr := os.ReadFile("../test/rate-limit-policies.yml")
-	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies.yml")
-	writeErr := os.WriteFile(filename, bodyOne, 0644)
-	test.AssertNotError(t, writeErr, "should not fail to write temp file")
-
-	// Configure the RA to use the monitored temp file as the policy file
-	err := ra.SetRateLimitPoliciesFile(filename)
-	test.AssertNotError(t, err, "failed to SetRateLimitPoliciesFile")
-
-	// Test some fields of the initial policy to ensure it loaded correctly
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], int64(10000))
-	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], int64(1000000))
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, int64(150))
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, int64(6))
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], int64(10000))
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Threshold, int64(2))
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSetFast().Overrides["le.wtf"], int64(100))
-
-	// Write a different  policy YAML to the monitored file, expect a reload.
-	// Sleep a few milliseconds before writing so the timestamp isn't identical to
-	// when we wrote bodyOne to the file earlier.
-	bodyTwo, readErr := os.ReadFile("../test/rate-limit-policies-b.yml")
-	test.AssertNotError(t, readErr, "should not fail to read ../test/rate-limit-policies-b.yml")
-	time.Sleep(1 * time.Second)
-	writeErr = os.WriteFile(filename, bodyTwo, 0644)
-	test.AssertNotError(t, writeErr, "should not fail to write temp file")
-
-	// Sleep to allow the reloader a chance to catch that an update occurred
-	time.Sleep(2 * time.Second)
-
-	// Test fields of the policy to make sure writing the new policy to the monitored file
-	// resulted in the runtime values being updated
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le.wtf"], int64(9999))
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerName().Overrides["le4.wtf"], int64(9999))
-	test.AssertEquals(t, ra.rlPolicies.RegistrationsPerIP().Overrides["127.0.0.1"], int64(999990))
-	test.AssertEquals(t, ra.rlPolicies.PendingAuthorizationsPerAccount().Threshold, int64(999))
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Overrides["le.wtf"], int64(9999))
-	test.AssertEquals(t, ra.rlPolicies.CertificatesPerFQDNSet().Threshold, int64(99999))
 }
 
 type mockSAWithNameCounts struct {

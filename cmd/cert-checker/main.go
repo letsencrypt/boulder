@@ -577,7 +577,7 @@ func main() {
 	pa, err := policy.New(config.PA.Challenges, logger)
 	cmd.FailOnError(err, "Failed to create PA")
 
-	err = pa.SetHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
+	err = pa.LoadHostnamePolicyFile(config.CertChecker.HostnamePolicyFile)
 	cmd.FailOnError(err, "Failed to load HostnamePolicyFile")
 
 	if config.CertChecker.CTLogListFile != "" {

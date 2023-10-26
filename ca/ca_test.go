@@ -93,7 +93,6 @@ var (
 )
 
 const arbitraryRegID int64 = 1001
-const yamlLoadErrMsg = "Error loading YAML bytes for ECDSA allow list:"
 
 // Useful key and certificate files.
 const caKeyFile = "../test/test-ca.key"
@@ -177,7 +176,7 @@ func setup(t *testing.T) *testCtx {
 
 	pa, err := policy.New(nil, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
+	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	boulderProfile := func(rsa, ecdsa bool) *issuance.Profile {
@@ -328,7 +327,7 @@ func TestIssuePrecertificate(t *testing.T) {
 		// the precertificates previously generated from the preceding
 		// "precertificate" test.
 		for _, mode := range []string{"precertificate", "certificate-for-precertificate"} {
-			ca, sa := issueCertificateSubTestSetup(t)
+			ca, sa := issueCertificateSubTestSetup(t, nil)
 
 			t.Run(fmt.Sprintf("%s - %s", mode, testCase.name), func(t *testing.T) {
 				req, err := x509.ParseCertificateRequest(testCase.csr)
@@ -366,21 +365,18 @@ func TestIssuePrecertificate(t *testing.T) {
 	}
 }
 
-func makeECDSAAllowListBytes(regID int64) []byte {
-	regIDBytes := []byte(fmt.Sprintf("%d", regID))
-	contents := []byte(`
-- `)
-	return append(contents, regIDBytes...)
-}
-
-func issueCertificateSubTestSetup(t *testing.T) (*certificateAuthorityImpl, *mockSA) {
+func issueCertificateSubTestSetup(t *testing.T, e *ECDSAAllowList) (*certificateAuthorityImpl, *mockSA) {
 	testCtx := setup(t)
+	ecdsaAllowList := &ECDSAAllowList{}
+	if e == nil {
+		e = ecdsaAllowList
+	}
 	sa := &mockSA{}
 	ca, err := NewCertificateAuthorityImpl(
 		sa,
 		testCtx.pa,
 		testCtx.boulderIssuers,
-		&ECDSAAllowList{},
+		e,
 		testCtx.certExpiry,
 		testCtx.certBackdate,
 		testCtx.serialPrefix,
@@ -482,39 +478,17 @@ func TestECDSAAllowList(t *testing.T) {
 	req := &capb.IssueCertificateRequest{Csr: ECDSACSR, RegistrationID: arbitraryRegID}
 
 	// With allowlist containing arbitraryRegID, issuance should come from ECDSA issuer.
-	ca, _ := issueCertificateSubTestSetup(t)
-	contents := makeECDSAAllowListBytes(arbitraryRegID)
-	err := ca.ecdsaAllowList.Update(contents)
-	if err != nil {
-		t.Errorf("%s %s", yamlLoadErrMsg, err)
-		t.FailNow()
-	}
+	regIDMap := makeRegIDsMap([]int64{arbitraryRegID})
+	ca, _ := issueCertificateSubTestSetup(t, &ECDSAAllowList{regIDMap})
 	result, err := ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err := x509.ParseCertificate(result.DER)
 	test.AssertNotError(t, err, "Certificate failed to parse")
 	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
 
-	// Attempts to update the allow list with malformed YAML should
-	// fail, but the allowlist should still contain arbitraryRegID, so
-	// issuance should come from ECDSA issuer
-	malformed_yaml := []byte(`
-)(\/=`)
-	err = ca.ecdsaAllowList.Update(malformed_yaml)
-	test.AssertError(t, err, "Update method accepted malformed YAML")
-	result, err = ca.IssuePrecertificate(ctx, req)
-	test.AssertNotError(t, err, "Failed to issue certificate after Update was called with malformed YAML")
-	cert, err = x509.ParseCertificate(result.DER)
-	test.AssertNotError(t, err, "Certificate failed to parse")
-	test.AssertByteEquals(t, cert.RawIssuer, caCert2.RawSubject)
-
 	// With allowlist not containing arbitraryRegID, issuance should fall back to RSA issuer.
-	contents = makeECDSAAllowListBytes(int64(2002))
-	err = ca.ecdsaAllowList.Update(contents)
-	if err != nil {
-		t.Errorf("%s %s", yamlLoadErrMsg, err)
-		t.FailNow()
-	}
+	regIDMap = makeRegIDsMap([]int64{2002})
+	ca, _ = issueCertificateSubTestSetup(t, &ECDSAAllowList{regIDMap})
 	result, err = ca.IssuePrecertificate(ctx, req)
 	test.AssertNotError(t, err, "Failed to issue certificate")
 	cert, err = x509.ParseCertificate(result.DER)
@@ -522,7 +496,7 @@ func TestECDSAAllowList(t *testing.T) {
 	test.AssertByteEquals(t, cert.RawIssuer, caCert.RawSubject)
 
 	// With empty allowlist but ECDSAForAll enabled, issuance should come from ECDSA issuer.
-	ca, _ = issueCertificateSubTestSetup(t)
+	ca, _ = issueCertificateSubTestSetup(t, nil)
 	_ = features.Set(map[string]bool{"ECDSAForAll": true})
 	defer features.Reset()
 	result, err = ca.IssuePrecertificate(ctx, req)
