@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	notAfterName = "obs_tls_not_after"
-	reasonName   = "obs_tls_reason"
+	notAfterName  = "obs_tls_not_after"
+	notBeforeName = "obs_tls_not_before"
+	reasonName    = "obs_tls_reason"
 )
 
 // TLSConf is exported to receive YAML configuration.
@@ -94,6 +95,16 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notAfterName, coll)
 	}
 
+	coll, ok = collectors[notBeforeName]
+	if !ok {
+		return nil, fmt.Errorf("tls prober did not receive collector %q", notBeforeName)
+	}
+
+	notBeforeColl, ok := coll.(*prometheus.GaugeVec)
+	if !ok {
+		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.GaugeVec", notBeforeName, coll)
+	}
+
 	coll, ok = collectors[reasonName]
 	if !ok {
 		return nil, fmt.Errorf("tls prober did not receive collector %q", reasonName)
@@ -104,7 +115,7 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 		return nil, fmt.Errorf("tls prober received collector %q of wrong type, got: %T, expected *prometheus.CounterVec", reasonName, coll)
 	}
 
-	return TLSProbe{c.Hostname, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, reasonColl}, nil
+	return TLSProbe{c.Hostname, c.RootOrg, c.RootCN, strings.ToLower(c.Response), notAfterColl, notBeforeColl, reasonColl}, nil
 }
 
 // Instrument constructs any `prometheus.Collector` objects the `TLSProbe` will
