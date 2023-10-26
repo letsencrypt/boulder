@@ -274,7 +274,7 @@ func NewRegistrationAuthorityImpl(
 	return ra
 }
 
-func (ra *RegistrationAuthorityImpl) SetRateLimitPoliciesFile(filename string) error {
+func (ra *RegistrationAuthorityImpl) LoadRateLimitPoliciesFile(filename string) error {
 	configBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return err

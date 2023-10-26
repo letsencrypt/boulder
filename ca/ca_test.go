@@ -176,7 +176,7 @@ func setup(t *testing.T) *testCtx {
 
 	pa, err := policy.New(nil, blog.NewMock())
 	test.AssertNotError(t, err, "Couldn't create PA")
-	err = pa.SetHostnamePolicyFile("../test/hostname-policy.yaml")
+	err = pa.LoadHostnamePolicyFile("../test/hostname-policy.yaml")
 	test.AssertNotError(t, err, "Couldn't set hostname policy")
 
 	boulderProfile := func(rsa, ecdsa bool) *issuance.Profile {

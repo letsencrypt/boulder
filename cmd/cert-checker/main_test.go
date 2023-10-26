@@ -56,7 +56,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = pa.SetHostnamePolicyFile("../../test/hostname-policy.yaml")
+	err = pa.LoadHostnamePolicyFile("../../test/hostname-policy.yaml")
 	if err != nil {
 		log.Fatal(err)
 	}

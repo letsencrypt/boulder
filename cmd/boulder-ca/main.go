@@ -194,7 +194,7 @@ func main() {
 	if c.CA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile was empty")
 	}
-	err = pa.SetHostnamePolicyFile(c.CA.HostnamePolicyFile)
+	err = pa.LoadHostnamePolicyFile(c.CA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 	// Do this before creating the issuers to ensure the log list is loaded before

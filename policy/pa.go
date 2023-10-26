@@ -74,9 +74,9 @@ type blockedNamesPolicy struct {
 	AdminBlockedNames []string `yaml:"AdminBlockedNames"`
 }
 
-// SetHostnamePolicyFile will load the given policy file, returning an error if
+// LoadHostnamePolicyFile will load the given policy file, returning an error if
 // it fails.
-func (pa *AuthorityImpl) SetHostnamePolicyFile(f string) error {
+func (pa *AuthorityImpl) LoadHostnamePolicyFile(f string) error {
 	configBytes, err := os.ReadFile(f)
 	if err != nil {
 		return err

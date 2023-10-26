@@ -136,7 +136,7 @@ func main() {
 	if c.RA.HostnamePolicyFile == "" {
 		cmd.Fail("HostnamePolicyFile must be provided.")
 	}
-	err = pa.SetHostnamePolicyFile(c.RA.HostnamePolicyFile)
+	err = pa.LoadHostnamePolicyFile(c.RA.HostnamePolicyFile)
 	cmd.FailOnError(err, "Couldn't load hostname policy file")
 
 	tlsConfig, err := c.RA.TLS.Load(scope)
@@ -247,7 +247,7 @@ func main() {
 	)
 	defer rai.DrainFinalize()
 
-	policyErr := rai.SetRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
+	policyErr := rai.LoadRateLimitPoliciesFile(c.RA.RateLimitPoliciesFilename)
 	cmd.FailOnError(policyErr, "Couldn't load rate limit policies file")
 	rai.PA = pa
 
