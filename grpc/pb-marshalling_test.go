@@ -267,7 +267,7 @@ func TestAuthz(t *testing.T) {
 }
 
 func TestCert(t *testing.T) {
-	now := time.Now().Round(0)
+	now := time.Now().Round(0).UTC()
 	cert := core.Certificate{
 		RegistrationID: 1,
 		Serial:         "serial",
