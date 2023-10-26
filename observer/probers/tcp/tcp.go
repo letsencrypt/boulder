@@ -27,6 +27,10 @@ func (p TCPProbe) Probe(timeout time.Duration) (bool, time.Duration) {
 		Timeout:       timeout,
 		FallbackDelay: -1,
 	}
-	_, err := dialer.Dial("tcp", p.hostport)
-	return err == nil, time.Since(start)
+	c, err := dialer.Dial("tcp", p.hostport)
+	if err != nil {
+		return false, time.Since(start)
+	}
+	c.Close()
+	return true, time.Since(start)
 }
