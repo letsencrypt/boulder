@@ -123,6 +123,12 @@ func (c TLSConf) MakeProber(collectors map[string]prometheus.Collector) (probers
 // objects, indexed by the name of the Promtheus metric.  If no objects were
 // constructed, nil is returned.
 func (c TLSConf) Instrument() map[string]prometheus.Collector {
+	notBefore := prometheus.Collector(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: notBeforeName,
+			Help: "Certificate notBefore value as a Unix timestamp in seconds",
+		}, []string{"hostname"},
+	))
 	notAfter := prometheus.Collector(prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: notAfterName,
@@ -136,8 +142,9 @@ func (c TLSConf) Instrument() map[string]prometheus.Collector {
 		}, []string{"hostname", "reason"},
 	))
 	return map[string]prometheus.Collector{
-		notAfterName: notAfter,
-		reasonName:   reason,
+		notAfterName:  notAfter,
+		notBeforeName: notBefore,
+		reasonName:    reason,
 	}
 }
 
