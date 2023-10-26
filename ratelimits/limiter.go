@@ -289,7 +289,7 @@ func (l *Limiter) initialize(ctx context.Context, rl limit, bucket BucketWithCos
 
 }
 
-// GetLimit returns the limit for the specified by name and bucketKey, name is
+// getLimit returns the limit for the specified by name and bucketKey, name is
 // required, bucketKey is optional. If bucketKey is left unspecified, the
 // default limit for the limit specified by name is returned. If no default
 // limit exists for the specified name, errLimitDisabled is returned.

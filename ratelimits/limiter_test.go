@@ -76,26 +76,26 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 				"limit":      NewRegistrationsPerIPAddress.String(),
 				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 0)
 
-			overridenBucket, err := NewRegistrationsPerIPAddressBucket(net.ParseIP(tenZeroZeroTwo))
+			overriddenBucket, err := NewRegistrationsPerIPAddressBucket(net.ParseIP(tenZeroZeroTwo))
 			test.AssertNotError(t, err, "should not error")
 
 			// Attempt to check a spend of 41 requests (a cost > the limit burst
 			// capacity), this should fail with a specific error.
-			_, err = l.Check(testCtx, overridenBucket.WithCost(41))
+			_, err = l.Check(testCtx, overriddenBucket.WithCost(41))
 			test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 			// Attempt to spend 41 requests (a cost > the limit burst capacity),
 			// this should fail with a specific error.
-			_, err = l.Spend(testCtx, overridenBucket.WithCost(41))
+			_, err = l.Spend(testCtx, overriddenBucket.WithCost(41))
 			test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 			// Attempt to spend all 40 requests, this should succeed.
-			d, err := l.Spend(testCtx, overridenBucket.WithCost(40))
+			d, err := l.Spend(testCtx, overriddenBucket.WithCost(40))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 
 			// Attempting to spend 1 more, this should fail.
-			d, err = l.Spend(testCtx, overridenBucket.WithCost(1))
+			d, err = l.Spend(testCtx, overriddenBucket.WithCost(1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -115,7 +115,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			clk.Add(d.RetryIn)
 
 			// We should be allowed to spend 1 more request.
-			d, err = l.Spend(testCtx, overridenBucket.WithCost(1))
+			d, err = l.Spend(testCtx, overriddenBucket.WithCost(1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -126,21 +126,21 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 
 			// Quickly spend 40 requests in a row.
 			for i := 0; i < 40; i++ {
-				d, err = l.Spend(testCtx, overridenBucket.WithCost(1))
+				d, err = l.Spend(testCtx, overriddenBucket.WithCost(1))
 				test.AssertNotError(t, err, "should not error")
 				test.Assert(t, d.Allowed, "should be allowed")
 				test.AssertEquals(t, d.Remaining, int64(39-i))
 			}
 
 			// Attempting to spend 1 more, this should fail.
-			d, err = l.Spend(testCtx, overridenBucket.WithCost(1))
+			d, err = l.Spend(testCtx, overriddenBucket.WithCost(1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, overridenBucket)
+			err = l.Reset(testCtx, overriddenBucket)
 			test.AssertNotError(t, err, "should not error")
 		})
 	}
