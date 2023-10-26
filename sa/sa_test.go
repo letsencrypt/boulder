@@ -41,6 +41,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
@@ -918,9 +919,11 @@ func TestFQDNSets(t *testing.T) {
 
 	threeHours := time.Hour * 3
 	req := &sapb.CountFQDNSetsRequest{
-		Domains: names,
-		Window:  threeHours.Nanoseconds(),
+		Domains:  names,
+		WindowNS: threeHours.Nanoseconds(),
+		Window:   durationpb.New(threeHours),
 	}
+	test.AssertEquals(t, time.Duration(req.WindowNS), req.Window.AsDuration())
 	// only one valid
 	count, err := sa.CountFQDNSets(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
@@ -975,9 +978,11 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	names := []string{"a.example.com", "B.example.com"}
 	window := time.Hour * 3
 	req := &sapb.CountFQDNSetsRequest{
-		Domains: names,
-		Window:  window.Nanoseconds(),
+		Domains:  names,
+		WindowNS: window.Nanoseconds(),
+		Window:   durationpb.New(window),
 	}
+	test.AssertEquals(t, time.Duration(req.WindowNS), req.Window.AsDuration())
 
 	// Ensure zero issuance has occurred for names.
 	resp, err := sa.FQDNSetTimestampsForWindow(ctx, req)
