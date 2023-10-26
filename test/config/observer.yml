@@ -89,3 +89,8 @@ monitors:
     settings: 
       url: http://letsencrypt.org/foo
       rcodes: [200, 404]
+
+    period: 10s
+    kind: TCP
+    settings:
+      hostport: acme-v02.api.letsencrypt.org:443
