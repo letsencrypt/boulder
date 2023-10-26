@@ -89,7 +89,6 @@ monitors:
     settings:
       url: http://letsencrypt.org/foo
       rcodes: [200, 404]
-
   -
     period: 10s
     kind: TCP
