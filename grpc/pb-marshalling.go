@@ -116,7 +116,7 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	var validated *time.Time
-	if !in.Validated.AsTime().IsZero() {
+	if in.Validated != nil && !in.Validated.AsTime().IsZero() {
 		val := in.Validated.AsTime()
 		validated = &val
 	}
@@ -275,7 +275,7 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		return core.Registration{}, err
 	}
 	var createdAt *time.Time
-	if !pb.CreatedAt.AsTime().IsZero() {
+	if pb.CreatedAt != nil && !pb.CreatedAt.AsTime().IsZero() {
 		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
@@ -344,7 +344,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		challs[i] = chall
 	}
 	var expires *time.Time
-	if !pb.Expires.AsTime().IsZero() {
+	if pb.Expires != nil && !pb.Expires.AsTime().IsZero() {
 		c := pb.Expires.AsTime()
 		expires = &c
 	}
