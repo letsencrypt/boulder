@@ -7,4 +7,5 @@ type Config struct {
 	TokenLabel      string
 	PIN             string
 	PublicKeyPath   string
+	Extra           string
 }
