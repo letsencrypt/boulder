@@ -140,6 +140,7 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Verify vendor
+        shell: bash
         run: |
           go mod tidy
           go mod vendor
