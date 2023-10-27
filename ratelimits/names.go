@@ -57,7 +57,7 @@ const (
 	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a
 	// hashed set of unique eTLD+1 domain names in the issued certificate.
 	//
-	// Note: When this referenced in an overrides file, the fqdnSet MUST be
+	// Note: When this is referenced in an overrides file, the fqdnSet MUST be
 	// passed as a comma-separated list of domain names.
 	CertificatesPerFQDNSet
 )
