@@ -120,6 +120,32 @@ jobs:
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+  vendorcheck:
+    runs-on: ubuntu-20.04
+    strategy:
+      # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
+      fail-fast: false
+      matrix:
+        go-version: [ '1.21.3' ]
+
+    steps:
+      # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      - name: Setup Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Verify vendor
+        run: |
+          go mod tidy
+          go mod vendor
+          git diff --exit-code
+
+
   # This is a utility build job to detect if the status of any of the
   # above jobs have failed and fail if so. It is needed so there can be
   # one static job name that can be used to determine success of the job
