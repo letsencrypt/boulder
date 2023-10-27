@@ -157,11 +157,11 @@ func (l *Limiter) Check(ctx context.Context, bucket BucketWithCost) (*Decision, 
 }
 
 // Spend attempts to deduct the cost from the provided bucket's capacity. The
-// returned *Decision The returned *Decision indicates whether the capacity
-// existed to satisfy the cost and represents the current state of the bucket.
-// If no bucket exists it WILL be created WITH the cost factored into its
-// initial state. The new bucket state is persisted to the underlying datastore,
-// if applicable, before returning.
+// returned *Decision indicates whether the capacity existed to satisfy the cost
+// and represents the current state of the bucket. If no bucket exists it WILL
+// be created WITH the cost factored into its initial state. The new bucket
+// state is persisted to the underlying datastore, if applicable, before
+// returning.
 func (l *Limiter) Spend(ctx context.Context, bucket BucketWithCost) (*Decision, error) {
 	if bucket.cost <= 0 {
 		return nil, ErrInvalidCost
