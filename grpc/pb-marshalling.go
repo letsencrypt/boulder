@@ -116,8 +116,8 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	var validated *time.Time
-	if in.ValidatedNS != 0 {
-		val := time.Unix(0, in.ValidatedNS).UTC()
+	if in.Validated != nil && !in.Validated.AsTime().IsZero() {
+		val := in.Validated.AsTime()
 		validated = &val
 	}
 	ch := core.Challenge{
@@ -275,8 +275,8 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		return core.Registration{}, err
 	}
 	var createdAt *time.Time
-	if pb.CreatedAtNS != 0 {
-		c := time.Unix(0, pb.CreatedAtNS).UTC()
+	if pb.CreatedAt != nil && !pb.CreatedAt.AsTime().IsZero() {
+		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
 	var contacts *[]string
@@ -344,8 +344,8 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		challs[i] = chall
 	}
 	var expires *time.Time
-	if pb.ExpiresNS != 0 {
-		c := time.Unix(0, pb.ExpiresNS).UTC()
+	if pb.Expires != nil && !pb.Expires.AsTime().IsZero() {
+		c := pb.Expires.AsTime()
 		expires = &c
 	}
 	authz := core.Authorization{
@@ -396,8 +396,8 @@ func PBToCert(pb *corepb.Certificate) core.Certificate {
 		Serial:         pb.Serial,
 		Digest:         pb.Digest,
 		DER:            pb.Der,
-		Issued:         time.Unix(0, pb.IssuedNS),
-		Expires:        time.Unix(0, pb.ExpiresNS),
+		Issued:         pb.Issued.AsTime(),
+		Expires:        pb.Expires.AsTime(),
 	}
 }
 
@@ -423,11 +423,11 @@ func PBToCertStatus(pb *corepb.CertificateStatus) core.CertificateStatus {
 	return core.CertificateStatus{
 		Serial:                pb.Serial,
 		Status:                core.OCSPStatus(pb.Status),
-		OCSPLastUpdated:       time.Unix(0, pb.OcspLastUpdatedNS),
-		RevokedDate:           time.Unix(0, pb.RevokedDateNS),
+		OCSPLastUpdated:       pb.OcspLastUpdated.AsTime(),
+		RevokedDate:           pb.RevokedDate.AsTime(),
 		RevokedReason:         revocation.Reason(pb.RevokedReason),
-		LastExpirationNagSent: time.Unix(0, pb.LastExpirationNagSentNS),
-		NotAfter:              time.Unix(0, pb.NotAfterNS),
+		LastExpirationNagSent: pb.LastExpirationNagSent.AsTime(),
+		NotAfter:              pb.NotAfter.AsTime(),
 		IsExpired:             pb.IsExpired,
 		IssuerNameID:          pb.IssuerID,
 	}
