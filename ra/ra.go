@@ -1423,17 +1423,32 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 	}
 
 	var badNames []string
+	var metricsData []struct {
+		overrideKey string
+		utilization float64
+	}
+
 	// Find the names that have counts at or over the threshold. Range
 	// over the names slice input to ensure the order of badNames will
 	// return the badNames in the same order they were input.
 	for _, name := range names {
 		threshold, overrideKey := limit.GetThreshold(name, regID)
-		if overrideKey != "" {
-			utilization := float64(response.Counts[name]) / float64(threshold)
-			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, overrideKey).Set(utilization)
-		}
 		if response.Counts[name] >= threshold {
 			badNames = append(badNames, name)
+		} else if overrideKey != "" {
+			// Name is under threshold due to an override.
+			utilization := float64(response.Counts[name]) / float64(threshold)
+			metricsData = append(metricsData, struct {
+				overrideKey string
+				utilization float64
+			}{overrideKey, utilization})
+		}
+	}
+
+	if len(badNames) == 0 {
+		// All names were under the threshold, emit override utilization metrics.
+		for _, data := range metricsData {
+			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, data.overrideKey).Set(data.utilization)
 		}
 	}
 	return badNames, response.Earliest.AsTime(), nil

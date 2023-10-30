@@ -11,7 +11,7 @@ import (
 const (
 	// CertificatesPerName is the name of the CertificatesPerName rate limit
 	// when referenced in metric labels.
-	CertificatesPerName = "certificates_per_domain_per_account"
+	CertificatesPerName = "certificates_per_domain"
 
 	// RegistrationsPerIP is the name of the RegistrationsPerIP rate limit when
 	// referenced in metric labels.
@@ -33,11 +33,11 @@ const (
 
 	// CertificatesPerFQDNSet is the name of the CertificatesPerFQDNSet rate
 	// limit when referenced in metric labels.
-	CertificatesPerFQDNSet = "certificates_per_fqdn_set_per_account"
+	CertificatesPerFQDNSet = "certificates_per_fqdn_set"
 
 	// CertificatesPerFQDNSetFast is the name of the CertificatesPerFQDNSetFast
 	// rate limit when referenced in metric labels.
-	CertificatesPerFQDNSetFast = "certificates_per_fqdn_set_per_account_fast"
+	CertificatesPerFQDNSetFast = "certificates_per_fqdn_set_fast"
 
 	// NewOrdersPerAccount is the name of the NewOrdersPerAccount rate limit
 	// when referenced in metric labels.
