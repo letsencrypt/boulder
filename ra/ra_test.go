@@ -1223,16 +1223,17 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	// Two base domains, one above threshold but with an override.
 	mockSA.nameCounts.Counts["example.com"] = 0
 	mockSA.nameCounts.Counts["bigissuer.com"] = 50
+	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "bigissuer.com").Set(.5)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
-	// "bigissuer.com" has an override of 100 and they've issued 50. We do
-	// not count issuance that has yet to occur, so we expect to see 50%
-	// utilization.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, .5)
+	// "bigissuer.com" has an override of 100 and they've issued 50. So we
+	// expect to see 51% utilization.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, .51)
 
 	// Two base domains, one above its override
 	mockSA.nameCounts.Counts["example.com"] = 10
 	mockSA.nameCounts.Counts["bigissuer.com"] = 100
+	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "bigissuer.com").Set(1)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
@@ -1242,11 +1243,12 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 
 	// One base domain, above its override (which is below threshold)
 	mockSA.nameCounts.Counts["smallissuer.co.uk"] = 1
+	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "smallissuer.co.uk").Set(1)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.smallissuer.co.uk"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit smallissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// "smallissuer.co.uk" has an override of 1 and they've issued 1. So we
-	// expect to see 100% utilization.
+	// "smallissuer.co.uk" has an override of 1 and they've issued 1. They're
+	// already at 100% utilization, so we expect to see 100% utilization.
 	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "smallissuer.co.uk"}, 1)
 }
 

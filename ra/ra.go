@@ -1437,7 +1437,7 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 			badNames = append(badNames, name)
 		} else if overrideKey != "" {
 			// Name is under threshold due to an override.
-			utilization := float64(response.Counts[name]) / float64(threshold)
+			utilization := float64(response.Counts[name]+1) / float64(threshold)
 			metricsData = append(metricsData, struct {
 				overrideKey string
 				utilization float64
