@@ -322,11 +322,11 @@ func findIssuedName(ctx context.Context, dbMap db.OneSelector, name string) (str
 }
 
 func TestAddSerial(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
-	serial, testCert := test.ThrowAwayCert(t, 1)
+	serial, testCert := test.ThrowAwayCert(t, clk, 1)
 
 	_, err := sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
 		RegID:     reg.Id,
@@ -378,7 +378,7 @@ func TestGetSerialMetadata(t *testing.T) {
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
-	serial, _ := test.ThrowAwayCert(t, 1)
+	serial, _ := test.ThrowAwayCert(t, clk, 1)
 
 	_, err := sa.GetSerialMetadata(context.Background(), &sapb.Serial{Serial: serial})
 	test.AssertError(t, err, "getting nonexistent serial should have failed")
@@ -415,7 +415,7 @@ func TestAddPrecertificate(t *testing.T) {
 
 	// Create a throw-away self signed certificate with a random name and
 	// serial number
-	serial, testCert := test.ThrowAwayCert(t, 1)
+	serial, testCert := test.ThrowAwayCert(t, clk, 1)
 
 	// Add the cert as a precertificate
 	regID := reg.Id
@@ -455,11 +455,11 @@ func TestAddPrecertificate(t *testing.T) {
 }
 
 func TestAddPrecertificateNoOCSP(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
-	_, testCert := test.ThrowAwayCert(t, 1)
+	_, testCert := test.ThrowAwayCert(t, clk, 1)
 
 	regID := reg.Id
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
@@ -479,8 +479,9 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 
-	_, testCert := test.ThrowAwayCert(t, 1)
+	_, testCert := test.ThrowAwayCert(t, clk, 1)
 	issuedTime := clk.Now()
+
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		IssuedNS:     issuedTime.UnixNano(),
@@ -501,14 +502,14 @@ func TestAddPreCertificateDuplicate(t *testing.T) {
 }
 
 func TestAddPrecertificateIncomplete(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 
 	reg := createWorkingRegistration(t, sa)
 
 	// Create a throw-away self signed certificate with a random name and
 	// serial number
-	_, testCert := test.ThrowAwayCert(t, 1)
+	_, testCert := test.ThrowAwayCert(t, clk, 1)
 
 	// Add the cert as a precertificate
 	regID := reg.Id
@@ -525,11 +526,11 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 }
 
 func TestAddPrecertificateKeyHash(t *testing.T) {
-	sa, _, cleanUp := initSA(t)
+	sa, clk, cleanUp := initSA(t)
 	defer cleanUp()
 	reg := createWorkingRegistration(t, sa)
 
-	serial, testCert := test.ThrowAwayCert(t, 1)
+	serial, testCert := test.ThrowAwayCert(t, clk, 1)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          testCert.Raw,
 		RegID:        reg.Id,
@@ -609,7 +610,7 @@ func TestAddCertificateDuplicate(t *testing.T) {
 
 	reg := createWorkingRegistration(t, sa)
 
-	_, testCert := test.ThrowAwayCert(t, 1)
+	_, testCert := test.ThrowAwayCert(t, clk, 1)
 
 	issuedTime := clk.Now()
 	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
