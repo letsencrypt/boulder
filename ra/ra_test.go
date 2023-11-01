@@ -312,7 +312,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	fc := clock.NewFake()
 	// Set to some non-zero time.
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+	fc.Set(time.Date(2020, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	if err != nil {
@@ -1086,7 +1086,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	test.AssertEquals(t, bErr.RetryAfter, rateLimitDuration)
 
 	// The err should be the expected rate limit error
-	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2015-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/"
+	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/"
 	test.AssertEquals(t, bErr.Error(), expected)
 }
 
@@ -3850,7 +3850,7 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	_, cert := test.ThrowAwayCert(t, 1)
+	_, cert := test.ThrowAwayCert(t, clk, 1)
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -3904,7 +3904,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	_, cert := test.ThrowAwayCert(t, 1)
+	_, cert := test.ThrowAwayCert(t, clk, 1)
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -3948,7 +3948,11 @@ func TestRevokeCertByKey(t *testing.T) {
 	digest, err := core.KeyDigest(k.Public())
 	test.AssertNotError(t, err, "core.KeyDigest failed")
 
-	template := x509.Certificate{SerialNumber: big.NewInt(257)}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(257),
+		NotBefore:    clk.Now(),
+		NotAfter:     clk.Now().Add(6 * 24 * time.Hour),
+	}
 	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
 	test.AssertNotError(t, err, "x509.CreateCertificate failed")
 	cert, err := x509.ParseCertificate(der)

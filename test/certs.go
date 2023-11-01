@@ -13,6 +13,9 @@ import (
 	"math/big"
 	"os"
 	"testing"
+	"time"
+
+	"github.com/jmhodges/clock"
 )
 
 // LoadSigner loads a PEM private key specified by filename or returns an error.
@@ -62,12 +65,12 @@ func LoadSigner(filename string) (crypto.Signer, error) {
 // parsed certificate  and the random serial in string form or aborts the test.
 // The certificate returned from this function is the bare minimum needed for
 // most tests and isn't a robust example of a complete end entity certificate.
-func ThrowAwayCert(t *testing.T, nameCount int) (string, *x509.Certificate) {
+func ThrowAwayCert(t *testing.T, clk clock.Clock, nameCount int) (string, *x509.Certificate) {
 	var serialBytes [16]byte
 	_, _ = rand.Read(serialBytes[:])
 	sn := big.NewInt(0).SetBytes(serialBytes[:])
 
-	return ThrowAwayCertWithSerial(t, nameCount, sn, nil)
+	return ThrowAwayCertWithSerial(t, clk, nameCount, sn, nil)
 }
 
 // ThrowAwayCertWithSerial is a small test helper function that creates a
@@ -77,7 +80,7 @@ func ThrowAwayCert(t *testing.T, nameCount int) (string, *x509.Certificate) {
 // but will appear to be issued from issuer if provided.
 // The certificate returned from this function is the bare minimum needed for
 // most tests and isn't a robust example of a complete end entity certificate.
-func ThrowAwayCertWithSerial(t *testing.T, nameCount int, sn *big.Int, issuer *x509.Certificate) (string, *x509.Certificate) {
+func ThrowAwayCertWithSerial(t *testing.T, clk clock.Clock, nameCount int, sn *big.Int, issuer *x509.Certificate) (string, *x509.Certificate) {
 	k, err := rsa.GenerateKey(rand.Reader, 512)
 	AssertNotError(t, err, "rsa.GenerateKey failed")
 
@@ -91,6 +94,8 @@ func ThrowAwayCertWithSerial(t *testing.T, nameCount int, sn *big.Int, issuer *x
 	template := &x509.Certificate{
 		SerialNumber:          sn,
 		DNSNames:              names,
+		NotBefore:             clk.Now(),
+		NotAfter:              clk.Now().Add(6 * 24 * time.Hour),
 		IssuingCertificateURL: []string{"http://localhost:4001/acme/issuer-cert/1234"},
 	}
 
