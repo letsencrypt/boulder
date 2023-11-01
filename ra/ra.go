@@ -2380,7 +2380,14 @@ func (ra *RegistrationAuthorityImpl) checkOrderNames(names []string) error {
 // or the certificate is expired, it returns berrors.NotFoundError.
 func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb.GenerateOCSPRequest) (*capb.OCSPResponse, error) {
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
-	if err != nil {
+	if errors.Is(err, berrors.NotFound) {
+		_, err := ra.SA.GetSerialMetadata(ctx, &sapb.Serial{Serial: req.Serial})
+		if errors.Is(err, berrors.NotFound) {
+			return nil, berrors.UnknownSerialError()
+		} else {
+			return nil, berrors.NotFoundError("certificate not found")
+		}
+	} else if err != nil {
 		return nil, err
 	}
 
