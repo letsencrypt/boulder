@@ -2,13 +2,13 @@ version: '3'
 services:
   boulder:
     # Should match one of the GO_DEV_VERSIONS in test/boulder-tools/tag_and_upload.sh.
-    image: &boulder_image letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.21.3_2023-10-12}
+    image: letsencrypt/boulder-tools:${BOULDER_TOOLS_TAG:-go1.21.3_2023-10-12}
     environment:
       # To solve HTTP-01 and TLS-ALPN-01 challenges, change the IP in FAKE_DNS
       # to the IP address where your ACME client's solver is listening.
       # FAKE_DNS: 172.17.0.1
       FAKE_DNS: 10.77.77.77
-      BOULDER_CONFIG_DIR: &boulder_config_dir test/config
+      BOULDER_CONFIG_DIR: test/config
       GOFLAGS: -mod=vendor
       # Forward the parent env's GOEXPERIMENT value into the container.
       GOEXPERIMENT: ${GOEXPERIMENT}
@@ -131,19 +131,6 @@ services:
       rednet:
         ipv4_address: 10.88.88.10
     command: "consul agent -dev -config-format=hcl -config-file=/test/consul/config.hcl"
-
-  netaccess:
-    image: *boulder_image
-    environment:
-      GO111MODULE: "on"
-      GOFLAGS: -mod=vendor
-      BOULDER_CONFIG_DIR: *boulder_config_dir
-    networks:
-      - bluenet
-    volumes:
-      - .:/boulder
-    working_dir: *boulder_working_dir
-    entrypoint: test/entrypoint-netaccess.sh
 
   bjaeger:
     image: jaegertracing/all-in-one:1.50
