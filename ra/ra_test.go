@@ -3850,7 +3850,7 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	_, cert := test.ThrowAwayCert(t, clk, 1)
+	_, cert := test.ThrowAwayCert(t, clk)
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -3904,7 +3904,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	_, cert := test.ThrowAwayCert(t, clk, 1)
+	_, cert := test.ThrowAwayCert(t, clk)
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -3943,20 +3943,9 @@ func TestRevokeCertByKey(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
-	digest, err := core.KeyDigest(k.Public())
+	_, cert := test.ThrowAwayCert(t, clk)
+	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
-
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(257),
-		NotBefore:    clk.Now(),
-		NotAfter:     clk.Now().Add(6 * 24 * time.Hour),
-	}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
-	test.AssertNotError(t, err, "x509.CreateCertificate failed")
-	cert, err := x509.ParseCertificate(der)
-	test.AssertNotError(t, err, "x509.ParseCertificate failed")
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -4007,19 +3996,9 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
-	digest, err := core.KeyDigest(k.Public())
+	serial, cert := test.ThrowAwayCert(t, clk)
+	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
-
-	serial := "04eac294a0e61035d8254d5a04f61a37c802"
-	serialInt, err := core.StringToSerial(serial)
-	test.AssertNotError(t, err, "decoding serial number")
-	template := x509.Certificate{SerialNumber: serialInt}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
-	test.AssertNotError(t, err, "x509.CreateCertificate failed")
-	cert, err := x509.ParseCertificate(der)
-	test.AssertNotError(t, err, "x509.ParseCertificate failed")
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
