@@ -128,3 +128,5 @@ func (s *subConn) Connect() {}
 func (s *subConn) GetOrBuildProducer(balancer.ProducerBuilder) (p balancer.Producer, close func()) {
 	panic("unimplemented")
 }
+
+func (s *subConn) Shutdown() {}
