@@ -34,6 +34,7 @@ import (
 	capb "github.com/letsencrypt/boulder/ca/proto"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
+	crl "github.com/letsencrypt/boulder/crl/updater"
 	csrlib "github.com/letsencrypt/boulder/csr"
 	"github.com/letsencrypt/boulder/ctpolicy"
 	berrors "github.com/letsencrypt/boulder/errors"
@@ -108,6 +109,10 @@ type RegistrationAuthorityImpl struct {
 
 	ctpolicy *ctpolicy.CTPolicy
 
+	crlDPBase     string
+	crlNumShards  int
+	crlShardWidth time.Duration
+
 	ctpolicyResults             *prometheus.HistogramVec
 	revocationReasonCounter     *prometheus.CounterVec
 	namesPerCert                *prometheus.HistogramVec
@@ -139,6 +144,9 @@ func NewRegistrationAuthorityImpl(
 	ctp *ctpolicy.CTPolicy,
 	purger akamaipb.AkamaiPurgerClient,
 	issuers []*issuance.Certificate,
+	crlDPBase string,
+	crlNumShards int,
+	crlShardWidth time.Duration,
 ) *RegistrationAuthorityImpl {
 	ctpolicyResults := prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -260,6 +268,9 @@ func NewRegistrationAuthorityImpl(
 		purger:                       purger,
 		issuersByNameID:              issuersByNameID,
 		issuersByID:                  issuersByID,
+		crlDPBase:                    crlDPBase,
+		crlNumShards:                 crlNumShards,
+		crlShardWidth:                crlShardWidth,
 		namesPerCert:                 namesPerCert,
 		rlCheckLatency:               rlCheckLatency,
 		rlOverrideUsageGauge:         overrideUsageGauge,
@@ -335,6 +346,11 @@ type certificateRequestEvent struct {
 // as JSON to the audit log as the result of a revocation event.
 type certificateRevocationEvent struct {
 	ID string `json:",omitempty"`
+	// IssuerID is the unique IssuerNameID of the issuer of the revoked certificate.
+	IssuerID int64 `json:",omitempty"`
+	// CrlShard is the number of the CRL shard that the revoked certificate will
+	// appear in.
+	CrlShard int64 `json:",omitempty"`
 	// SerialNumber is the string representation of the revoked certificate's
 	// serial number.
 	SerialNumber string `json:",omitempty"`
@@ -344,10 +360,10 @@ type certificateRevocationEvent struct {
 	// It will be one of the strings: "applicant", "subscriber", "control", "key", or "admin".
 	Method string `json:",omitempty"`
 	// RequesterID is the account ID of the requester.
-	// Will be zero for admin revocations.
+	// Will be zero for key and admin revocations.
 	RequesterID int64 `json:",omitempty"`
 	// AdminName is the name of the admin requester.
-	// Will be zero for subscriber revocations.
+	// Will be zero for key and subscriber revocations.
 	AdminName string `json:",omitempty"`
 	// Error contains any error encountered during revocation.
 	Error string `json:",omitempty"`
@@ -1914,16 +1930,17 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 // revokeCertificate updates the database to mark the certificate as revoked,
 // with the given reason and current timestamp.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
-func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID int64, reason revocation.Reason) error {
+func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID int64, crlShard int64, reason revocation.Reason) error {
 	serialString := core.SerialToString(serial)
 	now := ra.clk.Now()
 
 	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
+		IssuerID: issuerID,
+		ShardIdx: crlShard,
 		Serial:   serialString,
 		Reason:   int64(reason),
 		DateNS:   now.UnixNano(),
 		Date:     timestamppb.New(now),
-		IssuerID: issuerID,
 	})
 	if err != nil {
 		return err
@@ -1938,7 +1955,7 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 // certificates that were previously revoked for a reason other than
 // keyCompromise, and which are now being updated to keyCompromise instead.
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
-func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
+func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64, crlShard int64) error {
 	serialString := core.SerialToString(serial)
 	now := ra.clk.Now()
 
@@ -1957,13 +1974,14 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	}
 
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
+		IssuerID:   issuerID,
+		ShardIdx:   crlShard,
 		Serial:     serialString,
 		Reason:     int64(ocsp.KeyCompromise),
 		DateNS:     now.UnixNano(),
 		Date:       timestamppb.New(now),
 		BackdateNS: status.RevokedDateNS,
 		Backdate:   timestamppb.New(time.Unix(0, status.RevokedDateNS)),
-		IssuerID:   issuerID,
 	})
 	if err != nil {
 		return err
@@ -1971,6 +1989,45 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 
 	ra.revocationReasonCounter.WithLabelValues(revocation.ReasonToString[ocsp.KeyCompromise]).Inc()
 	return nil
+}
+
+// crlShardForCert determines the CRL shard to use for a given certificate,
+// preferably by trying to parse the shard index from the cert's
+// crlDistributionPoint, but falling back to computing the shard number directly
+// using the same math as the crl-updater if no distribution point is present.
+func (ra *RegistrationAuthorityImpl) crlShardForCert(cert *x509.Certificate) (int64, error) {
+	// Return 0, which will then be elided from the gRPC request to the SA, if
+	// we don't have all the necessary config parameters yet.
+	// TODO(#7904): Remove this carve-out once the configs are in place.
+	if ra.crlNumShards == 0 || ra.crlShardWidth == 0 || ra.crlDPBase == "" {
+		return 0, nil
+	}
+
+	if len(cert.CRLDistributionPoints) == 0 {
+		chunk, err := crl.GetChunkAtTime(ra.crlShardWidth, ra.crlNumShards, cert.NotAfter)
+		if err != nil {
+			return 0, fmt.Errorf("computing crl shard from notAfter: %w", err)
+		}
+
+		return int64(chunk.Idx), nil
+	}
+
+	if len(cert.CRLDistributionPoints) > 1 {
+		return 0, fmt.Errorf("cert has multiple crl distribution points (%v)", cert.CRLDistributionPoints)
+	}
+
+	crldp := cert.CRLDistributionPoints[0]
+	expectedPrefix := fmt.Sprintf("%s/%d/", ra.crlDPBase, issuance.GetIssuerNameID(cert))
+	if !strings.HasPrefix(cert.CRLDistributionPoints[0], expectedPrefix) {
+		return 0, fmt.Errorf("crl distribution point has unrecognized prefix %q", crldp)
+	}
+
+	shardStr := strings.TrimPrefix(cert.CRLDistributionPoints[0], expectedPrefix)
+	shard, err := strconv.Atoi(shardStr)
+	if err != nil {
+		return 0, fmt.Errorf("extracting crl shard from distributionPoint URL: %w", err)
+	}
+	return int64(shard), nil
 }
 
 // purgeOCSPCache makes a request to akamai-purger to purge the cache entries
@@ -2026,10 +2083,17 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		return nil, err
 	}
 
+	issuerID := issuance.GetIssuerNameID(cert)
 	serialString := core.SerialToString(cert.SerialNumber)
+	crlShard, err := ra.crlShardForCert(cert)
+	if err != nil {
+		return nil, fmt.Errorf("computing CRL shard for cert: %w", err)
+	}
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
+		IssuerID:     int64(issuerID),
+		CrlShard:     crlShard,
 		SerialNumber: serialString,
 		Reason:       req.Code,
 		Method:       "applicant",
@@ -2089,11 +2153,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		logEvent.Reason = req.Code
 	}
 
-	issuerID := issuance.GetIssuerNameID(cert)
 	err = ra.revokeCertificate(
 		ctx,
 		cert.SerialNumber,
 		int64(issuerID),
+		crlShard,
 		revocation.Reason(req.Code),
 	)
 	if err != nil {
@@ -2148,9 +2212,15 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	}
 
 	issuerID := issuance.GetIssuerNameID(cert)
+	crlShard, err := ra.crlShardForCert(cert)
+	if err != nil {
+		return nil, fmt.Errorf("computing CRL shard for cert: %w", err)
+	}
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
+		IssuerID:     int64(issuerID),
+		CrlShard:     crlShard,
 		SerialNumber: core.SerialToString(cert.SerialNumber),
 		Reason:       ocsp.KeyCompromise,
 		Method:       "key",
@@ -2175,6 +2245,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 		ctx,
 		cert.SerialNumber,
 		int64(issuerID),
+		crlShard,
 		revocation.Reason(ocsp.KeyCompromise),
 	)
 
@@ -2197,7 +2268,7 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByKey(ctx context.Context, req *r
 	} else if errors.Is(err, berrors.AlreadyRevoked) {
 		// If it was an AlreadyRevoked error, try to re-revoke the cert in case
 		// it was revoked for a reason other than keyCompromise.
-		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID))
+		err = ra.updateRevocationForKeyCompromise(ctx, cert.SerialNumber, int64(issuerID), crlShard)
 
 		// Perform an Akamai cache purge to handle occurrences of a client
 		// previously successfully revoking a certificate, but the cache purge had
@@ -2248,6 +2319,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	// so badly malformed that it can't be parsed.
 	var cert *x509.Certificate
 	var issuerID int64 // TODO(#5152) make this an issuance.IssuerNameID
+	var crlShard int64
 	var err error
 	if req.Cert == nil {
 		status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: req.Serial})
@@ -2255,19 +2327,36 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, fmt.Errorf("unable to confirm that serial %q was ever issued: %w", req.Serial, err)
 		}
 		issuerID = status.IssuerID
+		if ra.crlNumShards == 0 || ra.crlShardWidth == 0 || ra.crlDPBase == "" {
+			// Don't set the crlShard as long as we're not configured to do so.
+			crlShard = 0
+		} else if req.CrlShard <= 0 {
+			return nil, fmt.Errorf("no CRL shard given for serial %q", req.Serial)
+		} else {
+			crlShard = req.CrlShard
+		}
 	} else {
 		cert, err = x509.ParseCertificate(req.Cert)
 		if err != nil {
 			return nil, err
 		}
 		issuerID = int64(issuance.GetIssuerNameID(cert))
+		crlShard, err = ra.crlShardForCert(cert)
+		if err != nil {
+			return nil, fmt.Errorf("computing CRL shard for cert: %w", err)
+		}
 	}
+
+	fmt.Printf("num %+v, width %+v, prefix %+v\n", ra.crlNumShards, ra.crlShardWidth, ra.crlDPBase)
+	fmt.Printf("revoking %+v in shard %+v\n", req.Cert != nil, crlShard)
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
-		Method:       "key",
-		AdminName:    req.AdminName,
+		IssuerID:     issuerID,
+		CrlShard:     crlShard,
 		SerialNumber: req.Serial,
+		Method:       "admin",
+		AdminName:    req.AdminName,
 	}
 
 	// Below this point, do not re-declare `err` (i.e. type `err :=`) in a
@@ -2286,7 +2375,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 		return nil, err
 	}
 
-	err = ra.revokeCertificate(ctx, serialInt, issuerID, revocation.Reason(req.Code))
+	err = ra.revokeCertificate(ctx, serialInt, issuerID, crlShard, revocation.Reason(req.Code))
 	// Perform an Akamai cache purge to handle occurrences of a client
 	// successfully revoking a certificate, but the initial cache purge failing.
 	if errors.Is(err, berrors.AlreadyRevoked) {
@@ -2300,7 +2389,7 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 	}
 	if err != nil {
 		if req.Code == ocsp.KeyCompromise && errors.Is(err, berrors.AlreadyRevoked) {
-			err = ra.updateRevocationForKeyCompromise(ctx, serialInt, issuerID)
+			err = ra.updateRevocationForKeyCompromise(ctx, serialInt, issuerID, crlShard)
 			if err != nil {
 				return nil, err
 			}

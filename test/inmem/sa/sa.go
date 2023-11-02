@@ -101,6 +101,10 @@ func (sa SA) FinalizeOrder(ctx context.Context, req *sapb.FinalizeOrderRequest, 
 	return sa.Impl.FinalizeOrder(ctx, req)
 }
 
+func (sa SA) AddSerial(ctx context.Context, req *sapb.AddSerialRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return sa.Impl.AddSerial(ctx, req)
+}
+
 func (sa SA) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
 	return sa.Impl.AddPrecertificate(ctx, req)
 }

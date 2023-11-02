@@ -159,6 +159,11 @@ func (r *revoker) revokeCertificate(ctx context.Context, certObj core.Certificat
 			Code:         int64(reasonCode),
 			AdminName:    u.Username,
 			SkipBlockKey: skipBlockKey,
+			// By policy, if we don't know what shard a certificate should belong in
+			// (because the certificate is so malformed that we can't even parse it),
+			// then place it in Shard 1.
+			// TODO(#7135): Simplify admin-revoker's malformed path and do this in the RA.
+			CrlShard: 1,
 		}
 	}
 	_, err = r.rac.AdministrativelyRevokeCertificate(ctx, req)

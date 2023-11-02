@@ -70,6 +70,7 @@ func TestRevokeSerialBatchFile(t *testing.T) {
 	}
 	err = testCtx.revoker.revokeSerialBatchFile(context.Background(), serialFile.Name(), 0, 2)
 	test.AssertNotError(t, err, "revokeBatch failed")
+	test.AssertEquals(t, len(testCtx.log.GetAllMatching("failed to revoke")), 0)
 
 	for _, e := range entries {
 		status, err := testCtx.ssa.GetCertificateStatus(context.Background(), &sapb.Serial{Serial: core.SerialToString(e.serial)})
@@ -110,6 +111,7 @@ func TestRevokeIncidentTableSerials(t *testing.T) {
 
 	err = testCtx.revoker.revokeIncidentTableSerials(ctx, "incident_foo", 0, 1)
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
+	test.AssertEquals(t, len(testCtx.log.GetAllMatching("failed to revoke")), 0)
 
 	// Ensure that a populated incident table results in the expected log output.
 	test.AssertNotError(t, err, "revokeIncidentTableSerials failed")
@@ -398,18 +400,31 @@ func (c testCtx) addRegistation(t *testing.T, names []string, jwk string) int64 
 
 func (c testCtx) addCertificate(t *testing.T, serial *big.Int, names []string, pubKey rsa.PublicKey, regId int64) *x509.Certificate {
 	t.Helper()
+	now := time.Now()
+
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{Organization: []string{"tests"}},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(0, 0, 1),
+		NotBefore:    now,
+		NotAfter:     now.AddDate(0, 0, 1),
 		DNSNames:     names,
 	}
 
 	rawCert, err := x509.CreateCertificate(rand.Reader, template, c.issuer.Certificate, &pubKey, c.signer)
 	test.AssertNotError(t, err, "Failed to generate test cert")
 
-	now := time.Now()
+	_, err = c.ssa.AddSerial(
+		context.Background(), &sapb.AddSerialRequest{
+			RegID:     regId,
+			Serial:    core.SerialToString(serial),
+			CreatedNS: now.UnixNano(),
+			Created:   timestamppb.New(now),
+			ExpiresNS: now.AddDate(0, 0, 1).UnixNano(),
+			Expires:   timestamppb.New(now.AddDate(0, 0, 1)),
+		},
+	)
+	test.AssertNotError(t, err, "Failed to add test serial")
+
 	_, err = c.ssa.AddPrecertificate(
 		context.Background(), &sapb.AddCertificateRequest{
 			Der:          rawCert,
@@ -472,6 +487,16 @@ func setup(t *testing.T) testCtx {
 	signer, err := test.LoadSigner("../../test/hierarchy/int-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load test signer")
 
+	// TODO(#7094): Make this unconditional once the table exists in prod.
+	var crlDPBase string
+	var crlNumShards int
+	var crlShardWidth time.Duration
+	if os.Getenv("BOULDER_CONFIG_DIR") == "test/config-next" {
+		crlDPBase = "http://c.boulder.test"
+		crlNumShards = 10
+		crlShardWidth = 24 * time.Hour
+	}
+
 	ra := ra.NewRegistrationAuthorityImpl(
 		fc,
 		log,
@@ -488,6 +513,9 @@ func setup(t *testing.T) testCtx {
 		nil,
 		&mockPurger{},
 		[]*issuance.Certificate{issuer},
+		crlDPBase,
+		crlNumShards,
+		crlShardWidth,
 	)
 	ra.SA = isa.SA{Impl: ssa}
 	ra.OCSP = &mockOCSPA{}

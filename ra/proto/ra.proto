@@ -54,16 +54,18 @@ message RevokeCertByKeyRequest {
 }
 
 message AdministrativelyRevokeCertificateRequest {
-  // The `cert` field may be omitted. If it is omitted,
-  // the revocation reason (`code`) must not be keyCompromise,
-  // and purging the Akamai cache will not happen because the
-  // base URL for the certificate's OCSP server is not known.
+  // The `cert` field may be omitted. If it is omitted, the revocation reason
+  // (`code`) must not be keyCompromise, the crlShard field must be populated,
+  // and purging the Akamai cache will not happen because the base URL for the
+  // certificate's OCSP server is not known.
   bytes cert = 1;
   // The `serial` field is required.
   string serial = 4;
   int64 code = 2;
   string adminName = 3;
   bool skipBlockKey = 5;
+  // The `crlShard` field is required if the `cert` field is omitted.
+  int64 crlShard = 6;
 }
 
 message NewOrderRequest {

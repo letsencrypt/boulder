@@ -371,7 +371,9 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 		300*24*time.Hour, 7*24*time.Hour,
 		nil, noopCAA{},
 		0, 5*time.Minute,
-		ctp, nil, nil)
+		ctp, nil, nil,
+		"http://c.boulder.test", 10, 24*time.Hour,
+	)
 	ra.SA = sa
 	ra.VA = va
 	ra.CA = ca
@@ -4029,6 +4031,15 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed for nil `Cert`")
 
+	// Revoking with neither a cert nor a crl shard index should fail immediately.
+	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
+		Serial:    serial,
+		Code:      ocsp.Unspecified,
+		AdminName: "root",
+	})
+	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with no cert or serial")
+	test.AssertContains(t, err.Error(), "no CRL shard given")
+
 	// Revoking without an admin name should fail immediately.
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Cert:      cert.Raw,
@@ -4063,6 +4074,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	mockSA.revoked = make(map[string]int64)
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    core.SerialToString(cert.SerialNumber),
+		CrlShard:  1,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
 	})
@@ -4075,6 +4087,7 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	// should fail and not block the key
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    core.SerialToString(cert.SerialNumber),
+		CrlShard:  1,
 		Code:      ocsp.Unspecified,
 		AdminName: "root",
 	})
@@ -4106,8 +4119,58 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	mockSA.revoked = make(map[string]int64)
 	_, err = ra.AdministrativelyRevokeCertificate(context.Background(), &rapb.AdministrativelyRevokeCertificateRequest{
 		Serial:    core.SerialToString(cert.SerialNumber),
+		CrlShard:  1,
 		Code:      ocsp.KeyCompromise,
 		AdminName: "root",
 	})
 	test.AssertError(t, err, "AdministrativelyRevokeCertificate should have failed with just serial for keyCompromise")
+}
+
+func TestCRLShardForCert(t *testing.T) {
+	_, _, ra, clk, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	_, cert := test.ThrowAwayCert(t, clk)
+
+	// A cert with multiple distribution points should cause an error: we don't
+	// know which one is the right one.
+	// Note that modifying the cert in this way means that the go struct no longer
+	// matches its own .Raw field, and the signature doesn't match, but that's ok
+	// for the purpose of this test.
+	cert.CRLDistributionPoints = []string{"first", "second"}
+	_, err := ra.crlShardForCert(cert)
+	test.AssertError(t, err, "multiple crldps should fail")
+	test.AssertContains(t, err.Error(), "multiple crl distribution points")
+
+	// A cert with an unexpected distribution point should cause an error because
+	// the cert *must* show up in the CRL in its own embedded CRLDP.
+	cert.CRLDistributionPoints = []string{"https://wrong.url/crls/123.pem"}
+	_, err = ra.crlShardForCert(cert)
+	test.AssertError(t, err, "bad crldp prefix should fail")
+	test.AssertContains(t, err.Error(), "unrecognized prefix")
+
+	// A cert with an unparsable distribution point should cause an error for the
+	// same reasons as the above.
+	// Note that the IssuerNameID portion of the URL used in this case and the
+	// one below is empirically determined.
+	cert.CRLDistributionPoints = []string{"http://c.boulder.test/70162984478308736/asdf"}
+	_, err = ra.crlShardForCert(cert)
+	test.AssertError(t, err, "unparsable shard number should fail")
+	test.AssertContains(t, err.Error(), "extracting crl shard")
+
+	// A cert with the expected distribution point should succeed.
+	cert.CRLDistributionPoints = []string{"http://c.boulder.test/70162984478308736/987"}
+	shard, err := ra.crlShardForCert(cert)
+	test.AssertNotError(t, err, "proper crldp should succeed")
+	test.AssertEquals(t, shard, int64(987))
+
+	// A cert with no distribution point should succeed, and give a shard index
+	// based on its expiry.
+	cert.CRLDistributionPoints = []string{}
+	shard, err = ra.crlShardForCert(cert)
+	test.AssertNotError(t, err, "proper crldp should succeed")
+	cert.NotAfter = cert.NotAfter.Add(2 * ra.crlShardWidth)
+	shard2, err := ra.crlShardForCert(cert)
+	test.AssertNotError(t, err, "proper crldp should succeed")
+	test.AssertEquals(t, shard2, (shard+2)%int64(ra.crlNumShards))
 }
