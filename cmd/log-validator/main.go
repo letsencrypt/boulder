@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -128,10 +129,57 @@ func (tl tailLogger) Println(v ...interface{}) {
 }
 
 type Config struct {
-	Files         []string `validate:"min=1,dive,required"`
-	DebugAddr     string   `validate:"required,hostname_port"`
+	// TODO(mattm): How to validate either Files or FileGlobs?  Can we validate the glob patterns?
+	Files         []string
+	FileGlobs     []string
+	DebugAddr     string `validate:"required,hostname_port"`
 	Syslog        cmd.SyslogConfig
 	OpenTelemetry cmd.OpenTelemetryConfig
+}
+
+// tailValidateFile takes a filename, and starts tailing it.
+// An error is returned if the file couldn't be opened.
+func tailValidateFile(filename string, logger blog.Logger, lineCounter *prometheus.CounterVec) (*tail.Tail, error) {
+	t, err := tail.TailFile(filename, tail.Config{
+		ReOpen:    true,
+		MustExist: false, // sometimes files won't exist, so we must tolerate that
+		Follow:    true,
+		Logger:    tailLogger{logger},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		// Emit no more than 1 error line per second. This prevents consuming large
+		// amounts of disk space in case there is problem that causes all log lines to
+		// be invalid.
+		outputLimiter := time.NewTicker(time.Second)
+
+		for line := range t.Lines {
+			if line.Err != nil {
+				logger.Errf("error while tailing %s: %s", t.Filename, line.Err)
+				continue
+			}
+			err := lineValid(line.Text)
+			if err != nil {
+				if errors.Is(err, errInvalidChecksum) {
+					lineCounter.WithLabelValues(t.Filename, "invalid checksum length").Inc()
+				} else {
+					lineCounter.WithLabelValues(t.Filename, "bad").Inc()
+				}
+				select {
+				case <-outputLimiter.C:
+					logger.Errf("%s: %s %q", t.Filename, err, line.Text)
+				default:
+				}
+			} else {
+				lineCounter.WithLabelValues(t.Filename, "ok").Inc()
+			}
+		}
+	}()
+
+	return t, nil
 }
 
 func main() {
@@ -160,46 +208,21 @@ func main() {
 	}, []string{"filename", "status"})
 	stats.MustRegister(lineCounter)
 
-	// Emit no more than 1 error line per second. This prevents consuming large
-	// amounts of disk space in case there is problem that causes all log lines to
-	// be invalid.
-	outputLimiter := time.NewTicker(time.Second)
-
 	var tailers []*tail.Tail
 	for _, filename := range config.Files {
-		t, err := tail.TailFile(filename, tail.Config{
-			ReOpen:    true,
-			MustExist: false, // sometimes files won't exist, so we must tolerate that
-			Follow:    true,
-			Logger:    tailLogger{logger},
-		})
+		t, err := tailValidateFile(filename, logger, lineCounter)
 		cmd.FailOnError(err, "failed to tail file")
-
-		go func() {
-			for line := range t.Lines {
-				if line.Err != nil {
-					logger.Errf("error while tailing %s: %s", t.Filename, line.Err)
-					continue
-				}
-				err := lineValid(line.Text)
-				if err != nil {
-					if errors.Is(err, errInvalidChecksum) {
-						lineCounter.WithLabelValues(t.Filename, "invalid checksum length").Inc()
-					} else {
-						lineCounter.WithLabelValues(t.Filename, "bad").Inc()
-					}
-					select {
-					case <-outputLimiter.C:
-						logger.Errf("%s: %s %q", t.Filename, err, line.Text)
-					default:
-					}
-				} else {
-					lineCounter.WithLabelValues(t.Filename, "ok").Inc()
-				}
-			}
-		}()
-
 		tailers = append(tailers, t)
+	}
+
+	for _, pattern := range config.FileGlobs {
+		matches, err := filepath.Glob(pattern)
+		cmd.FailOnError(err, "failed to glob files")
+		for _, filename := range matches {
+			t, err := tailValidateFile(filename, logger, lineCounter)
+			cmd.FailOnError(err, "failed to tail file")
+			tailers = append(tailers, t)
+		}
 	}
 
 	defer func() {
