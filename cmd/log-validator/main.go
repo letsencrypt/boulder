@@ -225,6 +225,12 @@ func main() {
 		}
 	}
 
+	if len(tailers) == 0 {
+		cmd.Fail("No log files to monitor")
+	} else {
+		logger.Infof("Tailing %d files", len(tailers))
+	}
+
 	defer func() {
 		for _, t := range tailers {
 			// The tail module seems to have a race condition that will generate
