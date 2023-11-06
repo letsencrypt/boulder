@@ -5,52 +5,48 @@ import (
 	"net"
 )
 
-// Bucket identifies a specific subscriber rate limit bucket to the Limiter.
-type Bucket struct {
-	name Name
-	key  string
+// BucketId should only be created using the New*BucketId functions. It is used
+// by the Limiter to look up the bucket and limit overrides for a specific
+// subscriber and limit.
+type BucketId struct {
+	// limit is the name of the associated rate limit. It is used for looking up
+	// default limits.
+	limit Name
+
+	// bucketKey is the limit Name enum (e.g. "1") concatenated with the
+	// subscriber identifier specific to the associate limit Name type.
+	bucketKey string
 }
 
-// BucketWithCost is a bucket with an associated cost.
-type BucketWithCost struct {
-	Bucket
-	cost int64
-}
-
-// WithCost returns a BucketWithCost for the provided cost.
-func (b Bucket) WithCost(cost int64) BucketWithCost {
-	return BucketWithCost{b, cost}
-}
-
-// NewRegistrationsPerIPAddressBucket returns a Bucket for the provided IP
+// NewRegistrationsPerIPAddressBucketId returns a BucketId for the provided IP
 // address.
-func NewRegistrationsPerIPAddressBucket(ip net.IP) (Bucket, error) {
+func NewRegistrationsPerIPAddressBucketId(ip net.IP) (BucketId, error) {
 	id := ip.String()
 	err := validateIdForName(NewRegistrationsPerIPAddress, id)
 	if err != nil {
-		return Bucket{}, err
+		return BucketId{}, err
 	}
-	return Bucket{
-		name: NewRegistrationsPerIPAddress,
-		key:  joinWithColon(NewRegistrationsPerIPAddress.EnumString(), id),
+	return BucketId{
+		limit:     NewRegistrationsPerIPAddress,
+		bucketKey: joinWithColon(NewRegistrationsPerIPAddress.EnumString(), id),
 	}, nil
 }
 
-// NewRegistrationsPerIPv6RangeBucket returns a Bucket for the /48 IPv6 range
-// containing the provided IPv6 address.
-func NewRegistrationsPerIPv6RangeBucket(ip net.IP) (Bucket, error) {
+// NewRegistrationsPerIPv6RangeBucketId returns a BucketId for the /48 IPv6
+// range containing the provided IPv6 address.
+func NewRegistrationsPerIPv6RangeBucketId(ip net.IP) (BucketId, error) {
 	if ip.To4() != nil {
-		return Bucket{}, fmt.Errorf("invalid IPv6 address, %q must be an IPv6 address", ip.String())
+		return BucketId{}, fmt.Errorf("invalid IPv6 address, %q must be an IPv6 address", ip.String())
 	}
 	ipMask := net.CIDRMask(48, 128)
 	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
 	id := ipNet.String()
 	err := validateIdForName(NewRegistrationsPerIPv6Range, id)
 	if err != nil {
-		return Bucket{}, err
+		return BucketId{}, err
 	}
-	return Bucket{
-		name: NewRegistrationsPerIPv6Range,
-		key:  joinWithColon(NewRegistrationsPerIPv6Range.EnumString(), id),
+	return BucketId{
+		limit:     NewRegistrationsPerIPv6Range,
+		bucketKey: joinWithColon(NewRegistrationsPerIPv6Range.EnumString(), id),
 	}, nil
 }

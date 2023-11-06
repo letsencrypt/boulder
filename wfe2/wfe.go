@@ -638,13 +638,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
-	bucket, err := ratelimits.NewRegistrationsPerIPAddressBucket(ip)
+	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
 	}
 
-	decision, err := wfe.limiter.Spend(ctx, bucket.WithCost(1))
+	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -655,13 +655,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		return
 	}
 
-	bucket, err = ratelimits.NewRegistrationsPerIPv6RangeBucket(ip)
+	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return
 	}
 
-	_, err = wfe.limiter.Spend(ctx, bucket.WithCost(1))
+	_, err = wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
@@ -686,13 +686,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
 	}
 
-	bucket, err := ratelimits.NewRegistrationsPerIPAddressBucket(ip)
+	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
 	}
 
-	_, err = wfe.limiter.Refund(ctx, bucket.WithCost(1))
+	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -702,13 +702,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		return
 	}
 
-	bucket, err = ratelimits.NewRegistrationsPerIPv6RangeBucket(ip)
+	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 		return
 	}
 
-	_, err = wfe.limiter.Refund(ctx, bucket.WithCost(1))
+	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
