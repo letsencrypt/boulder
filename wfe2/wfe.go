@@ -1218,7 +1218,7 @@ func (wfe *WebFrontEndImpl) UpdateTrustedJwt(
 	}
 
 	// Ensure gRPC response is complete.
-	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.Expires == 0 {
+	if authzPB.Id == "" || authzPB.Identifier == "" || authzPB.Status == "" || authzPB.ExpiresNS == 0 {
 		wfe.sendError(response, logEvent, probs.ServerInternal("Problem getting authorization"), errIncompleteGRPCResponse)
 		return
 	}

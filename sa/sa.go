@@ -2,7 +2,6 @@ package sa
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/jmhodges/clock"
-	"github.com/letsencrypt/boulder/identifier"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/ocsp"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -573,10 +571,6 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		res.Status = status
 
 		return res, nil
-=======
-			TypeIdentifier:  req.NewOrder.TypeIdentifier,
-		}, nil
->>>>>>> df4fb4e25 (Initial setup to support certificate validation based on trusted jwts)
 	})
 	if err != nil {
 		return nil, err

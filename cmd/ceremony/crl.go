@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/linter"
 )
 
@@ -43,7 +44,7 @@ func generateCRL(signer crypto.Signer, issuer *x509.Certificate, thisUpdate, nex
 	}
 	template.ExtraExtensions = append(template.ExtraExtensions, *idp)
 
-	err = linter.CheckCRL(template, issuer, signer, []string{})
+	err = linter.CheckCRL(template, issuer, signer, []string{}, core.TypeIdentifierNone)
 	if err != nil {
 		return nil, fmt.Errorf("crl failed pre-issuance lint: %w", err)
 	}

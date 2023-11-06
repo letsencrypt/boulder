@@ -7,12 +7,14 @@
 package proto
 
 import (
+	reflect "reflect"
+	sync "sync"
+
+	"github.com/letsencrypt/boulder/core"
 	proto "github.com/letsencrypt/boulder/core/proto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -27,11 +29,11 @@ type IssueCertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Csr            []byte `protobuf:"bytes,1,opt,name=csr,proto3" json:"csr,omitempty"`
-	RegistrationID int64  `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
-	OrderID        int64  `protobuf:"varint,3,opt,name=orderID,proto3" json:"orderID,omitempty"`
-	IssuerNameID   int64  `protobuf:"varint,4,opt,name=issuerNameID,proto3" json:"issuerNameID,omitempty"`
-	TypeIdentifier string `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
+	Csr            []byte              `protobuf:"bytes,1,opt,name=csr,proto3" json:"csr,omitempty"`
+	RegistrationID int64               `protobuf:"varint,2,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	OrderID        int64               `protobuf:"varint,3,opt,name=orderID,proto3" json:"orderID,omitempty"`
+	IssuerNameID   int64               `protobuf:"varint,4,opt,name=issuerNameID,proto3" json:"issuerNameID,omitempty"`
+	TypeIdentifier core.TypeIdentifier `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *IssueCertificateRequest) Reset() {
@@ -96,7 +98,7 @@ func (x *IssueCertificateRequest) GetIssuerNameID() int64 {
 
 func (x *IssueCertificateRequest) GetTypeIdentifier() string {
 	if x != nil {
-		return x.TypeIdentifier
+		return x.TypeIdentifier.String()
 	}
 	return ""
 }
@@ -153,11 +155,11 @@ type IssueCertificateForPrecertificateRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	DER            []byte   `protobuf:"bytes,1,opt,name=DER,proto3" json:"DER,omitempty"`
-	SCTs           [][]byte `protobuf:"bytes,2,rep,name=SCTs,proto3" json:"SCTs,omitempty"`
-	RegistrationID int64    `protobuf:"varint,3,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
-	OrderID        int64    `protobuf:"varint,4,opt,name=orderID,proto3" json:"orderID,omitempty"`
-	TypeIdentifier string   `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
+	DER            []byte              `protobuf:"bytes,1,opt,name=DER,proto3" json:"DER,omitempty"`
+	SCTs           [][]byte            `protobuf:"bytes,2,rep,name=SCTs,proto3" json:"SCTs,omitempty"`
+	RegistrationID int64               `protobuf:"varint,3,opt,name=registrationID,proto3" json:"registrationID,omitempty"`
+	OrderID        int64               `protobuf:"varint,4,opt,name=orderID,proto3" json:"orderID,omitempty"`
+	TypeIdentifier core.TypeIdentifier `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *IssueCertificateForPrecertificateRequest) Reset() {

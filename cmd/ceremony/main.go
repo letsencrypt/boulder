@@ -18,6 +18,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	"golang.org/x/crypto/ocsp"
 	"gopkg.in/yaml.v3"
 
@@ -43,8 +44,8 @@ type lintCert *x509.Certificate
 // template certificate signed by a given issuer and returns a *lintCert or an
 // error. The lint certificate is linted prior to being returned. The public key
 // from the just issued lint certificate is checked by the GoodKey package.
-func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string) (lintCert, error) {
-	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints)
+func issueLintCertAndPerformLinting(tbs, issuer *x509.Certificate, subjectPubKey crypto.PublicKey, signer crypto.Signer, skipLints []string, typeIdentifier core.TypeIdentifier) (lintCert, error) {
+	bytes, err := linter.Check(tbs, subjectPubKey, issuer, signer, skipLints, typeIdentifier)
 	if err != nil {
 		return nil, fmt.Errorf("certificate failed pre-issuance lint: %w", err)
 	}
@@ -607,7 +608,7 @@ func rootCeremony(configBytes []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
-	lintCert, err := issueLintCertAndPerformLinting(template, template, keyInfo.key, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, template, keyInfo.key, signer, config.SkipLints, core.TypeIdentifierNone)
 	if err != nil {
 		return err
 	}
@@ -654,7 +655,7 @@ func intermediateCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints, core.TypeIdentifierNone)
 	if err != nil {
 		return err
 	}
@@ -712,7 +713,7 @@ func crossCertCeremony(configBytes []byte, ct certType) error {
 		return fmt.Errorf("failed to create certificate profile: %s", err)
 	}
 	template.AuthorityKeyId = issuer.SubjectKeyId
-	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints)
+	lintCert, err := issueLintCertAndPerformLinting(template, issuer, pub, signer, config.SkipLints, core.TypeIdentifierNone)
 	if err != nil {
 		return err
 	}

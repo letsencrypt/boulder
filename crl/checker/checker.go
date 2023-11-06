@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/letsencrypt/boulder/core"
 	zlint_x509 "github.com/zmap/zcrypto/x509"
 	"github.com/zmap/zlint/v3"
 
@@ -24,7 +25,7 @@ func Validate(crl *x509.RevocationList, issuer *x509.Certificate, ageLimit time.
 		return fmt.Errorf("parsing CRL: %w", err)
 	}
 
-	err = linter.ProcessResultSet(zlint.LintRevocationList(zcrl))
+	err = linter.ProcessResultSet(zlint.LintRevocationList(zcrl), core.TypeIdentifierNone)
 	if err != nil {
 		return fmt.Errorf("linting CRL: %w", err)
 	}

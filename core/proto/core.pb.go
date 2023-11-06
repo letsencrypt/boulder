@@ -7,6 +7,7 @@
 package proto
 
 import (
+	"github.com/letsencrypt/boulder/core"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -784,7 +785,7 @@ type Order struct {
 	CreatedNS         int64                  `protobuf:"varint,10,opt,name=createdNS,proto3" json:"createdNS,omitempty"` // Unix timestamp (nanoseconds)
 	Created           *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created,proto3" json:"created,omitempty"`
 	V2Authorizations  []int64                `protobuf:"varint,11,rep,packed,name=v2Authorizations,proto3" json:"v2Authorizations,omitempty"`
-	TypeIdentifier    string                 `protobuf:"bytes,14,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
+	TypeIdentifier    core.TypeIdentifier    `protobuf:"bytes,14,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *Order) Reset() {

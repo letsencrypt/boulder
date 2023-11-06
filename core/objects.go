@@ -51,6 +51,30 @@ const (
 // AcmeChallenge values identify different types of ACME challenges
 type AcmeChallenge string
 
+// Type identifier
+type TypeIdentifier string
+
+const (
+	TypeIdentifierNone       = TypeIdentifier("")
+	TypeIdentifierDNS01      = TypeIdentifier("dns-01")
+	TypeIdentifierHTTP01     = TypeIdentifier("http-01")
+	TypeIdentifierTLSALPN01  = TypeIdentifier("tls-alpn-01")
+	TypeIdentifierTrustedJWT = TypeIdentifier("trusted-jwt-01")
+)
+
+func (t TypeIdentifier) IsValid() bool {
+	switch t {
+	case TypeIdentifierDNS01, TypeIdentifierHTTP01, TypeIdentifierTLSALPN01, TypeIdentifierTrustedJWT:
+		return true
+	default:
+		return false
+	}
+}
+
+func (t TypeIdentifier) String() string {
+	return string(t)
+}
+
 // These types are the available challenges
 const (
 	ChallengeTypeHTTP01     = AcmeChallenge("http-01")

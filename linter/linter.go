@@ -31,13 +31,13 @@ var ErrLinting = fmt.Errorf("failed lint(s)")
 // primary public interface of this package, but it can be inefficient; creating
 // a new signer and a new lint registry are expensive operations which
 // performance-sensitive clients may want to cache via linter.New().
-func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string, typeIdentifier string) ([]byte, error) {
-	linter, err := New(realIssuer, realSigner, skipLints)
+func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string, typeIdentifier core.TypeIdentifier) ([]byte, error) {
+	linter, err := New(realIssuer, realSigner, skipLints, typeIdentifier)
 	if err != nil {
 		return nil, err
 	}
 
-	lintCertBytes, err := linter.Check(tbs, subjectPubKey, typeIdentifier)
+	lintCertBytes, err := linter.Check(tbs, subjectPubKey)
 	if err != nil {
 		return nil, err
 	}
@@ -46,8 +46,8 @@ func Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, realIssuer *x5
 }
 
 // CheckCRL is like Check, but for CRLs.
-func CheckCRL(tbs *x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) error {
-	linter, err := New(realIssuer, realSigner, skipLints)
+func CheckCRL(tbs *x509.RevocationList, realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string, typeIdentifier core.TypeIdentifier) error {
+	linter, err := New(realIssuer, realSigner, skipLints, typeIdentifier)
 	if err != nil {
 		return err
 	}
@@ -63,6 +63,7 @@ type Linter struct {
 	signer     crypto.Signer
 	registry   lint.Registry
 	realPubKey crypto.PublicKey
+	identifier core.TypeIdentifier
 }
 
 // New constructs a Linter. It uses the provided real certificate and signer
@@ -70,7 +71,7 @@ type Linter struct {
 // be used to sign the lint certificate. It uses the provided list of lint names
 // to skip to filter the zlint global registry to only those lints which should
 // be run.
-func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string) (*Linter, error) {
+func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []string, typeIdentifier core.TypeIdentifier) (*Linter, error) {
 	lintSigner, err := makeSigner(realSigner)
 	if err != nil {
 		return nil, err
@@ -83,7 +84,8 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []str
 	if err != nil {
 		return nil, err
 	}
-	return &Linter{lintIssuer, lintSigner, reg, realSigner.Public()}, nil
+
+	return &Linter{lintIssuer, lintSigner, reg, realSigner.Public(), typeIdentifier}, nil
 }
 
 // Check signs the given TBS certificate using the Linter's fake issuer cert and
@@ -93,7 +95,7 @@ func New(realIssuer *x509.Certificate, realSigner crypto.Signer, skipLints []str
 // replaced with the linter's pubkey so that it appears self-signed. It returns
 // an error if any lint fails. On success it also returns the DER bytes of the
 // linting certificate.
-func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, typeIdentifier string) ([]byte, error) {
+func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey) ([]byte, error) {
 	lintPubKey := subjectPubKey
 	selfSigned, err := core.PublicKeysEqual(subjectPubKey, l.realPubKey)
 	if err != nil {
@@ -103,13 +105,13 @@ func (l Linter) Check(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, typ
 		lintPubKey = l.signer.Public()
 	}
 
-	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer, typeIdentifier)
+	lintCertBytes, cert, err := makeLintCert(tbs, lintPubKey, l.issuer, l.signer)
 	if err != nil {
 		return nil, err
 	}
 
 	lintRes := zlint.LintCertificateEx(cert, l.registry)
-	err = ProcessResultSet(lintRes)
+	err = ProcessResultSet(lintRes, l.identifier)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +128,7 @@ func (l Linter) CheckCRL(tbs *x509.RevocationList) error {
 		return err
 	}
 	lintRes := zlint.LintRevocationListEx(crl, l.registry)
-	return ProcessResultSet(lintRes)
+	return ProcessResultSet(lintRes, l.identifier)
 }
 
 func makeSigner(realSigner crypto.Signer) (crypto.Signer, error) {
@@ -234,10 +236,10 @@ func makeLintCert(tbs *x509.Certificate, subjectPubKey crypto.PublicKey, issuer 
 	return lintCertBytes, lintCert, nil
 }
 
-func ProcessResultSet(lintRes *zlint.ResultSet) error {
-	lintsThatMayFailForTypeIdentifier := map[string]string{
-		"e_dnsname_not_valid_tld":     "jwt",
-		"n_san_iana_pub_suffix_empty": "jwt",
+func ProcessResultSet(lintRes *zlint.ResultSet, typeIdentifier core.TypeIdentifier) error {
+	lintsThatMayFailForTypeIdentifier := map[string]core.TypeIdentifier{
+		"e_dnsname_not_valid_tld":     core.TypeIdentifierTrustedJWT,
+		"n_san_iana_pub_suffix_empty": core.TypeIdentifierTrustedJWT,
 	}
 
 	if lintRes.NoticesPresent || lintRes.WarningsPresent || lintRes.ErrorsPresent || lintRes.FatalsPresent {

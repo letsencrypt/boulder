@@ -7,6 +7,7 @@
 package proto
 
 import (
+	"github.com/letsencrypt/boulder/core"
 	proto "github.com/letsencrypt/boulder/core/proto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -1421,7 +1422,7 @@ type NewOrderRequest struct {
 	Expires          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires,proto3" json:"expires,omitempty"`
 	Names            []string               `protobuf:"bytes,3,rep,name=names,proto3" json:"names,omitempty"`
 	V2Authorizations []int64                `protobuf:"varint,4,rep,packed,name=v2Authorizations,proto3" json:"v2Authorizations,omitempty"`
-	TypeIdentifier   string                 `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
+	TypeIdentifier   core.TypeIdentifier    `protobuf:"bytes,5,opt,name=typeIdentifier,proto3" json:"typeIdentifier,omitempty"`
 }
 
 func (x *NewOrderRequest) Reset() {

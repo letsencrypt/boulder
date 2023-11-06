@@ -357,7 +357,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	if issueReq.TypeIdentifier == "jwt" {
+	if issueReq.TypeIdentifier == core.TypeIdentifierTrustedJWT {
 		// TODO GB: VerifyCSR different for this???
 	} else {
 		err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)

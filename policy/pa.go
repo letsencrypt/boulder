@@ -352,17 +352,12 @@ func ValidEmail(address string) error {
 //
 // If willingToIssue returns an error, it will be of type MalformedRequestError
 // or RejectedIdentifierError
-<<<<<<< HEAD
-func (pa *AuthorityImpl) willingToIssue(id identifier.ACMEIdentifier) error {
-=======
-//
 // TODO(#5816): Consider making this method private, as it has no callers
 // outside of this package.
-func (pa *AuthorityImpl) WillingToIssue(id identifier.ACMEIdentifier) error {
+func (pa *AuthorityImpl) willingToIssue(id identifier.ACMEIdentifier) error {
 	if id.Type == identifier.JWT {
 		return nil
 	}
->>>>>>> df4fb4e25 (Initial setup to support certificate validation based on trusted jwts)
 	if id.Type != identifier.DNS {
 		return errInvalidIdentifier
 	}
@@ -543,30 +538,18 @@ func (pa *AuthorityImpl) checkHostLists(domain string) error {
 	return nil
 }
 
-<<<<<<< HEAD
 // challengesTypesFor determines which challenge types are acceptable for the
 // given identifier.
 func (pa *AuthorityImpl) challengeTypesFor(identifier identifier.ACMEIdentifier) ([]core.AcmeChallenge, error) {
 	var challenges []core.AcmeChallenge
 
-	// If the identifier is for a DNS wildcard name we only
-	// provide a DNS-01 challenge as a matter of CA policy.
-	if strings.HasPrefix(identifier.Value, "*.") {
-=======
-// ChallengesFor makes a decision of what challenges are acceptable for
-// the given identifier.
-func (pa *AuthorityImpl) ChallengesFor(identifier identifier.ACMEIdentifier) ([]core.Challenge, error) {
-	challenges := []core.Challenge{}
-
-	token := core.NewToken()
 	if string(identifier.Type) == "jwt" {
 		if pa.ChallengeTypeEnabled(core.ChallengeTypeTrustedJWT) {
-			challenges = append(challenges, core.TrustedJWTChallenge01(token))
+			challenges = append(challenges, core.ChallengeTypeTrustedJWT)
 		}
 		// If the identifier is for a DNS wildcard name we only
 		// provide a DNS-01 challenge as a matter of CA policy.
 	} else if strings.HasPrefix(identifier.Value, "*.") {
->>>>>>> df4fb4e25 (Initial setup to support certificate validation based on trusted jwts)
 		// We must have the DNS-01 challenge type enabled to create challenges for
 		// a wildcard identifier per LE policy.
 		if !pa.ChallengeTypeEnabled(core.ChallengeTypeDNS01) {

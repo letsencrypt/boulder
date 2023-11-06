@@ -385,7 +385,7 @@ type orderModel struct {
 	Error             []byte
 	CertificateSerial string
 	BeganProcessing   bool
-	TypeIdentifier    string
+	TypeIdentifier    core.TypeIdentifier
 }
 
 type requestedNameModel struct {
