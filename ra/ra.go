@@ -394,14 +394,13 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	}
 
 	threshold, overrideKey := limit.GetThreshold(ip.String(), noRegistrationID)
-	if overrideKey != "" {
-		// We do not support overrides for the NewRegistrationsPerIPRange limit.
-		utilization := float64(count.Count) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.RegistrationsPerIP, overrideKey).Set(utilization)
-	}
-
 	if count.Count >= threshold {
 		return berrors.RegistrationsPerIPError(0, "too many registrations for this IP")
+	}
+	if overrideKey != "" {
+		// We do not support overrides for the NewRegistrationsPerIPRange limit.
+		utilization := float64(count.Count+1) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.RegistrationsPerIP, overrideKey).Set(utilization)
 	}
 
 	return nil
@@ -600,13 +599,13 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 	if err != nil {
 		return err
 	}
-	if overrideKey != "" {
-		utilization := float64(countPB.Count) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, overrideKey).Set(utilization)
-	}
 	if countPB.Count >= threshold {
 		ra.log.Infof("Rate limit exceeded, PendingAuthorizationsByRegID, regID: %d", regID)
 		return berrors.RateLimitError(0, "too many currently pending authorizations: %d", countPB.Count)
+	}
+	if overrideKey != "" {
+		utilization := float64(countPB.Count+1) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, overrideKey).Set(utilization)
 	}
 	return nil
 }
@@ -653,13 +652,13 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 	// here.
 	noKey := ""
 	threshold, overrideKey := limit.GetThreshold(noKey, regID)
-	if overrideKey != "" {
-		utilization := float64(count.Count) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, overrideKey).Set(utilization)
-	}
 	if count.Count >= threshold {
 		ra.log.Infof("Rate limit exceeded, InvalidAuthorizationsByRegID, regID: %d", regID)
 		return berrors.FailedValidationError(0, "too many failed authorizations recently")
+	}
+	if overrideKey != "" {
+		utilization := float64(count.Count+1) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, overrideKey).Set(utilization)
 	}
 	return nil
 }
@@ -684,13 +683,12 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	// There is no meaningful override key to use for this rate limit
 	noKey := ""
 	threshold, overrideKey := limit.GetThreshold(noKey, acctID)
-	if overrideKey != "" {
-		utilization := float64(count.Count) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.NewOrdersPerAccount, overrideKey).Set(utilization)
-	}
-
 	if count.Count >= threshold {
 		return berrors.RateLimitError(0, "too many new orders recently")
+	}
+	if overrideKey != "" {
+		utilization := float64(count.Count+1) / float64(threshold)
+		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.NewOrdersPerAccount, overrideKey).Set(utilization)
 	}
 	return nil
 }
@@ -1435,7 +1433,8 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 		threshold, overrideKey := limit.GetThreshold(name, regID)
 		if response.Counts[name] >= threshold {
 			badNames = append(badNames, name)
-		} else if overrideKey != "" {
+		}
+		if overrideKey != "" {
 			// Name is under threshold due to an override.
 			utilization := float64(response.Counts[name]+1) / float64(threshold)
 			metricsData = append(metricsData, struct {
@@ -1513,13 +1512,12 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 
-	if overrideKey != "" {
-		utilization := float64(len(prevIssuances.TimestampsNS)) / float64(threshold)
-		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, overrideKey).Set(utilization)
-	}
-
 	if int64(len(prevIssuances.TimestampsNS)) < threshold {
 		// Issuance in window is below the threshold, no need to limit.
+		if overrideKey != "" {
+			utilization := float64(len(prevIssuances.TimestampsNS)+1) / float64(threshold)
+			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, overrideKey).Set(utilization)
+		}
 		return nil
 	} else {
 		// Evaluate the rate limit using a leaky bucket algorithm. The bucket

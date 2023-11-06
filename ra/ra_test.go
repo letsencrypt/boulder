@@ -719,12 +719,13 @@ func TestRegistrationsPerIPOverrideUsage(t *testing.T) {
 	}
 
 	// No error expected, the count of existing registrations for "4.5.6.7"
-	// should be 1 below the threshold.
+	// should be 1 below the override threshold.
 	err := ra.checkRegistrationIPLimit(ctx, rlp, regIP, mockCounterAlwaysTwo)
 	test.AssertNotError(t, err, "Unexpected error checking RegistrationsPerIPRange limit")
 
-	// Expecting ~66% of the override for "4.5.6.7" to be utilized.
-	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": regIP.String()}, 0.6666666666666666)
+	// Accounting for the anticipated issuance, we expect "4.5.6.7" to be at
+	// 100% of their override threshold.
+	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.RegistrationsPerIP, "override_key": regIP.String()}, 1)
 
 	mockCounterAlwaysThree := func(context.Context, *sapb.CountRegistrationsByIPRequest, ...grpc.CallOption) (*sapb.Count, error) {
 		return &sapb.Count{Count: 3}, nil
@@ -1226,8 +1227,8 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerName, "bigissuer.com").Set(.5)
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertNotError(t, err, "incorrectly rate limited bigissuer")
-	// "bigissuer.com" has an override of 100 and they've issued 50. So we
-	// expect to see 51% utilization.
+	// "bigissuer.com" has an override of 100 and they've issued 50. Accounting
+	// for the anticipated issuance, we expect to see 51% utilization.
 	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, .51)
 
 	// Two base domains, one above its override
@@ -1237,8 +1238,8 @@ func TestCheckCertificatesPerNameLimit(t *testing.T) {
 	err = ra.checkCertificatesPerNameLimit(ctx, []string{"www.example.com", "subdomain.bigissuer.com"}, rlp, 99)
 	test.AssertError(t, err, "incorrectly failed to rate limit bigissuer")
 	test.AssertErrorIs(t, err, berrors.RateLimit)
-	// "bigissuer.com" has an override of 100 and they've issued 100. So we
-	// expect to see 100% utilization.
+	// "bigissuer.com" has an override of 100 and they've issued 100. They're
+	// already at 100% utilization, so we expect to see 100% utilization.
 	test.AssertMetricWithLabelsEquals(t, ra.rlOverrideUsageGauge, prometheus.Labels{"limit": ratelimit.CertificatesPerName, "override_key": "bigissuer.com"}, 1)
 
 	// One base domain, above its override (which is below threshold)
