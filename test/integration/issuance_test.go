@@ -78,7 +78,7 @@ func TestFirstCSRSANHoistedToCN(t *testing.T) {
 
 // TestCommonNameSANsTooLong tests that, when the names in an order and CSR are
 // too long to be hoisted into the CN, the correct behavior results (depending
-// on the state of the RequireCommonName feature flag).
+// on the state of the AllowNoCommonName feature flag).
 func TestCommonNameSANsTooLong(t *testing.T) {
 	t.Parallel()
 
@@ -97,13 +97,13 @@ func TestCommonNameSANsTooLong(t *testing.T) {
 	// Issue a cert using a CSR with no CN set.
 	ir, err := authAndIssue(client, key, []string{san1, san2}, false)
 
-	// By default, the RequireCommonName flag is true, so issuance should have failed.
+	// By default, the AllowNoCommonName flag is false, so issuance should have failed.
 	if !strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
 		test.AssertError(t, err, "issuing cert with no CN")
 		return
 	}
 
-	// But in config-next, the RequireCommonName flag is false, so issuance should
+	// But in config-next, the AllowNoCommonName flag is true, so issuance should
 	// have succeeded.
 	test.AssertNotError(t, err, "failed to issue test cert")
 	cert := ir.certs[0]

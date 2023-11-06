@@ -106,7 +106,7 @@
 		"features": {
 			"StoreRevokerInfo": true,
 			"AsyncFinalize": true,
-			"RequireCommonName": false
+			"AllowNoCommonName": true
 		},
 		"ctLogs": {
 			"stagger": "500ms",

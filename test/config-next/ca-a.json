@@ -113,7 +113,7 @@
 		"ctLogListFile": "test/ct-test-srv/log_list.json",
 		"features": {
 			"ECDSAForAll": true,
-			"RequireCommonName": false
+			"AllowNoCommonName": true
 		}
 	},
 	"pa": {
