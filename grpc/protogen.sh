@@ -22,5 +22,5 @@ do
   # --go-grpc_out="${proto_dir}" does the same for _grpc.pb.go
   # --go_opt=paths=source_relative derives output filenames from input filenames
   # --go-grpc_opt=paths=source_relative does the same for _grpc.pb.go
-  protoc -I "${proto_dir}" -I "${root_dir}" -I /opt/include --go_out="${proto_dir}" --go-grpc_out="${proto_dir}" --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative "${proto_file}"
+  protoc -I "${proto_dir}" -I "${root_dir}" --go_out="${proto_dir}" --go-grpc_out="${proto_dir}" --go_opt=paths=source_relative --go-grpc_opt=paths=source_relative "${proto_file}"
 done

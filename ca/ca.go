@@ -269,7 +269,7 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 		return nil, berrors.InternalServerError("no issuer found for Issuer Name %s", precert.Issuer)
 	}
 
-	issuanceReq, err := issuance.RequestFromPrecert(precert, scts, req.TypeIdentifier)
+	issuanceReq, err := issuance.RequestFromPrecert(precert, scts, core.TypeIdentifier(req.TypeIdentifier))
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +357,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, err
 	}
 
-	if issueReq.TypeIdentifier == core.TypeIdentifierTrustedJWT {
+	if core.TypeIdentifier(issueReq.TypeIdentifier) == core.TypeIdentifierTrustedJWT {
 		// TODO GB: VerifyCSR different for this???
 	} else {
 		err = csrlib.VerifyCSR(ctx, csr, ca.maxNames, &ca.keyPolicy, ca.pa)
@@ -411,7 +411,7 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		IncludeMustStaple: issuance.ContainsMustStaple(csr.Extensions),
 		NotBefore:         validity.NotBefore,
 		NotAfter:          validity.NotAfter,
-		TypeIdentifier:    issueReq.TypeIdentifier,
+		TypeIdentifier:    core.TypeIdentifier(issueReq.TypeIdentifier),
 	}
 	ca.noteSignError(err)
 	if err != nil {

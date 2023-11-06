@@ -497,7 +497,7 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        time.Unix(0, req.NewOrder.ExpiresNS),
 			Created:        ssa.clk.Now(),
-			TypeIdentifier: req.NewOrder.TypeIdentifier,
+			TypeIdentifier: core.TypeIdentifier(req.NewOrder.TypeIdentifier),
 		}
 		err := tx.Insert(ctx, order)
 		if err != nil {

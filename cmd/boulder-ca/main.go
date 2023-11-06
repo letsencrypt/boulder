@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 
+	"github.com/letsencrypt/boulder/core"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/ca"
@@ -123,7 +124,7 @@ func loadBoulderIssuers(profileConfig issuance.ProfileConfig, issuerConfigs []is
 			return nil, err
 		}
 
-		linter, err := linter.New(cert.Certificate, signer, ignoredLints)
+		linter, err := linter.New(cert.Certificate, signer, ignoredLints, core.TypeIdentifierNone)
 		if err != nil {
 			return nil, err
 		}
