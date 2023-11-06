@@ -67,13 +67,14 @@ const (
 	// for the cert URL to appear.
 	AsyncFinalize
 
-	// RequireCommonName defaults to true, and causes the CA to fail to issue a
-	// certificate if there is no CommonName in the certificate. When false, the
-	// CA will be willing to issue certificates with no CN.
+	// AllowNoCommonName defaults to false, and causes the CA to fail to issue a
+	// certificate if we can't put a CommonName in it. When true, the
+	// CA will be willing to issue certificates with no CN if and only if there
+	// is no SAN short enough to be hoisted into the CN.
 	//
 	// According to the BRs Section 7.1.4.2.2(a), the commonName field is
 	// Deprecated, and its inclusion is discouraged but not (yet) prohibited.
-	RequireCommonName
+	AllowNoCommonName
 
 	// CAAAfterValidation causes the VA to only kick off CAA checks after the base
 	// domain control validation has completed and succeeded. This makes
@@ -100,7 +101,7 @@ var features = map[FeatureFlag]bool{
 	CertCheckerRequiresValidations:    false,
 	CertCheckerRequiresCorrespondence: false,
 	AsyncFinalize:                     false,
-	RequireCommonName:                 true,
+	AllowNoCommonName:                 false,
 	LeaseCRLShards:                    false,
 	CAAAfterValidation:                false,
 
