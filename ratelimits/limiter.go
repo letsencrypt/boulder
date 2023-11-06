@@ -300,7 +300,6 @@ func (l *Limiter) initialize(ctx context.Context, rl limit, txn Transaction) (*D
 		return nil, err
 	}
 	return d, nil
-
 }
 
 // getLimit returns the limit for the specified by name and id, name is
