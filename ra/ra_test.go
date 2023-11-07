@@ -116,11 +116,11 @@ func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, 
 	pendingID, err := strconv.ParseInt(pending.Id, 10, 64)
 	test.AssertNotError(t, err, "strconv.ParseInt failed")
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:            pendingID,
-		Status:        "valid",
-		Expires:       timestamppb.New(exp),
-		Attempted:     string(chall),
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Id:          pendingID,
+		Status:      "valid",
+		Expires:     timestamppb.New(exp),
+		Attempted:   string(chall),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
@@ -2139,11 +2139,11 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 
 	now := ra.clk.Now()
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:            order.V2Authorizations[0],
-		Status:        string(core.StatusInvalid),
-		Expires:       order.Expires,
-		Attempted:     string(core.ChallengeTypeDNS01),
-		AttemptedAt:   timestamppb.New(now),
+		Id:          order.V2Authorizations[0],
+		Status:      string(core.StatusInvalid),
+		Expires:     order.Expires,
+		Attempted:   string(core.ChallengeTypeDNS01),
+		AttemptedAt: timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 
@@ -3016,11 +3016,11 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	// Finalize the authorization with the challenge validated
 	expires := now.Add(time.Hour * 24 * 7)
 	_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
-		Id:            validOrder.V2Authorizations[0],
-		Status:        string(core.StatusValid),
-		Expires:       timestamppb.New(expires),
-		Attempted:     string(core.ChallengeTypeDNS01),
-		AttemptedAt:   timestamppb.New(now),
+		Id:          validOrder.V2Authorizations[0],
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeDNS01),
+		AttemptedAt: timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -3719,9 +3719,9 @@ type mockSAGenerateOCSP struct {
 
 func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
 	return &corepb.CertificateStatus{
-		Serial:     req.Serial,
-		Status:     "good",
-		NotAfter:   timestamppb.New(msgo.expiration.UTC()),
+		Serial:   req.Serial,
+		Status:   "good",
+		NotAfter: timestamppb.New(msgo.expiration.UTC()),
 	}, nil
 }
 

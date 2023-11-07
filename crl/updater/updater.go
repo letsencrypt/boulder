@@ -211,10 +211,10 @@ func (cu *crlUpdater) updateShard(ctx context.Context, atTime time.Time, issuerN
 	var crlEntries []*proto.CRLEntry
 	for _, chunk := range chunks {
 		saStream, err := cu.sa.GetRevokedCerts(ctx, &sapb.GetRevokedCertsRequest{
-			IssuerNameID:    int64(issuerNameID),
-			ExpiresAfter:    timestamppb.New(chunk.start),
-			ExpiresBefore:   timestamppb.New(chunk.end),
-			RevokedBefore:   timestamppb.New(atTime),
+			IssuerNameID:  int64(issuerNameID),
+			ExpiresAfter:  timestamppb.New(chunk.start),
+			ExpiresBefore: timestamppb.New(chunk.end),
+			RevokedBefore: timestamppb.New(atTime),
 		})
 		if err != nil {
 			return fmt.Errorf("connecting to SA: %w", err)

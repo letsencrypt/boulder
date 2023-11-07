@@ -383,8 +383,8 @@ func (ra *RegistrationAuthorityImpl) checkRegistrationIPLimit(ctx context.Contex
 	count, err := counter(ctx, &sapb.CountRegistrationsByIPRequest{
 		Ip: ip,
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(limit.WindowBegin(now)),
-			Latest:     timestamppb.New(now),
+			Earliest: timestamppb.New(limit.WindowBegin(now)),
+			Latest:   timestamppb.New(now),
 		},
 	})
 	if err != nil {
@@ -637,8 +637,8 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 		RegistrationID: regID,
 		Hostname:       hostname,
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(earliest),
-			Latest:     timestamppb.New(latest),
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
 		},
 	}
 	count, err := ra.SA.CountInvalidAuthorizations2(ctx, req)
@@ -668,8 +668,8 @@ func (ra *RegistrationAuthorityImpl) checkNewOrdersPerAccountLimit(ctx context.C
 	count, err := ra.SA.CountOrders(ctx, &sapb.CountOrdersRequest{
 		AccountID: acctID,
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(now.Add(-limit.Window.Duration)),
-			Latest:     timestamppb.New(now),
+			Earliest: timestamppb.New(now.Add(-limit.Window.Duration)),
+			Latest:   timestamppb.New(now),
 		},
 	})
 	if err != nil {
@@ -1400,8 +1400,8 @@ func (ra *RegistrationAuthorityImpl) enforceNameCounts(ctx context.Context, name
 	req := &sapb.CountCertificatesByNamesRequest{
 		Names: names,
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(limit.WindowBegin(now)),
-			Latest:     timestamppb.New(now),
+			Earliest: timestamppb.New(limit.WindowBegin(now)),
+			Latest:   timestamppb.New(now),
 		},
 	}
 
@@ -1943,11 +1943,11 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	}
 
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
-		Serial:     serialString,
-		Reason:     int64(ocsp.KeyCompromise),
-		Date:       timestamppb.New(now),
-		Backdate:   status.RevokedDate,
-		IssuerID:   issuerID,
+		Serial:   serialString,
+		Reason:   int64(ocsp.KeyCompromise),
+		Date:     timestamppb.New(now),
+		Backdate: status.RevokedDate,
+		IssuerID: issuerID,
 	})
 	if err != nil {
 		return err
@@ -2389,11 +2389,11 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 	}
 
 	return ra.OCSP.GenerateOCSP(ctx, &capb.GenerateOCSPRequest{
-		Serial:      req.Serial,
-		Status:      status.Status,
-		Reason:      int32(status.RevokedReason),
-		RevokedAt:   status.RevokedDate,
-		IssuerID:    status.IssuerID,
+		Serial:    req.Serial,
+		Status:    status.Status,
+		Reason:    int32(status.RevokedReason),
+		RevokedAt: status.RevokedDate,
+		IssuerID:  status.IssuerID,
 	})
 }
 

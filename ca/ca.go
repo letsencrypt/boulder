@@ -187,10 +187,10 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 	regID := issueReq.RegistrationID
 	now := ca.clk.Now()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		Serial:    serialHex,
-		RegID:     regID,
-		Created:   timestamppb.New(now),
-		Expires:   timestamppb.New(validity.NotAfter),
+		Serial:  serialHex,
+		RegID:   regID,
+		Created: timestamppb.New(now),
+		Expires: timestamppb.New(validity.NotAfter),
 	})
 	if err != nil {
 		return nil, err
@@ -298,9 +298,9 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 
 	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    req.RegistrationID,
-		Issued:   timestamppb.New(now),
+		Der:    certDER,
+		RegID:  req.RegistrationID,
+		Issued: timestamppb.New(now),
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",

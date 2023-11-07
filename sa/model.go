@@ -670,7 +670,7 @@ func authzPBToModel(authz *corepb.Authorization) (*authzModel, error) {
 
 			// If validated Unix timestamp is zero then keep the core.Challenge Validated object nil.
 			var validated *time.Time
-			if !core.IsAnyNilOrZero(chall.Validated){
+			if !core.IsAnyNilOrZero(chall.Validated) {
 				val := chall.Validated.AsTime()
 				validated = &val
 			}

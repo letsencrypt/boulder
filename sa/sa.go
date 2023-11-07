@@ -551,8 +551,8 @@ func (ssa *SQLStorageAuthority) NewOrderAndAuthzs(ctx context.Context, req *sapb
 		// Finally, build the overall Order PB.
 		res := &corepb.Order{
 			// ID and Created were auto-populated on the order model when it was inserted.
-			Id:        order.ID,
-			Created:   timestamppb.New(order.Created),
+			Id:      order.ID,
+			Created: timestamppb.New(order.Created),
 			// These are carried over from the original request unchanged.
 			RegistrationID: req.NewOrder.RegistrationID,
 			Expires:        req.NewOrder.Expires,
@@ -827,7 +827,7 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
-	if req.Serial == "" ||req.IssuerID == 0 || core.IsAnyNilOrZero(req.Date) {
+	if req.Serial == "" || req.IssuerID == 0 || core.IsAnyNilOrZero(req.Date) {
 		return nil, errIncompleteRequest
 	}
 

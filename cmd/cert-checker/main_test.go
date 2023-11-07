@@ -361,9 +361,9 @@ func TestGetAndProcessCerts(t *testing.T) {
 		test.AssertNotError(t, err, "Couldn't create certificate")
 		now := fc.Now()
 		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
-			Der:      certDER,
-			RegID:    reg.Id,
-			Issued:   timestamppb.New(now),
+			Der:    certDER,
+			RegID:  reg.Id,
+			Issued: timestamppb.New(now),
 		})
 		test.AssertNotError(t, err, "Couldn't add certificate")
 	}

@@ -1351,9 +1351,9 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromRevokedCertificatesTable(re
 		}
 
 		err = stream.Send(&corepb.CRLEntry{
-			Serial:      row.Serial,
-			Reason:      int32(row.RevokedReason),
-			RevokedAt:   timestamppb.New(row.RevokedDate),
+			Serial:    row.Serial,
+			Reason:    int32(row.RevokedReason),
+			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)
@@ -1417,9 +1417,9 @@ func (ssa *SQLStorageAuthorityRO) getRevokedCertsFromCertificateStatusTable(req 
 		}
 
 		err = stream.Send(&corepb.CRLEntry{
-			Serial:      row.Serial,
-			Reason:      int32(row.RevokedReason),
-			RevokedAt:   timestamppb.New(row.RevokedDate),
+			Serial:    row.Serial,
+			Reason:    int32(row.RevokedReason),
+			RevokedAt: timestamppb.New(row.RevokedDate),
 		})
 		if err != nil {
 			return fmt.Errorf("sending crl entry: %w", err)

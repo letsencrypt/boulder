@@ -74,10 +74,10 @@ func TestAuthzModel(t *testing.T) {
 		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
-				Type:        string(core.ChallengeTypeHTTP01),
-				Status:      string(core.StatusValid),
-				Token:       "MTIz",
-				Validated:   timestamppb.New(now),
+				Type:      string(core.ChallengeTypeHTTP01),
+				Status:    string(core.StatusValid),
+				Token:     "MTIz",
+				Validated: timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),
@@ -120,10 +120,10 @@ func TestAuthzModel(t *testing.T) {
 		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
-				Type:        string(core.ChallengeTypeHTTP01),
-				Status:      string(core.StatusValid),
-				Token:       "MTIz",
-				Validated:   timestamppb.New(now),
+				Type:      string(core.ChallengeTypeHTTP01),
+				Status:    string(core.StatusValid),
+				Token:     "MTIz",
+				Validated: timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),
@@ -212,10 +212,10 @@ func TestAuthzModel(t *testing.T) {
 		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
-				Type:        string(core.ChallengeTypeHTTP01),
-				Status:      string(core.StatusValid),
-				Token:       "MTIz",
-				Validated:   timestamppb.New(now),
+				Type:      string(core.ChallengeTypeHTTP01),
+				Status:    string(core.StatusValid),
+				Token:     "MTIz",
+				Validated: timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),

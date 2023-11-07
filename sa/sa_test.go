@@ -101,11 +101,11 @@ func createWorkingRegistration(t *testing.T, sa *SQLStorageAuthority) *corepb.Re
 	initialIP, _ := net.ParseIP("88.77.66.11").MarshalText()
 	created := time.Date(2003, 5, 10, 0, 0, 0, 0, time.UTC)
 	reg, err := sa.NewRegistration(context.Background(), &corepb.Registration{
-		Key:         []byte(theKey),
-		Contact:     []string{"mailto:foo@example.com"},
-		InitialIP:   initialIP,
-		CreatedAt:   timestamppb.New(created),
-		Status:      string(core.StatusValid),
+		Key:       []byte(theKey),
+		Contact:   []string{"mailto:foo@example.com"},
+		InitialIP: initialIP,
+		CreatedAt: timestamppb.New(created),
+		Status:    string(core.StatusValid),
 	})
 	if err != nil {
 		t.Fatalf("Unable to create new registration: %s", err)
@@ -142,11 +142,11 @@ func createFinalizedAuthorization(t *testing.T, sa *SQLStorageAuthority, domain 
 	pendingID := createPendingAuthorization(t, sa, domain, exp)
 	attempted := string(core.ChallengeTypeHTTP01)
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
-		Id:            pendingID,
-		Status:        status,
-		Expires:       timestamppb.New(exp),
-		Attempted:     attempted,
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Id:          pendingID,
+		Status:      status,
+		Expires:     timestamppb.New(exp),
+		Attempted:   attempted,
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
 	return pendingID
@@ -326,38 +326,38 @@ func TestAddSerial(t *testing.T) {
 	serial, testCert := test.ThrowAwayCert(t, clk)
 
 	_, err := sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
-		RegID:     reg.Id,
-		Created:   timestamppb.New(testCert.NotBefore),
-		Expires:   timestamppb.New(testCert.NotAfter),
+		RegID:   reg.Id,
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
 	})
 	test.AssertError(t, err, "adding without serial should fail")
 
 	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
-		Serial:    serial,
-		Created:   timestamppb.New(testCert.NotBefore),
-		Expires:   timestamppb.New(testCert.NotAfter),
+		Serial:  serial,
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
 	})
 	test.AssertError(t, err, "adding without regid should fail")
 
 	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
-		Serial:    serial,
-		RegID:     reg.Id,
-		Expires:   timestamppb.New(testCert.NotAfter),
+		Serial:  serial,
+		RegID:   reg.Id,
+		Expires: timestamppb.New(testCert.NotAfter),
 	})
 	test.AssertError(t, err, "adding without created should fail")
 
 	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
-		Serial:    serial,
-		RegID:     reg.Id,
-		Created:   timestamppb.New(testCert.NotBefore),
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: timestamppb.New(testCert.NotBefore),
 	})
 	test.AssertError(t, err, "adding without expires should fail")
 
 	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
-		Serial:    serial,
-		RegID:     reg.Id,
-		Created:   timestamppb.New(testCert.NotBefore),
-		Expires:   timestamppb.New(testCert.NotAfter),
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: timestamppb.New(testCert.NotBefore),
+		Expires: timestamppb.New(testCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "adding serial should have succeeded")
 }
@@ -375,10 +375,10 @@ func TestGetSerialMetadata(t *testing.T) {
 	now := clk.Now()
 	hourLater := now.Add(time.Hour)
 	_, err = sa.AddSerial(context.Background(), &sapb.AddSerialRequest{
-		Serial:    serial,
-		RegID:     reg.Id,
-		Created:   timestamppb.New(now),
-		Expires:   timestamppb.New(hourLater),
+		Serial:  serial,
+		RegID:   reg.Id,
+		Created: timestamppb.New(now),
+		Expires: timestamppb.New(hourLater),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 
@@ -429,9 +429,9 @@ func TestAddPrecertificate(t *testing.T) {
 	// without it being an error. The duplicate err on inserting to
 	// issuedNames should be ignored.
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    regID,
-		Issued:   timestamppb.New(issuedTime),
+		Der:    testCert.Raw,
+		RegID:  regID,
+		Issued: timestamppb.New(issuedTime),
 	})
 	test.AssertNotError(t, err, "unexpected err adding final cert after precert")
 }
@@ -494,9 +494,9 @@ func TestAddPrecertificateIncomplete(t *testing.T) {
 	regID := reg.Id
 	issuedTime := time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err := sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    regID,
-		Issued:   timestamppb.New(issuedTime),
+		Der:    testCert.Raw,
+		RegID:  regID,
+		Issued: timestamppb.New(issuedTime),
 		// Leaving out IssuerNameID
 	})
 
@@ -541,9 +541,9 @@ func TestAddCertificate(t *testing.T) {
 	// Calling AddCertificate with a non-nil issued should succeed
 	issuedTime := sa.clk.Now()
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issuedTime),
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issuedTime),
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 
@@ -563,9 +563,9 @@ func TestAddCertificate(t *testing.T) {
 	// Add the certificate with a specific issued time instead of nil
 	issuedTime = time.Date(2018, 4, 1, 7, 0, 0, 0, time.UTC)
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER2,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issuedTime),
+		Der:    certDER2,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issuedTime),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
@@ -587,16 +587,16 @@ func TestAddCertificateDuplicate(t *testing.T) {
 
 	issuedTime := clk.Now()
 	_, err := sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issuedTime),
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issuedTime),
 	})
 	test.AssertNotError(t, err, "Couldn't add test certificate")
 
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      testCert.Raw,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issuedTime),
+		Der:    testCert.Raw,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issuedTime),
 	})
 	test.AssertDeepEquals(t, err, berrors.DuplicateError("cannot add a duplicate cert"))
 
@@ -626,8 +626,8 @@ func TestCountCertificatesByNames(t *testing.T) {
 	req := &sapb.CountCertificatesByNamesRequest{
 		Names: []string{"example.com"},
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(yesterday),
-			Latest:     timestamppb.New(now),
+			Earliest: timestamppb.New(yesterday),
+			Latest:   timestamppb.New(now),
 		},
 	}
 	counts, err := sa.CountCertificatesByNames(ctx, req)
@@ -639,9 +639,9 @@ func TestCountCertificatesByNames(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	issued := sa.clk.Now()
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert.der")
 
@@ -687,9 +687,9 @@ func TestCountCertificatesByNames(t *testing.T) {
 	certDER2, err := os.ReadFile("test-cert2.der")
 	test.AssertNotError(t, err, "Couldn't read test-cert2.der")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER2,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certDER2,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Couldn't add test-cert2.der")
 	req.Names = names
@@ -750,8 +750,8 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	req := &sapb.CountRegistrationsByIPRequest{
 		Ip: net.ParseIP("1.1.1.1"),
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(earliest),
-			Latest:     timestamppb.New(latest),
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
 		},
 	}
 
@@ -824,8 +824,8 @@ func TestCountRegistrationsByIPRange(t *testing.T) {
 	req := &sapb.CountRegistrationsByIPRequest{
 		Ip: net.ParseIP("1.1.1.1"),
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(earliest),
-			Latest:     timestamppb.New(latest),
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
 		},
 	}
 
@@ -958,7 +958,7 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	resp, err = sa.FQDNSetTimestampsForWindow(ctx, req)
 	test.AssertNotError(t, err, "Failed to count name sets")
 	test.AssertEquals(t, len(resp.Timestamps), 1)
-	test.AssertEquals(t, firstIssued,resp.Timestamps[len(resp.Timestamps)-1].AsTime())
+	test.AssertEquals(t, firstIssued, resp.Timestamps[len(resp.Timestamps)-1].AsTime())
 
 	// Ensure that the hash isn't affected by changing name order/casing.
 	req.Domains = []string{"b.example.com", "A.example.COM"}
@@ -1150,9 +1150,9 @@ func TestPreviousCertificateExists(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "calling AddCertificate")
 
@@ -1543,7 +1543,7 @@ func TestOrder(t *testing.T) {
 		// We should not be processing it
 		BeganProcessing: false,
 		// The created timestamp should have been set to the current time
-		Created:   timestamppb.New(created),
+		Created: timestamppb.New(created),
 	}
 
 	// Fetch the order by its ID and make sure it matches the expected
@@ -1641,8 +1641,8 @@ func TestCountOrders(t *testing.T) {
 	req := &sapb.CountOrdersRequest{
 		AccountID: 12345,
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(now.Add(-time.Hour)),
-			Latest:     timestamppb.New(now.Add(time.Second)),
+			Earliest: timestamppb.New(now.Add(-time.Hour)),
+			Latest:   timestamppb.New(now.Add(time.Second)),
 		},
 	}
 
@@ -1905,7 +1905,6 @@ func TestStatusForOrder(t *testing.T) {
 		Name             string
 		AuthorizationIDs []int64
 		OrderNames       []string
-		OrderExpiresNS   int64
 		OrderExpires     *timestamppb.Timestamp
 		ExpectedStatus   string
 		SetProcessing    bool
@@ -1975,10 +1974,6 @@ func TestStatusForOrder(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			// If the testcase doesn't specify an order expiry use a default timestamp
 			// in the near future.
-			orderExpiryNS := tc.OrderExpiresNS
-			if orderExpiryNS == 0 {
-				orderExpiryNS = expires.UnixNano()
-			}
 			orderExpiry := tc.OrderExpires
 			if !orderExpiry.IsValid() {
 				orderExpiry = timestamppb.New(expires)
@@ -2106,10 +2101,10 @@ func TestRevokeCertificateWithShard(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:     reg.Id,
-		Serial:    core.SerialToString(eeCert.SerialNumber),
-		Created:   timestamppb.New(eeCert.NotBefore),
-		Expires:   timestamppb.New(eeCert.NotAfter),
+		RegID:   reg.Id,
+		Serial:  core.SerialToString(eeCert.SerialNumber),
+		Created: timestamppb.New(eeCert.NotBefore),
+		Expires: timestamppb.New(eeCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
@@ -2172,12 +2167,12 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	// Try to update it before its been revoked
 	now := fc.Now()
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID:   1,
-		Serial:     serial,
-		Date:       timestamppb.New(now),
-		Backdate:   timestamppb.New(now),
-		Reason:     ocsp.KeyCompromise,
-		Response:   []byte{4, 5, 6},
+		IssuerID: 1,
+		Serial:   serial,
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(now),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "no certificate with serial")
@@ -2214,48 +2209,48 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 
 	// Try to update its revocation info for a reason other than keyCompromise
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID:   1,
-		Serial:     serial,
-		Date:       timestamppb.New(now),
-		Backdate:   timestamppb.New(revokedTime),
-		Reason:     ocsp.Unspecified,
-		Response:   []byte{4, 5, 6},
+		IssuerID: 1,
+		Serial:   serial,
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(revokedTime),
+		Reason:   ocsp.Unspecified,
+		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "cannot update revocation for any reason other than keyCompromise")
 
 	// Try to update the revocation info of the wrong certificate
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID:   1,
-		Serial:     "000000000000000000000000000000021bd5",
-		Date:       timestamppb.New(now),
-		Backdate:   timestamppb.New(revokedTime),
-		Reason:     ocsp.KeyCompromise,
-		Response:   []byte{4, 5, 6},
+		IssuerID: 1,
+		Serial:   "000000000000000000000000000000021bd5",
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(revokedTime),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "no certificate with serial")
 
 	// Try to update its revocation info with the wrong backdate
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID:   1,
-		Serial:     serial,
-		Date:       timestamppb.New(now),
-		Backdate:   timestamppb.New(now),
-		Reason:     ocsp.KeyCompromise,
-		Response:   []byte{4, 5, 6},
+		IssuerID: 1,
+		Serial:   serial,
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(now),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
 	})
 	test.AssertError(t, err, "UpdateRevokedCertificate should have failed")
 	test.AssertContains(t, err.Error(), "no certificate with serial")
 
 	// Try to update its revocation info correctly
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID:   1,
-		Serial:     serial,
-		Date:       timestamppb.New(now),
-		Backdate:   timestamppb.New(revokedTime),
-		Reason:     ocsp.KeyCompromise,
-		Response:   []byte{4, 5, 6},
+		IssuerID: 1,
+		Serial:   serial,
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(revokedTime),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
 }
@@ -2273,8 +2268,8 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID: reg.Id,
-		Serial: core.SerialToString(eeCert.SerialNumber),
+		RegID:   reg.Id,
+		Serial:  core.SerialToString(eeCert.SerialNumber),
 		Created: timestamppb.New(eeCert.NotBefore),
 		Expires: timestamppb.New(eeCert.NotAfter),
 	})
@@ -2304,13 +2299,13 @@ func TestUpdateRevokedCertificateWithShard(t *testing.T) {
 	// Updating revocation should succeed, with the revokedCertificates row being
 	// updated.
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID:   1,
-		ShardIdx:   9,
-		Serial:     core.SerialToString(eeCert.SerialNumber),
-		Date:       timestamppb.New(fc.Now()),
-		Backdate:   timestamppb.New(revokedTime),
-		Reason:     ocsp.KeyCompromise,
-		Response:   []byte{4, 5, 6},
+		IssuerID: 1,
+		ShardIdx: 9,
+		Serial:   core.SerialToString(eeCert.SerialNumber),
+		Date:     timestamppb.New(fc.Now()),
+		Backdate: timestamppb.New(revokedTime),
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
 
@@ -2335,8 +2330,8 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:     reg.Id,
-		Serial:    core.SerialToString(eeCert.SerialNumber),
+		RegID:   reg.Id,
+		Serial:  core.SerialToString(eeCert.SerialNumber),
 		Created: timestamppb.New(eeCert.NotBefore),
 		Expires: timestamppb.New(eeCert.NotAfter),
 	})
@@ -2356,7 +2351,7 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   core.SerialToString(eeCert.SerialNumber),
-		Date:   revokedTime,
+		Date:     revokedTime,
 		Reason:   ocsp.CessationOfOperation,
 		Response: []byte{1, 2, 3},
 	})
@@ -2377,13 +2372,13 @@ func TestUpdateRevokedCertificateWithShardInterim(t *testing.T) {
 	// Updating revocation should succeed, with a new row being written into the
 	// revokedCertificates table.
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
-		IssuerID:   1,
-		ShardIdx:   9,
-		Serial:     core.SerialToString(eeCert.SerialNumber),
+		IssuerID: 1,
+		ShardIdx: 9,
+		Serial:   core.SerialToString(eeCert.SerialNumber),
 		Date:     timestamppb.New(fc.Now()),
 		Backdate: revokedTime,
-		Reason:     ocsp.KeyCompromise,
-		Response:   []byte{4, 5, 6},
+		Reason:   ocsp.KeyCompromise,
+		Response: []byte{4, 5, 6},
 	})
 	test.AssertNotError(t, err, "UpdateRevokedCertificate failed")
 
@@ -2428,9 +2423,9 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
@@ -2470,9 +2465,9 @@ func TestAddCertificateRenewalBit(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Failed to add precertificate")
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certDER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certDER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add certificate")
 
@@ -2528,8 +2523,8 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 		req := &sapb.CountCertificatesByNamesRequest{
 			Names: []string{expectedName},
 			Range: &sapb.Range{
-				Earliest:   timestamppb.New(earliest),
-				Latest:     timestamppb.New(latest),
+				Earliest: timestamppb.New(earliest),
+				Latest:   timestamppb.New(latest),
 			},
 		}
 		counts, err := sa.CountCertificatesByNames(context.Background(), req)
@@ -2545,9 +2540,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// Add the first certificate - it won't be considered a renewal.
 	issued := certA.NotBefore
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certADER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certADER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add CertA test certificate")
 
@@ -2557,9 +2552,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 	// Add the second certificate - it should be considered a renewal
 	issued = certB.NotBefore
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certBDER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certBDER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add CertB test certificate")
 
@@ -2569,9 +2564,9 @@ func TestCountCertificatesRenewalBit(t *testing.T) {
 
 	// Add the third certificate - it should not be considered a renewal
 	_, err = sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
-		Der:      certCDER,
-		RegID:    reg.Id,
-		Issued:   timestamppb.New(issued),
+		Der:    certCDER,
+		RegID:  reg.Id,
+		Issued: timestamppb.New(issued),
 	})
 	test.AssertNotError(t, err, "Failed to add CertC test certificate")
 
@@ -2601,10 +2596,10 @@ func TestFinalizeAuthorization2(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:        string(core.StatusValid),
-		Expires:       timestamppb.New(expires),
-		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -2670,10 +2665,10 @@ func TestRehydrateHostPort(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:        string(core.StatusValid),
-		Expires:       timestamppb.New(expires),
-		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2691,10 +2686,10 @@ func TestRehydrateHostPort(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:        string(core.StatusValid),
-		Expires:       timestamppb.New(expires),
-		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2712,10 +2707,10 @@ func TestRehydrateHostPort(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:        string(core.StatusValid),
-		Expires:       timestamppb.New(expires),
-		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2733,10 +2728,10 @@ func TestRehydrateHostPort(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:        string(core.StatusValid),
-		Expires:       timestamppb.New(expires),
-		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2753,10 +2748,10 @@ func TestRehydrateHostPort(t *testing.T) {
 				AddressUsed: ip,
 			},
 		},
-		Status:        string(core.StatusValid),
-		Expires:       timestamppb.New(expires),
-		Attempted:     string(core.ChallengeTypeHTTP01),
-		AttemptedAt:   timestamppb.New(attemptedAt),
+		Status:      string(core.StatusValid),
+		Expires:     timestamppb.New(expires),
+		Attempted:   string(core.ChallengeTypeHTTP01),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 	_, err = sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
@@ -2988,8 +2983,8 @@ func TestCountInvalidAuthorizations2(t *testing.T) {
 		RegistrationID: reg.Id,
 		Hostname:       ident,
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(earliest),
-			Latest:     timestamppb.New(latest),
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
 		},
 	})
 	test.AssertNotError(t, err, "sa.CountInvalidAuthorizations2 failed")
@@ -3371,10 +3366,10 @@ func TestGetRevokedCerts(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:     reg.Id,
-		Serial:    core.SerialToString(eeCert.SerialNumber),
-		Created:   timestamppb.New(eeCert.NotBefore),
-		Expires:   timestamppb.New(eeCert.NotAfter),
+		RegID:   reg.Id,
+		Serial:  core.SerialToString(eeCert.SerialNumber),
+		Created: timestamppb.New(eeCert.NotBefore),
+		Expires: timestamppb.New(eeCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
@@ -3413,10 +3408,10 @@ func TestGetRevokedCerts(t *testing.T) {
 	expiresBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		ExpiresBefore:   timestamppb.New(expiresBefore),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		ExpiresBefore: timestamppb.New(expiresBefore),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
@@ -3434,10 +3429,10 @@ func TestGetRevokedCerts(t *testing.T) {
 
 	// Asking for revoked certs now should return one result.
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		ExpiresBefore:   timestamppb.New(expiresBefore),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		ExpiresBefore: timestamppb.New(expiresBefore),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "normal usage shouldn't result in error")
 	test.AssertEquals(t, count, 1)
@@ -3447,10 +3442,10 @@ func TestGetRevokedCerts(t *testing.T) {
 	expiresBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		ExpiresBefore:   timestamppb.New(expiresBefore),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		ExpiresBefore: timestamppb.New(expiresBefore),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
@@ -3461,17 +3456,17 @@ func TestGetRevokedCerts(t *testing.T) {
 	expiresBefore = time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		ExpiresBefore:   timestamppb.New(expiresBefore),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		ExpiresBefore: timestamppb.New(expiresBefore),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
 
 	// Asking for revoked certs from a different issuer should return zero results.
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
+		IssuerNameID:  1,
 		ExpiresAfter:  timestamppb.New(time.Date(2022, time.March, 1, 0, 0, 0, 0, time.UTC)),
 		ExpiresBefore: timestamppb.New(time.Date(2022, time.April, 1, 0, 0, 0, 0, time.UTC)),
 		RevokedBefore: timestamppb.New(time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)),
@@ -3495,10 +3490,10 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	eeCert, err := core.LoadCert("../test/hierarchy/ee-e1.cert.pem")
 	test.AssertNotError(t, err, "failed to load test cert")
 	_, err = sa.AddSerial(ctx, &sapb.AddSerialRequest{
-		RegID:     reg.Id,
-		Serial:    core.SerialToString(eeCert.SerialNumber),
-		Created:   timestamppb.New(eeCert.NotBefore),
-		Expires:   timestamppb.New(eeCert.NotAfter),
+		RegID:   reg.Id,
+		Serial:  core.SerialToString(eeCert.SerialNumber),
+		Created: timestamppb.New(eeCert.NotBefore),
+		Expires: timestamppb.New(eeCert.NotAfter),
 	})
 	test.AssertNotError(t, err, "failed to add test serial")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
@@ -3536,10 +3531,10 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	expiresAfter := time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore := time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err := countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ShardIdx:        9,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ShardIdx:      9,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
@@ -3568,10 +3563,10 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ShardIdx:        9,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ShardIdx:      9,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "normal usage shouldn't result in error")
 	test.AssertEquals(t, count, 1)
@@ -3580,10 +3575,10 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    2,
-		ShardIdx:        9,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  2,
+		ShardIdx:      9,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
@@ -3592,10 +3587,10 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2023, time.April, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ShardIdx:        8,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ShardIdx:      8,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)
@@ -3604,10 +3599,10 @@ func TestGetRevokedCertsByShard(t *testing.T) {
 	expiresAfter = time.Date(2023, time.March, 1, 0, 0, 0, 0, time.UTC)
 	revokedBefore = time.Date(2020, time.March, 1, 0, 0, 0, 0, time.UTC)
 	count, err = countRevokedCerts(&sapb.GetRevokedCertsRequest{
-		IssuerNameID:    1,
-		ShardIdx:        9,
-		ExpiresAfter:    timestamppb.New(expiresAfter),
-		RevokedBefore:   timestamppb.New(revokedBefore),
+		IssuerNameID:  1,
+		ShardIdx:      9,
+		ExpiresAfter:  timestamppb.New(expiresAfter),
+		RevokedBefore: timestamppb.New(revokedBefore),
 	})
 	test.AssertNotError(t, err, "zero rows shouldn't result in error")
 	test.AssertEquals(t, count, 0)

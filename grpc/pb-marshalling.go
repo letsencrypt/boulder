@@ -392,15 +392,15 @@ func PBToCert(pb *corepb.Certificate) core.Certificate {
 
 func CertStatusToPB(certStatus core.CertificateStatus) *corepb.CertificateStatus {
 	return &corepb.CertificateStatus{
-		Serial:                  certStatus.Serial,
-		Status:                  string(certStatus.Status),
-		OcspLastUpdated:         timestamppb.New(certStatus.OCSPLastUpdated),
-		RevokedDate:             timestamppb.New(certStatus.RevokedDate),
-		RevokedReason:           int64(certStatus.RevokedReason),
-		LastExpirationNagSent:   timestamppb.New(certStatus.LastExpirationNagSent),
-		NotAfter:                timestamppb.New(certStatus.NotAfter),
-		IsExpired:               certStatus.IsExpired,
-		IssuerID:                certStatus.IssuerNameID,
+		Serial:                certStatus.Serial,
+		Status:                string(certStatus.Status),
+		OcspLastUpdated:       timestamppb.New(certStatus.OCSPLastUpdated),
+		RevokedDate:           timestamppb.New(certStatus.RevokedDate),
+		RevokedReason:         int64(certStatus.RevokedReason),
+		LastExpirationNagSent: timestamppb.New(certStatus.LastExpirationNagSent),
+		NotAfter:              timestamppb.New(certStatus.NotAfter),
+		IsExpired:             certStatus.IsExpired,
+		IssuerID:              certStatus.IssuerNameID,
 	}
 }
 

@@ -79,8 +79,8 @@ func TestCertsPerNameRateLimitTable(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			timeRange := &sapb.Range{
-				Earliest:   timestamppb.New(aprilFirst.Add(-1 * time.Second)),
-				Latest:     timestamppb.New(aprilFirst.Add(aWeek)),
+				Earliest: timestamppb.New(aprilFirst.Add(-1 * time.Second)),
+				Latest:   timestamppb.New(aprilFirst.Add(aWeek)),
 			}
 			count, earliest, err := sa.countCertificatesByName(ctx, sa.dbMap, tc.domainName, timeRange)
 			if err != nil {
@@ -108,8 +108,8 @@ func TestNewOrdersRateLimitTable(t *testing.T) {
 	req := &sapb.CountOrdersRequest{
 		AccountID: 1,
 		Range: &sapb.Range{
-			Earliest:   timestamppb.New(start),
-			Latest:     timestamppb.New(start.Add(time.Minute * 10)),
+			Earliest: timestamppb.New(start),
+			Latest:   timestamppb.New(start.Add(time.Minute * 10)),
 		},
 	}
 
