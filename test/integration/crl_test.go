@@ -4,6 +4,8 @@ package integration
 
 import (
 	"database/sql"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/jmhodges/clock"
 	"github.com/letsencrypt/boulder/core"
+	"github.com/letsencrypt/boulder/revocation"
 	"github.com/letsencrypt/boulder/test"
 	"github.com/letsencrypt/boulder/test/vars"
 )
@@ -83,9 +86,26 @@ func TestCRLPipeline(t *testing.T) {
 	test.AssertNotError(t, err, "s3-test-srv GET /query failed")
 	test.AssertEquals(t, resp.StatusCode, 200)
 
-	// Confirm that the revoked certificate entry has the correct reason.
-	reason, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	test.AssertNotError(t, err, "reading revocation reason")
-	test.AssertEquals(t, string(reason), "5")
 	resp.Body.Close()
+
+	var metadata struct {
+		Reason revocation.Reason
+		Shard  string
+	}
+	json.Unmarshal(body, &metadata)
+
+	// Confirm that the revoked certificate entry has the correct reason.
+	test.AssertEquals(t, metadata.Reason, revocation.Reason(5))
+
+	if strings.Contains(os.Getenv("BOULDER_CONFIG_DIR"), "test/config-next") {
+		// Confirm that the shard index in the new revokedCertificates table matches
+		// the shard we actually put the revocation entry in.
+		row := db.QueryRow(`SELECT shardIdx FROM revokedCertificates WHERE serial = ?`, serial)
+		var shard int
+		err = row.Scan(&shard)
+		test.AssertNotError(t, err, "reading shardIdx from db")
+		test.Assert(t, strings.HasSuffix(metadata.Shard, fmt.Sprintf("/%d.crl", shard)), "shard mismatch")
+	}
 }
