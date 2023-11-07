@@ -100,7 +100,6 @@ func createPendingAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, do
 	res, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID: Registration.Id,
-			ExpiresNS:      exp.UnixNano(),
 			Expires:        timestamppb.New(exp),
 			Names:          []string{domain},
 		},
@@ -119,10 +118,8 @@ func createFinalizedAuthorization(t *testing.T, sa sapb.StorageAuthorityClient, 
 	_, err = sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
 		Id:            pendingID,
 		Status:        "valid",
-		ExpiresNS:     exp.UnixNano(),
 		Expires:       timestamppb.New(exp),
 		Attempted:     string(chall),
-		AttemptedAtNS: attemptedAt.UnixNano(),
 		AttemptedAt:   timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorizations2 failed")
@@ -897,7 +894,6 @@ func TestPerformValidationSuccess(t *testing.T) {
 
 	// The DB authz's expiry should be equal to the current time plus the
 	// configured authorization lifetime
-	test.AssertEquals(t, dbAuthzPB.ExpiresNS, now.Add(ra.authorizationLifetime).UnixNano())
 	test.AssertEquals(t, dbAuthzPB.Expires.AsTime(), now.Add(ra.authorizationLifetime))
 
 	// Check that validated timestamp was recorded, stored, and retrieved
@@ -963,7 +959,6 @@ func TestCertificateKeyNotEqualAccountKey(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			ExpiresNS:        exp.UnixNano(),
 			Expires:          timestamppb.New(exp),
 			Names:            []string{"www.example.com"},
 			V2Authorizations: []int64{authzID},
@@ -1142,16 +1137,10 @@ type mockSAWithNameCounts struct {
 
 func (m mockSAWithNameCounts) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest, _ ...grpc.CallOption) (*sapb.CountByNames, error) {
 	expectedLatest := m.clk.Now()
-	if req.Range.LatestNS != expectedLatest.UnixNano() {
-		m.t.Errorf("incorrect latestNS: got '%d', expected '%d'", req.Range.LatestNS, expectedLatest.UnixNano())
-	}
 	if req.Range.Latest.AsTime() != expectedLatest {
 		m.t.Errorf("incorrect latest: got '%v', expected '%v'", req.Range.Latest.AsTime(), expectedLatest)
 	}
 	expectedEarliest := m.clk.Now().Add(-23 * time.Hour)
-	if req.Range.EarliestNS != expectedEarliest.UnixNano() {
-		m.t.Errorf("incorrect earliestNS: got '%d', expected '%d'", req.Range.EarliestNS, expectedEarliest.UnixNano())
-	}
 	if req.Range.Earliest.AsTime() != expectedEarliest {
 		m.t.Errorf("incorrect earliest: got '%v', expected '%v'", req.Range.Earliest.AsTime(), expectedEarliest)
 	}
@@ -1289,10 +1278,10 @@ func TestCheckExactCertificateLimit(t *testing.T) {
 	test.AssertEquals(t, expectRetryAfterNS, expectRetryAfter)
 	ra.SA = &mockSAWithFQDNSet{
 		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"none.example.com":          {TimestampsNS: []int64{}, Timestamps: []*timestamppb.Timestamp{}},
-			"under.example.com":         {TimestampsNS: issuanceTimestampsNS[3:3], Timestamps: issuanceTimestamps[3:3]},
-			"equalbutvalid.example.com": {TimestampsNS: issuanceTimestampsNS[1:3], Timestamps: issuanceTimestamps[1:3]},
-			"over.example.com":          {TimestampsNS: issuanceTimestampsNS[0:3], Timestamps: issuanceTimestamps[0:3]},
+			"none.example.com":          {Timestamps: []*timestamppb.Timestamp{}},
+			"under.example.com":         {Timestamps: issuanceTimestamps[3:3]},
+			"equalbutvalid.example.com": {Timestamps: issuanceTimestamps[1:3]},
+			"over.example.com":          {Timestamps: issuanceTimestamps[0:3]},
 		},
 		t: t,
 	}
@@ -1480,7 +1469,7 @@ func (m mockSAWithFQDNSet) CountCertificatesByNames(ctx context.Context, req *sa
 	for _, name := range req.Names {
 		entry, ok := m.issuanceTimestamps[name]
 		if ok {
-			counts[name] = int64(len(entry.TimestampsNS))
+			counts[name] = int64(len(entry.Timestamps))
 		}
 	}
 	return &sapb.CountByNames{Counts: counts}, nil
@@ -1491,7 +1480,7 @@ func (m mockSAWithFQDNSet) CountFQDNSets(_ context.Context, req *sapb.CountFQDNS
 	for _, name := range req.Domains {
 		entry, ok := m.issuanceTimestamps[name]
 		if ok {
-			total += int64(len(entry.TimestampsNS))
+			total += int64(len(entry.Timestamps))
 		}
 	}
 	return &sapb.Count{Count: total}, nil
@@ -1524,12 +1513,11 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 
 	// Create a mock SA that has both name counts and an FQDN set
 	now := ra.clk.Now()
-	tsNS := now.UnixNano()
 	ts := timestamppb.New(now)
 	mockSA := &mockSAWithFQDNSet{
 		issuanceTimestamps: map[string]*sapb.Timestamps{
-			"example.com": {TimestampsNS: []int64{tsNS, tsNS}, Timestamps: []*timestamppb.Timestamp{ts, ts}},
-			"zombo.com":   {TimestampsNS: []int64{tsNS, tsNS}, Timestamps: []*timestamppb.Timestamp{ts, ts}},
+			"example.com": {Timestamps: []*timestamppb.Timestamp{ts, ts}},
+			"zombo.com":   {Timestamps: []*timestamppb.Timestamp{ts, ts}},
 		},
 		fqdnSet: map[string]bool{},
 		t:       t,
@@ -1973,7 +1961,6 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderA.RegistrationID, int64(1))
-	test.AssertEquals(t, orderA.ExpiresNS, now.Add(time.Hour).UnixNano())
 	test.AssertEquals(t, orderA.Expires.AsTime(), now.Add(time.Hour))
 	test.AssertEquals(t, len(orderA.Names), 3)
 	// We expect the order names to have been sorted, deduped, and lowercased
@@ -1989,7 +1976,6 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderB.RegistrationID, int64(1))
-	test.AssertEquals(t, orderB.ExpiresNS, now.Add(time.Hour).UnixNano())
 	test.AssertEquals(t, orderB.Expires.AsTime(), now.Add(time.Hour))
 	// We expect orderB's ID to match orderA's because of pending order reuse
 	test.AssertEquals(t, orderB.Id, orderA.Id)
@@ -2008,7 +1994,6 @@ func TestNewOrder(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "ra.NewOrder failed")
 	test.AssertEquals(t, orderC.RegistrationID, int64(1))
-	test.AssertEquals(t, orderC.ExpiresNS, now.Add(time.Hour).UnixNano())
 	test.AssertEquals(t, orderC.Expires.AsTime(), now.Add(time.Hour))
 	test.AssertEquals(t, len(orderC.Names), 4)
 	test.AssertDeepEquals(t, orderC.Names, []string{"a.com", "b.com", "c.com", "d.com"})
@@ -2156,10 +2141,8 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:            order.V2Authorizations[0],
 		Status:        string(core.StatusInvalid),
-		ExpiresNS:     order.ExpiresNS,
 		Expires:       order.Expires,
 		Attempted:     string(core.ChallengeTypeDNS01),
-		AttemptedAtNS: now.UnixNano(),
 		AttemptedAt:   timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
@@ -2590,11 +2573,11 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the fake authz's expiry since it is sooner
 	// than the order's own expiry.
-	test.AssertEquals(t, order.ExpiresNS, fakeAuthzExpires.UnixNano())
+	test.AssertEquals(t, order.Expires.AsTime(), fakeAuthzExpires)
 
 	// Set the order lifetime to be lower than the fakeAuthzLifetime
 	ra.orderLifetime = 12 * time.Hour
-	expectedOrderExpiry := clk.Now().Add(ra.orderLifetime).UnixNano()
+	expectedOrderExpiry := clk.Now().Add(ra.orderLifetime)
 	// Create the order again
 	order, err = ra.NewOrder(ctx, orderReq)
 	// It shouldn't fail
@@ -2604,7 +2587,7 @@ func TestNewOrderExpiry(t *testing.T) {
 	test.AssertEquals(t, order.V2Authorizations[0], int64(1))
 	// The order's expiry should be the order's own expiry since it is sooner than
 	// the fake authz's expiry.
-	test.AssertEquals(t, order.ExpiresNS, expectedOrderExpiry)
+	test.AssertEquals(t, order.Expires.AsTime(), expectedOrderExpiry)
 }
 
 func TestFinalizeOrder(t *testing.T) {
@@ -2686,7 +2669,6 @@ func TestFinalizeOrder(t *testing.T) {
 	validatedOrder, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			ExpiresNS:        exp.UnixNano(),
 			Expires:          timestamppb.New(exp),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
@@ -2818,7 +2800,6 @@ func TestFinalizeOrder(t *testing.T) {
 					RegistrationID:    1,
 					Status:            string(core.StatusReady),
 					Names:             []string{"example.org"},
-					ExpiresNS:         exp.UnixNano(),
 					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
 					BeganProcessing:   false,
@@ -2835,11 +2816,9 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:             []string{"a.com"},
 					Id:                fakeRegOrder.Id,
 					RegistrationID:    fakeRegID,
-					ExpiresNS:         exp.UnixNano(),
 					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
 					BeganProcessing:   false,
-					CreatedNS:         now.UnixNano(),
 					Created:           timestamppb.New(now),
 				},
 				Csr: oneDomainCSR,
@@ -2854,11 +2833,9 @@ func TestFinalizeOrder(t *testing.T) {
 					Names:             []string{"a.com", "b.com"},
 					Id:                missingAuthzOrder.Id,
 					RegistrationID:    Registration.Id,
-					ExpiresNS:         exp.UnixNano(),
 					Expires:           timestamppb.New(exp),
 					CertificateSerial: "",
 					BeganProcessing:   false,
-					CreatedNS:         now.UnixNano(),
 					Created:           timestamppb.New(now),
 				},
 				Csr: twoDomainCSR,
@@ -2893,7 +2870,6 @@ func TestFinalizeOrder(t *testing.T) {
 				test.AssertNotError(t, err, "Error getting order to check serial")
 				test.AssertNotEquals(t, updatedOrder.CertificateSerial, "")
 				test.AssertEquals(t, updatedOrder.Status, "valid")
-				test.AssertEquals(t, updatedOrder.ExpiresNS, exp.UnixNano())
 				test.AssertEquals(t, updatedOrder.Expires.AsTime(), exp)
 			}
 		})
@@ -2918,7 +2894,6 @@ func TestFinalizeOrderWithMixedSANAndCN(t *testing.T) {
 	mixedOrder, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			ExpiresNS:        exp.UnixNano(),
 			Expires:          timestamppb.New(exp),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
@@ -3043,10 +3018,8 @@ func TestFinalizeOrderWildcard(t *testing.T) {
 	_, err = sa.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:            validOrder.V2Authorizations[0],
 		Status:        string(core.StatusValid),
-		ExpiresNS:     expires.UnixNano(),
 		Expires:       timestamppb.New(expires),
 		Attempted:     string(core.ChallengeTypeDNS01),
-		AttemptedAtNS: now.UnixNano(),
 		AttemptedAt:   timestamppb.New(now),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
@@ -3087,7 +3060,6 @@ func TestIssueCertificateAuditLog(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			ExpiresNS:        exp.UnixNano(),
 			Expires:          timestamppb.New(exp),
 			Names:            names,
 			V2Authorizations: authzIDs,
@@ -3219,7 +3191,6 @@ func TestIssueCertificateCAACheckLog(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			ExpiresNS:        exp.UnixNano(),
 			Expires:          timestamppb.New(exp),
 			Names:            names,
 			V2Authorizations: authzIDs,
@@ -3384,7 +3355,6 @@ func TestCTPolicyMeasurements(t *testing.T) {
 	order, err := ra.SA.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			ExpiresNS:        exp.UnixNano(),
 			Expires:          timestamppb.New(exp),
 			Names:            []string{"not-example.com", "www.not-example.com"},
 			V2Authorizations: []int64{authzIDA, authzIDB},
@@ -3515,7 +3485,6 @@ func TestIssueCertificateInnerErrs(t *testing.T) {
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
 		NewOrder: &sapb.NewOrderRequest{
 			RegistrationID:   Registration.Id,
-			ExpiresNS:        exp.UnixNano(),
 			Expires:          timestamppb.New(exp),
 			Names:            names,
 			V2Authorizations: authzIDs,
@@ -3752,7 +3721,6 @@ func (msgo *mockSAGenerateOCSP) GetCertificateStatus(_ context.Context, req *sap
 	return &corepb.CertificateStatus{
 		Serial:     req.Serial,
 		Status:     "good",
-		NotAfterNS: msgo.expiration.UTC().UnixNano(),
 		NotAfter:   timestamppb.New(msgo.expiration.UTC()),
 	}, nil
 }
@@ -4097,7 +4065,6 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	test.Assert(t, bytes.Equal(digest[:], mockSA.blocked[0].KeyHash), "key hash mismatch")
 	test.AssertEquals(t, mockSA.blocked[0].Source, "admin-revoker")
 	test.AssertEquals(t, mockSA.blocked[0].Comment, "revoked by root")
-	test.AssertEquals(t, mockSA.blocked[0].AddedNS, clk.Now().UnixNano())
 	test.AssertEquals(t, mockSA.blocked[0].Added.AsTime(), clk.Now())
 	test.AssertMetricWithLabelsEquals(
 		t, ra.revocationReasonCounter, prometheus.Labels{"reason": "keyCompromise"}, 1)

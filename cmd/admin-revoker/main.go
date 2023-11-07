@@ -345,7 +345,6 @@ func (r *revoker) blockByPrivateKey(ctx context.Context, comment string, private
 	now := r.clk.Now()
 	req := &sapb.AddBlockedKeyRequest{
 		KeyHash:   spkiHash,
-		AddedNS:   now.UnixNano(),
 		Added:     timestamppb.New(now),
 		Source:    "admin-revoker",
 		Comment:   dbcomment,

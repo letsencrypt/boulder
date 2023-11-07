@@ -214,7 +214,6 @@ func (cl *client) signAndStoreResponses(ctx context.Context, input <-chan *sa.Ce
 			IssuerID:    status.IssuerID,
 			Status:      string(status.Status),
 			Reason:      int32(status.RevokedReason),
-			RevokedAtNS: status.RevokedDate.UnixNano(),
 			RevokedAt:   timestamppb.New(status.RevokedDate),
 		}
 		result, err := cl.ocspGenerator.GenerateOCSP(ctx, ocspReq)

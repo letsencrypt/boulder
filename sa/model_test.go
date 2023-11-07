@@ -71,14 +71,12 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		ExpiresNS:      expires.UnixNano(),
 		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:        string(core.ChallengeTypeHTTP01),
 				Status:      string(core.StatusValid),
 				Token:       "MTIz",
-				ValidatedNS: now.UnixNano(),
 				Validated:   timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
@@ -119,14 +117,12 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		ExpiresNS:      expires.UnixNano(),
 		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:        string(core.ChallengeTypeHTTP01),
 				Status:      string(core.StatusValid),
 				Token:       "MTIz",
-				ValidatedNS: now.UnixNano(),
 				Validated:   timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
@@ -172,7 +168,6 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusInvalid),
-		ExpiresNS:      expires.UnixNano(),
 		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
@@ -214,14 +209,12 @@ func TestAuthzModel(t *testing.T) {
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		ExpiresNS:      expires.UnixNano(),
 		Expires:        timestamppb.New(expires),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:        string(core.ChallengeTypeHTTP01),
 				Status:      string(core.StatusValid),
 				Token:       "MTIz",
-				ValidatedNS: now.UnixNano(),
 				Validated:   timestamppb.New(now),
 				Validationrecords: []*corepb.ValidationRecord{
 					{

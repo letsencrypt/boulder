@@ -25,6 +25,7 @@ import (
 	"time"
 	"unicode"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 )
 
@@ -214,6 +215,10 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 			return true
 		case []byte:
 			if len(v) == 0 {
+				return true
+			}
+		case timestamppb.Timestamp:
+			if v.AsTime().IsZero() {
 				return true
 			}
 		default:

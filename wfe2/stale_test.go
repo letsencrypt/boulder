@@ -54,7 +54,6 @@ func TestSaleEnoughToGETOrder(t *testing.T) {
 	created := fc.Now()
 	fc.Add(time.Hour)
 	prob := wfe.staleEnoughToGETOrder(&corepb.Order{
-		CreatedNS: created.UnixNano(),
 		Created:   timestamppb.New(created),
 	})
 	test.Assert(t, prob == nil, "wfe.staleEnoughToGETOrder returned a non-nil problem")
@@ -73,7 +72,6 @@ func TestStaleEnoughToGETAuthzDeactivated(t *testing.T) {
 	fc.Add(time.Hour)
 	prob := wfe.staleEnoughToGETAuthz(&corepb.Authorization{
 		Status:    string(core.StatusDeactivated),
-		ExpiresNS: expires.UnixNano(),
 		Expires:   timestamppb.New(expires),
 	})
 	test.Assert(t, prob == nil, "wfe.staleEnoughToGETOrder returned a non-nil problem")

@@ -363,7 +363,6 @@ func TestGetAndProcessCerts(t *testing.T) {
 		_, err = sa.AddCertificate(context.Background(), &sapb.AddCertificateRequest{
 			Der:      certDER,
 			RegID:    reg.Id,
-			IssuedNS: now.UnixNano(),
 			Issued:   timestamppb.New(now),
 		})
 		test.AssertNotError(t, err, "Couldn't add certificate")

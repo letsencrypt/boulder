@@ -26,7 +26,6 @@ func CreateWorkingRegistration(t *testing.T, sa sapb.StorageAuthorityClient) *co
 }`),
 		Contact:     []string{"mailto:foo@example.com"},
 		InitialIP:   initialIP,
-		CreatedAtNS: created.UnixNano(),
 		CreatedAt:   timestamppb.New(created),
 		Status:      string(core.StatusValid),
 	})

@@ -193,10 +193,10 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 }
 
 func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*x509.RevocationList, error) {
-	if meta.IssuerNameID == 0 || meta.ThisUpdateNS == 0 {
+	if meta.IssuerNameID == 0 || meta.ThisUpdate == nil || meta.ThisUpdate.AsTime().IsZero() {
 		return nil, errors.New("got incomplete metadata message")
 	}
-	thisUpdate := time.Unix(0, meta.ThisUpdateNS)
+	thisUpdate := meta.ThisUpdate.AsTime()
 	number := bcrl.Number(thisUpdate)
 
 	return &x509.RevocationList{
@@ -212,10 +212,10 @@ func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*x509.Revo
 		return nil, err
 	}
 
-	if entry.RevokedAtNS == 0 {
+	if entry.RevokedAt == nil || entry.RevokedAt.AsTime().IsZero() {
 		return nil, errors.New("got empty or zero revocation timestamp")
 	}
-	revokedAt := time.Unix(0, entry.RevokedAtNS)
+	revokedAt := entry.RevokedAt.AsTime()
 
 	return &x509.RevocationListEntry{
 		SerialNumber:   serial,

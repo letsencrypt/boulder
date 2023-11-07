@@ -59,7 +59,6 @@ func (sa *mockInvalidPlusValidAuthzAuthority) GetAuthorizations2(ctx context.Con
 					Status:         "valid",
 					Identifier:     sa.domainWithFailures,
 					RegistrationID: 1234,
-					ExpiresNS:      date.Unix(),
 					Expires:        timestamppb.New(date),
 				},
 			},
