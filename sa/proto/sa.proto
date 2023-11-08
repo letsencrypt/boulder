@@ -191,7 +191,7 @@ message CountOrdersRequest {
 
 message CountFQDNSetsRequest {
   // Next unused field number: 4
-  int64 windowNS = 1;
+  reserved 1; // Previously windowNS
   repeated string domains = 2;
   google.protobuf.Duration window = 3;
 }
