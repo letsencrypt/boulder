@@ -233,6 +233,10 @@ func NewValidationAuthorityImpl(
 		return nil, errors.New("no account URI prefixes configured")
 	}
 
+	if maxRemoteFailures < 0 {
+		return nil, errors.New("MaxRemoteValidationFailures must not be a negative number")
+	}
+
 	pc := newDefaultPortConfig()
 
 	va := &ValidationAuthorityImpl{
