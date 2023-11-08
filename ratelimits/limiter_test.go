@@ -53,21 +53,13 @@ func Test_Limiter_WithBadLimitsPath(t *testing.T) {
 	test.AssertError(t, err, "should error")
 }
 
-func Test_Limiter_getLimitNoExist(t *testing.T) {
-	t.Parallel()
-	l, err := NewLimiter(clock.NewFake(), newInmem(), "testdata/working_default.yml", "", metrics.NoopRegisterer)
-	test.AssertNotError(t, err, "should not error")
-	_, err = l.getLimit(Name(9999), "")
-	test.AssertError(t, err, "should error")
-
-}
-
 func Test_Limiter_CheckWithLimitNoExist(t *testing.T) {
 	t.Parallel()
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			_, err := l.Check(testCtx, Name(9999), testIP, 1)
+			bucketId := BucketId{limit: Name(9999), bucketKey: testIP}
+			_, err := l.Check(testCtx, NewTransaction(bucketId, 1))
 			test.AssertError(t, err, "should error")
 		})
 	}
@@ -81,25 +73,29 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0% of
 			// the bucket has been consumed.
 			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit": NewRegistrationsPerIPAddress.String(), "client_id": tenZeroZeroTwo}, 0)
+				"limit":      NewRegistrationsPerIPAddress.String(),
+				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 0)
+
+			overriddenBucketId, err := NewRegistrationsPerIPAddressBucketId(net.ParseIP(tenZeroZeroTwo))
+			test.AssertNotError(t, err, "should not error")
 
 			// Attempt to check a spend of 41 requests (a cost > the limit burst
 			// capacity), this should fail with a specific error.
-			_, err := l.Check(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 41)
+			_, err = l.Check(testCtx, NewTransaction(overriddenBucketId, 41))
 			test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 			// Attempt to spend 41 requests (a cost > the limit burst capacity),
 			// this should fail with a specific error.
-			_, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 41)
+			_, err = l.Spend(testCtx, NewTransaction(overriddenBucketId, 41))
 			test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 			// Attempt to spend all 40 requests, this should succeed.
-			d, err := l.Spend(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 40)
+			d, err := l.Spend(testCtx, NewTransaction(overriddenBucketId, 40))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 
 			// Attempting to spend 1 more, this should fail.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
+			d, err = l.Spend(testCtx, NewTransaction(overriddenBucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -108,7 +104,8 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			// Verify our overrideUsageGauge is being set correctly. 1.0 == 100% of
 			// the bucket has been consumed.
 			test.AssertMetricWithLabelsEquals(t, l.overrideUsageGauge, prometheus.Labels{
-				"limit_name": NewRegistrationsPerIPAddress.String(), "client_id": tenZeroZeroTwo}, 1.0)
+				"limit_name": NewRegistrationsPerIPAddress.String(),
+				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 1.0)
 
 			// Verify our RetryIn is correct. 1 second == 1000 milliseconds and
 			// 1000/40 = 25 milliseconds per request.
@@ -118,7 +115,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			clk.Add(d.RetryIn)
 
 			// We should be allowed to spend 1 more request.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
+			d, err = l.Spend(testCtx, NewTransaction(overriddenBucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -129,21 +126,21 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 
 			// Quickly spend 40 requests in a row.
 			for i := 0; i < 40; i++ {
-				d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
+				d, err = l.Spend(testCtx, NewTransaction(overriddenBucketId, 1))
 				test.AssertNotError(t, err, "should not error")
 				test.Assert(t, d.Allowed, "should be allowed")
 				test.AssertEquals(t, d.Remaining, int64(39-i))
 			}
 
 			// Attempting to spend 1 more, this should fail.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo, 1)
+			d, err = l.Spend(testCtx, NewTransaction(overriddenBucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
 
 			// Reset between tests.
-			err = l.Reset(testCtx, NewRegistrationsPerIPAddress, tenZeroZeroTwo)
+			err = l.Reset(testCtx, overriddenBucketId)
 			test.AssertNotError(t, err, "should not error")
 		})
 	}
@@ -154,9 +151,12 @@ func Test_Limiter_InitializationViaCheckAndSpend(t *testing.T) {
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			// Check on an empty bucket should initialize it and return the
-			// theoretical next state of that bucket if the cost were spent.
-			d, err := l.Check(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
+			bucketId, err := NewRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			test.AssertNotError(t, err, "should not error")
+
+			// Check on an empty bucket should return the theoretical next state
+			// of that bucket if the cost were spent.
+			d, err := l.Check(testCtx, NewTransaction(bucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(19))
@@ -167,7 +167,7 @@ func Test_Limiter_InitializationViaCheckAndSpend(t *testing.T) {
 
 			// However, that cost should not be spent yet, a 0 cost check should
 			// tell us that we actually have 20 remaining.
-			d, err = l.Check(testCtx, NewRegistrationsPerIPAddress, testIP, 0)
+			d, err = l.Check(testCtx, NewTransaction(bucketId, 0))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(20))
@@ -175,13 +175,12 @@ func Test_Limiter_InitializationViaCheckAndSpend(t *testing.T) {
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
 
 			// Reset our bucket.
-			err = l.Reset(testCtx, NewRegistrationsPerIPAddress, testIP)
+			err = l.Reset(testCtx, bucketId)
 			test.AssertNotError(t, err, "should not error")
 
-			// Similar to above, but we'll use Spend() instead of Check() to
-			// initialize the bucket. Spend should return the same result as
-			// Check.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
+			// Similar to above, but we'll use Spend() to actually initialize
+			// the bucket. Spend should return the same result as Check.
+			d, err = l.Spend(testCtx, NewTransaction(bucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(19))
@@ -192,7 +191,7 @@ func Test_Limiter_InitializationViaCheckAndSpend(t *testing.T) {
 
 			// However, that cost should not be spent yet, a 0 cost check should
 			// tell us that we actually have 19 remaining.
-			d, err = l.Check(testCtx, NewRegistrationsPerIPAddress, testIP, 0)
+			d, err = l.Check(testCtx, NewTransaction(bucketId, 0))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(19))
@@ -209,20 +208,23 @@ func Test_Limiter_RefundAndSpendCostErr(t *testing.T) {
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
+			bucketId, err := NewRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			test.AssertNotError(t, err, "should not error")
+
 			// Spend a cost of 0, which should fail.
-			_, err := l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 0)
+			_, err = l.Spend(testCtx, NewTransaction(bucketId, 0))
 			test.AssertErrorIs(t, err, ErrInvalidCost)
 
 			// Spend a negative cost, which should fail.
-			_, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, -1)
+			_, err = l.Spend(testCtx, NewTransaction(bucketId, -1))
 			test.AssertErrorIs(t, err, ErrInvalidCost)
 
 			// Refund a cost of 0, which should fail.
-			_, err = l.Refund(testCtx, NewRegistrationsPerIPAddress, testIP, 0)
+			_, err = l.Refund(testCtx, NewTransaction(bucketId, 0))
 			test.AssertErrorIs(t, err, ErrInvalidCost)
 
 			// Refund a negative cost, which should fail.
-			_, err = l.Refund(testCtx, NewRegistrationsPerIPAddress, testIP, -1)
+			_, err = l.Refund(testCtx, NewTransaction(bucketId, -1))
 			test.AssertErrorIs(t, err, ErrInvalidCost)
 		})
 	}
@@ -233,7 +235,10 @@ func Test_Limiter_CheckWithBadCost(t *testing.T) {
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			_, err := l.Check(testCtx, NewRegistrationsPerIPAddress, testIP, -1)
+			bucketId, err := NewRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			test.AssertNotError(t, err, "should not error")
+
+			_, err = l.Check(testCtx, NewTransaction(bucketId, -1))
 			test.AssertErrorIs(t, err, ErrInvalidCostForCheck)
 		})
 	}
@@ -244,20 +249,23 @@ func Test_Limiter_DefaultLimits(t *testing.T) {
 	testCtx, limiters, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
+			bucketId, err := NewRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			test.AssertNotError(t, err, "should not error")
+
 			// Attempt to spend 21 requests (a cost > the limit burst capacity),
 			// this should fail with a specific error.
-			_, err := l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 21)
+			_, err = l.Spend(testCtx, NewTransaction(bucketId, 21))
 			test.AssertErrorIs(t, err, ErrInvalidCostOverLimit)
 
 			// Attempt to spend all 20 requests, this should succeed.
-			d, err := l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 20)
+			d, err := l.Spend(testCtx, NewTransaction(bucketId, 20))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
 
 			// Attempting to spend 1 more, this should fail.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
+			d, err = l.Spend(testCtx, NewTransaction(bucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -271,7 +279,7 @@ func Test_Limiter_DefaultLimits(t *testing.T) {
 			clk.Add(d.RetryIn)
 
 			// We should be allowed to spend 1 more request.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
+			d, err = l.Spend(testCtx, NewTransaction(bucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -282,14 +290,14 @@ func Test_Limiter_DefaultLimits(t *testing.T) {
 
 			// Quickly spend 20 requests in a row.
 			for i := 0; i < 20; i++ {
-				d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
+				d, err = l.Spend(testCtx, NewTransaction(bucketId, 1))
 				test.AssertNotError(t, err, "should not error")
 				test.Assert(t, d.Allowed, "should be allowed")
 				test.AssertEquals(t, d.Remaining, int64(19-i))
 			}
 
 			// Attempting to spend 1 more, this should fail.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
+			d, err = l.Spend(testCtx, NewTransaction(bucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -303,30 +311,33 @@ func Test_Limiter_RefundAndReset(t *testing.T) {
 	testCtx, limiters, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
+			bucketId, err := NewRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			test.AssertNotError(t, err, "should not error")
+
 			// Attempt to spend all 20 requests, this should succeed.
-			d, err := l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 20)
+			d, err := l.Spend(testCtx, NewTransaction(bucketId, 20))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
 
 			// Refund 10 requests.
-			d, err = l.Refund(testCtx, NewRegistrationsPerIPAddress, testIP, 10)
+			d, err = l.Refund(testCtx, NewTransaction(bucketId, 10))
 			test.AssertNotError(t, err, "should not error")
 			test.AssertEquals(t, d.Remaining, int64(10))
 
 			// Spend 10 requests, this should succeed.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 10)
+			d, err = l.Spend(testCtx, NewTransaction(bucketId, 10))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
 
-			err = l.Reset(testCtx, NewRegistrationsPerIPAddress, testIP)
+			err = l.Reset(testCtx, bucketId)
 			test.AssertNotError(t, err, "should not error")
 
 			// Attempt to spend 20 more requests, this should succeed.
-			d, err = l.Spend(testCtx, NewRegistrationsPerIPAddress, testIP, 20)
+			d, err = l.Spend(testCtx, NewTransaction(bucketId, 20))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, d.Allowed, "should be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
@@ -336,7 +347,7 @@ func Test_Limiter_RefundAndReset(t *testing.T) {
 			clk.Add(d.ResetIn)
 
 			// Refund 1 requests above our limit, this should fail.
-			d, err = l.Refund(testCtx, NewRegistrationsPerIPAddress, testIP, 1)
+			d, err = l.Refund(testCtx, NewTransaction(bucketId, 1))
 			test.AssertNotError(t, err, "should not error")
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(20))

@@ -638,7 +638,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		wfe.log.Warningf("checking %s rate limit: %s", limit, err)
 	}
 
-	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
+	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPAddress)
+		return
+	}
+
+	decision, err := wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -649,11 +655,13 @@ func (wfe *WebFrontEndImpl) checkNewAccountLimits(ctx context.Context, ip net.IP
 		return
 	}
 
-	// See docs for ratelimits.NewRegistrationsPerIPv6Range for more information
-	// on the selection of a /48 block size for IPv6 ranges.
-	ipMask := net.CIDRMask(48, 128)
-	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
-	_, err = wfe.limiter.Spend(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
+	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
+		return
+	}
+
+	_, err = wfe.limiter.Spend(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}
@@ -678,7 +686,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		wfe.log.Warningf("refunding %s rate limit: %s", limit, err)
 	}
 
-	_, err := wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPAddress, ip.String(), 1)
+	bucketId, err := ratelimits.NewRegistrationsPerIPAddressBucketId(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPAddress)
+		return
+	}
+
+	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPAddress)
 		return
@@ -688,11 +702,13 @@ func (wfe *WebFrontEndImpl) refundNewAccountLimits(ctx context.Context, ip net.I
 		return
 	}
 
-	// See docs for ratelimits.NewRegistrationsPerIPv6Range for more information
-	// on the selection of a /48 block size for IPv6 ranges.
-	ipMask := net.CIDRMask(48, 128)
-	ipNet := &net.IPNet{IP: ip.Mask(ipMask), Mask: ipMask}
-	_, err = wfe.limiter.Refund(ctx, ratelimits.NewRegistrationsPerIPv6Range, ipNet.String(), 1)
+	bucketId, err = ratelimits.NewRegistrationsPerIPv6RangeBucketId(ip)
+	if err != nil {
+		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
+		return
+	}
+
+	_, err = wfe.limiter.Refund(ctx, ratelimits.NewTransaction(bucketId, 1))
 	if err != nil {
 		warn(err, ratelimits.NewRegistrationsPerIPv6Range)
 	}

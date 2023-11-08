@@ -68,9 +68,8 @@ func resultForError(err error) string {
 	return "failed"
 }
 
-// Set stores the TAT at the specified bucketKey ('name:id'). It returns an
-// error if the operation failed and nil otherwise. If the bucketKey does not
-// exist, it will be created.
+// Set stores the TAT at the specified bucketKey. It returns an error if the
+// operation failed and nil otherwise.
 func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) error {
 	start := r.clk.Now()
 
@@ -84,9 +83,9 @@ func (r *RedisSource) Set(ctx context.Context, bucketKey string, tat time.Time) 
 	return nil
 }
 
-// Get retrieves the TAT at the specified bucketKey ('name:id'). It returns the
-// TAT and nil if the operation succeeded, or an error if the operation failed.
-// If the bucketKey does not exist, it returns ErrBucketNotFound.
+// Get retrieves the TAT at the specified bucketKey. An error is returned if the
+// operation failed and nil otherwise. If the bucketKey does not exist,
+// ErrBucketNotFound is returned.
 func (r *RedisSource) Get(ctx context.Context, bucketKey string) (time.Time, error) {
 	start := r.clk.Now()
 
