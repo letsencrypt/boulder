@@ -590,8 +590,7 @@ func TestCustomAuthority(t *testing.T) {
 		b := NewDefaultSRVBuilder()
 		cc := &testClientConn{target: mockEndpointTarget, errChan: make(chan error, 1)}
 		target := resolver.Target{
-			Authority: a.authority,
-			URL:       *testutils.MustParseURL(fmt.Sprintf("scheme://%s/%s", a.authority, mockEndpointTarget)),
+			URL: *testutils.MustParseURL(fmt.Sprintf("scheme://%s/%s", a.authority, mockEndpointTarget)),
 		}
 		r, err := b.Build(target, cc, resolver.BuildOptions{})
 

@@ -312,7 +312,7 @@ func initAuthorities(t *testing.T) (*DummyValidationAuthority, sapb.StorageAutho
 
 	fc := clock.NewFake()
 	// Set to some non-zero time.
-	fc.Set(time.Date(2015, 3, 4, 5, 0, 0, 0, time.UTC))
+	fc.Set(time.Date(2020, 3, 4, 5, 0, 0, 0, time.UTC))
 
 	dbMap, err := sa.DBMapForTest(vars.DBConnSA)
 	if err != nil {
@@ -1087,7 +1087,7 @@ func TestEarlyOrderRateLimiting(t *testing.T) {
 	test.AssertEquals(t, bErr.RetryAfter, rateLimitDuration)
 
 	// The err should be the expected rate limit error
-	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2015-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/"
+	expected := "too many certificates already issued for \"early-ratelimit-example.com\". Retry after 2020-03-04T05:05:00Z: see https://letsencrypt.org/docs/rate-limits/"
 	test.AssertEquals(t, bErr.Error(), expected)
 }
 
@@ -3745,6 +3745,7 @@ func (mp *mockPurger) Purge(context.Context, *akamaipb.PurgeRequest, ...grpc.Cal
 	return &emptypb.Empty{}, nil
 }
 
+// mockSAGenerateOCSP is a mock SA that always returns a good OCSP response, with a constant NotAfter.
 type mockSAGenerateOCSP struct {
 	mocks.StorageAuthority
 	expiration time.Time
@@ -3781,6 +3782,70 @@ func TestGenerateOCSP(t *testing.T) {
 	}
 }
 
+// mockSALongExpiredSerial is a mock SA that treats every serial as if it expired a long time ago.
+// Specifically, it returns NotFound to GetCertificateStatus (simulating the serial having been
+// removed from the certificateStatus table), but returns success to GetSerialMetadata (simulating
+// a serial number staying in the `serials` table indefinitely).
+type mockSALongExpiredSerial struct {
+	mocks.StorageAuthority
+}
+
+func (msgo *mockSALongExpiredSerial) GetCertificateStatus(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*corepb.CertificateStatus, error) {
+	return nil, berrors.NotFoundError("not found")
+}
+
+func (msgo *mockSALongExpiredSerial) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	return &sapb.SerialMetadata{
+		Serial: req.Serial,
+	}, nil
+}
+
+func TestGenerateOCSPLongExpiredSerial(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.OCSP = &mockOCSPA{}
+	ra.SA = &mockSALongExpiredSerial{}
+
+	req := &rapb.GenerateOCSPRequest{
+		Serial: core.SerialToString(big.NewInt(1)),
+	}
+
+	_, err := ra.GenerateOCSP(context.Background(), req)
+	test.AssertError(t, err, "generating OCSP")
+	if !errors.Is(err, berrors.NotFound) {
+		t.Errorf("expected NotFound error, got %#v", err)
+	}
+}
+
+// mockSAUnknownSerial is a mock SA that always returns NotFound to certificate status and serial lookups.
+// It emulates an SA that has never issued a certificate.
+type mockSAUnknownSerial struct {
+	mockSALongExpiredSerial
+}
+
+func (msgo *mockSAUnknownSerial) GetSerialMetadata(_ context.Context, req *sapb.Serial, _ ...grpc.CallOption) (*sapb.SerialMetadata, error) {
+	return nil, berrors.NotFoundError("not found")
+}
+
+func TestGenerateOCSPUnknownSerial(t *testing.T) {
+	_, _, ra, _, cleanUp := initAuthorities(t)
+	defer cleanUp()
+
+	ra.OCSP = &mockOCSPA{}
+	ra.SA = &mockSAUnknownSerial{}
+
+	req := &rapb.GenerateOCSPRequest{
+		Serial: core.SerialToString(big.NewInt(1)),
+	}
+
+	_, err := ra.GenerateOCSP(context.Background(), req)
+	test.AssertError(t, err, "generating OCSP")
+	if !errors.Is(err, berrors.UnknownSerial) {
+		t.Errorf("expected UnknownSerial error, got %#v", err)
+	}
+}
+
 func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	_, _, ra, clk, cleanUp := initAuthorities(t)
 	defer cleanUp()
@@ -3788,7 +3853,7 @@ func TestRevokeCertByApplicant_Subscriber(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	_, cert := test.ThrowAwayCert(t, 1)
+	_, cert := test.ThrowAwayCert(t, clk)
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -3842,7 +3907,7 @@ func TestRevokeCertByApplicant_Controller(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	_, cert := test.ThrowAwayCert(t, 1)
+	_, cert := test.ThrowAwayCert(t, clk)
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -3881,16 +3946,9 @@ func TestRevokeCertByKey(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
-	digest, err := core.KeyDigest(k.Public())
+	_, cert := test.ThrowAwayCert(t, clk)
+	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
-
-	template := x509.Certificate{SerialNumber: big.NewInt(257)}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
-	test.AssertNotError(t, err, "x509.CreateCertificate failed")
-	cert, err := x509.ParseCertificate(der)
-	test.AssertNotError(t, err, "x509.ParseCertificate failed")
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{
@@ -3941,19 +3999,9 @@ func TestAdministrativelyRevokeCertificate(t *testing.T) {
 	ra.OCSP = &mockOCSPA{}
 	ra.purger = &mockPurger{}
 
-	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	test.AssertNotError(t, err, "ecdsa.GenerateKey failed")
-	digest, err := core.KeyDigest(k.Public())
+	serial, cert := test.ThrowAwayCert(t, clk)
+	digest, err := core.KeyDigest(cert.PublicKey)
 	test.AssertNotError(t, err, "core.KeyDigest failed")
-
-	serial := "04eac294a0e61035d8254d5a04f61a37c802"
-	serialInt, err := core.StringToSerial(serial)
-	test.AssertNotError(t, err, "decoding serial number")
-	template := x509.Certificate{SerialNumber: serialInt}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, k.Public(), k)
-	test.AssertNotError(t, err, "x509.CreateCertificate failed")
-	cert, err := x509.ParseCertificate(der)
-	test.AssertNotError(t, err, "x509.ParseCertificate failed")
 	ic, err := issuance.NewCertificate(cert)
 	test.AssertNotError(t, err, "failed to create issuer cert")
 	ra.issuersByNameID = map[issuance.IssuerNameID]*issuance.Certificate{

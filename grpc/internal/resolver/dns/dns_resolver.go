@@ -119,11 +119,11 @@ func (b *srvBuilder) Build(target resolver.Target, cc resolver.ClientConn, opts 
 		rn:     make(chan struct{}, 1),
 	}
 
-	if target.Authority == "" {
+	if target.URL.Host == "" {
 		d.resolver = defaultResolver
 	} else {
 		var err error
-		d.resolver, err = customAuthorityResolver(target.Authority)
+		d.resolver, err = customAuthorityResolver(target.URL.Host)
 		if err != nil {
 			return nil, err
 		}

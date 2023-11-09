@@ -69,5 +69,5 @@ deb: build
 tar: build
 	fpm -f -s dir -t tar --name "boulder" --prefix=/opt/boulder \
 		--package "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).amd64.tar" \
-		test/config/ sa/db data/ $(OBJECTS)
+		test/config/ sa/db data/ $(OBJECTS) bin/ct-test-srv
 	gzip -f "$(ARCHIVEDIR)/boulder-$(VERSION)-$(COMMIT_ID).amd64.tar"
