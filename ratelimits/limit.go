@@ -121,22 +121,14 @@ func loadAndParseOverrideLimits(path string) (limits, error) {
 			return nil, fmt.Errorf(
 				"validating name %s and id %q for override limit %q: %w", name, id, k, err)
 		}
-		if name == CertificatesPerFQDNSetPerAccount {
+		if name == CertificatesPerFQDNSet {
 			// FQDNSet hashes are not a nice thing to ask for in a config file,
 			// so we allow the user to specify a comma-separated list of FQDNs
 			// and compute the hash here.
-			regIdDomains := strings.SplitN(id, ":", 2)
-			if len(regIdDomains) != 2 {
-				// Should never happen, the Id format was validated above.
-				return nil, fmt.Errorf("invalid override limit %q, must be formatted 'name:id'", k)
-			}
-			regId := regIdDomains[0]
-			domains := strings.Split(regIdDomains[1], ",")
-			fqdnSet := core.HashNames(domains)
-			id = fmt.Sprintf("%s:%s", regId, fqdnSet)
+			id = string(core.HashNames(strings.Split(id, ",")))
 		}
 		v.isOverride = true
-		parsed[bucketKey(name, id)] = precomputeLimit(v)
+		parsed[joinWithColon(name.EnumString(), id)] = precomputeLimit(v)
 	}
 	return parsed, nil
 }
@@ -159,7 +151,7 @@ func loadAndParseDefaultLimits(path string) (limits, error) {
 		if !ok {
 			return nil, fmt.Errorf("unrecognized name %q in default limit, must be one of %v", k, limitNames)
 		}
-		parsed[nameToEnumString(name)] = precomputeLimit(v)
+		parsed[name.EnumString()] = precomputeLimit(v)
 	}
 	return parsed, nil
 }
