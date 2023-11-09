@@ -532,7 +532,7 @@ func (ssa *SQLStorageAuthority) CountFQDNSets(ctx context.Context, req *sapb.Cou
 // certificate, issued for a set of domains, during a given window of time,
 // starting from the most recent issuance.
 func (ssa *SQLStorageAuthorityRO) FQDNSetTimestampsForWindow(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Timestamps, error) {
-	if req.Window == nil || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 	type row struct {
