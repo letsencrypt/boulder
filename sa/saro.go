@@ -218,6 +218,7 @@ func ipRange(ip net.IP) (net.IP, net.IP) {
 // CountRegistrationsByIP returns the number of registrations created in the
 // time range for a single IP address.
 func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIP(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if len(req.Ip) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
@@ -251,6 +252,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIP(ctx context.Context, req 
 // the single IP. For IPv6 addresses, that range is a /48, since it's not
 // uncommon for one person to have a /48 to themselves.
 func (ssa *SQLStorageAuthorityRO) CountRegistrationsByIPRange(ctx context.Context, req *sapb.CountRegistrationsByIPRequest) (*sapb.Count, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if len(req.Ip) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
@@ -290,6 +292,7 @@ func (ssa *SQLStorageAuthority) CountRegistrationsByIPRange(ctx context.Context,
 // issued for any of the domains during the provided range of time. Queries will
 // be run in parallel. If any of them error, only one error will be returned.
 func (ssa *SQLStorageAuthorityRO) CountCertificatesByNames(ctx context.Context, req *sapb.CountCertificatesByNamesRequest) (*sapb.CountByNames, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if len(req.Names) == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
@@ -491,6 +494,7 @@ func (ssa *SQLStorageAuthority) GetRevocationStatus(ctx context.Context, req *sa
 }
 
 func (ssa *SQLStorageAuthorityRO) CountOrders(ctx context.Context, req *sapb.CountOrdersRequest) (*sapb.Count, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if req.AccountID == 0 || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
@@ -868,6 +872,7 @@ func authzModelMapToPB(m map[string]authzModel) (*sapb.Authorizations, error) {
 // GetAuthorizations2 returns any valid or pending authorizations that exist for the list of domains
 // provided. If both a valid and pending authorization exist only the valid one will be returned.
 func (ssa *SQLStorageAuthorityRO) GetAuthorizations2(ctx context.Context, req *sapb.GetAuthorizationsRequest) (*sapb.Authorizations, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.Now) {
 		return nil, errIncompleteRequest
 	}
@@ -929,6 +934,7 @@ func (ssa *SQLStorageAuthority) GetAuthorizations2(ctx context.Context, req *sap
 // the given identifier, if available. This method only supports DNS identifier types.
 // TODO(#5816): Consider removing this method, as it has no callers.
 func (ssa *SQLStorageAuthorityRO) GetPendingAuthorization2(ctx context.Context, req *sapb.GetPendingAuthorizationRequest) (*corepb.Authorization, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if req.RegistrationID == 0 || req.IdentifierValue == "" || core.IsAnyNilOrZero(req.ValidUntil) {
 		return nil, errIncompleteRequest
 	}
@@ -1055,6 +1061,7 @@ func (ssa *SQLStorageAuthority) GetValidOrderAuthorizations2(ctx context.Context
 // CountInvalidAuthorizations2 counts invalid authorizations for a user expiring
 // in a given time range. This method only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) CountInvalidAuthorizations2(ctx context.Context, req *sapb.CountInvalidAuthorizationsRequest) (*sapb.Count, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if req.RegistrationID == 0 || req.Hostname == "" || core.IsAnyNilOrZero(req.Range.Earliest, req.Range.Latest) {
 		return nil, errIncompleteRequest
 	}
@@ -1093,6 +1100,7 @@ func (ssa *SQLStorageAuthority) CountInvalidAuthorizations2(ctx context.Context,
 // domain names that the account has authorizations for. This method
 // only supports DNS identifier types.
 func (ssa *SQLStorageAuthorityRO) GetValidAuthorizations2(ctx context.Context, req *sapb.GetValidAuthorizationsRequest) (*sapb.Authorizations, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if len(req.Domains) == 0 || req.RegistrationID == 0 || core.IsAnyNilOrZero(req.Now) {
 		return nil, errIncompleteRequest
 	}

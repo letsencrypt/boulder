@@ -193,6 +193,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 }
 
 func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*x509.RevocationList, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if meta.IssuerNameID == 0 || core.IsAnyNilOrZero(meta.ThisUpdate) {
 		return nil, errors.New("got incomplete metadata message")
 	}

@@ -158,6 +158,7 @@ func (ssa *SQLStorageAuthority) UpdateRegistration(ctx context.Context, req *cor
 
 // AddSerial writes a record of a serial number generation to the DB.
 func (ssa *SQLStorageAuthority) AddSerial(ctx context.Context, req *sapb.AddSerialRequest) (*emptypb.Empty, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if req.Serial == "" || req.RegID == 0 || core.IsAnyNilOrZero(req.Created, req.Expires) {
 		return nil, errIncompleteRequest
 	}
@@ -204,6 +205,7 @@ func (ssa *SQLStorageAuthority) SetCertificateStatusReady(ctx context.Context, r
 // certificate multiple times. Calling code needs to first insert the cert's
 // serial into the Serials table to ensure uniqueness.
 func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if len(req.Der) == 0 || req.RegID == 0 || req.IssuerNameID == 0 || core.IsAnyNilOrZero(req.Issued) {
 		return nil, errIncompleteRequest
 	}
@@ -295,6 +297,7 @@ func (ssa *SQLStorageAuthority) AddPrecertificate(ctx context.Context, req *sapb
 // AddCertificate stores an issued certificate, returning an error if it is a
 // duplicate or if any other failure occurs.
 func (ssa *SQLStorageAuthority) AddCertificate(ctx context.Context, req *sapb.AddCertificateRequest) (*emptypb.Empty, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if len(req.Der) == 0 || req.RegID == 0 || core.IsAnyNilOrZero(req.Issued) {
 		return nil, errIncompleteRequest
 	}
@@ -705,6 +708,7 @@ func (ssa *SQLStorageAuthority) FinalizeOrder(ctx context.Context, req *sapb.Fin
 // the authorization is being moved to invalid the validationError field must be set. If the
 // authorization is being moved to valid the validationRecord and expires fields must be set.
 func (ssa *SQLStorageAuthority) FinalizeAuthorization2(ctx context.Context, req *sapb.FinalizeAuthorizationRequest) (*emptypb.Empty, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if req.Status == "" || req.Attempted == "" || req.Id == 0 || core.IsAnyNilOrZero(req.Expires) {
 		return nil, errIncompleteRequest
 	}
@@ -827,6 +831,7 @@ func addRevokedCertificate(ctx context.Context, tx db.Executor, req *sapb.Revoke
 // RevokeCertificate stores revocation information about a certificate. It will only store this
 // information if the certificate is not already marked as revoked.
 func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if req.Serial == "" || req.IssuerID == 0 || core.IsAnyNilOrZero(req.Date) {
 		return nil, errIncompleteRequest
 	}
@@ -880,6 +885,7 @@ func (ssa *SQLStorageAuthority) RevokeCertificate(ctx context.Context, req *sapb
 // cert is already revoked, if the new revocation reason is `KeyCompromise`,
 // and if the revokedDate is identical to the current revokedDate.
 func (ssa *SQLStorageAuthority) UpdateRevokedCertificate(ctx context.Context, req *sapb.RevokeCertificateRequest) (*emptypb.Empty, error) {
+	// TODO(#7153): Check each value via core.IsAnyNilOrZero
 	if req.Serial == "" || req.IssuerID == 0 || core.IsAnyNilOrZero(req.Date, req.Backdate) {
 		return nil, errIncompleteRequest
 	}
