@@ -13,7 +13,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/google/certificate-transparency-go v1.1.6
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
-	github.com/hpcloud/tail v1.0.0
 	github.com/jmhodges/clock v1.2.0
 	github.com/letsencrypt/borp v0.0.0-20230707160741-6cc6ce580243
 	github.com/letsencrypt/challtestsrv v1.2.1
@@ -21,6 +20,7 @@ require (
 	github.com/letsencrypt/validator/v10 v10.0.0-20230215210743-a0c7dfc17158
 	github.com/miekg/dns v1.1.55
 	github.com/miekg/pkcs11 v1.1.1
+	github.com/nxadm/tail v1.4.11
 	github.com/prometheus/client_golang v1.15.1
 	github.com/prometheus/client_model v0.4.0
 	github.com/redis/go-redis/v9 v9.2.1
@@ -65,7 +65,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/felixge/httpsnoop v1.0.3 // indirect
-	github.com/fsnotify/fsnotify v1.4.9 // indirect
+	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -87,7 +87,6 @@ require (
 	google.golang.org/genproto v0.0.0-20230822172742-b8732ec3820d // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230822172742-b8732ec3820d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230822172742-b8732ec3820d // indirect
-	gopkg.in/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
 )
