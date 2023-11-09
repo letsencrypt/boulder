@@ -313,7 +313,7 @@ Timestamps in protocol buffers must always be expressed as
 Timestamps must never contain their zero value, in the sense of
 `timestamp.AsTime().IsZero()`. When a timestamp field is optional, absence must
 be expressed through the absence of the field, rather than present with a zero
-value.
+value. The `core.IsAnyNilOrZero` function can check these cases.
 
 Senders must check that timestamps are non-zero before sending them. Receivers
 must check that timestamps are non-zero before accepting them.

@@ -1512,8 +1512,7 @@ func TestCheckFQDNSetRateLimitOverride(t *testing.T) {
 	}
 
 	// Create a mock SA that has both name counts and an FQDN set
-	now := ra.clk.Now()
-	ts := timestamppb.New(now)
+	ts := timestamppb.New(ra.clk.Now())
 	mockSA := &mockSAWithFQDNSet{
 		issuanceTimestamps: map[string]*sapb.Timestamps{
 			"example.com": {Timestamps: []*timestamppb.Timestamp{ts, ts}},
@@ -2137,13 +2136,12 @@ func TestNewOrderReuseInvalidAuthz(t *testing.T) {
 	// It should have one authorization
 	test.AssertEquals(t, numAuthorizations(order), 1)
 
-	now := ra.clk.Now()
 	_, err = ra.SA.FinalizeAuthorization2(ctx, &sapb.FinalizeAuthorizationRequest{
 		Id:          order.V2Authorizations[0],
 		Status:      string(core.StatusInvalid),
 		Expires:     order.Expires,
 		Attempted:   string(core.ChallengeTypeDNS01),
-		AttemptedAt: timestamppb.New(now),
+		AttemptedAt: timestamppb.New(ra.clk.Now()),
 	})
 	test.AssertNotError(t, err, "FinalizeAuthorization2 failed")
 

@@ -64,20 +64,18 @@ func TestRegistrationPbToModel(t *testing.T) {}
 
 func TestAuthzModel(t *testing.T) {
 	clk := clock.New()
-	now := clk.Now()
-	expires := now.Add(24 * time.Hour)
 	authzPB := &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		Expires:        timestamppb.New(expires),
+		Expires:        timestamppb.New(clk.Now().Add(24 * time.Hour)),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:      string(core.ChallengeTypeHTTP01),
 				Status:    string(core.StatusValid),
 				Token:     "MTIz",
-				Validated: timestamppb.New(now),
+				Validated: timestamppb.New(clk.Now()),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),
@@ -110,20 +108,18 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	now = clk.Now()
-	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		Expires:        timestamppb.New(expires),
+		Expires:        timestamppb.New(clk.Now().Add(24 * time.Hour)),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:      string(core.ChallengeTypeHTTP01),
 				Status:    string(core.StatusValid),
 				Token:     "MTIz",
-				Validated: timestamppb.New(now),
+				Validated: timestamppb.New(clk.Now()),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),
@@ -161,14 +157,12 @@ func TestAuthzModel(t *testing.T) {
 	authzPB.Challenges[0].Validationrecords[0].Port = "443"
 	test.AssertDeepEquals(t, authzPB.Challenges, authzPBOut.Challenges)
 
-	now = clk.Now()
-	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusInvalid),
-		Expires:        timestamppb.New(expires),
+		Expires:        timestamppb.New(clk.Now().Add(24 * time.Hour)),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:   string(core.ChallengeTypeHTTP01),
@@ -202,20 +196,18 @@ func TestAuthzModel(t *testing.T) {
 	test.AssertError(t, err, "authzPBToModel didn't fail with multiple non-pending challenges")
 
 	// Test that the caller Hostname and Port rehydration returns the expected data in the expected fields.
-	now = clk.Now()
-	expires = now.Add(24 * time.Hour)
 	authzPB = &corepb.Authorization{
 		Id:             "1",
 		Identifier:     "example.com",
 		RegistrationID: 1,
 		Status:         string(core.StatusValid),
-		Expires:        timestamppb.New(expires),
+		Expires:        timestamppb.New(clk.Now().Add(24 * time.Hour)),
 		Challenges: []*corepb.Challenge{
 			{
 				Type:      string(core.ChallengeTypeHTTP01),
 				Status:    string(core.StatusValid),
 				Token:     "MTIz",
-				Validated: timestamppb.New(now),
+				Validated: timestamppb.New(clk.Now()),
 				Validationrecords: []*corepb.ValidationRecord{
 					{
 						AddressUsed:       []byte("1.2.3.4"),

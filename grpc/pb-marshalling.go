@@ -71,13 +71,12 @@ func ChallengeToPB(challenge core.Challenge) (*corepb.Challenge, error) {
 		}
 	}
 
-	validated := timestamppb.New(time.Time{})
+	var validated *timestamppb.Timestamp
 	if challenge.Validated != nil {
 		validated = timestamppb.New(challenge.Validated.UTC())
-	}
-
-	if !validated.IsValid() {
-		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Challenge object")
+		if !validated.IsValid() {
+			return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Challenge object")
+		}
 	}
 
 	return &corepb.Challenge{
@@ -113,7 +112,7 @@ func PBToChallenge(in *corepb.Challenge) (challenge core.Challenge, err error) {
 		return core.Challenge{}, err
 	}
 	var validated *time.Time
-	if in.Validated != nil && !in.Validated.AsTime().IsZero() {
+	if !core.IsAnyNilOrZero(in.Validated) {
 		val := in.Validated.AsTime()
 		validated = &val
 	}
@@ -237,12 +236,12 @@ func RegistrationToPB(reg core.Registration) (*corepb.Registration, error) {
 	if reg.Contact != nil {
 		contacts = *reg.Contact
 	}
-	createdAt := timestamppb.New(time.Time{})
+	var createdAt *timestamppb.Timestamp
 	if reg.CreatedAt != nil {
 		createdAt = timestamppb.New(reg.CreatedAt.UTC())
-	}
-	if !createdAt.IsValid() {
-		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		if !createdAt.IsValid() {
+			return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		}
 	}
 
 	return &corepb.Registration{
@@ -269,7 +268,7 @@ func PbToRegistration(pb *corepb.Registration) (core.Registration, error) {
 		return core.Registration{}, err
 	}
 	var createdAt *time.Time
-	if pb.CreatedAt != nil && !pb.CreatedAt.AsTime().IsZero() {
+	if !core.IsAnyNilOrZero(pb.CreatedAt) {
 		c := pb.CreatedAt.AsTime()
 		createdAt = &c
 	}
@@ -307,12 +306,12 @@ func AuthzToPB(authz core.Authorization) (*corepb.Authorization, error) {
 		}
 		challs[i] = pbChall
 	}
-	expires := timestamppb.New(time.Time{})
+	var expires *timestamppb.Timestamp
 	if authz.Expires != nil {
 		expires = timestamppb.New(authz.Expires.UTC())
-	}
-	if !expires.IsValid() {
-		return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		if !expires.IsValid() {
+			return nil, fmt.Errorf("error creating *timestamppb.Timestamp for *corepb.Authorization object")
+		}
 	}
 
 	return &corepb.Authorization{
@@ -335,7 +334,7 @@ func PBToAuthz(pb *corepb.Authorization) (core.Authorization, error) {
 		challs[i] = chall
 	}
 	var expires *time.Time
-	if pb.Expires != nil && !pb.Expires.AsTime().IsZero() {
+	if !core.IsAnyNilOrZero(pb.Expires) {
 		c := pb.Expires.AsTime()
 		expires = &c
 	}

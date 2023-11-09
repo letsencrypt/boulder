@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test"
@@ -135,6 +136,11 @@ func TestIsAnyNilOrZero(t *testing.T) {
 
 	test.Assert(t, IsAnyNilOrZero(1, ""), "Mixed values seen as non-zero")
 	test.Assert(t, IsAnyNilOrZero("", 1), "Mixed values seen as non-zero")
+
+	var p *timestamppb.Timestamp
+	test.Assert(t, IsAnyNilOrZero(p), "Pointer to uninitialized timestamppb.Timestamp seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero(timestamppb.New(time.Time{})), "*timestamppb.Timestamp containing an uninitialized inner time.Time{} is seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(timestamppb.Now()), "A *timestamppb.Timestamp with valid inner time is seen as zero")
 }
 
 func TestUniqueLowerNames(t *testing.T) {

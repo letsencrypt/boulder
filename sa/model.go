@@ -804,7 +804,7 @@ func modelToAuthzPB(am authzModel) (*corepb.Authorization, error) {
 						return nil, err
 					}
 					// Get the attemptedAt time and assign to the challenge validated time.
-					validated := timestamppb.New(time.Time{})
+					var validated *timestamppb.Timestamp
 					if am.AttemptedAt != nil {
 						validated = timestamppb.New(*am.AttemptedAt)
 					}
@@ -1004,8 +1004,7 @@ func statusForOrder(ctx context.Context, s db.Selector, order *corepb.Order, now
 	// in ra.NewOrder), and expired authorizations may be purged from the DB.
 	// Because of this purging fetching the authz's for an expired order may
 	// return fewer authz objects than expected, triggering a 500 error response.
-	orderExpiry := order.Expires.AsTime()
-	if orderExpiry.Before(now) {
+	if order.Expires.AsTime().Before(now) {
 		return string(core.StatusInvalid), nil
 	}
 

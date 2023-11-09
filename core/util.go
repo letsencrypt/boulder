@@ -217,8 +217,8 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 			if len(v) == 0 {
 				return true
 			}
-		case timestamppb.Timestamp:
-			if v.AsTime().IsZero() {
+		case *timestamppb.Timestamp:
+			if v == nil || v.AsTime().IsZero() {
 				return true
 			}
 		default:

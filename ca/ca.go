@@ -185,11 +185,10 @@ func (ca *certificateAuthorityImpl) IssuePrecertificate(ctx context.Context, iss
 
 	serialHex := core.SerialToString(serialBigInt)
 	regID := issueReq.RegistrationID
-	now := ca.clk.Now()
 	_, err = ca.sa.AddSerial(ctx, &sapb.AddSerialRequest{
 		Serial:  serialHex,
 		RegID:   regID,
-		Created: timestamppb.New(now),
+		Created: timestamppb.New(ca.clk.Now()),
 		Expires: timestamppb.New(validity.NotAfter),
 	})
 	if err != nil {
@@ -295,12 +294,10 @@ func (ca *certificateAuthorityImpl) IssueCertificateForPrecertificate(ctx contex
 	ca.signatureCount.With(prometheus.Labels{"purpose": string(certType), "issuer": issuer.Name()}).Inc()
 	ca.log.AuditInfof("Signing cert success: serial=[%s] regID=[%d] names=[%s] certificate=[%s]",
 		serialHex, req.RegistrationID, names, hex.EncodeToString(certDER))
-
-	now := ca.clk.Now()
 	_, err = ca.sa.AddCertificate(ctx, &sapb.AddCertificateRequest{
 		Der:    certDER,
 		RegID:  req.RegistrationID,
-		Issued: timestamppb.New(now),
+		Issued: timestamppb.New(ca.clk.Now()),
 	})
 	if err != nil {
 		ca.log.AuditErrf("Failed RPC to store at SA: serial=[%s], cert=[%s], issuerID=[%d], regID=[%d], orderID=[%d], err=[%v]",
@@ -414,11 +411,10 @@ func (ca *certificateAuthorityImpl) issuePrecertificateInner(ctx context.Context
 		return nil, nil, berrors.InternalServerError("failed to prepare precertificate signing: %s", err)
 	}
 
-	now := ca.clk.Now()
 	_, err = ca.sa.AddPrecertificate(context.Background(), &sapb.AddCertificateRequest{
 		Der:          lintCertBytes,
 		RegID:        issueReq.RegistrationID,
-		Issued:       timestamppb.New(now),
+		Issued:       timestamppb.New(ca.clk.Now()),
 		IssuerNameID: int64(issuer.Cert.NameID()),
 		OcspNotReady: true,
 	})

@@ -1871,6 +1871,7 @@ type mockSAWithIncident struct {
 // for each of the provided serials.
 func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []string) *mockSAWithIncident {
 	incidents := make(map[string]*sapb.Incidents)
+	var renewBy *timestamppb.Timestamp
 	for _, s := range serial {
 		incidents[s] = &sapb.Incidents{
 			Incidents: []*sapb.Incident{
@@ -1878,7 +1879,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					Id:          0,
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
-					RenewBy:     timestamppb.New(time.Time{}),
+					RenewBy:     renewBy,
 					Enabled:     true,
 				},
 			},
@@ -2138,12 +2139,10 @@ func (sa *mockSAWithNewCert) GetCertificate(_ context.Context, req *sapb.Serial,
 		return nil, fmt.Errorf("failed to parse test cert: %w", err)
 	}
 
-	issued := sa.clk.Now().Add(-1 * time.Second)
-
 	return &corepb.Certificate{
 		RegistrationID: 1,
 		Serial:         core.SerialToString(cert.SerialNumber),
-		Issued:         timestamppb.New(issued),
+		Issued:         timestamppb.New(sa.clk.Now().Add(-1 * time.Second)),
 		Der:            cert.Raw,
 	}, nil
 }

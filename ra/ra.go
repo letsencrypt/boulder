@@ -1732,7 +1732,7 @@ func (ra *RegistrationAuthorityImpl) recordValidation(ctx context.Context, authI
 	if err != nil {
 		return err
 	}
-	validated := timestamppb.New(time.Time{})
+	var validated *timestamppb.Timestamp
 	if challenge.Validated != nil {
 		validated = timestamppb.New(*challenge.Validated)
 	}
@@ -1839,7 +1839,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 		copy(challenges, authz.Challenges)
 		authz.Challenges = challenges
 		chall, _ := bgrpc.ChallengeToPB(authz.Challenges[challIndex])
-
 		req := vapb.PerformValidationRequest{
 			Domain:    authz.Identifier.Value,
 			Challenge: chall,
@@ -1849,10 +1848,8 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			},
 		}
 		res, err := ra.VA.PerformValidation(vaCtx, &req)
-
 		challenge := &authz.Challenges[challIndex]
 		var prob *probs.ProblemDetails
-
 		if err != nil {
 			prob = probs.ServerInternal("Could not communicate with VA")
 			ra.log.AuditErrf("Could not communicate with VA: %s", err)
@@ -1864,7 +1861,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 					ra.log.AuditErrf("Could not communicate with VA: %s", err)
 				}
 			}
-
 			// Save the updated records
 			records := make([]core.ValidationRecord, len(res.Records))
 			for i, r := range res.Records {
@@ -1875,7 +1871,6 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 			}
 			challenge.ValidationRecord = records
 		}
-
 		if !challenge.RecordsSane() && prob == nil {
 			prob = probs.ServerInternal("Records for validation failed sanity check")
 		}
@@ -1903,12 +1898,11 @@ func (ra *RegistrationAuthorityImpl) PerformValidation(
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, serial *big.Int, issuerID int64, reason revocation.Reason) error {
 	serialString := core.SerialToString(serial)
-	now := ra.clk.Now()
 
 	_, err := ra.SA.RevokeCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(reason),
-		Date:     timestamppb.New(now),
+		Date:     timestamppb.New(ra.clk.Now()),
 		IssuerID: issuerID,
 	})
 	if err != nil {
@@ -1926,7 +1920,6 @@ func (ra *RegistrationAuthorityImpl) revokeCertificate(ctx context.Context, seri
 // TODO(#5152) make the issuerID argument an issuance.IssuerNameID
 func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx context.Context, serial *big.Int, issuerID int64) error {
 	serialString := core.SerialToString(serial)
-	now := ra.clk.Now()
 
 	status, err := ra.SA.GetCertificateStatus(ctx, &sapb.Serial{Serial: serialString})
 	if err != nil {
@@ -1945,7 +1938,7 @@ func (ra *RegistrationAuthorityImpl) updateRevocationForKeyCompromise(ctx contex
 	_, err = ra.SA.UpdateRevokedCertificate(ctx, &sapb.RevokeCertificateRequest{
 		Serial:   serialString,
 		Reason:   int64(ocsp.KeyCompromise),
-		Date:     timestamppb.New(now),
+		Date:     timestamppb.New(ra.clk.Now()),
 		Backdate: status.RevokedDate,
 		IssuerID: issuerID,
 	})
@@ -2043,12 +2036,11 @@ func (ra *RegistrationAuthorityImpl) RevokeCertByApplicant(ctx context.Context, 
 		// authorizations for all names in the cert.
 		logEvent.Method = "control"
 
-		now := ra.clk.Now()
 		var authzMapPB *sapb.Authorizations
 		authzMapPB, err = ra.SA.GetValidAuthorizations2(ctx, &sapb.GetValidAuthorizationsRequest{
 			RegistrationID: req.RegID,
 			Domains:        cert.DNSNames,
-			Now:            timestamppb.New(now),
+			Now:            timestamppb.New(ra.clk.Now()),
 		})
 		if err != nil {
 			return nil, err
@@ -2099,10 +2091,9 @@ func (ra *RegistrationAuthorityImpl) addToBlockedKeys(ctx context.Context, key c
 	}
 
 	// Add the public key to the blocked keys list.
-	now := ra.clk.Now()
 	_, err = ra.SA.AddBlockedKey(ctx, &sapb.AddBlockedKeyRequest{
 		KeyHash: digest[:],
-		Added:   timestamppb.New(now),
+		Added:   timestamppb.New(ra.clk.Now()),
 		Source:  src,
 		Comment: comment,
 	})
@@ -2383,8 +2374,7 @@ func (ra *RegistrationAuthorityImpl) GenerateOCSP(ctx context.Context, req *rapb
 		return nil, errors.New("serial belongs to a certificate that errored during issuance")
 	}
 
-	notAfter := status.NotAfter.AsTime()
-	if ra.clk.Now().After(notAfter) {
+	if ra.clk.Now().After(status.NotAfter.AsTime()) {
 		return nil, berrors.NotFoundError("certificate is expired")
 	}
 
@@ -2612,12 +2602,11 @@ func (ra *RegistrationAuthorityImpl) NewOrder(ctx context.Context, req *rapb.New
 // necessary challenges for it and puts this and all of the relevant information
 // into a corepb.Authorization for transmission to the SA to be stored
 func (ra *RegistrationAuthorityImpl) createPendingAuthz(reg int64, identifier identifier.ACMEIdentifier) (*corepb.Authorization, error) {
-	expires := ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)
 	authz := &corepb.Authorization{
 		Identifier:     identifier.Value,
 		RegistrationID: reg,
 		Status:         string(core.StatusPending),
-		Expires:        timestamppb.New(expires),
+		Expires:        timestamppb.New(ra.clk.Now().Add(ra.pendingAuthorizationLifetime).Truncate(time.Second)),
 	}
 
 	// Create challenges. The WFE will update them with URIs before sending them out.

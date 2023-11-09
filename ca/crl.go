@@ -193,7 +193,7 @@ func (ci *crlImpl) GenerateCRL(stream capb.CRLGenerator_GenerateCRLServer) error
 }
 
 func (ci *crlImpl) metadataToTemplate(meta *capb.CRLMetadata) (*x509.RevocationList, error) {
-	if meta.IssuerNameID == 0 || meta.ThisUpdate == nil || meta.ThisUpdate.AsTime().IsZero() {
+	if meta.IssuerNameID == 0 || core.IsAnyNilOrZero(meta.ThisUpdate) {
 		return nil, errors.New("got incomplete metadata message")
 	}
 	thisUpdate := meta.ThisUpdate.AsTime()
@@ -212,7 +212,7 @@ func (ci *crlImpl) entryToRevokedCertificate(entry *corepb.CRLEntry) (*x509.Revo
 		return nil, err
 	}
 
-	if entry.RevokedAt == nil || entry.RevokedAt.AsTime().IsZero() {
+	if core.IsAnyNilOrZero(entry.RevokedAt) {
 		return nil, errors.New("got empty or zero revocation timestamp")
 	}
 	revokedAt := entry.RevokedAt.AsTime()
