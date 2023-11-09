@@ -6,12 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/letsencrypt/boulder/core"
 	"github.com/letsencrypt/boulder/ctpolicy/loglist"
 	berrors "github.com/letsencrypt/boulder/errors"
 	blog "github.com/letsencrypt/boulder/log"
 	pubpb "github.com/letsencrypt/boulder/publisher/proto"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -114,6 +115,8 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	unblocker := make(chan struct{}, len(ctp.sctLogs))
+
 	// This closure will be called in parallel once for each operator group.
 	getOne := func(i int, g string) ([]byte, string, error) {
 		// Sleep a little bit to stagger our requests to the later groups. Use `i-1`
@@ -124,6 +127,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 		select {
 		case <-subCtx.Done():
 			return nil, "", subCtx.Err()
+		case <-unblocker:
 		case <-time.After(time.Duration(i-1) * ctp.stagger):
 		}
 
@@ -141,6 +145,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 			Precert:      true,
 		})
 		if err != nil {
+			unblocker <- struct{}{}
 			return nil, url, fmt.Errorf("ct submission to %q (%q) failed: %w", g, url, err)
 		}
 
