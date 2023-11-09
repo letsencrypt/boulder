@@ -41,17 +41,25 @@ const (
 	NewOrdersPerAccount
 
 	// FailedAuthorizationsPerAccount uses bucket key 'enum:regId', where regId
-	// is the ACME registration Id of the account.
+	// is the ACME registration Id of the account. Cost MUST be consumed from
+	// this bucket only when the authorization is considered "failed". It SHOULD
+	// be checked before new authorizations are created.
 	FailedAuthorizationsPerAccount
 
 	// CertificatesPerDomain uses bucket key 'enum:domain', where domain is a
-	// domain name in the issued certificate.
+	// domain name in the issued certificate. When overrides to the
+	// CertificatesPerDomainPerAccount are configured for a subscriber, the
+	// cost:
+	//   - MUST be consumed from the CertificatesPerDomainPerAccount bucket and
+	//   - SHOULD be consumed from each CertificatesPerDomain bucket, if possible.
 	CertificatesPerDomain
 
 	// CertificatesPerDomainPerAccount uses bucket key 'enum:regId', where regId
 	// is the ACME registration Id of the account. This limit is never checked
-	// or enforced by the Limiter. Instead, it is used to override the
-	// CertificatesPerDomain limit for the specified account.
+	// or enforced by the Limiter. It is only used to provide an override for
+	// CertificatesPerDomain limit. When overrides are configured the cost:
+	//   - MUST be consumed from the CertificatesPerDomainPerAccount bucket and
+	//   - SHOULD be consumed from each CertificatesPerDomain bucket, if possible.
 	CertificatesPerDomainPerAccount
 
 	// CertificatesPerFQDNSet uses bucket key 'enum:fqdnSet', where fqdnSet is a

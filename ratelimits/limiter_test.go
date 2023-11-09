@@ -58,7 +58,7 @@ func Test_Limiter_CheckWithLimitNoExist(t *testing.T) {
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketId := BucketId{limit: Name(9999), bucketKey: testIP}
+			bucketId := BucketId{limitName: Name(9999), bucketKey: testIP}
 			_, err := l.Check(testCtx, NewTransaction(bucketId, 1))
 			test.AssertError(t, err, "should error")
 		})
@@ -67,7 +67,7 @@ func Test_Limiter_CheckWithLimitNoExist(t *testing.T) {
 
 func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 	t.Parallel()
-	testCtx, limiters, clk, _ := setup(t)
+	testCtx, limiters, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
 			// Verify our overrideUsageGauge is being set correctly. 0.0 == 0% of
@@ -138,6 +138,40 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.Assert(t, !d.Allowed, "should not be allowed")
 			test.AssertEquals(t, d.Remaining, int64(0))
 			test.AssertEquals(t, d.ResetIn, time.Second)
+
+			// Wait 1 second for a full bucket reset.
+			clk.Add(d.ResetIn)
+
+			testIP := net.ParseIP(testIP)
+			normalBucket, err := NewRegistrationsPerIPAddressBucketId(testIP)
+			test.AssertNotError(t, err, "should not error")
+
+			// Spend the same bucket but in a batch with bucket subject to
+			// default limits. This should succeed, but the decision should
+			// reflect that of the default bucket.
+			d, err = l.BatchSpend(testCtx, []Transaction{NewTransaction(overriddenBucketId, 1), NewTransaction(normalBucket, 1)})
+			test.AssertNotError(t, err, "should not error")
+			test.Assert(t, d.Allowed, "should be allowed")
+			test.AssertEquals(t, d.Remaining, int64(19))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
+
+			// Refund quota to both buckets. This should succeed, but the
+			// decision should reflect that of the default bucket.
+			d, err = l.BatchRefund(testCtx, []Transaction{NewTransaction(overriddenBucketId, 1), NewTransaction(normalBucket, 1)})
+			test.AssertNotError(t, err, "should not error")
+			test.Assert(t, d.Allowed, "should be allowed")
+			test.AssertEquals(t, d.Remaining, int64(20))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Duration(0))
+
+			// Once more.
+			d, err = l.BatchSpend(testCtx, []Transaction{NewTransaction(overriddenBucketId, 1), NewTransaction(normalBucket, 1)})
+			test.AssertNotError(t, err, "should not error")
+			test.Assert(t, d.Allowed, "should be allowed")
+			test.AssertEquals(t, d.Remaining, int64(19))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 
 			// Reset between tests.
 			err = l.Reset(testCtx, overriddenBucketId)
