@@ -107,6 +107,12 @@ type Transaction struct {
 	// satisfy the cost. Note: optimistic transactions are only supported by
 	// limiter.BatchSpend().
 	optimistic bool
+
+	// checkOnly indicates to the limiter that the cost should be checked but
+	// not spent or refunded. Note: checkOnly transactions are only supported by
+	// limiter.BatchSpend(). Outside of batches callers should use
+	// limiter.Check().
+	checkOnly bool
 }
 
 // NewTransaction creates a new Transaction for the provided BucketId and cost.
@@ -114,6 +120,18 @@ func NewTransaction(b BucketId, cost int64) Transaction {
 	return Transaction{
 		BucketId: b,
 		cost:     cost,
+	}
+}
+
+// NewCheckOnlyTransaction creates a new check-only Transaction for the provided
+// BucketId and cost. Check-only transactions will not have their cost deducted
+// from the bucket's capacity. Note: check-only transactions are only supported
+// by limiter.BatchSpend() and limiter.BatchRefund().
+func NewCheckOnlyTransaction(b BucketId, cost int64) Transaction {
+	return Transaction{
+		BucketId:  b,
+		cost:      cost,
+		checkOnly: true,
 	}
 }
 
@@ -355,6 +373,10 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		// Spend the cost and update the consolidated decision.
 		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
 		if d.Allowed {
+			if txn.checkOnly {
+				// Suppress spend for check-only transaction.
+				continue
+			}
 			newTATs[txn.bucketKey] = d.newTAT
 		}
 
@@ -455,6 +477,11 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 	newTATs := make(map[string]time.Time)
 
 	for _, txn := range batch {
+		if txn.checkOnly {
+			// Suppress refund for check-only transaction.
+			continue
+		}
+
 		tat, exists := tats[txn.bucketKey]
 		if !exists {
 			// Ignore non-existent bucket.

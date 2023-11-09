@@ -96,9 +96,6 @@ func NewCertificatesPerDomainBucketId(orderName string) (BucketId, error) {
 	}, nil
 }
 
-// newCertificatesPerDomainPerAccountBucketId is only referenced internally.
-// Buckets for CertificatesPerDomainPerAccount are created by calling
-// NewCertificatesPerDomainBucketsWithCost().
 func newCertificatesPerDomainPerAccountBucketId(regId int64) (BucketId, error) {
 	id := strconv.FormatInt(regId, 10)
 	err := validateIdForName(CertificatesPerDomainPerAccount, id)
