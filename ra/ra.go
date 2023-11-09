@@ -604,7 +604,7 @@ func (ra *RegistrationAuthorityImpl) checkPendingAuthorizationLimit(ctx context.
 		return berrors.RateLimitError(0, "too many currently pending authorizations: %d", countPB.Count)
 	}
 	if overrideKey != "" {
-		utilization := float64(countPB.Count+1) / float64(threshold)
+		utilization := float64(countPB.Count) / float64(threshold)
 		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.PendingAuthorizationsPerAccount, overrideKey).Set(utilization)
 	}
 	return nil
@@ -657,7 +657,7 @@ func (ra *RegistrationAuthorityImpl) checkInvalidAuthorizationLimit(ctx context.
 		return berrors.FailedValidationError(0, "too many failed authorizations recently")
 	}
 	if overrideKey != "" {
-		utilization := float64(count.Count+1) / float64(threshold)
+		utilization := float64(count.Count) / float64(threshold)
 		ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.InvalidAuthorizationsPerAccount, overrideKey).Set(utilization)
 	}
 	return nil
@@ -1512,17 +1512,19 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 		return fmt.Errorf("checking duplicate certificate limit for %q: %s", names, err)
 	}
 
-	if int64(len(prevIssuances.TimestampsNS)) < threshold {
+	issuanceCount := int64(len(prevIssuances.TimestampsNS))
+	if issuanceCount < threshold {
 		// Issuance in window is below the threshold, no need to limit.
 		if overrideKey != "" {
-			utilization := float64(len(prevIssuances.TimestampsNS)+1) / float64(threshold)
+			utilization := float64(issuanceCount+1) / float64(threshold)
 			ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, overrideKey).Set(utilization)
 		}
 		return nil
 	} else {
 		// Evaluate the rate limit using a leaky bucket algorithm. The bucket
 		// has a capacity of threshold and is refilled at a rate of 1 token per
-		// limit.Window/threshold from the time of each issuance timestamp.
+		// limit.Window/threshold from the time of each issuance timestamp. The
+		// timestamps start from the most recent issuance and go back in time.
 		now := ra.clk.Now()
 		nsPerToken := limit.Window.Nanoseconds() / threshold
 		for i, timestamp := range prevIssuances.TimestampsNS {
@@ -1531,6 +1533,10 @@ func (ra *RegistrationAuthorityImpl) checkCertificatesPerFQDNSetLimit(ctx contex
 				// We know `i+1` tokens were generated since `tokenGeneratedSince`,
 				// and only `i` certificates were issued, so there's room to allow
 				// for an additional issuance.
+				if overrideKey != "" {
+					utilization := float64(issuanceCount) / float64(threshold)
+					ra.rlOverrideUsageGauge.WithLabelValues(ratelimit.CertificatesPerFQDNSet, overrideKey).Set(utilization)
+				}
 				return nil
 			}
 		}
