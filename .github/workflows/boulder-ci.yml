@@ -36,7 +36,7 @@ jobs:
       matrix:
         # Add additional docker image tags here and all tests will be run with the additional image.
         BOULDER_TOOLS_TAG:
-          - go1.21.3_2023-10-12
+          - go1.21.4_2023-11-09
         # Tests command definitions. Use the entire "docker compose" command you want to run.
         tests:
           # Run ./test.sh --help for a description of each of the flags.
@@ -103,7 +103,7 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        go-version: [ '1.21.3' ]
+        go-version: [ '1.21.4' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
@@ -125,7 +125,7 @@ jobs:
       # When set to true, GitHub cancels all in-progress jobs if any matrix job fails. Default: true
       fail-fast: false
       matrix:
-        go-version: [ '1.21.3' ]
+        go-version: [ '1.21.4' ]
 
     steps:
       # Checks out your repository under $GITHUB_WORKSPACE, so your job can access it
