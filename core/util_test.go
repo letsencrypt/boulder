@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/types/known/durationpb"
 	"gopkg.in/go-jose/go-jose.v2"
 
 	"github.com/letsencrypt/boulder/test"
@@ -135,6 +136,12 @@ func TestIsAnyNilOrZero(t *testing.T) {
 
 	test.Assert(t, IsAnyNilOrZero(1, ""), "Mixed values seen as non-zero")
 	test.Assert(t, IsAnyNilOrZero("", 1), "Mixed values seen as non-zero")
+
+	var d *durationpb.Duration
+	var zeroDuration time.Duration
+	test.Assert(t, IsAnyNilOrZero(d), "Pointer to uninitialized durationpb.Duration seen as non-zero")
+	test.Assert(t, IsAnyNilOrZero(durationpb.New(zeroDuration)), "*durationpb.Duration containing an zero value time.Duration is seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(durationpb.New(666)), "A *durationpb.Duration with valid inner duration is seen as zero")
 }
 
 func TestUniqueLowerNames(t *testing.T) {

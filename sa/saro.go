@@ -507,7 +507,7 @@ func (ssa *SQLStorageAuthority) CountOrders(ctx context.Context, req *sapb.Count
 // CountFQDNSets counts the total number of issuances, for a set of domains,
 // that occurred during a given window of time.
 func (ssa *SQLStorageAuthorityRO) CountFQDNSets(ctx context.Context, req *sapb.CountFQDNSetsRequest) (*sapb.Count, error) {
-	if req.Window == nil || len(req.Domains) == 0 {
+	if core.IsAnyNilOrZero(req.Window) || len(req.Domains) == 0 {
 		return nil, errIncompleteRequest
 	}
 
