@@ -32,7 +32,7 @@ type Config struct {
 		DNSAllowLoopbackAddresses bool
 
 		RemoteVAs                   []cmd.GRPCClientConfig `validate:"omitempty,dive"`
-		MaxRemoteValidationFailures int
+		MaxRemoteValidationFailures int                    `validate:"omitempty,min=0,required_with=RemoteVAs"`
 
 		Features map[string]bool
 
