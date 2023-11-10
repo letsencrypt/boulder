@@ -150,6 +150,8 @@ jobs:
   # above jobs have failed and fail if so. It is needed so there can be
   # one static job name that can be used to determine success of the job
   # in GitHub branch protection.
+  # It does not block on the result of govulncheck so that a new vulnerability
+  # disclosure does not prevent any other PRs from being merged.
   boulder_ci_test_matrix_status:
     permissions:
       contents: none
@@ -158,8 +160,8 @@ jobs:
     name: Boulder CI Test Matrix
     needs:
       - b
-      - govulncheck
+      - vendorcheck
     steps:
       - name: Check boulder ci test matrix status
-        if: ${{ needs.b.result != 'success' || needs.govulncheck.result != 'success' }}
+        if: ${{ needs.b.result != 'success' || needs.vendorcheck.result != 'success' }}
         run: exit 1
