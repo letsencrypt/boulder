@@ -25,6 +25,7 @@ import (
 	"time"
 	"unicode"
 
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/go-jose/go-jose.v2"
 )
@@ -219,6 +220,10 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 			}
 		case *timestamppb.Timestamp:
 			if v == nil || v.AsTime().IsZero() {
+				return true
+			}
+		case *durationpb.Duration:
+			if v == nil || v.AsDuration() == time.Duration(0) {
 				return true
 			}
 		default:
