@@ -744,11 +744,13 @@ func TestCountRegistrationsByIP(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
+	latest := fc.Now()
+	earliest := latest.Add(-time.Hour * 24)
 	req := &sapb.CountRegistrationsByIPRequest{
 		Ip: net.ParseIP("1.1.1.1"),
 		Range: &sapb.Range{
-			Earliest: timestamppb.New(fc.Now().Add(-time.Hour * 24)),
-			Latest:   timestamppb.New(fc.Now()),
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
 		},
 	}
 
@@ -816,11 +818,13 @@ func TestCountRegistrationsByIPRange(t *testing.T) {
 	})
 	test.AssertNotError(t, err, "Couldn't insert registration")
 
+	latest := fc.Now()
+	earliest := latest.Add(-time.Hour * 24)
 	req := &sapb.CountRegistrationsByIPRequest{
 		Ip: net.ParseIP("1.1.1.1"),
 		Range: &sapb.Range{
-			Earliest: timestamppb.New(fc.Now().Add(-time.Hour * 24)),
-			Latest:   timestamppb.New(fc.Now()),
+			Earliest: timestamppb.New(earliest),
+			Latest:   timestamppb.New(latest),
 		},
 	}
 
@@ -2075,12 +2079,13 @@ func TestRevokeCertificate(t *testing.T) {
 
 	fc.Add(1 * time.Hour)
 
+	now := fc.Now()
 	reason := int64(1)
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
 		Reason:   reason,
 	})
 	test.AssertNotError(t, err, "RevokeCertificate with no OCSP response should succeed")
@@ -2089,13 +2094,13 @@ func TestRevokeCertificate(t *testing.T) {
 	test.AssertNotError(t, err, "GetCertificateStatus failed")
 	test.AssertEquals(t, core.OCSPStatus(status.Status), core.OCSPStatusRevoked)
 	test.AssertEquals(t, status.RevokedReason, reason)
-	test.AssertEquals(t, status.RevokedDate.AsTime(), fc.Now())
-	test.AssertEquals(t, status.OcspLastUpdated.AsTime(), fc.Now())
+	test.AssertEquals(t, status.RevokedDate.AsTime(), now)
+	test.AssertEquals(t, status.OcspLastUpdated.AsTime(), now)
 
 	_, err = sa.RevokeCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
 		Reason:   reason,
 	})
 	test.AssertError(t, err, "RevokeCertificate should've failed when certificate already revoked")
@@ -2166,22 +2171,24 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	certDER, err := os.ReadFile("www.eff.org.der")
 	serial := "000000000000000000000000000000021bd4"
+	issuedTime := fc.Now()
 	test.AssertNotError(t, err, "Couldn't read example cert DER")
 	_, err = sa.AddPrecertificate(ctx, &sapb.AddCertificateRequest{
 		Der:          certDER,
 		RegID:        reg.Id,
-		Issued:       timestamppb.New(fc.Now()),
+		Issued:       timestamppb.New(issuedTime),
 		IssuerNameID: 1,
 	})
 	test.AssertNotError(t, err, "Couldn't add www.eff.org.der")
 	fc.Add(1 * time.Hour)
 
 	// Try to update it before its been revoked
+	now := fc.Now()
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
-		Backdate: timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(now),
 		Reason:   ocsp.KeyCompromise,
 		Response: []byte{4, 5, 6},
 	})
@@ -2207,10 +2214,11 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	fc.Add(1 * time.Hour)
 
 	// Try to update its revocation info with no backdate
+	now = fc.Now()
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
 		Reason:   ocsp.KeyCompromise,
 		Response: []byte{4, 5, 6},
 	})
@@ -2221,7 +2229,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(revokedTime),
 		Reason:   ocsp.Unspecified,
 		Response: []byte{4, 5, 6},
@@ -2233,7 +2241,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   "000000000000000000000000000000021bd5",
-		Date:     timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(revokedTime),
 		Reason:   ocsp.KeyCompromise,
 		Response: []byte{4, 5, 6},
@@ -2245,8 +2253,8 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
-		Backdate: timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
+		Backdate: timestamppb.New(now),
 		Reason:   ocsp.KeyCompromise,
 		Response: []byte{4, 5, 6},
 	})
@@ -2257,7 +2265,7 @@ func TestUpdateRevokedCertificate(t *testing.T) {
 	_, err = sa.UpdateRevokedCertificate(context.Background(), &sapb.RevokeCertificateRequest{
 		IssuerID: 1,
 		Serial:   serial,
-		Date:     timestamppb.New(fc.Now()),
+		Date:     timestamppb.New(now),
 		Backdate: timestamppb.New(revokedTime),
 		Reason:   ocsp.KeyCompromise,
 		Response: []byte{4, 5, 6},
@@ -2592,6 +2600,8 @@ func TestFinalizeAuthorization2(t *testing.T) {
 	fc.Set(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC))
 
 	authzID := createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
+	expires := fc.Now().Add(time.Hour * 2).UTC()
+	attemptedAt := fc.Now()
 	ip, _ := net.ParseIP("1.1.1.1").MarshalText()
 
 	_, err := sa.FinalizeAuthorization2(context.Background(), &sapb.FinalizeAuthorizationRequest{
@@ -2605,21 +2615,21 @@ func TestFinalizeAuthorization2(t *testing.T) {
 			},
 		},
 		Status:      string(core.StatusValid),
-		Expires:     timestamppb.New(fc.Now().Add(time.Hour * 2).UTC()),
+		Expires:     timestamppb.New(expires),
 		Attempted:   string(core.ChallengeTypeHTTP01),
-		AttemptedAt: timestamppb.New(fc.Now()),
+		AttemptedAt: timestamppb.New(attemptedAt),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
 	dbVer, err := sa.GetAuthorization2(context.Background(), &sapb.AuthorizationID2{Id: authzID})
 	test.AssertNotError(t, err, "sa.GetAuthorization2 failed")
 	test.AssertEquals(t, dbVer.Status, string(core.StatusValid))
-	test.AssertEquals(t, dbVer.Expires.AsTime(), fc.Now().Add(time.Hour*2).UTC())
+	test.AssertEquals(t, dbVer.Expires.AsTime(), expires)
 	test.AssertEquals(t, dbVer.Challenges[0].Status, string(core.StatusValid))
 	test.AssertEquals(t, len(dbVer.Challenges[0].Validationrecords), 1)
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Hostname, "example.com")
 	test.AssertEquals(t, dbVer.Challenges[0].Validationrecords[0].Port, "80")
-	test.AssertEquals(t, dbVer.Challenges[0].Validated.AsTime(), fc.Now())
+	test.AssertEquals(t, dbVer.Challenges[0].Validated.AsTime(), attemptedAt)
 
 	authzID = createPendingAuthorization(t, sa, "aaa", fc.Now().Add(time.Hour))
 	prob, _ := bgrpc.ProblemDetailsToPB(probs.Connection("it went bad captain"))
@@ -2637,7 +2647,7 @@ func TestFinalizeAuthorization2(t *testing.T) {
 		ValidationError: prob,
 		Status:          string(core.StatusInvalid),
 		Attempted:       string(core.ChallengeTypeHTTP01),
-		Expires:         timestamppb.New(fc.Now().Add(time.Hour * 2).UTC()),
+		Expires:         timestamppb.New(expires),
 	})
 	test.AssertNotError(t, err, "sa.FinalizeAuthorization2 failed")
 
@@ -2777,18 +2787,20 @@ func TestGetPendingAuthorization2(t *testing.T) {
 	authzIDB := createPendingAuthorization(t, sa, domain, expiresB)
 
 	regID := int64(1)
+	validUntil := fc.Now().Add(time.Hour * 2).UTC()
 	dbVer, err := sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
 		RegistrationID:  regID,
 		IdentifierValue: domain,
-		ValidUntil:      timestamppb.New(fc.Now().Add(time.Hour * 2).UTC()),
+		ValidUntil:      timestamppb.New(validUntil),
 	})
 	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
 	test.AssertEquals(t, fmt.Sprintf("%d", authzIDB), dbVer.Id)
 
+	validUntil = fc.Now().UTC()
 	dbVer, err = sa.GetPendingAuthorization2(context.Background(), &sapb.GetPendingAuthorizationRequest{
 		RegistrationID:  regID,
 		IdentifierValue: domain,
-		ValidUntil:      timestamppb.New(fc.Now().UTC()),
+		ValidUntil:      timestamppb.New(validUntil),
 	})
 	test.AssertNotError(t, err, "sa.GetPendingAuthorization2 failed")
 	test.AssertEquals(t, fmt.Sprintf("%d", authzIDA), dbVer.Id)
@@ -2909,8 +2921,11 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 	reg := createWorkingRegistration(t, sa)
 	identA := "a.example.com"
 	identB := "b.example.com"
-	authzIDA := createFinalizedAuthorization(t, sa, identA, fc.Now().Add(time.Hour*24*7).UTC(), "valid", fc.Now())
-	authzIDB := createFinalizedAuthorization(t, sa, identB, fc.Now().Add(time.Hour*24*7).UTC(), "valid", fc.Now())
+	expires := fc.Now().Add(time.Hour * 24 * 7).UTC()
+	attemptedAt := fc.Now()
+
+	authzIDA := createFinalizedAuthorization(t, sa, identA, expires, "valid", attemptedAt)
+	authzIDB := createFinalizedAuthorization(t, sa, identB, expires, "valid", attemptedAt)
 
 	orderExpr := fc.Now().Truncate(time.Second)
 	order, err := sa.NewOrderAndAuthzs(context.Background(), &sapb.NewOrderAndAuthzsRequest{
@@ -2938,7 +2953,7 @@ func TestGetValidOrderAuthorizations2(t *testing.T) {
 		if fmt.Sprintf("%d", namesToCheck[a.Authz.Identifier]) != a.Authz.Id {
 			t.Fatalf("incorrect identifier %q with id %s", a.Authz.Identifier, a.Authz.Id)
 		}
-		test.AssertEquals(t, a.Authz.Expires.AsTime(), fc.Now().Add(time.Hour*24*7).UTC())
+		test.AssertEquals(t, a.Authz.Expires.AsTime(), expires)
 		delete(namesToCheck, a.Authz.Identifier)
 	}
 
@@ -3051,16 +3066,17 @@ func TestBlockedKey(t *testing.T) {
 	hashB := make([]byte, 32)
 	hashB[0] = 2
 
+	added := time.Now()
 	source := "API"
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashA,
-		Added:   timestamppb.New(time.Now()),
+		Added:   timestamppb.New(added),
 		Source:  source,
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashA,
-		Added:   timestamppb.New(time.Now()),
+		Added:   timestamppb.New(added),
 		Source:  source,
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed with duplicate insert")
@@ -3068,7 +3084,7 @@ func TestBlockedKey(t *testing.T) {
 	comment := "testing comments"
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: hashB,
-		Added:   timestamppb.New(time.Now()),
+		Added:   timestamppb.New(added),
 		Source:  source,
 		Comment: comment,
 	})
@@ -3111,16 +3127,17 @@ func TestBlockedKeyRevokedBy(t *testing.T) {
 	sa, fc, cleanUp := initSA(t)
 	defer cleanUp()
 
+	now := fc.Now()
 	_, err := sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash: []byte{1},
-		Added:   timestamppb.New(fc.Now()),
+		Added:   timestamppb.New(now),
 		Source:  "API",
 	})
 	test.AssertNotError(t, err, "AddBlockedKey failed")
 
 	_, err = sa.AddBlockedKey(context.Background(), &sapb.AddBlockedKeyRequest{
 		KeyHash:   []byte{2},
-		Added:     timestamppb.New(fc.Now()),
+		Added:     timestamppb.New(now),
 		Source:    "API",
 		RevokedBy: 1,
 	})

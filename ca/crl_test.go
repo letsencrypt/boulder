@@ -138,13 +138,13 @@ func TestGenerateCRL(t *testing.T) {
 	go func() {
 		errs <- crli.GenerateCRL(mockGenerateCRLBidiStream{input: ins, output: nil})
 	}()
-	var revokedTime *timestamppb.Timestamp
+
 	ins <- &capb.GenerateCRLRequest{
 		Payload: &capb.GenerateCRLRequest_Entry{
 			Entry: &corepb.CRLEntry{
 				Serial:    "deadbeefdeadbeefdeadbeefdeadbeefdead",
 				Reason:    1,
-				RevokedAt: revokedTime,
+				RevokedAt: nil,
 			},
 		},
 	}

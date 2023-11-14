@@ -398,11 +398,14 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 		return nil, errors.New("very bad")
 	}
 
+	now := sa.clk.Now()
+	created := now.AddDate(-30, 0, 0)
+	exp := now.AddDate(30, 0, 0)
 	validOrder := &corepb.Order{
 		Id:                req.Id,
 		RegistrationID:    1,
-		Created:           timestamppb.New(sa.clk.Now().AddDate(-30, 0, 0)),
-		Expires:           timestamppb.New(sa.clk.Now().AddDate(30, 0, 0)),
+		Created:           timestamppb.New(created),
+		Expires:           timestamppb.New(exp),
 		Names:             []string{"example.com"},
 		Status:            string(core.StatusValid),
 		V2Authorizations:  []int64{1},
@@ -428,7 +431,7 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 	// Order ID 7 is ready, but expired
 	if req.Id == 7 {
 		validOrder.Status = string(core.StatusReady)
-		validOrder.Expires = timestamppb.New(sa.clk.Now().AddDate(-30, 0, 0))
+		validOrder.Expires = timestamppb.New(now.AddDate(-30, 0, 0))
 	}
 
 	if req.Id == 8 {
@@ -437,7 +440,7 @@ func (sa *StorageAuthorityReadOnly) GetOrder(_ context.Context, req *sapb.OrderR
 
 	// Order 9 is fresh
 	if req.Id == 9 {
-		validOrder.Created = timestamppb.New(sa.clk.Now().AddDate(0, 0, 1))
+		validOrder.Created = timestamppb.New(now.AddDate(0, 0, 1))
 	}
 
 	// Order 10 is processing

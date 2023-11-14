@@ -1871,7 +1871,6 @@ type mockSAWithIncident struct {
 // for each of the provided serials.
 func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []string) *mockSAWithIncident {
 	incidents := make(map[string]*sapb.Incidents)
-	var renewBy *timestamppb.Timestamp
 	for _, s := range serial {
 		incidents[s] = &sapb.Incidents{
 			Incidents: []*sapb.Incident{
@@ -1879,7 +1878,7 @@ func newMockSAWithIncident(sa sapb.StorageAuthorityReadOnlyClient, serial []stri
 					Id:          0,
 					SerialTable: "incident_foo",
 					Url:         agreementURL,
-					RenewBy:     renewBy,
+					RenewBy:     nil,
 					Enabled:     true,
 				},
 			},
