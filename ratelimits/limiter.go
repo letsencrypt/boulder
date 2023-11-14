@@ -97,56 +97,6 @@ func NewLimiter(clk clock.Clock, source source, defaults, overrides string, stat
 	return limiter, nil
 }
 
-// Transaction is a cost to be spent or refunded from a specific BucketId.
-type Transaction struct {
-	BucketId
-	cost int64
-
-	// optimistic indicates to the limiter that the cost should be spent if
-	// possible, but should not be denied if the bucket lacks the capacity to
-	// satisfy the cost. Note: optimistic transactions are only supported by
-	// limiter.BatchSpend().
-	optimistic bool
-
-	// checkOnly indicates to the limiter that the cost should be checked but
-	// not spent or refunded. Note: checkOnly transactions are only supported by
-	// limiter.BatchSpend(). Outside of batches callers should use
-	// limiter.Check().
-	checkOnly bool
-}
-
-// NewTransaction creates a new Transaction for the provided BucketId and cost.
-func NewTransaction(b BucketId, cost int64) Transaction {
-	return Transaction{
-		BucketId: b,
-		cost:     cost,
-	}
-}
-
-// NewCheckOnlyTransaction creates a new check-only Transaction for the provided
-// BucketId and cost. Check-only transactions will not have their cost deducted
-// from the bucket's capacity. Note: check-only transactions are only supported
-// by limiter.BatchSpend() and limiter.BatchRefund().
-func NewCheckOnlyTransaction(b BucketId, cost int64) Transaction {
-	return Transaction{
-		BucketId:  b,
-		cost:      cost,
-		checkOnly: true,
-	}
-}
-
-// newOptimisticTransaction creates a new optimistic Transaction for the
-// provided BucketId and cost. Optimistic transactions will not be denied if the
-// bucket lacks the capacity to satisfy the cost. Note: optimistic transactions
-// are only supported by limiter.BatchSpend().
-func newOptimisticTransaction(b BucketId, cost int64) Transaction {
-	return Transaction{
-		BucketId:   b,
-		cost:       cost,
-		optimistic: true,
-	}
-}
-
 type Decision struct {
 	// Allowed is true if the bucket possessed enough capacity to allow the
 	// request given the cost.
@@ -508,11 +458,11 @@ func (l *Limiter) BatchRefund(ctx context.Context, txns []Transaction) (*Decisio
 
 // Reset resets the specified bucket to its maximum capacity. The new bucket
 // state is persisted to the underlying datastore before returning.
-func (l *Limiter) Reset(ctx context.Context, bucketId BucketId) error {
+func (l *Limiter) Reset(ctx context.Context, bId bucketId) error {
 	// Remove cancellation from the request context so that transactions are not
 	// interrupted by a client disconnect.
 	ctx = context.WithoutCancel(ctx)
-	return l.source.Delete(ctx, bucketId.bucketKey)
+	return l.source.Delete(ctx, bId.bucketKey)
 }
 
 // initialize creates a new bucket and sets its TAT to now, which is equivalent

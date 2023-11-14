@@ -16,7 +16,7 @@ import (
 // IMPORTANT: If you add a new limit Name, you MUST add:
 //   - it to the nameToString mapping,
 //   - an entry for it in the validateIdForName(), and
-//   - provide a Bucket constructor in bucket.go.
+//   - provide the appropriate constructors in bucket.go.
 type Name int
 
 const (
