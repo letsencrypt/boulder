@@ -213,8 +213,32 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 		switch v := val.(type) {
 		case nil:
 			return true
+		case string:
+			if v == "" {
+				return true
+			}
+		case []string:
+			if len(v) == 0 {
+				return true
+			}
+		case byte:
+			if v == 0 {
+				return true
+			}
 		case []byte:
 			if len(v) == 0 {
+				return true
+			}
+		case int, int8, int16, int32, int64, uint, uint16, uint32, uint64:
+			if v == 0 {
+				return true
+			}
+		case float32, float64:
+			if v == 0 {
+				return true
+			}
+		case time.Time:
+			if v.IsZero() {
 				return true
 			}
 		case *durationpb.Duration:

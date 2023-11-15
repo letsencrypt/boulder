@@ -123,8 +123,14 @@ func TestIsAnyNilOrZero(t *testing.T) {
 	test.Assert(t, IsAnyNilOrZero(""), "Empty string seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero("string"), "Non-empty string seen as zero")
 
+	test.Assert(t, IsAnyNilOrZero([]string{}), "Empty string slice seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero([]string{"barncats"}), "Non-empty string slice seen as zero")
+
 	test.Assert(t, IsAnyNilOrZero([]byte{}), "Empty byte slice seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero([]byte("byte")), "Non-empty byte slice seen as zero")
+
+	test.Assert(t, IsAnyNilOrZero(time.Time{}), "No specified time value seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(time.Now()), "Current time seen as zero")
 
 	type Foo struct {
 		foo int
@@ -142,6 +148,49 @@ func TestIsAnyNilOrZero(t *testing.T) {
 	test.Assert(t, IsAnyNilOrZero(d), "Pointer to uninitialized durationpb.Duration seen as non-zero")
 	test.Assert(t, IsAnyNilOrZero(durationpb.New(zeroDuration)), "*durationpb.Duration containing an zero value time.Duration is seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero(durationpb.New(666)), "A *durationpb.Duration with valid inner duration is seen as zero")
+}
+
+func BenchmarkIsAnyNilOrZero(b *testing.B) {
+	var thyme *time.Time
+	var sage *time.Duration
+	var table = []struct {
+		input interface{}
+	}{
+		{input: int(0)},
+		{input: int(1)},
+		{input: uint32(0)},
+		{input: uint64(1)},
+		{input: float32(0)},
+		{input: float32(0.1)},
+		{input: ""},
+		{input: "ahoyhoy"},
+		{input: []string{}},
+		{input: []string{""}},
+		{input: []string{"oodley_doodley"}},
+		{input: []byte{}},
+		{input: []byte{0}},
+		{input: []byte{1}},
+		{input: []rune{}},
+		{input: []rune{2}},
+		{input: []rune{3}},
+		{input: nil},
+		{input: false},
+		{input: true},
+		{input: thyme},
+		{input: time.Time{}},
+		{input: time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC)},
+		{input: sage},
+		{input: time.Duration(1)},
+		{input: time.Duration(0)},
+	}
+
+	for _, v := range table {
+		b.Run(fmt.Sprintf("input_%v", v.input), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = IsAnyNilOrZero(v.input)
+			}
+		})
+	}
 }
 
 func TestUniqueLowerNames(t *testing.T) {
