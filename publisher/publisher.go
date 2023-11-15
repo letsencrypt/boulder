@@ -224,7 +224,7 @@ func New(
 // to the CT log specified by log URL and public key (base64) and return the SCT
 // to the caller.
 func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Request) (*pubpb.Result, error) {
-	if core.IsAnyNilOrZero(req.Der, req.LogURL, req.LogPublicKey) {
+	if core.IsAnyNilOrZero(req.Der, req.LogURL, req.LogPublicKey, req.Kind) {
 		return nil, errors.New("incomplete gRPC request message")
 	}
 
@@ -253,19 +253,7 @@ func (pub *Impl) SubmitToSingleCTWithResult(ctx context.Context, req *pubpb.Requ
 		return nil, err
 	}
 
-	// TODO(#7161): Simply check req.Kind using IsAnyNilOrZero once it is always
-	// being set by the RA. Note that this block is not capable of producing
-	// pubpb.SubmissionType_info, which matches prior behavior.
-	kind := req.Kind
-	if kind == pubpb.SubmissionType_unknown {
-		if req.Precert {
-			kind = pubpb.SubmissionType_sct
-		} else {
-			kind = pubpb.SubmissionType_final
-		}
-	}
-
-	sct, err := pub.singleLogSubmit(ctx, chain, kind, ctLog)
+	sct, err := pub.singleLogSubmit(ctx, chain, req.Kind, ctLog)
 	if err != nil {
 		if canceled.Is(err) {
 			return nil, err
