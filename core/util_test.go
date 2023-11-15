@@ -152,6 +152,7 @@ func TestIsAnyNilOrZero(t *testing.T) {
 
 func BenchmarkIsAnyNilOrZero(b *testing.B) {
 	var thyme *time.Time
+	var sage *time.Duration
 	var table = []struct {
 		input interface{}
 	}{
@@ -163,15 +164,22 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 		{input: float32(0.1)},
 		{input: ""},
 		{input: "ahoyhoy"},
+		{input: []string{}},
+		{input: []string{""}},
+		{input: []string{"oodley_doodley"}},
 		{input: []byte{}},
 		{input: []byte{0}},
 		{input: []byte{1}},
+		{input: []rune{}},
+		{input: []rune{2}},
+		{input: []rune{3}},
 		{input: nil},
 		{input: false},
 		{input: true},
 		{input: thyme},
 		{input: time.Time{}},
 		{input: time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC)},
+		{input: sage},
 		{input: time.Duration(1)},
 		{input: time.Duration(0)},
 	}
