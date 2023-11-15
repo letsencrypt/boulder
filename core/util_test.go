@@ -172,7 +172,7 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 		{input: thyme},
 		{input: time.Time{}},
 		{input: time.Date(2015, time.June, 04, 11, 04, 38, 0, time.UTC)},
-		{input: time.Duration(1 * time.Second)},
+		{input: time.Duration(1)},
 		{input: time.Duration(0)},
 	}
 
