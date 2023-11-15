@@ -918,8 +918,17 @@ func TestFQDNSets(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to add name set")
 	test.AssertNotError(t, tx.Commit(), "Failed to commit transaction")
 
-	threeHours := time.Hour * 3
+	// Invalid Window
 	req := &sapb.CountFQDNSetsRequest{
+		Domains:  names,
+		WindowNS: 0,
+		Window:   nil,
+	}
+	_, err = sa.CountFQDNSets(ctx, req)
+	test.AssertErrorIs(t, err, errIncompleteRequest)
+
+	threeHours := time.Hour * 3
+	req = &sapb.CountFQDNSetsRequest{
 		Domains:  names,
 		WindowNS: threeHours.Nanoseconds(),
 		Window:   durationpb.New(threeHours),
@@ -977,8 +986,18 @@ func TestFQDNSetTimestampsForWindow(t *testing.T) {
 	test.AssertNotError(t, err, "Failed to open transaction")
 
 	names := []string{"a.example.com", "B.example.com"}
-	window := time.Hour * 3
+
+	// Invalid Window
 	req := &sapb.CountFQDNSetsRequest{
+		Domains:  names,
+		WindowNS: 0,
+		Window:   nil,
+	}
+	_, err = sa.FQDNSetTimestampsForWindow(ctx, req)
+	test.AssertErrorIs(t, err, errIncompleteRequest)
+
+	window := time.Hour * 3
+	req = &sapb.CountFQDNSetsRequest{
 		Domains:  names,
 		WindowNS: window.Nanoseconds(),
 		Window:   durationpb.New(window),

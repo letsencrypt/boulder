@@ -25,6 +25,7 @@ import (
 	"time"
 	"unicode"
 
+	"google.golang.org/protobuf/types/known/durationpb"
 	"gopkg.in/go-jose/go-jose.v2"
 )
 
@@ -238,6 +239,10 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 			}
 		case time.Time:
 			if v.IsZero() {
+				return true
+			}
+		case *durationpb.Duration:
+			if v == nil || v.AsDuration() == time.Duration(0) {
 				return true
 			}
 		default:

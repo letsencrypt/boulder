@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hpcloud/tail"
+	"github.com/nxadm/tail"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/letsencrypt/boulder/cmd"
@@ -168,10 +168,11 @@ func main() {
 	var tailers []*tail.Tail
 	for _, filename := range config.Files {
 		t, err := tail.TailFile(filename, tail.Config{
-			ReOpen:    true,
-			MustExist: false, // sometimes files won't exist, so we must tolerate that
-			Follow:    true,
-			Logger:    tailLogger{logger},
+			ReOpen:        true,
+			MustExist:     false, // sometimes files won't exist, so we must tolerate that
+			Follow:        true,
+			Logger:        tailLogger{logger},
+			CompleteLines: true,
 		})
 		cmd.FailOnError(err, "failed to tail file")
 
