@@ -487,7 +487,7 @@ func setup(t *testing.T) testCtx {
 	signer, err := test.LoadSigner("../../test/hierarchy/int-r3.key.pem")
 	test.AssertNotError(t, err, "Failed to load test signer")
 
-	// TODO(#7094): Make this unconditional once the table exists in prod.
+	// TODO(#7094): Make this unconditional once the revokedCertificates table exists in prod.
 	var crlDPBase string
 	var crlNumShards int
 	var crlShardWidth time.Duration

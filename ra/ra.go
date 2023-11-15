@@ -2027,6 +2027,9 @@ func (ra *RegistrationAuthorityImpl) crlShardForCert(cert *x509.Certificate) (in
 	if err != nil {
 		return 0, fmt.Errorf("extracting crl shard from distributionPoint URL: %w", err)
 	}
+	if shard <= 0 || shard > ra.crlNumShards {
+		return 0, fmt.Errorf("extracted invalid shard index %d from distributuionPoint URL %q", shard, crldp)
+	}
 	return int64(shard), nil
 }
 
@@ -2346,9 +2349,6 @@ func (ra *RegistrationAuthorityImpl) AdministrativelyRevokeCertificate(ctx conte
 			return nil, fmt.Errorf("computing CRL shard for cert: %w", err)
 		}
 	}
-
-	fmt.Printf("num %+v, width %+v, prefix %+v\n", ra.crlNumShards, ra.crlShardWidth, ra.crlDPBase)
-	fmt.Printf("revoking %+v in shard %+v\n", req.Cert != nil, crlShard)
 
 	logEvent := certificateRevocationEvent{
 		ID:           core.NewToken(),
