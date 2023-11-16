@@ -23,7 +23,7 @@ type caaParams struct {
 }
 
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
-	if req.Domain == "" || req.ValidationMethod == "" || req.AccountURIID == 0 {
+	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
 	}
 
