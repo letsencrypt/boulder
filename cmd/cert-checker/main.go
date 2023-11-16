@@ -389,16 +389,25 @@ func (c *certChecker) checkCert(ctx context.Context, cert core.Certificate, igno
 		if parsedCert.NotBefore.Before(cert.Issued.Add(-6*time.Hour)) || parsedCert.NotBefore.After(cert.Issued.Add(6*time.Hour)) {
 			problems = append(problems, "Stored issuance date is outside of 6 hour window of certificate NotBefore")
 		}
-		// Check if the CommonName is <= 64 characters.
-		if len(parsedCert.Subject.CommonName) > 64 {
-			problems = append(
-				problems,
-				fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
-			)
+		if parsedCert.Subject.CommonName != "" {
+			// Check if the CommonName is <= 64 characters.
+			if len(parsedCert.Subject.CommonName) > 64 {
+				problems = append(
+					problems,
+					fmt.Sprintf("Certificate has common name >64 characters long (%d)", len(parsedCert.Subject.CommonName)),
+				)
+			}
+
+			// Check that the CommonName is included in the SANs.
+			if !slices.Contains(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
+				problems = append(problems, fmt.Sprintf("Certificate Common Name does not appear in Subject Alternative Names: %q !< %v",
+					parsedCert.Subject.CommonName, parsedCert.DNSNames))
+			}
 		}
-		// Check that the PA is still willing to issue for each name in DNSNames
-		// + CommonName.
-		for _, name := range append(parsedCert.DNSNames, parsedCert.Subject.CommonName) {
+		// Check that the PA is still willing to issue for each name in DNSNames.
+		// We do not check the CommonName here, as (if it exists) we already checked
+		// that it is identical to one of the DNSNames in the SAN.
+		for _, name := range parsedCert.DNSNames {
 			id := identifier.ACMEIdentifier{Type: identifier.DNS, Value: name}
 			err = c.pa.WillingToIssueWildcards([]identifier.ACMEIdentifier{id})
 			if err != nil {

@@ -241,13 +241,12 @@ func TestCheckCert(t *testing.T) {
 				NotBefore: issued,
 				NotAfter:  goodExpiry.AddDate(0, 0, 1), // Period too long
 				DNSNames: []string{
-					// longName should be flagged along with the long CN
-					longName,
 					"example-a.com",
 					"foodnotbombs.mil",
 					// `dev-myqnapcloud.com` is included because it is an exact private
 					// entry on the public suffix list
 					"dev-myqnapcloud.com",
+					// don't include longName in the SANs, so the unique CN gets flagged
 				},
 				SerialNumber:          serial,
 				BasicConstraintsValid: false,
@@ -283,6 +282,7 @@ func TestCheckCert(t *testing.T) {
 				"Certificate has incorrect key usage extensions":                            1,
 				"Certificate has common name >64 characters long (65)":                      1,
 				"Certificate contains an unexpected extension: 1.3.3.7":                     1,
+				"Certificate Common Name does not appear in Subject Alternative Names: \"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeexample.com\" !< [example-a.com foodnotbombs.mil dev-myqnapcloud.com]": 1,
 			}
 			for _, p := range problems {
 				_, ok := problemsMap[p]
