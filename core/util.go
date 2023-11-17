@@ -223,7 +223,7 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 			}
 		case byte:
 			// Byte is an alias for uint8 and will cover that case.
-			if v == byte(0) {
+			if v == 0 {
 				return true
 			}
 		case []byte:
@@ -235,19 +235,19 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 				return true
 			}
 		case int8:
-			if v == int8(0) {
+			if v == 0 {
 				return true
 			}
 		case int16:
-			if v == int16(0) {
+			if v == 0 {
 				return true
 			}
 		case int32:
-			if v == int32(0) {
+			if v == 0 {
 				return true
 			}
 		case int64:
-			if v == int64(0) {
+			if v == 0 {
 				return true
 			}
 		case uint:
@@ -255,23 +255,23 @@ func IsAnyNilOrZero(vals ...interface{}) bool {
 				return true
 			}
 		case uint16:
-			if v == uint16(0) {
+			if v == 0 {
 				return true
 			}
 		case uint32:
-			if v == uint32(0) {
+			if v == 0 {
 				return true
 			}
 		case uint64:
-			if v == uint64(0) {
+			if v == 0 {
 				return true
 			}
 		case float32:
-			if v == float32(0) {
+			if v == 0 {
 				return true
 			}
 		case float64:
-			if v == float64(0) {
+			if v == 0 {
 				return true
 			}
 		case time.Time:
