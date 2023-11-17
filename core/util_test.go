@@ -185,10 +185,28 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 	}{
 		{input: int(0)},
 		{input: int(1)},
+		{input: int8(0)},
+		{input: int8(1)},
+		{input: int16(0)},
+		{input: int16(1)},
+		{input: int32(0)},
+		{input: int32(1)},
+		{input: int64(0)},
+		{input: int64(1)},
+		{input: uint(0)},
+		{input: uint(1)},
+		{input: uint8(0)},
+		{input: uint8(1)},
+		{input: uint16(0)},
+		{input: uint16(1)},
 		{input: uint32(0)},
+		{input: uint32(1)},
+		{input: uint64(0)},
 		{input: uint64(1)},
 		{input: float32(0)},
 		{input: float32(0.1)},
+		{input: float64(0)},
+		{input: float64(0.1)},
 		{input: ""},
 		{input: "ahoyhoy"},
 		{input: []string{}},
@@ -212,7 +230,7 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 	}
 
 	for _, v := range table {
-		b.Run(fmt.Sprintf("input_%v", v.input), func(b *testing.B) {
+		b.Run(fmt.Sprintf("input_%T_%v", v.input, v.input), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_ = IsAnyNilOrZero(v.input)
 			}
