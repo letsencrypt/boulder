@@ -76,7 +76,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 				"limit":      NewRegistrationsPerIPAddress.String(),
 				"bucket_key": joinWithColon(NewRegistrationsPerIPAddress.EnumString(), tenZeroZeroTwo)}, 0)
 
-			overriddenBucketId, err := newRegistrationsPerIPAddressBucketId(net.ParseIP(tenZeroZeroTwo))
+			overriddenBucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, net.ParseIP(tenZeroZeroTwo))
 			test.AssertNotError(t, err, "should not error")
 
 			// Attempt to check a spend of 41 requests (a cost > the limit burst
@@ -143,7 +143,7 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			clk.Add(d.ResetIn)
 
 			testIP := net.ParseIP(testIP)
-			normalBucket, err := newRegistrationsPerIPAddressBucketId(testIP)
+			normalBucket, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, testIP)
 			test.AssertNotError(t, err, "should not error")
 
 			// Spend the same bucket but in a batch with bucket subject to
@@ -185,7 +185,7 @@ func Test_Limiter_InitializationViaCheckAndSpend(t *testing.T) {
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketId, err := newRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, net.ParseIP(testIP))
 			test.AssertNotError(t, err, "should not error")
 
 			// Check on an empty bucket should return the theoretical next state
@@ -242,7 +242,7 @@ func Test_Limiter_RefundAndSpendCostErr(t *testing.T) {
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketId, err := newRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, net.ParseIP(testIP))
 			test.AssertNotError(t, err, "should not error")
 
 			// Spend a cost of 0, which should fail.
@@ -269,7 +269,7 @@ func Test_Limiter_CheckWithBadCost(t *testing.T) {
 	testCtx, limiters, _, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketId, err := newRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, net.ParseIP(testIP))
 			test.AssertNotError(t, err, "should not error")
 
 			_, err = l.Check(testCtx, newTransaction(bucketId, -1))
@@ -283,7 +283,7 @@ func Test_Limiter_DefaultLimits(t *testing.T) {
 	testCtx, limiters, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketId, err := newRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, net.ParseIP(testIP))
 			test.AssertNotError(t, err, "should not error")
 
 			// Attempt to spend 21 requests (a cost > the limit burst capacity),
@@ -345,7 +345,7 @@ func Test_Limiter_RefundAndReset(t *testing.T) {
 	testCtx, limiters, clk, testIP := setup(t)
 	for name, l := range limiters {
 		t.Run(name, func(t *testing.T) {
-			bucketId, err := newRegistrationsPerIPAddressBucketId(net.ParseIP(testIP))
+			bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, net.ParseIP(testIP))
 			test.AssertNotError(t, err, "should not error")
 
 			// Attempt to spend all 20 requests, this should succeed.
