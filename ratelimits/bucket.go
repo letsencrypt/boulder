@@ -22,6 +22,8 @@ type bucketId struct {
 	bucketKey string
 }
 
+// newIPAddressBucketId validates and returns a bucketId for limits that use the
+// 'enum:ipAddress' bucket key format.
 func newIPAddressBucketId(name Name, ip net.IP) (bucketId, error) { //nolint: unparam
 	id := ip.String()
 	err := validateIdForName(name, id)
@@ -34,7 +36,9 @@ func newIPAddressBucketId(name Name, ip net.IP) (bucketId, error) { //nolint: un
 	}, nil
 }
 
-func ipv6RangeCIDRBucketId(name Name, ip net.IP) (bucketId, error) {
+// newIPv6RangeCIDRBucketId validates and returns a bucketId for limits that use
+// the 'enum:ipv6RangeCIDR' bucket key format.
+func newIPv6RangeCIDRBucketId(name Name, ip net.IP) (bucketId, error) {
 	if ip.To4() != nil {
 		return bucketId{}, fmt.Errorf("invalid IPv6 address, %q must be an IPv6 address", ip.String())
 	}
@@ -51,6 +55,8 @@ func ipv6RangeCIDRBucketId(name Name, ip net.IP) (bucketId, error) {
 	}, nil
 }
 
+// newRegIdBucketId validates ands returns a bucketId for limits that use the
+// 'enum:regId' bucket key format.
 func newRegIdBucketId(name Name, regId int64) (bucketId, error) {
 	id := strconv.FormatInt(regId, 10)
 	err := validateIdForName(name, id)
@@ -63,6 +69,8 @@ func newRegIdBucketId(name Name, regId int64) (bucketId, error) {
 	}, nil
 }
 
+// newDomainBucketId validates and returns a bucketId for limits that use the
+// 'enum:domain' bucket key format.
 func newDomainBucketId(name Name, orderName string) (bucketId, error) {
 	err := validateIdForName(name, orderName)
 	if err != nil {
@@ -74,6 +82,8 @@ func newDomainBucketId(name Name, orderName string) (bucketId, error) {
 	}, nil
 }
 
+// newFQDNSetBucketId validates and returns a bucketId for limits that use the
+// 'enum:fqdnSet' bucket key format.
 func newFQDNSetBucketId(name Name, orderNames []string) (bucketId, error) {
 	id := string(core.HashNames(orderNames))
 	err := validateIdForName(name, id)
@@ -150,7 +160,7 @@ func NewRegistrationsPerIPAddressTransaction(ip net.IP, cost int64) (Transaction
 // NewRegistrationsPerIPv6RangeTransaction returns a Transaction for the /48
 // IPv6 range containing the provided IPv6 address.
 func NewRegistrationsPerIPv6RangeTransaction(ip net.IP, cost int64) (Transaction, error) {
-	bucketId, err := ipv6RangeCIDRBucketId(NewRegistrationsPerIPv6Range, ip)
+	bucketId, err := newIPv6RangeCIDRBucketId(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -223,7 +233,8 @@ func NewCertificatesPerDomainTransactions(limiter *Limiter, regId int64, orderDo
 		}
 		certsPerDomainPerAccountCost += cost
 		if certsPerDomainPerAccountLimit.isOverride {
-			// SHOULD be consumed from each CertificatesPerDomain bucket, if possible.
+			// SHOULD be consumed from each CertificatesPerDomain bucket, if
+			// possible.
 			txns = append(txns, newOptimisticTransaction(certsPerDomainId, cost))
 		} else {
 			txns = append(txns, newTransaction(certsPerDomainId, cost))
