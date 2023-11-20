@@ -116,9 +116,36 @@ func TestIsAnyNilOrZero(t *testing.T) {
 	test.Assert(t, IsAnyNilOrZero(false), "False bool seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero(true), "True bool seen as zero")
 
-	test.Assert(t, IsAnyNilOrZero(0), "Zero num seen as non-zero")
-	test.Assert(t, !IsAnyNilOrZero(uint32(5)), "Non-zero num seen as zero")
-	test.Assert(t, !IsAnyNilOrZero(-12.345), "Non-zero num seen as zero")
+	test.Assert(t, IsAnyNilOrZero(0), "Untyped constant zero seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(1), "Untyped constant 1 seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int(0)), "int(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int(1)), "int(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int8(0)), "int8(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int8(1)), "int8(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int16(0)), "int16(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int16(1)), "int16(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int32(0)), "int32(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int32(1)), "int32(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(int64(0)), "int64(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(int64(1)), "int64(1) seen as zero")
+
+	test.Assert(t, IsAnyNilOrZero(uint(0)), "uint(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint(1)), "uint(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint8(0)), "uint8(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint8(1)), "uint8(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint16(0)), "uint16(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint16(1)), "uint16(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint32(0)), "uint32(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint32(1)), "uint32(1) seen as zero")
+	test.Assert(t, IsAnyNilOrZero(uint64(0)), "uint64(0) seen as non-zero")
+	test.Assert(t, !IsAnyNilOrZero(uint64(1)), "uint64(1) seen as zero")
+
+	test.Assert(t, !IsAnyNilOrZero(-12.345), "Untyped float32 seen as zero")
+	test.Assert(t, !IsAnyNilOrZero(float32(6.66)), "Non-empty float32 seen as zero")
+	test.Assert(t, IsAnyNilOrZero(float32(0)), "Empty float32 seen as non-zero")
+
+	test.Assert(t, !IsAnyNilOrZero(float64(7.77)), "Non-empty float64 seen as zero")
+	test.Assert(t, IsAnyNilOrZero(float64(0)), "Empty float64 seen as non-zero")
 
 	test.Assert(t, IsAnyNilOrZero(""), "Empty string seen as non-zero")
 	test.Assert(t, !IsAnyNilOrZero("string"), "Non-empty string seen as zero")
@@ -158,10 +185,28 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 	}{
 		{input: int(0)},
 		{input: int(1)},
+		{input: int8(0)},
+		{input: int8(1)},
+		{input: int16(0)},
+		{input: int16(1)},
+		{input: int32(0)},
+		{input: int32(1)},
+		{input: int64(0)},
+		{input: int64(1)},
+		{input: uint(0)},
+		{input: uint(1)},
+		{input: uint8(0)},
+		{input: uint8(1)},
+		{input: uint16(0)},
+		{input: uint16(1)},
 		{input: uint32(0)},
+		{input: uint32(1)},
+		{input: uint64(0)},
 		{input: uint64(1)},
 		{input: float32(0)},
 		{input: float32(0.1)},
+		{input: float64(0)},
+		{input: float64(0.1)},
 		{input: ""},
 		{input: "ahoyhoy"},
 		{input: []string{}},
@@ -185,7 +230,7 @@ func BenchmarkIsAnyNilOrZero(b *testing.B) {
 	}
 
 	for _, v := range table {
-		b.Run(fmt.Sprintf("input_%v", v.input), func(b *testing.B) {
+		b.Run(fmt.Sprintf("input_%T_%v", v.input, v.input), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_ = IsAnyNilOrZero(v.input)
 			}
