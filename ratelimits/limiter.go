@@ -323,11 +323,10 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 		// Spend the cost and update the consolidated decision.
 		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
 		if d.Allowed {
-			if txn.checkOnly {
-				// Suppress spend for check-only transaction.
-				continue
+			if !txn.checkOnly {
+				// Check-only transactions are NOT persisted.
+				newTATs[txn.bucketKey] = d.newTAT
 			}
-			newTATs[txn.bucketKey] = d.newTAT
 		}
 
 		if txn.limit.isOverride {
@@ -336,7 +335,7 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			l.overrideUsageGauge.WithLabelValues(txn.limitName.String(), txn.bucketKey).Set(utilization)
 		}
 
-		if !d.Allowed && txn.optimistic {
+		if (!d.Allowed && txn.optimistic) || txn.checkOnly {
 			// Suppress denial for optimistic transaction.
 			d = disabledLimitDecision
 		}
