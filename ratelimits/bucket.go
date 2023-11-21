@@ -178,15 +178,14 @@ func NewOrdersPerAccountTransaction(regId, cost int64) (Transaction, error) {
 }
 
 // NewFailedAuthorizationsPerAccountCheckOnlyTransaction returns a Transaction
-// for the provided ACME registration Id, which when processed as part of a
-// batch call will only check the bucket's capacity and not spend or refund the
-// cost.
-func NewFailedAuthorizationsPerAccountCheckOnlyTransaction(regId, cost int64) (Transaction, error) {
+// for the provided ACME registration Id which, when processed as part of a
+// batch call, will only check whether the bucket is over threshold.
+func NewFailedAuthorizationsPerAccountCheckOnlyTransaction(regId int64) (Transaction, error) {
 	bucketId, err := newRegIdBucketId(FailedAuthorizationsPerAccount, regId)
 	if err != nil {
 		return Transaction{}, err
 	}
-	return newCheckOnlyTransaction(bucketId, cost), nil
+	return newCheckOnlyTransaction(bucketId, 0), nil
 }
 
 // NewFailedAuthorizationsPerAccountTransaction returns a Transaction for the
