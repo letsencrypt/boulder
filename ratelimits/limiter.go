@@ -286,6 +286,9 @@ func (d *batchDecision) consolidate(in *Decision) {
 //   - Allowed is true if all of the Decisions were allowed,
 //   - Remaining is the smallest value across all Decisions, and
 //   - RetryIn and ResetIn are the largest values across all Decisions.
+//   - newTAT is the largest value across all Decisions.
+//   - Optimistic transactions are NOT consolidated.
+//   - Check-only transactions are NOT persisted.
 //
 // Non-existent buckets will be created WITH the cost factored into the initial
 // state. New bucket states are persisted to the underlying datastore, if
@@ -322,11 +325,9 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 
 		// Spend the cost and update the consolidated decision.
 		d := maybeSpend(l.clk, txn.limit, tat, txn.cost)
-		if d.Allowed {
-			if !txn.checkOnly {
-				// Check-only transactions are NOT persisted.
-				newTATs[txn.bucketKey] = d.newTAT
-			}
+		if d.Allowed && !txn.checkOnly {
+			// Check-only transactions are NOT persisted.
+			newTATs[txn.bucketKey] = d.newTAT
 		}
 
 		if txn.limit.isOverride {
@@ -335,8 +336,8 @@ func (l *Limiter) BatchSpend(ctx context.Context, txns []Transaction) (*Decision
 			l.overrideUsageGauge.WithLabelValues(txn.limitName.String(), txn.bucketKey).Set(utilization)
 		}
 
-		if (!d.Allowed && txn.optimistic) || txn.checkOnly {
-			// Suppress denial for optimistic transaction.
+		if txn.optimistic {
+			// Decisions from optimistic transactions are NOT consolidated.
 			d = disabledLimitDecision
 		}
 		batchDecision.consolidate(d)
@@ -400,6 +401,9 @@ func (l *Limiter) Refund(ctx context.Context, txn Transaction) (*Decision, error
 //   - Allowed is true if all of the Decisions were allowed,
 //   - Remaining is the smallest value across all Decisions, and
 //   - RetryIn and ResetIn are the largest values across all Decisions.
+//   - newTAT is the largest value across all Decisions.
+//   - Optimistic transactions are NOT consolidated.
+//   - Check-only transactions are NOT persisted.
 //
 // Non-existent buckets within the batch are disregarded without error, as this
 // is equivalent to the bucket being full. The new bucket state is persisted to

@@ -184,9 +184,23 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			// that of the default bucket.
 			d, err = l.BatchSpend(testCtx, []Transaction{newTransaction(overriddenBucketId, 1), newCheckOnlyTransaction(normalBucket, 1)})
 			test.AssertNotError(t, err, "should not error")
+			test.AssertEquals(t, d.Remaining, int64(19))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
+
+			// Check the remaining quota of the overridden bucket.
+			d, err = l.Check(testCtx, newTransaction(overriddenBucketId, 0))
+			test.AssertNotError(t, err, "should not error")
 			test.AssertEquals(t, d.Remaining, int64(39))
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
 			test.AssertEquals(t, d.ResetIn, time.Millisecond*25)
+
+			// Check the remaining quota of the default bucket.
+			d, err = l.Check(testCtx, newTransaction(normalBucket, 0))
+			test.AssertNotError(t, err, "should not error")
+			test.AssertEquals(t, d.Remaining, int64(20))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Duration(0))
 
 			// Spend the same bucket but in a batch with a transaction that is
 			// optimistic. This should succeed, but the decision should reflect
@@ -197,6 +211,20 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
 			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 
+			// Check the remaining quota of the overridden bucket.
+			d, err = l.Check(testCtx, newTransaction(overriddenBucketId, 0))
+			test.AssertNotError(t, err, "should not error")
+			test.AssertEquals(t, d.Remaining, int64(38))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
+
+			// Check the remaining quota of the default bucket.
+			d, err = l.Check(testCtx, newTransaction(normalBucket, 0))
+			test.AssertNotError(t, err, "should not error")
+			test.AssertEquals(t, d.Remaining, int64(19))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
+
 			// Once more, but in now the optimistic transaction will attempt to
 			// spend 20 requests. The optimistic transaction should fail, but
 			// the decision should reflect that of the overridden bucket.
@@ -204,7 +232,21 @@ func Test_Limiter_CheckWithLimitOverrides(t *testing.T) {
 			test.AssertNotError(t, err, "should not error")
 			test.AssertEquals(t, d.Remaining, int64(37))
 			test.AssertEquals(t, d.RetryIn, time.Duration(0))
-			test.AssertEquals(t, d.ResetIn, time.Millisecond*25)
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*75)
+
+			// Check the remaining quota of the overridden bucket.
+			d, err = l.Check(testCtx, newTransaction(overriddenBucketId, 0))
+			test.AssertNotError(t, err, "should not error")
+			test.AssertEquals(t, d.Remaining, int64(37))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*75)
+
+			// Check the remaining quota of the default bucket.
+			d, err = l.Check(testCtx, newTransaction(normalBucket, 0))
+			test.AssertNotError(t, err, "should not error")
+			test.AssertEquals(t, d.Remaining, int64(19))
+			test.AssertEquals(t, d.RetryIn, time.Duration(0))
+			test.AssertEquals(t, d.ResetIn, time.Millisecond*50)
 
 			// Reset between tests.
 			err = l.Reset(testCtx, overriddenBucketId)
