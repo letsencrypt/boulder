@@ -210,6 +210,10 @@ func (v cancelledVA) PerformValidation(_ context.Context, _ *vapb.PerformValidat
 	return nil, context.Canceled
 }
 
+func (v cancelledVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, context.Canceled
+}
+
 // brokenRemoteVA is a mock for the vapb.VAClient interface mocked to
 // always return errors.
 type brokenRemoteVA struct{}
@@ -223,6 +227,10 @@ func (b brokenRemoteVA) PerformValidation(_ context.Context, _ *vapb.PerformVali
 	return nil, errBrokenRemoteVA
 }
 
+func (b brokenRemoteVA) IsCAAValid(_ context.Context, _ *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return nil, errBrokenRemoteVA
+}
+
 // localRemoteVA is a wrapper which fulfills the VAClient interface, but then
 // forwards requests directly to its inner ValidationAuthorityImpl rather than
 // over the network. This lets a local in-memory mock VA act like a remote VA.
@@ -232,6 +240,10 @@ type localRemoteVA struct {
 
 func (lrva localRemoteVA) PerformValidation(ctx context.Context, req *vapb.PerformValidationRequest, _ ...grpc.CallOption) (*vapb.ValidationResult, error) {
 	return lrva.remote.PerformValidation(ctx, req)
+}
+
+func (lrva localRemoteVA) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest, _ ...grpc.CallOption) (*vapb.IsCAAValidResponse, error) {
+	return lrva.remote.IsCAAValid(ctx, req)
 }
 
 func TestValidateMalformedChallenge(t *testing.T) {

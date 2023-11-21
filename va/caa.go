@@ -3,14 +3,17 @@ package va
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"regexp"
 	"strings"
 	"sync"
 
+	"github.com/letsencrypt/boulder/canceled"
 	"github.com/letsencrypt/boulder/core"
 	corepb "github.com/letsencrypt/boulder/core/proto"
 	berrors "github.com/letsencrypt/boulder/errors"
+	bgrpc "github.com/letsencrypt/boulder/grpc"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	vapb "github.com/letsencrypt/boulder/va/proto"
@@ -40,16 +43,83 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		accountURIID:     req.AccountURIID,
 		validationMethod: validationMethod,
 	}
-	if prob := va.checkCAA(ctx, acmeID, params); prob != nil {
-		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
+
+	// PHIL
+	var remoteCAAResults chan *remoteValidationResult
+	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
+		remoteCAAResults = make(chan *remoteValidationResult, remoteVACount)
+		go va.performRVACAARecheck(ctx, req, remoteCAAResults)
+	}
+	// PHIL
+	prob := va.checkCAA(ctx, acmeID, params)
+	fmt.Printf("PHIL: remoteVAs: %v\n", va.remoteVAs)
+	if prob != nil {
+		detail := fmt.Sprintf("PHIL: Rechecking CAA While processing CAA for %s: %s", req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: string(prob.Type),
 				Detail:      replaceInvalidUTF8([]byte(detail)),
 			},
 		}, nil
+	} else if remoteCAAResults != nil {
+		remoteProb := va.processRemoteResults(
+			req.Domain,
+			req.AccountURIID,
+			string(validationMethod),
+			prob,
+			remoteCAAResults,
+			len(va.remoteVAs))
+
+		// If the remote result was a non-nil problem then fail the validation
+		if remoteProb != nil {
+			prob = remoteProb
+			//challenge.Status = core.StatusInvalid
+			//challenge.Error = remoteProb
+			//logEvent.Error = remoteProb.Error()
+			va.log.Infof("PHIL: Rechecking CAA Validation failed due to remote failures: identifier=%v err=%s",
+				req.Domain, remoteProb)
+			va.metrics.remoteValidationFailures.Inc()
+		}
 	}
 	return &vapb.IsCAAValidResponse{}, nil
+}
+
+func (va *ValidationAuthorityImpl) performRVACAARecheck(
+	ctx context.Context,
+	req *vapb.IsCAAValidRequest,
+	results chan *remoteValidationResult) {
+	for _, i := range rand.Perm(len(va.remoteVAs)) {
+		remoteVA := va.remoteVAs[i]
+		go func(rva RemoteVA) {
+			result := &remoteValidationResult{
+				VAHostname: rva.Address,
+			}
+			res, err := rva.IsCAAValid(ctx, req)
+			if err != nil && canceled.Is(err) {
+				// If the non-nil err was a canceled error, ignore it. That's fine: it
+				// just means we cancelled the remote VA request before it was
+				// finished because we didn't care about its result. Don't log to avoid
+				// spamming the logs.
+				result.Problem = probs.ServerInternal("Remote IsCAAValidRequest RPC canceled")
+			} else if err != nil {
+				// This is a real error, not just a problem with the validation.
+				va.log.Errf("Remote VA %q.IsCAAValidRequest failed: %s", rva.Address, err)
+				result.Problem = probs.ServerInternal("Remote IsCAAValidRequest RPC failed")
+			} else if res.Problem != nil {
+				prob, err := bgrpc.PBToProblemDetails(res.Problem)
+				if err != nil {
+					va.log.Infof("Remote VA %q.IsCAAValidRequest returned malformed problem: %s", rva.Address, err)
+					result.Problem = probs.ServerInternal(
+						fmt.Sprintf("Remote IsCAAValidRequest RPC returned malformed result: %s", err))
+				} else {
+					va.log.Infof("Remote VA %q.IsCAAValidRequest returned problem: %s", rva.Address, prob)
+					result.Problem = prob
+				}
+			}
+			fmt.Printf("PHIL: %#v, %#v\n", rva, result)
+			results <- result
+		}(remoteVA)
+	}
 }
 
 // checkCAA performs a CAA lookup & validation for the provided identifier. If
@@ -58,7 +128,7 @@ func (va *ValidationAuthorityImpl) checkCAA(
 	ctx context.Context,
 	identifier identifier.ACMEIdentifier,
 	params *caaParams) *probs.ProblemDetails {
-	if params == nil || params.validationMethod == "" || params.accountURIID == 0 {
+	if core.IsAnyNilOrZero(params, params.validationMethod, params.accountURIID) {
 		return probs.ServerInternal("expected validationMethod or accountURIID not provided to checkCAA")
 	}
 
