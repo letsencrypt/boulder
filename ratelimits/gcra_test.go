@@ -152,6 +152,12 @@ func Test_maybeRefund(t *testing.T) {
 	test.AssertEquals(t, d.RetryIn, time.Duration(0))
 	test.AssertEquals(t, d.ResetIn, time.Duration(0))
 
+	// Refund 0, we should still have 10.
+	d = maybeRefund(clk, limit, d.newTAT, 0)
+	test.AssertEquals(t, d.Remaining, int64(10))
+	test.AssertEquals(t, d.RetryIn, time.Duration(0))
+	test.AssertEquals(t, d.ResetIn, time.Duration(0))
+
 	// Spend 1 more of our 10 requests.
 	d = maybeSpend(clk, limit, d.newTAT, 1)
 	test.Assert(t, d.Allowed, "should be allowed")

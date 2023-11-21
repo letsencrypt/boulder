@@ -104,14 +104,11 @@ type Transaction struct {
 
 	// optimistic indicates to the limiter that the cost should be spent if
 	// possible, but should not be denied if the bucket lacks the capacity to
-	// satisfy the cost. Note: optimistic transactions are only supported by
-	// limiter.BatchSpend().
+	// satisfy the cost.
 	optimistic bool
 
 	// checkOnly indicates to the limiter that the cost should be checked but
-	// not spent or refunded. Note: checkOnly transactions are only supported by
-	// limiter.BatchSpend(). Outside of batches callers should use
-	// limiter.Check().
+	// not spent or refunded.
 	checkOnly bool
 }
 
@@ -125,8 +122,7 @@ func newTransaction(b bucketId, cost int64) Transaction {
 
 // newCheckOnlyTransaction creates a new check-only Transaction for the provided
 // BucketId and cost. Check-only transactions will not have their cost deducted
-// from the bucket's capacity. Note: check-only transactions are only supported
-// by limiter.BatchSpend() and limiter.BatchRefund().
+// from the bucket's capacity.
 func newCheckOnlyTransaction(b bucketId, cost int64) Transaction {
 	return Transaction{
 		bucketId:  b,
@@ -137,8 +133,7 @@ func newCheckOnlyTransaction(b bucketId, cost int64) Transaction {
 
 // newOptimisticTransaction creates a new optimistic Transaction for the
 // provided BucketId and cost. Optimistic transactions will not be denied if the
-// bucket lacks the capacity to satisfy the cost. Note: optimistic transactions
-// are only supported by limiter.BatchSpend().
+// bucket lacks the capacity to satisfy the cost.
 func newOptimisticTransaction(b bucketId, cost int64) Transaction {
 	return Transaction{
 		bucketId:   b,
@@ -148,7 +143,7 @@ func newOptimisticTransaction(b bucketId, cost int64) Transaction {
 }
 
 // NewRegistrationsPerIPAddressTransaction returns a Transaction for the
-// provided IP address.
+// NewRegistrationsPerIPAddress limit for the provided IP address.
 func NewRegistrationsPerIPAddressTransaction(ip net.IP, cost int64) (Transaction, error) {
 	bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, ip)
 	if err != nil {
@@ -157,8 +152,9 @@ func NewRegistrationsPerIPAddressTransaction(ip net.IP, cost int64) (Transaction
 	return newTransaction(bucketId, cost), nil
 }
 
-// NewRegistrationsPerIPv6RangeTransaction returns a Transaction for the /48
-// IPv6 range containing the provided IPv6 address.
+// NewRegistrationsPerIPv6RangeTransaction returns a Transaction for the
+// NewRegistrationsPerIPv6Range limit for the /48 IPv6 range which contains the
+// provided IPv6 address.
 func NewRegistrationsPerIPv6RangeTransaction(ip net.IP, cost int64) (Transaction, error) {
 	bucketId, err := newIPv6RangeCIDRBucketId(NewRegistrationsPerIPv6Range, ip)
 	if err != nil {
@@ -168,7 +164,7 @@ func NewRegistrationsPerIPv6RangeTransaction(ip net.IP, cost int64) (Transaction
 }
 
 // NewOrdersPerAccountTransaction returns a Transaction for the provided ACME
-// registration Id.
+// NewOrdersPerAccount limit for the provided ACME registration Id.
 func NewOrdersPerAccountTransaction(regId, cost int64) (Transaction, error) {
 	bucketId, err := newRegIdBucketId(NewOrdersPerAccount, regId)
 	if err != nil {
@@ -177,9 +173,9 @@ func NewOrdersPerAccountTransaction(regId, cost int64) (Transaction, error) {
 	return newTransaction(bucketId, cost), nil
 }
 
-// NewFailedAuthorizationsPerAccountCheckOnlyTransaction returns a Transaction
-// for the provided ACME registration Id which, when processed as part of a
-// batch call, will only check whether the bucket is over threshold.
+// NewFailedAuthorizationsPerAccountCheckOnlyTransaction returns a 0 cost
+// check-only Transaction for the provided ACME registration Id for the
+// FailedAuthorizationsPerAccount limit.
 func NewFailedAuthorizationsPerAccountCheckOnlyTransaction(regId int64) (Transaction, error) {
 	bucketId, err := newRegIdBucketId(FailedAuthorizationsPerAccount, regId)
 	if err != nil {
@@ -189,7 +185,7 @@ func NewFailedAuthorizationsPerAccountCheckOnlyTransaction(regId int64) (Transac
 }
 
 // NewFailedAuthorizationsPerAccountTransaction returns a Transaction for the
-// provided ACME registration Id.
+// FailedAuthorizationsPerAccount limit for the provided ACME registration Id.
 func NewFailedAuthorizationsPerAccountTransaction(regId, cost int64) (Transaction, error) {
 	bucketId, err := newRegIdBucketId(FailedAuthorizationsPerAccount, regId)
 	if err != nil {
@@ -199,8 +195,7 @@ func NewFailedAuthorizationsPerAccountTransaction(regId, cost int64) (Transactio
 }
 
 // NewCertificatesPerDomainTransactions returns a slice of Transactions for the
-// provided order domain names. The cost specified will be applied per eTLD+1
-// name present in the orderDomains.
+// CertificatesPerDomain limit for the provided order domain names.
 //
 // Note: when overrides to the CertificatesPerDomainPerAccount are configured
 // for the subscriber, the cost:

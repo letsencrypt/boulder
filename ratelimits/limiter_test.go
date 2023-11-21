@@ -320,16 +320,8 @@ func Test_Limiter_RefundAndSpendCostErr(t *testing.T) {
 			bucketId, err := newIPAddressBucketId(NewRegistrationsPerIPAddress, net.ParseIP(testIP))
 			test.AssertNotError(t, err, "should not error")
 
-			// Spend a cost of 0, which should fail.
-			_, err = l.Spend(testCtx, newTransaction(bucketId, 0))
-			test.AssertErrorIs(t, err, ErrInvalidCost)
-
 			// Spend a negative cost, which should fail.
 			_, err = l.Spend(testCtx, newTransaction(bucketId, -1))
-			test.AssertErrorIs(t, err, ErrInvalidCost)
-
-			// Refund a cost of 0, which should fail.
-			_, err = l.Refund(testCtx, newTransaction(bucketId, 0))
 			test.AssertErrorIs(t, err, ErrInvalidCost)
 
 			// Refund a negative cost, which should fail.
@@ -348,7 +340,7 @@ func Test_Limiter_CheckWithBadCost(t *testing.T) {
 			test.AssertNotError(t, err, "should not error")
 
 			_, err = l.Check(testCtx, newTransaction(bucketId, -1))
-			test.AssertErrorIs(t, err, ErrInvalidCostForCheck)
+			test.AssertErrorIs(t, err, ErrInvalidCost)
 		})
 	}
 }
