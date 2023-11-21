@@ -7,6 +7,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -798,7 +799,7 @@ func TestMultiVACAARechecking(t *testing.T) {
 	allowedUAs := map[string]bool{
 		localUA:   true,
 		remoteUA1: true,
-		remoteUA2: false,
+		remoteUA2: true,
 	}
 
 	ms := httpMultiSrv(t, expectedToken, allowedUAs)
@@ -807,25 +808,52 @@ func TestMultiVACAARechecking(t *testing.T) {
 	// Configure the test server with the testcase allowed UAs.
 	ms.setAllowedUAs(allowedUAs)
 
-	// Configure a primary VA with testcase remote VAs.
+	noEarlyReturnFeatures := map[string]bool{
+		"EnforceMultiVA":     true,
+		"MultiVAFullResults": true,
+	}
+	err := features.Set(noEarlyReturnFeatures)
+	test.AssertNotError(t, err, "Attempted to set VA feature flags, but failed")
 
+	// Configure a primary VA with testcase remote VAs.
 	remoteVA1 := setupRemote(ms.Server, remoteUA1)
 	remoteVA2 := setupRemote(ms.Server, remoteUA2)
-
 	remoteVAs := []RemoteVA{
 		{remoteVA1, remoteUA1},
 		{remoteVA2, remoteUA2},
+		{&brokenRemoteVA{}, "broken"},
 	}
-
 	va, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
-	resp, err := va.IsCAAValid(ctx, &vapb.IsCAAValidRequest{
-		Domain:           "present.com",
-		ValidationMethod: "http-01",
-		AccountURIID:     12345,
+
+	// create a challenge with a well known token
+	domain := "good-dns01.com"
+	chall := "dns-01"
+	req := createValidationRequest(domain, core.ChallengeTypeDNS01)
+	res, err := va.PerformValidation(context.Background(), req)
+	test.AssertNotError(t, err, "Should have been able to PerformValidation but could not")
+	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
+
+	resultLog := mockLog.GetAllMatching(`Validation result`)
+	test.Assert(t, len(resultLog) == 1, "Wrong number of matching lines for 'Validation result'")
+	test.Assert(t, !strings.Contains(resultLog[0], `"Hostname": `+domain), "PerformValidation didn't log validation hostname.")
+
+	// Advance the clock so that the authorization is sufficiently old enough to
+	// trigger a CAA recheck during the next issuance attempt.
+	_ = va.clk.Now().Add(80 * 24 * time.Hour)
+
+	// Skip most of the issuance process and get right down to business.
+	//mockLog.Clear()
+	isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
+		Domain:           domain,
+		ValidationMethod: chall,
+		AccountURIID:     1,
 	})
-	test.AssertNotError(t, err, "calling IsCAAValid with a valid ValidationMethod")
-	t.Logf("Got log %v", mockLog.GetAll())
-	fmt.Println(resp)
+	fmt.Printf("%#v\n", isValidRes)
+	test.AssertNotError(t, err, "Should have been able to recheck CAA records but could not")
+	test.AssertBoxedNil(t, isValidRes.Problem, "Problems detected but should not have been")
+	for _, line := range mockLog.GetAll() {
+		fmt.Println(line)
+	}
 }
 
 func TestCAAFailure(t *testing.T) {

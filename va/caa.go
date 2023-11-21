@@ -25,6 +25,8 @@ type caaParams struct {
 	validationMethod core.AcmeChallenge
 }
 
+// IsCAAValid checks requested CAA records from a VA, and recursively any RVAs
+// configured in the VA. It returns a response or an error.
 func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsCAAValidRequest) (*vapb.IsCAAValidResponse, error) {
 	if core.IsAnyNilOrZero(req.Domain, req.ValidationMethod, req.AccountURIID) {
 		return nil, berrors.InternalServerError("incomplete IsCAAValid request")
@@ -44,17 +46,15 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 		validationMethod: validationMethod,
 	}
 
-	// PHIL
 	var remoteCAAResults chan *remoteValidationResult
 	if remoteVACount := len(va.remoteVAs); remoteVACount > 0 {
 		remoteCAAResults = make(chan *remoteValidationResult, remoteVACount)
-		go va.performRVACAARecheck(ctx, req, remoteCAAResults)
+		go va.performRemoteCAARecheck(ctx, req, remoteCAAResults)
 	}
-	// PHIL
+
 	prob := va.checkCAA(ctx, acmeID, params)
-	fmt.Printf("PHIL: remoteVAs: %v\n", va.remoteVAs)
 	if prob != nil {
-		detail := fmt.Sprintf("PHIL: Rechecking CAA While processing CAA for %s: %s", req.Domain, prob.Detail)
+		detail := fmt.Sprintf("While processing CAA for %s: %s", req.Domain, prob.Detail)
 		return &vapb.IsCAAValidResponse{
 			Problem: &corepb.ProblemDetails{
 				ProblemType: string(prob.Type),
@@ -84,16 +84,27 @@ func (va *ValidationAuthorityImpl) IsCAAValid(ctx context.Context, req *vapb.IsC
 	return &vapb.IsCAAValidResponse{}, nil
 }
 
-func (va *ValidationAuthorityImpl) performRVACAARecheck(
+// performRemoteCAARecheck calls `PerformValidation` for each of the configured
+// remoteVAs in a random order. The provided `results` chan should have an equal
+// size to the number of remote VAs. The validations will be performed in
+// separate go-routines. If the result `error` from a remote
+// `PerformValidation` RPC is nil or a nil `ProblemDetails` instance it is
+// written directly to the `results` chan. If the err is a cancelled error it is
+// treated as a nil error. Otherwise the error/problem is written to the results
+// channel as-is.
+func (va *ValidationAuthorityImpl) performRemoteCAARecheck(
 	ctx context.Context,
 	req *vapb.IsCAAValidRequest,
 	results chan *remoteValidationResult) {
+	// A remoteVA should never have remoteVAs of its own.
 	for _, i := range rand.Perm(len(va.remoteVAs)) {
 		remoteVA := va.remoteVAs[i]
 		go func(rva RemoteVA) {
 			result := &remoteValidationResult{
 				VAHostname: rva.Address,
 			}
+			// Recursively call IsCAAValid, but with a remoteVA masquerading as
+			// a fully-fledged VA.
 			res, err := rva.IsCAAValid(ctx, req)
 			if err != nil && canceled.Is(err) {
 				// If the non-nil err was a canceled error, ignore it. That's fine: it
