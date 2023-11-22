@@ -52,6 +52,8 @@ func (v *Validator) TailValidateFile(filename string) error {
 		// amounts of disk space in case there is problem that causes all log lines to
 		// be invalid.
 		outputLimiter := time.NewTicker(time.Second)
+		defer outputLimiter.Stop()
+
 		for line := range t.Lines {
 			if line.Err != nil {
 				v.log.Errf("error while tailing %s: %s", t.Filename, line.Err)
