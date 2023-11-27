@@ -1,4 +1,4 @@
-package notmain
+package validator
 
 import (
 	"testing"
