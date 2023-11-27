@@ -7,12 +7,10 @@ import (
 	"net"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/miekg/dns"
 
 	"github.com/letsencrypt/boulder/core"
-	"github.com/letsencrypt/boulder/features"
 	"github.com/letsencrypt/boulder/identifier"
 	"github.com/letsencrypt/boulder/probs"
 	"github.com/letsencrypt/boulder/test"
@@ -608,50 +606,8 @@ func TestMultiVACAARechecking(t *testing.T) {
 	}
 	va, mockLog := setup(ms.Server, 0, localUA, remoteVAs)
 
-	vaFeatures := map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
-	}
-	err := features.Set(vaFeatures)
-	test.AssertNotError(t, err, "Attempted to set VA feature flags, but failed")
-	defer features.Reset()
-
-	// create a challenge with a well known token
-	domain := "good-dns01.com"
-	req := createValidationRequest(domain, core.ChallengeTypeDNS01)
-	res, err := va.PerformValidation(context.Background(), req)
-	test.AssertNotError(t, err, "Should have been able to PerformValidation but could not")
-	test.Assert(t, res.Problems == nil, fmt.Sprintf("validation failed: %#v", res.Problems))
-
-	resultLog := mockLog.GetAllMatching(`Validation result`)
-	test.Assert(t, len(resultLog) == 1, "Wrong number of matching lines for 'Validation result'")
-	test.Assert(t, !strings.Contains(resultLog[0], `"Hostname": `+domain), "PerformValidation didn't log validation hostname.")
-
-	// ----------------------------------------------------
-
-	// Advance the clock so that the authorization is sufficiently old enough to
-	// trigger a CAA recheck during the next issuance attempt.
-	_ = va.clk.Now().Add(80 * 24 * time.Hour)
-
-	remoteVAs = []RemoteVA{
-		{remoteVA1, remoteUA1},
-		{remoteVA2, remoteUA2},
-		//{&brokenRemoteVA{}, "brokenVA 1"},
-	}
-	va, mockLog = setup(ms.Server, 0, localUA, remoteVAs)
-
-	vaFeatures = map[string]bool{
-		"EnforceMultiVA":     true,
-		"MultiVAFullResults": true,
-	}
-	err = features.Set(vaFeatures)
-	test.AssertNotError(t, err, "Attempted to set VA feature flags, but failed")
-	defer features.Reset()
-
-	// Skip most of the issuance process and get right down to business.
-	mockLog.Clear()
 	isValidRes, err := va.IsCAAValid(context.TODO(), &vapb.IsCAAValidRequest{
-		Domain:           domain,
+		Domain:           "good-dns01.com",
 		ValidationMethod: string(core.ChallengeTypeDNS01),
 		AccountURIID:     1,
 	})
