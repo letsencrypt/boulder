@@ -139,6 +139,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 			LogPublicKey: key,
 			Der:          cert,
 			Precert:      true,
+			Kind:         pubpb.SubmissionType_sct,
 		})
 		if err != nil {
 			return nil, url, fmt.Errorf("ct submission to %q (%q) failed: %w", g, url, err)
@@ -200,8 +201,10 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 // It neither waits for these submission to complete, nor tracks their success.
 func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expiry time.Time) {
 	logs := ctp.finalLogs
+	kind := pubpb.SubmissionType_final
 	if isPrecert {
 		logs = ctp.infoLogs
+		kind = pubpb.SubmissionType_info
 	}
 
 	for _, group := range logs {
@@ -218,6 +221,7 @@ func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expi
 						LogPublicKey: log.Key,
 						Der:          blob,
 						Precert:      isPrecert,
+						Kind:         kind,
 					},
 				)
 				if err != nil {
