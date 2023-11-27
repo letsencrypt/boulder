@@ -138,6 +138,7 @@ func (ctp *CTPolicy) GetSCTs(ctx context.Context, cert core.CertDER, expiration 
 			LogURL:       url,
 			LogPublicKey: key,
 			Der:          cert,
+			Precert:      true,
 			Kind:         pubpb.SubmissionType_sct,
 		})
 		if err != nil {
@@ -219,6 +220,7 @@ func (ctp *CTPolicy) submitAllBestEffort(blob core.CertDER, isPrecert bool, expi
 						LogURL:       log.Url,
 						LogPublicKey: log.Key,
 						Der:          blob,
+						Precert:      isPrecert,
 						Kind:         kind,
 					},
 				)
