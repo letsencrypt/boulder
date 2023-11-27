@@ -1,11 +1,14 @@
 package validator
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nxadm/tail"
@@ -17,73 +20,132 @@ import (
 var errInvalidChecksum = errors.New("invalid checksum length")
 
 type Validator struct {
-	tailers []*tail.Tail
+	// mu guards patterns and tailers to prevent Shutdown racing monitor
+	mu sync.Mutex
+
+	// patterns is the list of glob patterns to monitor with filepath.Glob for logs
+	patterns []string
+
+	// tailers is a map of filenames to the tailer which are currently being tailed
+	tailers map[string]*tail.Tail
+
+	// monitorCancel cancels the monitor's context, so it exits
+	monitorCancel context.CancelFunc
 
 	lineCounter *prometheus.CounterVec
 	log         log.Logger
 }
 
-func New(logger log.Logger, stats prometheus.Registerer) *Validator {
+// New Validator monitoring paths, which is a list of file globs.
+func New(patterns []string, logger log.Logger, stats prometheus.Registerer) *Validator {
 	lineCounter := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "log_lines",
 		Help: "A counter of log lines processed, with status",
 	}, []string{"filename", "status"})
 	stats.MustRegister(lineCounter)
 
-	return &Validator{log: logger, lineCounter: lineCounter}
-}
+	monitorContext, monitorCancel := context.WithCancel(context.Background())
 
-// TailValidateFile takes a filename, and starts tailing it.
-// An error is returned if the file couldn't be opened.
-func (v *Validator) TailValidateFile(filename string) error {
-	t, err := tail.TailFile(filename, tail.Config{
-		ReOpen:        true,
-		MustExist:     false, // sometimes files won't exist, so we must tolerate that
-		Follow:        true,
-		Logger:        tailLogger{v.log},
-		CompleteLines: true,
-	})
-	if err != nil {
-		return err
+	v := &Validator{
+		patterns:      patterns,
+		tailers:       map[string]*tail.Tail{},
+		log:           logger,
+		monitorCancel: monitorCancel,
+		lineCounter:   lineCounter,
 	}
 
-	go func() {
-		// Emit no more than 1 error line per second. This prevents consuming large
-		// amounts of disk space in case there is problem that causes all log lines to
-		// be invalid.
-		outputLimiter := time.NewTicker(time.Second)
-		defer outputLimiter.Stop()
+	go v.monitor(monitorContext)
 
-		for line := range t.Lines {
-			if line.Err != nil {
-				v.log.Errf("error while tailing %s: %s", t.Filename, line.Err)
+	return v
+}
+
+// pollPaths expands v.patterns and calls v.tailValidateFile on each resulting file
+func (v *Validator) pollPaths() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for _, pattern := range v.patterns {
+		paths, err := filepath.Glob(pattern)
+		if err != nil {
+			v.log.Err(err.Error())
+		}
+
+		for _, path := range paths {
+			if _, ok := v.tailers[path]; ok {
+				// We are already tailing this file
 				continue
 			}
-			err := lineValid(line.Text)
+
+			t, err := tail.TailFile(path, tail.Config{
+				ReOpen:        true,
+				MustExist:     false, // sometimes files won't exist, so we must tolerate that
+				Follow:        true,
+				Logger:        tailLogger{v.log},
+				CompleteLines: true,
+			})
 			if err != nil {
-				if errors.Is(err, errInvalidChecksum) {
-					v.lineCounter.WithLabelValues(t.Filename, "invalid checksum length").Inc()
-				} else {
-					v.lineCounter.WithLabelValues(t.Filename, "bad").Inc()
-				}
-				select {
-				case <-outputLimiter.C:
-					v.log.Errf("%s: %s %q", t.Filename, err, line.Text)
-				default:
-				}
-			} else {
-				v.lineCounter.WithLabelValues(t.Filename, "ok").Inc()
+				// TailFile shouldn't error when MustExist is false
+				v.log.Errf("unexpected error from TailFile: %v", err)
 			}
+
+			go v.tailValidate(path, t.Lines)
+
+			v.tailers[path] = t
 		}
-	}()
+	}
+}
 
-	v.tailers = append(v.tailers, t)
+// Monitor calls v.pollPaths every minute until its context is cancelled
+func (v *Validator) monitor(ctx context.Context) {
+	for {
+		v.pollPaths()
 
-	return nil
+		// Wait a minute, unless cancelled
+		timer := time.NewTimer(time.Minute)
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func (v *Validator) tailValidate(filename string, lines chan *tail.Line) {
+	// Emit no more than 1 error line per second. This prevents consuming large
+	// amounts of disk space in case there is problem that causes all log lines to
+	// be invalid.
+	outputLimiter := time.NewTicker(time.Second)
+	defer outputLimiter.Stop()
+
+	for line := range lines {
+		if line.Err != nil {
+			v.log.Errf("error while tailing %s: %s", filename, line.Err)
+			continue
+		}
+		err := lineValid(line.Text)
+		if err != nil {
+			if errors.Is(err, errInvalidChecksum) {
+				v.lineCounter.WithLabelValues(filename, "invalid checksum length").Inc()
+			} else {
+				v.lineCounter.WithLabelValues(filename, "bad").Inc()
+			}
+			select {
+			case <-outputLimiter.C:
+				v.log.Errf("%s: %s %q", filename, err, line.Text)
+			default:
+			}
+		} else {
+			v.lineCounter.WithLabelValues(filename, "ok").Inc()
+		}
+	}
 }
 
 // Shutdown should be called before process shutdown
 func (v *Validator) Shutdown() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	v.monitorCancel()
+
 	for _, t := range v.tailers {
 		// The tail module seems to have a race condition that will generate
 		// errors like this on shutdown:
